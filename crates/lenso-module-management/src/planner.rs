@@ -216,6 +216,53 @@ fn non_workspace_effects(
                 })
         })
         .collect::<Vec<_>>();
+    let current_console_artifacts = current_lock
+        .into_iter()
+        .flat_map(|lock| &lock.modules)
+        .filter_map(|module| {
+            module.console_ui_artifact.as_ref().map(|artifact| {
+                (
+                    module.module_id.as_str(),
+                    (module.release_digest.as_str(), artifact),
+                )
+            })
+        })
+        .collect::<BTreeMap<_, _>>();
+    let target_console_artifacts = target_lock
+        .modules
+        .iter()
+        .filter_map(|module| {
+            module.console_ui_artifact.as_ref().map(|artifact| {
+                (
+                    module.module_id.as_str(),
+                    (module.release_digest.as_str(), artifact),
+                )
+            })
+        })
+        .collect::<BTreeMap<_, _>>();
+    if current_console_artifacts != target_console_artifacts {
+        let artifacts = target_console_artifacts
+            .into_iter()
+            .map(|(module_id, (module_release_digest, artifact))| {
+                crate::ConsoleCompositionArtifact {
+                    module_id: module_id.to_owned(),
+                    module_release_digest: module_release_digest.to_owned(),
+                    locator: artifact.locator.clone(),
+                    digest: artifact.digest.clone(),
+                    format: artifact.format.clone(),
+                    entries: artifact.entries.clone(),
+                    bridge_protocol: artifact.bridge_protocol.clone(),
+                    requested_permissions: artifact.requested_permissions.clone(),
+                }
+            })
+            .collect();
+        effects.push(ModulePlanEffect::ConsoleComposition {
+            effect_id: "25-console-composition:lenso-console".to_owned(),
+            console_service_id: "lenso-console".to_owned(),
+            candidate_lock_digest: target_lock_digest.to_owned(),
+            artifacts,
+        });
+    }
     let current_services = current_lock
         .into_iter()
         .flat_map(|lock| &lock.modules)

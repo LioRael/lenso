@@ -216,7 +216,6 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `auth-phone`: first-party phone OTP and phone password provider for the auth anchor.
   - `auth-github`: first-party GitHub OAuth provider built on `auth-oauth`.
   - `auth-google`: first-party Google OAuth/OIDC provider built on `auth-oauth`.
-  - `story`: platform-owned Runtime Console story surface.
 - `fixtures/`
   - `provider`: internal provider fixture for integration and protocol checks.
 - `contracts/`
@@ -227,10 +226,10 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
 - `infrastructure/local/`
   - Local Postgres and optional OpenTelemetry collector config.
 
-Lenso Console source and its deployable Service backend live in the sibling
-`../lenso-console` repository. This framework repository owns the public
-contracts, module manifests, and compatible Host admin APIs that the Console
-consumes.
+Lenso Console source, its deployable Service backend, and the Runtime Stories
+Console module live in the sibling `../lenso-console` repository. This framework
+repository owns public contracts, Module release declarations, and System Plane
+capability contracts consumed by the Console.
 
 ## Local Development
 

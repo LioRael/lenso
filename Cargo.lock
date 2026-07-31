@@ -2200,7 +2200,6 @@ dependencies = [
  "lenso-module-auth-password",
  "lenso-module-auth-phone",
  "lenso-module-management",
- "lenso-module-story",
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
@@ -2421,30 +2420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lenso-module-story"
-version = "0.1.19"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "lenso-autonomous-service",
- "lenso-platform-core",
- "lenso-platform-http",
- "lenso-platform-module",
- "lenso-platform-testing",
- "lenso-service",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tower",
- "tracing",
- "utoipa",
- "utoipa-axum",
-]
-
-[[package]]
 name = "lenso-operator"
 version = "0.1.0"
 dependencies = [
@@ -2532,6 +2507,7 @@ dependencies = [
  "lenso-module-management",
  "lenso-platform-core",
  "lenso-platform-http",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",

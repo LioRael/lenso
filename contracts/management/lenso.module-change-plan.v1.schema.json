@@ -169,6 +169,54 @@
       ],
       "type": "string"
     },
+    "ConsoleCompositionArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "bridge_protocol": {
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/ConsoleUiArtifactEntry"
+          },
+          "type": "array"
+        },
+        "format": {
+          "$ref": "#/$defs/ConsoleUiArtifactFormat"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "module_id": {
+          "type": "string"
+        },
+        "module_release_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "requested_permissions": {
+          "items": {
+            "$ref": "#/$defs/ConsolePermissionRequest"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "module_id",
+        "module_release_digest",
+        "locator",
+        "digest",
+        "format",
+        "entries",
+        "bridge_protocol",
+        "requested_permissions"
+      ],
+      "type": "object"
+    },
     "ConsolePermissionRequest": {
       "properties": {
         "operations": {
@@ -1071,6 +1119,12 @@
         },
         {
           "properties": {
+            "artifacts": {
+              "items": {
+                "$ref": "#/$defs/ConsoleCompositionArtifact"
+              },
+              "type": "array"
+            },
             "candidate_lock_digest": {
               "pattern": "^sha256:[0-9a-f]{64}$",
               "type": "string"
@@ -1090,7 +1144,8 @@
             "kind",
             "effect_id",
             "console_service_id",
-            "candidate_lock_digest"
+            "candidate_lock_digest",
+            "artifacts"
           ],
           "type": "object"
         },

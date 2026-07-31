@@ -241,6 +241,19 @@ pub struct LockedConsoleUiArtifact {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConsoleCompositionArtifact {
+    pub module_id: String,
+    pub module_release_digest: String,
+    pub locator: String,
+    pub digest: String,
+    pub format: lenso_contracts::ConsoleUiArtifactFormat,
+    pub entries: Vec<lenso_contracts::ConsoleUiArtifactEntry>,
+    pub bridge_protocol: String,
+    pub requested_permissions: Vec<lenso_contracts::ConsolePermissionRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ModuleRootChange {
     Install {
@@ -447,6 +460,7 @@ pub enum ModulePlanEffect {
         effect_id: String,
         console_service_id: String,
         candidate_lock_digest: String,
+        artifacts: Vec<ConsoleCompositionArtifact>,
     },
     ServiceInstallation {
         effect_id: String,

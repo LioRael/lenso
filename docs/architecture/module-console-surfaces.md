@@ -20,6 +20,15 @@ by that exact `(ModuleId, Module Release digest, UI artifact digest)` grant.
 Artifacts receive no shell imports, ambient credentials, direct managed-Service
 network access, secret values or same-origin storage.
 
+After a Module operation is durably accepted, the target-side management
+adapter submits the complete selected artifact set to the Console Service's
+`/api/console/v1/artifacts/reconcile` endpoint. The adapter permits HTTPS
+locators and loopback HTTP only. The Console Service downloads each artifact,
+verifies its SHA-256 digest, writes the immutable object to content-addressed
+storage, and atomically records the composition receipt. The scoped
+`console.artifacts.manage` credential authorizes only this reconciliation; it
+does not grant a Module or its UI access to a managed Service.
+
 Declarative surfaces are rendered by the shell from data in the manifest and do
 not load executable Module code. Business administration remains a business
 Module concern and does not enter the System Plane.

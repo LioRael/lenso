@@ -29,22 +29,23 @@ Modules must not query another module's tables or import another module's intern
 
 Current linked module fixtures:
 
-- `story` owns the `platform-story` Console UI declaration. Its retired
-  same-Host admin router is not part of the Data Plane; runtime evidence comes
-  from the Service-owned System Plane observability provider.
 - `auth` owns the authentication anchor, session tables, development session
   routes, and host actor resolver. See [`auth-module.md`](auth-module.md).
 - `auth-password` exercises a first-party linked password provider over the auth
   public interface.
 
 These modules are demo fixtures, not product defaults. `lenso-bootstrap` selects a
-linked composition profile: `core` keeps only platform-owned linked surfaces such
-as `platform-story`, while `demo` adds `auth` and `auth-password` for local
-development, examples, contracts, and integration tests. Product hosts should
-use `core` and explicitly install first-party auth modules through their host
-composition. Local development may default to `demo`; non-local environments
-must set `LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo`
-explicitly.
+linked composition profile: `core` keeps only platform-owned runtime services,
+while `demo` adds `auth` and `auth-password` for local development, examples,
+contracts, and integration tests. Product hosts should use `core` and explicitly
+install first-party auth modules through their host composition. Local
+development may default to `demo`; non-local environments must set
+`LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo` explicitly.
+
+The Runtime Stories Console module is owned by the sibling `lenso-console`
+repository. Managed Services expose its evidence through the Service-owned
+System Plane observability provider and do not embed its UI declaration or
+assets.
 
 ## Platform Service Kit
 

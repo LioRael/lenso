@@ -14,7 +14,6 @@ lenso-platform-runtime-observability
 lenso-platform-runtime-operations
 lenso-autonomous-service
 lenso-platform-provider
-lenso-module-story
 lenso-bootstrap
 lenso-api
 lenso-migrate

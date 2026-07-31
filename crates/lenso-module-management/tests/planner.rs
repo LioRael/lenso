@@ -1,10 +1,12 @@
 use chrono::{TimeZone as _, Utc};
 use lenso_contracts::{
-    ArtifactReference, CatalogAction, DeclaredCompatibilityState, LinkedModuleDelivery,
-    ModuleDelivery, ModuleEligibility, ModuleEligibilityState, ModuleLifecycleState,
-    ModuleManifest, ModuleMigrationActivation, ModuleMigrationDeclaration, ModuleRelease,
-    ModuleRequirement, ModuleVerificationCell, ServiceModuleDelivery, ServiceResponsibilityProfile,
-    VerificationEvaluation, VerificationOperation, VerificationState, digest_json,
+    ArtifactReference, CONSOLE_BRIDGE_PROTOCOL, CatalogAction, ConsoleUiArtifact,
+    ConsoleUiArtifactEntry, ConsoleUiArtifactFormat, DeclaredCompatibilityState,
+    LinkedModuleDelivery, ModuleDelivery, ModuleEligibility, ModuleEligibilityState,
+    ModuleLifecycleState, ModuleManifest, ModuleMigrationActivation, ModuleMigrationDeclaration,
+    ModuleRelease, ModuleRequirement, ModuleVerificationCell, ServiceModuleDelivery,
+    ServiceResponsibilityProfile, VerificationEvaluation, VerificationOperation, VerificationState,
+    digest_json,
 };
 use lenso_module_management::*;
 use std::fs;
@@ -226,6 +228,27 @@ fn candidate() -> ModuleResolutionCandidate {
     }
 }
 
+fn candidate_with_console() -> ModuleResolutionCandidate {
+    let mut candidate = candidate();
+    candidate.release.console_ui_artifact = Some(ConsoleUiArtifact {
+        artifact: ArtifactReference {
+            locator: "https://modules.example/acme-console.js".to_owned(),
+            digest: digest('4'),
+        },
+        format: ConsoleUiArtifactFormat::IsolatedWeb,
+        entries: vec![ConsoleUiArtifactEntry {
+            name: "main".to_owned(),
+            path: "index.html".to_owned(),
+        }],
+        bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
+        requested_permissions: Vec::new(),
+        provenance: Vec::new(),
+    });
+    candidate.release_digest = digest_json(&candidate.release).unwrap();
+    candidate.verification_cell = verification_cell(&candidate.release_digest);
+    candidate
+}
+
 fn verification_cell(release_digest: &str) -> ModuleVerificationCell {
     ModuleVerificationCell {
         module_release_digest: release_digest.to_owned(),
@@ -356,6 +379,60 @@ fn one_plan_call_resolves_graph_cargo_workspace_migration_and_activation() {
             .all(|pair| pair[0].effect_id() < pair[1].effect_id())
     );
     assert!(!root.join("generated/lenso-linked/Cargo.toml").exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn console_artifact_change_produces_console_composition_effect() {
+    let root = temp_root("console-composition");
+    scaffold(&root, &cargo_lock(false));
+    let plan = ModuleChangePlanner::with_cargo_generator(
+        &root,
+        FixtureCargo {
+            lock: cargo_lock(true),
+        },
+    )
+    .plan(&ModuleChangePlanRequest {
+        current_desired: desired(),
+        current_lock: None,
+        change: ModuleRootChange::Install {
+            selection: DesiredModuleSelection {
+                module_id: "acme/module".to_owned(),
+                version_requirement: "^1".to_owned(),
+                optional_requirements: Vec::new(),
+                exact_release_digest: None,
+                delivery_preference: None,
+            },
+        },
+        catalog_snapshot_digest: digest('c'),
+        trust_policy_digest: digest('e'),
+        compatibility_evidence_digest: digest('f'),
+        resolver_version: "resolver-1".to_owned(),
+        environment_id: "local".to_owned(),
+        expected_target_revision: 0,
+        candidates: vec![candidate_with_console()],
+        current_service_installations: empty_service_installations(),
+        service_deployments: Vec::new(),
+        cargo_offline: true,
+        created_at: Utc.with_ymd_and_hms(2026, 7, 30, 8, 0, 0).unwrap(),
+    })
+    .unwrap();
+
+    let artifacts = plan
+        .effects
+        .iter()
+        .find_map(|effect| match effect {
+            ModulePlanEffect::ConsoleComposition { artifacts, .. } => Some(artifacts),
+            _ => None,
+        })
+        .expect("Console artifact change should produce a composition effect");
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0].module_id, "acme/module");
+    assert_eq!(
+        artifacts[0].locator,
+        "https://modules.example/acme-console.js"
+    );
+    assert_eq!(artifacts[0].entries[0].path, "index.html");
     fs::remove_dir_all(root).unwrap();
 }
 

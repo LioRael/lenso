@@ -17,7 +17,6 @@ export default {
     "lenso-bootstrap": {},
     "lenso-contracts": {},
     "lenso-migrate": {},
-    "lenso-module-story": {},
     "lenso-platform-admin": {},
     "lenso-platform-admin-data": {},
     "lenso-platform-core": {},
