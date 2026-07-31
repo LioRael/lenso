@@ -4580,10 +4580,11 @@ fn elapsed_ms(started: Instant) -> i64 {
 mod tests {
     use super::*;
     use platform_module::{
-        AdminSchema, AdminSurface, ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleArea,
-        ConsoleContribution, ConsoleContributionAction, ConsolePackage, ConsoleSurface,
-        EntitySchema, LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
-        LifecycleSurface, ModuleHttpMethod, ModuleHttpRoute, ModuleSource,
+        AdminSchema, AdminSurface, CONSOLE_BRIDGE_PROTOCOL, ConsoleActionInputBinding,
+        ConsoleActionInputValue, ConsoleContribution, ConsoleContributionAction, ConsoleSurface,
+        ConsoleSurfacePresentation, EntitySchema, LifecycleActivationJobDeclaration,
+        LifecycleActivationRunPolicy, LifecycleSurface, ModuleHttpMethod, ModuleHttpRoute,
+        ModuleSource,
     };
 
     #[test]
@@ -4657,11 +4658,11 @@ mod tests {
             console: vec![ConsoleSurface {
                 name: "contacts".to_owned(),
                 label: "Contacts".to_owned(),
-                area: ConsoleArea::Data,
                 route: "/data/contacts".to_owned(),
-                package: ConsolePackage {
-                    name: "@lenso/contacts-console".to_owned(),
-                    export: "contactsConsoleModule".to_owned(),
+                presentation: ConsoleSurfacePresentation::Isolated {
+                    entry: "contactsConsoleModule".to_owned(),
+
+                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: vec!["remote_crm.contacts.read".to_owned()],

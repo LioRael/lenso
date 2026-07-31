@@ -1,8 +1,8 @@
 use platform_core::AppContext;
 use platform_http::ApiOpenApiRouter;
 use platform_module::{
-    ConsoleArea, ConsolePackage, ConsoleSurface, LinkedBinding, LinkedHttpContribution, Module,
-    ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
+    CONSOLE_BRIDGE_PROTOCOL, ConsoleSurface, ConsoleSurfacePresentation, LinkedBinding,
+    LinkedHttpContribution, Module, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
 };
 
 pub const MODULE_NAME: &str = "platform-story";
@@ -53,11 +53,10 @@ pub fn manifest() -> ModuleManifest {
         .console(vec![ConsoleSurface {
             name: "stories".to_owned(),
             label: "Stories".to_owned(),
-            area: ConsoleArea::Runtime,
             route: "/runtime/stories".to_owned(),
-            package: ConsolePackage {
-                name: "@lenso/story-console".to_owned(),
-                export: "storyConsoleModule".to_owned(),
+            presentation: ConsoleSurfacePresentation::Isolated {
+                entry: "runtime-stories".to_owned(),
+                bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
             },
             icon: Some("workflow".to_owned()),
             required_capabilities: vec![STORY_CONSOLE_CAPABILITY.to_owned()],
@@ -108,16 +107,10 @@ mod tests {
 
         assert_eq!(surface.name, console_surface_contract["surfaceName"]);
         assert_eq!(surface.label, console_surface_contract["label"]);
-        assert_eq!(surface.area, ConsoleArea::Runtime);
-        assert_eq!(surface_json["area"], console_surface_contract["area"]);
         assert_eq!(surface.route, console_surface_contract["route"]);
         assert_eq!(
-            surface.package.name,
-            console_surface_contract["packageName"]
-        );
-        assert_eq!(
-            surface.package.export,
-            console_surface_contract["exportName"]
+            surface_json["presentation"],
+            console_surface_contract["presentation"]
         );
         assert_eq!(surface_json["icon"], console_surface_contract["icon"]);
         assert_eq!(surface.navigation, None);

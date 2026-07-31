@@ -27,10 +27,11 @@ pub use admin::{
 pub use admin_schema::{AdminSchema, EntitySchema, FieldSchema, FieldType};
 pub use catalog::*;
 pub use console::{
-    ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleArea, ConsoleContribution,
-    ConsoleContributionAction, ConsoleContributionKind, ConsoleNavigation, ConsoleNavigationGroup,
-    ConsolePackage, ConsoleSlot, ConsoleSlotContext, ConsoleSlotContextField,
-    ConsoleSlotContextFieldType, ConsoleSurface, ConsoleWorkspaceRef,
+    CONSOLE_BRIDGE_PROTOCOL, ConsoleActionInputBinding, ConsoleActionInputValue,
+    ConsoleContribution, ConsoleContributionAction, ConsoleContributionKind, ConsoleNavigation,
+    ConsoleNavigationGroup, ConsolePermissionGrant, ConsolePermissionRequest, ConsoleSlot,
+    ConsoleSlotContext, ConsoleSlotContextField, ConsoleSlotContextFieldType, ConsoleSurface,
+    ConsoleSurfacePresentation, ConsoleWorkspaceRef,
 };
 pub use cron::{CronParseError, CronSchedule, validate_cron_expression};
 pub use events::{EventHandlerDeclaration, EventSurface};
@@ -51,10 +52,10 @@ pub use manifest::{
     lint_module_manifest_parts, module_capability_references,
 };
 pub use module_release::{
-    ArtifactReference, AttestationReference, LinkedModuleDelivery, MODULE_RELEASE_PROTOCOL,
-    ModuleCompatibilityDeclaration, ModuleConsoleArtifact, ModuleContractIssue, ModuleDelivery,
-    ModuleRelease, ServiceModuleDelivery, ServiceResponsibilityProfile, canonical_json,
-    digest_json,
+    ArtifactReference, AttestationReference, ConsoleUiArtifact, ConsoleUiArtifactEntry,
+    ConsoleUiArtifactFormat, LinkedModuleDelivery, MODULE_RELEASE_PROTOCOL,
+    ModuleCompatibilityDeclaration, ModuleContractIssue, ModuleDelivery, ModuleRelease,
+    ServiceModuleDelivery, ServiceResponsibilityProfile, canonical_json, digest_json,
 };
 pub use operation::{
     ServiceOperationIdempotency, ServiceOperationMetadata, ServiceOperationSafeProbe,

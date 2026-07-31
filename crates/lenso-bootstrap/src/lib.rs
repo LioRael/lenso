@@ -2038,9 +2038,9 @@ mod tests {
         TelemetryConfig, apply_migrations,
     };
     use platform_module::{
-        ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
-        LifecycleSurface, ModuleManifestLintSeverity, RuntimeFunctionDeclaration, RuntimeSurface,
-        lint_module_manifest,
+        CONSOLE_BRIDGE_PROTOCOL, ConsoleSurfacePresentation, LifecycleActivationJobDeclaration,
+        LifecycleStartupCheckDeclaration, LifecycleSurface, ModuleManifestLintSeverity,
+        RuntimeFunctionDeclaration, RuntimeSurface, lint_module_manifest,
     };
     use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
     use platform_testing::{SequentialIdGenerator, TestDatabase};
@@ -3413,16 +3413,10 @@ mod tests {
         assert_eq!(manifest.module_id, console_surface_contract["id"]);
         assert_eq!(surface.name, console_surface_contract["surfaceName"]);
         assert_eq!(surface.label, console_surface_contract["label"]);
-        assert_eq!(surface.area, ConsoleArea::Runtime);
-        assert_eq!(surface_json["area"], console_surface_contract["area"]);
         assert_eq!(surface.route, console_surface_contract["route"]);
         assert_eq!(
-            surface.package.name,
-            console_surface_contract["packageName"]
-        );
-        assert_eq!(
-            surface.package.export,
-            console_surface_contract["exportName"]
+            surface_json["presentation"],
+            console_surface_contract["presentation"]
         );
         assert_eq!(surface_json["icon"], console_surface_contract["icon"]);
         assert_eq!(surface.navigation, None);
