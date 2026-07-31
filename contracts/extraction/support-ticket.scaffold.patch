@@ -1,96 +1,96 @@
-diff --git a/services/support-ticket-service/.lenso/extraction-scaffold.json b/services/support-ticket-service/.lenso/extraction-scaffold.json
+diff --git a/services/acme/support-ticket-service/.lenso/extraction-scaffold.json b/services/acme/support-ticket-service/.lenso/extraction-scaffold.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/.lenso/extraction-scaffold.json
++++ b/services/acme/support-ticket-service/.lenso/extraction-scaffold.json
 @@ -0,0 +1,81 @@
 +{
 +  "generatorVersion": "lenso.extraction-scaffold-generator.v1",
 +  "linkedAuthorityRemainsAuthoritative": true,
 +  "managedFiles": [
 +    {
-+      "digest": "sha256:4ec150a2252ebe6ac990deb85046dfc83dde71df17d53728cbb90fc0f17b548f",
-+      "path": "services/support-ticket-service/Cargo.toml"
++      "digest": "sha256:80b8ac71fa8d869bbf874111557940867bc18dd0b6463161347615a63591374a",
++      "path": "services/acme/support-ticket-service/Cargo.toml"
 +    },
 +    {
-+      "digest": "sha256:da46a975eea402fd71495a533b1315c0ebfb9025490c4052c89d3e12cbaabf51",
-+      "path": "services/support-ticket-service/README.md"
++      "digest": "sha256:43057a15072a9e99d5d314da5ca217d108952dc20bc13b882d60fd37ad5e37ce",
++      "path": "services/acme/support-ticket-service/README.md"
 +    },
 +    {
 +      "digest": "sha256:42561220b24128494947744b47e78f8ef68321f426f8a2d43ae48bacbc6fdb69",
-+      "path": "services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json"
++      "path": "services/acme/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json"
 +    },
 +    {
 +      "digest": "sha256:2ac30c22ef370e4d971d7761de9e76b8daac731efcfaaba59442666801fdefc5",
-+      "path": "services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json"
++      "path": "services/acme/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json"
 +    },
 +    {
 +      "digest": "sha256:4ad4f7be18e6afbd250e0ca1326671c8b07203525e9adeab0d07221ac2a23059",
-+      "path": "services/support-ticket-service/contracts/openapi/support.v1.yaml"
++      "path": "services/acme/support-ticket-service/contracts/openapi/support.v1.yaml"
 +    },
 +    {
 +      "digest": "sha256:4660fb3b6914214fd868d13de5bc996fb01602b2949aee55531bdf9dc0888b4b",
-+      "path": "services/support-ticket-service/contracts/services/support-grpc.v1.proto"
++      "path": "services/acme/support-ticket-service/contracts/services/support-grpc.v1.proto"
 +    },
 +    {
 +      "digest": "sha256:b18925a7bd6b57b9d680c69f605840d65eeb457a9ebc1806103eecb2a3f8f22e",
-+      "path": "services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json"
++      "path": "services/acme/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json"
 +    },
 +    {
 +      "digest": "sha256:4a310931d95f59694d82543e977c5a0e1b9a33c34724409836b4d402755b1721",
-+      "path": "services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json"
++      "path": "services/acme/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json"
 +    },
 +    {
 +      "digest": "sha256:ba2eab5825aae81f6bc3e94caf9d1ae01af85c5379a05b5edfc5b88d56452516",
-+      "path": "services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json"
++      "path": "services/acme/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json"
 +    },
 +    {
 +      "digest": "sha256:5a6524535c26a877e48163cf5660096762a0d47f5365be03894fba3c0f4d530c",
-+      "path": "services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json"
++      "path": "services/acme/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json"
 +    },
 +    {
-+      "digest": "sha256:0b2313dbf10ecc246a1394521c6f4ef5272c9fb8eb7d071f3fa03a43b9dcbcc2",
-+      "path": "services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json"
++      "digest": "sha256:1b2b614eeae0289f90c6620085275b13e493eb9f55ff38d928a2396ae321bdf9",
++      "path": "services/acme/support-ticket-service/generated/clients/acme-support-ticket-service-support-grpc-v1-client.json"
 +    },
 +    {
-+      "digest": "sha256:d2193dd5fb401a902aada98ee37600adfccde7b5791e9fafa10520e28354821f",
-+      "path": "services/support-ticket-service/lenso.module.json"
++      "digest": "sha256:8f10823f3a5cb942393d39adb09a821949c1885f1ed13e86369a54cd0fdb8b4e",
++      "path": "services/acme/support-ticket-service/lenso.module.json"
 +    },
 +    {
-+      "digest": "sha256:de7d0fe6c7f39e4f0cbf1f955d7a51783d201b0d345b52edc3c65b25b804f51a",
-+      "path": "services/support-ticket-service/lenso.service.json"
++      "digest": "sha256:d8d956d09512a7e1cef553cfcf0ecf7853b011c926042bb14c5fa6430392bea3",
++      "path": "services/acme/support-ticket-service/lenso.service.json"
 +    },
 +    {
-+      "digest": "sha256:6d7881f276c9ca55c3a57f190567472ee83bdf140e75771df690d44789e4dad2",
-+      "path": "services/support-ticket-service/migrations/README.md"
++      "digest": "sha256:fdb625c5616950ff6ecaf7775878db5b4779d138d665d6973941567883fb1507",
++      "path": "services/acme/support-ticket-service/migrations/README.md"
 +    },
 +    {
-+      "digest": "sha256:1214536f3c3212d23eface970491121ed6e74d90598b322d16e68b39140553bd",
-+      "path": "services/support-ticket-service/src/bin/api.rs"
++      "digest": "sha256:fca60b71e391e7898e11b845131b4cb9f15484f9a293744f4d59aed0ac8fb71c",
++      "path": "services/acme/support-ticket-service/src/bin/api.rs"
 +    },
 +    {
-+      "digest": "sha256:381a15c5dd3d89bbfd72bbd0e43be5b342f3f45466f02a6be711673b943e8d35",
-+      "path": "services/support-ticket-service/src/bin/migration.rs"
++      "digest": "sha256:26c1ed700b15bb33555d56e9527c6292b6eedc2215dd7f5da2e702a9fd996594",
++      "path": "services/acme/support-ticket-service/src/bin/migration.rs"
 +    },
 +    {
-+      "digest": "sha256:1766a5ecb1810f5e2b1545baba8de8c91c190ec4257ca01cdb80ea14fc072ddc",
-+      "path": "services/support-ticket-service/src/bin/worker.rs"
++      "digest": "sha256:c9bcfb21d514f2a7403e8c21e82391dd9a6f0e5f766a09fa4d44e7cac8e1c6ea",
++      "path": "services/acme/support-ticket-service/src/bin/worker.rs"
 +    },
 +    {
-+      "digest": "sha256:1b7bb9db50685f68eb26a4504ca77ec1ac66cdf392c8da7a2d5cf88438406f5a",
-+      "path": "services/support-ticket-service/src/lib.rs"
++      "digest": "sha256:8ff04b6ccf83e22a35b5b4064cfbdc0448e615edf6952bb134ea2f74a044f3a9",
++      "path": "services/acme/support-ticket-service/src/lib.rs"
 +    }
 +  ],
-+  "planDigest": "sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
-+  "planId": "extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b",
++  "planDigest": "sha256:28f164e21adae2a524f7b70d96d78da49cd74c6dca8da35fcbb8e8284eb435cc",
++  "planId": "extraction-plan:sha256:28f164e21adae2a524f7b70d96d78da49cd74c6dca8da35fcbb8e8284eb435cc",
 +  "protocol": "lenso.extraction-scaffold-ownership.v1"
 +}
-diff --git a/services/support-ticket-service/Cargo.toml b/services/support-ticket-service/Cargo.toml
+diff --git a/services/acme/support-ticket-service/Cargo.toml b/services/acme/support-ticket-service/Cargo.toml
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/Cargo.toml
++++ b/services/acme/support-ticket-service/Cargo.toml
 @@ -0,0 +1,20 @@
 +[package]
-+name = "support_ticket_service_candidate"
++name = "acme_support_ticket_service_candidate"
 +version = "0.0.0"
 +edition = "2024"
 +publish = false
@@ -99,32 +99,32 @@ new file mode 100644
 +path = "src/lib.rs"
 +
 +[[bin]]
-+name = "support-ticket-service-api"
++name = "acme-support-ticket-service-api"
 +path = "src/bin/api.rs"
 +
 +[[bin]]
-+name = "support-ticket-service-worker"
++name = "acme-support-ticket-service-worker"
 +path = "src/bin/worker.rs"
 +
 +[[bin]]
-+name = "support-ticket-service-migration"
++name = "acme-support-ticket-service-migration"
 +path = "src/bin/migration.rs"
-diff --git a/services/support-ticket-service/README.md b/services/support-ticket-service/README.md
+diff --git a/services/acme/support-ticket-service/README.md b/services/acme/support-ticket-service/README.md
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/README.md
++++ b/services/acme/support-ticket-service/README.md
 @@ -0,0 +1,7 @@
-+# support-ticket-service extraction candidate
++# acme/support-ticket-service extraction candidate
 +
-+This scaffold preserves Module `support-ticket` and is bound to `extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b`.
++This scaffold preserves Module `acme/support-ticket` and is bound to `extraction-plan:sha256:28f164e21adae2a524f7b70d96d78da49cd74c6dca8da35fcbb8e8284eb435cc`.
 +
 +The linked Host remains authoritative. These API, Worker, and Migration entrypoints validate the candidate shape only; Store expansion and Workload startup belong to the next approved Extraction Plan phase.
 +
 +Generated Contract bindings live under `generated/bindings/`; only planned cross-Service boundaries receive generated clients under `generated/clients/`. Existing Provider v1 files and behavior are not changed.
-diff --git a/services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json b/services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json
+diff --git a/services/acme/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json b/services/acme/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json
++++ b/services/acme/support-ticket-service/contracts/events/support.audit-recorded.v1.schema.json
 @@ -0,0 +1,21 @@
 +{
 +  "$id": "https://contracts.lenso.local/events/support.audit-recorded.v1.schema.json",
@@ -147,10 +147,10 @@ new file mode 100644
 +  "title": "support.audit-recorded.v1",
 +  "type": "object"
 +}
-diff --git a/services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json b/services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json
+diff --git a/services/acme/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json b/services/acme/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json
++++ b/services/acme/support-ticket-service/contracts/events/support.sla-updated.v1.schema.json
 @@ -0,0 +1,21 @@
 +{
 +  "$id": "https://contracts.lenso.local/events/support.sla-updated.v1.schema.json",
@@ -173,10 +173,10 @@ new file mode 100644
 +  "title": "support.sla-updated.v1",
 +  "type": "object"
 +}
-diff --git a/services/support-ticket-service/contracts/openapi/support.v1.yaml b/services/support-ticket-service/contracts/openapi/support.v1.yaml
+diff --git a/services/acme/support-ticket-service/contracts/openapi/support.v1.yaml b/services/acme/support-ticket-service/contracts/openapi/support.v1.yaml
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/contracts/openapi/support.v1.yaml
++++ b/services/acme/support-ticket-service/contracts/openapi/support.v1.yaml
 @@ -0,0 +1,72 @@
 +openapi: 3.1.0
 +info:
@@ -250,10 +250,10 @@ new file mode 100644
 +        request_id: { type: [string, 'null'] }
 +        correlation_id: { type: [string, 'null'] }
 +        errors: { type: array, items: { type: object } }
-diff --git a/services/support-ticket-service/contracts/services/support-grpc.v1.proto b/services/support-ticket-service/contracts/services/support-grpc.v1.proto
+diff --git a/services/acme/support-ticket-service/contracts/services/support-grpc.v1.proto b/services/acme/support-ticket-service/contracts/services/support-grpc.v1.proto
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/contracts/services/support-grpc.v1.proto
++++ b/services/acme/support-ticket-service/contracts/services/support-grpc.v1.proto
 @@ -0,0 +1,23 @@
 +syntax = "proto3";
 +
@@ -278,10 +278,10 @@ new file mode 100644
 +message UpdateSlaRequest { bytes payload = 1; }
 +message ProbeSlaRequest { bytes payload = 1; }
 +message SlaResponse { bytes payload = 1; }
-diff --git a/services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json b/services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json
+diff --git a/services/acme/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json b/services/acme/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json
++++ b/services/acme/support-ticket-service/generated/bindings/support-audit-recorded-v1-v1-handler.json
 @@ -0,0 +1,18 @@
 +{
 +  "artifact": "contracts/events/support.audit-recorded.v1.schema.json",
@@ -301,10 +301,10 @@ new file mode 100644
 +  "tenancyMode": "required",
 +  "version": "v1"
 +}
-diff --git a/services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json b/services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json
+diff --git a/services/acme/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json b/services/acme/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json
++++ b/services/acme/support-ticket-service/generated/bindings/support-grpc-v1-v1-client.json
 @@ -0,0 +1,79 @@
 +{
 +  "contractId": "support-grpc.v1",
@@ -385,10 +385,10 @@ new file mode 100644
 +  "serviceName": "lenso.services.support.v1.SupportService",
 +  "version": "v1"
 +}
-diff --git a/services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json b/services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json
+diff --git a/services/acme/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json b/services/acme/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json
++++ b/services/acme/support-ticket-service/generated/bindings/support-sla-updated-v1-v1-handler.json
 @@ -0,0 +1,18 @@
 +{
 +  "artifact": "contracts/events/support.sla-updated.v1.schema.json",
@@ -408,10 +408,10 @@ new file mode 100644
 +  "tenancyMode": "required",
 +  "version": "v1"
 +}
-diff --git a/services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json b/services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json
+diff --git a/services/acme/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json b/services/acme/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json
++++ b/services/acme/support-ticket-service/generated/bindings/support-ticket-http-v1-v1-server.json
 @@ -0,0 +1,309 @@
 +{
 +  "contractId": "support-ticket-http.v1",
@@ -722,22 +722,22 @@ new file mode 100644
 +  ],
 +  "version": "v1"
 +}
-diff --git a/services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json b/services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json
+diff --git a/services/acme/support-ticket-service/generated/clients/acme-support-ticket-service-support-grpc-v1-client.json b/services/acme/support-ticket-service/generated/clients/acme-support-ticket-service-support-grpc-v1-client.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/generated/clients/support-ticket-service-support-grpc-v1-client.json
++++ b/services/acme/support-ticket-service/generated/clients/acme-support-ticket-service-support-grpc-v1-client.json
 @@ -0,0 +1,23 @@
 +{
 +  "artifact": "contracts/services/support-grpc.v1.proto",
 +  "binding": "generated/bindings/support-grpc-v1-v1-client.json",
-+  "clientId": "support-ticket-service-support-grpc-v1-client",
++  "clientId": "acme/support-ticket-service-support-grpc-v1-client",
 +  "contractId": "support-grpc.v1",
 +  "operationIds": [
 +    "GetSla",
 +    "ProbeSla",
 +    "UpdateSla"
 +  ],
-+  "ownerId": "support-ticket-service",
++  "ownerId": "acme/support-ticket-service",
 +  "protocol": "lenso.generated-service-client.v1",
 +  "requiredContext": [
 +    "trace",
@@ -750,10 +750,10 @@ new file mode 100644
 +  "transport": "grpc",
 +  "version": "v1"
 +}
-diff --git a/services/support-ticket-service/lenso.module.json b/services/support-ticket-service/lenso.module.json
+diff --git a/services/acme/support-ticket-service/lenso.module.json b/services/acme/support-ticket-service/lenso.module.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/lenso.module.json
++++ b/services/acme/support-ticket-service/lenso.module.json
 @@ -0,0 +1,118 @@
 +{
 +  "admin": {
@@ -796,7 +796,6 @@ new file mode 100644
 +  ],
 +  "console_contributions": [],
 +  "console_slots": [],
-+  "dependencies": [],
 +  "events": {
 +    "handlers": [
 +      {
@@ -822,7 +821,8 @@ new file mode 100644
 +      "story_title": "Support ticket opened"
 +    }
 +  ],
-+  "name": "support-ticket",
++  "module_id": "acme/support-ticket",
++  "protocol": "lenso.module-manifest.v1",
 +  "runtime": {
 +    "functions": [
 +      {
@@ -873,14 +873,14 @@ new file mode 100644
 +    }
 +  ]
 +}
-diff --git a/services/support-ticket-service/lenso.service.json b/services/support-ticket-service/lenso.service.json
+diff --git a/services/acme/support-ticket-service/lenso.service.json b/services/acme/support-ticket-service/lenso.service.json
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/lenso.service.json
++++ b/services/acme/support-ticket-service/lenso.service.json
 @@ -0,0 +1,58 @@
 +{
 +  "modules": [
-+    "support-ticket"
++    "acme/support-ticket"
 +  ],
 +  "operatingRegions": [
 +    "local-sandbox"
@@ -904,16 +904,16 @@ new file mode 100644
 +        ]
 +      },
 +      "contractId": "support-ticket-http.v1",
-+      "moduleId": "support-ticket",
++      "moduleId": "acme/support-ticket",
 +      "tenancyMode": "required",
 +      "version": "v1"
 +    }
 +  ],
-+  "serviceId": "support-ticket-service",
++  "serviceId": "acme/support-ticket-service",
 +  "stores": [
 +    {
-+      "serviceId": "support-ticket-service",
-+      "storeId": "support-ticket-service-store"
++      "serviceId": "acme/support-ticket-service",
++      "storeId": "acme/support-ticket-service-store"
 +    }
 +  ],
 +  "tenancyMode": "required",
@@ -921,42 +921,42 @@ new file mode 100644
 +  "workloads": [
 +    {
 +      "role": "api",
-+      "serviceId": "support-ticket-service",
-+      "workloadId": "support-ticket-service-api"
++      "serviceId": "acme/support-ticket-service",
++      "workloadId": "acme/support-ticket-service-api"
 +    },
 +    {
 +      "role": "worker",
-+      "serviceId": "support-ticket-service",
-+      "workloadId": "support-ticket-service-worker"
++      "serviceId": "acme/support-ticket-service",
++      "workloadId": "acme/support-ticket-service-worker"
 +    },
 +    {
 +      "role": "migration",
-+      "serviceId": "support-ticket-service",
-+      "workloadId": "support-ticket-service-migration"
++      "serviceId": "acme/support-ticket-service",
++      "workloadId": "acme/support-ticket-service-migration"
 +    }
 +  ]
 +}
-diff --git a/services/support-ticket-service/migrations/README.md b/services/support-ticket-service/migrations/README.md
+diff --git a/services/acme/support-ticket-service/migrations/README.md b/services/acme/support-ticket-service/migrations/README.md
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/migrations/README.md
++++ b/services/acme/support-ticket-service/migrations/README.md
 @@ -0,0 +1,6 @@
 +# Candidate migrations
 +
-+The Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `extraction-plan:sha256:60204393c09d750db912068f8fed44a8b959064b84de83b5e7fb6e130905fc0b`.
++The Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `extraction-plan:sha256:28f164e21adae2a524f7b70d96d78da49cd74c6dca8da35fcbb8e8284eb435cc`.
 +
 +Planned Module migrations:
 +- `0001_create_support_tickets` from `modules/support-ticket/migrations/0001_tickets.sql` (`sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac`)
-diff --git a/services/support-ticket-service/src/bin/api.rs b/services/support-ticket-service/src/bin/api.rs
+diff --git a/services/acme/support-ticket-service/src/bin/api.rs b/services/acme/support-ticket-service/src/bin/api.rs
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/src/bin/api.rs
++++ b/services/acme/support-ticket-service/src/bin/api.rs
 @@ -0,0 +1,14 @@
 +//! Generated api Workload validation entrypoint.
 +
-+pub const SERVICE_ID: &str = "support-ticket-service";
-+pub const MODULE_ID: &str = "support-ticket";
-+pub const WORKLOAD_ID: &str = "support-ticket-service-api";
++pub const SERVICE_ID: &str = "acme/support-ticket-service";
++pub const MODULE_ID: &str = "acme/support-ticket";
++pub const WORKLOAD_ID: &str = "acme/support-ticket-service-api";
 +pub const WORKLOAD_ROLE: &str = "api";
 +
 +pub fn run() {
@@ -966,16 +966,16 @@ new file mode 100644
 +fn main() {
 +    run();
 +}
-diff --git a/services/support-ticket-service/src/bin/migration.rs b/services/support-ticket-service/src/bin/migration.rs
+diff --git a/services/acme/support-ticket-service/src/bin/migration.rs b/services/acme/support-ticket-service/src/bin/migration.rs
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/src/bin/migration.rs
++++ b/services/acme/support-ticket-service/src/bin/migration.rs
 @@ -0,0 +1,14 @@
 +//! Generated migration Workload validation entrypoint.
 +
-+pub const SERVICE_ID: &str = "support-ticket-service";
-+pub const MODULE_ID: &str = "support-ticket";
-+pub const WORKLOAD_ID: &str = "support-ticket-service-migration";
++pub const SERVICE_ID: &str = "acme/support-ticket-service";
++pub const MODULE_ID: &str = "acme/support-ticket";
++pub const WORKLOAD_ID: &str = "acme/support-ticket-service-migration";
 +pub const WORKLOAD_ROLE: &str = "migration";
 +
 +pub fn run() {
@@ -985,16 +985,16 @@ new file mode 100644
 +fn main() {
 +    run();
 +}
-diff --git a/services/support-ticket-service/src/bin/worker.rs b/services/support-ticket-service/src/bin/worker.rs
+diff --git a/services/acme/support-ticket-service/src/bin/worker.rs b/services/acme/support-ticket-service/src/bin/worker.rs
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/src/bin/worker.rs
++++ b/services/acme/support-ticket-service/src/bin/worker.rs
 @@ -0,0 +1,14 @@
 +//! Generated worker Workload validation entrypoint.
 +
-+pub const SERVICE_ID: &str = "support-ticket-service";
-+pub const MODULE_ID: &str = "support-ticket";
-+pub const WORKLOAD_ID: &str = "support-ticket-service-worker";
++pub const SERVICE_ID: &str = "acme/support-ticket-service";
++pub const MODULE_ID: &str = "acme/support-ticket";
++pub const WORKLOAD_ID: &str = "acme/support-ticket-service-worker";
 +pub const WORKLOAD_ROLE: &str = "worker";
 +
 +pub fn run() {
@@ -1004,15 +1004,15 @@ new file mode 100644
 +fn main() {
 +    run();
 +}
-diff --git a/services/support-ticket-service/src/lib.rs b/services/support-ticket-service/src/lib.rs
+diff --git a/services/acme/support-ticket-service/src/lib.rs b/services/acme/support-ticket-service/src/lib.rs
 new file mode 100644
 --- /dev/null
-+++ b/services/support-ticket-service/src/lib.rs
++++ b/services/acme/support-ticket-service/src/lib.rs
 @@ -0,0 +1,16 @@
 +//! Generated extraction candidate. The linked Module remains authoritative.
 +
-+pub const SERVICE_ID: &str = "support-ticket-service";
-+pub const MODULE_ID: &str = "support-ticket";
++pub const SERVICE_ID: &str = "acme/support-ticket-service";
++pub const MODULE_ID: &str = "acme/support-ticket";
 +pub const LINKED_AUTHORITY_REMAINS_AUTHORITATIVE: bool = true;
 +pub const MODULE_MANIFEST_JSON: &str = include_str!("../lenso.module.json");
 +pub const SERVICE_MANIFEST_JSON: &str = include_str!("../lenso.service.json");

@@ -22,6 +22,60 @@ fn error_schema_ref<'a>(operation: &'a serde_json::Value, status: &str) -> &'a s
 }
 
 #[test]
+fn openapi_exposes_linked_and_service_module_sources_only() {
+    let value = serde_json::to_value(openapi_document()).expect("OpenAPI should serialize");
+    let schemas = &value["components"]["schemas"];
+
+    assert_eq!(
+        schemas["ModuleSource"]["enum"],
+        serde_json::json!(["linked", "service"])
+    );
+    assert!(schemas.get("AdminServiceProviderInstallStateDto").is_some());
+    assert!(schemas.get("AdminServiceProviderDiagnosticsDto").is_some());
+    assert!(
+        schemas
+            .get("AdminModuleRemoteSourceInstallStateDto")
+            .is_none()
+    );
+    assert!(
+        schemas["AdminModuleInstallStateDto"]["properties"]
+            .get("serviceProvider")
+            .is_some()
+    );
+    assert!(
+        schemas["AdminModuleInstallStateDto"]["properties"]
+            .get("remoteSource")
+            .is_none()
+    );
+    assert!(
+        schemas["AdminModuleCompatibilityDto"]["properties"]
+            .get("serviceProtocolVersion")
+            .is_some()
+    );
+    assert!(
+        schemas["AdminServiceOperationLinksDto"]["properties"]
+            .get("serviceCalls")
+            .is_some()
+    );
+    assert!(
+        value["paths"]
+            .get("/admin/runtime/remote-proxy-calls")
+            .is_none()
+    );
+    assert_eq!(
+        value["paths"]["/admin/runtime/service-proxy-calls"]["get"]["operationId"],
+        "admin_runtime_list_service_proxy_calls"
+    );
+
+    for method in ["get", "post", "put", "patch", "delete"] {
+        assert_eq!(
+            value["paths"]["/modules/{module}/http/{*path}"][method]["operationId"],
+            format!("service_module_http_proxy_{method}")
+        );
+    }
+}
+
+#[test]
 fn openapi_contains_auth_dev_session_contract() {
     let document = openapi_document();
     let value = serde_json::to_value(&document).expect("OpenAPI document should serialize");
@@ -56,6 +110,93 @@ fn openapi_contains_auth_dev_session_contract() {
             error_schema_ref(revoke, status),
             "#/components/schemas/ErrorResponse"
         );
+    }
+}
+
+#[test]
+fn openapi_contains_module_management_snapshot_and_plan_preview() {
+    let value = serde_json::to_value(openapi_document()).expect("OpenAPI should serialize");
+    let snapshot = &value["paths"]["/admin/modules/management"]["get"];
+    let preview = &value["paths"]["/admin/modules/plans/preview"]["post"];
+
+    assert_eq!(snapshot["operationId"], "admin_modules_management_snapshot");
+    assert_eq!(preview["operationId"], "admin_modules_preview_change_plan");
+    assert!(preview["requestBody"]["content"]["application/json"]["schema"].is_object());
+    for status in ["400", "401", "403", "409"] {
+        assert_eq!(
+            error_schema_ref(preview, status),
+            "#/components/schemas/ErrorResponse"
+        );
+    }
+    let expected = [
+        (
+            "/admin/modules/operations",
+            "post",
+            "admin_modules_start_operation",
+        ),
+        (
+            "/admin/modules/operations/{operation_id}",
+            "get",
+            "admin_modules_get_operation",
+        ),
+        (
+            "/admin/modules/operations/{operation_id}/journal",
+            "get",
+            "admin_modules_get_operation_journal",
+        ),
+        (
+            "/admin/modules/operations/{operation_id}/apply",
+            "post",
+            "admin_modules_apply_operation",
+        ),
+        (
+            "/admin/modules/operations/{operation_id}/approvals",
+            "post",
+            "admin_modules_approve_operation",
+        ),
+        (
+            "/admin/modules/operations/{operation_id}/cancel",
+            "post",
+            "admin_modules_cancel_operation",
+        ),
+        (
+            "/admin/modules/operations/{operation_id}/retry",
+            "post",
+            "admin_modules_retry_operation",
+        ),
+        (
+            "/admin/modules/operations/{operation_id}/resume",
+            "post",
+            "admin_modules_resume_operation",
+        ),
+    ];
+    for (path, method, operation_id) in expected {
+        assert_eq!(value["paths"][path][method]["operationId"], operation_id);
+    }
+}
+
+#[test]
+fn openapi_contains_service_installation_management() {
+    let value = serde_json::to_value(openapi_document()).expect("OpenAPI should serialize");
+    let expected = [
+        (
+            "/admin/services/installations/{environment_id}",
+            "get",
+            "admin_services_installation_snapshot",
+        ),
+        (
+            "/admin/services/installations/plans/preview",
+            "post",
+            "admin_services_preview_installation",
+        ),
+        (
+            "/admin/services/installations/plans/{plan_id}/apply",
+            "post",
+            "admin_services_apply_installation",
+        ),
+    ];
+    for (path, method, operation_id) in expected {
+        assert_eq!(value["paths"][path][method]["operationId"], operation_id);
     }
 }
 
@@ -313,14 +454,14 @@ fn linked_module_http_routes_are_registered_in_openapi() {
             let path = paths.get(&route.path).unwrap_or_else(|| {
                 panic!(
                     "linked module `{}` declares HTTP route `{}` but OpenAPI has no matching path",
-                    manifest.name, route.path
+                    manifest.module_id, route.path
                 )
             });
             let method = openapi_method(route.method);
             assert!(
                 path.get(method).is_some(),
                 "linked module `{}` declares HTTP route `{} {}` but OpenAPI has no matching operation",
-                manifest.name,
+                manifest.module_id,
                 method.to_uppercase(),
                 route.path
             );
@@ -338,7 +479,7 @@ fn linked_module_openapi_routes_are_declared_in_manifest() {
     for owner in lenso_bootstrap::linked_http_route_owners() {
         let manifest = manifests
             .iter()
-            .find(|manifest| manifest.name == owner.module_name)
+            .find(|manifest| manifest.module_id == owner.module_name)
             .unwrap_or_else(|| {
                 panic!(
                     "linked HTTP route owner `{}` has no matching ModuleManifest",
@@ -571,7 +712,7 @@ fn assert_manifest_declares_route(manifest: &ModuleManifest, path: &str, method:
         "OpenAPI route `{} {}` belongs to linked module `{}` but is missing from ModuleManifest::http_routes",
         openapi_method(method).to_uppercase(),
         path,
-        manifest.name
+        manifest.module_id
     );
 }
 

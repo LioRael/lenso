@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceOperationMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -21,7 +23,9 @@ pub struct ServiceOperationMetadata {
     pub idempotency: Option<ServiceOperationIdempotency>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceOperationSafeProbe {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -34,7 +38,7 @@ pub struct ServiceOperationSafeProbe {
     pub expect_status: Option<u16>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceOperationIdempotency {
     None,

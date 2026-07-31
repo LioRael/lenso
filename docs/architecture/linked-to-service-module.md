@@ -27,7 +27,8 @@ implementation moves out of process.
 3. Keep module-owned storage inside the service process or its own database.
 4. Install the service manifest with `lenso service install <manifest-url>`.
 5. Remove the linked registration from the host composition root.
-6. Restart the API and worker so `REMOTE_MODULES` is loaded.
+6. Apply the reviewed Module plan and exact Service Installation, then restart
+   the API and worker so the Provider Runtime Plan is activated.
 7. Run `lenso service doctor <module> --json` and verify `/console`.
 
 For JavaScript or TypeScript services, prefer `@lenso/service-kit`. Other

@@ -180,7 +180,7 @@ async fn manifest() -> Json<ModuleManifest> {
 }
 
 fn remote_crm_manifest() -> ModuleManifest {
-    ModuleManifest::builder("remote-crm")
+    ModuleManifest::builder("fixture/remote-crm")
         .admin(contacts_schema())
         .console(vec![remote_crm_console_surface()])
         .http_routes(contact_http_routes())
@@ -193,7 +193,7 @@ fn remote_crm_manifest() -> ModuleManifest {
 
 async fn declarative_manifest() -> Json<ModuleManifest> {
     Json(
-        ModuleManifest::builder("remote-crm-declarative")
+        ModuleManifest::builder("fixture/remote-crm-declarative")
             .declarative_admin(AdminDeclarativeSurface {
                 pages: vec![AdminDeclarativePage {
                     name: "overview".to_owned(),
@@ -271,7 +271,7 @@ async fn declarative_manifest() -> Json<ModuleManifest> {
 async fn embedded_manifest(headers: HeaderMap) -> Json<ModuleManifest> {
     let origin = request_origin(&headers);
     Json(
-        ModuleManifest::builder("remote-crm-embedded")
+        ModuleManifest::builder("fixture/remote-crm-embedded")
             .embedded_admin(AdminEmbeddedSurface {
                 runtime: AdminEmbeddedRuntime::Iframe,
                 entry: AdminEmbeddedEntry::Url {

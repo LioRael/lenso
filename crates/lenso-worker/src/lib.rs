@@ -7,6 +7,7 @@ use platform_core::{
 use platform_runtime::{
     FunctionRegistry, RuntimeScheduler, RuntimeWorker, ScheduledFunctionDefinition,
 };
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
@@ -20,6 +21,8 @@ pub async fn run_from_env_with_composition(
 ) -> anyhow::Result<()> {
     let config = AppConfig::try_from_env().context("invalid application configuration")?;
     telemetry::init(&config.telemetry)?;
+    let provider_plan = lenso_bootstrap::provider_runtime_plan_from_workspace(Path::new("."))
+        .context("failed to compile Provider Runtime Plan")?;
 
     let db = connect_pool(&config.database).await?;
     let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
@@ -42,13 +45,13 @@ pub async fn run_from_env_with_composition(
     runtime_config.spawn_listener();
     let ctx = ctx.with_runtime_config_provider(runtime_config);
 
-    let _remote_services = lenso_bootstrap::start_installed_remote_module_services(&ctx)
-        .await
-        .context("failed to start remote module services")?;
-
-    let modules = lenso_bootstrap::load_modules_with_composition(&ctx, &composition)
-        .await
-        .context("failed to load modules")?;
+    let modules = lenso_bootstrap::load_modules_with_composition_and_provider_plan(
+        &ctx,
+        &composition,
+        provider_plan.as_ref(),
+    )
+    .await
+    .context("failed to load modules")?;
     let registry = Arc::new(lenso_bootstrap::function_registry(&modules));
     let activation_run_ids =
         lenso_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)

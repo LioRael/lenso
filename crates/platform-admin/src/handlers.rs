@@ -714,8 +714,8 @@ pub(crate) async fn get_execution_logs(
 
 #[utoipa::path(
     get,
-    path = "/admin/runtime/remote-proxy-calls",
-    operation_id = "admin_runtime_list_remote_proxy_calls",
+    path = "/admin/runtime/service-proxy-calls",
+    operation_id = "admin_runtime_list_service_proxy_calls",
     tag = "admin-runtime",
     params(
         ("authorization" = String, Header, description = "Development service bearer token, for example `Bearer dev-service:admin`"),
@@ -726,7 +726,7 @@ pub(crate) async fn get_execution_logs(
     responses(
         (
             status = 200,
-            description = "Recent remote module HTTP proxy calls",
+            description = "Recent Service-provided Module HTTP proxy calls",
             body = AdminRemoteProxyCallListResponse,
             content_type = "application/json",
             headers(

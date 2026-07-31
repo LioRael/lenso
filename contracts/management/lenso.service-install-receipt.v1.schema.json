@@ -1,0 +1,127 @@
+{
+  "$defs": {
+    "ServiceInstallationOutcome": {
+      "enum": [
+        "applied_needs_attention",
+        "reused",
+        "removed"
+      ],
+      "type": "string"
+    },
+    "ServiceReference": {
+      "additionalProperties": false,
+      "properties": {
+        "service_id": {
+          "type": "string"
+        },
+        "system_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "system_id",
+        "service_id"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/management/lenso.service-install-receipt.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "type": "string"
+    },
+    "committed_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "environment_id": {
+      "type": "string"
+    },
+    "next_actions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "operation_id": {
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ServiceInstallationOutcome"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "plan_id": {
+      "type": "string"
+    },
+    "prior_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "prior_state_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.service-install-receipt.v1",
+      "type": "string"
+    },
+    "reasons": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "receipt_id": {
+      "type": "string"
+    },
+    "service_ref": {
+      "$ref": "#/$defs/ServiceReference"
+    },
+    "system_id": {
+      "type": "string"
+    },
+    "target_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "target_state_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "verified_authorities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "receipt_id",
+    "operation_id",
+    "plan_id",
+    "plan_digest",
+    "actor_id",
+    "verified_authorities",
+    "system_id",
+    "environment_id",
+    "service_ref",
+    "prior_revision",
+    "target_revision",
+    "prior_state_digest",
+    "target_state_digest",
+    "outcome",
+    "reasons",
+    "next_actions",
+    "committed_at"
+  ],
+  "title": "LensoServiceInstallationReceipt",
+  "type": "object"
+}

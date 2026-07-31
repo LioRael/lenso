@@ -1536,7 +1536,7 @@ mod tests {
     }
 
     fn module() -> ModuleManifest {
-        ModuleManifest::builder("support-ticket")
+        ModuleManifest::builder("acme/support-ticket")
             .capabilities(vec!["support.tickets.read".to_owned()])
             .http_routes(vec![ModuleHttpRoute {
                 method: ModuleHttpMethod::Get,
@@ -1561,7 +1561,7 @@ mod tests {
         let report = ExtractionReadinessReport {
             protocol: EXTRACTION_READINESS_REPORT_PROTOCOL.to_owned(),
             analyzer_version: EXTRACTION_READINESS_ANALYZER_VERSION.to_owned(),
-            target_module: module.name.clone(),
+            target_module: module.module_id.clone(),
             system_id: Some("support-system".to_owned()),
             target_owner: Some("support-host".to_owned()),
             classification: crate::CompatibilityCategory::Safe,
@@ -1589,7 +1589,7 @@ mod tests {
             system: json!({
                 "protocol": "lenso.system.v2",
                 "systemId": "support-system",
-                "host": { "hostId": "support-host", "modules": ["support-ticket"] },
+                "host": { "hostId": "support-host", "modules": ["acme/support-ticket"] },
                 "providers": [{
                     "providerId": "notification-provider",
                     "modules": ["notification-gateway"]

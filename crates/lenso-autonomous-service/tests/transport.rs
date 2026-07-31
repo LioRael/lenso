@@ -15,7 +15,7 @@ use lenso_autonomous_service::{
 };
 use lenso_service::{
     AutonomousServiceContract, AutonomousServiceStore, AutonomousServiceWorkload,
-    DelegatedActorCredentialRequest, DelegatedContextProvider, EventEnvelope, ServiceContextPolicy,
+    DelegatedActorCredentialRequest, DelegatedContextIssuer, EventEnvelope, ServiceContextPolicy,
     ServiceTenancyMode, SystemSandboxDelegatedContextProvider,
     SystemSandboxWorkloadIdentityProvider, TenantCredentialRequest, WorkloadCredentialRequest,
     WorkloadIdentityProvider, WorkloadRole,

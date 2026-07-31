@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct LifecycleSurface {
     #[serde(default)]
     pub startup_checks: Vec<LifecycleStartupCheckDeclaration>,
@@ -15,7 +15,7 @@ pub struct LifecycleSurface {
     pub activation_jobs: Vec<LifecycleActivationJobDeclaration>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct LifecycleStartupCheckDeclaration {
     pub name: String,
     #[serde(default)]
@@ -24,7 +24,7 @@ pub struct LifecycleStartupCheckDeclaration {
     pub check: LifecycleStartupCheckKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum LifecycleStartupCheckKind {
@@ -32,7 +32,7 @@ pub enum LifecycleStartupCheckKind {
     CapabilityDeclared { capability: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct LifecycleActivationJobDeclaration {
     pub name: String,
     pub function_name: String,
@@ -44,7 +44,9 @@ pub struct LifecycleActivationJobDeclaration {
     pub required: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum LifecycleActivationRunPolicy {

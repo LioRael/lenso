@@ -1,0 +1,520 @@
+{
+  "$defs": {
+    "ArtifactReference": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "locator",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "AttestationReference": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "signer": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "locator",
+        "digest",
+        "issuer",
+        "signer"
+      ],
+      "type": "object"
+    },
+    "LockedCapabilityBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "consumer_module_id": {
+          "type": "string"
+        },
+        "provider_module_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability",
+        "provider_module_id",
+        "consumer_module_id"
+      ],
+      "type": "object"
+    },
+    "LockedConsoleArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "exports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "host_api_version": {
+          "type": "string"
+        },
+        "integrity": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "package",
+        "version",
+        "integrity",
+        "host_api_version",
+        "exports"
+      ],
+      "type": "object"
+    },
+    "LockedModule": {
+      "additionalProperties": false,
+      "properties": {
+        "console_artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LockedConsoleArtifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "crate_features": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "delivery": {
+          "$ref": "#/$defs/ModuleDelivery"
+        },
+        "dependency_module_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/ModuleLifecycleState"
+        },
+        "local_override_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "migration_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactReference"
+          },
+          "type": "array"
+        },
+        "module_id": {
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/LockedModuleReason"
+        },
+        "release_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationEvaluation"
+        },
+        "verification_cell": {
+          "$ref": "#/$defs/ModuleVerificationCell"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "module_id",
+        "version",
+        "release_digest",
+        "manifest_digest",
+        "delivery",
+        "reason",
+        "verification",
+        "verification_cell",
+        "lifecycle"
+      ],
+      "type": "object"
+    },
+    "LockedModuleReason": {
+      "enum": [
+        "direct",
+        "transitive"
+      ],
+      "type": "string"
+    },
+    "ModuleDelivery": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "archive_checksum": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "attestations": {
+              "items": {
+                "$ref": "#/$defs/AttestationReference"
+              },
+              "type": "array"
+            },
+            "binding": {
+              "type": "string"
+            },
+            "crate_version": {
+              "type": "string"
+            },
+            "default_features": {
+              "default": false,
+              "type": "boolean"
+            },
+            "features": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "linked",
+              "type": "string"
+            },
+            "migrations": {
+              "items": {
+                "$ref": "#/$defs/ArtifactReference"
+              },
+              "type": "array"
+            },
+            "package": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "package",
+            "crate_version",
+            "archive_checksum",
+            "binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract_digests": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "export": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "service",
+              "type": "string"
+            },
+            "responsibility_profile": {
+              "$ref": "#/$defs/ServiceResponsibilityProfile"
+            },
+            "service_id": {
+              "type": "string"
+            },
+            "service_release_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "service_release_version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "service_id",
+            "service_release_version",
+            "service_release_digest",
+            "export",
+            "responsibility_profile"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModuleLifecycleState": {
+      "additionalProperties": false,
+      "properties": {
+        "deprecated": {
+          "type": "boolean"
+        },
+        "security_blocked": {
+          "type": "boolean"
+        },
+        "yanked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "deprecated",
+        "yanked",
+        "security_blocked"
+      ],
+      "type": "object"
+    },
+    "ModuleVerificationCell": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "type": "string"
+        },
+        "cargo_version": {
+          "type": "string"
+        },
+        "cli_version": {
+          "type": "string"
+        },
+        "console_artifact_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "console_host_api_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "console_lock_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "delivery_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "features": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "host_version": {
+          "type": "string"
+        },
+        "lenso_version": {
+          "type": "string"
+        },
+        "management_engine_version": {
+          "type": "string"
+        },
+        "module_release_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "node_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "operation": {
+          "$ref": "#/$defs/VerificationOperation"
+        },
+        "os": {
+          "type": "string"
+        },
+        "package_manager_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocol_digests": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runner_image_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "rust_version": {
+          "type": "string"
+        },
+        "source_release_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "starter_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "store_engine": {
+          "type": "string"
+        },
+        "store_version": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "module_release_digest",
+        "operation",
+        "lenso_version",
+        "host_version",
+        "cli_version",
+        "starter_digest",
+        "management_engine_version",
+        "delivery_digest",
+        "target",
+        "os",
+        "architecture",
+        "runner_image_digest",
+        "rust_version",
+        "cargo_version",
+        "store_engine",
+        "store_version"
+      ],
+      "type": "object"
+    },
+    "ServiceResponsibilityProfile": {
+      "enum": [
+        "provider",
+        "autonomous"
+      ],
+      "type": "string"
+    },
+    "VerificationEvaluation": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_code": {
+          "type": "string"
+        },
+        "receipt_digests": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/VerificationState"
+        }
+      },
+      "required": [
+        "state",
+        "reason_code"
+      ],
+      "type": "object"
+    },
+    "VerificationOperation": {
+      "enum": [
+        "fresh_install",
+        "upgrade",
+        "restore",
+        "uninstall"
+      ],
+      "type": "string"
+    },
+    "VerificationState": {
+      "enum": [
+        "verified",
+        "failed",
+        "unknown"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/management/lenso.application-module-lock.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "application_id": {
+      "type": "string"
+    },
+    "capability_bindings": {
+      "items": {
+        "$ref": "#/$defs/LockedCapabilityBinding"
+      },
+      "type": "array"
+    },
+    "catalog_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "desired_composition_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "modules": {
+      "items": {
+        "$ref": "#/$defs/LockedModule"
+      },
+      "type": "array"
+    },
+    "protocol": {
+      "const": "lenso.application-module-lock.v1",
+      "type": "string"
+    },
+    "resolver_version": {
+      "type": "string"
+    },
+    "trust_policy_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "application_id",
+    "desired_composition_digest",
+    "catalog_snapshot_digest",
+    "trust_policy_digest",
+    "resolver_version",
+    "modules"
+  ],
+  "title": "LensoApplicationModuleLock",
+  "type": "object"
+}

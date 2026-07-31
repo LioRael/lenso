@@ -91,18 +91,18 @@ fn remote_http_proxy_registry() -> Arc<RemoteHttpProxyRegistry> {
 #[utoipa::path(
     get,
     path = "/modules/{module}/http/{*path}",
-    operation_id = "remote_module_http_proxy_get",
+    operation_id = "service_module_http_proxy_get",
     tag = "modules",
     params(
-        ("module" = String, Path, description = "Configured remote module name"),
-        ("path" = String, Path, description = "Module-local HTTP path matched against the remote manifest"),
+        ("module" = String, Path, description = "Configured Service-provided Module name"),
+        ("path" = String, Path, description = "Module-local HTTP path matched against the Service-provided manifest"),
         ("authorization" = String, Header, description = "Development service bearer token")
     ),
     responses(
         (status = 200, description = "Remote route forwarded through the host.", body = RemoteHttpProxyResponse, content_type = "application/json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured Service-provided route matched", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
@@ -134,16 +134,16 @@ async fn proxy_get(
 #[utoipa::path(
     post,
     path = "/modules/{module}/http/{*path}",
-    operation_id = "remote_module_http_proxy_post",
+    operation_id = "service_module_http_proxy_post",
     tag = "modules",
     request_body(
         content = Value,
         content_type = "application/json",
-        description = "JSON request body forwarded to the matched remote module route"
+        description = "JSON request body forwarded to the matched Service-provided Module route"
     ),
     params(
-        ("module" = String, Path, description = "Configured remote module name"),
-        ("path" = String, Path, description = "Module-local HTTP path matched against the remote manifest"),
+        ("module" = String, Path, description = "Configured Service-provided Module name"),
+        ("path" = String, Path, description = "Module-local HTTP path matched against the Service-provided manifest"),
         ("authorization" = String, Header, description = "Development service bearer token")
     ),
     responses(
@@ -151,7 +151,7 @@ async fn proxy_get(
         (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured Service-provided route matched", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
@@ -179,16 +179,16 @@ async fn proxy_post(
 #[utoipa::path(
     put,
     path = "/modules/{module}/http/{*path}",
-    operation_id = "remote_module_http_proxy_put",
+    operation_id = "service_module_http_proxy_put",
     tag = "modules",
     request_body(
         content = Value,
         content_type = "application/json",
-        description = "JSON request body forwarded to the matched remote module route"
+        description = "JSON request body forwarded to the matched Service-provided Module route"
     ),
     params(
-        ("module" = String, Path, description = "Configured remote module name"),
-        ("path" = String, Path, description = "Module-local HTTP path matched against the remote manifest"),
+        ("module" = String, Path, description = "Configured Service-provided Module name"),
+        ("path" = String, Path, description = "Module-local HTTP path matched against the Service-provided manifest"),
         ("authorization" = String, Header, description = "Development service bearer token")
     ),
     responses(
@@ -196,7 +196,7 @@ async fn proxy_post(
         (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured Service-provided route matched", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
@@ -224,16 +224,16 @@ async fn proxy_put(
 #[utoipa::path(
     patch,
     path = "/modules/{module}/http/{*path}",
-    operation_id = "remote_module_http_proxy_patch",
+    operation_id = "service_module_http_proxy_patch",
     tag = "modules",
     request_body(
         content = Value,
         content_type = "application/json",
-        description = "JSON request body forwarded to the matched remote module route"
+        description = "JSON request body forwarded to the matched Service-provided Module route"
     ),
     params(
-        ("module" = String, Path, description = "Configured remote module name"),
-        ("path" = String, Path, description = "Module-local HTTP path matched against the remote manifest"),
+        ("module" = String, Path, description = "Configured Service-provided Module name"),
+        ("path" = String, Path, description = "Module-local HTTP path matched against the Service-provided manifest"),
         ("authorization" = String, Header, description = "Development service bearer token")
     ),
     responses(
@@ -241,7 +241,7 @@ async fn proxy_put(
         (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured Service-provided route matched", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]
@@ -269,11 +269,11 @@ async fn proxy_patch(
 #[utoipa::path(
     delete,
     path = "/modules/{module}/http/{*path}",
-    operation_id = "remote_module_http_proxy_delete",
+    operation_id = "service_module_http_proxy_delete",
     tag = "modules",
     params(
-        ("module" = String, Path, description = "Configured remote module name"),
-        ("path" = String, Path, description = "Module-local HTTP path matched against the remote manifest"),
+        ("module" = String, Path, description = "Configured Service-provided Module name"),
+        ("path" = String, Path, description = "Module-local HTTP path matched against the Service-provided manifest"),
         ("authorization" = String, Header, description = "Development service bearer token")
     ),
     responses(
@@ -281,7 +281,7 @@ async fn proxy_patch(
         (status = 400, description = "Request body policy rejected the request", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 403, description = "Service/system authentication or declared capability is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 404, description = "No configured remote route matched", body = ErrorResponse, content_type = "application/problem+json"),
+        (status = 404, description = "No configured Service-provided route matched", body = ErrorResponse, content_type = "application/problem+json"),
         (status = 502, description = "Remote module request failed", body = ErrorResponse, content_type = "application/problem+json"),
     )
 )]

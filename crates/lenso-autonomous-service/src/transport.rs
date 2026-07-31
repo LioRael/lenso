@@ -2,7 +2,7 @@ use crate::ServiceRuntimeState;
 use async_trait::async_trait;
 use lenso_service::{
     AuthenticatedServiceContext, AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
-    DelegatedContextProvider, EventEnvelope, IdentityDecisionEvidence, ServiceContext,
+    DelegatedContextVerifier, EventEnvelope, IdentityDecisionEvidence, ServiceContext,
     ServiceContextAdmission, ServiceContextPolicy, WorkloadIdentityProvider,
     WorkloadIdentityVerification,
 };
@@ -1048,7 +1048,7 @@ impl ServiceEventAdmission {
     pub fn new<I, S>(
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
-        context_provider: Arc<dyn DelegatedContextProvider>,
+        context_provider: Arc<dyn DelegatedContextVerifier>,
         policies: I,
     ) -> Self
     where
@@ -1078,7 +1078,7 @@ impl ServiceEventAdmission {
     #[must_use]
     pub fn with_service_context<I, S>(
         mut self,
-        provider: Arc<dyn DelegatedContextProvider>,
+        provider: Arc<dyn DelegatedContextVerifier>,
         policies: I,
     ) -> Self
     where

@@ -137,7 +137,7 @@ fn support_service() -> AutonomousServiceContract {
 }
 
 fn manifest() -> ModuleManifest {
-    ModuleManifest::builder("support-sla")
+    ModuleManifest::builder("acme/support-sla")
         .runtime(RuntimeSurface {
             functions: vec![],
             schedules: vec![],
@@ -164,7 +164,7 @@ fn child_workflow(version: &str) -> WorkflowDefinition {
 }
 
 fn manifest_without_child_v1() -> ModuleManifest {
-    ModuleManifest::builder("support-sla")
+    ModuleManifest::builder("acme/support-sla")
         .runtime(RuntimeSurface {
             functions: vec![],
             schedules: vec![],
@@ -1027,7 +1027,7 @@ async fn incompatible_worker_rejects_pinned_claim_without_mutating_workflow_stat
 
     let mut reinterpreted_v1 = workflow("v1");
     reinterpreted_v1.steps[0].timeout_ms = Some(9_000);
-    let reinterpreted_manifest = ModuleManifest::builder("support-sla")
+    let reinterpreted_manifest = ModuleManifest::builder("acme/support-sla")
         .runtime(RuntimeSurface {
             functions: vec![],
             schedules: vec![],

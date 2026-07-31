@@ -57,7 +57,7 @@ wait_for_remote_runtime_function() {
     done
 
     echo "Runtime Console API smoke failed: remote runtime function did not complete" >&2
-    echo "Start lenso-worker with REMOTE_MODULES configured." >&2
+    echo "Start lenso-worker after applying the reviewed Provider Runtime Plan." >&2
     echo "Response:" >&2
     jq . "$file" >&2 || cat "$file" >&2
     exit 1
@@ -108,9 +108,9 @@ if [ "$(jq '.data | length' "$functions")" -gt 0 ]; then
 fi
 
 remote_calls="$tmpdir/remote-calls.json"
-api_get "/admin/runtime/remote-proxy-calls?correlation_id=$remote_fixture_correlation_id&limit=1" >"$remote_calls"
+api_get "/admin/runtime/service-proxy-calls?correlation_id=$remote_fixture_correlation_id&limit=1" >"$remote_calls"
 if [ "$(jq '.data | length' "$remote_calls")" -eq 0 ]; then
-    api_get "/admin/runtime/remote-proxy-calls?limit=1" >"$remote_calls"
+    api_get "/admin/runtime/service-proxy-calls?limit=1" >"$remote_calls"
 fi
 assert_json "$remote_calls" '.data | type == "array"' "remote call list data is missing"
 assert_json "$remote_calls" '.page.limit == 1' "remote call list did not preserve limit"
@@ -121,7 +121,7 @@ if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
     success="$(jq -r '.data[0].success' "$remote_calls")"
     remote_node_id="remoteproxy_$remote_call_id"
     filtered_remote_calls="$tmpdir/remote-calls-filtered.json"
-    api_get "/admin/runtime/remote-proxy-calls?correlation_id=$correlation_id&module_name=$module_name&success=$success&limit=10" >"$filtered_remote_calls"
+    api_get "/admin/runtime/service-proxy-calls?correlation_id=$correlation_id&module_name=$module_name&success=$success&limit=10" >"$filtered_remote_calls"
     assert_json "$filtered_remote_calls" '.data | type == "array"' "remote call filtered data is missing"
     if ! jq -e \
         --arg correlation_id "$correlation_id" \
@@ -138,7 +138,7 @@ if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
     next_created_before="$(jq -r '.page.next_created_before // empty' "$remote_calls")"
     if [ -n "$next_created_before" ]; then
         paged_remote_calls="$tmpdir/remote-calls-paged.json"
-        api_get "/admin/runtime/remote-proxy-calls?created_before=$next_created_before&limit=1" >"$paged_remote_calls"
+        api_get "/admin/runtime/service-proxy-calls?created_before=$next_created_before&limit=1" >"$paged_remote_calls"
         assert_json "$paged_remote_calls" '.page.limit == 1' "remote call pagination limit is missing"
     fi
 

@@ -3,7 +3,7 @@
   "name": "support-suite-provider",
   "version": "0.1.0",
   "compatibility": {
-    "remoteProtocolVersion": "1",
+    "serviceProtocolVersion": "1",
     "requiredHostFeatures": [
       "service.status"
     ]
@@ -14,12 +14,13 @@
   },
   "modules": [
     {
-      "name": "support-ticket",
-      "version": "0.1.0",
+      "protocol": "lenso.module-manifest.v1",
+      "module_id": "acme/support-ticket",
       "capabilities": [
         "support_ticket.tickets.read",
         "support_ticket.tickets.write"
-      ]
+      ],
+      "config": {}
     }
   ]
 }

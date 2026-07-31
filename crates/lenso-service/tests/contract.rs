@@ -6,17 +6,17 @@ use lenso_service::{
     ConfigMutability, ConfigScope, ContractArtifactCheckErrorCode, ContractArtifactKind,
     ContractContextRequirements, ContractOwner, ContractSemanticKind, EventArtifactFormat,
     EventArtifactReference, EventContractArtifact, LEGACY_CONTRACT_FIXTURES,
-    MIXED_SYSTEM_V2_FIXTURE_JSON, MODULE_CONTRACT_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
-    ModuleContract, ModuleManifest, ReliabilityContract, ReliabilityLivenessSemantics,
-    ReliabilityProfile, ReliabilityProfileOverrides, ReliabilityReadinessSemantics,
-    SERVICE_CONTRACT_SCHEMA_JSON, SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_V2_CONTRACT_SCHEMA_JSON,
-    SERVICE_WORKSPACE_SCHEMA_JSON, SYSTEM_V2_CONTRACT_SCHEMA_JSON, SchemaArtifactReference,
-    ServiceArtifactFormat, ServiceArtifactReference, ServiceCompatibility, ServiceContract,
-    ServiceContractArtifact, ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem,
-    ServiceSystemDependency, ServiceSystemModule, ServiceSystemService, ServiceTenancyMode,
-    ServiceWorkspace, ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
+    MIXED_SYSTEM_V2_FIXTURE_JSON, MODULE_MANIFEST_SCHEMA_JSON, MODULE_RELEASE_SCHEMA_JSON,
+    ModuleManifest, ReliabilityContract, ReliabilityLivenessSemantics, ReliabilityProfile,
+    ReliabilityProfileOverrides, ReliabilityReadinessSemantics, SERVICE_CONTRACT_SCHEMA_JSON,
+    SERVICE_SYSTEM_SCHEMA_JSON, SERVICE_V2_CONTRACT_SCHEMA_JSON, SERVICE_WORKSPACE_SCHEMA_JSON,
+    SYSTEM_V2_CONTRACT_SCHEMA_JSON, SchemaArtifactReference, ServiceArtifactFormat,
+    ServiceArtifactReference, ServiceCompatibility, ServiceContract, ServiceContractArtifact,
+    ServiceHealth, ServiceLocalProcess, ServiceProvider, ServiceSystem, ServiceSystemDependency,
+    ServiceSystemModule, ServiceSystemService, ServiceTenancyMode, ServiceWorkspace,
+    ServiceWorkspaceService, WorkloadRole, check_contract_artifact_value,
     check_contract_artifact_value_with_artifacts, service_system_graph, system_v2_graph,
-    validate_autonomous_service_artifact_references, validate_module_contract_value,
+    validate_autonomous_service_artifact_references, validate_module_manifest_value,
     validate_service_contract_value, validate_service_system_value,
     validate_service_workspace_value,
 };
@@ -878,7 +878,7 @@ fn autonomous_service_v2_contract_artifact_failures_are_deterministic() {
     source["serviceContracts"] = json!([
         {
             "contractId": "support-api",
-            "moduleId": "missing-module",
+            "moduleId": "acme/missing-module",
             "version": "v1",
             "tenancyMode": "required",
             "artifact": {"format": "asyncapi", "path": "contracts/api.yaml"},
@@ -886,7 +886,7 @@ fn autonomous_service_v2_contract_artifact_failures_are_deterministic() {
         },
         {
             "contractId": "support-api",
-            "moduleId": "support-ticket",
+            "moduleId": "acme/support-ticket",
             "version": "v2",
             "tenancyMode": "required",
             "artifact": {"format": "openapi", "path": ""},
@@ -1003,21 +1003,21 @@ fn autonomous_service_v2_rejects_malformed_config_and_reliability_contracts() {
 
 #[test]
 fn module_identity_survives_provider_to_autonomous_service_declarations() {
-    let module_id = "support-ticket";
+    let module_id = "acme/support-ticket";
     let linked = ModuleManifest::builder(module_id).build();
     let provider = ServiceContract::new("support-provider", vec![linked.clone()]);
     let autonomous: AutonomousServiceContract =
         serde_json::from_str(AUTONOMOUS_SERVICE_V2_FIXTURE_JSON).unwrap();
 
-    assert_eq!(linked.name, module_id);
-    assert_eq!(provider.modules[0].name, linked.name);
+    assert_eq!(linked.module_id, module_id);
+    assert_eq!(provider.modules[0].module_id, linked.module_id);
     assert!(autonomous.modules.iter().any(|module| module == module_id));
     let contract = autonomous
         .service_contracts
         .iter()
         .find(|contract| contract.contract_id == "support-http")
         .unwrap();
-    assert_eq!(contract.module_id, linked.name);
+    assert_eq!(contract.module_id, linked.module_id);
 }
 
 #[test]
@@ -1098,7 +1098,7 @@ fn autonomous_service_v2_schema_and_artifact_check_agree() {
     assert_eq!(check.semantic_kind, ContractSemanticKind::AutonomousService);
     assert_eq!(check.detected_protocol, "lenso.service.v2");
     let summary = check.autonomous_service.unwrap();
-    assert_eq!(summary.modules, ["support-sla", "support-ticket"]);
+    assert_eq!(summary.modules, ["acme/support-sla", "acme/support-ticket"]);
     assert_eq!(summary.service_contracts, ["support-grpc", "support-http"]);
     assert_eq!(summary.event_contracts, ["ticket-opened"]);
     assert!(summary.has_config_contract);
@@ -1198,7 +1198,7 @@ fn service_contract_serializes_provider_and_modules() {
     let contract = ServiceContract::new(
         "support-suite-provider",
         vec![
-            ModuleManifest::builder("support-ticket")
+            ModuleManifest::builder("acme/support-ticket")
                 .capabilities(vec!["support_ticket.tickets.read".to_owned()])
                 .build(),
         ],
@@ -1211,7 +1211,7 @@ fn service_contract_serializes_provider_and_modules() {
         homepage: None,
     })
     .compatibility(ServiceCompatibility {
-        remote_protocol_version: Some("1".to_owned()),
+        service_protocol_version: Some("1".to_owned()),
         required_host_features: vec!["service.status".to_owned()],
         sdk_language: Some("rust".to_owned()),
         sdk_version: Some("0.1.0".to_owned()),
@@ -1235,7 +1235,7 @@ fn service_contract_serializes_provider_and_modules() {
     assert_eq!(value["name"], "support-suite-provider");
     assert_eq!(value["version"], "0.2.0");
     assert_eq!(value["provider"]["vendor"], "Lenso");
-    assert_eq!(value["compatibility"]["remoteProtocolVersion"], "1");
+    assert_eq!(value["compatibility"]["serviceProtocolVersion"], "1");
     assert_eq!(
         value["health"]["readyUrl"],
         "http://127.0.0.1:4110/lenso/service/v1/ready"
@@ -1244,7 +1244,7 @@ fn service_contract_serializes_provider_and_modules() {
         value["health"]["statusUrl"],
         "http://127.0.0.1:4110/lenso/service/v1/status"
     );
-    assert_eq!(value["modules"][0]["name"], "support-ticket");
+    assert_eq!(value["modules"][0]["module_id"], "acme/support-ticket");
 
     let provider = value["provider"].as_object().unwrap();
     let health = value["health"].as_object().unwrap();
@@ -1263,17 +1263,13 @@ fn service_contract_schema_is_packaged_with_the_sdk() {
 }
 
 #[test]
-fn protocol_less_legacy_service_contract_remains_compatible() {
+fn service_v1_fixture_embeds_the_canonical_module_manifest() {
     let mut source: serde_json::Value =
         serde_json::from_str(LEGACY_CONTRACT_FIXTURES[0].json).unwrap();
     source.as_object_mut().unwrap().remove("protocol");
-    let original = source.clone();
+    let contract = serde_json::from_value::<ServiceContract>(source).unwrap();
 
-    assert!(validate_service_contract_value(&source).is_empty());
-    let contract: ServiceContract = serde_json::from_value(source.clone()).unwrap();
-
-    assert_eq!(contract.protocol, "lenso.service.v1");
-    assert_eq!(source, original);
+    assert_eq!(contract.modules[0].module_id, "acme/support-ticket");
 }
 
 #[test]
@@ -1281,21 +1277,39 @@ fn module_release_schema_is_packaged_with_the_sdk() {
     let schema: serde_json::Value = serde_json::from_str(MODULE_RELEASE_SCHEMA_JSON).unwrap();
 
     assert_eq!(schema["title"], "LensoModuleRelease");
-    assert_eq!(
-        schema["required"],
-        json!(["protocol", "name", "version", "source"])
+    assert!(
+        schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("module_id"))
+    );
+    assert!(
+        schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("delivery"))
     );
 }
 
 #[test]
-fn module_contract_schema_is_packaged_with_the_sdk() {
-    let schema: serde_json::Value = serde_json::from_str(MODULE_CONTRACT_SCHEMA_JSON).unwrap();
+fn module_manifest_schema_is_packaged_with_the_sdk() {
+    let schema: serde_json::Value = serde_json::from_str(MODULE_MANIFEST_SCHEMA_JSON).unwrap();
 
-    assert_eq!(schema["title"], "LensoModuleContract");
-    assert_eq!(
-        schema["required"],
-        json!(["protocol", "name", "version", "source"])
+    assert_eq!(schema["title"], "LensoModuleManifest");
+    assert!(
+        schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("protocol"))
     );
+    assert!(
+        schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("module_id"))
+    );
+    assert!(schema["properties"].get("source").is_none());
+    assert!(schema["properties"].get("bundled").is_none());
 }
 
 #[test]
@@ -1442,18 +1456,16 @@ fn service_system_graph_checks_explicit_target_capabilities() {
 }
 
 #[test]
-fn module_contract_serializes_standalone_module_shape() {
-    let contract = ModuleContract::new("support-ticket", "0.2.0", "linked").manifest(
-        ModuleManifest::builder("support-ticket")
-            .capabilities(vec!["support_ticket.tickets.read".to_owned()])
-            .build(),
-    );
-    let value = serde_json::to_value(contract).unwrap();
+fn module_manifest_serializes_standalone_module_shape() {
+    let manifest = ModuleManifest::builder("acme/support-ticket")
+        .capabilities(vec!["support_ticket.tickets.read".to_owned()])
+        .build();
+    let value = serde_json::to_value(manifest).unwrap();
 
-    assert_eq!(value["protocol"], "lenso.module.v1");
-    assert_eq!(value["source"], "linked");
-    assert_eq!(value["manifest"]["name"], "support-ticket");
-    assert!(validate_module_contract_value(&value).is_empty());
+    assert_eq!(value["protocol"], "lenso.module-manifest.v1");
+    assert_eq!(value["module_id"], "acme/support-ticket");
+    assert!(value.get("source").is_none());
+    assert!(validate_module_manifest_value(&value).is_empty());
 }
 
 #[test]
@@ -1467,11 +1479,13 @@ fn service_contract_validation_reports_paths() {
         },
         "modules": [
             {
-                "name": "support-ticket",
+                "protocol": "lenso.module-manifest.v1",
+                "module_id": "acme/support-ticket",
                 "capabilities": ["support_ticket.read", 42]
             },
             {
-                "name": "support-ticket"
+                "protocol": "lenso.module-manifest.v1",
+                "module_id": "acme/support-ticket"
             }
         ]
     }));
@@ -1482,8 +1496,7 @@ fn service_contract_validation_reports_paths() {
         .collect::<Vec<_>>();
     assert!(paths.contains(&"$.name"));
     assert!(paths.contains(&"$.install.services[0].command"));
-    assert!(paths.contains(&"$.modules[0].capabilities[1]"));
-    assert!(paths.contains(&"$.modules[1].name"));
+    assert!(paths.contains(&"$.modules[0]"));
 }
 
 #[test]

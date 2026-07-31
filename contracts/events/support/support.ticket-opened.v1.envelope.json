@@ -88,7 +88,7 @@
   "contractVersion": "v1",
   "eventId": "event_support_ticket_01",
   "eventType": "support.ticket-opened.v1",
-  "moduleId": "support-ticket",
+  "moduleId": "acme/support-ticket",
   "occurredAt": "2026-07-14T10:15:30Z",
   "producerServiceId": "support",
   "protocol": "lenso.event-envelope.v1",

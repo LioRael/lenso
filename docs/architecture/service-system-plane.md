@@ -146,12 +146,11 @@ lenso system runbook record system-runbook-staging.json
 such as `lenso service workspace add` and `lenso service env add`. It does not
 invent install commands that the host cannot execute yet.
 
-V19 adds system drift and safe apply. `system diff` compares the graph to
-host-local `.lenso` state: module installs, service-start state, service
-environments, deployment observations, and service release records. `system
-apply` writes only safe local files: `.lenso/module-services.json` and
-`.lenso/service-environments.json`. It does not install modules, deploy to
-Kubernetes, mutate an operator resource, or apply a service release.
+V19 added the original system drift projection. Current Module and Provider
+changes no longer write service-start files: Runtime Console previews and
+applies reviewed Module Change Plans and Service Installation Plans through
+`/admin/modules/*`. Deployment adapters own process or platform lifecycle, and
+the target-owned installation set is the only Provider desired-state input.
 
 V20 adds system release trains. `lenso.system-release.v1` records one
 environment-scoped system change set: graph snapshot, affected services,

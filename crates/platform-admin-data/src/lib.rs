@@ -93,11 +93,11 @@ pub struct AdminModuleMetadata {
 
 #[derive(Clone, Debug)]
 pub enum AdminModuleSourceDiagnostics {
-    Remote(AdminRemoteModuleDiagnostics),
+    Remote(AdminServiceProviderDiagnostics),
 }
 
 #[derive(Clone, Debug)]
-pub struct AdminRemoteModuleDiagnostics {
+pub struct AdminServiceProviderDiagnostics {
     pub transport: String,
     pub base_url: String,
     pub manifest_url: String,
@@ -482,8 +482,6 @@ pub fn router() -> ApiOpenApiRouter {
         .routes(routes!(launchpad_doctor))
         .routes(routes!(launchpad_proof))
         .routes(routes!(launchpad_change_plan))
-        .routes(routes!(install_available_module))
-        .routes(routes!(uninstall_available_module))
         .routes(routes!(module_registry_snapshot))
         .routes(routes!(list_schemas))
         .routes(routes!(refresh_schemas))

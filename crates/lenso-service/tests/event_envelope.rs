@@ -34,7 +34,7 @@ fn support_event_declaration_builds_a_versioned_event_envelope() {
     assert_eq!(envelope.contract_id, "ticket-opened");
     assert_eq!(envelope.contract_version, "v1");
     assert_eq!(envelope.producer_service_id, "support");
-    assert_eq!(envelope.module_id, "support-ticket");
+    assert_eq!(envelope.module_id, "acme/support-ticket");
     assert_eq!(envelope.content.content_type, "application/json");
     assert_eq!(
         envelope.content.schema,
@@ -153,7 +153,10 @@ fn cloudevents_structured_representation_round_trips_every_lenso_field() {
     assert_eq!(serialized["id"], envelope.event_id);
     assert_eq!(serialized["type"], envelope.event_type);
     assert_eq!(serialized["source"], "urn:lenso:service:support");
-    assert_eq!(serialized["subject"], "support-ticket/ticket-opened/v1");
+    assert_eq!(
+        serialized["subject"],
+        "acme/support-ticket/ticket-opened/v1"
+    );
     assert_eq!(serialized["data"]["context"], json!(envelope.context));
     assert!(serialized.get("topic").is_none());
     assert!(serialized.get("partition").is_none());

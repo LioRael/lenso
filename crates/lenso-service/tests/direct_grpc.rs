@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use lenso_service::{
     AuthenticatedTransportBinding, CallPolicyEvent, CallPolicyFailure, CallPolicyRuntime,
-    CallPolicyTerminalOutcome, DelegatedActorCredentialRequest, DelegatedContextProvider,
+    CallPolicyTerminalOutcome, DelegatedActorCredentialRequest, DelegatedContextIssuer,
     DirectGrpcCallError, DirectGrpcClient, DirectGrpcServerPolicy, Endpoint, EndpointState,
     GrpcIdempotency, ManualCallPolicyClock, MemoryIdentityDecisionRecorder, ServiceContextPolicy,
     ServiceReference, ServiceTenancyMode, StaticEndpointResolver,

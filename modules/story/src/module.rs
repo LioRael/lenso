@@ -87,7 +87,7 @@ pub fn module(_ctx: &AppContext) -> Module {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use platform_module::{ModuleManifestLintSeverity, ModuleSource, lint_module_manifest};
+    use platform_module::{ModuleManifestLintSeverity, lint_module_manifest};
 
     #[test]
     fn manifest_declares_story_console_surface() {
@@ -96,7 +96,7 @@ mod tests {
             serde_json::from_str(include_str!("../console/console-surface.json"))
                 .expect("story console surface contract should be valid json");
 
-        assert_eq!(manifest.name, console_surface_contract["id"]);
+        assert_eq!(manifest.module_id, console_surface_contract["id"]);
         assert_eq!(manifest.admin, None);
         assert_eq!(manifest.capabilities, vec![STORY_CONSOLE_CAPABILITY]);
         assert_eq!(manifest.http_routes, http_routes());
@@ -127,7 +127,7 @@ mod tests {
             vec![STORY_CONSOLE_CAPABILITY]
         );
 
-        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        let lints = lint_module_manifest(&manifest);
         assert!(
             lints
                 .iter()

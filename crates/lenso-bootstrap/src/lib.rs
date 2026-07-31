@@ -6,8 +6,8 @@
 //! A module's contributions are split by how they are consumed:
 //! - [`modules`]: context-bound bindings (runtime functions + event handlers)
 //!   and runtime config (API + worker), demo-default for context-local callers.
-//! - [`modules_for_config`] / [`load_modules`]: config-aware module loaders that
-//!   honor profile entry lists and configured remote sources for runtime apps.
+//! - [`modules_for_config`]: config-aware Linked Module loader that honors the
+//!   selected composition profile.
 //! - [`module_manifests`]: context-free manifest data (no [`AppContext`]) for
 //!   read-only / `OpenAPI` paths, with profile-aware variants for runtime use.
 //! - [`merge_linked_http`]: context-free HTTP routes and their OpenAPI docs
@@ -19,7 +19,7 @@
 //! expose its config-aware loader contributions from this crate.
 
 use platform_admin_data::{
-    AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, AdminRemoteModuleDiagnostics,
+    AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, AdminServiceProviderDiagnostics,
 };
 use platform_core::error::ErrorDetail;
 use platform_core::{
@@ -35,22 +35,16 @@ use platform_module::{
     LifecycleStartupCheckKind, LinkedBinding, Module, ModuleHttpMethod, ModuleLoadStatus,
     ModuleManifest, ModuleSource,
 };
-use platform_module_remote::{RemoteHttpProxyRegistry, RemoteModuleConfig, RemoteModuleSource};
+use platform_module_remote::{
+    ProviderRuntimeAdapter, ProviderRuntimeAdapters, RemoteHttpProxyRegistry, RemoteModuleConfig,
+};
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
     ScheduledFunctionDefinition,
 };
-use std::fs::{self, OpenOptions};
-use std::io::Write as _;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::path::Path;
 use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant};
-
-const DEFAULT_MODULE_SERVICES_FILE: &str = ".lenso/module-services.json";
-const DEFAULT_REMOTE_SERVICE_READY_TIMEOUT_MS: u64 = 10_000;
-const REMOTE_SERVICE_TERMINATE_GRACE_MS: u64 = 800;
+use std::time::Instant;
 
 struct LinkedModuleEntry {
     module_name: &'static str,
@@ -66,9 +60,19 @@ const MODULES_CONFIG_GROUP: RuntimeConfigGroupDescriptor = RuntimeConfigGroupDes
     order: 10,
 };
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct HostComposition {
     linked_modules: Vec<HostLinkedModule>,
+    provider_runtime_adapters: ProviderRuntimeAdapters,
+}
+
+impl Default for HostComposition {
+    fn default() -> Self {
+        Self {
+            linked_modules: Vec::new(),
+            provider_runtime_adapters: ProviderRuntimeAdapters::production_defaults(),
+        }
+    }
 }
 
 impl HostComposition {
@@ -90,6 +94,17 @@ impl HostComposition {
     #[must_use]
     pub fn linked_modules(&self) -> &[HostLinkedModule] {
         &self.linked_modules
+    }
+
+    #[must_use]
+    pub fn with_provider_runtime_adapters(mut self, adapters: ProviderRuntimeAdapters) -> Self {
+        self.provider_runtime_adapters = adapters;
+        self
+    }
+
+    #[must_use]
+    pub fn provider_runtime_adapters(&self) -> &ProviderRuntimeAdapters {
+        &self.provider_runtime_adapters
     }
 }
 
@@ -316,9 +331,12 @@ fn linked_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
 
 fn first_disabled_dependency(ctx: &AppContext, manifest: fn() -> ModuleManifest) -> Option<String> {
     (manifest)()
-        .dependencies
+        .requires
         .into_iter()
-        .find(|dependency| !linked_module_enabled(ctx, dependency))
+        .map(|requirement| requirement.module_id)
+        .find(|module_id| {
+            !linked_module_enabled(ctx, module_id.rsplit('/').next().unwrap_or(module_id))
+        })
 }
 
 fn first_disabled_dependency_from_config(
@@ -326,9 +344,15 @@ fn first_disabled_dependency_from_config(
     manifest: fn() -> ModuleManifest,
 ) -> Option<String> {
     (manifest)()
-        .dependencies
+        .requires
         .into_iter()
-        .find(|dependency| !linked_module_enabled_from_config(config, dependency))
+        .map(|requirement| requirement.module_id)
+        .find(|module_id| {
+            !linked_module_enabled_from_config(
+                config,
+                module_id.rsplit('/').next().unwrap_or(module_id),
+            )
+        })
 }
 
 fn linked_module_with_dependencies_enabled(
@@ -360,21 +384,6 @@ fn linked_module_disabled_reason(
         return Some(format!("module dependency disabled: {dependency}"));
     }
     None
-}
-
-fn remote_module_enabled_from_config(config: &platform_core::AppConfig, module_name: &str) -> bool {
-    config
-        .modules
-        .get(module_name)
-        .is_none_or(platform_core::ModuleConfig::is_enabled)
-}
-
-fn remote_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
-    ctx.runtime_config
-        .snapshot()
-        .raw(&module_enabled_config_key(module_name))
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or_else(|| remote_module_enabled_from_config(&ctx.config, module_name))
 }
 
 pub fn auth_actor_resolver_for_context(
@@ -603,35 +612,46 @@ pub fn modules_for_profile(ctx: &AppContext, profile: CompositionProfile) -> Vec
         .collect()
 }
 
-/// Load every configured module, including out-of-process remote modules.
-///
-/// The synchronous [`modules`] function remains Linked-only for call sites that
-/// must stay context-local and infallible. Startup paths that can perform IO
-/// should use this async loader.
-pub async fn load_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<Module>> {
-    load_modules_with_composition(ctx, &HostComposition::default()).await
+/// Loads a target-owned Provider Runtime Plan when Module management artifacts
+/// exist. A workspace with neither artifact is a Linked-only Host; a partial
+/// or inconsistent management state fails closed.
+pub fn provider_runtime_plan_from_workspace(
+    root: impl AsRef<Path>,
+) -> platform_core::AppResult<Option<lenso_module_management::ProviderRuntimePlan>> {
+    let root = root.as_ref();
+    let lock = root.join("lenso.modules.lock.json");
+    let planning = root.join(".lenso/module-planning-context.json");
+    if !lock.exists() && !planning.exists() {
+        return Ok(None);
+    }
+    lenso_module_management::WorkspaceModuleManagement::new(root)
+        .provider_runtime_plan()
+        .map(Some)
+        .map_err(|error| {
+            AppError::new(
+                ErrorCode::Validation,
+                format!("Provider runtime workspace is invalid: {error}"),
+            )
+        })
 }
 
-pub async fn load_modules_with_composition(
+pub async fn load_modules_with_composition_and_provider_plan(
     ctx: &AppContext,
     composition: &HostComposition,
+    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
 ) -> platform_core::AppResult<Vec<Module>> {
     let mut loaded = modules_for_config_with_composition(ctx, composition)?;
-
-    for remote in &ctx.config.module_sources.remote {
-        if !remote_module_enabled(ctx, &remote.name) {
-            continue;
-        }
-        let source = RemoteModuleSource::new(remote_module_config(remote))?;
+    if let Some(plan) = plan {
         loaded.extend(
-            source
-                .load_all()
-                .await?
-                .into_iter()
-                .map(|loaded| loaded.module),
+            ProviderRuntimeAdapter::with_adapters(
+                plan.clone(),
+                composition.provider_runtime_adapters.clone(),
+            )?
+            .load_verified()
+            .await?
+            .into_modules(),
         );
     }
-
     Ok(loaded)
 }
 
@@ -808,7 +828,7 @@ pub fn linked_runtime_function_declaration_sources_for_profile(
 )> {
     module_manifests_for_profile(profile)
         .into_iter()
-        .map(|manifest| (manifest.name, ModuleSource::Linked, manifest.runtime))
+        .map(|manifest| (manifest.module_id, ModuleSource::Linked, manifest.runtime))
         .collect()
 }
 
@@ -825,7 +845,7 @@ pub fn linked_runtime_function_declaration_sources_for_config(
         .into_iter()
         .map(|entry| {
             let manifest = (entry.manifest)();
-            (manifest.name, ModuleSource::Linked, manifest.runtime)
+            (manifest.module_id, ModuleSource::Linked, manifest.runtime)
         })
         .collect())
 }
@@ -843,7 +863,7 @@ pub fn linked_runtime_function_declaration_sources_for_context(
         .into_iter()
         .map(|entry| {
             let manifest = (entry.manifest)();
-            (manifest.name, ModuleSource::Linked, manifest.runtime)
+            (manifest.module_id, ModuleSource::Linked, manifest.runtime)
         })
         .collect())
 }
@@ -865,7 +885,7 @@ pub fn linked_runtime_function_declaration_sources_for_context_with_composition(
             .into_iter()
             .map(|entry| {
                 let manifest = (entry.manifest)();
-                (manifest.name, ModuleSource::Linked, manifest.runtime)
+                (manifest.module_id, ModuleSource::Linked, manifest.runtime)
             }),
     );
     Ok(sources)
@@ -918,7 +938,7 @@ pub fn linked_http_route_owners_for_profile(
         .filter_map(|entry| {
             let http = entry.http_binding?().http?;
             Some(LinkedHttpRouteOwner {
-                module_name: entry.module_name.to_owned(),
+                module_name: (entry.manifest)().module_id,
                 public_prefixes: http.public_prefixes,
             })
         })
@@ -990,113 +1010,77 @@ pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
     admin_modules_from_modules(modules(ctx))
 }
 
-/// Load schema-admin capable modules, including configured remotes.
-pub async fn load_admin_modules(ctx: &AppContext) -> platform_core::AppResult<Vec<AdminModule>> {
-    load_admin_modules_with_composition(ctx, &HostComposition::default()).await
-}
-
-pub async fn load_admin_modules_with_composition(
+pub async fn load_admin_modules_with_composition_and_provider_plan(
     ctx: &AppContext,
     composition: &HostComposition,
+    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
 ) -> platform_core::AppResult<Vec<AdminModule>> {
     let mut admin_modules =
         admin_modules_from_modules(modules_for_config_with_composition(ctx, composition)?);
-
-    for remote in &ctx.config.module_sources.remote {
-        if !remote_module_enabled(ctx, &remote.name) {
-            continue;
-        }
-        let source = RemoteModuleSource::new(remote_module_config(remote))?;
-        match source.load_all().await {
-            Ok(modules) => admin_modules.extend(admin_modules_from_modules(
-                modules.into_iter().map(|loaded| loaded.module).collect(),
-            )),
-            Err(error) => admin_modules.push(failed_remote_admin_module(
-                remote.name.clone(),
-                error.public_message,
-            )),
-        }
+    if let Some(plan) = plan {
+        admin_modules.extend(admin_modules_from_modules(
+            ProviderRuntimeAdapter::with_adapters(
+                plan.clone(),
+                composition.provider_runtime_adapters.clone(),
+            )?
+            .load_verified()
+            .await?
+            .into_modules(),
+        ));
     }
-
     Ok(admin_modules)
 }
 
 /// Load registry metadata for every configured module, including modules with
 /// no admin surface and custom surfaces not consumable by schema-admin
 /// list/detail.
-pub async fn load_admin_module_metadata(
-    ctx: &AppContext,
-) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-    load_admin_module_metadata_with_composition(ctx, &HostComposition::default()).await
-}
-
-pub async fn load_admin_module_metadata_with_composition(
+pub async fn load_admin_module_metadata_with_composition_and_provider_plan(
     ctx: &AppContext,
     composition: &HostComposition,
+    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
     let mut metadata =
         admin_metadata_from_modules(modules_for_config_with_composition(ctx, composition)?);
     metadata.extend(disabled_linked_admin_metadata(ctx)?);
     metadata.extend(disabled_host_linked_admin_metadata(ctx, composition)?);
-
-    for remote in &ctx.config.module_sources.remote {
-        let config = remote_module_config(remote);
-        if !remote_module_enabled(ctx, &remote.name) {
-            metadata.push(disabled_remote_admin_metadata(&config));
-            continue;
-        }
+    if let Some(plan) = plan {
         let checked_at = current_timestamp();
-        let source = RemoteModuleSource::new(config.clone())?;
-        let load_started = Instant::now();
-        match source.load_all().await {
-            Ok(modules) => {
-                let load_duration_ms = Some(duration_ms(load_started));
-                for loaded in modules {
-                    metadata.extend(remote_admin_metadata_from_module(
-                        loaded.module,
-                        &loaded.config,
-                        checked_at.clone(),
-                        load_duration_ms,
-                        None,
-                    ));
-                }
-            }
-            Err(error) => metadata.push(failed_remote_admin_metadata(
-                &config,
-                Some(checked_at),
-                Some(duration_ms(load_started)),
-                error.public_message,
-            )),
+        let started = Instant::now();
+        let (modules, configs) = ProviderRuntimeAdapter::with_adapters(
+            plan.clone(),
+            composition.provider_runtime_adapters.clone(),
+        )?
+        .load_verified()
+        .await?
+        .into_parts();
+        let load_duration_ms = Some(duration_ms(started));
+        for (module, config) in modules.into_iter().zip(&configs) {
+            metadata.extend(remote_admin_metadata_from_module(
+                module,
+                config,
+                checked_at.clone(),
+                load_duration_ms,
+                None,
+            ));
         }
     }
-
     Ok(metadata)
 }
 
-pub async fn load_remote_http_proxy_registry(
-    ctx: &AppContext,
+pub async fn load_provider_http_proxy_registry(
+    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
+    composition: &HostComposition,
 ) -> platform_core::AppResult<RemoteHttpProxyRegistry> {
-    let mut remote_modules = Vec::new();
-    let mut remote_configs = Vec::new();
-
-    for remote in &ctx.config.module_sources.remote {
-        if !remote_module_enabled(ctx, &remote.name) {
-            continue;
-        }
-        let config = remote_module_config(remote);
-        let source = RemoteModuleSource::new(config.clone())?;
-        if let Ok(modules) = source.load_all().await {
-            for loaded in modules {
-                remote_configs.push(loaded.config);
-                remote_modules.push(loaded.module);
-            }
-        }
-    }
-
-    Ok(RemoteHttpProxyRegistry::from_modules(
-        &remote_modules,
-        &remote_configs,
-    ))
+    let Some(plan) = plan else {
+        return Ok(RemoteHttpProxyRegistry::from_modules(&[], &[]));
+    };
+    Ok(ProviderRuntimeAdapter::with_adapters(
+        plan.clone(),
+        composition.provider_runtime_adapters.clone(),
+    )?
+    .load_verified()
+    .await?
+    .proxy_registry())
 }
 
 fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
@@ -1110,7 +1094,9 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
             if data_source.is_none() && action_source.is_none() && query_source.is_none() {
                 return None;
             }
-            let ModuleManifest { name, admin, .. } = module.manifest;
+            let ModuleManifest {
+                module_id, admin, ..
+            } = module.manifest;
             let admin = admin?;
             let (schema, listed_in_schema) = match &admin {
                 AdminSurface::Schema(schema) => (schema.clone(), true),
@@ -1124,7 +1110,7 @@ fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
                 _ => return None,
             };
             Some(AdminModule {
-                module_name: name,
+                module_name: module_id,
                 source: module.source,
                 load_status: module.load_status,
                 schema,
@@ -1143,7 +1129,7 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
         .into_iter()
         .map(|module| {
             let ModuleManifest {
-                name,
+                module_id,
                 admin,
                 http_routes,
                 runtime,
@@ -1154,11 +1140,11 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 console_contributions,
                 story_display,
                 capabilities,
-                dependencies,
+                requires,
                 ..
             } = module.manifest;
             AdminModuleMetadata {
-                module_name: name,
+                module_name: module_id,
                 source: module.source,
                 load_status: module.load_status,
                 http_routes,
@@ -1170,28 +1156,15 @@ fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata>
                 console_contributions,
                 story_display,
                 capabilities,
-                dependencies,
+                dependencies: requires
+                    .into_iter()
+                    .map(|requirement| requirement.module_id)
+                    .collect(),
                 admin,
                 source_diagnostics: None,
             }
         })
         .collect()
-}
-
-fn failed_remote_admin_module(name: String, message: String) -> AdminModule {
-    AdminModule {
-        module_name: name,
-        source: ModuleSource::Remote,
-        load_status: ModuleLoadStatus::Error { message },
-        schema: AdminSchema {
-            entities: Vec::new(),
-        },
-        admin: None,
-        listed_in_schema: true,
-        data_source: None,
-        action_source: None,
-        query_source: None,
-    }
 }
 
 fn remote_admin_metadata_from_module(
@@ -1204,6 +1177,7 @@ fn remote_admin_metadata_from_module(
     admin_metadata_from_modules(vec![module])
         .into_iter()
         .map(|mut metadata| {
+            metadata.module_name.clone_from(&config.name);
             metadata.source_diagnostics = Some(remote_source_diagnostics(
                 config,
                 Some(checked_at.clone()),
@@ -1215,60 +1189,6 @@ fn remote_admin_metadata_from_module(
         .collect()
 }
 
-fn failed_remote_admin_metadata(
-    config: &RemoteModuleConfig,
-    checked_at: Option<String>,
-    load_duration_ms: Option<u64>,
-    message: String,
-) -> AdminModuleMetadata {
-    AdminModuleMetadata {
-        module_name: config.name.clone(),
-        source: ModuleSource::Remote,
-        load_status: ModuleLoadStatus::Error {
-            message: message.clone(),
-        },
-        http_routes: Vec::new(),
-        runtime: None,
-        events: None,
-        lifecycle: None,
-        console: Vec::new(),
-        console_slots: Vec::new(),
-        console_contributions: Vec::new(),
-        story_display: Vec::new(),
-        capabilities: Vec::new(),
-        dependencies: Vec::new(),
-        admin: None,
-        source_diagnostics: Some(remote_source_diagnostics(
-            config,
-            checked_at,
-            load_duration_ms,
-            Some(message),
-        )),
-    }
-}
-
-fn disabled_remote_admin_metadata(config: &RemoteModuleConfig) -> AdminModuleMetadata {
-    AdminModuleMetadata {
-        module_name: config.name.clone(),
-        source: ModuleSource::Remote,
-        load_status: ModuleLoadStatus::Error {
-            message: "module disabled by configuration".to_owned(),
-        },
-        http_routes: Vec::new(),
-        runtime: None,
-        events: None,
-        lifecycle: None,
-        console: Vec::new(),
-        console_slots: Vec::new(),
-        console_contributions: Vec::new(),
-        story_display: Vec::new(),
-        capabilities: Vec::new(),
-        dependencies: Vec::new(),
-        admin: None,
-        source_diagnostics: Some(remote_source_diagnostics(config, None, None, None)),
-    }
-}
-
 fn disabled_linked_admin_metadata(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
@@ -1276,7 +1196,7 @@ fn disabled_linked_admin_metadata(
         .into_iter()
         .map(|entry| {
             let ModuleManifest {
-                name,
+                module_id,
                 admin,
                 http_routes,
                 runtime,
@@ -1287,11 +1207,11 @@ fn disabled_linked_admin_metadata(
                 console_contributions,
                 story_display,
                 capabilities,
-                dependencies,
+                requires,
                 ..
             } = (entry.manifest)();
             AdminModuleMetadata {
-                module_name: name,
+                module_name: module_id,
                 source: ModuleSource::Linked,
                 load_status: ModuleLoadStatus::Error {
                     message: linked_module_disabled_reason(ctx, entry.module_name, entry.manifest)
@@ -1306,7 +1226,10 @@ fn disabled_linked_admin_metadata(
                 console_contributions,
                 story_display,
                 capabilities,
-                dependencies,
+                dependencies: requires
+                    .into_iter()
+                    .map(|requirement| requirement.module_id)
+                    .collect(),
                 admin,
                 source_diagnostics: None,
             }
@@ -1324,7 +1247,7 @@ fn disabled_host_linked_admin_metadata(
             .into_iter()
             .map(|entry| {
                 let ModuleManifest {
-                    name,
+                    module_id,
                     admin,
                     http_routes,
                     runtime,
@@ -1335,11 +1258,11 @@ fn disabled_host_linked_admin_metadata(
                     console_contributions,
                     story_display,
                     capabilities,
-                    dependencies,
+                    requires,
                     ..
                 } = (entry.manifest)();
                 AdminModuleMetadata {
-                    module_name: name,
+                    module_name: module_id,
                     source: ModuleSource::Linked,
                     load_status: ModuleLoadStatus::Error {
                         message: linked_module_disabled_reason(
@@ -1358,7 +1281,10 @@ fn disabled_host_linked_admin_metadata(
                     console_contributions,
                     story_display,
                     capabilities,
-                    dependencies,
+                    dependencies: requires
+                        .into_iter()
+                        .map(|requirement| requirement.module_id)
+                        .collect(),
                     admin,
                     source_diagnostics: None,
                 }
@@ -1385,535 +1311,16 @@ fn remote_source_diagnostics(
             ),
         ),
     };
-    AdminModuleSourceDiagnostics::Remote(AdminRemoteModuleDiagnostics {
+    AdminModuleSourceDiagnostics::Remote(AdminServiceProviderDiagnostics {
         transport: transport.to_owned(),
         base_url: config.base_url.clone(),
         manifest_url,
         timeout_ms: config.timeout_ms,
-        auth_configured: config.auth_token.is_some(),
+        auth_configured: config.auth_configured(),
         load_duration_ms,
         last_checked_at: checked_at,
         last_load_error: load_error,
     })
-}
-
-fn remote_module_config(source: &platform_core::RemoteModuleSourceConfig) -> RemoteModuleConfig {
-    let mut config = RemoteModuleConfig::new(source.name.clone(), source.base_url.clone())
-        .with_timeout_ms(source.timeout_ms);
-
-    if let Some(env_name) = &source.auth_token_env {
-        if let Ok(token) = std::env::var(env_name) {
-            config = config.with_auth_token(token);
-        }
-    }
-
-    config
-}
-
-#[derive(Debug)]
-pub struct RemoteModuleServiceSupervisor {
-    services: Vec<RemoteModuleServiceHandle>,
-}
-
-impl RemoteModuleServiceSupervisor {
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.services.is_empty()
-    }
-}
-
-impl Drop for RemoteModuleServiceSupervisor {
-    fn drop(&mut self) {
-        for service in &mut self.services {
-            terminate_remote_module_service(&mut service.child);
-            release_remote_module_service_state(&service.lock_file_path, &service.pid_file_path);
-        }
-    }
-}
-
-#[derive(Debug)]
-struct RemoteModuleServiceHandle {
-    child: Child,
-    lock_file_path: PathBuf,
-    pid_file_path: PathBuf,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct RemoteModuleServiceSpec {
-    module_name: String,
-    service_name: String,
-    command: String,
-    cwd: Option<PathBuf>,
-    ready_url: String,
-    ready_timeout_ms: u64,
-    auto_start: bool,
-}
-
-pub async fn start_installed_remote_module_services(
-    ctx: &AppContext,
-) -> platform_core::AppResult<RemoteModuleServiceSupervisor> {
-    start_installed_remote_module_services_from_path(ctx, Path::new(DEFAULT_MODULE_SERVICES_FILE))
-        .await
-}
-
-pub async fn start_installed_remote_module_services_from_path(
-    ctx: &AppContext,
-    services_file_path: &Path,
-) -> platform_core::AppResult<RemoteModuleServiceSupervisor> {
-    let specs = read_remote_module_service_specs(services_file_path)?;
-    let services_state_dir = services_file_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_millis(800))
-        .build()
-        .map_err(|source| {
-            AppError::new(ErrorCode::Internal, "failed to build HTTP client").with_source(source)
-        })?;
-    let mut services = Vec::new();
-
-    for spec in specs {
-        if !spec.auto_start || !remote_service_module_enabled(ctx, &spec.module_name) {
-            continue;
-        }
-        if remote_service_ready(&client, &spec.ready_url).await {
-            tracing::info!(
-                module = %spec.module_name,
-                service = %spec.service_name,
-                ready_url = %spec.ready_url,
-                "remote module service already ready"
-            );
-            continue;
-        }
-        let lock_file_path = remote_module_service_state_path(services_state_dir, &spec, "lock");
-        let pid_file_path = remote_module_service_state_path(services_state_dir, &spec, "pid");
-        if !claim_remote_module_service_lock(&client, &spec, &lock_file_path, &pid_file_path)
-            .await?
-        {
-            continue;
-        }
-        let mut child = match spawn_remote_module_service(&spec) {
-            Ok(child) => child,
-            Err(error) => {
-                release_remote_module_service_state(&lock_file_path, &pid_file_path);
-                return Err(error);
-            }
-        };
-        if let Err(error) = write_remote_module_service_pid(&pid_file_path, child.id()) {
-            terminate_remote_module_service(&mut child);
-            release_remote_module_service_state(&lock_file_path, &pid_file_path);
-            return Err(error);
-        }
-        if let Err(error) = wait_for_remote_module_service(&client, &spec, &mut child).await {
-            terminate_remote_module_service(&mut child);
-            release_remote_module_service_state(&lock_file_path, &pid_file_path);
-            return Err(error);
-        }
-        tracing::info!(
-            module = %spec.module_name,
-            service = %spec.service_name,
-            ready_url = %spec.ready_url,
-            "started remote module service"
-        );
-        services.push(RemoteModuleServiceHandle {
-            child,
-            lock_file_path,
-            pid_file_path,
-        });
-    }
-
-    Ok(RemoteModuleServiceSupervisor { services })
-}
-
-fn remote_service_module_enabled(ctx: &AppContext, module_name: &str) -> bool {
-    ctx.config
-        .module_sources
-        .remote
-        .iter()
-        .any(|remote| remote.name == module_name)
-        && remote_module_enabled(ctx, module_name)
-}
-
-fn read_remote_module_service_specs(
-    services_file_path: &Path,
-) -> platform_core::AppResult<Vec<RemoteModuleServiceSpec>> {
-    let source = match std::fs::read_to_string(services_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(source) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote module services file could not be read: {source}"),
-            ));
-        }
-    };
-    let value = serde_json::from_str::<serde_json::Value>(&source).map_err(|source| {
-        AppError::new(
-            ErrorCode::Validation,
-            format!("remote module services file could not be parsed: {source}"),
-        )
-    })?;
-    parse_remote_module_service_specs(&value)
-}
-
-fn parse_remote_module_service_specs(
-    value: &serde_json::Value,
-) -> platform_core::AppResult<Vec<RemoteModuleServiceSpec>> {
-    let modules = value
-        .get("modules")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorCode::Validation,
-                "remote module services file modules must be an array",
-            )
-        })?;
-    let mut specs = Vec::new();
-    for module in modules {
-        let module_name = json_string(module, "moduleName")?;
-        let services = module
-            .get("services")
-            .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| {
-                AppError::new(
-                    ErrorCode::Validation,
-                    format!("{module_name} services must be an array"),
-                )
-            })?;
-        for service in services {
-            let command = json_string(service, "command")?;
-            let ready_url = json_string(service, "readyUrl")?;
-            specs.push(RemoteModuleServiceSpec {
-                module_name: module_name.clone(),
-                service_name: service
-                    .get("name")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or(&module_name)
-                    .to_owned(),
-                command,
-                cwd: service
-                    .get("cwd")
-                    .and_then(serde_json::Value::as_str)
-                    .map(PathBuf::from),
-                ready_url,
-                ready_timeout_ms: service
-                    .get("readyTimeoutMs")
-                    .and_then(serde_json::Value::as_u64)
-                    .unwrap_or(DEFAULT_REMOTE_SERVICE_READY_TIMEOUT_MS),
-                auto_start: service
-                    .get("autoStart")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(true),
-            });
-        }
-    }
-    Ok(specs)
-}
-
-fn json_string(value: &serde_json::Value, key: &str) -> platform_core::AppResult<String> {
-    value
-        .get(key)
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| AppError::new(ErrorCode::Validation, format!("{key} must be a string")))
-}
-
-fn spawn_remote_module_service(spec: &RemoteModuleServiceSpec) -> platform_core::AppResult<Child> {
-    let cwd = spec
-        .cwd
-        .clone()
-        .unwrap_or(std::env::current_dir().map_err(|source| {
-            AppError::new(ErrorCode::Internal, "failed to resolve current directory")
-                .with_source(source)
-        })?);
-    let mut command = shell_command(&spec.command);
-    command.current_dir(cwd);
-    configure_remote_module_service_process(&mut command);
-    command.spawn().map_err(|source| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!(
-                "failed to start remote module service {}: {}",
-                spec.module_name, spec.service_name
-            ),
-        )
-        .with_source(source)
-    })
-}
-
-async fn wait_for_remote_module_service(
-    client: &reqwest::Client,
-    spec: &RemoteModuleServiceSpec,
-    child: &mut Child,
-) -> platform_core::AppResult<()> {
-    let started = Instant::now();
-    let timeout = Duration::from_millis(spec.ready_timeout_ms);
-    loop {
-        if remote_service_ready(client, &spec.ready_url).await {
-            return Ok(());
-        }
-        if let Some(status) = child.try_wait().map_err(|source| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!(
-                    "remote module service {} status could not be checked",
-                    spec.service_name
-                ),
-            )
-            .with_source(source)
-        })? {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!(
-                    "remote module service {} exited before it became ready: {status}",
-                    spec.service_name
-                ),
-            ));
-        }
-        if started.elapsed() >= timeout {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!(
-                    "remote module service {} did not become ready at {}",
-                    spec.service_name, spec.ready_url
-                ),
-            ));
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
-}
-
-async fn remote_service_ready(client: &reqwest::Client, ready_url: &str) -> bool {
-    client
-        .get(ready_url)
-        .send()
-        .await
-        .is_ok_and(|response| response.status().is_success())
-}
-
-async fn claim_remote_module_service_lock(
-    client: &reqwest::Client,
-    spec: &RemoteModuleServiceSpec,
-    lock_file_path: &Path,
-    pid_file_path: &Path,
-) -> platform_core::AppResult<bool> {
-    match create_remote_module_service_lock(lock_file_path) {
-        Ok(()) => return Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-        Err(source) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!(
-                    "remote module service {} lock could not be created: {source}",
-                    spec.service_name
-                ),
-            ));
-        }
-    }
-
-    tracing::info!(
-        module = %spec.module_name,
-        service = %spec.service_name,
-        ready_url = %spec.ready_url,
-        "remote module service startup already claimed"
-    );
-    if wait_for_remote_module_service_ready(
-        client,
-        &spec.ready_url,
-        Duration::from_millis(spec.ready_timeout_ms),
-    )
-    .await
-    {
-        return Ok(false);
-    }
-
-    tracing::warn!(
-        module = %spec.module_name,
-        service = %spec.service_name,
-        lock_file = %lock_file_path.display(),
-        "remote module service lock did not become ready before timeout; treating it as stale"
-    );
-    terminate_stale_remote_module_service(pid_file_path);
-    release_remote_module_service_state(lock_file_path, pid_file_path);
-    match create_remote_module_service_lock(lock_file_path) {
-        Ok(()) => Ok(true),
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-        Err(source) => Err(AppError::new(
-            ErrorCode::ExternalDependency,
-            format!(
-                "stale remote module service {} lock could not be replaced: {source}",
-                spec.service_name
-            ),
-        )),
-    }
-}
-
-fn create_remote_module_service_lock(lock_file_path: &Path) -> std::io::Result<()> {
-    if let Some(parent) = lock_file_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(lock_file_path)?;
-    writeln!(file, "owner_pid={}", std::process::id())?;
-    Ok(())
-}
-
-fn write_remote_module_service_pid(
-    pid_file_path: &Path,
-    child_pid: u32,
-) -> platform_core::AppResult<()> {
-    if let Some(parent) = pid_file_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote module service pid directory could not be created: {source}"),
-            )
-        })?;
-    }
-    fs::write(pid_file_path, format!("{child_pid}\n")).map_err(|source| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("remote module service pid file could not be written: {source}"),
-        )
-    })
-}
-
-fn release_remote_module_service_state(lock_file_path: &Path, pid_file_path: &Path) {
-    let _ = fs::remove_file(pid_file_path);
-    let _ = fs::remove_file(lock_file_path);
-}
-
-#[cfg(unix)]
-fn terminate_stale_remote_module_service(pid_file_path: &Path) {
-    let Ok(source) = fs::read_to_string(pid_file_path) else {
-        return;
-    };
-    let Ok(pid) = source.trim().parse::<u32>() else {
-        return;
-    };
-
-    let _ = Command::new("kill")
-        .arg("-TERM")
-        .arg(format!("-{pid}"))
-        .status();
-    thread::sleep(Duration::from_millis(100));
-}
-
-#[cfg(not(unix))]
-fn terminate_stale_remote_module_service(_pid_file_path: &Path) {}
-
-async fn wait_for_remote_module_service_ready(
-    client: &reqwest::Client,
-    ready_url: &str,
-    timeout: Duration,
-) -> bool {
-    let started = Instant::now();
-    loop {
-        if remote_service_ready(client, ready_url).await {
-            return true;
-        }
-        if started.elapsed() >= timeout {
-            return false;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
-}
-
-fn remote_module_service_state_path(
-    services_state_dir: &Path,
-    spec: &RemoteModuleServiceSpec,
-    extension: &str,
-) -> PathBuf {
-    services_state_dir.join(format!(
-        "remote-{}-{}.{}",
-        remote_module_service_state_segment(&spec.module_name),
-        remote_module_service_state_segment(&spec.service_name),
-        extension
-    ))
-}
-
-fn remote_module_service_state_segment(value: &str) -> String {
-    let mut segment = String::new();
-    let mut previous_dash = false;
-    for character in value.chars() {
-        if character.is_ascii_alphanumeric() {
-            segment.push(character.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !segment.is_empty() && !previous_dash {
-            segment.push('-');
-            previous_dash = true;
-        }
-    }
-    while segment.ends_with('-') {
-        segment.pop();
-    }
-    if segment.is_empty() {
-        "service".to_owned()
-    } else {
-        segment
-    }
-}
-
-fn terminate_remote_module_service(child: &mut Child) {
-    if matches!(child.try_wait(), Ok(Some(_))) {
-        return;
-    }
-
-    #[cfg(unix)]
-    {
-        let process_group_id = child.id();
-        let _ = Command::new("kill")
-            .arg("-TERM")
-            .arg(format!("-{process_group_id}"))
-            .status();
-        if wait_for_remote_module_service_exit(
-            child,
-            Duration::from_millis(REMOTE_SERVICE_TERMINATE_GRACE_MS),
-        ) {
-            return;
-        }
-    }
-
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
-fn wait_for_remote_module_service_exit(child: &mut Child, timeout: Duration) -> bool {
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return true,
-            Ok(None) => {}
-            Err(_) => return true,
-        }
-        if started.elapsed() >= timeout {
-            return false;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-}
-
-#[cfg(unix)]
-fn configure_remote_module_service_process(command: &mut Command) {
-    use std::os::unix::process::CommandExt;
-    command.process_group(0);
-}
-
-#[cfg(not(unix))]
-fn configure_remote_module_service_process(_command: &mut Command) {}
-
-fn shell_command(command: &str) -> Command {
-    if cfg!(windows) {
-        let mut process = Command::new("cmd");
-        process.arg("/C").arg(command);
-        process
-    } else {
-        let mut process = Command::new("sh");
-        process.arg("-c").arg(command);
-        process
-    }
 }
 
 fn current_timestamp() -> String {
@@ -1981,7 +1388,7 @@ pub async fn enqueue_lifecycle_activation_jobs(
                     trace: TraceContext::default(),
                     causation_id: Some(format!(
                         "module_lifecycle:{}:{}",
-                        module.manifest.name, job.name
+                        module.manifest.module_id, job.name
                     )),
                     max_attempts: Some(runtime_max_attempts_for_enqueue(
                         definition.retry_policy.max_attempts,
@@ -1993,7 +1400,7 @@ pub async fn enqueue_lifecycle_activation_jobs(
                 Ok(run_id) => run_ids.push(run_id),
                 Err(error) if job.required => return Err(error),
                 Err(error) => warn_optional_lifecycle_enqueue_failure(
-                    &module.manifest.name,
+                    &module.manifest.module_id,
                     &job.name,
                     &job.function_name,
                     &error,
@@ -2020,11 +1427,11 @@ fn validate_lifecycle_activation_jobs(
                     if !module_declares_runtime_function(module, function_name) {
                         let reason = format!(
                             "startup check `{}` references function `{}` not declared by module `{}`",
-                            check.name, function_name, module.manifest.name
+                            check.name, function_name, module.manifest.module_id
                         );
                         if !check.required {
                             warn_optional_lifecycle_skip(
-                                &module.manifest.name,
+                                &module.manifest.module_id,
                                 "startup_checks",
                                 &check.name,
                                 &reason,
@@ -2032,7 +1439,7 @@ fn validate_lifecycle_activation_jobs(
                             continue;
                         }
                         return Err(lifecycle_validation_error(
-                            &module.manifest.name,
+                            &module.manifest.module_id,
                             "startup_checks",
                             &check.name,
                             format!("required {reason}"),
@@ -2045,7 +1452,7 @@ fn validate_lifecycle_activation_jobs(
                         );
                         if !check.required {
                             warn_optional_lifecycle_skip(
-                                &module.manifest.name,
+                                &module.manifest.module_id,
                                 "startup_checks",
                                 &check.name,
                                 &reason,
@@ -2053,7 +1460,7 @@ fn validate_lifecycle_activation_jobs(
                             continue;
                         }
                         return Err(lifecycle_validation_error(
-                            &module.manifest.name,
+                            &module.manifest.module_id,
                             "startup_checks",
                             &check.name,
                             format!("required {reason}"),
@@ -2068,7 +1475,7 @@ fn validate_lifecycle_activation_jobs(
                         );
                         if !check.required {
                             warn_optional_lifecycle_skip(
-                                &module.manifest.name,
+                                &module.manifest.module_id,
                                 "startup_checks",
                                 &check.name,
                                 &reason,
@@ -2076,7 +1483,7 @@ fn validate_lifecycle_activation_jobs(
                             continue;
                         }
                         return Err(lifecycle_validation_error(
-                            &module.manifest.name,
+                            &module.manifest.module_id,
                             "startup_checks",
                             &check.name,
                             format!("required {reason}"),
@@ -2090,7 +1497,7 @@ fn validate_lifecycle_activation_jobs(
                     );
                     if !check.required {
                         warn_optional_lifecycle_skip(
-                            &module.manifest.name,
+                            &module.manifest.module_id,
                             "startup_checks",
                             &check.name,
                             &reason,
@@ -2098,7 +1505,7 @@ fn validate_lifecycle_activation_jobs(
                         continue;
                     }
                     return Err(lifecycle_validation_error(
-                        &module.manifest.name,
+                        &module.manifest.module_id,
                         "startup_checks",
                         &check.name,
                         format!("required {reason}"),
@@ -2115,11 +1522,11 @@ fn validate_lifecycle_activation_jobs(
             if !module_declares_runtime_function(module, &job.function_name) {
                 let reason = format!(
                     "activation job `{}` references function `{}` not declared by module `{}`",
-                    job.name, job.function_name, module.manifest.name
+                    job.name, job.function_name, module.manifest.module_id
                 );
                 if !job.required {
                     warn_optional_lifecycle_skip(
-                        &module.manifest.name,
+                        &module.manifest.module_id,
                         "activation_jobs",
                         &job.name,
                         &reason,
@@ -2127,7 +1534,7 @@ fn validate_lifecycle_activation_jobs(
                     continue;
                 }
                 return Err(lifecycle_validation_error(
-                    &module.manifest.name,
+                    &module.manifest.module_id,
                     "activation_jobs",
                     &job.name,
                     format!("required {reason}"),
@@ -2140,7 +1547,7 @@ fn validate_lifecycle_activation_jobs(
                 );
                 if !job.required {
                     warn_optional_lifecycle_skip(
-                        &module.manifest.name,
+                        &module.manifest.module_id,
                         "activation_jobs",
                         &job.name,
                         &reason,
@@ -2148,7 +1555,7 @@ fn validate_lifecycle_activation_jobs(
                     continue;
                 }
                 return Err(lifecycle_validation_error(
-                    &module.manifest.name,
+                    &module.manifest.module_id,
                     "activation_jobs",
                     &job.name,
                     format!("required {reason}"),
@@ -2243,7 +1650,7 @@ pub fn scheduled_functions(
                     ErrorCode::Validation,
                     format!(
                         "scheduled runtime function for module {} is missing a name",
-                        module.manifest.name
+                        module.manifest.module_id
                     ),
                 ));
             }
@@ -2252,10 +1659,10 @@ pub fn scheduled_functions(
                     ErrorCode::Validation,
                     format!(
                         "scheduled runtime function {}:{} references function {} not declared by module {}",
-                        module.manifest.name,
+                        module.manifest.module_id,
                         schedule.name,
                         schedule.function_name,
-                        module.manifest.name
+                        module.manifest.module_id
                     ),
                 ));
             }
@@ -2264,7 +1671,7 @@ pub fn scheduled_functions(
                     ErrorCode::Validation,
                     format!(
                         "scheduled runtime function {}:{} references missing function {}",
-                        module.manifest.name, schedule.name, schedule.function_name
+                        module.manifest.module_id, schedule.name, schedule.function_name
                     ),
                 ));
             };
@@ -2273,13 +1680,13 @@ pub fn scheduled_functions(
                     ErrorCode::Validation,
                     format!(
                         "scheduled runtime function {}:{} has invalid cron expression: {error}",
-                        module.manifest.name, schedule.name
+                        module.manifest.module_id, schedule.name
                     ),
                 )
             })?;
             schedules.push(ScheduledFunctionDefinition {
-                schedule_key: format!("{}:{}", module.manifest.name, schedule.name),
-                module_name: module.manifest.name.clone(),
+                schedule_key: format!("{}:{}", module.manifest.module_id, schedule.name),
+                module_name: module.manifest.module_id.clone(),
                 schedule_name: schedule.name.clone(),
                 function_name: schedule.function_name.clone(),
                 cron: schedule.cron.clone(),
@@ -2560,28 +1967,6 @@ pub fn runtime_config_descriptors_with_composition(
             restart_only: true,
             description: "Whether this host linked module is loaded on service startup.",
         });
-    let remote_module_enabled_descriptors =
-        ctx.config
-            .module_sources
-            .remote
-            .iter()
-            .map(|source| RuntimeConfigDescriptor {
-                key: module_enabled_config_key(&source.name),
-                scope: RuntimeConfigScope::Shared,
-                group: Some("modules"),
-                section: None,
-                order: 10,
-                visible_when: None,
-                generated: None,
-                value_type: RuntimeConfigType::Bool,
-                default: serde_json::json!(remote_module_enabled_from_config(
-                    &ctx.config,
-                    &source.name
-                )),
-                editable: true,
-                restart_only: true,
-                description: "Whether this remote module is loaded on service startup.",
-            });
     let module_descriptors = linked_module_entries(profile)
         .iter()
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
@@ -2600,7 +1985,6 @@ pub fn runtime_config_descriptors_with_composition(
         .cloned()
         .chain(module_enabled_descriptors)
         .chain(host_module_enabled_descriptors)
-        .chain(remote_module_enabled_descriptors)
         .chain(module_descriptors)
         .collect())
 }
@@ -2650,8 +2034,8 @@ mod tests {
     use platform_core::{
         AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
         LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS, RedisConfig,
-        RemoteModuleSourceConfig, RuntimeConfigProvider, RuntimeConfigRegistry,
-        RuntimeConfigSnapshot, ServiceConfig, TelemetryConfig, apply_migrations,
+        RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigSnapshot, ServiceConfig,
+        TelemetryConfig, apply_migrations,
     };
     use platform_module::{
         ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
@@ -2677,14 +2061,25 @@ mod tests {
         }
     }
 
+    async fn load_admin_module_metadata(
+        ctx: &AppContext,
+    ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
+        load_admin_module_metadata_with_composition_and_provider_plan(
+            ctx,
+            &HostComposition::default(),
+            None,
+        )
+        .await
+    }
+
     #[test]
     fn linked_module_entry_names_match_manifests() {
         for profile in [CompositionProfile::Core, CompositionProfile::Demo] {
             for entry in linked_module_entries(profile) {
                 assert_eq!(
-                    entry.module_name,
-                    (entry.manifest)().name,
-                    "linked module entry name must match ModuleManifest::name"
+                    Some(entry.module_name),
+                    (entry.manifest)().module_id.rsplit('/').next(),
+                    "linked module entry slug must match the local ModuleManifest ID segment"
                 );
             }
         }
@@ -2694,31 +2089,31 @@ mod tests {
     fn core_profile_excludes_demo_linked_modules() {
         let names = module_manifests_for_profile(CompositionProfile::Core)
             .into_iter()
-            .map(|manifest| manifest.name)
+            .map(|manifest| manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["platform-story"]);
+        assert_eq!(names, vec!["lenso/platform-story"]);
     }
 
     #[test]
     fn demo_profile_includes_fixture_linked_modules() {
         let names = module_manifests_for_profile(CompositionProfile::Demo)
             .into_iter()
-            .map(|manifest| manifest.name)
+            .map(|manifest| manifest.module_id)
             .collect::<Vec<_>>();
 
         assert_eq!(
             names,
             vec![
-                auth::module::MODULE_NAME,
-                auth_anonymous::module::MODULE_NAME,
-                auth_oauth::module::MODULE_NAME,
-                auth_password::module::MODULE_NAME,
-                auth_phone::module::MODULE_NAME,
-                auth_github::module::MODULE_NAME,
-                auth_google::module::MODULE_NAME,
-                auth_oidc::module::MODULE_NAME,
-                story::module::MODULE_NAME,
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-oauth",
+                "lenso/auth-password",
+                "lenso/auth-phone",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
+                "lenso/platform-story",
             ]
         );
     }
@@ -2886,13 +2281,14 @@ mod tests {
             ));
 
         assert_eq!(linked.module_name, auth_phone::module::MODULE_NAME);
-        assert_eq!(manifest.name, auth_phone::module::MODULE_NAME);
+        assert_eq!(manifest.module_id, "lenso/auth-phone");
         assert_eq!(
-            manifest.dependencies,
-            vec![
-                auth::module::MODULE_NAME.to_owned(),
-                auth_password::module::MODULE_NAME.to_owned(),
-            ]
+            manifest
+                .requires
+                .iter()
+                .map(|requirement| requirement.module_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["lenso/auth", "lenso/auth-password",]
         );
         assert!(
             manifest
@@ -2980,10 +2376,10 @@ mod tests {
         let names = modules_for_config_with_composition(&ctx, &composition)
             .expect("host composition modules should load")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert!(names.iter().any(|name| name == "billing"));
+        assert!(names.iter().any(|name| name == "fixture/billing"));
     }
 
     #[tokio::test]
@@ -3057,21 +2453,21 @@ mod tests {
     fn default_module_manifests_use_demo_profile() {
         let names = module_manifests()
             .into_iter()
-            .map(|manifest| manifest.name)
+            .map(|manifest| manifest.module_id)
             .collect::<Vec<_>>();
 
         assert_eq!(
             names,
             vec![
-                auth::module::MODULE_NAME,
-                auth_anonymous::module::MODULE_NAME,
-                auth_oauth::module::MODULE_NAME,
-                auth_password::module::MODULE_NAME,
-                auth_phone::module::MODULE_NAME,
-                auth_github::module::MODULE_NAME,
-                auth_google::module::MODULE_NAME,
-                auth_oidc::module::MODULE_NAME,
-                story::module::MODULE_NAME,
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-oauth",
+                "lenso/auth-password",
+                "lenso/auth-phone",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
+                "lenso/platform-story",
             ]
         );
     }
@@ -3081,7 +2477,7 @@ mod tests {
         assert_eq!(
             linked_http_route_owners_for_profile(CompositionProfile::Core),
             vec![LinkedHttpRouteOwner {
-                module_name: "platform-story".to_owned(),
+                module_name: "lenso/platform-story".to_owned(),
                 public_prefixes: &["/admin/runtime/stories"],
             }]
         );
@@ -3089,35 +2485,35 @@ mod tests {
             linked_http_route_owners_for_profile(CompositionProfile::Demo),
             vec![
                 LinkedHttpRouteOwner {
-                    module_name: "auth".to_owned(),
+                    module_name: "lenso/auth".to_owned(),
                     public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-anonymous".to_owned(),
+                    module_name: "lenso/auth-anonymous".to_owned(),
                     public_prefixes: &["/v1/auth/anonymous/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-password".to_owned(),
+                    module_name: "lenso/auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-phone".to_owned(),
+                    module_name: "lenso/auth-phone".to_owned(),
                     public_prefixes: &["/v1/auth/phone/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-github".to_owned(),
+                    module_name: "lenso/auth-github".to_owned(),
                     public_prefixes: &["/v1/auth/github/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-google".to_owned(),
+                    module_name: "lenso/auth-google".to_owned(),
                     public_prefixes: &["/v1/auth/google/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-oidc".to_owned(),
+                    module_name: "lenso/auth-oidc".to_owned(),
                     public_prefixes: &["/.well-known/", "/oauth/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "platform-story".to_owned(),
+                    module_name: "lenso/platform-story".to_owned(),
                     public_prefixes: &["/admin/runtime/stories"],
                 },
             ]
@@ -3135,10 +2531,10 @@ mod tests {
         let names = modules_for_config(&ctx)
             .expect("core linked profile should parse")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["platform-story"]);
+        assert_eq!(names, vec!["lenso/platform-story"]);
     }
 
     #[tokio::test]
@@ -3219,16 +2615,16 @@ mod tests {
         let names = modules_for_config(&ctx)
             .expect("demo profile")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert!(!names.iter().any(|name| name == "auth-oauth"));
-        assert!(!names.iter().any(|name| name == "auth-anonymous"));
-        assert!(!names.iter().any(|name| name == "auth-password"));
-        assert!(!names.iter().any(|name| name == "auth-phone"));
-        assert!(!names.iter().any(|name| name == "auth-github"));
-        assert!(!names.iter().any(|name| name == "auth-google"));
-        assert!(!names.iter().any(|name| name == "auth-oidc"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-oauth"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-anonymous"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-password"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-phone"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-github"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-google"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-oidc"));
     }
 
     #[tokio::test]
@@ -3248,28 +2644,28 @@ mod tests {
         let names = modules_for_config(&ctx)
             .expect("demo profile")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert!(!names.iter().any(|name| name == "auth-oauth"));
-        assert!(!names.iter().any(|name| name == "auth-github"));
-        assert!(!names.iter().any(|name| name == "auth-google"));
-        assert!(names.iter().any(|name| name == "auth-password"));
-        assert!(names.iter().any(|name| name == "auth-phone"));
-        assert!(names.iter().any(|name| name == "auth-oidc"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-oauth"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-github"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-google"));
+        assert!(names.iter().any(|name| name == "lenso/auth-password"));
+        assert!(names.iter().any(|name| name == "lenso/auth-phone"));
+        assert!(names.iter().any(|name| name == "lenso/auth-oidc"));
 
         let metadata = load_admin_module_metadata(&ctx)
             .await
             .expect("module metadata should load");
         let auth_github = metadata
             .iter()
-            .find(|module| module.module_name == "auth-github")
+            .find(|module| module.module_name == "lenso/auth-github")
             .expect("dependency-disabled GitHub provider should remain visible in metadata");
 
         assert!(matches!(
             &auth_github.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth-oauth"
+                if message == "module dependency disabled: lenso/auth-oauth"
         ));
     }
 
@@ -3290,28 +2686,28 @@ mod tests {
         let names = modules_for_config(&ctx)
             .expect("demo profile")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert!(!names.iter().any(|name| name == "auth-oauth"));
-        assert!(!names.iter().any(|name| name == "auth-github"));
-        assert!(!names.iter().any(|name| name == "auth-google"));
-        assert!(names.iter().any(|name| name == "auth-password"));
-        assert!(names.iter().any(|name| name == "auth-phone"));
-        assert!(names.iter().any(|name| name == "auth-oidc"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-oauth"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-github"));
+        assert!(!names.iter().any(|name| name == "lenso/auth-google"));
+        assert!(names.iter().any(|name| name == "lenso/auth-password"));
+        assert!(names.iter().any(|name| name == "lenso/auth-phone"));
+        assert!(names.iter().any(|name| name == "lenso/auth-oidc"));
 
         let metadata = load_admin_module_metadata(&ctx)
             .await
             .expect("module metadata should load");
         let auth_google = metadata
             .iter()
-            .find(|module| module.module_name == "auth-google")
+            .find(|module| module.module_name == "lenso/auth-google")
             .expect("dependency-disabled Google provider should remain visible in metadata");
 
         assert!(matches!(
             &auth_google.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth-oauth"
+                if message == "module dependency disabled: lenso/auth-oauth"
         ));
     }
 
@@ -3334,104 +2730,83 @@ mod tests {
             .expect("module metadata should load");
         let auth_oauth = metadata
             .iter()
-            .find(|module| module.module_name == "auth-oauth")
+            .find(|module| module.module_name == "lenso/auth-oauth")
             .expect("dependency-disabled substrate should remain visible in metadata");
         let auth_anonymous = metadata
             .iter()
-            .find(|module| module.module_name == "auth-anonymous")
+            .find(|module| module.module_name == "lenso/auth-anonymous")
             .expect("dependency-disabled provider should remain visible in metadata");
         let auth_password = metadata
             .iter()
-            .find(|module| module.module_name == "auth-password")
+            .find(|module| module.module_name == "lenso/auth-password")
             .expect("dependency-disabled provider should remain visible in metadata");
         let auth_phone = metadata
             .iter()
-            .find(|module| module.module_name == "auth-phone")
+            .find(|module| module.module_name == "lenso/auth-phone")
             .expect("dependency-disabled provider should remain visible in metadata");
         let auth_github = metadata
             .iter()
-            .find(|module| module.module_name == "auth-github")
+            .find(|module| module.module_name == "lenso/auth-github")
             .expect("dependency-disabled provider should remain visible in metadata");
         let auth_google = metadata
             .iter()
-            .find(|module| module.module_name == "auth-google")
+            .find(|module| module.module_name == "lenso/auth-google")
             .expect("dependency-disabled provider should remain visible in metadata");
         let auth_oidc = metadata
             .iter()
-            .find(|module| module.module_name == "auth-oidc")
+            .find(|module| module.module_name == "lenso/auth-oidc")
             .expect("dependency-disabled provider should remain visible in metadata");
 
-        assert_eq!(
-            auth_oauth.dependencies,
-            vec![auth::module::MODULE_NAME.to_owned()]
-        );
-        assert_eq!(
-            auth_anonymous.dependencies,
-            vec![auth::module::MODULE_NAME.to_owned()]
-        );
-        assert_eq!(
-            auth_password.dependencies,
-            vec![auth::module::MODULE_NAME.to_owned()]
-        );
+        assert_eq!(auth_oauth.dependencies, vec!["lenso/auth".to_owned()]);
+        assert_eq!(auth_anonymous.dependencies, vec!["lenso/auth".to_owned()]);
+        assert_eq!(auth_password.dependencies, vec!["lenso/auth".to_owned()]);
         assert_eq!(
             auth_phone.dependencies,
-            vec![
-                auth::module::MODULE_NAME.to_owned(),
-                auth_password::module::MODULE_NAME.to_owned(),
-            ]
+            vec!["lenso/auth".to_owned(), "lenso/auth-password".to_owned(),]
         );
         assert_eq!(
             auth_github.dependencies,
-            vec![
-                auth::module::MODULE_NAME.to_owned(),
-                auth_oauth::module::MODULE_NAME.to_owned()
-            ]
+            vec!["lenso/auth".to_owned(), "lenso/auth-oauth".to_owned()]
         );
         assert_eq!(
             auth_google.dependencies,
-            vec![
-                auth::module::MODULE_NAME.to_owned(),
-                auth_oauth::module::MODULE_NAME.to_owned()
-            ]
+            vec!["lenso/auth".to_owned(), "lenso/auth-oauth".to_owned()]
         );
-        assert_eq!(
-            auth_oidc.dependencies,
-            vec![auth::module::MODULE_NAME.to_owned()]
-        );
+        assert_eq!(auth_oidc.dependencies, vec!["lenso/auth".to_owned()]);
         assert!(matches!(
             &auth_oauth.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth"
+                if message == "module dependency disabled: lenso/auth"
         ));
         assert!(matches!(
             &auth_anonymous.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth"
+                if message == "module dependency disabled: lenso/auth"
         ));
         assert!(matches!(
             &auth_password.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth"
+                if message == "module dependency disabled: lenso/auth"
         ));
         assert!(matches!(
             &auth_phone.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth"
+                if message == "module dependency disabled: lenso/auth"
         ));
         assert!(matches!(
             &auth_github.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth"
+                if message == "module dependency disabled: lenso/auth"
         ));
         assert!(matches!(
             &auth_google.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth"
+                if message == "module dependency disabled: lenso/auth"
         ));
         assert!(matches!(
             &auth_oidc.load_status,
             ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: auth"
+                if message == "module dependency disabled: lenso/auth"
         ));
     }
 
@@ -3513,19 +2888,19 @@ mod tests {
         let names = modules_for_config(&ctx)
             .expect("demo linked profile should parse")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
         assert_eq!(
             names,
             vec![
-                "auth",
-                "auth-anonymous",
-                "auth-oauth",
-                "auth-github",
-                "auth-google",
-                "auth-oidc",
-                "platform-story"
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-oauth",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
+                "lenso/platform-story"
             ]
         );
     }
@@ -3552,36 +2927,36 @@ mod tests {
         let names = modules_for_config(&ctx)
             .expect("demo linked profile should parse")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
         assert_eq!(
             names,
             vec![
-                "auth",
-                "auth-anonymous",
-                "auth-oauth",
-                "auth-github",
-                "auth-google",
-                "auth-oidc",
-                "platform-story"
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-oauth",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
+                "lenso/platform-story"
             ]
         );
         let linked_http_names = linked_http_modules_for_context(&ctx)
             .expect("linked HTTP modules should load")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
         assert_eq!(
             linked_http_names,
             vec![
-                "auth",
-                "auth-anonymous",
-                "auth-github",
-                "auth-google",
-                "auth-oidc",
-                "platform-story"
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
+                "lenso/platform-story"
             ]
         );
     }
@@ -3608,18 +2983,18 @@ mod tests {
         let linked_http_names = linked_http_modules_for_context(&ctx)
             .expect("linked HTTP modules should load")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
         assert_eq!(
             linked_http_names,
             vec![
-                auth::module::MODULE_NAME,
-                auth_anonymous::module::MODULE_NAME,
-                auth_password::module::MODULE_NAME,
-                auth_phone::module::MODULE_NAME,
-                auth_github::module::MODULE_NAME,
-                auth_google::module::MODULE_NAME,
-                auth_oidc::module::MODULE_NAME,
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-password",
+                "lenso/auth-phone",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
             ]
         );
 
@@ -3628,7 +3003,7 @@ mod tests {
             .expect("module metadata should load");
         let story = metadata
             .iter()
-            .find(|module| module.module_name == "platform-story")
+            .find(|module| module.module_name == "lenso/platform-story")
             .expect("disabled story module should remain visible in metadata");
 
         assert!(matches!(
@@ -3737,114 +3112,6 @@ mod tests {
         assert!(!groups.iter().any(|(id, _)| *id == "auth-phone.password"));
     }
 
-    #[tokio::test]
-    async fn runtime_config_descriptors_include_remote_module_enabled_flags() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.module_sources.remote.push(RemoteModuleSourceConfig {
-            name: "remote-crm".to_owned(),
-            base_url: "http://127.0.0.1:65535".to_owned(),
-            auth_token_env: None,
-            timeout_ms: 1,
-        });
-        config.modules.insert(
-            "remote-crm".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        let keys = runtime_config_descriptors(&ctx)
-            .expect("descriptors should load")
-            .into_iter()
-            .map(|descriptor| (descriptor.key, descriptor.restart_only, descriptor.default))
-            .collect::<Vec<_>>();
-
-        assert!(keys.iter().any(|(key, restart_only, default)| {
-            key == "modules.remote-crm.enabled" && *restart_only && default == &json!(false)
-        }));
-    }
-
-    #[tokio::test]
-    async fn load_modules_skips_runtime_disabled_remote_modules() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.module_sources.remote.push(RemoteModuleSourceConfig {
-            name: "remote-crm".to_owned(),
-            base_url: "http://127.0.0.1:65535".to_owned(),
-            auth_token_env: None,
-            timeout_ms: 1,
-        });
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-        let registry =
-            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
-                .expect("registry");
-        let mut stored = BTreeMap::new();
-        stored.insert(
-            ("*".to_owned(), "modules.remote-crm.enabled".to_owned()),
-            json!(false),
-        );
-        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
-        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
-            snapshot: Arc::new(snapshot),
-        }));
-
-        let names = load_modules(&ctx)
-            .await
-            .expect("disabled remote should not be loaded")
-            .into_iter()
-            .map(|module| module.manifest.name)
-            .collect::<Vec<_>>();
-
-        assert!(!names.iter().any(|name| name == "remote-crm"));
-    }
-
-    #[tokio::test]
-    async fn module_metadata_reports_disabled_remote_modules() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.module_sources.remote.push(RemoteModuleSourceConfig {
-            name: "remote-grpc-crm".to_owned(),
-            base_url: "grpc://127.0.0.1:65535".to_owned(),
-            auth_token_env: None,
-            timeout_ms: 1,
-        });
-        config.modules.insert(
-            "remote-grpc-crm".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let remote = metadata
-            .iter()
-            .find(|module| module.module_name == "remote-grpc-crm")
-            .expect("disabled remote module should remain visible in metadata");
-
-        assert_eq!(remote.source, ModuleSource::Remote);
-        assert!(matches!(
-            &remote.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module disabled by configuration"
-        ));
-        assert!(matches!(
-            &remote.source_diagnostics,
-            Some(AdminModuleSourceDiagnostics::Remote(diagnostics))
-                if diagnostics.transport == "grpc"
-                    && diagnostics.base_url == "http://127.0.0.1:65535"
-        ));
-    }
-
     #[test]
     fn migrations_for_config_skip_disabled_linked_module_migrations() {
         let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
@@ -3900,18 +3167,18 @@ mod tests {
         let names = linked_http_modules_for_config(&config)
             .expect("demo linked profile should parse")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
         assert_eq!(
             names,
             vec![
-                "auth",
-                "auth-anonymous",
-                "auth-github",
-                "auth-google",
-                "auth-oidc",
-                "platform-story"
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
+                "lenso/platform-story"
             ]
         );
     }
@@ -3930,19 +3197,19 @@ mod tests {
         let names = linked_http_modules_for_config(&config)
             .expect("demo linked profile should parse")
             .into_iter()
-            .map(|module| module.manifest.name)
+            .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
         assert_eq!(
             names,
             vec![
-                auth::module::MODULE_NAME,
-                auth_anonymous::module::MODULE_NAME,
-                auth_password::module::MODULE_NAME,
-                auth_phone::module::MODULE_NAME,
-                auth_github::module::MODULE_NAME,
-                auth_google::module::MODULE_NAME,
-                auth_oidc::module::MODULE_NAME,
+                "lenso/auth",
+                "lenso/auth-anonymous",
+                "lenso/auth-password",
+                "lenso/auth-phone",
+                "lenso/auth-github",
+                "lenso/auth-google",
+                "lenso/auth-oidc",
             ]
         );
 
@@ -3999,7 +3266,7 @@ mod tests {
             .expect("module metadata should load");
         let auth_password = metadata
             .iter()
-            .find(|module| module.module_name == "auth-password")
+            .find(|module| module.module_name == "lenso/auth-password")
             .expect("disabled module should remain visible in metadata");
 
         assert!(matches!(
@@ -4029,35 +3296,35 @@ mod tests {
             linked_http_route_owners(),
             vec![
                 LinkedHttpRouteOwner {
-                    module_name: "auth".to_owned(),
+                    module_name: "lenso/auth".to_owned(),
                     public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-anonymous".to_owned(),
+                    module_name: "lenso/auth-anonymous".to_owned(),
                     public_prefixes: &["/v1/auth/anonymous/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-password".to_owned(),
+                    module_name: "lenso/auth-password".to_owned(),
                     public_prefixes: &["/v1/auth/password/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-phone".to_owned(),
+                    module_name: "lenso/auth-phone".to_owned(),
                     public_prefixes: &["/v1/auth/phone/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-github".to_owned(),
+                    module_name: "lenso/auth-github".to_owned(),
                     public_prefixes: &["/v1/auth/github/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-google".to_owned(),
+                    module_name: "lenso/auth-google".to_owned(),
                     public_prefixes: &["/v1/auth/google/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "auth-oidc".to_owned(),
+                    module_name: "lenso/auth-oidc".to_owned(),
                     public_prefixes: &["/.well-known/", "/oauth/"],
                 },
                 LinkedHttpRouteOwner {
-                    module_name: "platform-story".to_owned(),
+                    module_name: "lenso/platform-story".to_owned(),
                     public_prefixes: &["/admin/runtime/stories"],
                 },
             ]
@@ -4073,7 +3340,7 @@ mod tests {
             assert!(
                 !module.manifest.http_routes.is_empty(),
                 "linked HTTP module `{}` must declare ModuleManifest::http_routes",
-                module.manifest.name
+                module.manifest.module_id
             );
             for route in &module.manifest.http_routes {
                 assert!(
@@ -4081,7 +3348,7 @@ mod tests {
                         .iter()
                         .any(|prefix| route.path.starts_with(prefix)),
                     "linked HTTP module `{}` declares manifest route `{}` outside its public prefixes",
-                    module.manifest.name,
+                    module.manifest.module_id,
                     route.path
                 );
             }
@@ -4095,17 +3362,17 @@ mod tests {
         for module in linked_http_modules() {
             let registered_manifest = manifests
                 .iter()
-                .find(|manifest| manifest.name == module.manifest.name)
+                .find(|manifest| manifest.module_id == module.manifest.module_id)
                 .unwrap_or_else(|| {
                     panic!(
                         "linked HTTP module `{}` is missing from module_manifests",
-                        module.manifest.name
+                        module.manifest.module_id
                     )
                 });
             assert_eq!(
                 registered_manifest, &module.manifest,
                 "linked HTTP module `{}` must use the registered ModuleManifest",
-                module.manifest.name
+                module.manifest.module_id
             );
         }
     }
@@ -4126,7 +3393,7 @@ mod tests {
     fn platform_story_manifest_declares_story_console_surface() {
         let manifest = module_manifests()
             .into_iter()
-            .find(|manifest| manifest.name == "platform-story")
+            .find(|manifest| manifest.module_id == "lenso/platform-story")
             .expect("platform-story manifest should be registered");
         let console_surface_contract: Value = serde_json::from_str(include_str!(
             "../../../modules/story/console/console-surface.json"
@@ -4143,7 +3410,7 @@ mod tests {
             manifest.capabilities,
             required_capabilities_from_contract(&console_surface_contract)
         );
-        assert_eq!(manifest.name, console_surface_contract["id"]);
+        assert_eq!(manifest.module_id, console_surface_contract["id"]);
         assert_eq!(surface.name, console_surface_contract["surfaceName"]);
         assert_eq!(surface.label, console_surface_contract["label"]);
         assert_eq!(surface.area, ConsoleArea::Runtime);
@@ -4165,7 +3432,7 @@ mod tests {
             required_capabilities_from_contract(&console_surface_contract)
         );
 
-        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        let lints = lint_module_manifest(&manifest);
         assert!(
             lints
                 .iter()
@@ -4232,7 +3499,7 @@ mod tests {
         );
         assert_eq!(
             row.1["_lenso_runtime"]["causation_id"],
-            "module_lifecycle:test-module:warm cache"
+            "module_lifecycle:fixture/test-module:warm cache"
         );
         assert_eq!(row.2, 7);
         assert_eq!(row.3, "corr_lifecycle_1");
@@ -4255,7 +3522,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::Validation);
         assert_eq!(
             error.details[0].field.as_deref(),
-            Some("module.test-module.lifecycle.activation_jobs.warm cache")
+            Some("module.fixture/test-module.lifecycle.activation_jobs.warm cache")
         );
         assert!(
             error.details[0].reason.contains("missing function"),
@@ -4287,7 +3554,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::Validation);
         assert_eq!(
             error.details[0].field.as_deref(),
-            Some("module.test-module.lifecycle.startup_checks.function registered")
+            Some("module.fixture/test-module.lifecycle.startup_checks.function registered")
         );
         assert!(
             error.details[0].reason.contains("missing function"),
@@ -4319,7 +3586,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::Validation);
         assert_eq!(
             error.details[0].field.as_deref(),
-            Some("module.test-module.lifecycle.startup_checks.function registered")
+            Some("module.fixture/test-module.lifecycle.startup_checks.function registered")
         );
         assert!(
             error.details[0].reason.contains("not declared"),
@@ -4351,7 +3618,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::Validation);
         assert_eq!(
             error.details[0].field.as_deref(),
-            Some("module.test-module.lifecycle.startup_checks.capability declared")
+            Some("module.fixture/test-module.lifecycle.startup_checks.capability declared")
         );
         assert!(
             error.details[0].reason.contains("missing capability"),
@@ -4405,7 +3672,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::Validation);
         assert_eq!(
             error.details[0].field.as_deref(),
-            Some("module.test-module.lifecycle.activation_jobs.warm cache")
+            Some("module.fixture/test-module.lifecycle.activation_jobs.warm cache")
         );
         assert!(
             error.details[0].reason.contains("not declared"),
@@ -4531,7 +3798,8 @@ mod tests {
 
     impl From<TestLifecycleModuleBuilder> for Module {
         fn from(builder: TestLifecycleModuleBuilder) -> Self {
-            let mut manifest = ModuleManifest::builder("test-module").lifecycle(builder.lifecycle);
+            let mut manifest =
+                ModuleManifest::builder("fixture/test-module").lifecycle(builder.lifecycle);
             if builder.declare_runtime_function {
                 manifest = manifest.runtime(RuntimeSurface {
                     functions: vec![RuntimeFunctionDeclaration {
@@ -4589,89 +3857,13 @@ mod tests {
         registry
     }
 
-    #[test]
-    fn remote_module_service_specs_parse() {
-        let specs = parse_remote_module_service_specs(&serde_json::json!({
-            "modules": [
-                {
-                    "moduleName": "crm",
-                    "services": [
-                        {
-                            "name": "crm-api",
-                            "command": "pnpm dev",
-                            "cwd": "../crm",
-                            "readyUrl": "http://127.0.0.1:4100/lenso/module/v1/manifest",
-                            "readyTimeoutMs": 12000,
-                            "autoStart": true
-                        }
-                    ]
-                }
-            ],
-            "version": 1
-        }))
-        .expect("service specs parse");
-
-        assert_eq!(specs.len(), 1);
-        assert_eq!(specs[0].module_name, "crm");
-        assert_eq!(specs[0].service_name, "crm-api");
-        assert_eq!(specs[0].ready_timeout_ms, 12000);
-    }
-
-    #[test]
-    fn remote_module_service_state_path_sanitizes_names() {
-        let spec = RemoteModuleServiceSpec {
-            module_name: "CRM Module".to_owned(),
-            service_name: "API Worker!".to_owned(),
-            command: "pnpm dev".to_owned(),
-            cwd: None,
-            ready_url: "http://127.0.0.1:4100/lenso/module/v1/manifest".to_owned(),
-            ready_timeout_ms: 12000,
-            auto_start: true,
-        };
-
-        let path = remote_module_service_state_path(Path::new(".lenso"), &spec, "lock");
-
-        assert_eq!(
-            path,
-            PathBuf::from(".lenso/remote-crm-module-api-worker.lock")
-        );
-    }
-
-    #[test]
-    fn remote_module_service_lock_is_exclusive_and_released() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system time should be after Unix epoch")
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "lenso-bootstrap-service-lock-{}-{unique}",
-            std::process::id()
-        ));
-        let lock_file_path = dir.join("service.lock");
-        let pid_file_path = dir.join("service.pid");
-
-        let _ = std::fs::remove_dir_all(&dir);
-        create_remote_module_service_lock(&lock_file_path)
-            .expect("first lock claim should create the lock");
-        let second_claim = create_remote_module_service_lock(&lock_file_path)
-            .expect_err("second lock claim should fail while the file exists");
-        assert_eq!(second_claim.kind(), std::io::ErrorKind::AlreadyExists);
-        std::fs::write(&pid_file_path, "123\n").expect("pid file should write");
-
-        release_remote_module_service_state(&lock_file_path, &pid_file_path);
-
-        assert!(!lock_file_path.exists());
-        assert!(!pid_file_path.exists());
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
     const TEST_HOST_MIGRATIONS: &[Migration] = &[Migration {
         name: "billing/0001_init",
         sql: "select 1;",
     }];
 
     fn test_host_manifest() -> ModuleManifest {
-        ModuleManifest::builder("billing").build()
+        ModuleManifest::builder("fixture/billing").build()
     }
 
     fn test_host_linked_module() -> HostLinkedModule {

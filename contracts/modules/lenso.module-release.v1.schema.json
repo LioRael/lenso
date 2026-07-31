@@ -1,0 +1,2172 @@
+{
+  "$defs": {
+    "AdminAction": {
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "confirmation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdminActionConfirmation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "danger_level": {
+          "$ref": "#/$defs/AdminActionDangerLevel"
+        },
+        "input_schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdminActionInputSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceOperationMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "capability"
+      ],
+      "type": "object"
+    },
+    "AdminActionConfirmation": {
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "required_phrase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "AdminActionDangerLevel": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "type": "string"
+    },
+    "AdminActionInputField": {
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "field_type": {
+          "$ref": "#/$defs/FieldType"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "field_type"
+      ],
+      "type": "object"
+    },
+    "AdminActionInputSchema": {
+      "properties": {
+        "fields": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdminActionInputField"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AdminDeclarativeComponent": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "metric_strip",
+              "type": "string"
+            },
+            "metrics": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/AdminMetricBinding"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "capability": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "query_value",
+              "type": "string"
+            },
+            "query": {
+              "type": "string"
+            },
+            "value_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "query",
+            "capability",
+            "value_path"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "entity": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "entity_table",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entity"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "entity": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "entity_detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entity"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AdminDeclarativePage": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sections": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdminDeclarativeSection"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "label"
+      ],
+      "type": "object"
+    },
+    "AdminDeclarativeSection": {
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/AdminDeclarativeComponent"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "component"
+      ],
+      "type": "object"
+    },
+    "AdminDeclarativeSurface": {
+      "properties": {
+        "actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdminAction"
+          },
+          "type": "array"
+        },
+        "fallback_schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdminSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdminDeclarativePage"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "AdminEmbeddedEntry": {
+      "oneOf": [
+        {
+          "properties": {
+            "allowed_origins": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "url",
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "url"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AdminEmbeddedRuntime": {
+      "enum": [
+        "iframe",
+        "wasm",
+        "js_bundle"
+      ],
+      "type": "string"
+    },
+    "AdminEmbeddedSurface": {
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/AdminEmbeddedEntry"
+        },
+        "fallback_schema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdminSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "permissions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdminPermission"
+          },
+          "type": "array"
+        },
+        "runtime": {
+          "$ref": "#/$defs/AdminEmbeddedRuntime"
+        },
+        "sandbox": {
+          "$ref": "#/$defs/AdminSandboxPolicy"
+        }
+      },
+      "required": [
+        "runtime",
+        "entry",
+        "sandbox"
+      ],
+      "type": "object"
+    },
+    "AdminMetricBinding": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "value_path"
+      ],
+      "type": "object"
+    },
+    "AdminPermission": {
+      "oneOf": [
+        {
+          "properties": {
+            "entity": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "read_entity",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entity"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "invoke_action",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "action"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "AdminSandboxPolicy": {
+      "properties": {
+        "allow_forms": {
+          "default": false,
+          "type": "boolean"
+        },
+        "allow_popups": {
+          "default": false,
+          "type": "boolean"
+        },
+        "allow_same_origin": {
+          "default": false,
+          "type": "boolean"
+        },
+        "allow_scripts": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AdminSchema": {
+      "description": "A module's declared admin surface: which entities it exposes for management.",
+      "properties": {
+        "entities": {
+          "items": {
+            "$ref": "#/$defs/EntitySchema"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entities"
+      ],
+      "type": "object"
+    },
+    "AdminSurface": {
+      "description": "A module's admin surface.\n\n`Schema` is implemented today. Custom surface variants are data contracts\nonly until the Runtime Console implements their renderers/policies.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AdminSchema",
+          "description": "Schema-driven CRUD: console renders a generic UI from this declaration.",
+          "properties": {
+            "kind": {
+              "const": "schema",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/AdminDeclarativeSurface",
+          "description": "Host-rendered custom UI built from trusted Runtime Console components.",
+          "properties": {
+            "kind": {
+              "const": "declarative_custom",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/AdminEmbeddedSurface",
+          "description": "Module-owned UI embedded behind a sandbox boundary.",
+          "properties": {
+            "kind": {
+              "const": "embedded_custom",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ArtifactReference": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "locator",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "AttestationReference": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "signer": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "locator",
+        "digest",
+        "issuer",
+        "signer"
+      ],
+      "type": "object"
+    },
+    "ConsoleActionInputBinding": {
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/ConsoleActionInputValue"
+        }
+      },
+      "required": [
+        "input",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ConsoleActionInputValue": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "slot_context",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ConsoleArea": {
+      "enum": [
+        "runtime",
+        "operations",
+        "data",
+        "configuration"
+      ],
+      "type": "string"
+    },
+    "ConsoleContribution": {
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/ConsoleContributionAction"
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "required_capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "target": {
+          "type": "string"
+        },
+        "target_version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target",
+        "target_version",
+        "label",
+        "action"
+      ],
+      "type": "object"
+    },
+    "ConsoleContributionAction": {
+      "oneOf": [
+        {
+          "properties": {
+            "input_bindings": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/ConsoleActionInputBinding"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "admin_action",
+              "type": "string"
+            },
+            "module": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "module",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ConsoleContributionKind": {
+      "enum": [
+        "admin_action"
+      ],
+      "type": "string"
+    },
+    "ConsoleNavigation": {
+      "properties": {
+        "group": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConsoleNavigationGroup"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "workspace": {
+          "$ref": "#/$defs/ConsoleWorkspaceRef"
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "type": "object"
+    },
+    "ConsoleNavigationGroup": {
+      "properties": {
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "order": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ConsolePackage": {
+      "properties": {
+        "export": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "export"
+      ],
+      "type": "object"
+    },
+    "ConsoleSlot": {
+      "properties": {
+        "accepts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ConsoleContributionKind"
+          },
+          "type": "array"
+        },
+        "context": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ConsoleSlotContext"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ConsoleSlotContext": {
+      "properties": {
+        "fields": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ConsoleSlotContextField"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ConsoleSlotContextField": {
+      "properties": {
+        "field_type": {
+          "$ref": "#/$defs/ConsoleSlotContextFieldType"
+        },
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "field_type"
+      ],
+      "type": "object"
+    },
+    "ConsoleSlotContextFieldType": {
+      "enum": [
+        "string",
+        "boolean",
+        "number",
+        "timestamp"
+      ],
+      "type": "string"
+    },
+    "ConsoleSurface": {
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/ConsoleArea"
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "navigation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConsoleNavigation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "package": {
+          "$ref": "#/$defs/ConsolePackage"
+        },
+        "required_capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "route": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "area",
+        "route",
+        "package"
+      ],
+      "type": "object"
+    },
+    "ConsoleWorkspaceRef": {
+      "properties": {
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "EntitySchema": {
+      "description": "One manageable entity (e.g. identity's \"users\").",
+      "properties": {
+        "fields": {
+          "description": "Ordered field descriptors driving list columns / detail rows.",
+          "items": {
+            "$ref": "#/$defs/FieldSchema"
+          },
+          "type": "array"
+        },
+        "label": {
+          "description": "Human label for the console, e.g. \"Users\".",
+          "type": "string"
+        },
+        "name": {
+          "description": "Stable entity key, unique within the module, e.g. \"users\".",
+          "type": "string"
+        },
+        "read_capability": {
+          "description": "Capability required to read this entity. Declared now; gated only\ncoarsely (AdminActor) this step. Fine-grained RBAC is a later spec.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "fields",
+        "read_capability"
+      ],
+      "type": "object"
+    },
+    "EventHandlerDeclaration": {
+      "properties": {
+        "event_name": {
+          "description": "Stable event name consumed from `platform.outbox`, e.g.\n`identity.user_registered.v1`.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Stable handler name used by Service Providers as the invoke path.",
+          "type": "string"
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceOperationMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "event_name"
+      ],
+      "type": "object"
+    },
+    "EventSurface": {
+      "properties": {
+        "handlers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EventHandlerDeclaration"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "FieldSchema": {
+      "description": "One field of an entity.",
+      "properties": {
+        "field_type": {
+          "$ref": "#/$defs/FieldType",
+          "description": "Rendering hint for the console's display layer."
+        },
+        "label": {
+          "description": "Human label, e.g. \"Email\".",
+          "type": "string"
+        },
+        "name": {
+          "description": "Key in the record's JSON object, e.g. \"email\".",
+          "type": "string"
+        },
+        "nullable": {
+          "default": false,
+          "description": "Whether the value may be null/absent.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "label",
+        "field_type"
+      ],
+      "type": "object"
+    },
+    "FieldType": {
+      "description": "Minimal field-type vocabulary. `Json` is the catch-all so any field renders.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "string",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "integer",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "boolean",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "timestamp",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "LifecycleActivationJobDeclaration": {
+      "properties": {
+        "function_name": {
+          "type": "string"
+        },
+        "input": {
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "type": "boolean"
+        },
+        "run_policy": {
+          "$ref": "#/$defs/LifecycleActivationRunPolicy",
+          "default": "every_startup"
+        }
+      },
+      "required": [
+        "name",
+        "function_name"
+      ],
+      "type": "object"
+    },
+    "LifecycleActivationRunPolicy": {
+      "enum": [
+        "every_startup"
+      ],
+      "type": "string"
+    },
+    "LifecycleStartupCheckDeclaration": {
+      "oneOf": [
+        {
+          "properties": {
+            "function_name": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "function_registered",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "function_name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "capability": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "capability_declared",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "capability"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "LifecycleSurface": {
+      "properties": {
+        "activation_jobs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LifecycleActivationJobDeclaration"
+          },
+          "type": "array"
+        },
+        "startup_checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LifecycleStartupCheckDeclaration"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ModuleCompatibilityDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "host_api_requirement": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lenso_requirement": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocol_digests": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rust_requirement": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targets": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "transports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ModuleConfigActivation": {
+      "enum": [
+        "none",
+        "build",
+        "restart",
+        "service_restart"
+      ],
+      "type": "string"
+    },
+    "ModuleConfigContract": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/ModuleConfigField"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ModuleConfigField": {
+      "additionalProperties": false,
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/ModuleConfigActivation"
+        },
+        "default": true,
+        "field_type": {
+          "$ref": "#/$defs/ModuleConfigFieldType"
+        },
+        "key": {
+          "type": "string"
+        },
+        "mutability": {
+          "$ref": "#/$defs/ModuleConfigMutability"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "scope": {
+          "$ref": "#/$defs/ModuleConfigScope"
+        },
+        "secret_reference": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ModuleConfigValidation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "field_type",
+        "required",
+        "scope",
+        "sensitive",
+        "secret_reference",
+        "mutability",
+        "activation"
+      ],
+      "type": "object"
+    },
+    "ModuleConfigFieldType": {
+      "enum": [
+        "string",
+        "integer",
+        "boolean",
+        "json"
+      ],
+      "type": "string"
+    },
+    "ModuleConfigMutability": {
+      "enum": [
+        "static",
+        "reloadable",
+        "runtime"
+      ],
+      "type": "string"
+    },
+    "ModuleConfigScope": {
+      "enum": [
+        "module",
+        "service",
+        "environment"
+      ],
+      "type": "string"
+    },
+    "ModuleConfigValidation": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_values": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maximum": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minimum": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pattern": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ModuleConsoleArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "exports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "host_api_requirement": {
+          "type": "string"
+        },
+        "integrity": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "provenance": {
+          "items": {
+            "$ref": "#/$defs/ArtifactReference"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "package",
+        "version",
+        "integrity",
+        "host_api_requirement"
+      ],
+      "type": "object"
+    },
+    "ModuleDelivery": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "archive_checksum": {
+              "type": "string"
+            },
+            "attestations": {
+              "items": {
+                "$ref": "#/$defs/AttestationReference"
+              },
+              "type": "array"
+            },
+            "binding": {
+              "type": "string"
+            },
+            "crate_version": {
+              "type": "string"
+            },
+            "default_features": {
+              "default": false,
+              "type": "boolean"
+            },
+            "features": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "linked",
+              "type": "string"
+            },
+            "migrations": {
+              "items": {
+                "$ref": "#/$defs/ArtifactReference"
+              },
+              "type": "array"
+            },
+            "package": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "package",
+            "crate_version",
+            "archive_checksum",
+            "binding"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "contract_digests": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "export": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "service",
+              "type": "string"
+            },
+            "responsibility_profile": {
+              "$ref": "#/$defs/ServiceResponsibilityProfile"
+            },
+            "service_id": {
+              "type": "string"
+            },
+            "service_release_digest": {
+              "type": "string"
+            },
+            "service_release_version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "service_id",
+            "service_release_version",
+            "service_release_digest",
+            "export",
+            "responsibility_profile"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModuleHttpMethod": {
+      "enum": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE"
+      ],
+      "type": "string"
+    },
+    "ModuleHttpRoute": {
+      "properties": {
+        "capability": {
+          "description": "Optional capability required before a future host proxy exposes this\nroute. No enforcement exists until the proxy protocol is implemented.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_name": {
+          "description": "Compact label used when this route appears as a runtime story node.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method": {
+          "$ref": "#/$defs/ModuleHttpMethod"
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceOperationMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "description": "Module-local path, e.g. `/contacts` or `/contacts/{id}`.",
+          "type": "string"
+        },
+        "story_title": {
+          "description": "Optional story title for direct requests to this route.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "method",
+        "path"
+      ],
+      "type": "object"
+    },
+    "ModuleManifest": {
+      "additionalProperties": false,
+      "description": "The serializable metadata a module exposes. Runtime config is deliberately\nNOT here — it stays an internal `&'static` field on [`crate::Module`]\nbecause the config registry needs the real (non-serde) `RuntimeConfigType`\nto validate. Only round-trippable fields belong here.",
+      "properties": {
+        "admin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdminSurface"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Admin surface: `Some(AdminSurface::Schema(_))` for schema-driven CRUD,\nfuture custom surfaces for richer module admin UI, or `None` for modules\nwith no admin surface (e.g. notifications)."
+        },
+        "capabilities": {
+          "default": [],
+          "description": "RESERVED SEAM — capabilities the module declares (perms/tenancy).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "config": {
+          "$ref": "#/$defs/ModuleConfigContract"
+        },
+        "console": {
+          "default": [],
+          "description": "Declared Runtime Console surfaces provided by trusted frontend packages.",
+          "items": {
+            "$ref": "#/$defs/ConsoleSurface"
+          },
+          "type": "array"
+        },
+        "console_contributions": {
+          "default": [],
+          "description": "Declared Runtime Console slot contributions attached to host or module-owned surfaces.",
+          "items": {
+            "$ref": "#/$defs/ConsoleContribution"
+          },
+          "type": "array"
+        },
+        "console_slots": {
+          "default": [],
+          "description": "Declared Runtime Console extension slots owned by host or module surfaces.",
+          "items": {
+            "$ref": "#/$defs/ConsoleSlot"
+          },
+          "type": "array"
+        },
+        "events": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventSurface"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Declared event subscriptions. These entries are manifest data only;\nsource bindings decide how to register executable behavior."
+        },
+        "http_routes": {
+          "default": [],
+          "description": "Declared module-owned HTTP routes. These are metadata only until a\nloading-source-specific mount/proxy protocol exists.",
+          "items": {
+            "$ref": "#/$defs/ModuleHttpRoute"
+          },
+          "type": "array"
+        },
+        "lifecycle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LifecycleSurface"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Declared lifecycle work. The host validates and schedules these entries;\nmodules do not receive arbitrary startup callbacks."
+        },
+        "migrations": {
+          "items": {
+            "$ref": "#/$defs/ModuleMigrationDeclaration"
+          },
+          "type": "array"
+        },
+        "module_id": {
+          "pattern": "^[a-z][a-z0-9_-]*/[a-z][a-z0-9_-]*$",
+          "type": "string"
+        },
+        "protocol": {
+          "const": "lenso.module-manifest.v1",
+          "type": "string"
+        },
+        "requires": {
+          "description": "Other Modules required by this business capability.",
+          "items": {
+            "$ref": "#/$defs/ModuleRequirement"
+          },
+          "type": "array"
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeSurface"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Declared runtime behavior. These entries are manifest data only; source\nbindings decide how to register executable behavior."
+        },
+        "story_display": {
+          "default": [],
+          "description": "Console story-display metadata.",
+          "items": {
+            "$ref": "#/$defs/StoryDisplayDescriptor"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "protocol",
+        "module_id"
+      ],
+      "type": "object"
+    },
+    "ModuleMigrationActivation": {
+      "enum": [
+        "before_activation",
+        "after_activation"
+      ],
+      "type": "string"
+    },
+    "ModuleMigrationDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "activation": {
+          "$ref": "#/$defs/ModuleMigrationActivation"
+        },
+        "destructive": {
+          "type": "boolean"
+        },
+        "migration_id": {
+          "type": "string"
+        },
+        "order": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reversible": {
+          "type": "boolean"
+        },
+        "store": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "migration_id",
+        "order",
+        "store",
+        "destructive",
+        "reversible",
+        "activation"
+      ],
+      "type": "object"
+    },
+    "ModuleRequirement": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "module_id": {
+          "type": "string"
+        },
+        "optional": {
+          "default": false,
+          "type": "boolean"
+        },
+        "version_requirement": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "module_id",
+        "version_requirement"
+      ],
+      "type": "object"
+    },
+    "RuntimeFunctionDeclaration": {
+      "properties": {
+        "input_schema": {
+          "description": "Optional schema identifier for the function input payload.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Stable function name used by `runtime.function_runs`.",
+          "type": "string"
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceOperationMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "queue": {
+          "description": "Queue name the host should use when registering the function.",
+          "type": "string"
+        },
+        "retry_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeRetryPolicyDeclaration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional retry policy requested by the module. The host still owns\nenforcement and may clamp values when behavior registration is added."
+        },
+        "version": {
+          "description": "Version for the declared function contract.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "queue"
+      ],
+      "type": "object"
+    },
+    "RuntimeRetryPolicyDeclaration": {
+      "properties": {
+        "initial_delay_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_attempts": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_attempts",
+        "initial_delay_ms"
+      ],
+      "type": "object"
+    },
+    "RuntimeSurface": {
+      "properties": {
+        "functions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RuntimeFunctionDeclaration"
+          },
+          "type": "array"
+        },
+        "schedules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ScheduledFunctionDeclaration"
+          },
+          "type": "array"
+        },
+        "workflows": {
+          "description": "Engine-neutral Durable Workflow definitions owned by this Module.\nAutonomous Service composition decides how to execute them; Host-managed\nProvider and Runtime Function behavior does not consume this metadata.",
+          "items": {
+            "$ref": "#/$defs/WorkflowDefinition"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "ScheduledFunctionDeclaration": {
+      "properties": {
+        "cron": {
+          "description": "Standard 5-field cron expression in UTC.",
+          "type": "string"
+        },
+        "function_name": {
+          "description": "Runtime function enqueued when this schedule is due.",
+          "type": "string"
+        },
+        "input": {
+          "default": null
+        },
+        "name": {
+          "description": "Stable schedule name scoped to the owning module.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "function_name",
+        "cron"
+      ],
+      "type": "object"
+    },
+    "ServiceOperationIdempotency": {
+      "enum": [
+        "none",
+        "idempotent",
+        "requires_key"
+      ],
+      "type": "string"
+    },
+    "ServiceOperationMetadata": {
+      "properties": {
+        "idempotency": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceOperationIdempotency"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputSchema": true,
+        "operationId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outputSchema": true,
+        "safeProbe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServiceOperationSafeProbe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeoutMs": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ServiceOperationSafeProbe": {
+      "properties": {
+        "expectStatus": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "input": true,
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ServiceResponsibilityProfile": {
+      "enum": [
+        "provider",
+        "autonomous"
+      ],
+      "type": "string"
+    },
+    "StoryDisplayDescriptor": {
+      "properties": {
+        "display_name": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/StoryDisplaySource"
+        },
+        "story_title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "source",
+        "display_name"
+      ],
+      "type": "object"
+    },
+    "StoryDisplaySource": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "execution_name",
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "http_request",
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "method",
+            "path"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "WorkflowCompensationDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "completionContract": {
+          "$ref": "#/$defs/WorkflowDataContract",
+          "description": "Versioned Event Contract that confirms the remote business effect was reversed."
+        },
+        "contract": {
+          "$ref": "#/$defs/WorkflowDataContract",
+          "description": "Versioned Event Contract used to request the compensation effect."
+        },
+        "name": {
+          "description": "Stable compensation behavior identity within this Workflow Definition.",
+          "type": "string"
+        },
+        "order": {
+          "description": "Explicit deterministic execution order. Lower values execute first.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "order",
+        "contract",
+        "completionContract"
+      ],
+      "type": "object"
+    },
+    "WorkflowDataContract": {
+      "additionalProperties": false,
+      "properties": {
+        "contractId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "contractId",
+        "version"
+      ],
+      "type": "object"
+    },
+    "WorkflowDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "inputContract": {
+          "$ref": "#/$defs/WorkflowDataContract"
+        },
+        "name": {
+          "description": "Stable workflow name within the owning Module.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "Stable Module identity that owns the workflow behavior.",
+          "type": "string"
+        },
+        "protocol": {
+          "description": "Versioned declaration protocol, currently `lenso.workflow-definition.v1`.",
+          "type": "string"
+        },
+        "resultContract": {
+          "$ref": "#/$defs/WorkflowDataContract"
+        },
+        "steps": {
+          "description": "Ordered step metadata. Position in this vector is contract-significant.",
+          "items": {
+            "$ref": "#/$defs/WorkflowStepDeclaration"
+          },
+          "type": "array"
+        },
+        "version": {
+          "description": "Definition version pinned by every started instance.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "protocol",
+        "owner",
+        "name",
+        "version",
+        "inputContract",
+        "resultContract",
+        "steps"
+      ],
+      "type": "object"
+    },
+    "WorkflowRetryPolicyDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "delaysMs": {
+          "description": "Delay before attempts 2..N. The length must equal `max_attempts` - 1.",
+          "items": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "maxAttempts": {
+          "description": "Total attempts including the original execution.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxAttempts",
+        "delaysMs"
+      ],
+      "type": "object"
+    },
+    "WorkflowStepDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "compensation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowCompensationDeclaration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional compensation for the completed business effect produced by\nthis step. The explicit order is evaluated across all completed effects\nwhen compensation is selected; it is independent from completion time."
+        },
+        "displayName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "retryPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkflowRetryPolicyDeclaration"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional durable retry schedule. `max_attempts` includes the original\nattempt, while each delay schedules the following attempt."
+        },
+        "timeoutMs": {
+          "description": "Optional durable timeout applied independently to every attempt.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://contracts.lenso.local/modules/lenso.module-release.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "compatibility": {
+      "$ref": "#/$defs/ModuleCompatibilityDeclaration",
+      "default": {}
+    },
+    "console_artifact": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ModuleConsoleArtifact"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "delivery": {
+      "$ref": "#/$defs/ModuleDelivery"
+    },
+    "manifest": {
+      "$ref": "#/$defs/ModuleManifest"
+    },
+    "manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "module_id": {
+      "pattern": "^[a-z][a-z0-9_-]*/[a-z][a-z0-9_-]*$",
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.module-release.v1",
+      "type": "string"
+    },
+    "provenance": {
+      "items": {
+        "$ref": "#/$defs/ArtifactReference"
+      },
+      "type": "array"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "module_id",
+    "version",
+    "manifest",
+    "manifest_digest",
+    "delivery"
+  ],
+  "title": "LensoModuleRelease",
+  "type": "object"
+}

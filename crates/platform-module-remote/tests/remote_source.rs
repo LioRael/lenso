@@ -29,7 +29,8 @@ async fn spawn_server(router: Router) -> String {
 
 async fn manifest() -> Json<Value> {
     Json(json!({
-        "name": "remote-crm",
+        "protocol": "lenso.module-manifest.v1",
+        "module_id": "fixture/remote-crm",
         "story_display": [],
         "admin": {
             "kind": "schema",
@@ -88,7 +89,8 @@ async fn manifest() -> Json<Value> {
 
 async fn manifest_with_invalid_http_route() -> Json<Value> {
     Json(json!({
-        "name": "remote-crm",
+        "protocol": "lenso.module-manifest.v1",
+        "module_id": "fixture/remote-crm",
         "story_display": [],
         "http_routes": [{
             "method": "GET",
@@ -103,7 +105,8 @@ async fn service_manifest() -> Json<Value> {
         "name": "support-service",
         "protocol": "lenso.service.v1",
         "modules": [{
-            "name": "support-ticket",
+            "protocol": "lenso.module-manifest.v1",
+            "module_id": "acme/support-ticket",
             "story_display": [],
             "admin": {
                 "kind": "schema",
@@ -133,7 +136,8 @@ async fn contacts() -> Json<Value> {
 
 async fn embedded_manifest() -> Json<Value> {
     Json(json!({
-        "name": "remote-crm-embedded",
+        "protocol": "lenso.module-manifest.v1",
+        "module_id": "fixture/remote-crm-embedded",
         "story_display": [],
         "admin": {
             "kind": "embedded_custom",
@@ -165,7 +169,8 @@ async fn embedded_manifest() -> Json<Value> {
 
 async fn declarative_manifest() -> Json<Value> {
     Json(json!({
-        "name": "remote-crm-declarative",
+        "protocol": "lenso.module-manifest.v1",
+        "module_id": "fixture/remote-crm-declarative",
         "story_display": [],
         "admin": {
             "kind": "declarative_custom",
@@ -296,7 +301,7 @@ async fn loads_manifest_and_attaches_admin_data_source() {
         .await
         .expect("load remote module");
 
-    assert_eq!(module.manifest.name, "remote-crm");
+    assert_eq!(module.manifest.module_id, "fixture/remote-crm");
     assert_eq!(module.manifest.http_routes.len(), 2);
     assert_eq!(module.manifest.http_routes[0].path, "/contacts");
     let runtime = module.manifest.runtime.as_ref().expect("runtime surface");
@@ -358,10 +363,10 @@ async fn loads_service_manifest_as_provider_with_modules() {
         .expect("service manifest should load");
 
     assert_eq!(loaded.len(), 1);
-    assert_eq!(loaded[0].module.manifest.name, "support-ticket");
+    assert_eq!(loaded[0].module.manifest.module_id, "acme/support-ticket");
     assert_eq!(
         loaded[0].config.base_url,
-        format!("{base_url}/modules/support-ticket")
+        format!("{base_url}/modules/acme/support-ticket")
     );
     assert!(loaded[0].module.admin_data.is_some());
 }
@@ -377,7 +382,7 @@ fn service_manifest_accepts_v6_provider_fields() {
             "summary": "Support workflow provider"
         },
         "compatibility": {
-            "remoteProtocolVersion": "1",
+            "serviceProtocolVersion": "1",
             "requiredHostFeatures": ["service.status"]
         },
         "config": [{
@@ -402,8 +407,8 @@ fn service_manifest_accepts_v6_provider_fields() {
         },
         "modules": [
             {
-                "name": "support-ticket",
-                "version": "0.1.0",
+                "protocol": "lenso.module-manifest.v1",
+                "module_id": "acme/support-ticket",
                 "capabilities": ["support_ticket.tickets.read"]
             }
         ]
@@ -421,7 +426,7 @@ fn service_manifest_accepts_v6_provider_fields() {
         Some("Lenso")
     );
     let compatibility = service.compatibility.as_ref().unwrap();
-    assert_eq!(compatibility.remote_protocol_version.as_deref(), Some("1"));
+    assert_eq!(compatibility.service_protocol_version.as_deref(), Some("1"));
     assert_eq!(compatibility.required_host_features, ["service.status"]);
     assert_eq!(service.config[0].key, "SUPPORT_API_TOKEN");
     assert!(service.config[0].required);
@@ -447,14 +452,17 @@ fn service_manifest_accepts_v6_provider_fields() {
     );
     assert!(local_process.auto_start);
     assert_eq!(local_process.ready_timeout_ms, 30_000);
-    assert_eq!(service.modules[0].name, "support-ticket");
+    assert_eq!(service.modules[0].module_id, "acme/support-ticket");
 }
 
 #[test]
 fn service_manifest_accepts_v5_shape() {
     let value = serde_json::json!({
         "name": "support-service",
-        "modules": [{ "name": "support-ticket", "version": "0.1.0" }]
+        "modules": [{
+            "protocol": "lenso.module-manifest.v1",
+            "module_id": "acme/support-ticket"
+        }]
     });
 
     let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
@@ -474,7 +482,10 @@ fn service_manifest_accepts_local_process_defaults() {
         "localProcess": {
             "command": "pnpm start"
         },
-        "modules": [{ "name": "support-ticket", "version": "0.1.0" }]
+        "modules": [{
+            "protocol": "lenso.module-manifest.v1",
+            "module_id": "acme/support-ticket"
+        }]
     });
 
     let envelope: RemoteManifestEnvelope = serde_json::from_value(value).unwrap();
@@ -522,7 +533,7 @@ async fn loads_embedded_custom_manifest_without_admin_data_source() {
         .await
         .expect("load remote module");
 
-    assert_eq!(module.manifest.name, "remote-crm-embedded");
+    assert_eq!(module.manifest.module_id, "fixture/remote-crm-embedded");
     assert!(matches!(
         module.manifest.admin,
         Some(AdminSurface::EmbeddedCustom(_))
@@ -541,7 +552,7 @@ async fn loads_declarative_custom_manifest_with_admin_data_source() {
         .await
         .expect("load remote module");
 
-    assert_eq!(module.manifest.name, "remote-crm-declarative");
+    assert_eq!(module.manifest.module_id, "fixture/remote-crm-declarative");
     let Some(AdminSurface::DeclarativeCustom(surface)) = &module.manifest.admin else {
         panic!("expected declarative custom admin surface");
     };

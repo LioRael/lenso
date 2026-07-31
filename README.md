@@ -118,8 +118,8 @@ The working loop is:
 product brief -> app compose -> change plan -> implementation -> checks + App Proof -> Runtime Console
 ```
 
-Lenso's public skills cover business planning, app startup, linked module
-authoring, remote module authoring, and API client generation. They give coding
+Lenso's public skills cover business planning, app startup, linked Module
+authoring, Service-provided Module authoring, and API client generation. They give coding
 agents stable entrypoints while manifests, contracts, checks, and Console
 evidence keep the result inspectable.
 

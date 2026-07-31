@@ -1,0 +1,47 @@
+{
+  "$id": "https://contracts.lenso.local/management/lenso.module-resolution-conflict.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "code": {
+      "type": "string"
+    },
+    "constraints": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "dependency_paths": {
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "eligible_alternatives": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "module_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "protocol": {
+      "const": "lenso.module-resolution-conflict.v1",
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "code"
+  ],
+  "title": "LensoModuleResolutionConflict",
+  "type": "object"
+}

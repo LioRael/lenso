@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 pub const WORKFLOW_DEFINITION_PROTOCOL: &str = "lenso.workflow-definition.v1";
 pub const WORKFLOW_COMPATIBILITY_PROTOCOL: &str = "lenso.workflow-compatibility.v1";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct RuntimeSurface {
     #[serde(default)]
     pub functions: Vec<RuntimeFunctionDeclaration>,
@@ -23,7 +23,7 @@ pub struct RuntimeSurface {
     pub workflows: Vec<WorkflowDefinition>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowDefinition {
     /// Versioned declaration protocol, currently `lenso.workflow-definition.v1`.
@@ -62,7 +62,7 @@ impl WorkflowDefinition {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowDataContract {
     pub contract_id: String,
@@ -79,7 +79,7 @@ impl WorkflowDataContract {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowStepDeclaration {
     pub name: String,
@@ -136,7 +136,7 @@ impl WorkflowStepDeclaration {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowCompensationDeclaration {
     /// Stable compensation behavior identity within this Workflow Definition.
@@ -167,7 +167,7 @@ impl WorkflowCompensationDeclaration {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowRetryPolicyDeclaration {
     /// Total attempts including the original execution.
@@ -186,7 +186,19 @@ impl WorkflowRetryPolicyDeclaration {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkflowCompatibilityCategory {
     Safe,
@@ -195,7 +207,7 @@ pub enum WorkflowCompatibilityCategory {
     Blocked,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowDefinitionReference {
     pub owner: String,
@@ -213,7 +225,18 @@ impl From<&WorkflowDefinition> for WorkflowDefinitionReference {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowCompatibilityReason {
     pub code: String,
@@ -222,7 +245,7 @@ pub struct WorkflowCompatibilityReason {
     pub next_action: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkflowCompatibilityResult {
     pub protocol: String,
@@ -601,7 +624,7 @@ pub fn workflow_definition_schema() -> Value {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct RuntimeFunctionDeclaration {
     /// Stable function name used by `runtime.function_runs`.
     pub name: String,
@@ -620,13 +643,13 @@ pub struct RuntimeFunctionDeclaration {
     pub operation: Option<crate::ServiceOperationMetadata>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct RuntimeRetryPolicyDeclaration {
     pub max_attempts: u32,
     pub initial_delay_ms: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ScheduledFunctionDeclaration {
     /// Stable schedule name scoped to the owning module.
     pub name: String,

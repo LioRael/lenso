@@ -13,6 +13,7 @@ kube = { version = "4", features = ["derive"] }
 lenso-api.workspace = true
 lenso-autonomous-service.workspace = true
 lenso-contracts.workspace = true
+lenso-module-management.workspace = true
 lenso-operator.workspace = true
 lenso-service.workspace = true
 serde.workspace = true

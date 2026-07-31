@@ -2,8 +2,8 @@
   "autonomousServices": [
     {
       "modules": [
-        "support-ticket",
-        "support-sla"
+        "acme/support-ticket",
+        "acme/support-sla"
       ],
       "serviceId": "support",
       "workloads": [
@@ -61,14 +61,14 @@
   "host": {
     "hostId": "support-host",
     "modules": [
-      "auth"
+      "lenso/auth"
     ]
   },
   "protocol": "lenso.system.v2",
   "providers": [
     {
       "modules": [
-        "notification-gateway"
+        "lenso/notification-gateway"
       ],
       "providerId": "notification-provider"
     }

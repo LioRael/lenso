@@ -10,6 +10,7 @@ mod config;
 mod event;
 mod grpc;
 mod protocol;
+mod provider_runtime;
 mod proxy;
 mod request;
 mod response;
@@ -25,6 +26,12 @@ pub use config::{RemoteModuleConfig, RemoteModuleTransport};
 pub use event::{RemoteEventHandler, RemoteEventHostActionRunner};
 pub use protocol::{
     RemoteErrorBody, RemoteErrorDetail, RemoteErrorEnvelope, RemoteManifestResponse,
+};
+pub use provider_runtime::{
+    BEARER_ENV_TRUST_PROFILE, EnvironmentBearerCredentialResolver, FixedBearerCredentialResolver,
+    FixedProviderEndpointResolver, LoadedProviderRuntime, ProviderCredentialResolver,
+    ProviderEndpointResolutionRequest, ProviderEndpointResolver, ProviderRuntimeAdapter,
+    ProviderRuntimeAdapters,
 };
 pub use proxy::{
     RemoteHttpProxyMatch, RemoteHttpProxyModule, RemoteHttpProxyRegistry, RemoteHttpProxyRoute,

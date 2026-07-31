@@ -1,0 +1,36 @@
+{
+  "$id": "https://contracts.lenso.local/management/lenso.linked-composition-seam.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "dependency_name": {
+      "type": "string"
+    },
+    "generated_crate_path": {
+      "type": "string"
+    },
+    "host_manifest_path": {
+      "type": "string"
+    },
+    "host_source_path": {
+      "type": "string"
+    },
+    "lenso_version": {
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.linked-composition-seam.v1",
+      "type": "string"
+    }
+  },
+  "required": [
+    "protocol",
+    "host_manifest_path",
+    "host_source_path",
+    "generated_crate_path",
+    "dependency_name",
+    "lenso_version"
+  ],
+  "title": "LensoLinkedCompositionSeam",
+  "type": "object"
+}

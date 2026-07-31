@@ -77,7 +77,7 @@ fn json_request(path: &str, body: Value) -> Request<Body> {
 const POLICY_MIGRATIONS: &[Migration] = &[];
 
 fn policy_manifest() -> ModuleManifest {
-    ModuleManifest::builder("test-policy").build()
+    ModuleManifest::builder("fixture/test-policy").build()
 }
 
 fn policy_linked_module() -> HostLinkedModule {
