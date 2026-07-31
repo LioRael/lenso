@@ -67,15 +67,6 @@ worker:
 migrate:
     cargo run -p {{migrate_pkg}}
 
-console-api-smoke:
-    sh scripts/runtime-console-api-smoke.sh
-
-console-api-fixture:
-    sh scripts/runtime-console-api-fixture.sh
-
-console-api-qa:
-    sh scripts/runtime-console-api-qa.sh
-
 host-serve host_root:
     test -f "{{host_root}}/Cargo.toml"
     cargo run --locked --manifest-path "{{cli_root}}/Cargo.toml" -- serve --repo-root "{{host_root}}"

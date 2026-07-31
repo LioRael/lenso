@@ -28,7 +28,7 @@ OpenTelemetry data is an enrichment layer only. Backend APIs map telemetry spans
 into business-friendly Technical Operations before the frontend sees them.
 Remote HTTP proxy call records are also mapped into Technical Operations, but
 they are not OpenTelemetry spans; they are persisted host-side runtime records
-with `source = "remote_proxy"`. Remote runtime function invocations are mapped
+with `source = "provider_http"`. Provider runtime function invocations are mapped
 from host-written execution logs with `source = "remote_runtime"`; they enrich
 the function run node rather than creating a second remote-function surface.
 
@@ -62,29 +62,29 @@ story-level operations.
 Runtime Console intentionally exposes remote proxy calls in two complementary
 ways:
 
-- The Remote Calls page is the horizontal operations view. It supports filtering
-  by dimensions such as `module_name`, `success`, `remote_status`,
+- The Provider Calls page is the horizontal operations view. It supports filtering
+  by dimensions such as `module_name`, `success`, `provider_status`,
   `error_code`, and `correlation_id`. When a call or correlation filter is
   selected, it can open the matching Runtime Story.
-- Runtime Story graph and timeline show remote calls as ordinary
-  `remote_proxy_call` nodes under the story's `correlation_id`. This keeps the
+- Runtime Story graph and timeline show provider calls as ordinary
+  `provider_http_call` nodes under the story's `correlation_id`. This keeps the
   business flow readable without duplicating the same calls in a separate story
   section.
   The node's `metadata.source_metadata` is the Story UI contract for compact
   timeline summaries and inspector details: module, method, declared path,
-  remote path/status, duration, request/trace/span ids, path params, error
+  provider path/status, duration, request/trace/span ids, path params, error
   code, retryability, and error details.
 - Runtime Story Technical Operations includes those same calls as
-  `source = "remote_proxy"` operations. This places remote module calls beside
+  `source = "provider_http"` operations. This places provider service calls beside
   OTEL-derived database, HTTP, worker, and external operations for the selected
   story or execution node.
 
-## Remote Runtime Operations
+## Provider Runtime Operations
 
-Remote runtime functions keep the normal Runtime Story shape: the business node
+Provider runtime functions keep the normal Runtime Story shape: the business node
 is still the `function_run`. When the worker invokes an out-of-process module
 function, it writes a host-owned execution log with compact operation metadata:
-module, function name, remote path, request id, trace/span ids, duration,
+module, function name, provider path, request id, trace/span ids, duration,
 success, retryability, and error code/details when present. Runtime Admin maps
 those logs into `source = "remote_runtime"` Technical Operations for both:
 
@@ -92,13 +92,13 @@ those logs into `source = "remote_runtime"` Technical Operations for both:
 - `GET /admin/runtime/executions/{node_id}/technical-operations`
 
 These operations attach to the function run node through `execution_id`. They do
-not replace function run lifecycle logs or create a horizontal Remote Calls
-page; the Remote Calls page remains specific to HTTP proxy call history.
+not replace function run lifecycle logs or create a horizontal Provider Calls
+page; the Provider Calls page remains specific to HTTP proxy call history.
 
 These are not replacements for each other: Story views explain one business
-chain through nodes, while the Remote Calls page supports cross-story
-operational diagnosis. Story and Remote Calls navigation is a convenience link
-across those views; it does not change the backend matching rules. Remote Calls
+chain through nodes, while the Provider Calls page supports cross-story
+operational diagnosis. Story and Provider Calls navigation is a convenience link
+across those views; it does not change the backend matching rules. Provider Calls
 list/detail filtering uses exact `correlation_id` matches. Technical Operations
 first scope by `correlation_id`, then uses span or trace data only to place a
 proxy call on a more specific execution node when those telemetry attributes are

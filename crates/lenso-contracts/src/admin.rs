@@ -146,7 +146,6 @@ pub struct AdminEmbeddedSurface {
 pub enum AdminEmbeddedRuntime {
     Iframe,
     Wasm,
-    JsBundle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]

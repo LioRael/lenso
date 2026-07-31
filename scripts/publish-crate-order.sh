@@ -13,9 +13,7 @@ lenso-platform-system-plane
 lenso-platform-runtime-observability
 lenso-platform-runtime-operations
 lenso-autonomous-service
-lenso-platform-admin-data
-lenso-platform-module-remote
-lenso-platform-admin
+lenso-platform-provider
 lenso-bootstrap
 lenso-api
 lenso-migrate

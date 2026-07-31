@@ -9,7 +9,7 @@ export default {
     "generate-contracts",
     "lenso-operator",
     "otel-smoke",
-    "remote-module-fixture",
+    "provider-fixture",
   ],
   packages: {
     "lenso": {},
@@ -22,7 +22,7 @@ export default {
     "lenso-platform-core": {},
     "lenso-platform-http": {},
     "lenso-platform-module": {},
-    "lenso-platform-module-remote": {},
+    "lenso-platform-provider": {},
     "lenso-platform-runtime": {},
     "lenso-platform-testing": {},
     "lenso-service": {},

@@ -134,8 +134,8 @@ smoke checks and real host API smokes.
 | --- | --- |
 | [`lenso`](https://crates.io/crates/lenso) | Public Rust facade for module declarations, manifest lints, and the narrow host boot API. |
 | [`@lenso/cli`](https://www.npmjs.com/package/@lenso/cli) / [`lenso-cli`](https://crates.io/crates/lenso-cli) | Compose apps, manage generated state, author capabilities, run local systems, and operate modules and services. |
-| [`LioRael/lenso`](https://github.com/LioRael/lenso) | This repository: backend platform crates, built-in modules, migrations, admin APIs, runtime contracts, and architecture checks. |
-| [`LioRael/lenso-console`](https://github.com/LioRael/lenso-console) | Console frontend, deployable Console Service backend, extension packages, and service SDKs. |
+| [`LioRael/lenso`](https://github.com/LioRael/lenso) | This repository: backend platform crates, built-in Modules, System Plane contracts, framework SDKs, migrations, and architecture checks. |
+| [`LioRael/lenso-console`](https://github.com/LioRael/lenso-console) | Independent Console Service, web shell, composition Store, and isolated Module UI host. |
 | [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples) | Runnable product, module, service, and integration examples. |
 | [`lenso.dev`](https://lenso.dev) | Product documentation, guides, API reference, and agent-readable docs. |
 
@@ -145,9 +145,8 @@ Add the Rust authoring surface directly when building a module or custom host:
 cargo add lenso
 ```
 
-Generated hosts enable the crate's `host` feature. Runtime Console is deployed
-as the standalone Console Service and connects to generated hosts through their
-management APIs.
+Generated hosts enable the crate's `host` feature. Lenso Console is installed
+and operated as a separate Service; managed hosts never serve Console assets.
 
 Keep `lenso`, `lenso-cli`, and `lenso-console` checked out as siblings
 when changing behavior across backend, CLI, and Console boundaries. Repository
@@ -184,10 +183,10 @@ operation for operators who want to connect a service before enabling one of
 its modules.
 
 A small first-party proof path is `audit-log`: install it by name from the
-official catalog, connect the standalone Console Service, then inspect the
-module at `/modules?module=audit-log` and its generic admin data at `/data` on
-the Console origin. The module declares the `audit_log.events.read` data
-capability and surfaces Audit Events through the Console's Data Surfaces panel.
+official catalog, refresh the hosted Console, then inspect the module in
+`/console/modules?module=audit-log` and its generic admin data in `/console/data`.
+The module declares the `audit_log.events.read` data capability and surfaces
+Audit Events through the Console's Data Surfaces panel.
 
 First-time local setup lives in [docs/getting-started.md](docs/getting-started.md).
 
@@ -203,24 +202,22 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.
-  - `platform-module`: behavior seams and compatibility re-exports for module loading, linked bindings, and schema-admin data/action sources.
-  - `platform-admin`: runtime-observability backend for the Runtime Console (`/admin/runtime/*`); reads platform/runtime tables only.
-  - `platform-admin-data`: schema-admin backend for generic module data (`/admin/data/*`).
+  - `platform-module`: behavior seams and compatibility re-exports for Module loading and Linked bindings.
+  - `platform-system-plane`: capability-neutral managed-Service management kernel mounted only on the dedicated System Plane listener.
   - `platform-testing`: shared test database helpers.
 - `modules/`
   - `auth`: host-owned authentication anchor and development session routes.
     Session resolution defaults to Postgres and can opt into Redis by enabling
     the auth module's `redis` feature, setting `REDIS_URL`, and setting runtime
     config `auth.session_cache=redis`.
-  - `auth-oauth`: reusable OAuth client flow substrate for provider modules.
+  - `auth-oauth`: reusable OAuth client flow substrate for authentication adapters.
   - `auth-anonymous`: first-party anonymous provider for guest sessions.
   - `auth-password`: first-party password provider for the auth anchor.
   - `auth-phone`: first-party phone OTP and phone password provider for the auth anchor.
   - `auth-github`: first-party GitHub OAuth provider built on `auth-oauth`.
   - `auth-google`: first-party Google OAuth/OIDC provider built on `auth-oauth`.
-  - `story`: platform-owned Runtime Console story surface.
 - `fixtures/`
-  - `remote-module`: internal remote-module fixture for integration and protocol checks.
+  - `provider`: internal provider fixture for integration and protocol checks.
 - `contracts/`
 - Generated and curated OpenAPI, JSON Schema, and error contracts.
 - `tools/`
@@ -229,10 +226,10 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
 - `infrastructure/local/`
   - Local Postgres and optional OpenTelemetry collector config.
 
-Lenso Console source and its deployable Service backend live in the sibling
-`../lenso-console` repository. This framework repository owns the public
-contracts, module manifests, and compatible Host admin APIs that the Console
-consumes.
+Lenso Console source, its deployable Service backend, and the Runtime Stories
+Console module live in the sibling `../lenso-console` repository. This framework
+repository owns public contracts, Module release declarations, and System Plane
+capability contracts consumed by the Console.
 
 ## Local Development
 
@@ -291,21 +288,24 @@ Worker:
 just worker
 ```
 
-Run the standalone Console Service from its repository:
+Console Service and CLI development shortcuts:
 
 ```sh
+# Run the complete local Console Service from its own repository.
 cd ../lenso-console
-pnpm service:serve
+pnpm run service:serve
+
+# Serve a generated host through the local lenso-cli checkout.
+just host-serve <host-root>
 ```
 
-The application API does not embed or serve Console assets. The Console Service
-owns its frontend shell and connects to managed Lenso services through their
-management APIs.
+Use an absolute or relative path for `<host-root>`; it does not need to be a
+sibling directory. Managed Services never host Console web assets.
 
 Production Console access must use real auth, not development bearer tokens.
 With `APP_ENV=production`, `dev-user:*` and `dev-service:*` tokens are ignored.
 Browser users should sign in through password auth or OIDC, then receive
-`console.admin` through `lenso console bootstrap-admin`.
+the Console Service's own operator grant through `lenso console operator bootstrap`.
 
 OpenTelemetry collector for local span export:
 

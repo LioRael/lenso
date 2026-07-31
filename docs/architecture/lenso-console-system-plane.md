@@ -216,7 +216,7 @@ normal plan-and-submit protocol.
 
 ## Identity, enrollment, and authorization
 
-The Console Service installs its own Auth Module and provider Modules. A Console
+The Console Service installs its own Auth Module and system-management Modules. A Console
 Operator exists only in that identity domain. A managed business Service may
 independently install its own Auth Modules; it never imports the operator, reads
 the Console browser session, or receives the original cookie, password, access
@@ -473,10 +473,13 @@ The following managed-Host artifacts are retired explicitly:
   `LENSO_CONSOLE_BASE`, and all hosted-asset `LENSO_RUNTIME_CONSOLE_*` variables;
 - `lenso-runtime-console.tar.gz` and hosted-archive download/publish workflows.
 
-This retirement does not remove Module Console extensions. The standalone
-Console Service owns the replacement registry at `/extensions/registry.json`
-and serves verified artifacts from `/extensions/runtime/*`; those paths never
-exist on a managed application Service.
+This retirement does not remove Module Console UI. The standalone Console
+Service receives the selected composition from the management workflow,
+downloads each immutable artifact, verifies its declared digest, and
+materializes it in content-addressed storage. It records a composition receipt
+only after every selected artifact is durable. Executable UI still runs only in
+the sandboxed cross-origin frame described above; there is no replacement
+same-origin registry or managed-Service asset route.
 
 `lenso.system.json` may remain a developer or CLI planning artifact but never
 becomes Console Registry runtime state. Historical tags, changelogs, and release

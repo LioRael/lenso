@@ -206,7 +206,7 @@ pub struct LockedModule {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub migration_artifacts: Vec<ArtifactReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub console_artifact: Option<LockedConsoleArtifact>,
+    pub console_ui_artifact: Option<LockedConsoleUiArtifact>,
     pub verification: VerificationEvaluation,
     pub verification_cell: ModuleVerificationCell,
     pub lifecycle: ModuleLifecycleState,
@@ -231,25 +231,26 @@ pub struct LockedCapabilityBinding {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct LockedConsoleArtifact {
-    pub package: String,
-    pub version: String,
-    pub artifact_locator: String,
-    pub integrity: String,
-    pub host_api_version: String,
-    pub exports: Vec<String>,
+pub struct LockedConsoleUiArtifact {
+    pub locator: String,
+    pub digest: String,
+    pub format: lenso_contracts::ConsoleUiArtifactFormat,
+    pub entries: Vec<lenso_contracts::ConsoleUiArtifactEntry>,
+    pub bridge_protocol: String,
+    pub requested_permissions: Vec<lenso_contracts::ConsolePermissionRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConsoleCompositionArtifact {
     pub module_id: String,
-    pub package: String,
-    pub version: String,
-    pub artifact_locator: String,
-    pub integrity: String,
-    pub exports: Vec<String>,
-    pub host_api_requirement: String,
+    pub module_release_digest: String,
+    pub locator: String,
+    pub digest: String,
+    pub format: lenso_contracts::ConsoleUiArtifactFormat,
+    pub entries: Vec<lenso_contracts::ConsoleUiArtifactEntry>,
+    pub bridge_protocol: String,
+    pub requested_permissions: Vec<lenso_contracts::ConsolePermissionRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

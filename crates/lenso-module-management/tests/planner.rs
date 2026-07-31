@@ -1,7 +1,8 @@
 use chrono::{TimeZone as _, Utc};
 use lenso_contracts::{
-    ArtifactReference, CatalogAction, DeclaredCompatibilityState, LinkedModuleDelivery,
-    ModuleConsoleArtifact, ModuleDelivery, ModuleEligibility, ModuleEligibilityState,
+    ArtifactReference, CONSOLE_BRIDGE_PROTOCOL, CatalogAction, ConsoleUiArtifact,
+    ConsoleUiArtifactEntry, ConsoleUiArtifactFormat, DeclaredCompatibilityState,
+    LinkedModuleDelivery, ModuleDelivery, ModuleEligibility, ModuleEligibilityState,
     ModuleLifecycleState, ModuleManifest, ModuleMigrationActivation, ModuleMigrationDeclaration,
     ModuleRelease, ModuleRequirement, ModuleVerificationCell, ServiceModuleDelivery,
     ServiceResponsibilityProfile, VerificationEvaluation, VerificationOperation, VerificationState,
@@ -229,16 +230,19 @@ fn candidate() -> ModuleResolutionCandidate {
 
 fn candidate_with_console() -> ModuleResolutionCandidate {
     let mut candidate = candidate();
-    candidate.release.console_artifact = Some(ModuleConsoleArtifact {
-        package: "@acme/module-console".to_owned(),
-        version: "1.0.0".to_owned(),
-        integrity: digest('4'),
-        exports: vec!["acmeConsoleModule".to_owned()],
-        host_api_requirement: "^1".to_owned(),
-        provenance: vec![ArtifactReference {
+    candidate.release.console_ui_artifact = Some(ConsoleUiArtifact {
+        artifact: ArtifactReference {
             locator: "https://modules.example/acme-console.js".to_owned(),
             digest: digest('4'),
+        },
+        format: ConsoleUiArtifactFormat::IsolatedWeb,
+        entries: vec![ConsoleUiArtifactEntry {
+            name: "main".to_owned(),
+            path: "index.html".to_owned(),
         }],
+        bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
+        requested_permissions: Vec::new(),
+        provenance: Vec::new(),
     });
     candidate.release_digest = digest_json(&candidate.release).unwrap();
     candidate.verification_cell = verification_cell(&candidate.release_digest);
@@ -425,10 +429,10 @@ fn console_artifact_change_produces_console_composition_effect() {
     assert_eq!(artifacts.len(), 1);
     assert_eq!(artifacts[0].module_id, "acme/module");
     assert_eq!(
-        artifacts[0].artifact_locator,
+        artifacts[0].locator,
         "https://modules.example/acme-console.js"
     );
-    assert_eq!(artifacts[0].exports, ["acmeConsoleModule"]);
+    assert_eq!(artifacts[0].entries[0].path, "index.html");
     fs::remove_dir_all(root).unwrap();
 }
 

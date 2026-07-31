@@ -12,8 +12,8 @@ pub mod idempotency;
 pub mod ids;
 pub mod migrations;
 pub mod outbox;
+pub mod provider_calls;
 pub mod redis;
-pub mod remote_proxy_calls;
 pub mod runtime_config;
 pub mod shutdown;
 pub mod story_events;
@@ -54,10 +54,10 @@ pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
-pub use redis::{RedisConnection, connect_redis};
-pub use remote_proxy_calls::{
-    RemoteHttpProxyCallRecord, insert_remote_http_proxy_call, remote_proxy_call_story_event_id,
+pub use provider_calls::{
+    ProviderHttpCallRecord, insert_provider_http_call, provider_call_story_event_id,
 };
+pub use redis::{RedisConnection, connect_redis};
 pub use runtime_config::{
     CONFIG_NOTIFY_CHANNEL, PostgresRuntimeConfigProvider, RuntimeConfigAuditEntry,
     RuntimeConfigCell, RuntimeConfigDescriptor, RuntimeConfigGeneratedValue,

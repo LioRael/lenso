@@ -39,7 +39,7 @@ Console category mapping and tests in the same change.
 | `error` | `module.name` | Manifest name is missing. |
 | `warning` | `capability {value}` | Capability name is not dot-separated lowercase. |
 | `warning` | `capability.reference.{surface}` | HTTP route, admin read, or admin action capability is referenced but not declared in the module manifest. |
-| `ok` / `warning` | `routes` | Empty route declaration state. Remote modules warn; linked modules are OK. |
+| `ok` | `routes` | Empty route declaration state for a Linked Module. |
 | `error` | `METHOD /path` | Duplicate HTTP route method/path. |
 | `warning` | `METHOD /path` | Route display, story title, or remote capability metadata is missing. |
 | `warning` | `admin.schema` | Schema surface declares no entities. |

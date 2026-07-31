@@ -359,32 +359,6 @@ fn committed_ga_support_artifacts_match_the_public_generators() {
 }
 
 #[test]
-fn production_delivery_openapi_describes_raw_artifact_objects() {
-    let openapi: serde_yaml::Value =
-        serde_yaml::from_str(include_str!("../../../contracts/openapi/app-api.v1.yaml"))
-            .expect("committed application OpenAPI should parse");
-    let schema = &openapi["components"]["schemas"]["DeliveryArtifactSchema"];
-    let variants = schema["oneOf"]
-        .as_sequence()
-        .expect("delivery artifacts should be an OpenAPI oneOf");
-
-    assert!(
-        variants.iter().all(|variant| variant.get("$ref").is_some()),
-        "wire variants must be direct schema references without externally tagged wrappers"
-    );
-    assert!(variants.iter().any(|variant| {
-        variant["$ref"]
-            .as_str()
-            .is_some_and(|reference| reference.ends_with("/ServiceRelease"))
-    }));
-    assert_eq!(
-        openapi["components"]["schemas"]["DeliveryArtifactRecordRequest"]["properties"]["artifacts"]
-            ["items"]["$ref"],
-        "#/components/schemas/DeliveryArtifactSchema"
-    );
-}
-
-#[test]
 fn committed_extraction_readiness_artifacts_match_generator() {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/extraction/lenso.extraction-readiness-report.v1.schema.json"

@@ -16,7 +16,7 @@ const PLATFORM_MIGRATIONS: &[&str] = &[
     include_str!("../../platform-core/migrations/0005_create_execution_logs.sql"),
     include_str!("../../platform-core/migrations/0006_create_story_events.sql"),
     include_str!("../../platform-core/migrations/0007_create_config_schema.sql"),
-    include_str!("../../platform-core/migrations/0008_create_remote_http_proxy_calls.sql"),
+    include_str!("../../platform-core/migrations/0008_create_provider_http_calls.sql"),
     include_str!("../../platform-core/migrations/0009_add_story_query_indexes.sql"),
     include_str!("../../platform-core/migrations/0010_create_idempotency_claims.sql"),
     include_str!("../../platform-core/migrations/0011_create_extraction_artifacts.sql"),

@@ -150,7 +150,7 @@ async fn platform_migrations_create_outbox_story_indexes() {
 }
 
 #[tokio::test]
-async fn platform_migrations_create_remote_http_proxy_calls_table() {
+async fn platform_migrations_create_provider_http_calls_table() {
     let Some(db) = TestDatabase::create().await else {
         return;
     };
@@ -164,13 +164,13 @@ async fn platform_migrations_create_remote_http_proxy_calls_table() {
         select column_name
         from information_schema.columns
         where table_schema = 'platform'
-            and table_name = 'remote_http_proxy_calls'
+            and table_name = 'provider_http_calls'
             and column_name in (
                 'module_name',
                 'method',
                 'declared_path',
-                'remote_path',
-                'remote_status',
+                'provider_path',
+                'provider_status',
                 'success',
                 'error_code',
                 'request_id',
@@ -191,8 +191,8 @@ async fn platform_migrations_create_remote_http_proxy_calls_table() {
             "error_code",
             "method",
             "module_name",
-            "remote_path",
-            "remote_status",
+            "provider_path",
+            "provider_status",
             "request_id",
             "success"
         ]

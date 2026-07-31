@@ -42,8 +42,8 @@ This writes:
 
 The source archive is generated from `git archive HEAD`, so it contains committed
 source files and excludes local build output, `.git`, `target/`, and `dist/`.
-The Console Service is published and deployed separately by `lenso-console`;
-managed application hosts do not install its frontend assets.
+The Console Service is released independently. It is never installed into a
+managed host or included in the framework source archive.
 
 ## 4. Run The GitHub Workflow
 

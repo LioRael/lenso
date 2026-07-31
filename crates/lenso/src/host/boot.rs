@@ -3,7 +3,10 @@
 //! Enable the `host` feature to use these helpers.
 
 pub use crate::ModuleManifest;
-pub use lenso_bootstrap::{HostComposition, HostLinkedModule, HostWiring};
+pub use lenso_bootstrap::{
+    ConsoleBridgeAuthority, ConsoleBridgeGrantRequest, HostComposition, HostLinkedModule,
+    HostWiring,
+};
 pub use platform_core::Migration;
 
 /// First-party linked modules that a host can opt into explicitly.
@@ -65,6 +68,15 @@ impl HostBuilder {
         for module in modules {
             self.composition.add_linked_module(module);
         }
+        self
+    }
+
+    #[must_use]
+    pub fn console_bridge_authority(
+        mut self,
+        authority: std::sync::Arc<dyn ConsoleBridgeAuthority>,
+    ) -> Self {
+        self.composition = self.composition.with_console_bridge_authority(authority);
         self
     }
 

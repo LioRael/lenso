@@ -66,12 +66,11 @@ wait_url "$api_url/livez" "API"
 cargo run --locked -p lenso-worker >"$worker_log" 2>&1 &
 worker_pid=$!
 
-curl --noproxy '*' -fsS \
-    -H "Authorization: Bearer dev-service:admin" \
-    "$api_url/admin/data/modules" | grep -q "lenso/auth"
-
-curl --noproxy '*' -fsS \
-    -H "Authorization: Bearer dev-service:admin" \
-    "$api_url/admin/modules/management" | grep -q '"status"'
+openapi="$(curl --noproxy '*' -fsS "$api_url/openapi.json")"
+printf '%s' "$openapi" | grep -q '"/v1/auth/'
+if printf '%s' "$openapi" | grep -q '"/admin/'; then
+    echo "First-user smoke found a retired /admin route in the Data Plane." >&2
+    exit 1
+fi
 
 echo "First-user smoke passed."

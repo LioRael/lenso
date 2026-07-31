@@ -1,4 +1,7 @@
-use crate::{MODULE_MANIFEST_PROTOCOL, ModuleManifest, lint_module_manifest};
+use crate::{
+    CONSOLE_BRIDGE_PROTOCOL, ConsolePermissionRequest, ConsoleSurfacePresentation,
+    MODULE_MANIFEST_PROTOCOL, ModuleManifest, lint_module_manifest,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -68,13 +71,27 @@ pub enum ModuleDelivery {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct ModuleConsoleArtifact {
-    pub package: String,
-    pub version: String,
-    pub integrity: String,
+pub struct ConsoleUiArtifactEntry {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ConsoleUiArtifactFormat {
+    IsolatedWeb,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConsoleUiArtifact {
+    pub artifact: ArtifactReference,
+    pub format: ConsoleUiArtifactFormat,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub exports: Vec<String>,
-    pub host_api_requirement: String,
+    pub entries: Vec<ConsoleUiArtifactEntry>,
+    pub bridge_protocol: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requested_permissions: Vec<ConsolePermissionRequest>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub provenance: Vec<ArtifactReference>,
 }
@@ -106,7 +123,7 @@ pub struct ModuleRelease {
     pub manifest_digest: String,
     pub delivery: ModuleDelivery,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub console_artifact: Option<ModuleConsoleArtifact>,
+    pub console_ui_artifact: Option<ConsoleUiArtifact>,
     #[serde(default)]
     pub compatibility: ModuleCompatibilityDeclaration,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -147,7 +164,7 @@ impl ModuleRelease {
             manifest,
             manifest_digest,
             delivery,
-            console_artifact: None,
+            console_ui_artifact: None,
             compatibility: ModuleCompatibilityDeclaration::default(),
             provenance: Vec::new(),
         };
@@ -210,40 +227,36 @@ impl ModuleRelease {
         }
         validate_delivery(&self.delivery, &mut issues);
         validate_artifacts("$.provenance", &self.provenance, &mut issues);
-        if let Some(console) = &self.console_artifact {
-            if console.package.trim().is_empty() {
+        if let Some(console) = &self.console_ui_artifact {
+            validate_artifact_reference(
+                "$.console_ui_artifact.artifact",
+                &console.artifact,
+                &mut issues,
+            );
+            if console.bridge_protocol != CONSOLE_BRIDGE_PROTOCOL {
                 issues.push(issue(
-                    "$.console_artifact.package",
-                    "Console package must be non-empty",
+                    "$.console_ui_artifact.bridge_protocol",
+                    format!("bridge_protocol must be {CONSOLE_BRIDGE_PROTOCOL}"),
                 ));
             }
-            validate_semver("$.console_artifact.version", &console.version, &mut issues);
-            validate_digest(
-                "$.console_artifact.integrity",
-                &console.integrity,
-                &mut issues,
-            );
-            validate_sorted_unique("$.console_artifact.exports", &console.exports, &mut issues);
-            validate_version_requirement(
-                "$.console_artifact.host_api_requirement",
-                &console.host_api_requirement,
-                &mut issues,
-            );
+            validate_console_ui_entries(&console.entries, &mut issues);
+            validate_console_permission_requests(&console.requested_permissions, &mut issues);
             validate_artifacts(
-                "$.console_artifact.provenance",
+                "$.console_ui_artifact.provenance",
                 &console.provenance,
                 &mut issues,
             );
-            if !console
-                .provenance
-                .iter()
-                .any(|reference| reference.digest == console.integrity)
-            {
-                issues.push(issue(
-                    "$.console_artifact.provenance",
-                    "Console artifact provenance must include a downloadable locator whose digest matches integrity",
-                ));
-            }
+            validate_console_surface_entries(&self.manifest, console, &mut issues);
+        } else if self.manifest.console.iter().any(|surface| {
+            matches!(
+                surface.presentation,
+                ConsoleSurfacePresentation::Isolated { .. }
+            )
+        }) {
+            issues.push(issue(
+                "$.console_ui_artifact",
+                "Isolated Console surfaces require a Console UI Artifact in the same Module Release",
+            ));
         }
         for (path, requirement) in [
             (
@@ -426,6 +439,110 @@ fn validate_artifacts(
     }
 }
 
+fn validate_artifact_reference(
+    path: &str,
+    artifact: &ArtifactReference,
+    issues: &mut Vec<ModuleContractIssue>,
+) {
+    if artifact.locator.trim().is_empty() {
+        issues.push(issue(path, "artifact locator must be non-empty"));
+    }
+    validate_digest(path, &artifact.digest, issues);
+}
+
+fn validate_console_ui_entries(
+    entries: &[ConsoleUiArtifactEntry],
+    issues: &mut Vec<ModuleContractIssue>,
+) {
+    validate_unique(
+        "$.console_ui_artifact.entries",
+        entries,
+        |entry| &entry.name,
+        issues,
+    );
+    for entry in entries {
+        if entry.name.trim().is_empty()
+            || entry.path.trim().is_empty()
+            || entry.path.starts_with('/')
+            || entry
+                .path
+                .split('/')
+                .any(|segment| segment.is_empty() || segment == "..")
+        {
+            issues.push(issue(
+                "$.console_ui_artifact.entries",
+                "Console UI entries require a stable name and a relative artifact path without traversal",
+            ));
+        }
+    }
+}
+
+fn validate_console_permission_requests(
+    permissions: &[ConsolePermissionRequest],
+    issues: &mut Vec<ModuleContractIssue>,
+) {
+    validate_unique(
+        "$.console_ui_artifact.requested_permissions",
+        permissions,
+        |permission| &permission.permission_id,
+        issues,
+    );
+    for permission in permissions {
+        if permission.permission_id.trim().is_empty() {
+            issues.push(issue(
+                "$.console_ui_artifact.requested_permissions",
+                "Console permission identifiers must be non-empty",
+            ));
+        }
+        for (path, values) in [
+            ("operations", &permission.operations),
+            ("resources", &permission.resources),
+            ("outbound_destinations", &permission.outbound_destinations),
+            ("secret_references", &permission.secret_references),
+        ] {
+            validate_sorted_unique(
+                &format!("$.console_ui_artifact.requested_permissions.{path}"),
+                values,
+                issues,
+            );
+        }
+    }
+}
+
+fn validate_console_surface_entries(
+    manifest: &ModuleManifest,
+    artifact: &ConsoleUiArtifact,
+    issues: &mut Vec<ModuleContractIssue>,
+) {
+    let entries = artifact
+        .entries
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect::<BTreeSet<_>>();
+    for surface in &manifest.console {
+        if let ConsoleSurfacePresentation::Isolated {
+            entry,
+            bridge_protocol,
+        } = &surface.presentation
+        {
+            if bridge_protocol != CONSOLE_BRIDGE_PROTOCOL {
+                issues.push(issue(
+                    "$.manifest.console.presentation.bridge_protocol",
+                    format!("bridge_protocol must be {CONSOLE_BRIDGE_PROTOCOL}"),
+                ));
+            }
+            if !entries.contains(entry.as_str()) {
+                issues.push(issue(
+                    "$.manifest.console.presentation.entry",
+                    format!(
+                        "Console surface entry `{entry}` is missing from the release UI artifact"
+                    ),
+                ));
+            }
+        }
+    }
+}
+
 fn valid_module_id(value: &str) -> bool {
     let Some((namespace, name)) = value.split_once('/') else {
         return false;
@@ -466,6 +583,19 @@ mod tests {
         ModuleManifest::builder("acme/support-ticket").build()
     }
 
+    fn linked_delivery() -> ModuleDelivery {
+        ModuleDelivery::Linked(LinkedModuleDelivery {
+            package: "acme-support-ticket".to_owned(),
+            crate_version: "1.2.3".to_owned(),
+            archive_checksum: digest("a"),
+            default_features: false,
+            features: Vec::new(),
+            binding: "support_ticket".to_owned(),
+            attestations: Vec::new(),
+            migrations: Vec::new(),
+        })
+    }
+
     #[test]
     fn canonical_digest_is_order_independent() {
         let left = serde_json::json!({"b": 2, "a": 1});
@@ -499,39 +629,105 @@ mod tests {
     }
 
     #[test]
-    fn console_artifact_requires_downloadable_provenance_matching_integrity() {
+    fn isolated_console_surface_requires_ui_artifact_in_same_release() {
+        let manifest = ModuleManifest::builder("acme/support-ticket")
+            .console(vec![crate::ConsoleSurface {
+                name: "tickets".to_owned(),
+                label: "Tickets".to_owned(),
+                route: "/support/tickets".to_owned(),
+                presentation: ConsoleSurfacePresentation::Isolated {
+                    entry: "tickets".to_owned(),
+                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
+                },
+                icon: None,
+                required_capabilities: Vec::new(),
+                navigation: None,
+            }])
+            .build();
+        let issues = ModuleRelease::new(
+            "acme/support-ticket",
+            "1.2.3",
+            manifest.clone(),
+            linked_delivery(),
+        )
+        .unwrap_err();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.path == "$.console_ui_artifact")
+        );
+
+        let mut release = ModuleRelease {
+            protocol: MODULE_RELEASE_PROTOCOL.to_owned(),
+            module_id: "acme/support-ticket".to_owned(),
+            version: "1.2.3".to_owned(),
+            manifest_digest: digest_json(&manifest).unwrap(),
+            manifest,
+            delivery: linked_delivery(),
+            console_ui_artifact: Some(ConsoleUiArtifact {
+                artifact: ArtifactReference {
+                    locator: "oci://registry.example/acme/support-ticket-ui@sha256:ui".to_owned(),
+                    digest: digest("b"),
+                },
+                format: ConsoleUiArtifactFormat::IsolatedWeb,
+                entries: vec![ConsoleUiArtifactEntry {
+                    name: "other".to_owned(),
+                    path: "entries/other/index.html".to_owned(),
+                }],
+                bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
+                requested_permissions: Vec::new(),
+                provenance: Vec::new(),
+            }),
+            compatibility: ModuleCompatibilityDeclaration::default(),
+            provenance: Vec::new(),
+        };
+        assert!(
+            release
+                .validate()
+                .iter()
+                .any(|issue| { issue.path == "$.manifest.console.presentation.entry" })
+        );
+
+        release.console_ui_artifact.as_mut().unwrap().entries[0].name = "tickets".to_owned();
+        assert!(release.validate().is_empty());
+    }
+
+    #[test]
+    fn console_ui_permissions_and_bridge_are_exact_and_digest_bound() {
         let mut release = ModuleRelease::new(
             "acme/support-ticket",
             "1.2.3",
             manifest(),
-            ModuleDelivery::Linked(LinkedModuleDelivery {
-                package: "acme-support-ticket".to_owned(),
-                crate_version: "1.2.3".to_owned(),
-                archive_checksum: digest("a"),
-                default_features: false,
-                features: Vec::new(),
-                binding: "support_ticket".to_owned(),
-                attestations: Vec::new(),
-                migrations: Vec::new(),
-            }),
+            linked_delivery(),
         )
         .unwrap();
-        release.console_artifact = Some(ModuleConsoleArtifact {
-            package: "@acme/support-console".to_owned(),
-            version: "1.0.0".to_owned(),
-            integrity: digest("b"),
-            exports: vec!["supportConsoleModule".to_owned()],
-            host_api_requirement: "^1".to_owned(),
-            provenance: vec![ArtifactReference {
-                locator: "https://modules.example/support.js".to_owned(),
-                digest: digest("c"),
+        release.console_ui_artifact = Some(ConsoleUiArtifact {
+            artifact: ArtifactReference {
+                locator: "oci://registry.example/acme/support-ticket-ui@sha256:ui".to_owned(),
+                digest: digest("b"),
+            },
+            format: ConsoleUiArtifactFormat::IsolatedWeb,
+            entries: Vec::new(),
+            bridge_protocol: "lenso.console-bridge.latest".to_owned(),
+            requested_permissions: vec![ConsolePermissionRequest {
+                permission_id: "tickets.read".to_owned(),
+                operations: vec!["read".to_owned(), "read".to_owned()],
+                resources: Vec::new(),
+                outbound_destinations: Vec::new(),
+                secret_references: Vec::new(),
             }],
+            provenance: Vec::new(),
         });
 
-        assert!(release.validate().iter().any(|issue| {
-            issue.path == "$.console_artifact.provenance"
-                && issue.message.contains("matches integrity")
-        }));
+        let paths = release
+            .validate()
+            .into_iter()
+            .map(|issue| issue.path)
+            .collect::<Vec<_>>();
+        assert!(paths.contains(&"$.console_ui_artifact.bridge_protocol".to_owned()));
+        assert!(
+            paths.contains(&"$.console_ui_artifact.requested_permissions.operations".to_owned())
+        );
     }
 
     #[test]

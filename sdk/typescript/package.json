@@ -1,0 +1,17 @@
+{
+  "name": "@lenso/typescript-sdk-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter @lenso/service-kit build",
+    "check": "pnpm build && pnpm test && pnpm typecheck",
+    "test": "vitest run packages/service-kit/src",
+    "typecheck": "tsc -p packages/service-kit/tsconfig.build.json --noEmit --declaration false"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  },
+  "packageManager": "pnpm@11.5.0"
+}

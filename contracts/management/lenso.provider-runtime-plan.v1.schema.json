@@ -297,8 +297,7 @@
     "AdminEmbeddedRuntime": {
       "enum": [
         "iframe",
-        "wasm",
-        "js_bundle"
+        "wasm"
       ],
       "type": "string"
     },
@@ -507,15 +506,6 @@
         }
       ]
     },
-    "ConsoleArea": {
-      "enum": [
-        "runtime",
-        "operations",
-        "data",
-        "configuration"
-      ],
-      "type": "string"
-    },
     "ConsoleContribution": {
       "properties": {
         "action": {
@@ -647,21 +637,6 @@
       ],
       "type": "object"
     },
-    "ConsolePackage": {
-      "properties": {
-        "export": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "export"
-      ],
-      "type": "object"
-    },
     "ConsoleSlot": {
       "properties": {
         "accepts": {
@@ -745,9 +720,6 @@
     },
     "ConsoleSurface": {
       "properties": {
-        "area": {
-          "$ref": "#/$defs/ConsoleArea"
-        },
         "icon": {
           "type": [
             "string",
@@ -770,8 +742,8 @@
             }
           ]
         },
-        "package": {
-          "$ref": "#/$defs/ConsolePackage"
+        "presentation": {
+          "$ref": "#/$defs/ConsoleSurfacePresentation"
         },
         "required_capabilities": {
           "default": [],
@@ -787,11 +759,48 @@
       "required": [
         "name",
         "label",
-        "area",
         "route",
-        "package"
+        "presentation"
       ],
       "type": "object"
+    },
+    "ConsoleSurfacePresentation": {
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "declarative",
+              "type": "string"
+            },
+            "schema": true
+          },
+          "required": [
+            "kind",
+            "schema"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "bridge_protocol": {
+              "type": "string"
+            },
+            "entry": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "isolated",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "entry",
+            "bridge_protocol"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "ConsoleWorkspaceRef": {
       "properties": {

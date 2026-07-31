@@ -96,12 +96,6 @@
         "required_host_features": {
           "$ref": "#/$defs/stringList"
         },
-        "consolePackageApi": {
-          "type": "string"
-        },
-        "console_package_api": {
-          "type": "string"
-        },
         "sdkLanguage": {
           "type": "string"
         },

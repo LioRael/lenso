@@ -401,7 +401,7 @@
       "subject": "acme/support-ticket"
     },
     {
-      "digest": "sha256:c79227e699caa4cfd67bfcb903a0d204c1c3522abadfff5c5a54f7925d41527a",
+      "digest": "sha256:13453e21907d63ec3bddbbf84fe3b9c11656258b964a0cc0239ab99bdd640d1c",
       "kind": "module_declaration",
       "subject": "acme/support-ticket"
     },
@@ -461,8 +461,8 @@
       "subject": "readiness-evidence:postgres-observation"
     }
   ],
-  "planDigest": "sha256:28f164e21adae2a524f7b70d96d78da49cd74c6dca8da35fcbb8e8284eb435cc",
-  "planId": "extraction-plan:sha256:28f164e21adae2a524f7b70d96d78da49cd74c6dca8da35fcbb8e8284eb435cc",
+  "planDigest": "sha256:221e714c94c108216bbd6b950baebbe2220e9bbdb7e3d9bcb95c9577754d3fe8",
+  "planId": "extraction-plan:sha256:221e714c94c108216bbd6b950baebbe2220e9bbdb7e3d9bcb95c9577754d3fe8",
   "proposedService": {
     "contractVersions": [
       {

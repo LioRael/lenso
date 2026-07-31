@@ -649,7 +649,7 @@ impl ModuleEffectAdapter for HostModuleEffectAdapter {
                     ));
                 }
                 let endpoint = format!(
-                    "{}/api/console/v1/extensions/reconcile",
+                    "{}/api/console/v1/artifacts/reconcile",
                     management_url.as_str().trim_end_matches('/')
                 );
                 let client = reqwest::Client::builder()

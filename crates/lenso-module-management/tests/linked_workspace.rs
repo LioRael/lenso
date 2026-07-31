@@ -122,7 +122,7 @@ fn linked_desired_and_lock() -> (DesiredModuleComposition, ApplicationModuleLock
             dependency_module_ids: Vec::new(),
             crate_features: vec!["runtime".to_owned()],
             migration_artifacts: Vec::new(),
-            console_artifact: None,
+            console_ui_artifact: None,
             verification: VerificationEvaluation {
                 state: VerificationState::Verified,
                 reason_code: "exact_cell_passed".to_owned(),

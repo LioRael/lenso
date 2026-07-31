@@ -90,6 +90,67 @@
       ],
       "type": "object"
     },
+    "ConsolePermissionRequest": {
+      "properties": {
+        "operations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "outbound_destinations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "permission_id": {
+          "type": "string"
+        },
+        "resources": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "secret_references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "permission_id"
+      ],
+      "type": "object"
+    },
+    "ConsoleUiArtifactEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "path"
+      ],
+      "type": "object"
+    },
+    "ConsoleUiArtifactFormat": {
+      "enum": [
+        "isolated_web"
+      ],
+      "type": "string"
+    },
     "DesiredModuleComposition": {
       "additionalProperties": false,
       "properties": {
@@ -216,48 +277,52 @@
       ],
       "type": "object"
     },
-    "LockedConsoleArtifact": {
+    "LockedConsoleUiArtifact": {
       "additionalProperties": false,
       "properties": {
-        "artifact_locator": {
+        "bridge_protocol": {
           "type": "string"
         },
-        "exports": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "entries": {
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/ConsoleUiArtifactEntry"
           },
           "type": "array"
         },
-        "host_api_version": {
+        "format": {
+          "$ref": "#/$defs/ConsoleUiArtifactFormat"
+        },
+        "locator": {
           "type": "string"
         },
-        "integrity": {
-          "type": "string"
-        },
-        "package": {
-          "type": "string"
-        },
-        "version": {
-          "type": "string"
+        "requested_permissions": {
+          "items": {
+            "$ref": "#/$defs/ConsolePermissionRequest"
+          },
+          "type": "array"
         }
       },
       "required": [
-        "package",
-        "version",
-        "artifact_locator",
-        "integrity",
-        "host_api_version",
-        "exports"
+        "locator",
+        "digest",
+        "format",
+        "entries",
+        "bridge_protocol",
+        "requested_permissions"
       ],
       "type": "object"
     },
     "LockedModule": {
       "additionalProperties": false,
       "properties": {
-        "console_artifact": {
+        "console_ui_artifact": {
           "anyOf": [
             {
-              "$ref": "#/$defs/LockedConsoleArtifact"
+              "$ref": "#/$defs/LockedConsoleUiArtifact"
             },
             {
               "type": "null"

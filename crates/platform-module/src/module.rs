@@ -56,14 +56,13 @@ impl Module {
         }
     }
 
-    /// Build a remote module from a manifest + transport-backed behavior.
-    /// Remote behavior is intentionally narrow in the first slice.
+    /// Build a Service-delivered Module from a manifest + Provider behavior.
     #[must_use]
-    pub fn remote(manifest: ModuleManifest, binding: Arc<dyn ModuleBinding>) -> Self {
+    pub fn service(manifest: ModuleManifest, binding: Arc<dyn ModuleBinding>) -> Self {
         Self {
             manifest,
             binding,
-            source: ModuleSource::Remote,
+            source: ModuleSource::Service,
             load_status: ModuleLoadStatus::Loaded,
             linked_http: None,
             runtime_config: &[],

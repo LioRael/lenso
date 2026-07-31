@@ -1354,24 +1354,44 @@ fn lint_console_surfaces(console: &[ConsoleSurface], lints: &mut Vec<ModuleManif
             });
         }
 
-        if !valid_console_package_name(&surface.package.name) {
-            lints.push(ModuleManifestLint {
-                severity: ModuleManifestLintSeverity::Warning,
-                subject: format!("{subject}.package"),
-                message: "Console surface package should be an npm package name.".to_owned(),
-                suggestion: "Use a build-time package name such as @lenso/story-console."
-                    .to_owned(),
-            });
-        }
-
-        if !present(&surface.package.export) {
-            lints.push(ModuleManifestLint {
-                severity: ModuleManifestLintSeverity::Warning,
-                subject: format!("{subject}.package.export"),
-                message: "Console surface package export is missing.".to_owned(),
-                suggestion: "Set the named export registered by the Runtime Console build."
-                    .to_owned(),
-            });
+        match &surface.presentation {
+            crate::ConsoleSurfacePresentation::Declarative { schema } => {
+                if !schema.is_object() {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Error,
+                        subject: format!("{subject}.presentation.schema"),
+                        message: "Declarative Console surface schema must be an object.".to_owned(),
+                        suggestion: "Provide a declarative surface schema object.".to_owned(),
+                    });
+                }
+            }
+            crate::ConsoleSurfacePresentation::Isolated {
+                entry,
+                bridge_protocol,
+            } => {
+                if !present(entry) {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Error,
+                        subject: format!("{subject}.presentation.entry"),
+                        message: "Isolated Console surface entry is missing.".to_owned(),
+                        suggestion:
+                            "Reference an entry from the Module Release Console UI artifact."
+                                .to_owned(),
+                    });
+                }
+                if bridge_protocol != crate::CONSOLE_BRIDGE_PROTOCOL {
+                    lints.push(ModuleManifestLint {
+                        severity: ModuleManifestLintSeverity::Error,
+                        subject: format!("{subject}.presentation.bridge_protocol"),
+                        message: "Isolated Console surface uses an unsupported bridge protocol."
+                            .to_owned(),
+                        suggestion: format!(
+                            "Use the supported bridge protocol {}.",
+                            crate::CONSOLE_BRIDGE_PROTOCOL
+                        ),
+                    });
+                }
+            }
         }
 
         if let Some(navigation) = &surface.navigation {
@@ -1951,12 +1971,6 @@ fn valid_console_navigation_id(value: &str) -> bool {
     valid_console_surface_name(value)
 }
 
-fn valid_console_package_name(value: &str) -> bool {
-    present(value)
-        && !value.contains(' ')
-        && (value.starts_with('@') || value.chars().any(|character| character == '-'))
-}
-
 fn valid_module_id(value: &str) -> bool {
     let Some((namespace, name)) = value.split_once('/') else {
         return false;
@@ -2163,10 +2177,10 @@ mod tests {
     };
     use crate::{
         AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
-        ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleArea, ConsoleContribution,
-        ConsoleContributionAction, ConsoleContributionKind, ConsolePackage, ConsoleSlot,
+        CONSOLE_BRIDGE_PROTOCOL, ConsoleActionInputBinding, ConsoleActionInputValue,
+        ConsoleContribution, ConsoleContributionAction, ConsoleContributionKind, ConsoleSlot,
         ConsoleSlotContext, ConsoleSlotContextField, ConsoleSlotContextFieldType, ConsoleSurface,
-        EventHandlerDeclaration, EventSurface,
+        ConsoleSurfacePresentation, EventHandlerDeclaration, EventSurface,
     };
     use crate::{
         LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
@@ -2204,11 +2218,11 @@ mod tests {
             .console(vec![ConsoleSurface {
                 name: "stories".to_owned(),
                 label: "Stories".to_owned(),
-                area: ConsoleArea::Runtime,
                 route: "/runtime/stories".to_owned(),
-                package: ConsolePackage {
-                    name: "@lenso/story-console".to_owned(),
-                    export: "storyConsoleModule".to_owned(),
+                presentation: ConsoleSurfacePresentation::Isolated {
+                    entry: "storyConsoleModule".to_owned(),
+
+                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: Some("workflow".to_owned()),
                 required_capabilities: vec!["runtime.stories.read".to_owned()],
@@ -2219,7 +2233,7 @@ mod tests {
 
         let json = serde_json::to_string(&manifest).expect("serialize");
         assert!(json.contains(r#""console""#), "got {json}");
-        assert!(json.contains(r#""area":"runtime""#), "got {json}");
+        assert!(json.contains(r#""kind":"isolated""#), "got {json}");
 
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
 
@@ -2333,11 +2347,11 @@ mod tests {
         let surface = ConsoleSurface {
             name: "contacts".to_owned(),
             label: "Contacts".to_owned(),
-            area: ConsoleArea::Data,
             route: "/crm/contacts".to_owned(),
-            package: crate::ConsolePackage {
-                name: "@lenso/crm-console".to_owned(),
-                export: "crmConsoleModule".to_owned(),
+            presentation: ConsoleSurfacePresentation::Isolated {
+                entry: "crmConsoleModule".to_owned(),
+
+                bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
             },
             icon: Some("users".to_owned()),
             required_capabilities: vec!["crm.contacts.read".to_owned()],
@@ -2370,11 +2384,11 @@ mod tests {
             .console(vec![ConsoleSurface {
                 name: "contacts".to_owned(),
                 label: "Contacts".to_owned(),
-                area: ConsoleArea::Data,
                 route: "/crm/contacts".to_owned(),
-                package: crate::ConsolePackage {
-                    name: "@lenso/crm-console".to_owned(),
-                    export: "crmConsoleModule".to_owned(),
+                presentation: ConsoleSurfacePresentation::Isolated {
+                    entry: "crmConsoleModule".to_owned(),
+
+                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: vec!["crm.contacts.read".to_owned()],
@@ -2407,11 +2421,11 @@ mod tests {
             .console(vec![ConsoleSurface {
                 name: "contacts".to_owned(),
                 label: "Contacts".to_owned(),
-                area: ConsoleArea::Data,
                 route: "/crm/contacts".to_owned(),
-                package: crate::ConsolePackage {
-                    name: "@lenso/crm-console".to_owned(),
-                    export: "crmConsoleModule".to_owned(),
+                presentation: ConsoleSurfacePresentation::Isolated {
+                    entry: "crmConsoleModule".to_owned(),
+
+                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: vec!["crm.contacts.read".to_owned()],
@@ -2444,11 +2458,10 @@ mod tests {
                 ConsoleSurface {
                     name: "stories".to_owned(),
                     label: "Stories".to_owned(),
-                    area: ConsoleArea::Runtime,
                     route: "runtime/stories".to_owned(),
-                    package: ConsolePackage {
-                        name: "story console".to_owned(),
-                        export: String::new(),
+                    presentation: ConsoleSurfacePresentation::Isolated {
+                        entry: String::new(),
+                        bridge_protocol: "unsupported".to_owned(),
                     },
                     icon: None,
                     required_capabilities: vec!["runtime.stories.read".to_owned()],
@@ -2457,11 +2470,11 @@ mod tests {
                 ConsoleSurface {
                     name: "stories".to_owned(),
                     label: "Stories duplicate".to_owned(),
-                    area: ConsoleArea::Runtime,
                     route: "/runtime/stories".to_owned(),
-                    package: ConsolePackage {
-                        name: "@lenso/story-console".to_owned(),
-                        export: "storyConsoleModule".to_owned(),
+                    presentation: ConsoleSurfacePresentation::Isolated {
+                        entry: "storyConsoleModule".to_owned(),
+
+                        bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                     },
                     icon: None,
                     required_capabilities: vec![],
@@ -2477,8 +2490,8 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(subjects.contains(&"console.surface.stories.route"));
-        assert!(subjects.contains(&"console.surface.stories.package"));
-        assert!(subjects.contains(&"console.surface.stories.package.export"));
+        assert!(subjects.contains(&"console.surface.stories.presentation.entry"));
+        assert!(subjects.contains(&"console.surface.stories.presentation.bridge_protocol"));
         assert!(subjects.contains(&"capability.reference.console.surface.stories"));
         assert!(lints.iter().any(|lint| {
             lint.subject == "console.surface.stories"
@@ -3293,11 +3306,11 @@ mod tests {
             .console(vec![ConsoleSurface {
                 name: "contacts".to_owned(),
                 label: "Contacts".to_owned(),
-                area: ConsoleArea::Data,
                 route: "/remote-crm/contacts".to_owned(),
-                package: ConsolePackage {
-                    name: "@lenso/remote-crm-console".to_owned(),
-                    export: "remoteCrmConsoleModule".to_owned(),
+                presentation: ConsoleSurfacePresentation::Isolated {
+                    entry: "remoteCrmConsoleModule".to_owned(),
+
+                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: Vec::new(),

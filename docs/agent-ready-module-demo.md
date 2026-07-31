@@ -17,7 +17,7 @@ repository path.
    module boundaries are still unclear.
 2. Use `lenso-start` to pick the right public path.
 3. Use `lenso-module-authoring` for an in-host linked module, or
-   `lenso-remote-module-authoring` for an out-of-process service that provides
+   `lenso-provider-authoring` for an out-of-process service that provides
    one or more modules.
 4. Scaffold the module:
 

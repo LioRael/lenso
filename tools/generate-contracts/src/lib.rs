@@ -1445,11 +1445,12 @@ fn support_ticket_migration_sql() -> &'static str {
 
 fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {
     use lenso_contracts::{
-        AdminSchema, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema,
-        EventHandlerDeclaration, EventSurface, FieldSchema, FieldType, ModuleHttpMethod,
-        ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
-        ScheduledFunctionDeclaration, ServiceOperationMetadata, StoryDisplayDescriptor,
-        StoryDisplaySource, WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
+        AdminSchema, CONSOLE_BRIDGE_PROTOCOL, ConsoleSurface, ConsoleSurfacePresentation,
+        EntitySchema, EventHandlerDeclaration, EventSurface, FieldSchema, FieldType,
+        ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
+        RuntimeSurface, ScheduledFunctionDeclaration, ServiceOperationMetadata,
+        StoryDisplayDescriptor, StoryDisplaySource, WorkflowDataContract, WorkflowDefinition,
+        WorkflowStepDeclaration,
     };
 
     ModuleManifest::builder("acme/support-ticket")
@@ -1520,11 +1521,11 @@ fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {
         .console(vec![ConsoleSurface {
             name: "support-tickets".to_owned(),
             label: "Support tickets".to_owned(),
-            area: ConsoleArea::Data,
             route: "/support/tickets".to_owned(),
-            package: ConsolePackage {
-                name: "@lenso/support-ticket-console".to_owned(),
-                export: "supportTicketConsoleModule".to_owned(),
+            presentation: ConsoleSurfacePresentation::Isolated {
+                entry: "supportTicketConsoleModule".to_owned(),
+
+                bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
             },
             icon: None,
             required_capabilities: vec!["support.tickets.read".to_owned()],

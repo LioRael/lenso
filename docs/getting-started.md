@@ -39,8 +39,9 @@ the API, worker, migration boot helpers, and a narrow linked HTTP route
 authoring surface; generated hosts should pin a crate version for reproducible
 builds. The starter exposes `GET /v1/app/status` plus `GET`/`POST
 /v1/app/items` as the first host-owned linked routes and data surface.
-The generated host does not embed Runtime Console assets. Deploy the standalone
-Console Service separately and connect it to the host management APIs.
+Install Lenso Console separately with `lenso console install`. The managed host
+serves only its Data Plane and its dedicated System Plane listener; it never
+serves Console web assets.
 
 ## Try The Audit Log Module
 
@@ -55,12 +56,8 @@ lenso module install audit-log
 lenso serve
 ```
 
-Connect the standalone Console Service to the host, open
-`/modules?module=audit-log` on the Console origin, and confirm the module detail
-shows the Data Surfaces panel with Audit Events. Open `/data` on the same origin
-to inspect the module data through the generic admin-data view. The module
-declares `audit_log.events.read`; grant that scope to real Console users when
-they need to read audit event rows.
+Use the separate Console Service to compose the Module Release and grant only
+the exact reviewed capability contracts required by its UI artifact.
 
 ## Enable Auth Redis Sessions In A Host
 
@@ -90,7 +87,7 @@ cp .env.example .env
 ```
 
 `.env.example` contains local Postgres, API, CORS, linked composition profile,
-logging, and optional OTLP defaults. Provider Modules are selected from
+logging, and optional OTLP defaults. Provider exports are selected from
 `lenso.modules.lock.json`; their exact Service releases, endpoints, and identity
 policy come from the target environment's Service Installation Set. They are
 not configured through `.env`.
@@ -106,10 +103,9 @@ Development bearer tokens such as `Bearer dev-service:admin` are accepted only
 for local/development API environments. Do not use them as deployment
 credentials.
 
-In production, Runtime Console access uses the host's real auth path. Sign in
-with password auth or OIDC, then grant the auth user `console.admin` with
-`lenso console bootstrap-admin`. Do not embed service tokens in a browser
-Console build.
+In production, Console access uses the Console Service's own Auth Module. Create
+the first operator with `lenso console operator bootstrap`; operator credentials
+never cross into a managed Service.
 
 ## Run The Local Services
 
@@ -127,10 +123,8 @@ just api
 just worker
 ```
 
-The application API does not embed the Runtime Console. Run the standalone
-Console Service from the sibling `../lenso-console` repository with
-`pnpm service:serve`; it owns the web application and connects to managed Lenso
-services through their management APIs.
+For Console development, run the complete Service from the sibling
+`../lenso-runtime-console` repository with `pnpm run service:serve`.
 
 ## Install The Example Service
 
@@ -168,12 +162,13 @@ lenso service release apply .lenso/support-suite-provider.release-plan.json
 The apply step records `.lenso/service-releases.json`; Console Services shows
 the latest release risk and recent provider history.
 
-Restart the local services and open the Runtime Console. The `support-ticket`
-module should be available through the Modules/Data surfaces, with
-`support-suite-provider` shown as its service provider.
+Restart the local services. The `support-ticket` Module is delivered by the
+`support-suite-provider` Service through the selected Provider Runtime Plan.
 
-Remote sources and Runtime Console package exports are loaded at process
-startup. After installing a module, restart the API, worker, and Runtime Console.
+Provider Runtime adapters and Linked Modules are selected at process startup.
+After changing the active Module composition, restart the API and worker. A
+separately deployed Console Service observes the resulting Service state through
+System Plane capabilities; it is not a Host-loaded package export.
 
 To run the backend part of this flow without opening the frontend:
 
