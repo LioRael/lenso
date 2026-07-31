@@ -1,22 +1,4 @@
----
-packages:
-  lenso-contracts:
-    type: patch
-  lenso-module-management:
-    type: patch
-  lenso-platform-core:
-    type: patch
-  lenso-platform-http:
-    type: patch
-  lenso-platform-module:
-    type: patch
-  lenso-platform-provider:
-    type: patch
-  lenso-platform-runtime:
-    type: patch
-  lenso-service:
-    type: patch
----
+## lenso-module-management@0.1.1
 
 ### Features
 
