@@ -16,6 +16,7 @@ mod manifest;
 mod module_release;
 pub mod operation;
 mod runtime;
+mod schema;
 mod story_display;
 
 pub use admin::{
@@ -68,4 +69,5 @@ pub use runtime::{
     WorkflowDefinitionReference, WorkflowRetryPolicyDeclaration, WorkflowStepDeclaration,
     evaluate_workflow_compatibility, workflow_compatibility_artifact, workflow_definition_schema,
 };
+pub use schema::{module_manifest_schema, module_release_schema};
 pub use story_display::{StoryDisplayDescriptor, StoryDisplaySource};
