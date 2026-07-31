@@ -27,15 +27,7 @@ use utoipa::openapi::response::Response;
         version = "1.0.0",
         description = "Rust-first modular monolith API contract"
     ),
-    tags(
-        (name = "auth", description = "Auth module development session APIs"),
-        (name = "admin-runtime", description = "Read-only runtime console APIs"),
-        (name = "admin-config", description = "Editable configuration console APIs"),
-        (name = "admin-data", description = "Schema-driven admin data console APIs"),
-        (name = "module-management", description = "Target-owned Module management APIs"),
-        (name = "service-management", description = "Target-owned Service installation APIs"),
-        (name = "system-delivery", description = "Production delivery authority APIs")
-    )
+    tags((name = "auth", description = "Auth module development session APIs"))
 )]
 struct ApiDoc;
 
@@ -56,11 +48,6 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
     ))
     .merge(base_router());
     lenso_bootstrap::merge_linked_http_for_profile(base, profile)
-        .merge(platform_admin::router())
-        .merge(platform_admin_data::router())
-        .merge(platform_module_management::router())
-        .merge(platform_module_remote::router())
-        .merge(crate::system_delivery::router())
 }
 
 pub(crate) fn api_router_for_context_with_composition(
@@ -73,14 +60,7 @@ pub(crate) fn api_router_for_context_with_composition(
         composition,
     ))
     .merge(base_router());
-    Ok(
-        lenso_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
-            .merge(platform_admin::router())
-            .merge(platform_admin_data::router())
-            .merge(platform_module_management::router())
-            .merge(platform_module_remote::router())
-            .merge(crate::system_delivery::router()),
-    )
+    lenso_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)
 }
 
 fn openapi_document_for_profile_with_composition(

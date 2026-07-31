@@ -28,7 +28,6 @@ cargo install lenso-cli
 lenso host init ../my-lenso-app
 cd ../my-lenso-app
 cp .env.example .env
-lenso console update
 docker compose up -d postgres
 cargo run --bin migrate
 cargo run --bin api
@@ -40,9 +39,9 @@ the API, worker, migration boot helpers, and a narrow linked HTTP route
 authoring surface; generated hosts should pin a crate version for reproducible
 builds. The starter exposes `GET /v1/app/status` plus `GET`/`POST
 /v1/app/items` as the first host-owned linked routes and data surface.
-`lenso console update` downloads the published Runtime Console artifact
-and installs it under `.lenso/console`, so `cargo run --bin api` serves
-`/console` without requiring Node.js or pnpm in the host project.
+Install Lenso Console separately with `lenso console install`. The managed host
+serves only its Data Plane and its dedicated System Plane listener; it never
+serves Console web assets.
 
 ## Try The Audit Log Module
 
@@ -54,15 +53,11 @@ lenso host init ../my-lenso-audit-app
 cd ../my-lenso-audit-app
 cp .env.example .env
 lenso module install audit-log
-lenso console update
 lenso serve
 ```
 
-Open `http://127.0.0.1:3000/console/modules?module=audit-log` and confirm the
-module detail shows the Data Surfaces panel with Audit Events. Open
-`http://127.0.0.1:3000/console/data` to inspect the same module data through the
-generic admin-data view. The module declares `audit_log.events.read`; grant that
-scope to real Console users when they need to read audit event rows.
+Use the separate Console Service to compose the Module Release and grant only
+the exact reviewed capability contracts required by its UI artifact.
 
 ## Enable Auth Redis Sessions In A Host
 
@@ -108,10 +103,9 @@ Development bearer tokens such as `Bearer dev-service:admin` are accepted only
 for local/development API environments. Do not use them as deployment
 credentials.
 
-In production, Runtime Console access uses the host's real auth path. Sign in
-with password auth or OIDC, then grant the auth user `console.admin` with
-`lenso console bootstrap-admin`. Do not embed service tokens in a browser
-Console build.
+In production, Console access uses the Console Service's own Auth Module. Create
+the first operator with `lenso console operator bootstrap`; operator credentials
+never cross into a managed Service.
 
 ## Run The Local Services
 
@@ -129,10 +123,8 @@ just api
 just worker
 ```
 
-Generated hosts serve the Runtime Console at `/console` after
-`lenso console update` installs it under `.lenso/console`. When developing
-this repository from source, run the Runtime Console from the sibling
-`../lenso-console` repository or run `just console-build-host <host-root>`.
+For Console development, run the complete Service from the sibling
+`../lenso-runtime-console` repository with `pnpm run service:serve`.
 
 ## Install The Example Service
 

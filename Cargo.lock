@@ -2131,13 +2131,9 @@ dependencies = [
  "lenso-module-auth",
  "lenso-module-auth-password",
  "lenso-module-auth-phone",
- "lenso-platform-admin",
- "lenso-platform-admin-data",
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
- "lenso-platform-module-management",
- "lenso-platform-module-remote",
  "lenso-platform-runtime",
  "lenso-platform-testing",
  "lenso-service",
@@ -2204,7 +2200,6 @@ dependencies = [
  "lenso-module-auth-phone",
  "lenso-module-management",
  "lenso-module-story",
- "lenso-platform-admin-data",
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
@@ -2465,42 +2460,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "lenso-platform-admin"
-version = "0.1.17"
-dependencies = [
- "axum",
- "chrono",
- "lenso-platform-core",
- "lenso-platform-http",
- "lenso-platform-module",
- "lenso-platform-testing",
- "lenso-service",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tracing",
- "utoipa",
-]
-
-[[package]]
-name = "lenso-platform-admin-data"
-version = "0.1.22"
-dependencies = [
- "async-trait",
- "axum",
- "lenso-platform-core",
- "lenso-platform-http",
- "lenso-platform-module",
- "lenso-service",
- "reqwest",
- "serde",
- "serde_json",
- "tracing",
- "utoipa",
 ]
 
 [[package]]

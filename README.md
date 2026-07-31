@@ -134,8 +134,8 @@ smoke checks and real host API smokes.
 | --- | --- |
 | [`lenso`](https://crates.io/crates/lenso) | Public Rust facade for module declarations, manifest lints, and the narrow host boot API. |
 | [`@lenso/cli`](https://www.npmjs.com/package/@lenso/cli) / [`lenso-cli`](https://crates.io/crates/lenso-cli) | Compose apps, manage generated state, author capabilities, run local systems, and operate modules and services. |
-| [`LioRael/lenso`](https://github.com/LioRael/lenso) | This repository: backend platform crates, built-in modules, migrations, admin APIs, runtime contracts, and architecture checks. |
-| [`LioRael/lenso-console`](https://github.com/LioRael/lenso-console) | Console frontend, deployable Console Service backend, extension packages, and service SDKs. |
+| [`LioRael/lenso`](https://github.com/LioRael/lenso) | This repository: backend platform crates, built-in Modules, System Plane contracts, framework SDKs, migrations, and architecture checks. |
+| [`LioRael/lenso-console`](https://github.com/LioRael/lenso-console) | Independent Console Service, web shell, composition Store, and isolated Module UI host. |
 | [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples) | Runnable product, module, service, and integration examples. |
 | [`lenso.dev`](https://lenso.dev) | Product documentation, guides, API reference, and agent-readable docs. |
 
@@ -145,8 +145,8 @@ Add the Rust authoring surface directly when building a module or custom host:
 cargo add lenso
 ```
 
-Generated hosts enable the crate's `host` feature. Runtime Console is installed
-or refreshed with `lenso console update` and served by the host at `/console`.
+Generated hosts enable the crate's `host` feature. Lenso Console is installed
+and operated as a separate Service; managed hosts never serve Console assets.
 
 Keep `lenso`, `lenso-cli`, and `lenso-console` checked out as siblings
 when changing behavior across backend, CLI, and Console boundaries. Repository
@@ -202,9 +202,8 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `platform-core`: config, errors, context, DB, migrations, events, outbox, health, telemetry primitives.
   - `platform-http`: Axum adapters, request context middleware, JSON extractor, error responses, health routes, and the `OpenApiRouter` re-exports for single-source OpenAPI.
   - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retries, and store traits.
-  - `platform-module`: behavior seams and compatibility re-exports for module loading, linked bindings, and schema-admin data/action sources.
-  - `platform-admin`: runtime-observability backend for the Runtime Console (`/admin/runtime/*`); reads platform/runtime tables only.
-  - `platform-admin-data`: schema-admin backend for generic module data (`/admin/data/*`).
+  - `platform-module`: behavior seams and compatibility re-exports for Module loading and Linked bindings.
+  - `platform-system-plane`: capability-neutral managed-Service management kernel mounted only on the dedicated System Plane listener.
   - `platform-testing`: shared test database helpers.
 - `modules/`
   - `auth`: host-owned authentication anchor and development session routes.
@@ -290,32 +289,24 @@ Worker:
 just worker
 ```
 
-Runtime Console and CLI preview shortcuts:
+Console Service and CLI development shortcuts:
 
 ```sh
-# Hot reload the Console against the local API.
-cd ../lenso-console
-just console-api
-
-# Copy the current Console build into any generated host for /console preview.
-cd ../lenso
-just console-build-host <host-root>
-
-# Install the latest released Console artifact into a generated host.
-just host-update-console <host-root>
+# Run the complete local Console Service from its own repository.
+cd ../lenso-runtime-console
+pnpm run service:serve
 
 # Serve a generated host through the local lenso-cli checkout.
 just host-serve <host-root>
 ```
 
 Use an absolute or relative path for `<host-root>`; it does not need to be a
-sibling directory. `LENSO_CONSOLE_BASE` stays inside the build script; host
-`.env` files do not need it.
+sibling directory. Managed Services never host Console web assets.
 
 Production Console access must use real auth, not development bearer tokens.
 With `APP_ENV=production`, `dev-user:*` and `dev-service:*` tokens are ignored.
 Browser users should sign in through password auth or OIDC, then receive
-`console.admin` through `lenso console bootstrap-admin`.
+the Console Service's own operator grant through `lenso console operator bootstrap`.
 
 OpenTelemetry collector for local span export:
 

@@ -12,8 +12,6 @@ members = [
     "crates/lenso-service",
     "crates/lenso-autonomous-service",
     "crates/lenso-operator",
-    "crates/platform-admin",
-    "crates/platform-admin-data",
     "crates/platform-core",
     "crates/platform-module",
     "crates/platform-module-management",
@@ -95,8 +93,6 @@ lenso = { path = "crates/lenso", version = "0.3.34" }
 lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.16" }
 lenso-module-management = { path = "crates/lenso-module-management", version = "0.1.0" }
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.16" }
-platform-admin = { package = "lenso-platform-admin", path = "crates/platform-admin", version = "0.1.17" }
-platform-admin-data = { package = "lenso-platform-admin-data", path = "crates/platform-admin-data", version = "0.1.22" }
 platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.16" }
 platform-module-management = { package = "lenso-platform-module-management", path = "crates/platform-module-management", version = "0.1.0" }
 platform-module-remote = { package = "lenso-platform-module-remote", path = "crates/platform-module-remote", version = "0.1.16" }

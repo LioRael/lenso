@@ -180,10 +180,10 @@ pub fn http_request_story_event_id(request_ctx: &RequestContext) -> String {
 }
 
 pub fn http_request_story_creation(path: &str, status_code: u16) -> HttpRequestStoryCreation {
-    if is_console_or_internal_path(path) {
+    if is_internal_path(path) {
         return HttpRequestStoryCreation::Never;
     }
-    if is_remote_proxy_path(path) {
+    if is_service_module_http_path(path) {
         return HttpRequestStoryCreation::Always;
     }
     if status_code >= 500 {
@@ -204,15 +204,11 @@ pub fn http_request_story_creation(path: &str, status_code: u16) -> HttpRequestS
     }
 }
 
-fn is_console_or_internal_path(path: &str) -> bool {
-    path.starts_with("/admin/runtime")
-        || path.starts_with("/console/")
-        || path == "/docs"
-        || path == "/openapi.json"
-        || path.ends_with("/health")
+fn is_internal_path(path: &str) -> bool {
+    path == "/docs" || path == "/openapi.json" || path.ends_with("/health")
 }
 
-fn is_remote_proxy_path(path: &str) -> bool {
+fn is_service_module_http_path(path: &str) -> bool {
     path.starts_with("/modules/") && path.contains("/http/")
 }
 
@@ -273,26 +269,10 @@ mod tests {
     }
 
     #[test]
-    fn remote_proxy_dependency_error_creates_story_root() {
+    fn service_module_dependency_error_creates_story_root() {
         assert_eq!(
             http_request_story_creation("/modules/remote-crm/http/proxy-fixtures/text", 502),
             HttpRequestStoryCreation::Always
-        );
-    }
-
-    #[test]
-    fn admin_runtime_paths_do_not_create_story_roots() {
-        assert_eq!(
-            http_request_story_creation("/admin/runtime/stories/corr_1", 200),
-            HttpRequestStoryCreation::Never
-        );
-    }
-
-    #[test]
-    fn console_asset_paths_do_not_create_story_roots() {
-        assert_eq!(
-            http_request_story_creation("/console/extensions/crm/entry.js", 200),
-            HttpRequestStoryCreation::Never
         );
     }
 
