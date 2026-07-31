@@ -169,6 +169,45 @@
       ],
       "type": "string"
     },
+    "ConsoleCompositionArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_locator": {
+          "type": "string"
+        },
+        "exports": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "host_api_requirement": {
+          "type": "string"
+        },
+        "integrity": {
+          "type": "string"
+        },
+        "module_id": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "module_id",
+        "package",
+        "version",
+        "artifact_locator",
+        "integrity",
+        "exports",
+        "host_api_requirement"
+      ],
+      "type": "object"
+    },
     "DesiredModuleComposition": {
       "additionalProperties": false,
       "properties": {
@@ -493,6 +532,9 @@
     "LockedConsoleArtifact": {
       "additionalProperties": false,
       "properties": {
+        "artifact_locator": {
+          "type": "string"
+        },
         "exports": {
           "items": {
             "type": "string"
@@ -515,6 +557,7 @@
       "required": [
         "package",
         "version",
+        "artifact_locator",
         "integrity",
         "host_api_version",
         "exports"
@@ -1002,6 +1045,12 @@
         },
         {
           "properties": {
+            "artifacts": {
+              "items": {
+                "$ref": "#/$defs/ConsoleCompositionArtifact"
+              },
+              "type": "array"
+            },
             "candidate_lock_digest": {
               "pattern": "^sha256:[0-9a-f]{64}$",
               "type": "string"
@@ -1021,7 +1070,8 @@
             "kind",
             "effect_id",
             "console_service_id",
-            "candidate_lock_digest"
+            "candidate_lock_digest",
+            "artifacts"
           ],
           "type": "object"
         },

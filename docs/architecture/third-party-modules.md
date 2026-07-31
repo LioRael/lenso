@@ -306,6 +306,8 @@ Current Runtime Console support includes:
 - module metadata showing missing frontend bundle registrations
 - low-friction service install through `lenso service install <manifest-url>`
 - service-owned runtime loading of installed Module Console artifacts
+- reviewed Console composition effects that download, verify, and materialize
+  Module Console artifacts through the Console Service
 - boundary checks that forbid package imports from host internals
 
 ## Deferred Support
@@ -313,7 +315,6 @@ Current Runtime Console support includes:
 The following are intentionally deferred:
 
 - automatic npm package installation
-- automatic Console artifact download and materialization
 - Wasm execution
 - embedded host bridges
 - streaming proxy protocols

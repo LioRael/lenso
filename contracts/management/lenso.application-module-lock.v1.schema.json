@@ -65,6 +65,9 @@
     "LockedConsoleArtifact": {
       "additionalProperties": false,
       "properties": {
+        "artifact_locator": {
+          "type": "string"
+        },
         "exports": {
           "items": {
             "type": "string"
@@ -87,6 +90,7 @@
       "required": [
         "package",
         "version",
+        "artifact_locator",
         "integrity",
         "host_api_version",
         "exports"

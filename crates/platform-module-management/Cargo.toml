@@ -19,6 +19,7 @@ lenso-contracts.workspace = true
 lenso-module-management.workspace = true
 platform-core.workspace = true
 platform-http.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

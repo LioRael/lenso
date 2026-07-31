@@ -2547,6 +2547,7 @@ dependencies = [
  "lenso-module-management",
  "lenso-platform-core",
  "lenso-platform-http",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.11.0",

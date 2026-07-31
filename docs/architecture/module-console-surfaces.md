@@ -188,7 +188,15 @@ is mounted by `lenso-api`.
 
 The Console Service exposes its registry at `/extensions/registry.json` and
 installed artifacts at `/extensions/runtime/*`. Registry entries must be
-same-origin, must match the supported Console host API, and must resolve to a
+materialized through a reviewed `ConsoleComposition` effect. The managed host
+calls the Console Service with `LENSO_CONSOLE_MANAGEMENT_URL` and a scoped
+`LENSO_CONSOLE_MANAGEMENT_TOKEN`; the token must grant
+`console.extensions.manage`. The Console Service downloads the declared
+artifact locator, verifies its SHA-256 integrity and host API requirement, and
+atomically replaces the registry only after every target artifact is ready.
+
+The resulting registry entries must be same-origin, must match the supported
+Console host API, and must resolve to a
 valid `ConsoleModule` export. A missing registry is an empty extension set, not
 a reason to disable the extension capability.
 

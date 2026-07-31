@@ -216,6 +216,46 @@ fn non_workspace_effects(
                 })
         })
         .collect::<Vec<_>>();
+    let current_console_artifacts = current_lock
+        .into_iter()
+        .flat_map(|lock| &lock.modules)
+        .filter_map(|module| {
+            module
+                .console_artifact
+                .as_ref()
+                .map(|artifact| (module.module_id.as_str(), artifact))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let target_console_artifacts = target_lock
+        .modules
+        .iter()
+        .filter_map(|module| {
+            module
+                .console_artifact
+                .as_ref()
+                .map(|artifact| (module.module_id.as_str(), artifact))
+        })
+        .collect::<BTreeMap<_, _>>();
+    if current_console_artifacts != target_console_artifacts {
+        let artifacts = target_console_artifacts
+            .into_iter()
+            .map(|(module_id, artifact)| crate::ConsoleCompositionArtifact {
+                module_id: module_id.to_owned(),
+                package: artifact.package.clone(),
+                version: artifact.version.clone(),
+                artifact_locator: artifact.artifact_locator.clone(),
+                integrity: artifact.integrity.clone(),
+                exports: artifact.exports.clone(),
+                host_api_requirement: artifact.host_api_version.clone(),
+            })
+            .collect();
+        effects.push(ModulePlanEffect::ConsoleComposition {
+            effect_id: "25-console-composition:lenso-console".to_owned(),
+            console_service_id: "lenso-console".to_owned(),
+            candidate_lock_digest: target_lock_digest.to_owned(),
+            artifacts,
+        });
+    }
     let current_services = current_lock
         .into_iter()
         .flat_map(|lock| &lock.modules)

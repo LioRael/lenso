@@ -234,9 +234,22 @@ pub struct LockedCapabilityBinding {
 pub struct LockedConsoleArtifact {
     pub package: String,
     pub version: String,
+    pub artifact_locator: String,
     pub integrity: String,
     pub host_api_version: String,
     pub exports: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConsoleCompositionArtifact {
+    pub module_id: String,
+    pub package: String,
+    pub version: String,
+    pub artifact_locator: String,
+    pub integrity: String,
+    pub exports: Vec<String>,
+    pub host_api_requirement: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -446,6 +459,7 @@ pub enum ModulePlanEffect {
         effect_id: String,
         console_service_id: String,
         candidate_lock_digest: String,
+        artifacts: Vec<ConsoleCompositionArtifact>,
     },
     ServiceInstallation {
         effect_id: String,

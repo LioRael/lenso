@@ -649,9 +649,17 @@ fn build_lock(
                 crate_features,
                 migration_artifacts,
                 console_artifact: release.console_artifact.as_ref().map(|artifact| {
+                    let artifact_locator = artifact
+                        .provenance
+                        .iter()
+                        .find(|reference| reference.digest == artifact.integrity)
+                        .expect("validated Console artifact provenance")
+                        .locator
+                        .clone();
                     LockedConsoleArtifact {
                         package: artifact.package.clone(),
                         version: artifact.version.clone(),
+                        artifact_locator,
                         integrity: artifact.integrity.clone(),
                         host_api_version: artifact.host_api_requirement.clone(),
                         exports: artifact.exports.clone(),

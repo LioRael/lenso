@@ -611,6 +611,80 @@ impl ModuleEffectAdapter for HostModuleEffectAdapter {
                     evidence_references: references,
                 });
             }
+            ModulePlanEffect::ConsoleComposition { effect_id, .. } => {
+                if let Some(receipt) = existing_effect_receipt(workspace_root, effect)? {
+                    return Ok(ModuleEffectExecution {
+                        outcome: ModuleEffectOutcome::Applied,
+                        evidence_references: vec![receipt],
+                    });
+                }
+                let management_url =
+                    std::env::var("LENSO_CONSOLE_MANAGEMENT_URL").map_err(|_| {
+                        ModuleEffectAdapterError::Unsupported {
+                            effect_id: effect_id.clone(),
+                            reason: "LENSO_CONSOLE_MANAGEMENT_URL is not configured".to_owned(),
+                        }
+                    })?;
+                let management_token =
+                    std::env::var("LENSO_CONSOLE_MANAGEMENT_TOKEN").map_err(|_| {
+                        ModuleEffectAdapterError::Unsupported {
+                            effect_id: effect_id.clone(),
+                            reason: "LENSO_CONSOLE_MANAGEMENT_TOKEN is not configured".to_owned(),
+                        }
+                    })?;
+                let management_url = reqwest::Url::parse(&management_url)
+                    .map_err(|error| failed(effect_id, error))?;
+                if management_url.scheme() != "https"
+                    && !(management_url.scheme() == "http"
+                        && management_url.host_str().is_some_and(|host| {
+                            host == "localhost"
+                                || host
+                                    .parse::<std::net::IpAddr>()
+                                    .is_ok_and(|ip| ip.is_loopback())
+                        }))
+                {
+                    return Err(failed(
+                        effect_id,
+                        "Console management URL must use HTTPS or loopback HTTP",
+                    ));
+                }
+                let endpoint = format!(
+                    "{}/api/console/v1/extensions/reconcile",
+                    management_url.as_str().trim_end_matches('/')
+                );
+                let client = reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .map_err(|error| failed(effect_id, error))?;
+                let response = self
+                    .runtime
+                    .block_on(
+                        client
+                            .post(endpoint)
+                            .bearer_auth(management_token)
+                            .json(effect)
+                            .send(),
+                    )
+                    .map_err(|error| failed(effect_id, error))?;
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let body = self.runtime.block_on(response.text()).unwrap_or_default();
+                    return Err(failed(
+                        effect_id,
+                        format!("Console composition request failed with {status}: {body}"),
+                    ));
+                }
+                let receipt = write_effect_receipt(
+                    workspace_root,
+                    operation,
+                    effect,
+                    "console_composition_reconciled",
+                )?;
+                return Ok(ModuleEffectExecution {
+                    outcome: ModuleEffectOutcome::Applied,
+                    evidence_references: vec![receipt],
+                });
+            }
             ModulePlanEffect::ServiceRemoval { action, .. }
             | ModulePlanEffect::ServiceRestart { action, .. } => {
                 if let Some(receipt) = existing_effect_receipt(workspace_root, effect)? {

@@ -234,6 +234,16 @@ impl ModuleRelease {
                 &console.provenance,
                 &mut issues,
             );
+            if !console
+                .provenance
+                .iter()
+                .any(|reference| reference.digest == console.integrity)
+            {
+                issues.push(issue(
+                    "$.console_artifact.provenance",
+                    "Console artifact provenance must include a downloadable locator whose digest matches integrity",
+                ));
+            }
         }
         for (path, requirement) in [
             (
@@ -486,6 +496,42 @@ mod tests {
 
         assert_eq!(release.manifest_digest, digest_json(&manifest).unwrap());
         assert!(release.validate().is_empty());
+    }
+
+    #[test]
+    fn console_artifact_requires_downloadable_provenance_matching_integrity() {
+        let mut release = ModuleRelease::new(
+            "acme/support-ticket",
+            "1.2.3",
+            manifest(),
+            ModuleDelivery::Linked(LinkedModuleDelivery {
+                package: "acme-support-ticket".to_owned(),
+                crate_version: "1.2.3".to_owned(),
+                archive_checksum: digest("a"),
+                default_features: false,
+                features: Vec::new(),
+                binding: "support_ticket".to_owned(),
+                attestations: Vec::new(),
+                migrations: Vec::new(),
+            }),
+        )
+        .unwrap();
+        release.console_artifact = Some(ModuleConsoleArtifact {
+            package: "@acme/support-console".to_owned(),
+            version: "1.0.0".to_owned(),
+            integrity: digest("b"),
+            exports: vec!["supportConsoleModule".to_owned()],
+            host_api_requirement: "^1".to_owned(),
+            provenance: vec![ArtifactReference {
+                locator: "https://modules.example/support.js".to_owned(),
+                digest: digest("c"),
+            }],
+        });
+
+        assert!(release.validate().iter().any(|issue| {
+            issue.path == "$.console_artifact.provenance"
+                && issue.message.contains("matches integrity")
+        }));
     }
 
     #[test]
