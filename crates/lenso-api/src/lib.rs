@@ -193,7 +193,6 @@ fn install_default_platform_admin_catalogs(
     ctx: &AppContext,
     composition: &lenso_bootstrap::HostComposition,
 ) -> platform_core::AppResult<()> {
-    lenso_bootstrap::install_default_story_display_catalog_with_composition(ctx, composition)?;
     platform_admin::install_default_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
             lenso_bootstrap::linked_runtime_function_declaration_sources_for_context_with_composition(
@@ -211,7 +210,6 @@ fn install_admin_module_metadata(metadata: Vec<platform_admin_data::AdminModuleM
 }
 
 fn install_platform_admin_catalogs(metadata: &[platform_admin_data::AdminModuleMetadata]) {
-    lenso_bootstrap::install_story_display_catalog(metadata);
     platform_admin::install_runtime_function_declarations(
         platform_admin::runtime_function_declarations_from_modules(
             lenso_bootstrap::runtime_function_declaration_sources_from_metadata(metadata),

@@ -142,40 +142,6 @@ if [ "$(jq '.data | length' "$remote_calls")" -gt 0 ]; then
         assert_json "$paged_remote_calls" '.page.limit == 1' "remote call pagination limit is missing"
     fi
 
-    story="$tmpdir/remote-story.json"
-    api_get "/admin/runtime/stories/$correlation_id" >"$story"
-    assert_json "$story" '.data.summary.correlation_id == "'"$correlation_id"'"' "remote call story correlation mismatch"
-    assert_jq "$story" "remote proxy call story node is missing" \
-        --arg node_id "$remote_node_id" '
-        any(.data.nodes[]; .id == $node_id and .type == "remote_proxy_call")
-    '
-    assert_jq "$story" "remote proxy call story node metadata is incomplete" \
-        --arg node_id "$remote_node_id" \
-        --arg call_id "$remote_call_id" \
-        --arg module_name "$module_name" '
-        any(.data.nodes[];
-            .id == $node_id
-            and .metadata.source_metadata.remote_proxy_call_id == $call_id
-            and .metadata.source_metadata.module_name == $module_name
-        )
-    '
-    assert_jq "$story" "remote proxy call timeline item is missing" \
-        --arg node_id "$remote_node_id" '
-        any(.data.timeline_items[]; .related_node_id == $node_id and .type == "remote_proxy_call")
-    '
-
-    story_operations="$tmpdir/remote-story-operations.json"
-    api_get "/admin/runtime/stories/$correlation_id/technical-operations" >"$story_operations"
-    assert_jq "$story_operations" "remote proxy technical operation is missing" \
-        --arg node_id "$remote_node_id" \
-        --arg call_id "$remote_call_id" '
-        any(.data[];
-            .related_node_id == $node_id
-            and .source == "remote_proxy"
-            and .id == ("remote_proxy:" + $call_id)
-        )
-    '
-
     payload="$tmpdir/remote-payload.json"
     api_get "/admin/runtime/executions/$remote_node_id/payload" >"$payload"
     assert_json "$payload" '.data.node_type == "story_event"' "remote proxy payload node type is unexpected"
@@ -207,7 +173,6 @@ assert_jq "$remote_functions" "remote runtime function list item is missing decl
     )
 '
 remote_function_id="$(jq -r --arg function_name "$remote_runtime_function_name" '[.data[] | select(.function_name == $function_name and .status == "completed")][0].id' "$remote_functions")"
-remote_function_correlation_id="$(jq -r --arg id "$remote_function_id" '.data[] | select(.id == $id) | .correlation_id' "$remote_functions")"
 
 remote_function_detail="$tmpdir/remote-function-detail.json"
 api_get "/admin/runtime/functions/$remote_function_id" >"$remote_function_detail"
@@ -219,15 +184,6 @@ assert_jq "$remote_function_detail" "remote runtime function detail is incomplet
     and .data.status == "completed"
     and .data.runtime_declaration.module_source == "remote"
     and .data.input_json.reason == "worker_startup"
-'
-
-remote_function_story="$tmpdir/remote-function-story.json"
-api_get "/admin/runtime/stories/$remote_function_correlation_id" >"$remote_function_story"
-assert_jq "$remote_function_story" "remote runtime function story node is missing" \
-    --arg id "$remote_function_id" \
-    --arg function_name "$remote_runtime_function_name" '
-    any(.data.nodes[]; .id == $id and .type == "function" and .name == $function_name and .status == "completed")
-    and any(.data.timeline_items[]; .related_node_id == $id and .type == "function_run")
 '
 
 remote_function_operations="$tmpdir/remote-function-operations.json"

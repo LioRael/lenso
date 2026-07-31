@@ -1360,7 +1360,7 @@ async fn admin_action_invocation_validates_declared_input_schema() {
 }
 
 #[tokio::test]
-async fn admin_action_invocation_records_story_and_technical_operation() {
+async fn admin_action_invocation_records_runtime_operation() {
     let _guard = ADMIN_DATA_CONSOLE_TEST_LOCK.lock().await;
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -1426,74 +1426,6 @@ async fn admin_action_invocation_records_story_and_technical_operation() {
         response_json["invocation"]["story_node_id"],
         "adminaction_req_admin_action_story"
     );
-
-    let story_response = app
-        .clone()
-        .oneshot(admin_get("/admin/runtime/stories/corr_admin_action_story"))
-        .await
-        .expect("story request completes");
-    assert_eq!(story_response.status(), StatusCode::OK);
-    let story = json_body(story_response).await;
-    let nodes = story["data"]["nodes"].as_array().expect("nodes array");
-    let action_node = nodes
-        .iter()
-        .find(|node| node["type"] == "admin_action")
-        .expect("admin action story node");
-    assert_eq!(action_node["id"], "adminaction_req_admin_action_story");
-    assert_eq!(action_node["name"], "Sync contacts");
-    assert_eq!(action_node["status"], "completed");
-    assert_eq!(action_node["service"], "remote-crm");
-    assert_eq!(
-        action_node["metadata"]["source_metadata"]["action_name"],
-        "sync_contacts"
-    );
-    assert_eq!(
-        action_node["metadata"]["source_metadata"]["capability"],
-        "remote_crm.contacts.sync"
-    );
-    assert_eq!(
-        action_node["metadata"]["source_metadata"]["input_summary"],
-        "dry_run: true"
-    );
-    assert_eq!(
-        action_node["metadata"]["source_metadata"]["result_summary"],
-        "action: sync_contacts / input: {...}"
-    );
-    assert_eq!(
-        action_node["metadata"]["source_metadata"]["trace_id"],
-        "00000000000000000000000000000031"
-    );
-    assert_eq!(
-        action_node["metadata"]["source_metadata"]["span_id"],
-        "0000000000000031"
-    );
-
-    let operations_response = app
-        .clone()
-        .oneshot(admin_get(
-            "/admin/runtime/stories/corr_admin_action_story/technical-operations",
-        ))
-        .await
-        .expect("technical operations request completes");
-    assert_eq!(operations_response.status(), StatusCode::OK);
-    let operations = json_body(operations_response).await;
-    let operation = operations["data"]
-        .as_array()
-        .expect("operations array")
-        .iter()
-        .find(|operation| operation["source"] == "admin_action")
-        .expect("admin action technical operation");
-    assert_eq!(operation["category"], "admin");
-    assert_eq!(operation["status"], "ok");
-    assert_eq!(
-        operation["related_node_id"],
-        "adminaction_req_admin_action_story"
-    );
-    assert_eq!(
-        operation["attributes"]["request_id"],
-        "req_admin_action_story"
-    );
-    assert_eq!(operation["attributes"]["module_name"], "remote-crm");
 
     let list_response = app
         .oneshot(admin_get(

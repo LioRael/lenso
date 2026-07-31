@@ -1,11 +1,8 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use lenso_api::{build_router, openapi_document};
-use platform_core::{
-    AppConfig, AppContext, LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig,
-};
+use platform_core::{AppConfig, AppContext, LoggingEventPublisher, ModuleSourcesConfig};
 use platform_module::{ModuleHttpMethod, ModuleManifest, ModuleSource};
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use tower::ServiceExt;
 
@@ -507,22 +504,14 @@ fn linked_module_openapi_routes_are_declared_in_manifest() {
 }
 
 #[tokio::test]
-async fn disabled_story_module_router_does_not_mount_story_routes() {
+async fn framework_router_does_not_mount_console_owned_story_routes() {
     let _guard = catalog_test_lock()
         .lock()
         .expect("catalog test lock poisoned");
     let _ = openapi_document();
 
-    let mut config = app_config_with_default_modules();
-    config.modules.insert(
-        "platform-story".to_owned(),
-        ModuleConfig {
-            enabled: Some(false),
-            values: BTreeMap::new(),
-        },
-    );
     let ctx = AppContext::new(
-        config,
+        app_config_with_default_modules(),
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),
@@ -544,22 +533,14 @@ async fn disabled_story_module_router_does_not_mount_story_routes() {
 }
 
 #[tokio::test]
-async fn served_openapi_omits_disabled_story_module_routes() {
+async fn served_openapi_omits_console_owned_story_module_routes() {
     let _guard = catalog_test_lock()
         .lock()
         .expect("catalog test lock poisoned");
     let _ = openapi_document();
 
-    let mut config = app_config_with_default_modules();
-    config.modules.insert(
-        "platform-story".to_owned(),
-        ModuleConfig {
-            enabled: Some(false),
-            values: BTreeMap::new(),
-        },
-    );
     let ctx = AppContext::new(
-        config,
+        app_config_with_default_modules(),
         platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build"),
         Arc::new(LoggingEventPublisher),

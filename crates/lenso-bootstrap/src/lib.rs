@@ -152,12 +152,7 @@ impl Default for CompositionProfile {
     }
 }
 
-const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[LinkedModuleEntry {
-    module_name: "platform-story",
-    manifest: story::module::manifest,
-    load: story::module::module,
-    http_binding: Some(story::module::binding),
-}];
+const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[];
 
 const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
     LinkedModuleEntry {
@@ -207,12 +202,6 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         manifest: auth_oidc::module::manifest,
         load: auth_oidc::module::module,
         http_binding: Some(auth_oidc::module::binding),
-    },
-    LinkedModuleEntry {
-        module_name: "platform-story",
-        manifest: story::module::manifest,
-        load: story::module::module,
-        http_binding: Some(story::module::binding),
     },
 ];
 
@@ -672,9 +661,6 @@ pub fn migrations_for_config_with_composition(
         .collect::<Vec<_>>();
 
     let profile = CompositionProfile::from_config(config)?;
-    if linked_module_enabled_from_config(config, story::module::MODULE_NAME) {
-        migrations.extend(story::migrations::STORY_MIGRATIONS.iter().copied());
-    }
     if profile == CompositionProfile::Demo {
         if linked_module_enabled_from_config(config, "auth") {
             migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
@@ -757,8 +743,6 @@ pub fn migrations_for_profile(profile: CompositionProfile) -> Vec<Migration> {
         .chain(RUNTIME_MIGRATIONS)
         .copied()
         .collect::<Vec<_>>();
-
-    migrations.extend(story::migrations::STORY_MIGRATIONS.iter().copied());
 
     if profile == CompositionProfile::Demo {
         migrations.extend(auth::migrations::AUTH_MIGRATIONS.iter().copied());
@@ -1823,49 +1807,6 @@ pub fn story_display_descriptors_for_context(
         .collect())
 }
 
-pub fn install_default_story_display_catalog(ctx: &AppContext) -> platform_core::AppResult<()> {
-    install_default_story_display_catalog_with_composition(ctx, &HostComposition::default())
-}
-
-pub fn install_default_story_display_catalog_with_composition(
-    ctx: &AppContext,
-    composition: &HostComposition,
-) -> platform_core::AppResult<()> {
-    let profile = CompositionProfile::from_config(&ctx.config)?;
-    if !linked_module_enabled(ctx, story::module::MODULE_NAME) {
-        story::backend::install_default_story_display(Vec::new());
-        return Ok(());
-    }
-    let mut descriptors = story_display_descriptors_for_context(ctx)?;
-    descriptors.extend(
-        host_linked_modules_for_context(ctx, composition, profile)
-            .into_iter()
-            .flat_map(|entry| story_display_descriptors_from_manifest((entry.manifest)())),
-    );
-    story::backend::install_default_story_display(descriptors);
-    Ok(())
-}
-
-pub fn install_story_display_catalog(metadata: &[AdminModuleMetadata]) {
-    story::backend::install_story_display(
-        metadata
-            .iter()
-            .flat_map(story_display_descriptors_from_metadata)
-            .collect(),
-    );
-}
-
-fn story_display_descriptors_from_metadata(
-    module: &AdminModuleMetadata,
-) -> Vec<StoryDisplayDescriptor> {
-    story_display_descriptors_from_manifest(
-        ModuleManifest::builder(module.module_name.clone())
-            .story_display(module.story_display.clone())
-            .http_routes(module.http_routes.clone())
-            .build(),
-    )
-}
-
 fn story_display_descriptors_from_manifest(
     manifest: ModuleManifest,
 ) -> Vec<StoryDisplayDescriptor> {
@@ -2038,9 +1979,8 @@ mod tests {
         TelemetryConfig, apply_migrations,
     };
     use platform_module::{
-        ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
-        LifecycleSurface, ModuleManifestLintSeverity, RuntimeFunctionDeclaration, RuntimeSurface,
-        lint_module_manifest,
+        LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleSurface,
+        RuntimeFunctionDeclaration, RuntimeSurface,
     };
     use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
     use platform_testing::{SequentialIdGenerator, TestDatabase};
@@ -2092,7 +2032,10 @@ mod tests {
             .map(|manifest| manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["lenso/platform-story"]);
+        assert!(
+            names.is_empty(),
+            "framework core must not implicitly install Console-owned modules"
+        );
     }
 
     #[test]
@@ -2113,7 +2056,6 @@ mod tests {
                 "lenso/auth-github",
                 "lenso/auth-google",
                 "lenso/auth-oidc",
-                "lenso/platform-story",
             ]
         );
     }
@@ -2140,7 +2082,7 @@ mod tests {
 
         assert!(names.iter().any(|name| name.starts_with("platform/")));
         assert!(names.iter().any(|name| name.starts_with("runtime/")));
-        assert!(names.iter().any(|name| name.starts_with("story/")));
+        assert!(!names.iter().any(|name| name.starts_with("story/")));
         assert!(!names.iter().any(|name| name.starts_with("auth/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-oauth/")));
         assert!(!names.iter().any(|name| name.starts_with("auth-github/")));
@@ -2467,20 +2409,13 @@ mod tests {
                 "lenso/auth-github",
                 "lenso/auth-google",
                 "lenso/auth-oidc",
-                "lenso/platform-story",
             ]
         );
     }
 
     #[test]
     fn linked_http_route_owners_are_profile_aware() {
-        assert_eq!(
-            linked_http_route_owners_for_profile(CompositionProfile::Core),
-            vec![LinkedHttpRouteOwner {
-                module_name: "lenso/platform-story".to_owned(),
-                public_prefixes: &["/admin/runtime/stories"],
-            }]
-        );
+        assert!(linked_http_route_owners_for_profile(CompositionProfile::Core).is_empty());
         assert_eq!(
             linked_http_route_owners_for_profile(CompositionProfile::Demo),
             vec![
@@ -2512,10 +2447,6 @@ mod tests {
                     module_name: "lenso/auth-oidc".to_owned(),
                     public_prefixes: &["/.well-known/", "/oauth/"],
                 },
-                LinkedHttpRouteOwner {
-                    module_name: "lenso/platform-story".to_owned(),
-                    public_prefixes: &["/admin/runtime/stories"],
-                },
             ]
         );
     }
@@ -2534,7 +2465,7 @@ mod tests {
             .map(|module| module.manifest.module_id)
             .collect::<Vec<_>>();
 
-        assert_eq!(names, vec!["lenso/platform-story"]);
+        assert!(names.is_empty());
     }
 
     #[tokio::test]
@@ -2899,8 +2830,7 @@ mod tests {
                 "lenso/auth-oauth",
                 "lenso/auth-github",
                 "lenso/auth-google",
-                "lenso/auth-oidc",
-                "lenso/platform-story"
+                "lenso/auth-oidc"
             ]
         );
     }
@@ -2938,8 +2868,7 @@ mod tests {
                 "lenso/auth-oauth",
                 "lenso/auth-github",
                 "lenso/auth-google",
-                "lenso/auth-oidc",
-                "lenso/platform-story"
+                "lenso/auth-oidc"
             ]
         );
         let linked_http_names = linked_http_modules_for_context(&ctx)
@@ -2955,64 +2884,9 @@ mod tests {
                 "lenso/auth-anonymous",
                 "lenso/auth-github",
                 "lenso/auth-google",
-                "lenso/auth-oidc",
-                "lenso/platform-story"
+                "lenso/auth-oidc"
             ]
         );
-    }
-
-    #[tokio::test]
-    async fn story_module_runtime_config_disables_backend_metadata() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let config = test_config_with_database_url("postgres://localhost/lenso_test");
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-        let registry =
-            RuntimeConfigRegistry::try_new(runtime_config_descriptors(&ctx).expect("descriptors"))
-                .expect("registry");
-        let mut stored = BTreeMap::new();
-        stored.insert(
-            ("*".to_owned(), "modules.platform-story.enabled".to_owned()),
-            json!(false),
-        );
-        let snapshot = RuntimeConfigSnapshot::resolve(&registry, "api", &stored);
-        let ctx = ctx.with_runtime_config_provider(Arc::new(TestRuntimeConfigProvider {
-            snapshot: Arc::new(snapshot),
-        }));
-
-        let linked_http_names = linked_http_modules_for_context(&ctx)
-            .expect("linked HTTP modules should load")
-            .into_iter()
-            .map(|module| module.manifest.module_id)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            linked_http_names,
-            vec![
-                "lenso/auth",
-                "lenso/auth-anonymous",
-                "lenso/auth-password",
-                "lenso/auth-phone",
-                "lenso/auth-github",
-                "lenso/auth-google",
-                "lenso/auth-oidc",
-            ]
-        );
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let story = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/platform-story")
-            .expect("disabled story module should remain visible in metadata");
-
-        assert!(matches!(
-            &story.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module disabled by configuration"
-        ));
-        assert_eq!(story.console.len(), 1);
-        assert_eq!(story.http_routes.len(), story::module::http_routes().len());
     }
 
     #[tokio::test]
@@ -3079,12 +2953,6 @@ mod tests {
         }));
         assert!(keys.iter().any(|(key, group, restart_only, default)| {
             key == "modules.auth-oidc.enabled"
-                && *group == Some("modules")
-                && *restart_only
-                && default == &json!(true)
-        }));
-        assert!(keys.iter().any(|(key, group, restart_only, default)| {
-            key == "modules.platform-story.enabled"
                 && *group == Some("modules")
                 && *restart_only
                 && default == &json!(true)
@@ -3177,74 +3045,9 @@ mod tests {
                 "lenso/auth-anonymous",
                 "lenso/auth-github",
                 "lenso/auth-google",
-                "lenso/auth-oidc",
-                "lenso/platform-story"
+                "lenso/auth-oidc"
             ]
         );
-    }
-
-    #[test]
-    fn linked_http_modules_for_config_skip_disabled_story_routes() {
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.modules.insert(
-            "platform-story".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-
-        let names = linked_http_modules_for_config(&config)
-            .expect("demo linked profile should parse")
-            .into_iter()
-            .map(|module| module.manifest.module_id)
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            names,
-            vec![
-                "lenso/auth",
-                "lenso/auth-anonymous",
-                "lenso/auth-password",
-                "lenso/auth-phone",
-                "lenso/auth-github",
-                "lenso/auth-google",
-                "lenso/auth-oidc",
-            ]
-        );
-
-        let migration_names = migrations_for_config(&config)
-            .expect("demo linked profile should parse")
-            .into_iter()
-            .map(|migration| migration.name)
-            .collect::<Vec<_>>();
-        assert!(
-            !migration_names
-                .iter()
-                .any(|name| name.starts_with("story/")),
-            "disabled Story module must not install aggregation tables"
-        );
-    }
-
-    #[tokio::test]
-    async fn disabled_story_module_omits_default_story_display_catalog() {
-        story::backend::reset_catalogs_for_test();
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.modules.insert(
-            "platform-story".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        install_default_story_display_catalog(&ctx)
-            .expect("story display catalog installation should succeed");
-
-        assert!(story::backend::story_display_catalog_snapshot().is_empty());
     }
 
     #[tokio::test]
@@ -3323,10 +3126,6 @@ mod tests {
                     module_name: "lenso/auth-oidc".to_owned(),
                     public_prefixes: &["/.well-known/", "/oauth/"],
                 },
-                LinkedHttpRouteOwner {
-                    module_name: "lenso/platform-story".to_owned(),
-                    public_prefixes: &["/admin/runtime/stories"],
-                },
             ]
         );
     }
@@ -3375,84 +3174,6 @@ mod tests {
                 module.manifest.module_id
             );
         }
-    }
-
-    #[test]
-    fn linked_http_routes_include_story_module_routes() {
-        let document = merge_linked_http(platform_http::OpenApiRouter::new()).to_openapi();
-        let value = serde_json::to_value(document).expect("OpenAPI document should serialize");
-        let paths = value["paths"].as_object().expect("OpenAPI paths object");
-
-        assert!(paths.contains_key("/admin/runtime/stories"));
-        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}"));
-        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}/heatmap"));
-        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}/technical-operations"));
-    }
-
-    #[test]
-    fn platform_story_manifest_declares_story_console_surface() {
-        let manifest = module_manifests()
-            .into_iter()
-            .find(|manifest| manifest.module_id == "lenso/platform-story")
-            .expect("platform-story manifest should be registered");
-        let console_surface_contract: Value = serde_json::from_str(include_str!(
-            "../../../modules/story/console/console-surface.json"
-        ))
-        .expect("story console surface contract should be valid json");
-
-        assert_eq!(manifest.admin, None);
-        assert_eq!(manifest.console.len(), 1);
-        let surface = &manifest.console[0];
-        let surface_json =
-            serde_json::to_value(surface).expect("platform-story console surface should serialize");
-
-        assert_eq!(
-            manifest.capabilities,
-            required_capabilities_from_contract(&console_surface_contract)
-        );
-        assert_eq!(manifest.module_id, console_surface_contract["id"]);
-        assert_eq!(surface.name, console_surface_contract["surfaceName"]);
-        assert_eq!(surface.label, console_surface_contract["label"]);
-        assert_eq!(surface.area, ConsoleArea::Runtime);
-        assert_eq!(surface_json["area"], console_surface_contract["area"]);
-        assert_eq!(surface.route, console_surface_contract["route"]);
-        assert_eq!(
-            surface.package.name,
-            console_surface_contract["packageName"]
-        );
-        assert_eq!(
-            surface.package.export,
-            console_surface_contract["exportName"]
-        );
-        assert_eq!(surface_json["icon"], console_surface_contract["icon"]);
-        assert_eq!(surface.navigation, None);
-        assert!(console_surface_contract.get("navigation").is_none());
-        assert_eq!(
-            surface.required_capabilities,
-            required_capabilities_from_contract(&console_surface_contract)
-        );
-
-        let lints = lint_module_manifest(&manifest);
-        assert!(
-            lints
-                .iter()
-                .all(|lint| lint.severity == ModuleManifestLintSeverity::Ok),
-            "platform-story manifest should not have warning/error lints: {lints:?}"
-        );
-    }
-
-    fn required_capabilities_from_contract(contract: &Value) -> Vec<String> {
-        contract["requiredCapabilities"]
-            .as_array()
-            .expect("requiredCapabilities should be an array")
-            .iter()
-            .map(|capability| {
-                capability
-                    .as_str()
-                    .expect("requiredCapabilities should contain strings")
-                    .to_owned()
-            })
-            .collect()
     }
 
     #[tokio::test]

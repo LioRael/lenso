@@ -29,22 +29,18 @@ Modules must not query another module's tables or import another module's intern
 
 Current linked module fixtures:
 
-- `story` owns the `platform-story` Runtime Console module manifest and keeps
-  Story visible as a first-class linked module while the compatible
-  `/admin/runtime/*` backend remains mounted through `platform-admin`.
 - `auth` owns the authentication anchor, session tables, development session
   routes, and host actor resolver. See [`auth-module.md`](auth-module.md).
 - `auth-password` exercises a first-party linked password provider over the auth
   public interface.
 
 These modules are demo fixtures, not product defaults. `lenso-bootstrap` selects a
-linked composition profile: `core` keeps only platform-owned linked surfaces such
-as `platform-story`, while `demo` adds `auth` and `auth-password` for local
-development, examples, contracts, and integration tests. Product hosts should
-use `core` and explicitly install first-party auth modules through their host
-composition. Local development may default to `demo`; non-local environments
-must set `LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo`
-explicitly.
+linked composition profile: `core` contains no Console-owned Module, while
+`demo` adds the auth fixtures for local development, examples, contracts, and
+integration tests. Product hosts should use `core` and explicitly install
+first-party modules through their host composition. Local development may
+default to `demo`; non-local environments must set
+`LENSO_COMPOSITION_PROFILE=core` or `LENSO_COMPOSITION_PROFILE=demo` explicitly.
 
 ## Platform Service Kit
 
@@ -62,7 +58,10 @@ The service kit is split into a few crates:
 - `platform-module`: internal module behavior seams and compatibility re-exports. `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminDataSource` and `AdminActionSource` support generic schema-admin reads and manifest-declared action execution. It re-exports `lenso-contracts` declaration types for backend workspace compatibility.
 - `platform-module-management`: the authenticated Runtime Console HTTP adapter for management snapshots, complete plan previews, durable operation commands, and Service Installation Set management. It delegates resolution, Cargo, workspace transactions, approvals, retries, journals, and Service installation CAS to `lenso-module-management`; it never shells out to the CLI. Its Host adapter applies reviewed Linked migrations transactionally, persists exact desired Service installations, executes target-owned deployment actions without a shell, validates Locked Cargo state, activates the exact Application Lock, and requests a Host restart. Missing or failed deployment authority remains explicit as `blocked`. The same crate exposes the first real System Plane Capability Provider, `service-installations`, by adapting the shared Service Installation manager instead of duplicating its lifecycle rules.
 - `platform-system-plane`: the capability-neutral managed-Service kernel and HTTP adapter for the System Plane Core Protocol. Capability Providers expose observation, planning, and idempotent local execution through one seam; the kernel persists the provider's exact content-addressed capability plan and passes that plan back for execution, so execution never silently replans. The kernel owns durable acceptance before effects, idempotency conflicts, crash continuation, terminal Service-owned evidence, and rebuildable evidence feeds. Evidence sequence and cursor continuity are independent per capability; feed pages are bounded, every persisted payload digest and deterministic evidence identity is reverified on read, and corruption fails closed rather than appearing as business drift. Before invoking a Provider the kernel persists the Running transition; after invocation it persists an internal completion checkpoint before projecting terminal evidence and Operation state. Runtime composition deterministically resumes every accepted or running Operation before serving requests, and a recovered checkpoint is finalized without repeating the Provider effect. Its Service-owned Enrollment Registry admits only one active Console authority per Service environment, while its admission boundary intersects verified Workload Identity, the exact Enrollment ceiling and revision, authorization epoch, operation type, and verified signed Delegated Actor and optional Tenant Context. Production admission uses a verify-only Ed25519 adapter keyed by the exact `(issuer, verification method)` pair; signing remains with the Console authority, and overlapping public keys permit explicit rotation windows. The runtime builder composes persistence, enrollment, identity adapters, providers, and HTTP admission as one target-owned graph. That runtime is attached to one Router through an Axum extension; there is no process-global install slot that another Service or test can overwrite. `/system-plane/v1/*` middleware either accepts a server-injected verified Workload Identity or verifies a short-lived bearer credential against a trusted live transport binding; handlers contain no policy and fail closed without the composed runtime. The crate contains no Console state or concrete capability policy.
-- `platform-admin`: the compatibility runtime-observability backend for the Runtime Console. It only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every module's activity, and exposes one router the API app mounts under `/admin/runtime/*`. Story module metadata is owned by `modules/story`; the backend route implementation is being extracted from this platform crate in slices.
+- `platform-admin`: the compatibility host runtime-observability backend. It
+  exposes the remaining `/admin/runtime/*` compatibility routes while their
+  behaviors move behind Service-owned System Plane Capability Providers. It no
+  longer owns or mounts the Console Story Module.
 - `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete modules.
 - `platform-testing`: shared test database utilities.
 
@@ -170,7 +169,8 @@ opaque cursors survive API Workload restarts for the declared retention window.
 Workload Identity audience verification and explicit reader-to-tenant policy
 protect every read. Collection remains read-only and cannot acknowledge,
 advance, or unblock workflow execution.
-The Story module owns delayed federation outside the Service runtime. Its
+The Console-owned Story Module in the sibling `lenso-console` repository owns
+delayed federation outside the managed Service runtime. Its
 PostgreSQL-backed aggregator keeps one durable cursor per source Service and
 tenant partition, stores Segment revisions idempotently, and projects the
 latest revision under a stable cross-Service node identity. Unreachable,
@@ -178,8 +178,8 @@ stale, unauthorized, truncated, and retention-expired feeds remain explicit
 typed gaps. Late evidence enriches the same `lenso.federated-runtime-story.v1`
 identity, while optional trace, metric, and log providers may annotate matched
 nodes without determining Story identity or business completion.
-The runtime admin backend now presents those collected Stories through the
-existing tenant-scoped Stories API. It projects cross-Service graph and
+The Console Service presents those collected Stories through its tenant-scoped
+Stories API. It projects cross-Service graph and
 timeline nodes, exact Workflow evidence states, typed Segment gaps, correlated
 technical operations, and collected Reliability Reports for Runtime Console;
 the frontend does not recompute federation or reliability rules.
@@ -406,7 +406,12 @@ repository. It contains the Vite/React operator UI and its independently
 deployable Console Service backend. The UI can run with local mock data or
 against the compatible Host APIs in this repository.
 
-The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, stories, story timeline items, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. Story timeline data is returned by the Runtime Story detail endpoint rather than a standalone timeline endpoint. These are served by the compatible `platform-admin` backend while Story ownership moves into `modules/story`; they use the same OpenAPI contract as the public linked-module APIs. Story display names are module-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on concrete modules.
+Managed Services expose authoritative Runtime Observability and Runtime
+Operations evidence through System Plane Capability Providers. The framework's
+compatibility `/admin/runtime/*` backend still serves its remaining host-local
+routes, but it does not mount the Stories API. Story aggregation, Story routes,
+display metadata, and the `@lenso/story-console` surface are owned and released
+together by the Console Service in the sibling repository.
 
 The API also exposes schema-admin endpoints under `/admin/data/*`. These are served by `platform-admin-data`, which reads module schemas and data through the injected `AdminSurface::Schema` + `AdminDataSource` registry. The demo profile uses the auth User anchor to exercise the framework; Lenso does not prescribe product-default business modules. Writes, richer RBAC, and custom module UI are later module-framework steps.
 

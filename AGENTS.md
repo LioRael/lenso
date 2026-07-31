@@ -101,8 +101,10 @@ Claude Code project memory was imported into Codex on 2026-06-03. Keep these des
 ## Runtime Console Guidelines
 
 The Runtime Console is developed in the sibling `../lenso-console`
-repository. This backend repository owns the admin APIs, generated contracts,
-and `ModuleManifest.console` declarations consumed by that frontend.
+repository. This framework repository owns managed-Service System Plane and
+compatibility admin APIs plus their generated contracts. The Console repository
+owns Console Service APIs and Console Modules such as `lenso/platform-story`,
+including their backend, migrations, and `ModuleManifest.console` declarations.
 
 - Keep backend `ModuleManifest.console` data aligned with the frontend package surface contracts.
 - Validate substantial frontend changes inside `../lenso-console`.

@@ -24,7 +24,6 @@ members = [
     "crates/platform-runtime-operations",
     "crates/platform-system-plane",
     "crates/platform-testing",
-    "modules/story",
     "tools/generate-contracts",
     "tools/arch-check",
     "tools/otel-smoke",
@@ -121,7 +120,6 @@ auth-oauth = { package = "lenso-module-auth-oauth", version = "0.1.1" }
 auth-oidc = { package = "lenso-module-auth-oidc", version = "0.1.1" }
 auth-password = { package = "lenso-module-auth-password", version = "0.1.9" }
 auth-phone = { package = "lenso-module-auth-phone", version = "0.1.1" }
-story = { package = "lenso-module-story", path = "modules/story", version = "0.1.19" }
 generate-contracts = { path = "tools/generate-contracts" }
 arch-check = { path = "tools/arch-check" }
 remote-module-fixture = { path = "fixtures/remote-module" }

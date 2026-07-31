@@ -14,10 +14,11 @@ Console surfaces are distinct from admin surfaces:
 - `ConsoleSurface` describes a Runtime Console route and package export that
   should appear in the host shell.
 
-The first implementation extracts the Runtime Stories page into the
-`platform-story` console package. It is a first-party platform package bundled
-with the host app, but it uses the same manifest shape intended for
-module-owned packages.
+The first implementation extracts the Runtime Stories capability into the
+`lenso/platform-story` Console Module. Its Rust backend, migrations, federation
+logic, and `@lenso/story-console` UI artifact are owned together in the sibling
+`lenso-console` repository. Managed Services expose Story evidence through the
+framework's System Plane contracts instead of installing this Console Module.
 
 ## Manifest Contract
 
@@ -68,12 +69,12 @@ Workspace ownership rules:
   trees and cross-module shared workspaces are deferred until ownership policy is
   explicit.
 
-For `platform-story`, Rust and frontend package/export metadata intentionally
+For `lenso/platform-story`, Rust and frontend package/export metadata intentionally
 match; backend navigation may still be omitted so the host applies the System
 default:
 
 ```text
-module: platform-story
+module: lenso/platform-story
 package: @lenso/story-console
 export: storyConsoleModule
 surface: stories
