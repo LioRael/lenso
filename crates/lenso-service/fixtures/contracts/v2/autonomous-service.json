@@ -8,14 +8,14 @@
     { "workloadId": "support-migrate", "serviceId": "support", "role": "migration" },
     { "workloadId": "support-indexer", "serviceId": "support", "role": "indexer" }
   ],
-  "modules": ["support-ticket", "support-sla"],
+  "modules": ["acme/support-ticket", "acme/support-sla"],
   "stores": [
     { "storeId": "primary", "serviceId": "support" }
   ],
   "serviceContracts": [
     {
       "contractId": "support-http",
-      "moduleId": "support-ticket",
+      "moduleId": "acme/support-ticket",
       "version": "v1",
       "tenancyMode": "required",
       "artifact": { "format": "openapi", "path": "contracts/openapi/support.v1.yaml" },
@@ -23,7 +23,7 @@
     },
     {
       "contractId": "support-grpc",
-      "moduleId": "support-sla",
+      "moduleId": "acme/support-sla",
       "version": "v1",
       "tenancyMode": "required",
       "artifact": { "format": "protobuf", "path": "contracts/services/support-grpc.v1.proto" },
@@ -33,7 +33,7 @@
   "eventContracts": [
     {
       "contractId": "ticket-opened",
-      "moduleId": "support-ticket",
+      "moduleId": "acme/support-ticket",
       "version": "v1",
       "tenancyMode": "required",
       "artifact": { "format": "json_schema", "path": "contracts/events/support/support.ticket-opened.v1.schema.json" },

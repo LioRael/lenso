@@ -2,7 +2,7 @@ use crate::{
     AuthenticatedServiceContext, AuthenticatedServicePrincipal, AuthenticatedTransportBinding,
     CallPolicyDeclaration, CallPolicyEvent, CallPolicyEvidence, CallPolicyFailure,
     CallPolicyPermit, CallPolicyRuntime, CallPolicyTerminalOutcome, DelegatedActorContext,
-    DelegatedContextProvider, EndpointResolver, IdentityDecisionRecorder, RetryDecision,
+    DelegatedContextVerifier, EndpointResolver, IdentityDecisionRecorder, RetryDecision,
     ServiceContext, ServiceContextAdmission, ServiceContextPolicy, ServiceReference, TenantContext,
     WorkloadIdentityProvider, WorkloadIdentityVerification,
     support_grpc_v1::{
@@ -134,7 +134,7 @@ impl DirectGrpcServerPolicy {
         bindings: DirectGrpcBindings,
         provider: Arc<dyn WorkloadIdentityProvider>,
         audience: impl Into<String>,
-        context_provider: Arc<dyn DelegatedContextProvider>,
+        context_provider: Arc<dyn DelegatedContextVerifier>,
         context_policies: impl IntoIterator<Item = (String, ServiceContextPolicy)>,
         evidence_recorder: Arc<dyn IdentityDecisionRecorder>,
     ) -> Self {
@@ -180,7 +180,7 @@ impl DirectGrpcServerPolicy {
     #[must_use]
     pub fn with_service_context<I, S>(
         mut self,
-        provider: Arc<dyn DelegatedContextProvider>,
+        provider: Arc<dyn DelegatedContextVerifier>,
         policies: I,
         recorder: Arc<dyn IdentityDecisionRecorder>,
     ) -> Self

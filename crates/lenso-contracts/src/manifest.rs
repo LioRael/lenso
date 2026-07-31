@@ -17,26 +17,152 @@ use crate::lifecycle::{
     LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind,
     LifecycleSurface,
 };
-use crate::module_source::ModuleSource;
 use crate::runtime::{
     RuntimeFunctionDeclaration, RuntimeSurface, ScheduledFunctionDeclaration,
     WORKFLOW_DEFINITION_PROTOCOL, WorkflowDataContract, WorkflowDefinition,
     WorkflowStepDeclaration,
 };
 use crate::validate_cron_expression;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashSet;
 use utoipa::ToSchema;
+
+pub const MODULE_MANIFEST_PROTOCOL: &str = "lenso.module-manifest.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleRequirement {
+    pub module_id: String,
+    pub version_requirement: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub optional: bool,
+}
+
+impl ModuleRequirement {
+    pub fn new(
+        module_id: impl Into<String>,
+        version_requirement: impl AsRef<str>,
+    ) -> Result<Self, String> {
+        let version_requirement = semver::VersionReq::parse(version_requirement.as_ref())
+            .map_err(|error| format!("invalid Module version requirement: {error}"))?
+            .to_string();
+        Ok(Self {
+            module_id: module_id.into(),
+            version_requirement,
+            capabilities: Vec::new(),
+            optional: false,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleConfigFieldType {
+    String,
+    Integer,
+    Boolean,
+    Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleConfigScope {
+    Module,
+    Service,
+    Environment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleConfigMutability {
+    Static,
+    Reloadable,
+    Runtime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleConfigActivation {
+    None,
+    Build,
+    Restart,
+    ServiceRestart,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleConfigValidation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_values: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleConfigField {
+    pub key: String,
+    pub field_type: ModuleConfigFieldType,
+    pub required: bool,
+    pub scope: ModuleConfigScope,
+    pub sensitive: bool,
+    pub secret_reference: bool,
+    pub mutability: ModuleConfigMutability,
+    pub activation: ModuleConfigActivation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation: Option<ModuleConfigValidation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleConfigContract {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<ModuleConfigField>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ModuleMigrationActivation {
+    BeforeActivation,
+    AfterActivation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ModuleMigrationDeclaration {
+    pub migration_id: String,
+    pub order: u32,
+    pub store: String,
+    pub destructive: bool,
+    pub reversible: bool,
+    pub activation: ModuleMigrationActivation,
+}
 
 /// The serializable metadata a module exposes. Runtime config is deliberately
 /// NOT here — it stays an internal `&'static` field on [`crate::Module`]
 /// because the config registry needs the real (non-serde) `RuntimeConfigType`
 /// to validate. Only round-trippable fields belong here.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct ModuleManifest {
-    /// Stable module name, e.g. `"identity"`.
-    pub name: String,
+    pub protocol: String,
+
+    /// Stable fully qualified ModuleId, e.g. `"lenso/identity"`.
+    pub module_id: String,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 
     /// Console story-display metadata.
     #[serde(default)]
@@ -84,18 +210,26 @@ pub struct ModuleManifest {
     #[serde(default)]
     pub capabilities: Vec<String>,
 
-    /// Other modules this module requires to be installed first.
-    #[serde(default)]
-    pub dependencies: Vec<String>,
+    /// Other Modules required by this business capability.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<ModuleRequirement>,
+
+    #[serde(default, skip_serializing_if = "ModuleConfigContract::is_empty")]
+    pub config: ModuleConfigContract,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub migrations: Vec<ModuleMigrationDeclaration>,
 }
 
 impl ModuleManifest {
-    /// Start building a manifest for `name`.
+    /// Start building a manifest for a fully qualified ModuleId.
     #[must_use]
-    pub fn builder(name: impl Into<String>) -> ModuleManifestBuilder {
+    pub fn builder(module_id: impl Into<String>) -> ModuleManifestBuilder {
         ModuleManifestBuilder {
             manifest: ModuleManifest {
-                name: name.into(),
+                protocol: MODULE_MANIFEST_PROTOCOL.to_owned(),
+                module_id: module_id.into(),
+                summary: None,
                 story_display: Vec::new(),
                 admin: None,
                 http_routes: Vec::new(),
@@ -106,13 +240,23 @@ impl ModuleManifest {
                 console_slots: Vec::new(),
                 console_contributions: Vec::new(),
                 capabilities: Vec::new(),
-                dependencies: Vec::new(),
+                requires: Vec::new(),
+                config: ModuleConfigContract::default(),
+                migrations: Vec::new(),
             },
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+impl ModuleConfigContract {
+    fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleManifestLintSeverity {
     Ok,
@@ -120,7 +264,7 @@ pub enum ModuleManifestLintSeverity {
     Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ModuleManifestLint {
     pub severity: ModuleManifestLintSeverity,
     pub subject: String,
@@ -134,13 +278,9 @@ pub struct ModuleCapabilityReference {
     pub subject: String,
 }
 
-pub fn lint_module_manifest(
-    source: ModuleSource,
-    manifest: &ModuleManifest,
-) -> Vec<ModuleManifestLint> {
-    lint_module_manifest_parts(
-        source,
-        &manifest.name,
+pub fn lint_module_manifest(manifest: &ModuleManifest) -> Vec<ModuleManifestLint> {
+    let mut lints = lint_module_manifest_parts(
+        &manifest.module_id,
         manifest.admin.as_ref(),
         &manifest.http_routes,
         manifest.runtime.as_ref(),
@@ -150,13 +290,132 @@ pub fn lint_module_manifest(
         &manifest.console_slots,
         &manifest.console_contributions,
         &manifest.capabilities,
-        &manifest.dependencies,
-    )
+        &manifest.requires,
+    );
+    lint_manifest_contract(manifest, &mut lints);
+    lints
+}
+
+fn lint_manifest_contract(manifest: &ModuleManifest, lints: &mut Vec<ModuleManifestLint>) {
+    if manifest.protocol != MODULE_MANIFEST_PROTOCOL {
+        push_contract_error(
+            lints,
+            "module.protocol",
+            format!("Protocol must be {MODULE_MANIFEST_PROTOCOL}."),
+            "Use the canonical Module Manifest protocol discriminator.",
+        );
+    }
+    if !sorted_unique(&manifest.capabilities) {
+        push_contract_error(
+            lints,
+            "module.capabilities",
+            "Capabilities must be non-empty, sorted, and unique.",
+            "Sort and deduplicate ModuleManifest.capabilities.",
+        );
+    }
+
+    let mut requirement_ids = HashSet::new();
+    for requirement in &manifest.requires {
+        if !requirement_ids.insert(requirement.module_id.as_str()) {
+            push_contract_error(
+                lints,
+                format!("requirement {}", requirement.module_id),
+                "Module requirements must have unique ModuleIds.",
+                "Merge duplicate requirements into one canonical declaration.",
+            );
+        }
+        if !matches!(
+            semver::VersionReq::parse(&requirement.version_requirement),
+            Ok(version) if version.to_string() == requirement.version_requirement
+        ) {
+            push_contract_error(
+                lints,
+                format!("requirement {}", requirement.module_id),
+                "Module version requirement must be normalized SemVer.",
+                "Parse and serialize the version requirement before publishing.",
+            );
+        }
+        if !sorted_unique(&requirement.capabilities) {
+            push_contract_error(
+                lints,
+                format!("requirement {} capabilities", requirement.module_id),
+                "Required capabilities must be non-empty, sorted, and unique.",
+                "Sort and deduplicate the requirement capabilities.",
+            );
+        }
+    }
+
+    let mut config_keys = HashSet::new();
+    for field in &manifest.config.fields {
+        if field.key.trim().is_empty() || !config_keys.insert(field.key.as_str()) {
+            push_contract_error(
+                lints,
+                format!("config {}", field.key),
+                "Config keys must be non-empty and unique.",
+                "Give each config field one stable key.",
+            );
+        }
+        let secret_named = field
+            .key
+            .split(['.', '-', '_'])
+            .any(|part| matches!(part, "secret" | "password" | "token" | "credential"));
+        if (field.sensitive || field.secret_reference || secret_named) && field.default.is_some() {
+            push_contract_error(
+                lints,
+                format!("config {} default", field.key),
+                "Secret-bearing config fields must not embed default values.",
+                "Resolve secret values outside the Module contract.",
+            );
+        }
+        if field.sensitive && !field.secret_reference {
+            push_contract_error(
+                lints,
+                format!("config {} secret_reference", field.key),
+                "Sensitive config must be declared as a secret reference.",
+                "Set secret_reference and keep the value outside the Manifest.",
+            );
+        }
+    }
+
+    let mut migration_ids = HashSet::new();
+    let mut migration_orders = HashSet::new();
+    for migration in &manifest.migrations {
+        if migration.migration_id.trim().is_empty()
+            || migration.store.trim().is_empty()
+            || !migration_ids.insert(migration.migration_id.as_str())
+            || !migration_orders.insert(migration.order)
+        {
+            push_contract_error(
+                lints,
+                format!("migration {}", migration.migration_id),
+                "Migrations require non-empty identities and stores with unique order values.",
+                "Declare one deterministic order for each migration.",
+            );
+        }
+    }
+}
+
+fn sorted_unique(values: &[String]) -> bool {
+    values.iter().all(|value| !value.trim().is_empty())
+        && values.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+fn push_contract_error(
+    lints: &mut Vec<ModuleManifestLint>,
+    subject: impl Into<String>,
+    message: impl Into<String>,
+    suggestion: impl Into<String>,
+) {
+    lints.push(ModuleManifestLint {
+        severity: ModuleManifestLintSeverity::Error,
+        subject: subject.into(),
+        message: message.into(),
+        suggestion: suggestion.into(),
+    });
 }
 
 pub fn lint_module_manifest_parts(
-    source: ModuleSource,
-    name: &str,
+    module_id: &str,
     admin: Option<&AdminSurface>,
     http_routes: &[ModuleHttpRoute],
     runtime: Option<&RuntimeSurface>,
@@ -166,16 +425,18 @@ pub fn lint_module_manifest_parts(
     console_slots: &[ConsoleSlot],
     console_contributions: &[ConsoleContribution],
     capabilities: &[String],
-    dependencies: &[String],
+    requirements: &[ModuleRequirement],
 ) -> Vec<ModuleManifestLint> {
     let mut lints = Vec::new();
+    let module_name = module_id.rsplit('/').next().unwrap_or(module_id);
 
-    if !present(name) {
+    if !valid_module_id(module_id) {
         lints.push(ModuleManifestLint {
             severity: ModuleManifestLintSeverity::Error,
-            subject: "module.name".to_owned(),
-            message: "Missing module manifest name.".to_owned(),
-            suggestion: "Set ModuleManifest.name to the stable module identifier.".to_owned(),
+            subject: "module.module_id".to_owned(),
+            message: "ModuleId must use the fully qualified namespace/name form.".to_owned(),
+            suggestion: "Set ModuleManifest.module_id to a stable value such as lenso/auth."
+                .to_owned(),
         });
     }
 
@@ -190,27 +451,28 @@ pub fn lint_module_manifest_parts(
             });
         }
     }
-    for dependency in dependencies {
-        if !present(dependency) {
+    for requirement in requirements {
+        if !valid_module_id(&requirement.module_id)
+            || semver::VersionReq::parse(&requirement.version_requirement).is_err()
+        {
             lints.push(ModuleManifestLint {
                 severity: ModuleManifestLintSeverity::Error,
-                subject: "dependency".to_owned(),
-                message: "Module dependency name must not be empty.".to_owned(),
-                suggestion: "Remove the empty dependency or set it to a stable module name."
+                subject: format!("requirement {}", requirement.module_id),
+                message: "Module requirement identity and version range must be valid.".to_owned(),
+                suggestion: "Use a fully qualified ModuleId and normalized SemVer requirement."
                     .to_owned(),
             });
-        } else if dependency == name {
+        } else if requirement.module_id == module_id {
             lints.push(ModuleManifestLint {
                 severity: ModuleManifestLintSeverity::Error,
-                subject: format!("dependency {dependency}"),
+                subject: format!("requirement {}", requirement.module_id),
                 message: "Module must not depend on itself.".to_owned(),
-                suggestion: "Remove the self dependency from ModuleManifest.dependencies."
-                    .to_owned(),
+                suggestion: "Remove the self requirement from ModuleManifest.requires.".to_owned(),
             });
         }
     }
 
-    for route_lint in lint_module_http_routes(source, http_routes) {
+    for route_lint in lint_module_http_routes(http_routes) {
         lints.push(ModuleManifestLint {
             severity: match route_lint.severity {
                 crate::http::ModuleRouteLintSeverity::Ok => ModuleManifestLintSeverity::Ok,
@@ -239,7 +501,7 @@ pub fn lint_module_manifest_parts(
     }
     let mut runtime_lints = Vec::new();
     if let Some(runtime) = runtime {
-        lint_runtime_surface(name, runtime, &mut runtime_lints);
+        lint_runtime_surface(module_name, runtime, &mut runtime_lints);
     }
     if let Some(events) = events {
         lint_event_surface(events, &mut lints);
@@ -1695,6 +1957,24 @@ fn valid_console_package_name(value: &str) -> bool {
         && (value.starts_with('@') || value.chars().any(|character| character == '-'))
 }
 
+fn valid_module_id(value: &str) -> bool {
+    let Some((namespace, name)) = value.split_once('/') else {
+        return false;
+    };
+    !namespace.is_empty()
+        && !name.is_empty()
+        && !name.contains('/')
+        && [namespace, name].into_iter().all(|segment| {
+            segment.starts_with(|character: char| character.is_ascii_lowercase())
+                && segment.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || character == '-'
+                        || character == '_'
+                })
+        })
+}
+
 fn route_identity(route: &ModuleHttpRoute) -> String {
     format!("{} {}", method_label(route.method), route.path)
 }
@@ -1716,6 +1996,12 @@ pub struct ModuleManifestBuilder {
 }
 
 impl ModuleManifestBuilder {
+    #[must_use]
+    pub fn summary(mut self, summary: impl Into<String>) -> Self {
+        self.manifest.summary = Some(summary.into());
+        self
+    }
+
     /// Attach console story-display metadata.
     #[must_use]
     pub fn story_display(mut self, story_display: Vec<StoryDisplayDescriptor>) -> Self {
@@ -1725,15 +2011,60 @@ impl ModuleManifestBuilder {
 
     /// Attach declared capabilities.
     #[must_use]
-    pub fn capabilities(mut self, capabilities: Vec<String>) -> Self {
+    pub fn capabilities(mut self, mut capabilities: Vec<String>) -> Self {
+        capabilities.sort();
         self.manifest.capabilities = capabilities;
         self
     }
 
-    /// Attach required module dependencies.
+    /// Attach required Modules.
+    #[must_use]
+    pub fn requires(mut self, mut requirements: Vec<ModuleRequirement>) -> Self {
+        for requirement in &mut requirements {
+            requirement.capabilities.sort();
+        }
+        requirements.sort_by(|left, right| left.module_id.cmp(&right.module_id));
+        self.manifest.requires = requirements;
+        self
+    }
+
+    /// Compatibility for currently published first-party authoring crates.
+    /// New code must use [`Self::requires`]. This method does not preserve a
+    /// legacy wire field; it produces canonical Module requirements.
+    #[doc(hidden)]
     #[must_use]
     pub fn dependencies(mut self, dependencies: Vec<String>) -> Self {
-        self.manifest.dependencies = dependencies;
+        let mut requirements = dependencies
+            .into_iter()
+            .map(|dependency| ModuleRequirement {
+                module_id: if dependency.contains('/') {
+                    dependency
+                } else {
+                    format!("lenso/{dependency}")
+                },
+                version_requirement: "*".to_owned(),
+                capabilities: Vec::new(),
+                optional: false,
+            })
+            .collect::<Vec<_>>();
+        requirements.sort_by(|left, right| left.module_id.cmp(&right.module_id));
+        self.manifest.requires = requirements;
+        self
+    }
+
+    #[must_use]
+    pub fn config(mut self, mut config: ModuleConfigContract) -> Self {
+        config
+            .fields
+            .sort_by(|left, right| left.key.cmp(&right.key));
+        self.manifest.config = config;
+        self
+    }
+
+    #[must_use]
+    pub fn migrations(mut self, mut migrations: Vec<ModuleMigrationDeclaration>) -> Self {
+        migrations.sort_by_key(|migration| migration.order);
+        self.manifest.migrations = migrations;
         self
     }
 
@@ -1812,7 +2143,13 @@ impl ModuleManifestBuilder {
 
     /// Finish building.
     #[must_use]
-    pub fn build(self) -> ModuleManifest {
+    pub fn build(mut self) -> ModuleManifest {
+        // Published first-party authoring crates from the pre-reset workspace
+        // still pass their local names to the builder. Canonicalize that
+        // authoring input without accepting the removed legacy wire shape.
+        if !self.manifest.module_id.contains('/') {
+            self.manifest.module_id = format!("lenso/{}", self.manifest.module_id);
+        }
         self.manifest
     }
 }
@@ -1845,7 +2182,7 @@ mod tests {
 
     #[test]
     fn manifest_round_trips_through_json() {
-        let manifest = ModuleManifest::builder("identity")
+        let manifest = ModuleManifest::builder("lenso/identity")
             .story_display(vec![StoryDisplayDescriptor {
                 source: StoryDisplaySource::ExecutionName {
                     name: "identity.create_user".to_owned(),
@@ -1863,7 +2200,7 @@ mod tests {
 
     #[test]
     fn manifest_with_console_surface_round_trips_through_json() {
-        let manifest = ModuleManifest::builder("platform-story")
+        let manifest = ModuleManifest::builder("lenso/platform-story")
             .console(vec![ConsoleSurface {
                 name: "stories".to_owned(),
                 label: "Stories".to_owned(),
@@ -1908,7 +2245,7 @@ mod tests {
             icon: Some("key-round".to_owned()),
             required_capabilities: vec!["auth_password.credentials.write".to_owned()],
         };
-        let manifest = ModuleManifest::builder("auth-password")
+        let manifest = ModuleManifest::builder("lenso/auth-password")
             .capabilities(vec!["auth_password.credentials.write".to_owned()])
             .console_contributions(vec![contribution.clone()])
             .build();
@@ -1944,7 +2281,7 @@ mod tests {
                 }],
             }],
         };
-        let manifest = ModuleManifest::builder("auth")
+        let manifest = ModuleManifest::builder("lenso/auth")
             .console_slots(vec![slot.clone()])
             .build();
 
@@ -1963,7 +2300,7 @@ mod tests {
 
     #[test]
     fn console_contribution_capability_references_are_linted() {
-        let manifest = ModuleManifest::builder("auth-password")
+        let manifest = ModuleManifest::builder("lenso/auth-password")
             .console_contributions(vec![ConsoleContribution {
                 target: "auth.users.detail.actions".to_owned(),
                 target_version: 1,
@@ -1983,7 +2320,7 @@ mod tests {
             }])
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.subject == "capability.reference.console.contribution.auth.users.detail.actions"
@@ -2028,7 +2365,7 @@ mod tests {
 
     #[test]
     fn console_navigation_lints_empty_workspace_label() {
-        let manifest = ModuleManifest::builder("crm")
+        let manifest = ModuleManifest::builder("acme/crm")
             .capabilities(vec!["crm.contacts.read".to_owned()])
             .console(vec![ConsoleSurface {
                 name: "contacts".to_owned(),
@@ -2053,7 +2390,7 @@ mod tests {
             }])
             .build();
 
-        let subjects: Vec<_> = lint_module_manifest(ModuleSource::Linked, &manifest)
+        let subjects: Vec<_> = lint_module_manifest(&manifest)
             .into_iter()
             .map(|lint| lint.subject)
             .collect();
@@ -2065,7 +2402,7 @@ mod tests {
 
     #[test]
     fn console_navigation_lints_reserved_system_workspace() {
-        let manifest = ModuleManifest::builder("crm")
+        let manifest = ModuleManifest::builder("acme/crm")
             .capabilities(vec!["crm.contacts.read".to_owned()])
             .console(vec![ConsoleSurface {
                 name: "contacts".to_owned(),
@@ -2090,7 +2427,7 @@ mod tests {
             }])
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.subject == "console.surface.contacts.navigation.workspace.id"
@@ -2102,7 +2439,7 @@ mod tests {
 
     #[test]
     fn lints_invalid_console_surface_declarations() {
-        let manifest = ModuleManifest::builder("platform-story")
+        let manifest = ModuleManifest::builder("lenso/platform-story")
             .console(vec![
                 ConsoleSurface {
                     name: "stories".to_owned(),
@@ -2133,7 +2470,7 @@ mod tests {
             ])
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        let lints = lint_module_manifest(&manifest);
         let subjects = lints
             .iter()
             .map(|lint| lint.subject.as_str())
@@ -2151,7 +2488,7 @@ mod tests {
 
     #[test]
     fn empty_admin_is_skipped_in_json() {
-        let manifest = ModuleManifest::builder("notifications").build();
+        let manifest = ModuleManifest::builder("lenso/notifications").build();
         let json = serde_json::to_string(&manifest).expect("serialize");
         assert!(
             !json.contains("admin"),
@@ -2161,15 +2498,17 @@ mod tests {
 
     #[test]
     fn manifest_lints_self_dependency() {
-        let manifest = ModuleManifest::builder("auth")
-            .dependencies(vec!["auth".to_owned()])
+        let manifest = ModuleManifest::builder("lenso/auth")
+            .requires(vec![
+                ModuleRequirement::new("lenso/auth", "*").expect("valid requirement"),
+            ])
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.severity == ModuleManifestLintSeverity::Error
-                && lint.subject == "dependency auth"
+                && lint.subject == "requirement lenso/auth"
                 && lint.message == "Module must not depend on itself."
         }));
     }
@@ -2190,7 +2529,9 @@ mod tests {
                 }],
             }],
         };
-        let manifest = ModuleManifest::builder("identity").admin(schema).build();
+        let manifest = ModuleManifest::builder("lenso/identity")
+            .admin(schema)
+            .build();
         let json = serde_json::to_string(&manifest).expect("serialize");
         assert!(json.contains(r#""kind":"schema""#), "got {json}");
     }
@@ -2199,7 +2540,7 @@ mod tests {
     fn manifest_with_declarative_admin_serializes_kind() {
         use crate::admin::AdminDeclarativeSurface;
 
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .declarative_admin(AdminDeclarativeSurface {
                 pages: vec![],
                 actions: vec![],
@@ -2219,7 +2560,7 @@ mod tests {
             AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
         };
 
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .embedded_admin(AdminEmbeddedSurface {
                 runtime: AdminEmbeddedRuntime::Iframe,
                 entry: AdminEmbeddedEntry::Url {
@@ -2242,7 +2583,7 @@ mod tests {
 
     #[test]
     fn manifest_with_http_routes_round_trips_through_json() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .http_routes(vec![
                 ModuleHttpRoute {
                     method: ModuleHttpMethod::Get,
@@ -2276,7 +2617,7 @@ mod tests {
 
     #[test]
     fn manifest_with_runtime_functions_round_trips_through_json() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .runtime(RuntimeSurface {
                 functions: vec![RuntimeFunctionDeclaration {
                     name: "remote_crm.sync_contact.v1".to_owned(),
@@ -2318,7 +2659,7 @@ mod tests {
 
     #[test]
     fn manifest_with_versioned_workflow_round_trips_and_lints_cleanly() {
-        let manifest = ModuleManifest::builder("support-sla")
+        let manifest = ModuleManifest::builder("acme/support-sla")
             .runtime(RuntimeSurface {
                 functions: vec![],
                 schedules: vec![],
@@ -2354,7 +2695,7 @@ mod tests {
 
         let json = serde_json::to_string(&manifest).expect("serialize");
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
-        let lints = lint_module_manifest(ModuleSource::Linked, &back);
+        let lints = lint_module_manifest(&back);
         let workflow_schema = crate::workflow_definition_schema();
         let compensation_schema = &workflow_schema["$defs"]["compensation"];
 
@@ -2411,7 +2752,7 @@ mod tests {
                 ),
             ],
         );
-        let manifest = ModuleManifest::builder("support-sla")
+        let manifest = ModuleManifest::builder("acme/support-sla")
             .runtime(RuntimeSurface {
                 functions: vec![],
                 schedules: vec![],
@@ -2419,7 +2760,7 @@ mod tests {
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Linked, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(
             lints
@@ -2456,7 +2797,7 @@ mod tests {
 
     #[test]
     fn manifest_with_event_handlers_round_trips_through_json() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .events(EventSurface {
                 handlers: vec![EventHandlerDeclaration {
                     name: "sync_contact_on_user_registered".to_owned(),
@@ -2483,12 +2824,12 @@ mod tests {
 
     #[test]
     fn manifest_lint_warns_for_invalid_capability_names() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .capabilities(vec!["RemoteCRM Contacts Read".to_owned()])
             .build();
 
         assert!(
-            lint_module_manifest(ModuleSource::Remote, &manifest)
+            lint_module_manifest(&manifest)
                 .iter()
                 .any(|lint| lint.subject == "capability RemoteCRM Contacts Read"
                     && lint.severity == ModuleManifestLintSeverity::Warning)
@@ -2497,7 +2838,7 @@ mod tests {
 
     #[test]
     fn manifest_lint_warns_for_unknown_declarative_fallback_entities() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .declarative_admin(AdminDeclarativeSurface {
                 pages: vec![AdminDeclarativePage {
                     name: "dashboard".to_owned(),
@@ -2516,7 +2857,7 @@ mod tests {
             .build();
 
         assert!(
-            lint_module_manifest(ModuleSource::Remote, &manifest)
+            lint_module_manifest(&manifest)
                 .iter()
                 .any(|lint| lint.subject == "admin.declarative.section.missing"
                     && lint.severity == ModuleManifestLintSeverity::Warning)
@@ -2525,7 +2866,7 @@ mod tests {
 
     #[test]
     fn manifest_lint_warns_for_embedded_origin_policy() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .embedded_admin(AdminEmbeddedSurface {
                 runtime: AdminEmbeddedRuntime::Iframe,
                 entry: AdminEmbeddedEntry::Url {
@@ -2543,7 +2884,7 @@ mod tests {
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(
             lints
@@ -2559,7 +2900,7 @@ mod tests {
 
     #[test]
     fn manifest_lint_warns_for_runtime_function_declarations() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .runtime(RuntimeSurface {
                 functions: vec![
                     RuntimeFunctionDeclaration {
@@ -2595,7 +2936,7 @@ mod tests {
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.subject == "runtime.function.remote_crm/sync_contact.v1"
@@ -2617,7 +2958,7 @@ mod tests {
 
     #[test]
     fn manifest_with_lifecycle_round_trips_through_json() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .runtime(RuntimeSurface {
                 functions: vec![RuntimeFunctionDeclaration {
                     name: "remote_crm.warm_contact_cache.v1".to_owned(),
@@ -2668,7 +3009,7 @@ mod tests {
 
     #[test]
     fn manifest_lint_flags_lifecycle_declarations_that_cannot_run() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .runtime(RuntimeSurface {
                 functions: vec![],
                 schedules: vec![],
@@ -2701,7 +3042,7 @@ mod tests {
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.subject == "lifecycle.startup_check"
@@ -2724,14 +3065,14 @@ mod tests {
 
     #[test]
     fn manifest_lint_warns_for_empty_lifecycle_surface() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![],
                 activation_jobs: vec![],
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.subject == "lifecycle"
@@ -2743,7 +3084,7 @@ mod tests {
 
     #[test]
     fn manifest_lint_warns_for_activation_job_missing_name() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .runtime(RuntimeSurface {
                 functions: vec![RuntimeFunctionDeclaration {
                     name: "remote_crm.warm_contact_cache.v1".to_owned(),
@@ -2768,7 +3109,7 @@ mod tests {
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.subject == "lifecycle.activation_job"
@@ -2779,7 +3120,7 @@ mod tests {
 
     #[test]
     fn manifest_lint_errors_for_activation_job_missing_function_name() {
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .lifecycle(LifecycleSurface {
                 startup_checks: vec![],
                 activation_jobs: vec![LifecycleActivationJobDeclaration {
@@ -2792,7 +3133,7 @@ mod tests {
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.subject == "lifecycle.activation_job"
@@ -2805,7 +3146,7 @@ mod tests {
     fn manifest_lint_warns_for_undeclared_capability_references() {
         use crate::admin::{AdminAction, AdminActionDangerLevel};
 
-        let manifest = ModuleManifest::builder("remote-crm")
+        let manifest = ModuleManifest::builder("acme/remote-crm")
             .capabilities(vec!["remote_crm.contacts.write".to_owned()])
             .http_routes(vec![ModuleHttpRoute {
                 method: ModuleHttpMethod::Get,
@@ -2847,7 +3188,7 @@ mod tests {
             })
             .build();
 
-        let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+        let lints = lint_module_manifest(&manifest);
 
         assert!(lints.iter().any(|lint| {
             lint.severity == ModuleManifestLintSeverity::Warning
@@ -2972,7 +3313,7 @@ mod tests {
             }])
             .build();
 
-        let catalog: Vec<_> = lint_module_manifest(ModuleSource::Remote, &manifest)
+        let catalog: Vec<_> = lint_module_manifest(&manifest)
             .into_iter()
             .map(|lint| (lint.severity, lint.subject))
             .collect();
@@ -2980,21 +3321,16 @@ mod tests {
         assert_eq!(
             catalog,
             vec![
-                (ModuleManifestLintSeverity::Error, "module.name".to_owned()),
+                (
+                    ModuleManifestLintSeverity::Error,
+                    "module.module_id".to_owned(),
+                ),
                 (
                     ModuleManifestLintSeverity::Warning,
                     "capability RemoteCRM Contacts Read".to_owned(),
                 ),
                 (
                     ModuleManifestLintSeverity::Error,
-                    "GET /contacts/{id}".to_owned(),
-                ),
-                (
-                    ModuleManifestLintSeverity::Warning,
-                    "GET /contacts/{id}".to_owned(),
-                ),
-                (
-                    ModuleManifestLintSeverity::Warning,
                     "GET /contacts/{id}".to_owned(),
                 ),
                 (

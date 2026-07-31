@@ -17,7 +17,7 @@
   "contractId": "ticket-opened",
   "contractVersion": "v1",
   "eventType": "support.ticket-opened.v1",
-  "moduleId": "support-ticket",
+  "moduleId": "acme/support-ticket",
   "operatingRegions": [
     "cn-east-1"
   ],

@@ -3,13 +3,17 @@
 use serde::{Deserialize, Serialize};
 
 /// A module's declared admin surface: which entities it exposes for management.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema, schemars::JsonSchema,
+)]
 pub struct AdminSchema {
     pub entities: Vec<EntitySchema>,
 }
 
 /// One manageable entity (e.g. identity's "users").
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema, schemars::JsonSchema,
+)]
 pub struct EntitySchema {
     /// Stable entity key, unique within the module, e.g. "users".
     pub name: String,
@@ -23,7 +27,9 @@ pub struct EntitySchema {
 }
 
 /// One field of an entity.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema, schemars::JsonSchema,
+)]
 pub struct FieldSchema {
     /// Key in the record's JSON object, e.g. "email".
     pub name: String,
@@ -37,7 +43,9 @@ pub struct FieldSchema {
 }
 
 /// Minimal field-type vocabulary. `Json` is the catch-all so any field renders.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema, schemars::JsonSchema,
+)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum FieldType {

@@ -30,6 +30,10 @@ pub async fn run_from_env_with_composition(
     let config = AppConfig::try_from_env().context("invalid application configuration")?;
     telemetry::init(&config.telemetry)?;
 
+    let provider_workspace = PathBuf::from(".");
+    let provider_plan = lenso_bootstrap::provider_runtime_plan_from_workspace(&provider_workspace)
+        .context("failed to compile Provider Runtime Plan")?;
+
     let db = connect_pool(&config.database).await?;
     let redis = connect_redis(&config.redis).await?;
     let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher)).with_redis(redis);
@@ -50,40 +54,62 @@ pub async fn run_from_env_with_composition(
     runtime_config.spawn_listener();
     ctx = ctx.with_runtime_config_provider(runtime_config);
 
-    let _remote_services = lenso_bootstrap::start_installed_remote_module_services(&ctx)
-        .await
-        .context("failed to start remote module services")?;
-
-    let admin_modules = lenso_bootstrap::load_admin_modules_with_composition(&ctx, &composition)
-        .await
-        .context("failed to load admin modules")?;
+    let admin_modules = lenso_bootstrap::load_admin_modules_with_composition_and_provider_plan(
+        &ctx,
+        &composition,
+        provider_plan.as_ref(),
+    )
+    .await
+    .context("failed to load admin modules")?;
     platform_admin_data::install_admin_modules(admin_modules);
     let admin_module_metadata =
-        lenso_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
-            .await
-            .context("failed to load admin module metadata")?;
-    install_admin_module_metadata(admin_module_metadata);
-    let remote_http_proxy_registry = lenso_bootstrap::load_remote_http_proxy_registry(&ctx)
+        lenso_bootstrap::load_admin_module_metadata_with_composition_and_provider_plan(
+            &ctx,
+            &composition,
+            provider_plan.as_ref(),
+        )
         .await
-        .context("failed to load remote HTTP proxy registry")?;
+        .context("failed to load admin module metadata")?;
+    install_admin_module_metadata(admin_module_metadata);
+    let remote_http_proxy_registry =
+        lenso_bootstrap::load_provider_http_proxy_registry(provider_plan.as_ref(), &composition)
+            .await
+            .context("failed to load Provider HTTP proxy registry")?;
     platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
 
     let admin_refresh_ctx = ctx.clone();
     let admin_refresh_composition = composition.clone();
+    let admin_refresh_workspace = provider_workspace.clone();
     platform_admin_data::install_admin_module_refresh_fn(move || {
         let ctx = admin_refresh_ctx.clone();
         let composition = admin_refresh_composition.clone();
-        async move { lenso_bootstrap::load_admin_modules_with_composition(&ctx, &composition).await }
+        let workspace = admin_refresh_workspace.clone();
+        async move {
+            let plan = lenso_bootstrap::provider_runtime_plan_from_workspace(workspace)?;
+            lenso_bootstrap::load_admin_modules_with_composition_and_provider_plan(
+                &ctx,
+                &composition,
+                plan.as_ref(),
+            )
+            .await
+        }
     });
     let admin_metadata_refresh_ctx = ctx.clone();
     let admin_metadata_refresh_composition = composition.clone();
+    let admin_metadata_refresh_workspace = provider_workspace;
     platform_admin_data::install_admin_module_metadata_refresh_fn(move || {
         let ctx = admin_metadata_refresh_ctx.clone();
         let composition = admin_metadata_refresh_composition.clone();
+        let workspace = admin_metadata_refresh_workspace.clone();
         async move {
+            let plan = lenso_bootstrap::provider_runtime_plan_from_workspace(workspace)?;
             let metadata =
-                lenso_bootstrap::load_admin_module_metadata_with_composition(&ctx, &composition)
-                    .await?;
+                lenso_bootstrap::load_admin_module_metadata_with_composition_and_provider_plan(
+                    &ctx,
+                    &composition,
+                    plan.as_ref(),
+                )
+                .await?;
             install_platform_admin_catalogs(&metadata);
             Ok(metadata)
         }
@@ -97,7 +123,6 @@ pub async fn run_from_env_with_composition(
 
     info!(%address, "starting API server");
     let listener = tokio::net::TcpListener::bind(address).await?;
-
     let shutdown = ctx.shutdown.clone();
     axum::serve(
         listener,

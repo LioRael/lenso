@@ -29,8 +29,7 @@ pub use clock::{Clock, SystemClock};
 pub use config::{
     AppConfig, AuthConfig, DEFAULT_LINKED_MODULE_PROFILE, DatabaseConfig, HttpConfig,
     LENSO_COMPOSITION_PROFILE_ENV, LogFormat, ModuleConfig, ModuleSourcesConfig, RedisConfig,
-    RemoteModuleSourceConfig, ServiceConfig, TelemetryConfig, is_local_development_environment,
-    parse_cors_allowed_origins,
+    ServiceConfig, TelemetryConfig, is_local_development_environment, parse_cors_allowed_origins,
 };
 pub use context::{
     ActorContext, ActorResolutionRequest, ActorResolver, AppContext, ClientRequestMetadata,
@@ -50,7 +49,7 @@ pub use health::{HealthRegistry, HealthStatus};
 pub use idempotency::{IdempotencyClaim, IdempotencyKey, claim_idempotency_key_in_tx};
 pub use ids::{IdGenerator, UuidGenerator};
 pub use lenso_contracts::{StoryDisplayDescriptor, StoryDisplaySource};
-pub use migrations::{Migration, PLATFORM_MIGRATIONS, apply_migrations};
+pub use migrations::{Migration, PLATFORM_MIGRATIONS, apply_migrations, apply_module_migration};
 pub use outbox::{
     ClaimedOutboxEvent, EventDispatcher, EventHandler, EventHandlerRegistry,
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,

@@ -13,16 +13,15 @@ use crate::dto::{
     AdminLaunchpadServiceDto, AdminLaunchpadStatus, AdminModuleActivationState,
     AdminModuleCompatibilityDto, AdminModuleConsolePackagePlanPackageDto,
     AdminModuleConsolePackagePlanStateDto, AdminModuleGovernanceDto,
-    AdminModuleHostCompatibilityDto, AdminModuleInstallResponse, AdminModuleInstallStateDto,
+    AdminModuleHostCompatibilityDto, AdminModuleInstallStateDto,
     AdminModuleLinkedSourceInstallStateDto, AdminModuleMetadataDto,
     AdminModuleMetadataListResponse, AdminModuleRefreshModuleResultDto,
     AdminModuleRefreshModuleStatusDto, AdminModuleRefreshRecordDto, AdminModuleRefreshStatusDto,
     AdminModuleRegistrySnapshotCatalogDto, AdminModuleRegistrySnapshotIssueDto,
     AdminModuleRegistrySnapshotManifestStatus, AdminModuleRegistrySnapshotModuleDto,
     AdminModuleRegistrySnapshotModuleStatus, AdminModuleRegistrySnapshotResponse,
-    AdminModuleRegistrySnapshotStatus, AdminModuleReleaseDto,
-    AdminModuleRemoteSourceInstallStateDto, AdminModuleSchema, AdminModuleSourceDiagnosticsDto,
-    AdminModuleStatus, AdminQueryResponse, AdminRemoteModuleDiagnosticsDto,
+    AdminModuleRegistrySnapshotStatus, AdminModuleReleaseDto, AdminModuleSchema,
+    AdminModuleSourceDiagnosticsDto, AdminModuleStatus, AdminQueryResponse,
     AdminSchemaListResponse, AdminSchemaRefreshResponse, AdminServiceDeploymentCheckDto,
     AdminServiceDeploymentHostObservationDto, AdminServiceDeploymentObservationDto,
     AdminServiceDeploymentOperatorConditionDto, AdminServiceDeploymentOperatorObservationDto,
@@ -30,17 +29,18 @@ use crate::dto::{
     AdminServiceModuleCompatibilityState, AdminServiceModuleConfigDto,
     AdminServiceModuleDeploymentDto, AdminServiceModuleHealthCheckDto,
     AdminServiceModuleLifecycleModuleDto, AdminServiceModuleLifecycleModuleStatus,
-    AdminServiceModuleLifecycleResponse, AdminServiceModuleLifecycleServiceDto,
-    AdminServiceModuleLifecycleStatus, AdminServiceModuleManifestStatus,
-    AdminServiceModuleServiceStatusCheckDto, AdminServiceModuleServiceStatusDto,
-    AdminServiceModuleServiceStatusState, AdminServiceOperationDto, AdminServiceOperationKindDto,
-    AdminServiceOperationLinksDto, AdminServiceReleaseRecordDto, AdminServiceSystemDependencyDto,
-    AdminServiceSystemDriftDto, AdminServiceSystemDriftResponse, AdminServiceSystemDriftStatus,
-    AdminServiceSystemIssueDto, AdminServiceSystemModuleDto, AdminServiceSystemNodeDto,
-    AdminServiceSystemRelationshipDto, AdminServiceSystemReleaseRecordDto,
-    AdminServiceSystemReleaseTrainResponse, AdminServiceSystemReleaseTrainStatus,
-    AdminServiceSystemResponse, AdminServiceSystemRunbookDto, AdminServiceSystemRunbooksResponse,
-    AdminServiceSystemRunbooksStatus, AdminServiceSystemServiceDto, AdminServiceSystemStatus,
+    AdminServiceModuleLifecycleResponse, AdminServiceModuleLifecycleStatus,
+    AdminServiceModuleManifestStatus, AdminServiceModuleServiceStatusCheckDto,
+    AdminServiceModuleServiceStatusDto, AdminServiceModuleServiceStatusState,
+    AdminServiceOperationDto, AdminServiceOperationKindDto, AdminServiceOperationLinksDto,
+    AdminServiceProviderDiagnosticsDto, AdminServiceProviderInstallStateDto,
+    AdminServiceReleaseRecordDto, AdminServiceSystemDependencyDto, AdminServiceSystemDriftDto,
+    AdminServiceSystemDriftResponse, AdminServiceSystemDriftStatus, AdminServiceSystemIssueDto,
+    AdminServiceSystemModuleDto, AdminServiceSystemNodeDto, AdminServiceSystemRelationshipDto,
+    AdminServiceSystemReleaseRecordDto, AdminServiceSystemReleaseTrainResponse,
+    AdminServiceSystemReleaseTrainStatus, AdminServiceSystemResponse, AdminServiceSystemRunbookDto,
+    AdminServiceSystemRunbooksResponse, AdminServiceSystemRunbooksStatus,
+    AdminServiceSystemServiceDto, AdminServiceSystemStatus,
 };
 use crate::{
     AdminModule, AdminModuleMetadata, AdminModuleMetadataRefreshModuleResult,
@@ -76,12 +76,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 const DEFAULT_LIMIT: i64 = 50;
 const MAX_LIMIT: i64 = 200;
 const CONSOLE_EXTENSION_REGISTRY_PATH: &str = ".lenso/console/extensions/registry.json";
-const CONSOLE_EXTENSION_ROUTE_PREFIX: &str = "/console/extensions";
 const HOST_CONSOLE_PACKAGE_API_VERSION: &str = "1";
 const HOST_LENSO_VERSION: &str = env!("CARGO_PKG_VERSION");
-const HOST_REMOTE_PROTOCOL_VERSION: &str = "1";
+const HOST_SERVICE_PROTOCOL_VERSION: &str = "1";
 const MODULE_INSTALL_LEDGER_PATH: &str = ".lenso/module-installs.json";
-const MODULE_SERVICES_PATH: &str = ".lenso/module-services.json";
 const SERVICE_RELEASE_LEDGER_PATH: &str = ".lenso/service-releases.json";
 const SERVICE_ENVIRONMENTS_PATH: &str = ".lenso/service-environments.json";
 const SERVICE_DEPLOYMENTS_PATH: &str = ".lenso/service-deployments.json";
@@ -399,57 +397,6 @@ pub(crate) async fn launchpad_change_plan(
     Ok(Json(launchpad_change_plan_response(FsPath::new(
         APP_CHANGE_PLAN_PATH,
     ))))
-}
-
-#[utoipa::path(
-    post,
-    path = "/admin/data/available-modules/{module}/install",
-    operation_id = "admin_data_install_available_module",
-    tag = "admin-data",
-    params(
-        ("module" = String, Path, description = "Available catalog entry name"),
-        ("authorization" = String, Header, description = "Development service bearer token"),
-    ),
-    responses(
-        (status = 200, description = "Catalog install state written to host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
-        (status = 400, description = "Catalog entry cannot be installed", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/problem+json"),
-    )
-)]
-pub(crate) async fn install_available_module(
-    _admin: AdminActor,
-    Path(module): Path<String>,
-    HttpRequestContext(request_ctx): HttpRequestContext,
-) -> Result<Json<AdminModuleInstallResponse>, ApiErrorResponse> {
-    install_available_module_response(module, &request_ctx)
-        .await
-        .map(Json)
-}
-
-#[utoipa::path(
-    delete,
-    path = "/admin/data/available-modules/{module}/install",
-    operation_id = "admin_data_uninstall_available_module",
-    tag = "admin-data",
-    params(
-        ("module" = String, Path, description = "Available module name"),
-        ("authorization" = String, Header, description = "Development service bearer token"),
-    ),
-    responses(
-        (status = 200, description = "Module install state removed from host-local files", body = AdminModuleInstallResponse, content_type = "application/json"),
-        (status = 401, description = "Authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 403, description = "Service or system authentication is required", body = ErrorResponse, content_type = "application/problem+json"),
-        (status = 404, description = "Unknown available module", body = ErrorResponse, content_type = "application/problem+json"),
-    )
-)]
-pub(crate) async fn uninstall_available_module(
-    _admin: AdminActor,
-    Path(module): Path<String>,
-    HttpRequestContext(request_ctx): HttpRequestContext,
-) -> Result<Json<AdminModuleInstallResponse>, ApiErrorResponse> {
-    uninstall_available_module_response(module, &request_ctx).map(Json)
 }
 
 fn available_modules_response() -> AdminModuleRegistrySnapshotResponse {
@@ -866,7 +813,6 @@ fn service_system_drift_response(path: &FsPath) -> AdminServiceSystemDriftRespon
     service_system_drift_response_from_paths(
         path,
         FsPath::new(MODULE_INSTALL_LEDGER_PATH),
-        FsPath::new(MODULE_SERVICES_PATH),
         FsPath::new(SERVICE_ENVIRONMENTS_PATH),
         FsPath::new(SERVICE_DEPLOYMENTS_PATH),
         FsPath::new(SERVICE_RELEASE_LEDGER_PATH),
@@ -876,7 +822,6 @@ fn service_system_drift_response(path: &FsPath) -> AdminServiceSystemDriftRespon
 fn service_system_drift_response_from_paths(
     path: &FsPath,
     module_installs_path: &FsPath,
-    module_services_path: &FsPath,
     service_environments_path: &FsPath,
     service_deployments_path: &FsPath,
     service_releases_path: &FsPath,
@@ -894,23 +839,12 @@ fn service_system_drift_response_from_paths(
     }
 
     let installed_modules = local_installed_modules(module_installs_path);
-    let configured_services = local_configured_services(module_services_path);
     let environments = local_service_environments(service_environments_path);
     let deployments = local_service_deployments(service_deployments_path);
     let releases = local_service_release_history(service_releases_path);
     let mut drifts = Vec::new();
 
     for service in &system.services {
-        if !configured_services.contains(&service.name) {
-            drifts.push(AdminServiceSystemDriftDto {
-                code: "service_not_configured".to_owned(),
-                command: Some("lenso system apply".to_owned()),
-                message: format!("Service `{}` is declared but not configured.", service.name),
-                name: service.name.clone(),
-                resource: "service".to_owned(),
-                severity: "warning".to_owned(),
-            });
-        }
         if matches!(service.target.as_str(), "kubernetes" | "operator") {
             let service_envs = environments.get(&service.name).cloned().unwrap_or_default();
             let service_deployments = deployments
@@ -1022,15 +956,6 @@ fn local_installed_modules(path: impl AsRef<FsPath>) -> HashSet<String> {
         .modules
         .into_iter()
         .map(|module| module.module_name)
-        .collect()
-}
-
-fn local_configured_services(path: impl AsRef<FsPath>) -> HashSet<String> {
-    local_module_services(path)
-        .into_iter()
-        .flat_map(|(module_name, services)| {
-            std::iter::once(module_name).chain(services.into_iter().map(|service| service.name))
-        })
         .collect()
 }
 
@@ -1893,7 +1818,6 @@ async fn service_module_lifecycle_response(
     install_state: AvailableModuleInstallStateContext,
 ) -> AdminServiceModuleLifecycleResponse {
     let installed_modules = local_installed_remote_modules(MODULE_INSTALL_LEDGER_PATH);
-    let services_by_module = local_module_services(MODULE_SERVICES_PATH);
     let release_history_by_service = local_service_release_history(SERVICE_RELEASE_LEDGER_PATH);
     let environments_by_service = local_service_environments(SERVICE_ENVIRONMENTS_PATH);
     let deployment_state = local_service_deployments(SERVICE_DEPLOYMENTS_PATH);
@@ -1921,21 +1845,7 @@ async fn service_module_lifecycle_response(
     module_names.extend(installed_modules.keys().cloned());
     module_names.extend(
         install_state
-            .remote_sources
-            .modules
-            .keys()
-            .filter(|module_name| !represented_provider_names.contains(*module_name))
-            .cloned(),
-    );
-    module_names.extend(
-        install_state
             .running_base_urls
-            .keys()
-            .filter(|module_name| !represented_provider_names.contains(*module_name))
-            .cloned(),
-    );
-    module_names.extend(
-        services_by_module
             .keys()
             .filter(|module_name| !represented_provider_names.contains(*module_name))
             .cloned(),
@@ -1957,11 +1867,6 @@ async fn service_module_lifecycle_response(
                 provider_name.map(String::as_str),
                 &install_state,
                 installed_modules.get(&module_name),
-                services_by_module
-                    .get(&module_name)
-                    .or_else(|| provider_name.and_then(|name| services_by_module.get(name)))
-                    .cloned()
-                    .unwrap_or_default(),
                 release_history_by_service
                     .get(provider_name.map(String::as_str).unwrap_or(&module_name))
                     .or_else(|| release_history_by_service.get(&module_name))
@@ -2012,7 +1917,6 @@ async fn service_module_lifecycle_module(
     provider_name: Option<&str>,
     install_state: &AvailableModuleInstallStateContext,
     install_receipt: Option<&LocalModuleInstallLedgerModule>,
-    service_specs: Vec<LocalModuleServiceSpec>,
     release_history: Vec<AdminServiceReleaseRecordDto>,
     environments: Vec<AdminServiceEnvironmentDto>,
     deployments: Vec<AdminServiceDeploymentObservationDto>,
@@ -2049,17 +1953,12 @@ async fn service_module_lifecycle_module(
     } else {
         service_module_manifest_status(metadata, manifest_url.as_deref(), client).await
     };
-    let services = service_module_lifecycle_services(
-        provider_name.unwrap_or(module_name),
-        &service_specs,
-        client,
-    )
-    .await;
+    let services = Vec::new();
     let service_status = service_module_status_summary(status_url.as_deref(), client).await;
     let health_history =
         record_service_module_health(module_name, status_url.as_deref(), &service_status);
     let compatibility = service_module_compatibility(module_name, install_receipt);
-    let config = service_module_config(install_receipt, install_state);
+    let config = service_module_config(install_receipt);
     let deployment = service_module_deployment(install_receipt);
     let deployment_drift = deployments
         .first()
@@ -2070,18 +1969,8 @@ async fn service_module_lifecycle_module(
     let operations = service_module_operations(provider_name, module_name, metadata);
     let module_release = install_receipt.and_then(module_release_from_receipt);
     let latest_release = release_history.first().cloned();
-    let has_stale_state = services.iter().any(|service| {
-        !service.ready && (service.lock_file.is_some() || service.pid_file.is_some())
-    });
-    let has_service_not_ready = services.iter().any(|service| !service.ready);
     let mut fixes = Vec::new();
-    let host_started = service_specs.iter().any(|service| service.auto_start);
-    let has_missing_config = host_started && !config.missing_env.is_empty();
-    let status = if has_stale_state {
-        fixes
-            .push("restart API/worker; remove stale lock/pid files if it remains stuck".to_owned());
-        AdminServiceModuleLifecycleModuleStatus::StaleState
-    } else if has_missing_config {
+    let status = if !config.missing_env.is_empty() {
         fixes.push(format!(
             "set missing service env in {}: {}",
             config.env_file,
@@ -2100,15 +1989,12 @@ async fn service_module_lifecycle_module(
         fixes.push("restart API and worker, then inspect manifest errors".to_owned());
         AdminServiceModuleLifecycleModuleStatus::ConfiguredNotLoaded
     } else if manifest_status == AdminServiceModuleManifestStatus::Unreachable {
-        fixes.push("start the service or fix REMOTE_MODULES".to_owned());
+        fixes.push("start the installed Provider Service or fix its endpoint binding".to_owned());
         AdminServiceModuleLifecycleModuleStatus::ManifestUnreachable
-    } else if has_service_not_ready {
-        fixes.push("start the declared service or inspect process logs".to_owned());
-        AdminServiceModuleLifecycleModuleStatus::ServiceNotReady
     } else if loaded && (configured || installed || remote_source.running_base_url.is_some()) {
         AdminServiceModuleLifecycleModuleStatus::Ready
     } else {
-        fixes.push("install the service or add its provider to REMOTE_MODULES".to_owned());
+        fixes.push("apply the reviewed Module and Service Installation plans".to_owned());
         AdminServiceModuleLifecycleModuleStatus::NotConfigured
     };
 
@@ -2300,7 +2186,7 @@ fn service_module_operation_links(
 ) -> AdminServiceOperationLinksDto {
     let query = provider_name.unwrap_or(module_name);
     AdminServiceOperationLinksDto {
-        remote_calls: Some(format!("/operations/remote-calls?module={module_name}")),
+        service_calls: Some(format!("/operations/service-calls?module={module_name}")),
         runtime: Some(format!("/operations/functions?module={module_name}")),
         story: format!("/?q={query}"),
         technical_operations: format!("/operations?q={query}"),
@@ -2319,30 +2205,30 @@ fn service_module_operation_next_action(safe_probe: bool) -> String {
 fn reconcile_service_provider_remote_source(
     module_name: &str,
     metadata: Option<&AdminModuleMetadata>,
-    remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+    service_provider: &mut AdminServiceProviderInstallStateDto,
 ) {
     reconcile_service_provider_remote_source_base_url(
         module_name,
         metadata_remote_base_url(metadata).as_deref(),
-        remote_source,
+        service_provider,
     );
 }
 
 fn reconcile_service_provider_remote_source_base_url(
     module_name: &str,
     running_module_base_url: Option<&str>,
-    remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+    service_provider: &mut AdminServiceProviderInstallStateDto,
 ) {
-    let Some(desired_base_url) = remote_source.desired_base_url.as_deref() else {
+    let Some(desired_base_url) = service_provider.desired_base_url.as_deref() else {
         return;
     };
     let Some(running_module_base_url) = running_module_base_url else {
         return;
     };
     if running_module_base_url == service_provider_module_base_url(desired_base_url, module_name) {
-        remote_source.running_base_url = Some(normalize_remote_base_url(desired_base_url));
-        remote_source.restart_pending = false;
-        remote_source.restart_reason = None;
+        service_provider.running_base_url = Some(normalize_remote_base_url(desired_base_url));
+        service_provider.restart_pending = false;
+        service_provider.restart_reason = None;
     }
 }
 
@@ -2508,7 +2394,6 @@ fn service_module_compatibility(
 
 fn service_module_config(
     install_receipt: Option<&LocalModuleInstallLedgerModule>,
-    install_state: &AvailableModuleInstallStateContext,
 ) -> AdminServiceModuleConfigDto {
     let required_env = install_receipt
         .and_then(|receipt| receipt.service.as_ref())
@@ -2516,16 +2401,16 @@ fn service_module_config(
         .unwrap_or_default();
     let configured_env = required_env
         .iter()
-        .filter(|key| install_state.remote_sources.keys.contains(*key))
+        .filter(|key| std::env::var_os(key).is_some())
         .cloned()
         .collect::<Vec<_>>();
     let missing_env = required_env
         .iter()
-        .filter(|key| !install_state.remote_sources.keys.contains(*key))
+        .filter(|key| std::env::var_os(key).is_none())
         .cloned()
         .collect::<Vec<_>>();
     AdminServiceModuleConfigDto {
-        env_file: install_state.remote_sources.env_file.clone(),
+        env_file: "process environment".to_owned(),
         required_env,
         configured_env,
         missing_env,
@@ -2646,40 +2531,6 @@ async fn service_module_manifest_status(
     }
 }
 
-async fn service_module_lifecycle_services(
-    module_name: &str,
-    services: &[LocalModuleServiceSpec],
-    client: Option<&reqwest::Client>,
-) -> Vec<AdminServiceModuleLifecycleServiceDto> {
-    let state_dir = FsPath::new(MODULE_SERVICES_PATH)
-        .parent()
-        .unwrap_or_else(|| FsPath::new("."));
-    let mut items = Vec::new();
-    for service in services {
-        let ready = match client {
-            Some(client) => remote_service_ready(client, &service.ready_url).await,
-            None => false,
-        };
-        let lock_file_path =
-            remote_module_service_state_path(state_dir, module_name, service, "lock");
-        let pid_file_path =
-            remote_module_service_state_path(state_dir, module_name, service, "pid");
-        items.push(AdminServiceModuleLifecycleServiceDto {
-            name: service.name.clone(),
-            ready_url: service.ready_url.clone(),
-            ready,
-            auto_start: service.auto_start,
-            lock_file: lock_file_path
-                .exists()
-                .then(|| lock_file_path.display().to_string()),
-            pid_file: pid_file_path
-                .exists()
-                .then(|| pid_file_path.display().to_string()),
-        });
-    }
-    items
-}
-
 fn local_installed_remote_modules(
     path: impl AsRef<FsPath>,
 ) -> HashMap<String, LocalModuleInstallLedgerModule> {
@@ -2692,7 +2543,7 @@ fn local_installed_remote_modules(
     ledger
         .modules
         .into_iter()
-        .filter(|module| module.source.as_deref().unwrap_or("remote") == "remote")
+        .filter(|module| module.source.as_deref().unwrap_or("service") == "service")
         .map(|module| (module.module_name.clone(), module))
         .collect()
 }
@@ -2962,19 +2813,6 @@ fn service_release_record_from_value(value: &Value) -> Option<AdminServiceReleas
     })
 }
 
-fn local_module_services(path: impl AsRef<FsPath>) -> HashMap<String, Vec<LocalModuleServiceSpec>> {
-    let Ok(source) = fs::read_to_string(path) else {
-        return HashMap::new();
-    };
-    let Ok(file) = serde_json::from_str::<LocalModuleServicesFile>(&source) else {
-        return HashMap::new();
-    };
-    file.modules
-        .into_iter()
-        .map(|module| (module.module_name, module.services))
-        .collect()
-}
-
 fn remote_module_manifest_url(base_url: &str) -> Option<String> {
     let base_url = base_url.trim().trim_end_matches('/');
     if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
@@ -2993,216 +2831,6 @@ async fn remote_service_ready(client: &reqwest::Client, url: &str) -> bool {
         .send()
         .await
         .is_ok_and(|response| response.status().is_success())
-}
-
-fn remote_module_service_state_path(
-    services_state_dir: &FsPath,
-    module_name: &str,
-    service: &LocalModuleServiceSpec,
-    extension: &str,
-) -> PathBuf {
-    services_state_dir.join(format!(
-        "remote-{}-{}.{}",
-        remote_module_service_state_segment(module_name),
-        remote_module_service_state_segment(&service.name),
-        extension
-    ))
-}
-
-fn remote_module_service_state_segment(value: &str) -> String {
-    let mut segment = String::new();
-    let mut previous_dash = false;
-    for character in value.chars() {
-        if character.is_ascii_alphanumeric() {
-            segment.push(character.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !segment.is_empty() && !previous_dash {
-            segment.push('-');
-            previous_dash = true;
-        }
-    }
-    while segment.ends_with('-') {
-        segment.pop();
-    }
-    if segment.is_empty() {
-        "service".to_owned()
-    } else {
-        segment
-    }
-}
-
-async fn install_available_module_response(
-    module_name: String,
-    ctx: &RequestContext,
-) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
-    let catalog_entry =
-        find_installable_catalog_entry(&module_name).map_err(|error| install_error(error, ctx))?;
-    if catalog_entry.source == "linked" {
-        return install_linked_available_module_response(catalog_entry, ctx).await;
-    }
-    let base_url = install_base_url(&catalog_entry).map_err(|error| install_error(error, ctx))?;
-    validate_installable_catalog_entry(&catalog_entry, &base_url)
-        .map_err(|error| install_error(error, ctx))?;
-
-    let env_file_path = PathBuf::from(".env");
-    let console_registry_file_path = PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH);
-    write_runtime_console_extension_registry(
-        &console_registry_file_path,
-        &catalog_entry,
-        &base_url,
-    )
-    .await
-    .map_err(|error| install_error(error, ctx))?;
-    let remote_source_name = catalog_entry_remote_source_name(&catalog_entry).to_owned();
-    write_remote_modules_env(&env_file_path, &remote_source_name, &base_url)
-        .map_err(|error| install_error(error, ctx))?;
-    write_available_module_install_ledger(
-        PathBuf::from(MODULE_INSTALL_LEDGER_PATH),
-        &catalog_entry,
-        &remote_source_name,
-        &base_url,
-    )
-    .map_err(|error| install_error(error, ctx))?;
-
-    let metadata = admin_module_metadata_snapshot().modules;
-    let install_state = AvailableModuleInstallStateContext::from_paths(
-        &metadata,
-        &env_file_path,
-        &console_registry_file_path,
-    );
-    let state = catalog_entry_install_state(&catalog_entry, &install_state);
-    Ok(AdminModuleInstallResponse {
-        module_release: module_release_from_catalog_entry(&catalog_entry),
-        module_name: catalog_entry.name,
-        manifest_reference: catalog_entry.manifest_reference,
-        linked_source: state.linked_source,
-        remote_source: state.remote_source,
-        console_plan: state.console_plan,
-        restart_required: true,
-    })
-}
-
-fn uninstall_available_module_response(
-    module_name: String,
-    ctx: &RequestContext,
-) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
-    let catalog_entry =
-        find_installable_catalog_entry(&module_name).map_err(|error| install_error(error, ctx))?;
-    if catalog_entry.source == "linked" {
-        return uninstall_linked_available_module_response(catalog_entry, ctx);
-    }
-
-    let env_file_path = PathBuf::from(".env");
-    let console_registry_file_path = PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH);
-    let legacy_console_plan_file_path = PathBuf::from(".lenso/console-package-install-plan.json");
-    let remote_source_name = catalog_entry_remote_source_name(&catalog_entry).to_owned();
-    remove_remote_modules_env(&env_file_path, &remote_source_name)
-        .map_err(|error| install_error(error, ctx))?;
-    remove_runtime_console_extension_registry_module(
-        &console_registry_file_path,
-        &catalog_entry.name,
-    )
-    .map_err(|error| install_error(error, ctx))?;
-    remove_console_extension_module_dir(&catalog_entry.name)
-        .map_err(|error| install_error(error, ctx))?;
-    remove_console_package_install_plan_module(&legacy_console_plan_file_path, &catalog_entry.name)
-        .map_err(|error| install_error(error, ctx))?;
-    remove_module_install_ledger_module(
-        PathBuf::from(MODULE_INSTALL_LEDGER_PATH),
-        &catalog_entry.name,
-    )
-    .map_err(|error| install_error(error, ctx))?;
-
-    let metadata = admin_module_metadata_snapshot().modules;
-    let install_state = AvailableModuleInstallStateContext::from_paths(
-        &metadata,
-        &env_file_path,
-        &console_registry_file_path,
-    );
-    let state = catalog_entry_install_state(&catalog_entry, &install_state);
-    Ok(AdminModuleInstallResponse {
-        module_release: module_release_from_catalog_entry(&catalog_entry),
-        module_name: catalog_entry.name,
-        manifest_reference: catalog_entry.manifest_reference,
-        linked_source: state.linked_source,
-        remote_source: state.remote_source,
-        console_plan: state.console_plan,
-        restart_required: true,
-    })
-}
-
-async fn install_linked_available_module_response(
-    catalog_entry: LocalModuleCatalogEntry,
-    ctx: &RequestContext,
-) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
-    if catalog_entry.archived_at.is_some() {
-        return Err(install_error(
-            AppError::new(
-                ErrorCode::Validation,
-                format!("available module {} is archived", catalog_entry.name),
-            ),
-            ctx,
-        ));
-    }
-    write_linked_module_profile_env(PathBuf::from(".env"))
-        .map_err(|error| install_error(error, ctx))?;
-    write_linked_module_enabled_env(PathBuf::from(".env"), &catalog_entry.name, true)
-        .map_err(|error| install_error(error, ctx))?;
-    write_linked_runtime_console_extensions(
-        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
-        &catalog_entry,
-    )
-    .await
-    .map_err(|error| install_error(error, ctx))?;
-    let metadata = admin_module_metadata_snapshot().modules;
-    let install_state = AvailableModuleInstallStateContext::from_paths(
-        &metadata,
-        PathBuf::from(".env"),
-        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
-    );
-    let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
-    Ok(AdminModuleInstallResponse {
-        module_release: None,
-        module_name: catalog_entry.name,
-        manifest_reference: catalog_entry.manifest_reference,
-        linked_source: state.linked_source,
-        remote_source: state.remote_source,
-        console_plan: state.console_plan,
-        restart_required: true,
-    })
-}
-
-fn uninstall_linked_available_module_response(
-    catalog_entry: LocalModuleCatalogEntry,
-    ctx: &RequestContext,
-) -> Result<AdminModuleInstallResponse, ApiErrorResponse> {
-    write_linked_module_enabled_env(PathBuf::from(".env"), &catalog_entry.name, false)
-        .map_err(|error| install_error(error, ctx))?;
-    remove_runtime_console_extension_registry_module(
-        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
-        &catalog_entry.name,
-    )
-    .map_err(|error| install_error(error, ctx))?;
-    let metadata = admin_module_metadata_snapshot().modules;
-    let install_state = AvailableModuleInstallStateContext::from_paths(
-        &metadata,
-        PathBuf::from(".env"),
-        PathBuf::from(CONSOLE_EXTENSION_REGISTRY_PATH),
-    );
-    let state = install_state.install_state_for_source(&catalog_entry.name, ModuleSource::Linked);
-    Ok(AdminModuleInstallResponse {
-        module_release: None,
-        module_name: catalog_entry.name,
-        manifest_reference: catalog_entry.manifest_reference,
-        linked_source: state.linked_source,
-        remote_source: state.remote_source,
-        console_plan: state.console_plan,
-        restart_required: true,
-    })
-}
-
-fn install_error(error: AppError, ctx: &RequestContext) -> ApiErrorResponse {
-    ApiErrorResponse::with_context(error, ctx)
 }
 
 #[utoipa::path(
@@ -3274,9 +2902,27 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
     modules
         .iter()
         .map(|m| {
+            let lint_module_id = if m.source == ModuleSource::Remote && !m.module_name.contains('/')
+            {
+                format!("legacy-remote/{}", m.module_name)
+            } else {
+                m.module_name.clone()
+            };
+            let requirements = m
+                .dependencies
+                .iter()
+                .map(|module_id| {
+                    let module_id = if module_id.contains('/') {
+                        module_id.clone()
+                    } else {
+                        format!("lenso/{module_id}")
+                    };
+                    platform_module::ModuleRequirement::new(module_id, "*")
+                        .expect("wildcard is a valid version requirement")
+                })
+                .collect::<Vec<_>>();
             let manifest_lints = lint_module_manifest_parts(
-                m.source,
-                &m.module_name,
+                &lint_module_id,
                 m.admin.as_ref(),
                 &m.http_routes,
                 m.runtime.as_ref(),
@@ -3286,7 +2932,7 @@ fn metadata_response_modules(modules: Vec<AdminModuleMetadata>) -> Vec<AdminModu
                 &m.console_slots,
                 &m.console_contributions,
                 &m.capabilities,
-                &m.dependencies,
+                &requirements,
             );
             AdminModuleMetadataDto {
                 module_name: m.module_name.clone(),
@@ -3398,7 +3044,7 @@ struct LocalModuleCatalogEntry {
     #[serde(default)]
     capabilities: Vec<String>,
     #[serde(default)]
-    console_packages: Vec<LocalModuleCatalogConsolePackage>,
+    console_packages: Vec<Value>,
     #[serde(default)]
     compatibility: Option<AdminModuleCompatibilityDto>,
     #[serde(default)]
@@ -3418,33 +3064,11 @@ struct LocalModuleReleaseProvider {
     service_manifest: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalModuleCatalogConsolePackage {
-    package_name: String,
-    export_name: String,
-    #[serde(default, alias = "bundle_url")]
-    bundle_url: Option<String>,
-    #[serde(default)]
-    entry: Option<String>,
-    #[serde(default, alias = "host_api")]
-    host_api: Option<String>,
-    #[serde(default)]
-    route: Option<String>,
-    #[serde(default)]
-    required_capabilities: Vec<String>,
-    #[serde(default)]
-    styles: Vec<String>,
-    #[serde(default)]
-    version: Option<String>,
-}
-
 #[derive(Debug)]
 struct AvailableModuleInstallStateContext {
     console_plan: LocalConsolePackageInstallPlanState,
     linked_modules: LocalLinkedModulesEnvState,
     registered_modules: HashSet<String>,
-    remote_sources: LocalRemoteModulesEnvState,
     running_base_urls: HashMap<String, String>,
 }
 
@@ -3453,14 +3077,6 @@ struct LocalLinkedModulesEnvState {
     env_file: String,
     error: Option<String>,
     enabled: HashMap<String, bool>,
-}
-
-#[derive(Debug)]
-struct LocalRemoteModulesEnvState {
-    env_file: String,
-    error: Option<String>,
-    keys: HashSet<String>,
-    modules: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3510,13 +3126,6 @@ struct LocalServiceModuleMetadata {
     status_url: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalModuleServicesFile {
-    #[serde(default)]
-    modules: Vec<LocalModuleServiceState>,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalServiceModuleHealthFile {
@@ -3528,36 +3137,6 @@ struct LocalServiceModuleHealthFile {
 
 const fn default_service_module_health_version() -> u8 {
     1
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalModuleServiceState {
-    module_name: String,
-    #[serde(default)]
-    services: Vec<LocalModuleServiceSpec>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalModuleServiceSpec {
-    name: String,
-    ready_url: String,
-    #[serde(default = "default_service_auto_start")]
-    auto_start: bool,
-}
-
-const fn default_service_auto_start() -> bool {
-    true
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalConsolePackageInstallPlan {
-    #[serde(default)]
-    modules: Vec<LocalConsolePackageInstallPlanModule>,
-    #[serde(default = "default_console_package_install_plan_version")]
-    version: u8,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -3619,28 +3198,6 @@ struct LocalRuntimeConsoleBundle {
     version: Option<String>,
 }
 
-#[derive(Clone, Debug)]
-struct RuntimeConsoleBundleSpec {
-    bundle_url: String,
-    entry: String,
-    export_name: String,
-    host_api: String,
-    module_name: String,
-    package_name: String,
-    required_capabilities: Vec<String>,
-    route: Option<String>,
-    styles: Vec<RuntimeConsoleBundleStyleSpec>,
-    target_path: PathBuf,
-    version: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-struct RuntimeConsoleBundleStyleSpec {
-    entry: String,
-    source_url: String,
-    target_path: PathBuf,
-}
-
 #[derive(Debug)]
 struct LocalConsolePackageInstallPlanState {
     error: Option<String>,
@@ -3670,7 +3227,6 @@ impl AvailableModuleInstallStateContext {
                 .iter()
                 .map(|module| module.module_name.clone())
                 .collect(),
-            remote_sources: local_remote_modules_env_state(env_file_path),
             running_base_urls: metadata
                 .iter()
                 .filter_map(|module| {
@@ -3712,10 +3268,9 @@ impl AvailableModuleInstallStateContext {
                 ModuleSource::Linked => Some(self.linked_source_state(module_name)),
                 _ => None,
             },
-            remote_source: match source {
+            service_provider: match source {
                 ModuleSource::Linked => None,
                 ModuleSource::Remote => Some(self.remote_source_state(remote_source_name)),
-                _ => Some(self.remote_source_state(remote_source_name)),
             },
             console_plan: self.console_plan_state(module_name),
         }
@@ -3737,32 +3292,29 @@ impl AvailableModuleInstallStateContext {
         }
     }
 
-    fn remote_source_state(&self, module_name: &str) -> AdminModuleRemoteSourceInstallStateDto {
-        let desired_base_url = self.remote_sources.modules.get(module_name).cloned();
+    fn remote_source_state(&self, module_name: &str) -> AdminServiceProviderInstallStateDto {
         let running_base_url = self.running_base_urls.get(module_name).cloned();
-        let restart_reason =
-            remote_source_restart_reason(desired_base_url.as_deref(), running_base_url.as_deref());
 
-        AdminModuleRemoteSourceInstallStateDto {
-            env_file: self.remote_sources.env_file.clone(),
-            configured: desired_base_url.is_some(),
-            desired_base_url,
+        AdminServiceProviderInstallStateDto {
+            env_file: "target-owned Service Installation Set".to_owned(),
+            configured: running_base_url.is_some(),
+            desired_base_url: None,
             running_base_url,
-            restart_pending: restart_reason.is_some(),
-            restart_reason,
-            error: self.remote_sources.error.clone(),
+            restart_pending: false,
+            restart_reason: None,
+            error: None,
         }
     }
 
     fn reconcile_service_provider_remote_source(
         &self,
         module_name: &str,
-        remote_source: &mut AdminModuleRemoteSourceInstallStateDto,
+        service_provider: &mut AdminServiceProviderInstallStateDto,
     ) {
         reconcile_service_provider_remote_source_base_url(
             module_name,
             self.running_base_urls.get(module_name).map(String::as_str),
-            remote_source,
+            service_provider,
         );
     }
 
@@ -3796,51 +3348,6 @@ impl AvailableModuleInstallStateContext {
             packages,
         }
     }
-}
-
-fn local_remote_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalRemoteModulesEnvState {
-    let env_file_path = env_file_path.as_ref();
-    let env_file = env_file_path.display().to_string();
-    let source = match fs::read_to_string(env_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return LocalRemoteModulesEnvState {
-                env_file,
-                error: None,
-                keys: HashSet::new(),
-                modules: HashMap::new(),
-            };
-        }
-        Err(error) => {
-            return LocalRemoteModulesEnvState {
-                env_file,
-                error: Some(format!("remote module env file could not be read: {error}")),
-                keys: HashSet::new(),
-                modules: HashMap::new(),
-            };
-        }
-    };
-    LocalRemoteModulesEnvState {
-        env_file,
-        error: None,
-        keys: parse_env_keys_source(&source),
-        modules: parse_remote_modules_env_source(&source),
-    }
-}
-
-fn parse_env_keys_source(source: &str) -> HashSet<String> {
-    source
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                return None;
-            }
-            let line = line.strip_prefix("export ").unwrap_or(line);
-            let (key, _) = line.split_once('=')?;
-            Some(key.trim().to_owned()).filter(|key| !key.is_empty())
-        })
-        .collect()
 }
 
 fn local_linked_modules_env_state(env_file_path: impl AsRef<FsPath>) -> LocalLinkedModulesEnvState {
@@ -3905,40 +3412,6 @@ fn parse_bool_env_value(value: &str) -> Option<bool> {
         "0" | "false" | "no" | "off" => Some(false),
         _ => None,
     }
-}
-
-fn parse_remote_modules_env_source(source: &str) -> HashMap<String, String> {
-    source
-        .lines()
-        .filter_map(remote_modules_env_value)
-        .last()
-        .map(parse_remote_modules_value)
-        .unwrap_or_default()
-}
-
-fn remote_modules_env_value(line: &str) -> Option<String> {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with('#') {
-        return None;
-    }
-    let line = line.strip_prefix("export ").unwrap_or(line);
-    let (key, value) = line.split_once('=')?;
-    (key.trim() == "REMOTE_MODULES").then(|| unquote_env_value(value.trim()).to_owned())
-}
-
-fn parse_remote_modules_value(value: String) -> HashMap<String, String> {
-    value
-        .split(',')
-        .filter_map(|entry| {
-            let (name, base_url) = entry.trim().split_once('=')?;
-            let name = name.trim();
-            let base_url = normalize_remote_base_url(base_url);
-            if name.is_empty() || base_url.is_empty() {
-                return None;
-            }
-            Some((name.to_owned(), base_url))
-        })
-        .collect()
 }
 
 fn unquote_env_value(value: &str) -> &str {
@@ -4025,24 +3498,6 @@ fn local_console_package_install_plan_state(
     }
 }
 
-fn remote_source_restart_reason(
-    desired_base_url: Option<&str>,
-    running_base_url: Option<&str>,
-) -> Option<String> {
-    match (desired_base_url, running_base_url) {
-        (Some(_), None) => {
-            Some("service provider source configured in .env but not loaded".to_owned())
-        }
-        (None, Some(_)) => {
-            Some("service provider source removed from .env but still loaded".to_owned())
-        }
-        (Some(desired), Some(running)) if desired != running => {
-            Some("REMOTE_MODULES base URL differs from loaded service provider metadata".to_owned())
-        }
-        _ => None,
-    }
-}
-
 fn linked_source_restart_reason(
     desired_enabled: Option<bool>,
     running_enabled: bool,
@@ -4082,50 +3537,6 @@ fn module_catalog_file_response(
         &source,
         install_state,
     ))
-}
-
-fn find_installable_catalog_entry(module_name: &str) -> Result<LocalModuleCatalogEntry, AppError> {
-    let catalog = read_install_catalog(PathBuf::from(".lenso/module-catalog.json"))?
-        .unwrap_or_else(official_module_catalog);
-    catalog
-        .modules
-        .into_iter()
-        .find(|entry| entry.name == module_name)
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorCode::NotFound,
-                format!("available module {module_name} was not found"),
-            )
-        })
-}
-
-fn read_install_catalog(
-    catalog_file_path: impl AsRef<FsPath>,
-) -> Result<Option<LocalModuleCatalog>, AppError> {
-    let catalog_file_path = catalog_file_path.as_ref();
-    let source = match fs::read_to_string(catalog_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("module catalog could not be read: {error}"),
-            ));
-        }
-    };
-    serde_json::from_str::<LocalModuleCatalog>(&source)
-        .map(Some)
-        .map_err(|error| {
-            AppError::new(
-                ErrorCode::Validation,
-                format!("module catalog could not be parsed: {error}"),
-            )
-        })
-}
-
-fn official_module_catalog() -> LocalModuleCatalog {
-    serde_json::from_str::<LocalModuleCatalog>(OFFICIAL_MODULE_CATALOG_SOURCE)
-        .expect("official module catalog is valid")
 }
 
 fn module_catalog_source_response(
@@ -4170,67 +3581,6 @@ fn module_catalog_source_response(
     }
 }
 
-fn validate_installable_catalog_entry(
-    entry: &LocalModuleCatalogEntry,
-    base_url: &str,
-) -> Result<(), AppError> {
-    if entry.archived_at.is_some() {
-        return Err(AppError::new(
-            ErrorCode::Validation,
-            format!("available module {} is archived", entry.name),
-        ));
-    }
-    if !matches!(entry.source.as_str(), "remote" | "service") {
-        return Err(AppError::new(
-            ErrorCode::Validation,
-            "only service catalog entries can be installed visually",
-        ));
-    }
-    if base_url.is_empty() {
-        return Err(AppError::new(
-            ErrorCode::Validation,
-            format!("{} baseUrl is missing", entry.name),
-        ));
-    }
-    if module_compatibility_issue(&entry.name, entry.compatibility.as_ref()).is_some() {
-        return Err(AppError::new(
-            ErrorCode::Validation,
-            format!("{} is not compatible with this Lenso host", entry.name),
-        ));
-    }
-    Ok(())
-}
-
-fn install_base_url(entry: &LocalModuleCatalogEntry) -> Result<String, AppError> {
-    if let Some(base_url) = entry.base_url.as_ref() {
-        return Ok(normalize_remote_base_url(base_url));
-    }
-    if let Some(service_manifest) = entry
-        .provider
-        .as_ref()
-        .and_then(|provider| provider.service_manifest.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        && is_http_manifest_reference(service_manifest)
-    {
-        return Ok(service_manifest
-            .strip_suffix("/manifest")
-            .unwrap_or(service_manifest)
-            .to_owned());
-    }
-    if is_http_manifest_reference(&entry.manifest_reference) {
-        return Ok(entry
-            .manifest_reference
-            .strip_suffix("/manifest")
-            .unwrap_or(&entry.manifest_reference)
-            .to_owned());
-    }
-    Err(AppError::new(
-        ErrorCode::Validation,
-        format!("{} baseUrl is missing", entry.name),
-    ))
-}
-
 fn catalog_entry_remote_source_name(entry: &LocalModuleCatalogEntry) -> &str {
     if entry.source == "service" {
         return entry
@@ -4260,916 +3610,11 @@ fn catalog_entry_install_state(
     let mut state =
         install_state.install_state_for_remote_source(&entry.name, source, remote_source_name);
     if entry.source == "service"
-        && let Some(remote_source) = state.remote_source.as_mut()
+        && let Some(remote_source) = state.service_provider.as_mut()
     {
         install_state.reconcile_service_provider_remote_source(&entry.name, remote_source);
     }
     state
-}
-
-fn write_remote_modules_env(
-    env_file_path: impl AsRef<FsPath>,
-    module_name: &str,
-    base_url: &str,
-) -> Result<(), AppError> {
-    let env_file_path = env_file_path.as_ref();
-    let source = match fs::read_to_string(env_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote module env file could not be read: {error}"),
-            ));
-        }
-    };
-    let current_value = source
-        .lines()
-        .filter_map(remote_modules_env_value)
-        .last()
-        .unwrap_or_default();
-    let mut entries = parse_remote_modules_entries(&current_value);
-    entries.retain(|entry| entry.name != module_name);
-    entries.push(RemoteModuleEnvEntry {
-        name: module_name.to_owned(),
-        base_url: normalize_remote_base_url(base_url),
-    });
-    let next_source = upsert_env_source(
-        &source,
-        "REMOTE_MODULES",
-        &format_remote_modules_entries(&entries),
-    );
-    fs::write(env_file_path, next_source).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("remote module env file could not be written: {error}"),
-        )
-    })
-}
-
-fn remove_remote_modules_env(
-    env_file_path: impl AsRef<FsPath>,
-    module_name: &str,
-) -> Result<(), AppError> {
-    let env_file_path = env_file_path.as_ref();
-    let source = match fs::read_to_string(env_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("remote module env file could not be read: {error}"),
-            ));
-        }
-    };
-    let current_value = source
-        .lines()
-        .filter_map(remote_modules_env_value)
-        .last()
-        .unwrap_or_default();
-    let mut entries = parse_remote_modules_entries(&current_value);
-    entries.retain(|entry| entry.name != module_name);
-    let next_source = if entries.is_empty() {
-        remove_env_key_source(&source, "REMOTE_MODULES")
-    } else {
-        upsert_env_source(
-            &source,
-            "REMOTE_MODULES",
-            &format_remote_modules_entries(&entries),
-        )
-    };
-    fs::write(env_file_path, next_source).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("remote module env file could not be written: {error}"),
-        )
-    })
-}
-
-fn write_linked_module_profile_env(env_file_path: impl AsRef<FsPath>) -> Result<(), AppError> {
-    let env_file_path = env_file_path.as_ref();
-    let source = match fs::read_to_string(env_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("linked module env file could not be read: {error}"),
-            ));
-        }
-    };
-    let next_source = upsert_env_source(&source, "LENSO_COMPOSITION_PROFILE", "demo");
-    fs::write(env_file_path, next_source).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("linked module env file could not be written: {error}"),
-        )
-    })
-}
-
-fn write_linked_module_enabled_env(
-    env_file_path: impl AsRef<FsPath>,
-    module_name: &str,
-    enabled: bool,
-) -> Result<(), AppError> {
-    let env_file_path = env_file_path.as_ref();
-    let source = match fs::read_to_string(env_file_path) {
-        Ok(source) => source,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("linked module env file could not be read: {error}"),
-            ));
-        }
-    };
-    let key = linked_module_enabled_env_key(module_name);
-    let next_source = upsert_env_source(&source, &key, if enabled { "true" } else { "false" });
-    fs::write(env_file_path, next_source).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("linked module env file could not be written: {error}"),
-        )
-    })
-}
-
-fn write_linked_runtime_console_extension_registry(
-    console_registry_file_path: impl AsRef<FsPath>,
-    entry: &LocalModuleCatalogEntry,
-) -> Result<(), AppError> {
-    let console_registry_file_path = console_registry_file_path.as_ref();
-    if entry.console_packages.is_empty() {
-        return Ok(());
-    }
-
-    let mut registry = read_runtime_console_extension_registry(console_registry_file_path)?;
-    registry.version = 1;
-    registry.bundles.retain(|bundle| {
-        bundle.module_name.as_deref() != Some(entry.name.as_str())
-            && !entry.console_packages.iter().any(|package| {
-                bundle.package_name == package.package_name
-                    && bundle.export_name == package.export_name
-            })
-    });
-    registry
-        .bundles
-        .extend(entry.console_packages.iter().map(|package| {
-            LocalRuntimeConsoleBundle {
-                entry: package
-                    .entry
-                    .clone()
-                    .unwrap_or_else(|| linked_console_package_entry(&entry.name, package)),
-                export_name: package.export_name.clone(),
-                host_api: package
-                    .host_api
-                    .clone()
-                    .unwrap_or_else(|| HOST_CONSOLE_PACKAGE_API_VERSION.to_owned()),
-                module_name: Some(entry.name.clone()),
-                package_name: package.package_name.clone(),
-                required_capabilities: package.required_capabilities.clone(),
-                route: package.route.clone(),
-                styles: package.styles.clone(),
-                version: package.version.clone(),
-            }
-        }));
-    write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
-}
-
-async fn write_linked_runtime_console_extensions(
-    console_registry_file_path: impl AsRef<FsPath>,
-    entry: &LocalModuleCatalogEntry,
-) -> Result<(), AppError> {
-    if entry.console_packages.is_empty() {
-        return Ok(());
-    }
-    if entry
-        .console_packages
-        .iter()
-        .all(|package| package.bundle_url.is_some())
-    {
-        return write_runtime_console_extension_registry(
-            console_registry_file_path,
-            entry,
-            entry.base_url.as_deref().unwrap_or(""),
-        )
-        .await;
-    }
-    write_linked_runtime_console_extension_registry(console_registry_file_path, entry)
-}
-
-fn linked_console_package_entry(
-    module_name: &str,
-    package: &LocalModuleCatalogConsolePackage,
-) -> String {
-    format!(
-        "{CONSOLE_EXTENSION_ROUTE_PREFIX}/{}/{}.js",
-        slugify(module_name),
-        slugify(&package.export_name)
-    )
-}
-
-async fn write_runtime_console_extension_registry(
-    console_registry_file_path: impl AsRef<FsPath>,
-    entry: &LocalModuleCatalogEntry,
-    base_url: &str,
-) -> Result<(), AppError> {
-    let console_registry_file_path = console_registry_file_path.as_ref();
-    let specs = runtime_console_bundle_specs(console_registry_file_path, entry, base_url)?;
-    if specs.is_empty() {
-        return Ok(());
-    }
-
-    for spec in &specs {
-        let bytes = read_console_bundle_reference(&spec.bundle_url).await?;
-        if let Some(parent) = spec.target_path.parent() {
-            fs::create_dir_all(parent).map_err(|error| {
-                AppError::new(
-                    ErrorCode::ExternalDependency,
-                    format!("console extension bundle directory could not be created: {error}"),
-                )
-            })?;
-        }
-        fs::write(&spec.target_path, bytes).map_err(|error| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("console extension bundle could not be written: {error}"),
-            )
-        })?;
-        for style in &spec.styles {
-            let bytes = read_console_bundle_reference(&style.source_url).await?;
-            if let Some(parent) = style.target_path.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
-                    AppError::new(
-                        ErrorCode::ExternalDependency,
-                        format!("console extension style directory could not be created: {error}"),
-                    )
-                })?;
-            }
-            fs::write(&style.target_path, bytes).map_err(|error| {
-                AppError::new(
-                    ErrorCode::ExternalDependency,
-                    format!("console extension style could not be written: {error}"),
-                )
-            })?;
-        }
-    }
-
-    let mut registry = read_runtime_console_extension_registry(console_registry_file_path)?;
-    registry.version = 1;
-    registry.bundles.retain(|bundle| {
-        bundle.module_name.as_deref() != Some(entry.name.as_str())
-            && !specs.iter().any(|spec| {
-                bundle.package_name == spec.package_name && bundle.export_name == spec.export_name
-            })
-    });
-    registry
-        .bundles
-        .extend(specs.into_iter().map(|spec| LocalRuntimeConsoleBundle {
-            entry: spec.entry,
-            export_name: spec.export_name,
-            host_api: spec.host_api,
-            module_name: Some(spec.module_name),
-            package_name: spec.package_name,
-            required_capabilities: spec.required_capabilities,
-            route: spec.route,
-            styles: spec.styles.into_iter().map(|style| style.entry).collect(),
-            version: spec.version,
-        }));
-    write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
-}
-
-fn runtime_console_bundle_specs(
-    console_registry_file_path: &FsPath,
-    entry: &LocalModuleCatalogEntry,
-    base_url: &str,
-) -> Result<Vec<RuntimeConsoleBundleSpec>, AppError> {
-    let module_slug = slugify(&entry.name);
-    entry
-        .console_packages
-        .iter()
-        .map(|package| {
-            let bundle_url = package.bundle_url.as_deref().ok_or_else(|| {
-                AppError::new(
-                    ErrorCode::Validation,
-                    format!(
-                        "{} console package {}#{} bundleUrl is missing",
-                        entry.name, package.package_name, package.export_name
-                    ),
-                )
-            })?;
-            let bundle_url = resolve_console_bundle_reference(bundle_url, base_url)?;
-            let file_name = console_bundle_file_name(&bundle_url, &package.export_name);
-            let target_path = console_registry_file_path
-                .parent()
-                .unwrap_or_else(|| FsPath::new(".lenso/console/extensions"))
-                .join(&module_slug)
-                .join(&file_name);
-            let styles = package
-                .styles
-                .iter()
-                .map(|style_reference| {
-                    let source_url = resolve_console_bundle_reference(style_reference, base_url)?;
-                    let file_name = console_style_file_name(&source_url, &package.export_name);
-                    Ok(RuntimeConsoleBundleStyleSpec {
-                        entry: format!(
-                            "{CONSOLE_EXTENSION_ROUTE_PREFIX}/{module_slug}/{file_name}"
-                        ),
-                        source_url,
-                        target_path: console_registry_file_path
-                            .parent()
-                            .unwrap_or_else(|| FsPath::new(".lenso/console/extensions"))
-                            .join(&module_slug)
-                            .join(file_name),
-                    })
-                })
-                .collect::<Result<Vec<_>, AppError>>()?;
-            Ok(RuntimeConsoleBundleSpec {
-                bundle_url,
-                entry: format!("{CONSOLE_EXTENSION_ROUTE_PREFIX}/{module_slug}/{file_name}"),
-                export_name: package.export_name.clone(),
-                host_api: package
-                    .host_api
-                    .clone()
-                    .unwrap_or_else(|| HOST_CONSOLE_PACKAGE_API_VERSION.to_owned()),
-                module_name: entry.name.clone(),
-                package_name: package.package_name.clone(),
-                required_capabilities: package.required_capabilities.clone(),
-                route: package.route.clone(),
-                styles,
-                target_path,
-                version: package.version.clone(),
-            })
-        })
-        .collect()
-}
-
-fn resolve_console_bundle_reference(reference: &str, base_url: &str) -> Result<String, AppError> {
-    if reference.starts_with("http://")
-        || reference.starts_with("https://")
-        || reference.starts_with("file://")
-    {
-        return Ok(reference.to_owned());
-    }
-    let normalized_base = format!("{}/", base_url.trim_end_matches('/'));
-    let base = reqwest::Url::parse(&normalized_base).map_err(|error| {
-        AppError::new(
-            ErrorCode::Validation,
-            format!("console bundle base URL could not be parsed: {error}"),
-        )
-    })?;
-    base.join(reference)
-        .map(|url| url.to_string())
-        .map_err(|error| {
-            AppError::new(
-                ErrorCode::Validation,
-                format!("console bundle URL could not be resolved: {error}"),
-            )
-        })
-}
-
-fn console_bundle_file_name(bundle_url: &str, export_name: &str) -> String {
-    console_asset_file_name(bundle_url, export_name, "js")
-}
-
-fn console_style_file_name(style_url: &str, export_name: &str) -> String {
-    console_asset_file_name(style_url, export_name, "css")
-}
-
-fn console_asset_file_name(asset_url: &str, export_name: &str, extension: &str) -> String {
-    reqwest::Url::parse(asset_url)
-        .ok()
-        .and_then(|url| {
-            url.path_segments()
-                .and_then(Iterator::last)
-                .filter(|segment| !segment.is_empty())
-                .map(ToOwned::to_owned)
-        })
-        .or_else(|| {
-            FsPath::new(asset_url)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(ToOwned::to_owned)
-        })
-        .unwrap_or_else(|| format!("{}.{}", slugify(export_name), extension))
-}
-
-async fn read_console_bundle_reference(reference: &str) -> Result<Vec<u8>, AppError> {
-    if reference.starts_with("http://") || reference.starts_with("https://") {
-        let response = reqwest::get(reference).await.map_err(|error| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("console bundle could not be fetched: {error}"),
-            )
-        })?;
-        if !response.status().is_success() {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!(
-                    "console bundle fetch failed: {} {}",
-                    response.status().as_u16(),
-                    response.status().canonical_reason().unwrap_or("")
-                ),
-            ));
-        }
-        return response
-            .bytes()
-            .await
-            .map(|bytes| bytes.to_vec())
-            .map_err(|error| {
-                AppError::new(
-                    ErrorCode::ExternalDependency,
-                    format!("console bundle bytes could not be read: {error}"),
-                )
-            });
-    }
-    let path = if let Some(file_path) = reference.strip_prefix("file://") {
-        PathBuf::from(file_path)
-    } else {
-        PathBuf::from(reference)
-    };
-    fs::read(&path).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!(
-                "console bundle {} could not be read: {error}",
-                path.display()
-            ),
-        )
-    })
-}
-
-fn read_runtime_console_extension_registry(
-    console_registry_file_path: &FsPath,
-) -> Result<LocalRuntimeConsoleBundleRegistry, AppError> {
-    match fs::read_to_string(console_registry_file_path) {
-        Ok(source) => {
-            serde_json::from_str::<LocalRuntimeConsoleBundleRegistry>(&source).map_err(|error| {
-                AppError::new(
-                    ErrorCode::Validation,
-                    format!("runtime console extension registry could not be parsed: {error}"),
-                )
-            })
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(LocalRuntimeConsoleBundleRegistry {
-                bundles: vec![],
-                version: 1,
-            })
-        }
-        Err(error) => Err(AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("runtime console extension registry could not be read: {error}"),
-        )),
-    }
-}
-
-fn write_runtime_console_extension_registry_file(
-    console_registry_file_path: &FsPath,
-    registry: &LocalRuntimeConsoleBundleRegistry,
-) -> Result<(), AppError> {
-    if let Some(parent) = console_registry_file_path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!(
-                    "runtime console extension registry directory could not be created: {error}"
-                ),
-            )
-        })?;
-    }
-    let source = serde_json::to_string_pretty(registry)
-        .map(|source| format!("{source}\n"))
-        .map_err(|error| {
-            AppError::new(
-                ErrorCode::Internal,
-                format!("runtime console extension registry could not be encoded: {error}"),
-            )
-        })?;
-    fs::write(console_registry_file_path, source).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("runtime console extension registry could not be written: {error}"),
-        )
-    })
-}
-
-fn remove_console_package_install_plan_module(
-    console_plan_file_path: impl AsRef<FsPath>,
-    module_name: &str,
-) -> Result<(), AppError> {
-    let console_plan_file_path = console_plan_file_path.as_ref();
-    let mut plan = match fs::read_to_string(console_plan_file_path) {
-        Ok(source) => {
-            serde_json::from_str::<LocalConsolePackageInstallPlan>(&source).map_err(|error| {
-                AppError::new(
-                    ErrorCode::Validation,
-                    format!("console package install plan could not be parsed: {error}"),
-                )
-            })?
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("console package install plan could not be read: {error}"),
-            ));
-        }
-    };
-    plan.modules
-        .retain(|module| module.module_name != module_name);
-    let source = serde_json::to_string_pretty(&plan)
-        .map(|source| format!("{source}\n"))
-        .map_err(|error| {
-            AppError::new(
-                ErrorCode::Internal,
-                format!("console package install plan could not be encoded: {error}"),
-            )
-        })?;
-    fs::write(console_plan_file_path, source).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("console package install plan could not be written: {error}"),
-        )
-    })
-}
-
-fn remove_runtime_console_extension_registry_module(
-    console_registry_file_path: impl AsRef<FsPath>,
-    module_name: &str,
-) -> Result<(), AppError> {
-    let console_registry_file_path = console_registry_file_path.as_ref();
-    let mut registry = match fs::read_to_string(console_registry_file_path) {
-        Ok(source) => {
-            serde_json::from_str::<LocalRuntimeConsoleBundleRegistry>(&source).map_err(|error| {
-                AppError::new(
-                    ErrorCode::Validation,
-                    format!("runtime console extension registry could not be parsed: {error}"),
-                )
-            })?
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("runtime console extension registry could not be read: {error}"),
-            ));
-        }
-    };
-    registry
-        .bundles
-        .retain(|bundle| bundle.module_name.as_deref() != Some(module_name));
-    write_runtime_console_extension_registry_file(console_registry_file_path, &registry)
-}
-
-fn remove_console_extension_module_dir(module_name: &str) -> Result<(), AppError> {
-    let path = PathBuf::from(".lenso/console/extensions").join(slugify(module_name));
-    match fs::remove_dir_all(&path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(AppError::new(
-            ErrorCode::ExternalDependency,
-            format!(
-                "runtime console extension directory {} could not be removed: {error}",
-                path.display()
-            ),
-        )),
-    }
-}
-
-fn write_available_module_install_ledger(
-    ledger_path: impl AsRef<FsPath>,
-    entry: &LocalModuleCatalogEntry,
-    remote_source_name: &str,
-    base_url: &str,
-) -> Result<(), AppError> {
-    let ledger_path = ledger_path.as_ref();
-    let ledger = read_module_install_ledger_value(ledger_path)?;
-    let receipt = available_module_install_ledger_entry(entry, remote_source_name, base_url);
-    let ledger = upsert_module_install_ledger_entry_value(ledger, receipt)?;
-    write_module_install_ledger_value(ledger_path, &ledger)
-}
-
-fn remove_module_install_ledger_module(
-    ledger_path: impl AsRef<FsPath>,
-    module_name: &str,
-) -> Result<(), AppError> {
-    let ledger_path = ledger_path.as_ref();
-    let mut ledger = match fs::read_to_string(ledger_path) {
-        Ok(source) => serde_json::from_str::<Value>(&source).map_err(|error| {
-            AppError::new(
-                ErrorCode::Validation,
-                format!("module install ledger could not be parsed: {error}"),
-            )
-        })?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => {
-            return Err(AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("module install ledger could not be read: {error}"),
-            ));
-        }
-    };
-    let modules = ledger
-        .get_mut("modules")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorCode::Validation,
-                "module install ledger modules must be an array",
-            )
-        })?;
-    let original_len = modules.len();
-    modules.retain(|module| module.get("moduleName").and_then(Value::as_str) != Some(module_name));
-    if modules.len() == original_len {
-        return Ok(());
-    }
-    let next = serde_json::json!({ "modules": modules.clone(), "version": 1 });
-    write_module_install_ledger_value(ledger_path, &next)
-}
-
-fn read_module_install_ledger_value(ledger_path: &FsPath) -> Result<Value, AppError> {
-    match fs::read_to_string(ledger_path) {
-        Ok(source) => serde_json::from_str::<Value>(&source).map_err(|error| {
-            AppError::new(
-                ErrorCode::Validation,
-                format!("module install ledger could not be parsed: {error}"),
-            )
-        }),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            Ok(serde_json::json!({ "modules": [], "version": 1 }))
-        }
-        Err(error) => Err(AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("module install ledger could not be read: {error}"),
-        )),
-    }
-}
-
-fn upsert_module_install_ledger_entry_value(
-    mut ledger: Value,
-    receipt: Value,
-) -> Result<Value, AppError> {
-    let module_name = receipt
-        .get("moduleName")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorCode::Internal,
-                "module install ledger receipt moduleName is required",
-            )
-        })?
-        .to_owned();
-    let modules = ledger
-        .get_mut("modules")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorCode::Validation,
-                "module install ledger modules must be an array",
-            )
-        })?;
-    modules.retain(|module| {
-        module.get("moduleName").and_then(Value::as_str) != Some(module_name.as_str())
-    });
-    modules.push(receipt);
-    Ok(serde_json::json!({ "modules": modules.clone(), "version": 1 }))
-}
-
-fn write_module_install_ledger_value(ledger_path: &FsPath, ledger: &Value) -> Result<(), AppError> {
-    if let Some(parent) = ledger_path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            AppError::new(
-                ErrorCode::ExternalDependency,
-                format!("module install ledger directory could not be created: {error}"),
-            )
-        })?;
-    }
-    let source = serde_json::to_string_pretty(ledger)
-        .map(|source| format!("{source}\n"))
-        .map_err(|error| {
-            AppError::new(
-                ErrorCode::Internal,
-                format!("module install ledger could not be encoded: {error}"),
-            )
-        })?;
-    fs::write(ledger_path, source).map_err(|error| {
-        AppError::new(
-            ErrorCode::ExternalDependency,
-            format!("module install ledger could not be written: {error}"),
-        )
-    })
-}
-
-fn available_module_install_ledger_entry(
-    entry: &LocalModuleCatalogEntry,
-    remote_source_name: &str,
-    base_url: &str,
-) -> Value {
-    let base_url = normalize_remote_base_url(base_url);
-    let mut receipt = serde_json::json!({
-        "baseUrl": base_url,
-        "enabled": true,
-        "install": {
-            "commands": [],
-            "consolePackages": entry.console_packages.len(),
-            "env": [],
-            "services": []
-        },
-        "manifestReference": entry.manifest_reference,
-        "moduleName": entry.name,
-        "source": "remote",
-        "writes": available_module_install_writes(entry),
-    });
-    if entry.source == "service" || remote_source_name != entry.name {
-        receipt["service"] = serde_json::json!({
-            "baseUrl": base_url,
-            "manifestReference": entry
-                .service_manifest
-                .as_deref()
-                .or_else(|| {
-                    entry
-                        .provider
-                        .as_ref()
-                        .and_then(|provider| provider.service_manifest.as_deref())
-                })
-                .unwrap_or(&entry.manifest_reference),
-            "name": remote_source_name,
-        });
-    }
-    if let Some(compatibility) = &entry.compatibility
-        && let Ok(compatibility) = serde_json::to_value(compatibility)
-    {
-        receipt["compatibility"] = compatibility;
-    }
-    if let Some(module_release) = module_release_receipt_from_catalog_entry(entry) {
-        receipt["moduleRelease"] = module_release;
-    }
-    receipt
-}
-
-fn available_module_install_writes(entry: &LocalModuleCatalogEntry) -> Vec<Value> {
-    let mut writes = vec![serde_json::json!({
-        "kind": "env",
-        "key": "REMOTE_MODULES",
-        "path": ".env",
-    })];
-    if !entry.console_packages.is_empty() {
-        writes.push(serde_json::json!({
-            "kind": "consoleExtensionRegistry",
-            "path": CONSOLE_EXTENSION_REGISTRY_PATH,
-        }));
-    }
-    writes
-}
-
-fn module_release_receipt_from_catalog_entry(entry: &LocalModuleCatalogEntry) -> Option<Value> {
-    Some(serde_json::json!({
-        "manifestReference": entry.manifest_reference,
-        "manifestSnapshot": module_release_snapshot_from_catalog_entry(entry)?,
-    }))
-}
-
-fn module_release_snapshot_from_catalog_entry(entry: &LocalModuleCatalogEntry) -> Option<Value> {
-    if entry.protocol.as_deref() != Some("lenso.module-release.v1") {
-        return None;
-    }
-
-    let mut snapshot = serde_json::json!({
-        "name": entry.name,
-        "protocol": "lenso.module-release.v1",
-        "source": entry.source,
-        "version": entry.version,
-    });
-    if let Some(provider) = entry.provider.as_ref() {
-        let provider_name = provider.name.as_deref()?.trim();
-        if provider_name.is_empty() {
-            return None;
-        }
-        let mut provider_snapshot = serde_json::json!({ "name": provider_name });
-        if let Some(service_package) = provider
-            .service_package
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            provider_snapshot["servicePackage"] = serde_json::json!(service_package);
-        }
-        if let Some(service_manifest) = provider
-            .service_manifest
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            provider_snapshot["serviceManifest"] = serde_json::json!(service_manifest);
-        }
-        snapshot["provider"] = provider_snapshot;
-    }
-    if let Some(summary) = entry.summary.as_deref() {
-        snapshot["summary"] = serde_json::json!(summary);
-    }
-    if let Some(base_url) = entry.base_url.as_deref() {
-        snapshot["baseUrl"] = serde_json::json!(base_url);
-    }
-    if !entry.capabilities.is_empty() {
-        snapshot["capabilities"] = serde_json::json!(entry.capabilities);
-    }
-    Some(snapshot)
-}
-
-fn slugify(value: &str) -> String {
-    let mut slug = String::new();
-    let mut previous_dash = false;
-    for character in value.chars() {
-        if character.is_ascii_alphanumeric() {
-            slug.push(character.to_ascii_lowercase());
-            previous_dash = false;
-        } else if !previous_dash {
-            slug.push('-');
-            previous_dash = true;
-        }
-    }
-    slug.trim_matches('-').to_owned()
-}
-
-#[derive(Debug)]
-struct RemoteModuleEnvEntry {
-    name: String,
-    base_url: String,
-}
-
-fn parse_remote_modules_entries(value: &str) -> Vec<RemoteModuleEnvEntry> {
-    value
-        .split(',')
-        .filter_map(|entry| {
-            let (name, base_url) = entry.trim().split_once('=')?;
-            let name = name.trim();
-            let base_url = normalize_remote_base_url(base_url);
-            if name.is_empty() || base_url.is_empty() {
-                return None;
-            }
-            Some(RemoteModuleEnvEntry {
-                name: name.to_owned(),
-                base_url,
-            })
-        })
-        .collect()
-}
-
-fn format_remote_modules_entries(entries: &[RemoteModuleEnvEntry]) -> String {
-    entries
-        .iter()
-        .map(|entry| format!("{}={}", entry.name, entry.base_url))
-        .collect::<Vec<_>>()
-        .join(",")
-}
-
-fn upsert_env_source(source: &str, key: &str, value: &str) -> String {
-    let mut replaced = false;
-    let mut lines = Vec::new();
-    for line in source.lines() {
-        if env_value(line, key).is_some() {
-            if !replaced {
-                lines.push(format!("{key}={value}"));
-                replaced = true;
-            }
-        } else {
-            lines.push(line.to_owned());
-        }
-    }
-    if !replaced {
-        lines.push(format!("{key}={value}"));
-    }
-    format!("{}\n", lines.join("\n"))
-}
-
-fn remove_env_key_source(source: &str, key: &str) -> String {
-    let lines = source
-        .lines()
-        .filter(|line| env_value(line, key).is_none())
-        .map(ToOwned::to_owned)
-        .collect::<Vec<_>>();
-    if lines.is_empty() {
-        String::new()
-    } else {
-        format!("{}\n", lines.join("\n"))
-    }
-}
-
-fn env_value(line: &str, expected_key: &str) -> Option<String> {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with('#') {
-        return None;
-    }
-    let line = line.strip_prefix("export ").unwrap_or(line);
-    let (key, value) = line.split_once('=')?;
-    (key.trim() == expected_key).then(|| unquote_env_value(value.trim()).to_owned())
-}
-
-fn linked_module_enabled_env_key(module_name: &str) -> String {
-    format!(
-        "LENSO_MODULE_{}_ENABLED",
-        module_name.replace('-', "_").to_ascii_uppercase()
-    )
 }
 
 fn module_catalog_error_response(
@@ -5406,12 +3851,12 @@ fn module_compatibility_issue(
         }
     }
 
-    if let Some(remote_protocol_version) = compatibility.remote_protocol_version.as_ref() {
-        if remote_protocol_version != HOST_REMOTE_PROTOCOL_VERSION {
+    if let Some(service_protocol_version) = compatibility.service_protocol_version.as_ref() {
+        if service_protocol_version != HOST_SERVICE_PROTOCOL_VERSION {
             return Some(AdminModuleRegistrySnapshotIssueDto {
                 group: "Compatibility".to_owned(),
                 message: format!(
-                    "{module_name} requires remote protocol {remote_protocol_version}; host supports {HOST_REMOTE_PROTOCOL_VERSION}"
+                    "{module_name} requires Service protocol {service_protocol_version}; host supports {HOST_SERVICE_PROTOCOL_VERSION}"
                 ),
                 fix: format!("install a compatible {module_name} service release"),
             });
@@ -5524,7 +3969,7 @@ fn source_diagnostics_dto(
 ) -> Option<AdminModuleSourceDiagnosticsDto> {
     match diagnostics? {
         AdminModuleSourceDiagnostics::Remote(remote) => Some(
-            AdminModuleSourceDiagnosticsDto::Remote(AdminRemoteModuleDiagnosticsDto {
+            AdminModuleSourceDiagnosticsDto::Remote(AdminServiceProviderDiagnosticsDto {
                 transport: remote.transport,
                 base_url: remote.base_url,
                 manifest_url: remote.manifest_url,
@@ -5721,7 +4166,7 @@ fn load_error_message(status: &ModuleLoadStatus) -> Option<String> {
     operation_id = "admin_data_invoke_action",
     tag = "admin-data",
     params(
-        ("module" = String, Path, description = "Module name, e.g. remote-crm"),
+        ("module" = String, Path, description = "Module name, e.g. crm"),
         ("action" = String, Path, description = "Declared admin action name"),
         ("authorization" = String, Header, description = "Development service bearer token"),
     ),
@@ -5819,7 +4264,7 @@ pub(crate) async fn invoke_action(
     operation_id = "admin_data_query_value",
     tag = "admin-data",
     params(
-        ("module" = String, Path, description = "Module name, e.g. remote-crm"),
+        ("module" = String, Path, description = "Module name, e.g. crm"),
         ("query" = String, Path, description = "Declared admin query name"),
         ("authorization" = String, Header, description = "Development service bearer token"),
     ),
@@ -6184,9 +4629,12 @@ mod tests {
                 && lint.message
                     == "Lifecycle activation job references an unknown runtime function."
         }));
-        assert!(modules[0].manifest_lints.iter().any(|lint| {
-            lint.message == "Missing capability declaration for host proxy authorization."
-        }));
+        assert!(
+            !modules[0]
+                .manifest_lints
+                .iter()
+                .any(|lint| lint.message.contains("host proxy authorization"))
+        );
     }
 
     #[test]
@@ -6479,7 +4927,7 @@ mod tests {
     }
 
     #[test]
-    fn service_system_drift_reports_missing_host_state() {
+    fn service_system_drift_reports_missing_target_owned_state() {
         let root = std::env::temp_dir().join(format!("lenso-system-drift-{}", current_unix_ms()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
@@ -6504,19 +4952,15 @@ mod tests {
         let response = service_system_drift_response_from_paths(
             &path,
             &root.join("module-installs.json"),
-            &root.join("module-services.json"),
             &root.join("service-environments.json"),
             &root.join("service-deployments.json"),
             &root.join("service-releases.json"),
         );
 
         assert_eq!(response.status, AdminServiceSystemDriftStatus::Drifted);
-        assert!(
-            response
-                .drifts
-                .iter()
-                .any(|drift| { drift.code == "service_not_configured" && drift.name == "support" })
-        );
+        assert!(response.drifts.iter().any(|drift| {
+            drift.code == "service_env_missing" && drift.name == "support/staging"
+        }));
         assert!(response.drifts.iter().any(|drift| {
             drift.code == "module_not_installed" && drift.name == "support-ticket"
         }));

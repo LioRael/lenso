@@ -1,4 +1,5 @@
 use crate::error::{AppError, AppResult, ErrorCode};
+use sha2::{Digest as _, Sha256};
 use sqlx::PgPool;
 
 #[derive(Debug, Clone, Copy)]
@@ -66,6 +67,72 @@ pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppRes
     }
 
     Ok(())
+}
+
+pub async fn apply_module_migration(
+    pool: &PgPool,
+    name: &str,
+    artifact_digest: &str,
+    sql: &str,
+) -> AppResult<()> {
+    let observed_digest = {
+        use std::fmt::Write as _;
+        let mut value = String::from("sha256:");
+        for byte in Sha256::digest(sql.as_bytes()) {
+            write!(&mut value, "{byte:02x}").expect("writing to a String cannot fail");
+        }
+        value
+    };
+    if name.trim().is_empty() || observed_digest != artifact_digest {
+        return Err(AppError::new(
+            ErrorCode::Internal,
+            "Module migration identity or artifact digest is invalid",
+        ));
+    }
+    let mut tx = pool.begin().await.map_err(map_migration_error)?;
+    sqlx::raw_sql(
+        r#"
+        create schema if not exists platform;
+        create table if not exists platform.module_schema_migrations (
+            name text primary key,
+            artifact_digest text not null,
+            applied_at timestamptz not null default now()
+        );
+        "#,
+    )
+    .execute(&mut *tx)
+    .await
+    .map_err(map_migration_error)?;
+    let existing: Option<String> = sqlx::query_scalar(
+        "select artifact_digest from platform.module_schema_migrations where name = $1",
+    )
+    .bind(name)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(map_migration_error)?;
+    if let Some(existing) = existing {
+        if existing != artifact_digest {
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "Applied Module migration digest differs from the reviewed artifact",
+            ));
+        }
+        tx.commit().await.map_err(map_migration_error)?;
+        return Ok(());
+    }
+    sqlx::query(sqlx::AssertSqlSafe(sql.to_owned()))
+        .execute(&mut *tx)
+        .await
+        .map_err(map_migration_error)?;
+    sqlx::query(
+        "insert into platform.module_schema_migrations (name, artifact_digest) values ($1, $2)",
+    )
+    .bind(name)
+    .bind(artifact_digest)
+    .execute(&mut *tx)
+    .await
+    .map_err(map_migration_error)?;
+    tx.commit().await.map_err(map_migration_error)
 }
 
 async fn ensure_migration_table(pool: &PgPool) -> AppResult<()> {

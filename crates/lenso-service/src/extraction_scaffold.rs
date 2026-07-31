@@ -417,7 +417,7 @@ pub fn generate_extraction_scaffold(
             ExtractionScaffoldFileKind::WorkloadEntrypoint,
             workload_entrypoint(
                 &plan.proposed_service.service_id,
-                &inputs.module.name,
+                &inputs.module.module_id,
                 &workload.workload_id,
                 role,
             ),
@@ -496,7 +496,7 @@ pub fn generate_extraction_scaffold(
         generator_version: EXTRACTION_SCAFFOLD_GENERATOR_VERSION,
         plan_id: &plan.plan_id,
         plan_digest: &plan.plan_digest,
-        target_module: &inputs.module.name,
+        target_module: &inputs.module.module_id,
         candidate_service_id: &plan.proposed_service.service_id,
         destination_root: &destination_root,
         linked_authority_remains_authoritative: true,
@@ -518,7 +518,7 @@ pub fn generate_extraction_scaffold(
         scaffold_digest,
         plan_id: plan.plan_id.clone(),
         plan_digest: plan.plan_digest.clone(),
-        target_module: inputs.module.name.clone(),
+        target_module: inputs.module.module_id.clone(),
         candidate_service_id: plan.proposed_service.service_id.clone(),
         destination_root,
         linked_authority_remains_authoritative: true,
@@ -552,8 +552,8 @@ fn validate_scaffold_inputs(
             "Discard the modified plan and generate a fresh Extraction Plan.",
         ));
     }
-    if inputs.plan.target_module != inputs.module.name
-        || inputs.plan.proposed_service.module_id != inputs.module.name
+    if inputs.plan.target_module != inputs.module.module_id
+        || inputs.plan.proposed_service.module_id != inputs.module.module_id
     {
         return Err(generation_error(
             ExtractionScaffoldGenerationIssueCode::ModuleIdentityMismatch,
@@ -563,7 +563,8 @@ fn validate_scaffold_inputs(
     }
     let module_digest = digest_serializable(&inputs.module)?;
     let module_pin = inputs.plan.pinned_inputs.iter().find(|pin| {
-        pin.kind == ExtractionInputPinKind::ModuleDeclaration && pin.subject == inputs.module.name
+        pin.kind == ExtractionInputPinKind::ModuleDeclaration
+            && pin.subject == inputs.module.module_id
     });
     if module_pin.is_none_or(|pin| pin.digest != module_digest) {
         return Err(generation_error(
@@ -1048,7 +1049,7 @@ fn preserved_identity(
         .collect::<Vec<_>>();
     normalize_strings(&mut story_titles);
     Ok(ExtractionPreservedIdentity {
-        module_name: module.name.clone(),
+        module_name: module.module_id.clone(),
         module_manifest_digest: digest_serializable(module)?,
         module_manifest,
         capabilities: module.capabilities.clone(),
@@ -1183,7 +1184,7 @@ fn cargo_manifest(crate_name: &str, workloads: &[crate::ExtractionWorkloadPlan])
         let role = workload_role_label(workload.role);
         output.push_str(&format!(
             "\n[[bin]]\nname = \"{}\"\npath = \"src/bin/{role}.rs\"\n",
-            workload.workload_id
+            stable_slug(&workload.workload_id)
         ));
     }
     output
@@ -1934,7 +1935,7 @@ mod tests {
     static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
     fn module() -> ModuleManifest {
-        ModuleManifest::builder("support-ticket")
+        ModuleManifest::builder("acme/support-ticket")
             .capabilities(vec!["support.tickets.read".to_owned()])
             .http_routes(vec![ModuleHttpRoute {
                 method: ModuleHttpMethod::Get,
@@ -1978,7 +1979,7 @@ mod tests {
             readiness_report: ExtractionReadinessReport {
                 protocol: EXTRACTION_READINESS_REPORT_PROTOCOL.to_owned(),
                 analyzer_version: EXTRACTION_READINESS_ANALYZER_VERSION.to_owned(),
-                target_module: module.name.clone(),
+                target_module: module.module_id.clone(),
                 system_id: Some("support-system".to_owned()),
                 target_owner: Some("support-host".to_owned()),
                 classification: CompatibilityCategory::Safe,
@@ -2025,7 +2026,7 @@ mod tests {
             system: json!({
                 "protocol": "lenso.system.v2",
                 "systemId": "support-system",
-                "host": { "hostId": "support-host", "modules": ["support-ticket"] },
+                "host": { "hostId": "support-host", "modules": ["acme/support-ticket"] },
                 "providers": [{
                     "providerId": "notification-provider",
                     "modules": ["notification-gateway"]

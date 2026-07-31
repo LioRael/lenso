@@ -53,34 +53,76 @@ The service kit is split into a few crates:
 - `platform-core`: config, error model, request context, actor context, IDs, clock, DB pool, migrations, events, transactional outbox, relay primitives, health, shutdown, telemetry foundations, and telemetry query abstractions.
 - `lenso-contracts`: shared serializable declaration contracts for module manifests, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, Runtime Console surfaces, story display metadata, and manifest lints.
 - `lenso`: the public Rust facade crate. Its default surface re-exports declaration contracts; its `host` feature exposes the narrow API, worker, migration, and linked HTTP host boot facade.
+- `lenso-module-management`: the shared lifecycle kernel. One deep Plan Builder owns graph resolution, isolated Cargo candidate resolution, immutable plans, approvals, operation journals, crash recovery, repair, and Linked workspace transactions for every caller.
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
 - `platform-runtime`: embedded runtime primitives for functions, triggers, queues, flows, retry policies, registry, worker execution, and store traits.
 - `platform-system-plane`: capability-neutral Core discovery, capability negotiation, common request admission, and the Service side of bilateral enrollment. It verifies signed, expiring Enrollment Offers through an injected trust adapter, signs Receipts through the managed Service identity, and atomically persists the exact Receipt, capability/policy Grant, and append-only audit evidence. Production authorization reads the current Grant, contract/schema/feature scope, expiry, revocation state, and authorization epoch from the Service Store on every System Plane request; unsigned bootstrap is limited to its local/test-only System Sandbox adapter.
 - `platform-runtime-observability`: the first Service-owned System Plane Capability Provider. It publishes the exact `lenso.system-plane.runtime-observability.v1` schema digest and serves revisioned, read-only Outbox and Function queue snapshots without Console workflow or UI concepts. Each snapshot includes a durable Service-owned change watermark; the recovery feed resumes from its opaque cursor and reports invalid, revision-mismatched, schema-mismatched, or retention-lost cursors as an explicit Evidence Gap requiring a fresh snapshot.
 - `platform-runtime-operations`: the opt-in Service-owned mutation provider for Runtime Operations. It publishes the exact `lenso.system-plane.runtime-operations.v1` schema digest and implements revision-bound Function Run and Outbox Event retry through immutable Management Intents, expiring Plan Receipts, durable acknowledgements, Service-local authority verification, idempotent execution, and terminal Operation Evidence.
 - `platform-module`: internal module behavior seams and compatibility re-exports. `ModuleBinding` is the narrow behavior seam; `LinkedBinding` is the current compile-time source; `AdminDataSource` and `AdminActionSource` support generic schema-admin reads and manifest-declared action execution. It re-exports `lenso-contracts` declaration types for backend workspace compatibility.
+- `platform-module-management`: the authenticated Runtime Console HTTP adapter for management snapshots, complete plan previews, durable operation commands, and Service Installation Set management. It delegates resolution, Cargo, workspace transactions, approvals, retries, journals, and Service installation CAS to `lenso-module-management`; it never shells out to the CLI. Its Host adapter applies reviewed Linked migrations transactionally, persists exact desired Service installations, executes target-owned deployment actions without a shell, validates Locked Cargo state, activates the exact Application Lock, and requests a Host restart. Missing or failed deployment authority remains explicit as `blocked`. The same crate exposes the first real System Plane Capability Provider, `service-installations`, by adapting the shared Service Installation manager instead of duplicating its lifecycle rules.
+- `platform-system-plane`: the capability-neutral managed-Service kernel and HTTP adapter for the System Plane Core Protocol. Capability Providers expose observation, planning, and idempotent local execution through one seam; the kernel persists the provider's exact content-addressed capability plan and passes that plan back for execution, so execution never silently replans. The kernel owns durable acceptance before effects, idempotency conflicts, crash continuation, terminal Service-owned evidence, and rebuildable evidence feeds. Evidence sequence and cursor continuity are independent per capability; feed pages are bounded, every persisted payload digest and deterministic evidence identity is reverified on read, and corruption fails closed rather than appearing as business drift. Before invoking a Provider the kernel persists the Running transition; after invocation it persists an internal completion checkpoint before projecting terminal evidence and Operation state. Runtime composition deterministically resumes every accepted or running Operation before serving requests, and a recovered checkpoint is finalized without repeating the Provider effect. Its Service-owned Enrollment Registry admits only one active Console authority per Service environment, while its admission boundary intersects verified Workload Identity, the exact Enrollment ceiling and revision, authorization epoch, operation type, and verified signed Delegated Actor and optional Tenant Context. Production admission uses a verify-only Ed25519 adapter keyed by the exact `(issuer, verification method)` pair; signing remains with the Console authority, and overlapping public keys permit explicit rotation windows. The runtime builder composes persistence, enrollment, identity adapters, providers, and HTTP admission as one target-owned graph. That runtime is attached to one Router through an Axum extension; there is no process-global install slot that another Service or test can overwrite. `/system-plane/v1/*` middleware either accepts a server-injected verified Workload Identity or verifies a short-lived bearer credential against a trusted live transport binding; handlers contain no policy and fail closed without the composed runtime. The crate contains no Console state or concrete capability policy.
 - `platform-admin`: the compatibility runtime-observability backend for the Runtime Console. It only reads platform/runtime tables (`platform.outbox`, `platform.story_events`, `runtime.function_runs`) to observe every module's activity, and exposes one router the API app mounts under `/admin/runtime/*`. Story module metadata is owned by `modules/story`; the backend route implementation is being extracted from this platform crate in slices.
 - `platform-admin-data`: the schema-admin backend for module business data. It exposes generic `/admin/data/*` endpoints over injected `AdminSurface::Schema` manifests and `AdminDataSource` implementations, without depending on concrete modules.
 - `platform-testing`: shared test database utilities.
 
-A thin composition root, `lenso-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
+A thin composition root, `lenso-bootstrap`, sits above the service kit. It is the single place that enumerates the concrete modules and System Plane Capability Providers, and both the API and the worker derive their module set from it. It pairs manifests, bindings, runtime config descriptors, story-display metadata, and admin data sources from concrete modules. Its Host System Plane composition currently registers the real `service-installations` provider and accepts identity adapters from the embedding Service. The production composition path connects the SPIFFE Workload API and installs verify-only Ed25519 delegated-context keys before constructing that graph. `lenso-api` then owns the production mTLS transport adapter: it consumes the rotating X.509-SVID source, verifies same-trust-domain peer certificates, derives the request transport binding from the authenticated peer SPIFFE ID, exposes only `/system-plane/v1/*`, and shuts down the Workload API sources with the listener. The normal environment-driven Host entrypoint can opt into this production path and then runs the ordinary Data Plane and a distinct SPIFFE mTLS System Plane listener under one shutdown lifecycle. It depends on the module crates, so it lives outside `platform-*` (those crates must not depend on concrete modules).
 
-Configured services are loaded at startup through the Remote source in
-`platform-module-remote`. The microservice-facing shape is named in
-[`service-module-boundary.md`](service-module-boundary.md): a service is an
-out-of-process provider for one or more modules while the host keeps auth,
-runtime, retries, stories, and operator visibility. The current Remote slices
-support manifest loading, declared HTTP route metadata, schema-admin reads,
-admin surface metadata, host-owned HTTP proxying for declared GET, POST, PUT,
-PATCH, and DELETE routes, remote runtime functions, and remote event handlers.
-Third-party module packaging and ecosystem boundaries are specified in
-`docs/architecture/third-party-modules.md`; V9 service packages add a small
-`lenso.service-package.v1` artifact around `lenso.service.json` for release and
-handoff tooling, V10 module releases add a `lenso.module-release.v1`
-business-module entrypoint, and V11 adds a `lenso.module.v1` module contract so
-linked, bundled, and service-provided modules share the same product-level
-contract language. `lenso module install` remains the main module install
-surface; `lenso service install` is the lower-level provider/process surface.
+The Module Ecosystem V1 contract has exactly two delivery forms: Linked and
+Service. Linked is the primary in-process Module experience. A Service is an
+out-of-process owner or provider that still contains and exports Modules; it is
+not a separate peer capability model. The older `platform-module-remote`
+runtime remains temporarily as an internal Provider compatibility
+implementation, but `remote`, `source`, and `bundled` are not public Module
+contract values. Runtime Console, backend automation, and CLI are peer adapters
+over `lenso-module-management`; no adapter delegates lifecycle work to another.
+The target-owned `lenso.service-installations.v1` document records desired
+Service releases, exported Modules, Config bindings, Endpoint resolution, and
+lifecycle bindings per environment. Immutable install plans use revision and
+state-digest CAS; durable receipts distinguish desired-state application from
+fresh runtime readiness. Module install and update may embed one exact Service
+Installation subplan. Ordinary Module uninstall never removes the Service;
+Service uninstall is a separate user-owned operation.
+For Provider-profile Services, `lenso-module-management` compiles the exact
+Application Module Lock, retained immutable Module Releases, and target Service
+Installation Set into `lenso.provider-runtime-plan.v1`. This is the only input
+to Provider transport adapters. A live Provider descriptor verifies the
+running endpoint but never discovers Modules, replaces locked Manifests, or
+enables sibling exports.
+Production API and worker startup compile that plan before connecting Provider
+behavior. They neither discover Providers from environment variables nor own
+Provider process lifecycle. The internal
+HTTP/gRPC adapter resolves candidates through the endpoint adapter selected by
+the exact source ID, deterministically selects only an allowed endpoint, checks
+the live descriptor against the locked Manifest, and constructs behavior from
+the locked copy only. Static endpoints need no resolver. `HostComposition`
+injects non-static endpoint and credential adapters; an unresolved source ID or
+trust profile fails startup. Production defaults include only the explicit
+`bearer_env` credential adapter, which accepts one opaque `env://NAME`
+reference. Secrets never enter discovery or the Provider Runtime Plan and
+transport Debug output reports only whether auth is configured.
+The public `lenso-service::system_plane` contracts keep snapshot freshness,
+Management Intent, time-bound Plan Receipt, durable Operation
+Acknowledgement, terminal Operation Evidence, cursor feed, and reconciliation
+states distinct. The Console may project these facts, but the managed Service
+owns its operation lifecycle and evidence.
+Enrollment is two-sided rather than remote self-registration. Public Offer,
+Receipt, and Service-owned Record contracts bind stable Service Principals,
+trust anchors, protocol compatibility, capability and operation ceilings,
+delegation policy, nonce, revision, expiry, and signature evidence. The remote
+System Plane router exposes no activation endpoint: only a local Service
+administrative path may persist an already verified Receipt. Production Host
+startup can perform that local import from an explicitly provisioned Receipt
+file and verification-evidence digest; it binds Service identity, SPIFFE trust,
+and delegated verification keys before an atomic, idempotent activation. Capability
+discovery is filtered by that ceiling and never widens it. Workload Identity
+alone may authorize only explicitly declared service-only observations; every
+management plan and submission carries its signed authority context in the wire
+envelope and requires request-pinned delegated authority. The Service stores the
+Capability Provider's exact plan payload and digest in its Plan Receipt, then
+executes that persisted payload rather than deriving a new plan from intent.
+The microservice-facing responsibilities are described in
+[`service-module-boundary.md`](service-module-boundary.md).
 V18 adds a system-level graph in
 [`service-system-plane.md`](service-system-plane.md): `lenso.system.json`
 connects legacy Providers, modules, environments, and capability dependencies

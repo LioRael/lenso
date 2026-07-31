@@ -51,9 +51,11 @@ EOF
     jq . "$tmp_response" >&2 2>/dev/null || cat "$tmp_response" >&2
     cat >&2 <<EOF
 
-Start the remote module fixture and API with remote-crm loaded:
+Apply a reviewed Module Change Plan and Service Installation Plan for the
+remote-crm fixture, then restart the API and worker so they compile the exact
+Provider Runtime Plan:
   cargo run --locked -p remote-module-fixture
-  REMOTE_MODULES=remote-crm=http://127.0.0.1:4100/lenso/module/v1 just api
+  just api
 
 Then run:
   just console-api-qa

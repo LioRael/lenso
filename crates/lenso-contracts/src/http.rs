@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
 
-use crate::module_source::ModuleSource;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "UPPERCASE")]
 #[non_exhaustive]
 pub enum ModuleHttpMethod {
@@ -21,7 +21,7 @@ pub enum ModuleHttpMethod {
     Delete,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ModuleHttpRoute {
     pub method: ModuleHttpMethod,
     /// Module-local path, e.g. `/contacts` or `/contacts/{id}`.
@@ -40,7 +40,9 @@ pub struct ModuleHttpRoute {
     pub operation: Option<crate::ServiceOperationMetadata>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleRouteLintSeverity {
     Ok,
@@ -48,7 +50,7 @@ pub enum ModuleRouteLintSeverity {
     Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ModuleRouteLint {
     pub severity: ModuleRouteLintSeverity,
     pub subject: String,
@@ -56,25 +58,13 @@ pub struct ModuleRouteLint {
     pub suggestion: String,
 }
 
-pub fn lint_module_http_routes(
-    source: ModuleSource,
-    routes: &[ModuleHttpRoute],
-) -> Vec<ModuleRouteLint> {
+pub fn lint_module_http_routes(routes: &[ModuleHttpRoute]) -> Vec<ModuleRouteLint> {
     if routes.is_empty() {
         return vec![ModuleRouteLint {
-            severity: if source == ModuleSource::Remote {
-                ModuleRouteLintSeverity::Warning
-            } else {
-                ModuleRouteLintSeverity::Ok
-            },
+            severity: ModuleRouteLintSeverity::Ok,
             subject: "routes".to_owned(),
             message: "No HTTP interfaces are declared in this manifest.".to_owned(),
-            suggestion: if source == ModuleSource::Remote {
-                "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host."
-            } else {
-                "No action needed unless this linked module owns public HTTP routes."
-            }
-            .to_owned(),
+            suggestion: "No action needed unless this module owns public HTTP routes.".to_owned(),
         }];
     }
 
@@ -114,27 +104,11 @@ pub fn lint_module_http_routes(
                     .to_owned(),
             });
         }
-        if source == ModuleSource::Remote && !present(route.capability.as_deref()) {
-            lints.push(ModuleRouteLint {
-                severity: ModuleRouteLintSeverity::Warning,
-                subject: identity.clone(),
-                message: "Missing capability declaration for host proxy authorization.".to_owned(),
-                suggestion:
-                    "Remote routes should declare the capability used by host proxy authorization."
-                        .to_owned(),
-            });
-        }
-
         if index == routes.len() - 1 && lints.is_empty() {
             lints.push(ModuleRouteLint {
                 severity: ModuleRouteLintSeverity::Ok,
                 subject: "routes".to_owned(),
-                message: if source == ModuleSource::Remote {
-                    "Declared routes include display, story, and capability metadata."
-                } else {
-                    "Declared routes include display and story metadata."
-                }
-                .to_owned(),
+                message: "Declared routes include display and story metadata.".to_owned(),
                 suggestion: "No action needed.".to_owned(),
             });
         }
@@ -177,13 +151,13 @@ mod tests {
     }
 
     #[test]
-    fn linked_routes_do_not_require_capability() {
+    fn routes_do_not_require_delivery_metadata() {
         let mut route = route(ModuleHttpMethod::Post, "/v1/identity/users");
         route.display_name = Some("Create User Request".to_owned());
         route.story_title = Some("User Registration".to_owned());
 
         assert_eq!(
-            lint_module_http_routes(ModuleSource::Linked, &[route]),
+            lint_module_http_routes(&[route]),
             vec![ModuleRouteLint {
                 severity: ModuleRouteLintSeverity::Ok,
                 subject: "routes".to_owned(),
@@ -194,34 +168,12 @@ mod tests {
     }
 
     #[test]
-    fn remote_routes_require_capability() {
-        let mut route = route(ModuleHttpMethod::Get, "/contacts/{id}");
-        route.display_name = Some("Fetch Contact".to_owned());
-        route.story_title = Some("Fetch Contact".to_owned());
-
-        assert_eq!(
-            lint_module_http_routes(ModuleSource::Remote, &[route]),
-            vec![ModuleRouteLint {
-                severity: ModuleRouteLintSeverity::Warning,
-                subject: "GET /contacts/{id}".to_owned(),
-                message: "Missing capability declaration for host proxy authorization.".to_owned(),
-                suggestion:
-                    "Remote routes should declare the capability used by host proxy authorization."
-                        .to_owned(),
-            }]
-        );
-    }
-
-    #[test]
     fn duplicate_routes_are_errors() {
         assert_eq!(
-            lint_module_http_routes(
-                ModuleSource::Remote,
-                &[
-                    route(ModuleHttpMethod::Get, "/contacts/{id}"),
-                    route(ModuleHttpMethod::Get, "/contacts/{id}"),
-                ],
-            )[0],
+            lint_module_http_routes(&[
+                route(ModuleHttpMethod::Get, "/contacts/{id}"),
+                route(ModuleHttpMethod::Get, "/contacts/{id}"),
+            ],)[0],
             ModuleRouteLint {
                 severity: ModuleRouteLintSeverity::Error,
                 subject: "GET /contacts/{id}".to_owned(),
@@ -232,16 +184,15 @@ mod tests {
     }
 
     #[test]
-    fn remote_empty_routes_are_warnings() {
+    fn empty_routes_are_delivery_neutral() {
         assert_eq!(
-            lint_module_http_routes(ModuleSource::Remote, &[]),
+            lint_module_http_routes(&[]),
             vec![ModuleRouteLint {
-                severity: ModuleRouteLintSeverity::Warning,
+                severity: ModuleRouteLintSeverity::Ok,
                 subject: "routes".to_owned(),
                 message: "No HTTP interfaces are declared in this manifest.".to_owned(),
-                suggestion:
-                    "Add ModuleHttpRoute declarations for remote HTTP interfaces that should be visible to the host."
-                        .to_owned(),
+                suggestion: "No action needed unless this module owns public HTTP routes."
+                    .to_owned(),
             }]
         );
     }

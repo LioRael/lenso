@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "fixtures/remote-module",
     "crates/lenso-contracts",
+    "crates/lenso-module-management",
     "crates/lenso",
     "crates/lenso-api",
     "crates/lenso-migrate",
@@ -15,6 +16,7 @@ members = [
     "crates/platform-admin-data",
     "crates/platform-core",
     "crates/platform-module",
+    "crates/platform-module-management",
     "crates/platform-module-remote",
     "crates/platform-http",
     "crates/platform-runtime",
@@ -48,6 +50,7 @@ ed25519-dalek = "2.2"
 http = "1.4"
 getrandom = "0.4"
 futures = "0.3"
+fs2 = "0.4"
 hmac = "0.13"
 jsonschema = { version = "0.47", default-features = false }
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
@@ -63,8 +66,10 @@ redis = { version = "1.2", default-features = false, features = ["tokio-comp", "
 rsa = "0.9.10"
 rustls = "0.23"
 schemars = "1"
+semver = { version = "1.0.28", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_json_canonicalizer = "0.3.2"
 serde_yaml = "0.9"
 sha2 = "0.11"
 spiffe = { version = "0.16", features = ["jwt-source", "jwt-verify-rust-crypto", "x509-source"] }
@@ -88,10 +93,12 @@ uuid = { version = "1.23", features = ["serde", "v7"] }
 
 lenso = { path = "crates/lenso", version = "0.3.34" }
 lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.16" }
+lenso-module-management = { path = "crates/lenso-module-management", version = "0.1.0" }
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.16" }
 platform-admin = { package = "lenso-platform-admin", path = "crates/platform-admin", version = "0.1.17" }
 platform-admin-data = { package = "lenso-platform-admin-data", path = "crates/platform-admin-data", version = "0.1.22" }
 platform-module = { package = "lenso-platform-module", path = "crates/platform-module", version = "0.1.16" }
+platform-module-management = { package = "lenso-platform-module-management", path = "crates/platform-module-management", version = "0.1.0" }
 platform-module-remote = { package = "lenso-platform-module-remote", path = "crates/platform-module-remote", version = "0.1.16" }
 platform-http = { package = "lenso-platform-http", path = "crates/platform-http", version = "0.1.15" }
 platform-runtime = { package = "lenso-platform-runtime", path = "crates/platform-runtime", version = "0.1.13" }

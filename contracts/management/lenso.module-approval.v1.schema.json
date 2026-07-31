@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "ModuleRiskClass": {
+      "enum": [
+        "ordinary",
+        "destructive_migration",
+        "data_deletion",
+        "backup_restore",
+        "backup_waiver",
+        "trust_override"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://contracts.lenso.local/management/lenso.module-approval.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "type": "string"
+    },
+    "application_id": {
+      "type": "string"
+    },
+    "approval_id": {
+      "type": "string"
+    },
+    "boundary_id": {
+      "type": "string"
+    },
+    "environment_id": {
+      "type": "string"
+    },
+    "expected_target_revision": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "nonce": {
+      "type": "string"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "protocol": {
+      "const": "lenso.module-approval.v1",
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "risk_class": {
+      "$ref": "#/$defs/ModuleRiskClass"
+    },
+    "verified_authorities": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "protocol",
+    "approval_id",
+    "plan_digest",
+    "application_id",
+    "environment_id",
+    "expected_target_revision",
+    "boundary_id",
+    "risk_class",
+    "actor_id",
+    "verified_authorities",
+    "reason",
+    "issued_at",
+    "expires_at",
+    "nonce"
+  ],
+  "title": "LensoModuleApproval",
+  "type": "object"
+}

@@ -18,6 +18,7 @@ mod binding;
 mod host;
 mod linked;
 mod module;
+mod source;
 
 pub use admin_data::{
     AdminActionSource, AdminDataSource, AdminListQuery, AdminPage, AdminQuerySource,
@@ -37,8 +38,8 @@ pub use lenso_contracts::{
     FieldType, LifecycleActivationJobDeclaration, LifecycleActivationRunPolicy,
     LifecycleStartupCheckDeclaration, LifecycleStartupCheckKind, LifecycleSurface,
     ModuleCapabilityReference, ModuleHttpMethod, ModuleHttpRoute, ModuleManifest,
-    ModuleManifestBuilder, ModuleManifestLint, ModuleManifestLintSeverity, ModuleRouteLint,
-    ModuleRouteLintSeverity, ModuleSource, RuntimeFunctionDeclaration,
+    ModuleManifestBuilder, ModuleManifestLint, ModuleManifestLintSeverity, ModuleRequirement,
+    ModuleRouteLint, ModuleRouteLintSeverity, RuntimeFunctionDeclaration,
     RuntimeRetryPolicyDeclaration, RuntimeSurface, StoryDisplayDescriptor, StoryDisplaySource,
     lint_module_http_routes, lint_module_manifest, lint_module_manifest_parts,
     module_capability_references, validate_cron_expression,
@@ -47,6 +48,7 @@ pub use linked::{
     LinkedBinding, LinkedBindingBuilder, LinkedHttpContribution, LinkedHttpRouteMerger,
 };
 pub use module::{Module, ModuleLoadStatus};
+pub use source::ModuleSource;
 
 #[cfg(test)]
 mod tests {
@@ -62,7 +64,7 @@ mod tests {
     }];
 
     fn manifest() -> ModuleManifest {
-        ModuleManifest::builder("test").build()
+        ModuleManifest::builder("fixture/test").build()
     }
 
     fn module(_ctx: &AppContext) -> Module {

@@ -431,7 +431,7 @@ pub fn generate_extraction_plan(
     let target_owner = graph
         .nodes
         .iter()
-        .find(|node| node.kind == "module" && node.id == inputs.module.name)
+        .find(|node| node.kind == "module" && node.id == inputs.module.module_id)
         .and_then(|node| node.owner.as_deref());
     if target_owner != Some(inputs.expected_authority.owner_id.as_str()) {
         return Err(generation_error(
@@ -461,7 +461,7 @@ pub fn generate_extraction_plan(
     let content = ExtractionPlanContent {
         protocol: EXTRACTION_PLAN_PROTOCOL,
         generator_version: EXTRACTION_PLAN_GENERATOR_VERSION,
-        target_module: &inputs.module.name,
+        target_module: &inputs.module.module_id,
         source_system_id: &source_system_id,
         readiness_classification: inputs.readiness_report.classification,
         readiness_issue_codes: &inputs.readiness_report.issue_codes,
@@ -480,7 +480,7 @@ pub fn generate_extraction_plan(
         generator_version: EXTRACTION_PLAN_GENERATOR_VERSION.to_owned(),
         plan_id: format!("extraction-plan:{plan_digest}"),
         plan_digest,
-        target_module: inputs.module.name.clone(),
+        target_module: inputs.module.module_id.clone(),
         source_system_id,
         readiness_classification: inputs.readiness_report.classification,
         readiness_issue_codes: inputs.readiness_report.issue_codes.clone(),
@@ -547,7 +547,7 @@ pub fn ensure_extraction_plan_fresh(
         });
     }
 
-    let destination_store = format!("{}-service-store", current_inputs.module.name);
+    let destination_store = format!("{}-service-store", current_inputs.module.module_id);
     let current_mapping = data_mapping(current_inputs, &destination_store).map_err(|error| {
         ExtractionPlanRejection {
             plan_id: plan.plan_id.clone(),
@@ -648,7 +648,7 @@ fn validate_generation_inputs(
             "Resolve the readiness findings and rerun the public readiness command.",
         ));
     }
-    if inputs.readiness_report.target_module != inputs.module.name {
+    if inputs.readiness_report.target_module != inputs.module.module_id {
         return Err(generation_error(
             ExtractionPlanGenerationIssueCode::ReadinessTargetMismatch,
             "The readiness report does not describe the requested Module declaration.",
@@ -833,7 +833,7 @@ fn validate_evidence_digests(
 }
 
 fn proposed_service(inputs: &ExtractionPlanInputs) -> ExtractionServicePlan {
-    let service_id = format!("{}-service", inputs.module.name);
+    let service_id = format!("{}-service", inputs.module.module_id);
     let store_id = format!("{service_id}-store");
     let mut contracts = inputs.contract_versions.clone();
     for contract in &mut contracts {
@@ -907,7 +907,7 @@ fn proposed_service(inputs: &ExtractionPlanInputs) -> ExtractionServicePlan {
     normalize_strings(&mut capabilities);
     ExtractionServicePlan {
         service_id: service_id.clone(),
-        module_id: inputs.module.name.clone(),
+        module_id: inputs.module.module_id.clone(),
         workloads: vec![
             ExtractionWorkloadPlan {
                 workload_id: format!("{service_id}-api"),
@@ -1034,12 +1034,12 @@ fn pinned_inputs(
     let mut pins = vec![
         serializable_pin(
             ExtractionInputPinKind::ReadinessEvidence,
-            &inputs.module.name,
+            &inputs.module.module_id,
             &inputs.readiness_report,
         )?,
         serializable_pin(
             ExtractionInputPinKind::ModuleDeclaration,
-            &inputs.module.name,
+            &inputs.module.module_id,
             &inputs.module,
         )?,
         serializable_pin(
@@ -1054,7 +1054,7 @@ fn pinned_inputs(
         )?,
         serializable_pin(
             ExtractionInputPinKind::DataMapping,
-            &inputs.module.name,
+            &inputs.module.module_id,
             data_mapping,
         )?,
         serializable_pin(
@@ -1112,17 +1112,17 @@ fn serializable_pin<T: Serialize>(
 fn plan_diff(inputs: &ExtractionPlanInputs, service: &ExtractionServicePlan) -> ExtractionPlanDiff {
     let mut entries = vec![
         ExtractionPlanDiffEntry {
-            subject: format!("system.host.modules.{}", inputs.module.name),
+            subject: format!("system.host.modules.{}", inputs.module.module_id),
             before: Some(inputs.expected_authority.owner_id.clone()),
             after: None,
         },
         ExtractionPlanDiffEntry {
             subject: format!("system.autonomousServices.{}", service.service_id),
             before: None,
-            after: Some(format!("module={}", inputs.module.name)),
+            after: Some(format!("module={}", inputs.module.module_id)),
         },
         ExtractionPlanDiffEntry {
-            subject: format!("authority.module.{}", inputs.module.name),
+            subject: format!("authority.module.{}", inputs.module.module_id),
             before: Some(format!(
                 "linked_host:{}@{}",
                 inputs.expected_authority.owner_id, inputs.expected_authority.revision
@@ -1681,13 +1681,13 @@ mod tests {
     use lenso_contracts::ModuleManifest;
 
     fn inputs() -> ExtractionPlanInputs {
-        let module = ModuleManifest::builder("support-ticket")
+        let module = ModuleManifest::builder("acme/support-ticket")
             .capabilities(vec!["support.tickets.read".to_owned()])
             .build();
         let report = ExtractionReadinessReport {
             protocol: EXTRACTION_READINESS_REPORT_PROTOCOL.to_owned(),
             analyzer_version: EXTRACTION_READINESS_ANALYZER_VERSION.to_owned(),
-            target_module: module.name.clone(),
+            target_module: module.module_id.clone(),
             system_id: Some("support-system".to_owned()),
             target_owner: Some("support-host".to_owned()),
             classification: CompatibilityCategory::Safe,
@@ -1709,7 +1709,7 @@ mod tests {
             system: json!({
                 "protocol": "lenso.system.v2",
                 "systemId": "support-system",
-                "host": { "hostId": "support-host", "modules": ["support-ticket"] },
+                "host": { "hostId": "support-host", "modules": ["acme/support-ticket"] },
                 "providers": [{
                     "providerId": "notification-provider",
                     "modules": ["notification-gateway"]

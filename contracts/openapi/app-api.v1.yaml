@@ -343,97 +343,6 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /admin/data/available-modules/{module}/install:
-    post:
-      tags:
-      - admin-data
-      operationId: admin_data_install_available_module
-      parameters:
-      - name: module
-        in: path
-        description: Available catalog entry name
-        required: true
-        schema:
-          type: string
-      - name: authorization
-        in: header
-        description: Development service bearer token
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Catalog install state written to host-local files
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminModuleInstallResponse'
-        '400':
-          description: Catalog entry cannot be installed
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '401':
-          description: Authentication is required
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Service or system authentication is required
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Unknown available module
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-    delete:
-      tags:
-      - admin-data
-      operationId: admin_data_uninstall_available_module
-      parameters:
-      - name: module
-        in: path
-        description: Available module name
-        required: true
-        schema:
-          type: string
-      - name: authorization
-        in: header
-        description: Development service bearer token
-        required: true
-        schema:
-          type: string
-      responses:
-        '200':
-          description: Module install state removed from host-local files
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AdminModuleInstallResponse'
-        '401':
-          description: Authentication is required
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: Service or system authentication is required
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: Unknown available module
-          content:
-            application/problem+json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
   /admin/data/launchpad:
     get:
       tags:
@@ -888,7 +797,7 @@ paths:
       parameters:
       - name: module
         in: path
-        description: Module name, e.g. remote-crm
+        description: Module name, e.g. crm
         required: true
         schema:
           type: string
@@ -955,7 +864,7 @@ paths:
       parameters:
       - name: module
         in: path
-        description: Module name, e.g. remote-crm
+        description: Module name, e.g. crm
         required: true
         schema:
           type: string
@@ -1103,6 +1012,317 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Unknown module/entity or record not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/management:
+    get:
+      tags:
+      - module-management
+      operationId: admin_modules_management_snapshot
+      parameters:
+      - name: authorization
+        in: header
+        description: Service or system bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Target-owned Module composition and planning readiness
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Module management state cannot be read
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations:
+    post:
+      tags:
+      - module-management
+      operationId: admin_modules_start_operation
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Durable Module operation
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Reviewed plan is stale or invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Management authority is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Operation conflicts with target state
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations/{operation_id}:
+    get:
+      tags:
+      - module-management
+      operationId: admin_modules_get_operation
+      parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Current durable Module operation
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Operation was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations/{operation_id}/apply:
+    post:
+      tags:
+      - module-management
+      operationId: admin_modules_apply_operation
+      parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Applied, blocked, or completed Module operation
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: Operation cannot currently be applied
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations/{operation_id}/approvals:
+    post:
+      tags:
+      - module-management
+      operationId: admin_modules_approve_operation
+      parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Operation with plan-bound approval
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Approval is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Approval is stale
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations/{operation_id}/cancel:
+    post:
+      tags:
+      - module-management
+      operationId: admin_modules_cancel_operation
+      parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Cancelled pre-mutation Module operation
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: Cancellation is unsafe
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations/{operation_id}/journal:
+    get:
+      tags:
+      - module-management
+      operationId: admin_modules_get_operation_journal
+      parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Hash-chained Module operation journal
+          content:
+            application/json:
+              schema: {}
+        '404':
+          description: Operation was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations/{operation_id}/resume:
+    post:
+      tags:
+      - module-management
+      operationId: admin_modules_resume_operation
+      parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Crash-resumed Module operation
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: Safe continuation cannot be proven
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/operations/{operation_id}/retry:
+    post:
+      tags:
+      - module-management
+      operationId: admin_modules_retry_operation
+      parameters:
+      - name: operation_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Retried Module operation
+          content:
+            application/json:
+              schema: {}
+        '409':
+          description: Operation cannot be retried
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/modules/plans/preview:
+    post:
+      tags:
+      - module-management
+      operationId: admin_modules_preview_change_plan
+      parameters:
+      - name: authorization
+        in: header
+        description: Service or system bearer token
+        required: true
+        schema:
+          type: string
+      requestBody:
+        description: One lenso ModuleRootChange value
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Immutable complete Module Change Plan
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Change or planning input is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Planning context is not available
           content:
             application/problem+json:
               schema:
@@ -2144,11 +2364,11 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /admin/runtime/remote-proxy-calls:
+  /admin/runtime/service-proxy-calls:
     get:
       tags:
       - admin-runtime
-      operationId: admin_runtime_list_remote_proxy_calls
+      operationId: admin_runtime_list_service_proxy_calls
       parameters:
       - name: authorization
         in: header
@@ -2211,7 +2431,7 @@ paths:
           format: date-time
       responses:
         '200':
-          description: Recent remote module HTTP proxy calls
+          description: Recent Service-provided Module HTTP proxy calls
           headers:
             x-correlation-id:
               schema:
@@ -2646,6 +2866,132 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /admin/services/installations/plans/preview:
+    post:
+      tags:
+      - service-management
+      operationId: admin_services_preview_installation
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Immutable Service Installation Plan
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Installation change is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/services/installations/plans/{plan_id}/apply:
+    post:
+      tags:
+      - service-management
+      operationId: admin_services_apply_installation
+      parameters:
+      - name: plan_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        '200':
+          description: Durable Service Installation Receipt
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Installation plan is invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: service.manage authority is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Installation Set changed after preview
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /admin/services/installations/{environment_id}:
+    get:
+      tags:
+      - service-management
+      operationId: admin_services_installation_snapshot
+      parameters:
+      - name: environment_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: system_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: authorization
+        in: header
+        description: Service or system bearer token
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Target-owned desired Service Installation Set
+          content:
+            application/json:
+              schema: {}
+        '401':
+          description: Authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Service or system authentication is required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Installation state cannot be read
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /admin/system/restart:
     post:
       tags:
@@ -2681,17 +3027,17 @@ paths:
     get:
       tags:
       - modules
-      operationId: remote_module_http_proxy_get
+      operationId: service_module_http_proxy_get
       parameters:
       - name: module
         in: path
-        description: Configured remote module name
+        description: Configured Service-provided Module name
         required: true
         schema:
           type: string
       - name: path
         in: path
-        description: Module-local HTTP path matched against the remote manifest
+        description: Module-local HTTP path matched against the Service-provided manifest
         required: true
         schema:
           type: string
@@ -2721,7 +3067,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: No configured remote route matched
+          description: No configured Service-provided route matched
           content:
             application/problem+json:
               schema:
@@ -2735,17 +3081,17 @@ paths:
     put:
       tags:
       - modules
-      operationId: remote_module_http_proxy_put
+      operationId: service_module_http_proxy_put
       parameters:
       - name: module
         in: path
-        description: Configured remote module name
+        description: Configured Service-provided Module name
         required: true
         schema:
           type: string
       - name: path
         in: path
-        description: Module-local HTTP path matched against the remote manifest
+        description: Module-local HTTP path matched against the Service-provided manifest
         required: true
         schema:
           type: string
@@ -2756,7 +3102,7 @@ paths:
         schema:
           type: string
       requestBody:
-        description: JSON request body forwarded to the matched remote module route
+        description: JSON request body forwarded to the matched Service-provided Module route
         content:
           application/json:
             schema: {}
@@ -2787,7 +3133,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: No configured remote route matched
+          description: No configured Service-provided route matched
           content:
             application/problem+json:
               schema:
@@ -2801,17 +3147,17 @@ paths:
     post:
       tags:
       - modules
-      operationId: remote_module_http_proxy_post
+      operationId: service_module_http_proxy_post
       parameters:
       - name: module
         in: path
-        description: Configured remote module name
+        description: Configured Service-provided Module name
         required: true
         schema:
           type: string
       - name: path
         in: path
-        description: Module-local HTTP path matched against the remote manifest
+        description: Module-local HTTP path matched against the Service-provided manifest
         required: true
         schema:
           type: string
@@ -2822,7 +3168,7 @@ paths:
         schema:
           type: string
       requestBody:
-        description: JSON request body forwarded to the matched remote module route
+        description: JSON request body forwarded to the matched Service-provided Module route
         content:
           application/json:
             schema: {}
@@ -2853,7 +3199,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: No configured remote route matched
+          description: No configured Service-provided route matched
           content:
             application/problem+json:
               schema:
@@ -2867,17 +3213,17 @@ paths:
     delete:
       tags:
       - modules
-      operationId: remote_module_http_proxy_delete
+      operationId: service_module_http_proxy_delete
       parameters:
       - name: module
         in: path
-        description: Configured remote module name
+        description: Configured Service-provided Module name
         required: true
         schema:
           type: string
       - name: path
         in: path
-        description: Module-local HTTP path matched against the remote manifest
+        description: Module-local HTTP path matched against the Service-provided manifest
         required: true
         schema:
           type: string
@@ -2913,7 +3259,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: No configured remote route matched
+          description: No configured Service-provided route matched
           content:
             application/problem+json:
               schema:
@@ -2927,17 +3273,17 @@ paths:
     patch:
       tags:
       - modules
-      operationId: remote_module_http_proxy_patch
+      operationId: service_module_http_proxy_patch
       parameters:
       - name: module
         in: path
-        description: Configured remote module name
+        description: Configured Service-provided Module name
         required: true
         schema:
           type: string
       - name: path
         in: path
-        description: Module-local HTTP path matched against the remote manifest
+        description: Module-local HTTP path matched against the Service-provided manifest
         required: true
         schema:
           type: string
@@ -2948,7 +3294,7 @@ paths:
         schema:
           type: string
       requestBody:
-        description: JSON request body forwarded to the matched remote module route
+        description: JSON request body forwarded to the matched Service-provided Module route
         content:
           application/json:
             schema: {}
@@ -2979,7 +3325,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: No configured remote route matched
+          description: No configured Service-provided route matched
           content:
             application/problem+json:
               schema:
@@ -5186,14 +5532,14 @@ components:
           oneOf:
           - type: 'null'
           - $ref: '#/components/schemas/AdminModuleLensoCompatibilityDto'
-        remoteProtocolVersion:
-          type:
-          - string
-          - 'null'
         requiredHostFeatures:
           type: array
           items:
             type: string
+        serviceProtocolVersion:
+          type:
+          - string
+          - 'null'
     AdminModuleConsolePackagePlanPackageDto:
       type: object
       required:
@@ -5283,37 +5629,6 @@ components:
           type: string
         lensoVersion:
           type: string
-    AdminModuleInstallResponse:
-      type: object
-      description: |-
-        Response for visually installing an available service or linked module from
-        the curated catalog.
-      required:
-      - moduleName
-      - manifestReference
-      - consolePlan
-      - restartRequired
-      properties:
-        consolePlan:
-          $ref: '#/components/schemas/AdminModuleConsolePackagePlanStateDto'
-        linkedSource:
-          oneOf:
-          - type: 'null'
-          - $ref: '#/components/schemas/AdminModuleLinkedSourceInstallStateDto'
-        manifestReference:
-          type: string
-        moduleName:
-          type: string
-        moduleRelease:
-          oneOf:
-          - type: 'null'
-          - $ref: '#/components/schemas/AdminModuleReleaseDto'
-        remoteSource:
-          oneOf:
-          - type: 'null'
-          - $ref: '#/components/schemas/AdminModuleRemoteSourceInstallStateDto'
-        restartRequired:
-          type: boolean
     AdminModuleInstallStateDto:
       type: object
       required:
@@ -5328,10 +5643,10 @@ components:
           - $ref: '#/components/schemas/AdminModuleLinkedSourceInstallStateDto'
         moduleRegistered:
           type: boolean
-        remoteSource:
+        serviceProvider:
           oneOf:
           - type: 'null'
-          - $ref: '#/components/schemas/AdminModuleRemoteSourceInstallStateDto'
+          - $ref: '#/components/schemas/AdminServiceProviderInstallStateDto'
     AdminModuleLensoCompatibilityDto:
       type: object
       properties:
@@ -5730,35 +6045,6 @@ components:
           type:
           - string
           - 'null'
-    AdminModuleRemoteSourceInstallStateDto:
-      type: object
-      required:
-      - envFile
-      - configured
-      - restartPending
-      properties:
-        configured:
-          type: boolean
-        desiredBaseUrl:
-          type:
-          - string
-          - 'null'
-        envFile:
-          type: string
-        error:
-          type:
-          - string
-          - 'null'
-        restartPending:
-          type: boolean
-        restartReason:
-          type:
-          - string
-          - 'null'
-        runningBaseUrl:
-          type:
-          - string
-          - 'null'
     AdminModuleSchema:
       type: object
       required:
@@ -5782,7 +6068,7 @@ components:
     AdminModuleSourceDiagnosticsDto:
       oneOf:
       - allOf:
-        - $ref: '#/components/schemas/AdminRemoteModuleDiagnosticsDto'
+        - $ref: '#/components/schemas/AdminServiceProviderDiagnosticsDto'
         - type: object
           required:
           - kind
@@ -5790,7 +6076,7 @@ components:
             kind:
               type: string
               enum:
-              - remote
+              - service
     AdminModuleStatus:
       type: string
       enum:
@@ -5913,41 +6199,6 @@ components:
       - data
       properties:
         data: {}
-    AdminRemoteModuleDiagnosticsDto:
-      type: object
-      required:
-      - transport
-      - base_url
-      - manifest_url
-      - timeout_ms
-      - auth_configured
-      properties:
-        auth_configured:
-          type: boolean
-        base_url:
-          type: string
-        last_checked_at:
-          type:
-          - string
-          - 'null'
-        last_load_error:
-          type:
-          - string
-          - 'null'
-        load_duration_ms:
-          type:
-          - integer
-          - 'null'
-          format: int64
-          minimum: 0
-        manifest_url:
-          type: string
-        timeout_ms:
-          type: integer
-          format: int64
-          minimum: 0
-        transport:
-          type: string
     AdminRemoteProxyCallItem:
       type: object
       required:
@@ -7251,11 +7502,11 @@ components:
       - story
       - technicalOperations
       properties:
-        remoteCalls:
+        runtime:
           type:
           - string
           - 'null'
-        runtime:
+        serviceCalls:
           type:
           - string
           - 'null'
@@ -7263,6 +7514,70 @@ components:
           type: string
         technicalOperations:
           type: string
+    AdminServiceProviderDiagnosticsDto:
+      type: object
+      required:
+      - transport
+      - base_url
+      - manifest_url
+      - timeout_ms
+      - auth_configured
+      properties:
+        auth_configured:
+          type: boolean
+        base_url:
+          type: string
+        last_checked_at:
+          type:
+          - string
+          - 'null'
+        last_load_error:
+          type:
+          - string
+          - 'null'
+        load_duration_ms:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+        manifest_url:
+          type: string
+        timeout_ms:
+          type: integer
+          format: int64
+          minimum: 0
+        transport:
+          type: string
+    AdminServiceProviderInstallStateDto:
+      type: object
+      required:
+      - envFile
+      - configured
+      - restartPending
+      properties:
+        configured:
+          type: boolean
+        desiredBaseUrl:
+          type:
+          - string
+          - 'null'
+        envFile:
+          type: string
+        error:
+          type:
+          - string
+          - 'null'
+        restartPending:
+          type: boolean
+        restartReason:
+          type:
+          - string
+          - 'null'
+        runningBaseUrl:
+          type:
+          - string
+          - 'null'
     AdminServiceReleaseRecordDto:
       type: object
       required:
@@ -9930,7 +10245,7 @@ components:
             `identity.user_registered.v1`.
         name:
           type: string
-          description: Stable handler name used by remote loading sources as the invoke path.
+          description: Stable handler name used by Service Providers as the invoke path.
         operation:
           oneOf:
           - type: 'null'
@@ -10537,9 +10852,14 @@ components:
       - error
     ModuleSource:
       type: string
+      description: |-
+        Runtime provenance for an already loaded Module.
+
+        Delivery belongs to `ModuleRelease.delivery`; a Module is either linked into
+        the Host or provided by an independently deployed Service.
       enum:
       - linked
-      - remote
+      - service
     OidcJwksResponse:
       type: object
       required:
@@ -12685,5 +13005,9 @@ tags:
   description: Editable configuration console APIs
 - name: admin-data
   description: Schema-driven admin data console APIs
+- name: module-management
+  description: Target-owned Module management APIs
+- name: service-management
+  description: Target-owned Service installation APIs
 - name: system-delivery
   description: Production delivery authority APIs

@@ -79,8 +79,9 @@ Most release-smoke failures are local setup issues:
   or `FIRST_USER_SMOKE_REMOTE_MODULE_ADDR` for that shell.
 - The service manifest URL does not respond: start the service process and open
   `/lenso/service/v1/manifest` in a browser or with `curl`.
-- `REMOTE_MODULES` changed but the module is not visible: restart the API,
-  worker, and Runtime Console.
+- A Provider Module is not visible: inspect the Application Module Lock and the
+  target environment's Service Installation Set, repair any exact-release or
+  endpoint mismatch, then restart the API and worker.
 - OTLP collector is not running: unset `OTEL_EXPORTER_OTLP_ENDPOINT` for normal
   local smoke, or start it with `just observability-up`.
 

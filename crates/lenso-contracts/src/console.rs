@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleSurface {
     pub name: String,
     pub label: String,
@@ -18,7 +18,7 @@ pub struct ConsoleSurface {
     pub navigation: Option<ConsoleNavigation>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleContribution {
     pub target: String,
     pub target_version: u32,
@@ -30,7 +30,7 @@ pub struct ConsoleContribution {
     pub required_capabilities: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleSlot {
     pub id: String,
     pub version: u32,
@@ -41,21 +41,21 @@ pub struct ConsoleSlot {
     pub context: Vec<ConsoleSlotContext>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ConsoleContributionKind {
     AdminAction,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleSlotContext {
     pub name: String,
     #[serde(default)]
     pub fields: Vec<ConsoleSlotContextField>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleSlotContextField {
     pub name: String,
     pub field_type: ConsoleSlotContextFieldType,
@@ -63,7 +63,7 @@ pub struct ConsoleSlotContextField {
     pub required: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ConsoleSlotContextFieldType {
@@ -73,7 +73,7 @@ pub enum ConsoleSlotContextFieldType {
     Timestamp,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ConsoleContributionAction {
@@ -85,20 +85,20 @@ pub enum ConsoleContributionAction {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleActionInputBinding {
     pub input: String,
     pub value: ConsoleActionInputValue,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ConsoleActionInputValue {
     SlotContext { path: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ConsoleArea {
@@ -108,13 +108,13 @@ pub enum ConsoleArea {
     Configuration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsolePackage {
     pub name: String,
     pub export: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleNavigation {
     pub workspace: ConsoleWorkspaceRef,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -123,7 +123,7 @@ pub struct ConsoleNavigation {
     pub order: Option<i32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleWorkspaceRef {
     pub id: String,
     pub label: String,
@@ -131,7 +131,7 @@ pub struct ConsoleWorkspaceRef {
     pub icon: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleNavigationGroup {
     pub id: String,
     pub label: String,

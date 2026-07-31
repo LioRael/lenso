@@ -1,21 +1,29 @@
-# Remote Module gRPC Transport
+# Internal Service Provider gRPC Transport
 
-This note defines the first native gRPC transport lane for remote modules. It
-does not replace the existing HTTP/JSON protocol. The host still owns auth,
-timeouts, retries, outbox claims, Runtime Story semantics, and operator
-visibility.
+This note documents the legacy internal transport implementation used when a
+Provider-mode Service exports Modules over gRPC. `Remote` names below are wire
+and crate compatibility details, not a public Module delivery kind. The Host
+still owns auth, timeouts, retries, outbox claims, Runtime Story semantics, and
+operator visibility.
 
 ## Current Lane
 
-Configure a gRPC remote module by using a `grpc://` or `grpcs://` endpoint in `REMOTE_MODULES`:
+Select `provider_grpc` in the target-owned Service Installation endpoint
+binding. The Application Module Lock selects the exact exported Module; the
+Provider Runtime Plan supplies the endpoint to this internal adapter:
 
 ```text
-REMOTE_MODULES=remote-crm=grpc://127.0.0.1:50051
-REMOTE_MODULES=remote-crm=grpcs://crm.example.test:50051
+binding: provider_grpc
+address: https://crm.example.test:50051
 ```
 
 The host normalizes those endpoints to tonic `http://` or `https://` channels
-and calls:
+after `HostComposition` resolves the plan's endpoint source. Static declarations
+need no resolver; local-process and adapter declarations require an endpoint
+resolver registered under the exact source ID. The same composition selects a
+credential resolver by the identity policy's exact trust profile. Resolved
+credentials stay in transport memory and are redacted from Debug output. It
+then calls:
 
 ```text
 /lenso.remote.v1.RemoteModule/GetManifest

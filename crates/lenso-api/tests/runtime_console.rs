@@ -1924,7 +1924,7 @@ async fn service_actor_can_list_remote_proxy_calls() {
         .clone()
         .oneshot(
             admin_get(
-                "/admin/runtime/remote-proxy-calls?module_name=remote-crm&success=false&limit=10",
+                "/admin/runtime/service-proxy-calls?module_name=remote-crm&success=false&limit=10",
             )
             .with_header("authorization", "Bearer dev-service:admin"),
         )
@@ -1961,7 +1961,7 @@ async fn service_actor_can_list_remote_proxy_calls() {
         .clone()
         .oneshot(
             admin_get(
-                "/admin/runtime/remote-proxy-calls?correlation_id=corr_remote_proxy&limit=10&created_before=2026-05-31T00:01:30Z",
+                "/admin/runtime/service-proxy-calls?correlation_id=corr_remote_proxy&limit=10&created_before=2026-05-31T00:01:30Z",
             )
             .with_header("authorization", "Bearer dev-service:admin"),
         )
@@ -1976,7 +1976,7 @@ async fn service_actor_can_list_remote_proxy_calls() {
     let story_response = app
         .oneshot(
             admin_get(
-                "/admin/runtime/remote-proxy-calls?correlation_id=corr_remote_proxy&limit=10",
+                "/admin/runtime/service-proxy-calls?correlation_id=corr_remote_proxy&limit=10",
             )
             .with_header("authorization", "Bearer dev-service:admin"),
         )
@@ -2331,8 +2331,8 @@ async fn admin_runtime_openapi_contract_is_present() {
         "admin_runtime_get_function_run"
     );
     assert_eq!(
-        value["paths"]["/admin/runtime/remote-proxy-calls"]["get"]["operationId"],
-        "admin_runtime_list_remote_proxy_calls"
+        value["paths"]["/admin/runtime/service-proxy-calls"]["get"]["operationId"],
+        "admin_runtime_list_service_proxy_calls"
     );
     assert!(
         value["paths"]

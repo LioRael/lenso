@@ -97,7 +97,7 @@ pub struct AdminModuleRegistrySnapshotModuleDto {
 pub struct AdminModuleInstallStateDto {
     pub module_registered: bool,
     pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
-    pub remote_source: Option<AdminModuleRemoteSourceInstallStateDto>,
+    pub service_provider: Option<AdminServiceProviderInstallStateDto>,
     pub console_plan: AdminModuleConsolePackagePlanStateDto,
 }
 
@@ -706,7 +706,7 @@ pub enum AdminServiceOperationKindDto {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminServiceOperationLinksDto {
-    pub remote_calls: Option<String>,
+    pub service_calls: Option<String>,
     pub runtime: Option<String>,
     pub story: String,
     pub technical_operations: String,
@@ -850,7 +850,7 @@ pub struct AdminModuleLinkedSourceInstallStateDto {
 
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct AdminModuleRemoteSourceInstallStateDto {
+pub struct AdminServiceProviderInstallStateDto {
     pub env_file: String,
     pub configured: bool,
     pub desired_base_url: Option<String>,
@@ -873,20 +873,6 @@ pub struct AdminModuleConsolePackagePlanStateDto {
     pub packages: Vec<AdminModuleConsolePackagePlanPackageDto>,
 }
 
-/// Response for visually installing an available service or linked module from
-/// the curated catalog.
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AdminModuleInstallResponse {
-    pub module_name: String,
-    pub manifest_reference: String,
-    pub module_release: Option<AdminModuleReleaseDto>,
-    pub linked_source: Option<AdminModuleLinkedSourceInstallStateDto>,
-    pub remote_source: Option<AdminModuleRemoteSourceInstallStateDto>,
-    pub console_plan: AdminModuleConsolePackagePlanStateDto,
-    pub restart_required: bool,
-}
-
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AdminModuleConsolePackagePlanPackageDto {
@@ -904,8 +890,7 @@ pub struct AdminModuleCompatibilityDto {
     #[serde(alias = "console_package_api")]
     pub console_package_api: Option<String>,
     pub lenso: Option<AdminModuleLensoCompatibilityDto>,
-    #[serde(alias = "remote_protocol_version")]
-    pub remote_protocol_version: Option<String>,
+    pub service_protocol_version: Option<String>,
     #[serde(default, alias = "required_host_features")]
     pub required_host_features: Vec<String>,
 }
@@ -1004,11 +989,12 @@ pub struct AdminModuleMetadataDto {
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AdminModuleSourceDiagnosticsDto {
-    Remote(AdminRemoteModuleDiagnosticsDto),
+    #[serde(rename = "service")]
+    Remote(AdminServiceProviderDiagnosticsDto),
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct AdminRemoteModuleDiagnosticsDto {
+pub struct AdminServiceProviderDiagnosticsDto {
     pub transport: String,
     pub base_url: String,
     pub manifest_url: String,

@@ -1,8 +1,10 @@
 use crate::{ContextClaimProof, DelegatedActorContext, ServiceTenancyMode, TenantContext};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs::OpenOptions,
     io::Write as _,
     path::Path,
@@ -124,7 +126,9 @@ impl TenantCredentialRequest {
     }
 }
 
-pub trait DelegatedContextProvider: std::fmt::Debug + Send + Sync {
+/// Console-side authority that creates bounded actor and tenant credentials.
+/// Target Services do not need this interface in order to verify requests.
+pub trait DelegatedContextIssuer: std::fmt::Debug + Send + Sync {
     fn issue_actor(
         &self,
         request: DelegatedActorCredentialRequest,
@@ -134,7 +138,11 @@ pub trait DelegatedContextProvider: std::fmt::Debug + Send + Sync {
         &self,
         request: TenantCredentialRequest,
     ) -> Result<TenantContext, DelegatedContextError>;
+}
 
+/// Target-Service authority that verifies delegated credentials without
+/// receiving signing material or acquiring credential issuance capability.
+pub trait DelegatedContextVerifier: std::fmt::Debug + Send + Sync {
     fn verify_actor(
         &self,
         context: &DelegatedActorContext,
@@ -149,6 +157,12 @@ pub trait DelegatedContextProvider: std::fmt::Debug + Send + Sync {
         now_unix_ms: u64,
     ) -> Result<(), DelegatedContextError>;
 }
+
+/// Full provider retained for development sandboxes and Console-side
+/// composition that intentionally owns both interfaces.
+pub trait DelegatedContextProvider: DelegatedContextIssuer + DelegatedContextVerifier {}
+
+impl<T> DelegatedContextProvider for T where T: DelegatedContextIssuer + DelegatedContextVerifier {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -224,13 +238,13 @@ impl IdentityDecisionRecorder for JsonlIdentityDecisionRecorder {
 
 #[derive(Debug, Clone)]
 pub struct ServiceContextAdmission {
-    provider: Arc<dyn DelegatedContextProvider>,
+    provider: Arc<dyn DelegatedContextVerifier>,
     policies: std::collections::BTreeMap<String, ServiceContextPolicy>,
 }
 
 impl ServiceContextAdmission {
     #[must_use]
-    pub fn new<I, S>(provider: Arc<dyn DelegatedContextProvider>, policies: I) -> Self
+    pub fn new<I, S>(provider: Arc<dyn DelegatedContextVerifier>, policies: I) -> Self
     where
         I: IntoIterator<Item = (S, ServiceContextPolicy)>,
         S: Into<String>,
@@ -316,7 +330,7 @@ impl ServiceContextPolicy {
 
     pub fn verify(
         &self,
-        provider: &dyn DelegatedContextProvider,
+        provider: &dyn DelegatedContextVerifier,
         actor: Option<&DelegatedActorContext>,
         tenant: Option<&TenantContext>,
         now_unix_ms: u64,
@@ -436,6 +450,214 @@ pub struct AuthenticatedServiceContext {
     pub evidence: IdentityDecisionEvidence,
 }
 
+const ED25519_DELEGATED_CONTEXT_ALGORITHM: &str = "Ed25519";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActorSigningPayload<'a> {
+    protocol: &'static str,
+    issuer: &'a str,
+    subject: &'a str,
+    audiences: &'a [String],
+    intent: &'a str,
+    permissions: &'a [String],
+    expires_at_unix_ms: u64,
+    delegation_id: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TenantSigningPayload<'a> {
+    protocol: &'static str,
+    issuer: &'a str,
+    tenant_id: &'a str,
+    actor_subject: &'a str,
+    delegation_id: &'a str,
+    audiences: &'a [String],
+    expires_at_unix_ms: u64,
+    claim_id: &'a str,
+}
+
+/// Canonical, domain-separated bytes signed by a Console authority for an
+/// Actor Context. The proof itself is excluded from the payload.
+pub fn delegated_actor_signing_bytes(
+    context: &DelegatedActorContext,
+) -> serde_json::Result<Vec<u8>> {
+    lenso_contracts::canonical_json(&ActorSigningPayload {
+        protocol: "lenso.delegated-actor-context.ed25519.v1",
+        issuer: &context.issuer,
+        subject: &context.subject,
+        audiences: &context.audiences,
+        intent: &context.intent,
+        permissions: &context.permissions,
+        expires_at_unix_ms: context.expires_at_unix_ms,
+        delegation_id: &context.delegation_id,
+    })
+}
+
+/// Canonical, domain-separated bytes signed by a Console authority for a
+/// Tenant Context. Actor and tenant signatures cannot be exchanged.
+pub fn tenant_context_signing_bytes(context: &TenantContext) -> serde_json::Result<Vec<u8>> {
+    lenso_contracts::canonical_json(&TenantSigningPayload {
+        protocol: "lenso.tenant-context.ed25519.v1",
+        issuer: &context.issuer,
+        tenant_id: &context.tenant_id,
+        actor_subject: &context.actor_subject,
+        delegation_id: &context.delegation_id,
+        audiences: &context.audiences,
+        expires_at_unix_ms: context.expires_at_unix_ms,
+        claim_id: &context.claim_id,
+    })
+}
+
+/// Verify-only production adapter backed by operator-configured Ed25519 public
+/// keys. Keys are addressed by `(issuer, verification method)`, allowing
+/// overlapping rotation without accepting an issuer's key under another name.
+#[derive(Debug, Clone, Default)]
+pub struct Ed25519DelegatedContextVerifier {
+    keys: BTreeMap<(String, String), VerifyingKey>,
+}
+
+impl Ed25519DelegatedContextVerifier {
+    pub fn from_base64_public_keys<I, IS, MS, KS>(keys: I) -> Result<Self, DelegatedContextError>
+    where
+        I: IntoIterator<Item = (IS, MS, KS)>,
+        IS: Into<String>,
+        MS: Into<String>,
+        KS: AsRef<str>,
+    {
+        let mut parsed = BTreeMap::new();
+        for (issuer, method, encoded) in keys {
+            let issuer = issuer.into();
+            let method = method.into();
+            if issuer.trim().is_empty() || method.trim().is_empty() {
+                return Err(bare_error(
+                    DelegatedContextErrorCode::InvalidRequest,
+                    "delegated context issuer and verification method are required",
+                    "",
+                ));
+            }
+            let bytes = URL_SAFE_NO_PAD.decode(encoded.as_ref()).map_err(|_| {
+                bare_error(
+                    DelegatedContextErrorCode::InvalidRequest,
+                    "delegated context Ed25519 public key encoding is invalid",
+                    "",
+                )
+            })?;
+            let bytes: [u8; 32] = bytes.try_into().map_err(|_| {
+                bare_error(
+                    DelegatedContextErrorCode::InvalidRequest,
+                    "delegated context Ed25519 public keys must contain exactly 32 bytes",
+                    "",
+                )
+            })?;
+            let key = VerifyingKey::from_bytes(&bytes).map_err(|_| {
+                bare_error(
+                    DelegatedContextErrorCode::InvalidRequest,
+                    "delegated context Ed25519 public key is invalid",
+                    "",
+                )
+            })?;
+            if parsed.insert((issuer, method), key).is_some() {
+                return Err(bare_error(
+                    DelegatedContextErrorCode::InvalidRequest,
+                    "delegated context issuer and verification method must be unique",
+                    "",
+                ));
+            }
+        }
+        if parsed.is_empty() {
+            return Err(bare_error(
+                DelegatedContextErrorCode::InvalidRequest,
+                "at least one delegated context verification key is required",
+                "",
+            ));
+        }
+        Ok(Self { keys: parsed })
+    }
+
+    fn verify(
+        &self,
+        issuer: &str,
+        proof: &ContextClaimProof,
+        payload: &[u8],
+        audience: &str,
+    ) -> Result<(), DelegatedContextError> {
+        if proof.algorithm != ED25519_DELEGATED_CONTEXT_ALGORITHM {
+            return Err(invalid_proof(audience));
+        }
+        let key = self
+            .keys
+            .get(&(issuer.to_owned(), proof.verification_method.clone()))
+            .ok_or_else(|| invalid_proof(audience))?;
+        let signature = URL_SAFE_NO_PAD
+            .decode(&proof.signature)
+            .ok()
+            .and_then(|bytes| Signature::from_slice(&bytes).ok())
+            .ok_or_else(|| invalid_proof(audience))?;
+        key.verify(payload, &signature)
+            .map_err(|_| invalid_proof(audience))
+    }
+}
+
+impl DelegatedContextVerifier for Ed25519DelegatedContextVerifier {
+    fn verify_actor(
+        &self,
+        context: &DelegatedActorContext,
+        audience: &str,
+        now_unix_ms: u64,
+    ) -> Result<(), DelegatedContextError> {
+        let payload =
+            delegated_actor_signing_bytes(context).map_err(|_| invalid_proof(audience))?;
+        self.verify(&context.issuer, &context.proof, &payload, audience)?;
+        verify_audience_and_expiry(
+            &context.audiences,
+            context.expires_at_unix_ms,
+            audience,
+            now_unix_ms,
+        )
+    }
+
+    fn verify_tenant(
+        &self,
+        context: &TenantContext,
+        audience: &str,
+        now_unix_ms: u64,
+    ) -> Result<(), DelegatedContextError> {
+        let payload = tenant_context_signing_bytes(context).map_err(|_| invalid_proof(audience))?;
+        self.verify(&context.issuer, &context.proof, &payload, audience)?;
+        verify_audience_and_expiry(
+            &context.audiences,
+            context.expires_at_unix_ms,
+            audience,
+            now_unix_ms,
+        )
+    }
+}
+
+fn verify_audience_and_expiry(
+    audiences: &[String],
+    expires_at_unix_ms: u64,
+    audience: &str,
+    now_unix_ms: u64,
+) -> Result<(), DelegatedContextError> {
+    if audiences.len() != 1 || audiences[0] != audience {
+        return Err(bare_error(
+            DelegatedContextErrorCode::AudienceMismatch,
+            "delegated context is not intended for this audience",
+            audience,
+        ));
+    }
+    if expires_at_unix_ms <= now_unix_ms {
+        return Err(bare_error(
+            DelegatedContextErrorCode::CredentialExpired,
+            "delegated context has expired",
+            audience,
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct SystemSandboxDelegatedContextProvider {
     secret: String,
@@ -552,7 +774,7 @@ impl SystemSandboxDelegatedContextProvider {
     }
 }
 
-impl DelegatedContextProvider for SystemSandboxDelegatedContextProvider {
+impl DelegatedContextIssuer for SystemSandboxDelegatedContextProvider {
     fn issue_actor(
         &self,
         request: DelegatedActorCredentialRequest,
@@ -630,7 +852,9 @@ impl DelegatedContextProvider for SystemSandboxDelegatedContextProvider {
             proof,
         })
     }
+}
 
+impl DelegatedContextVerifier for SystemSandboxDelegatedContextProvider {
     fn verify_actor(
         &self,
         context: &DelegatedActorContext,

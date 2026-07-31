@@ -1,10 +1,23 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RemoteModuleConfig {
     pub name: String,
     pub base_url: String,
     pub transport: RemoteModuleTransport,
-    pub auth_token: Option<String>,
+    pub(crate) auth_token: Option<String>,
     pub timeout_ms: u64,
+}
+
+impl std::fmt::Debug for RemoteModuleConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RemoteModuleConfig")
+            .field("name", &self.name)
+            .field("base_url", &self.base_url)
+            .field("transport", &self.transport)
+            .field("auth_configured", &self.auth_token.is_some())
+            .field("timeout_ms", &self.timeout_ms)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,8 +46,24 @@ impl RemoteModuleConfig {
     }
 
     #[must_use]
+    pub fn auth_configured(&self) -> bool {
+        self.auth_token.is_some()
+    }
+
+    #[must_use]
     pub fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
         self.timeout_ms = timeout_ms;
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_transport(
+        mut self,
+        transport: RemoteModuleTransport,
+        base_url: impl Into<String>,
+    ) -> Self {
+        self.transport = transport;
+        self.base_url = base_url.into().trim_end_matches('/').to_owned();
         self
     }
 
@@ -46,6 +75,19 @@ impl RemoteModuleConfig {
             config.base_url = format!("{}/modules/{module_name}", self.base_url);
         }
         config
+    }
+
+    /// Matches the canonical manifest identity to this legacy runtime source.
+    ///
+    /// Standalone remote sources predate fully-qualified Module IDs, so their
+    /// host-local source key remains a path-safe slug. Service-provided modules
+    /// use their full Module ID as the source key and therefore match exactly.
+    #[must_use]
+    pub fn matches_module_id(&self, module_id: &str) -> bool {
+        self.name == module_id
+            || module_id
+                .rsplit_once('/')
+                .is_some_and(|(_, slug)| slug == self.name)
     }
 }
 
