@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use platform_core::{ActorContext, TraceContext};
 use platform_module::{AdminPage, ModuleManifest};
 use serde::{Deserialize, Serialize};
@@ -128,9 +129,45 @@ pub struct ProviderOutcome {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderHostEffectBatch {
     #[serde(default)]
-    pub events: Vec<Value>,
+    pub events: Vec<ProviderHostEventEffect>,
     #[serde(default)]
-    pub runtime_function_requests: Vec<Value>,
+    pub runtime_function_requests: Vec<ProviderHostRuntimeFunctionRequest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderHostEventEffect {
+    pub event_id: String,
+    pub event_name: String,
+    pub event_version: u16,
+    pub source_module: String,
+    pub aggregate_type: String,
+    pub aggregate_id: String,
+    pub correlation_id: String,
+    #[serde(default)]
+    pub causation_id: Option<String>,
+    pub occurred_at: DateTime<Utc>,
+    pub payload: Value,
+    #[serde(default)]
+    pub headers: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderHostRuntimeFunctionRequest {
+    pub request_id: String,
+    pub function_name: String,
+    pub input: Value,
+    pub correlation_id: String,
+    pub actor: ActorContext,
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    #[serde(default)]
+    pub trace: TraceContext,
+    #[serde(default)]
+    pub causation_id: Option<String>,
+    #[serde(default)]
+    pub max_attempts: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

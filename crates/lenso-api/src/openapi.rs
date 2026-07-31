@@ -47,7 +47,9 @@ pub(crate) fn api_router_for_profile(profile: CompositionProfile) -> ApiOpenApiR
         &lenso_bootstrap::HostComposition::default(),
     ))
     .merge(base_router());
-    lenso_bootstrap::merge_linked_http_for_profile(base, profile).merge(platform_provider::router())
+    lenso_bootstrap::merge_linked_http_for_profile(base, profile)
+        .merge(crate::console_bridge::router())
+        .merge(platform_provider::router())
 }
 
 pub(crate) fn api_router_for_context_with_composition(
@@ -62,6 +64,7 @@ pub(crate) fn api_router_for_context_with_composition(
     .merge(base_router());
     Ok(
         lenso_bootstrap::merge_linked_http_for_context_with_composition(base, ctx, composition)?
+            .merge(crate::console_bridge::router())
             .merge(platform_provider::router()),
     )
 }

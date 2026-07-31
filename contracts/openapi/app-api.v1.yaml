@@ -55,6 +55,61 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /modules/{module}/http/console-bridge/{permission}:
+    post:
+      tags:
+      - module-console-bridge
+      operationId: invoke_module_console_bridge
+      parameters:
+      - name: module
+        in: path
+        description: Module identity
+        required: true
+        schema:
+          type: string
+      - name: permission
+        in: path
+        description: Exact composition grant
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsoleBridgeRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsoleBridgeResponse'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /modules/{module}/http/{*path}:
     get:
       tags:
@@ -1240,6 +1295,105 @@ components:
           type:
           - string
           - 'null'
+    ConsoleBridgeOperation:
+      oneOf:
+      - type: object
+        required:
+        - entity
+        - operation
+        properties:
+          cursor:
+            type:
+            - string
+            - 'null'
+          entity:
+            type: string
+          limit:
+            type: integer
+            format: int64
+          operation:
+            type: string
+            enum:
+            - admin_data_list
+      - type: object
+        required:
+        - action
+        - operation
+        properties:
+          action:
+            type: string
+          input: {}
+          operation:
+            type: string
+            enum:
+            - admin_action_invoke
+      - type: object
+        required:
+        - operation
+        properties:
+          operation:
+            type: string
+            enum:
+            - config_values
+      - type: object
+        required:
+        - service
+        - key
+        - value
+        - operation
+        properties:
+          key:
+            type: string
+          operation:
+            type: string
+            enum:
+            - config_write
+          service:
+            type: string
+          value: {}
+      - type: object
+        required:
+        - target
+        - operation
+        properties:
+          context: {}
+          operation:
+            type: string
+            enum:
+            - contributions_resolve
+          target:
+            type: string
+      - type: object
+        required:
+        - operation
+        properties:
+          operation:
+            type: string
+            enum:
+            - modules_metadata
+    ConsoleBridgeRequest:
+      type: object
+      required:
+      - moduleReleaseDigest
+      - uiArtifactDigest
+      - permission
+      - payload
+      properties:
+        moduleReleaseDigest:
+          type: string
+        payload:
+          $ref: '#/components/schemas/ConsoleBridgeOperation'
+        permission:
+          type: string
+        uiArtifactDigest:
+          type: string
+      additionalProperties: false
+    ConsoleBridgeResponse:
+      type: object
+      required:
+      - data
+      properties:
+        data: {}
     CreateDevSessionRequest:
       type: object
       required:

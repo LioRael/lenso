@@ -1,3 +1,4 @@
+use crate::ProviderHostEffectCoordinator;
 use crate::config::ProviderConfig;
 use crate::invocation::{self, InvocationContext};
 use crate::protocol::{
@@ -23,6 +24,7 @@ pub struct ProviderEventHandler {
     handler_name: String,
     event_name: String,
     action_runner: Arc<dyn ProviderEventActionRunner>,
+    effects: ProviderHostEffectCoordinator,
 }
 
 impl ProviderEventHandler {
@@ -30,6 +32,7 @@ impl ProviderEventHandler {
         config: ProviderConfig,
         handler_name: impl Into<String>,
         event_name: impl Into<String>,
+        effects: ProviderHostEffectCoordinator,
     ) -> AppResult<Self> {
         let handler_name = handler_name.into();
         let event_name = event_name.into();
@@ -50,6 +53,7 @@ impl ProviderEventHandler {
             handler_name,
             event_name,
             action_runner: Arc::new(RejectingProviderEventActionRunner),
+            effects,
         })
     }
 
@@ -99,8 +103,14 @@ impl ProviderEventHandler {
                 )
             })?,
         )?;
-        let outcome =
-            invocation::send(&self.client, &self.config, "events:handle", &invocation).await?;
+        let outcome = invocation::send(
+            &self.client,
+            &self.config,
+            &self.effects,
+            "events:handle",
+            &invocation,
+        )
+        .await?;
         let value = invocation::result(&invocation, outcome)?;
         let response: ProviderEventHandleResponse = if value.is_null() {
             ProviderEventHandleResponse::default()

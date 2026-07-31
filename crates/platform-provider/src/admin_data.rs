@@ -1,3 +1,4 @@
+use crate::ProviderHostEffectCoordinator;
 use crate::config::ProviderConfig;
 use crate::invocation::{self, InvocationContext};
 use crate::protocol::{
@@ -14,6 +15,7 @@ use std::time::Duration;
 pub struct ProviderAdminDataSource {
     client: reqwest::Client,
     config: ProviderConfig,
+    effects: ProviderHostEffectCoordinator,
 }
 
 impl ProviderAdminDataSource {
@@ -27,7 +29,17 @@ impl ProviderAdminDataSource {
                     format!("failed to build Provider Service client: {error}"),
                 )
             })?;
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            effects: ProviderHostEffectCoordinator::rejecting(),
+        })
+    }
+
+    #[must_use]
+    pub fn with_effect_coordinator(mut self, effects: ProviderHostEffectCoordinator) -> Self {
+        self.effects = effects;
+        self
     }
 
     async fn invoke<T: serde::de::DeserializeOwned>(
@@ -55,7 +67,14 @@ impl ProviderAdminDataSource {
             },
             payload,
         )?;
-        let outcome = invocation::send(&self.client, &self.config, binding, &invocation).await?;
+        let outcome = invocation::send(
+            &self.client,
+            &self.config,
+            &self.effects,
+            binding,
+            &invocation,
+        )
+        .await?;
         serde_json::from_value(invocation::result(&invocation, outcome)?).map_err(|error| {
             AppError::new(
                 ErrorCode::ExternalDependency,

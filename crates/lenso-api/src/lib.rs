@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
+mod console_bridge;
 pub mod openapi;
 
 pub use openapi::openapi_document;
@@ -49,6 +50,7 @@ pub async fn run_from_env_with_composition(
     let provider_plan = lenso_bootstrap::provider_runtime_plan_from_workspace(".")
         .context("failed to compile Provider Runtime Plan")?;
     if let Some(provider_runtime) = lenso_bootstrap::load_provider_runtime_with_composition(
+        &ctx,
         &composition,
         provider_plan.as_ref(),
     )
@@ -103,6 +105,9 @@ pub fn try_build_router_with_composition(
         ctx = ctx.with_actor_resolver(actor_resolver);
     }
     let host_wiring = lenso_bootstrap::host_wiring_for_context_with_composition(&ctx, composition)?;
+    let console_bridge = console_bridge::ConsoleBridgeRegistry::from_modules(
+        lenso_bootstrap::modules_for_config_with_composition(&ctx, composition)?,
+    );
     let (router, mut document) =
         openapi::api_router_for_context_with_composition(&ctx, composition)?.split_for_parts();
     openapi::normalize_error_response_content_types(&mut document);
@@ -112,6 +117,7 @@ pub fn try_build_router_with_composition(
         .route("/docs", axum::routing::get(scalar_docs))
         .route("/openapi.json", axum::routing::get(serve_openapi))
         .layer(axum::Extension(document))
+        .layer(axum::Extension(console_bridge))
         .layer(axum::Extension(host_wiring.auth_session_policy()))
         .layer(middleware::from_fn_with_state(
             ctx.clone(),

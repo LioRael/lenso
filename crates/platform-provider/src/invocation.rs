@@ -1,7 +1,7 @@
 use crate::{
-    PROVIDER_PROTOCOL, ProviderConfig, ProviderErrorBody, ProviderInvocation,
-    ProviderInvocationAcknowledgement, ProviderInvocationMode, ProviderOperationKind,
-    ProviderOutcome, ProviderOutcomeStatus, ProviderTransport,
+    PROVIDER_PROTOCOL, ProviderConfig, ProviderErrorBody, ProviderHostEffectCoordinator,
+    ProviderInvocation, ProviderInvocationAcknowledgement, ProviderInvocationMode,
+    ProviderOperationKind, ProviderOutcome, ProviderOutcomeStatus, ProviderTransport,
 };
 use platform_core::{ActorContext, AppError, AppResult, ErrorCode, TraceContext};
 use serde_json::Value;
@@ -85,6 +85,7 @@ pub(crate) fn build(
 pub(crate) async fn send(
     client: &reqwest::Client,
     config: &ProviderConfig,
+    effects: &ProviderHostEffectCoordinator,
     binding: &str,
     invocation: &ProviderInvocation,
 ) -> AppResult<ProviderOutcome> {
@@ -93,7 +94,7 @@ pub(crate) async fn send(
             Ok(outcome) => outcome,
             Err(_) => crate::grpc::get_invocation(config, &invocation.invocation_id).await?,
         };
-        return finalize(client, config, invocation, outcome).await;
+        return finalize(client, config, effects, invocation, outcome).await;
     }
     let url = format!(
         "{}/exports/{}/{}",
@@ -107,7 +108,7 @@ pub(crate) async fn send(
         Ok(response) => response,
         Err(_) => {
             let outcome = get_http_invocation(client, config, &invocation.invocation_id).await?;
-            return finalize(client, config, invocation, outcome).await;
+            return finalize(client, config, effects, invocation, outcome).await;
         }
     };
     let status = response.status();
@@ -136,7 +137,7 @@ pub(crate) async fn send(
             format!("Provider outcome was invalid: {error}"),
         )
     })?;
-    finalize(client, config, invocation, outcome).await
+    finalize(client, config, effects, invocation, outcome).await
 }
 
 async fn get_http_invocation(
@@ -180,18 +181,14 @@ async fn get_http_invocation(
 async fn finalize(
     client: &reqwest::Client,
     config: &ProviderConfig,
+    effects: &ProviderHostEffectCoordinator,
     invocation: &ProviderInvocation,
     outcome: ProviderOutcome,
 ) -> AppResult<ProviderOutcome> {
     let outcome = validate_outcome(invocation, outcome)?;
-    if !outcome.host_effects.events.is_empty()
-        || !outcome.host_effects.runtime_function_requests.is_empty()
-    {
-        return Err(AppError::new(
-            ErrorCode::ExternalDependency,
-            "Provider outcome contains Host effects but no durable Host effect coordinator is configured",
-        ));
-    }
+    let has_host_effects = !outcome.host_effects.events.is_empty()
+        || !outcome.host_effects.runtime_function_requests.is_empty();
+    effects.commit(config, invocation, &outcome).await?;
     let acknowledgement = ProviderInvocationAcknowledgement {
         invocation_id: outcome.invocation_id.clone(),
         outcome_digest: outcome.outcome_digest.clone(),
@@ -224,6 +221,14 @@ async fn finalize(
                     format!("Provider invocation acknowledgement was rejected: {error}"),
                 )
             })?;
+    }
+    if has_host_effects {
+        effects
+            .mark_acknowledged(
+                &acknowledgement.invocation_id,
+                &acknowledgement.outcome_digest,
+            )
+            .await?;
     }
     Ok(outcome)
 }

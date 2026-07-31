@@ -595,13 +595,14 @@ pub async fn load_modules_with_composition_and_provider_plan(
     plan: Option<&lenso_module_management::ProviderRuntimePlan>,
 ) -> platform_core::AppResult<Vec<Module>> {
     let mut loaded = modules_for_config_with_composition(ctx, composition)?;
-    if let Some(runtime) = load_provider_runtime_with_composition(composition, plan).await? {
+    if let Some(runtime) = load_provider_runtime_with_composition(ctx, composition, plan).await? {
         loaded.extend(runtime.into_modules());
     }
     Ok(loaded)
 }
 
 pub async fn load_provider_runtime_with_composition(
+    ctx: &AppContext,
     composition: &HostComposition,
     plan: Option<&lenso_module_management::ProviderRuntimePlan>,
 ) -> platform_core::AppResult<Option<platform_provider::LoadedProviderRuntime>> {
@@ -612,6 +613,9 @@ pub async fn load_provider_runtime_with_composition(
         plan.clone(),
         composition.provider_runtime_adapters.clone(),
     )?
+    .with_effect_coordinator(platform_provider::ProviderHostEffectCoordinator::new(
+        ctx.db.clone(),
+    ))
     .load_verified()
     .await
     .map(Some)

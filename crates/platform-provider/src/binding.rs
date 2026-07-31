@@ -1,3 +1,4 @@
+use crate::ProviderHostEffectCoordinator;
 use crate::config::ProviderConfig;
 use crate::event::{
     ProviderEventHandler, ProviderEventHostActionRunner, validate_event_handler_name,
@@ -17,6 +18,7 @@ pub struct ProviderBinding {
     config: Option<ProviderConfig>,
     functions: Vec<FunctionDefinition>,
     event_handlers: Vec<ProviderEventHandlerRegistration>,
+    effects: Option<ProviderHostEffectCoordinator>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +32,20 @@ impl ProviderBinding {
         config: ProviderConfig,
         runtime: Option<&RuntimeSurface>,
         events: Option<&EventSurface>,
+    ) -> AppResult<Self> {
+        Self::from_surfaces_with_effects(
+            config,
+            runtime,
+            events,
+            ProviderHostEffectCoordinator::rejecting(),
+        )
+    }
+
+    pub fn from_surfaces_with_effects(
+        config: ProviderConfig,
+        runtime: Option<&RuntimeSurface>,
+        events: Option<&EventSurface>,
+        effects: ProviderHostEffectCoordinator,
     ) -> AppResult<Self> {
         let functions = runtime
             .into_iter()
@@ -53,6 +69,7 @@ impl ProviderBinding {
                     handler: Arc::new(ProviderRuntimeFunction::new(
                         config.clone(),
                         declaration.name.clone(),
+                        effects.clone(),
                     )?),
                 })
             })
@@ -75,6 +92,7 @@ impl ProviderBinding {
             config: Some(config),
             functions,
             event_handlers,
+            effects: Some(effects),
         })
     }
 }
@@ -91,7 +109,7 @@ impl ModuleBinding for ProviderBinding {
         registry: &mut EventHandlerRegistry,
         context: &EventHandlerRegistrationContext,
     ) {
-        let Some(config) = &self.config else {
+        let (Some(config), Some(effects)) = (&self.config, &self.effects) else {
             return;
         };
         let allowed_function_names = self
@@ -105,6 +123,7 @@ impl ModuleBinding for ProviderBinding {
                 config.clone(),
                 declaration.name.clone(),
                 declaration.event_name.clone(),
+                effects.clone(),
             )
             .expect("provider event handler declaration was validated");
 

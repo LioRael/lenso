@@ -1,3 +1,4 @@
+use crate::ProviderHostEffectCoordinator;
 use crate::config::ProviderConfig;
 use crate::invocation::{self, InvocationContext};
 use crate::protocol::{
@@ -13,6 +14,7 @@ use std::time::Duration;
 pub struct ProviderAdminActionSource {
     client: reqwest::Client,
     config: ProviderConfig,
+    effects: ProviderHostEffectCoordinator,
 }
 
 impl ProviderAdminActionSource {
@@ -26,7 +28,17 @@ impl ProviderAdminActionSource {
                     format!("failed to build Provider Service client: {error}"),
                 )
             })?;
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            effects: ProviderHostEffectCoordinator::rejecting(),
+        })
+    }
+
+    #[must_use]
+    pub fn with_effect_coordinator(mut self, effects: ProviderHostEffectCoordinator) -> Self {
+        self.effects = effects;
+        self
     }
 }
 
@@ -56,8 +68,14 @@ impl AdminActionSource for ProviderAdminActionSource {
             })
             .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
         )?;
-        let outcome =
-            invocation::send(&self.client, &self.config, "admin:act", &invocation).await?;
+        let outcome = invocation::send(
+            &self.client,
+            &self.config,
+            &self.effects,
+            "admin:act",
+            &invocation,
+        )
+        .await?;
         let envelope: ProviderActionInvokeResponse =
             serde_json::from_value(invocation::result(&invocation, outcome)?).map_err(|error| {
                 AppError::new(

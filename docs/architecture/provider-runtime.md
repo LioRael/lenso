@@ -9,8 +9,10 @@ common invocation/outcome envelope across HTTP, schema reads, admin actions,
 runtime functions, and Event handlers. The Host verifies Service Release,
 Module Release, Manifest, export, and contract digests before activating an
 export; timeout recovery uses the durable invocation identity and outcome
-acknowledgement. Outcomes that request Host effects fail closed until the Host
-effect coordinator can commit those effects atomically before acknowledgement.
+acknowledgement. The Host effect coordinator commits validated Events, Runtime
+Function requests, and the invocation receipt in one Host Store transaction
+before acknowledgement. Recovered outcomes reuse the committed digest and
+cannot rebind an invocation identity to different effects.
 
 Runtime behavior remains Host-owned: the host
 must continue to own durable queues, retry policy, Runtime Story semantics, and

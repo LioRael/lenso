@@ -1,3 +1,4 @@
+use crate::ProviderHostEffectCoordinator;
 use crate::config::ProviderConfig;
 use crate::invocation::{self, InvocationContext};
 use crate::protocol::{ProviderFunctionInvokeRequest, ProviderFunctionInvokeResponse};
@@ -13,10 +14,15 @@ pub struct ProviderRuntimeFunction {
     client: reqwest::Client,
     config: ProviderConfig,
     function_name: String,
+    effects: ProviderHostEffectCoordinator,
 }
 
 impl ProviderRuntimeFunction {
-    pub fn new(config: ProviderConfig, function_name: impl Into<String>) -> AppResult<Self> {
+    pub fn new(
+        config: ProviderConfig,
+        function_name: impl Into<String>,
+        effects: ProviderHostEffectCoordinator,
+    ) -> AppResult<Self> {
         let function_name = function_name.into();
         validate_function_name(&function_name)?;
         let client = reqwest::Client::builder()
@@ -32,6 +38,7 @@ impl ProviderRuntimeFunction {
             client,
             config,
             function_name,
+            effects,
         })
     }
 
@@ -70,8 +77,14 @@ impl ProviderRuntimeFunction {
                 )
             })?,
         )?;
-        let outcome =
-            invocation::send(&self.client, &self.config, "runtime:invoke", &invocation).await?;
+        let outcome = invocation::send(
+            &self.client,
+            &self.config,
+            &self.effects,
+            "runtime:invoke",
+            &invocation,
+        )
+        .await?;
         let value = invocation::result(&invocation, outcome)?;
         let response: ProviderFunctionInvokeResponse =
             serde_json::from_value(value).map_err(|error| {

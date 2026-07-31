@@ -1,4 +1,7 @@
-use crate::{ProviderConfig, ProviderHttpProxyRegistry, ProviderSource, ProviderTransport};
+use crate::{
+    ProviderConfig, ProviderHostEffectCoordinator, ProviderHttpProxyRegistry, ProviderSource,
+    ProviderTransport,
+};
 use async_trait::async_trait;
 use lenso_module_management::{
     EndpointResolverSource, PROVIDER_RUNTIME_PLAN_PROTOCOL, ProviderRuntimeModule,
@@ -120,6 +123,7 @@ impl ProviderCredentialResolver for EnvironmentBearerCredentialResolver {
 pub struct ProviderRuntimeAdapter {
     plan: ProviderRuntimePlan,
     adapters: ProviderRuntimeAdapters,
+    effects: ProviderHostEffectCoordinator,
 }
 
 #[derive(Debug)]
@@ -139,6 +143,7 @@ impl ProviderRuntimeAdapter {
         Ok(Self {
             plan,
             adapters: ProviderRuntimeAdapters::production_defaults(),
+            effects: ProviderHostEffectCoordinator::rejecting(),
         })
     }
 
@@ -149,6 +154,12 @@ impl ProviderRuntimeAdapter {
         let mut runtime = Self::new(plan)?;
         runtime.adapters = adapters;
         Ok(runtime)
+    }
+
+    #[must_use]
+    pub fn with_effect_coordinator(mut self, effects: ProviderHostEffectCoordinator) -> Self {
+        self.effects = effects;
+        self
     }
 
     pub async fn load_verified(self) -> AppResult<LoadedProviderRuntime> {
@@ -166,6 +177,7 @@ impl ProviderRuntimeAdapter {
                     bearer.as_deref(),
                 );
                 let loaded = ProviderSource::new(config)?
+                    .with_effect_coordinator(self.effects.clone())
                     .load_locked(
                         &provider.service_ref.service_id,
                         &provider.service_release.version,
@@ -388,6 +400,14 @@ fn module_config(
             &locked.module_release_digest,
             &locked.manifest_digest,
             locked.contract_digests.clone(),
+        )
+        .with_allowed_host_functions(
+            locked
+                .manifest
+                .runtime
+                .iter()
+                .flat_map(|runtime| runtime.functions.iter())
+                .map(|function| function.name.clone()),
         );
     match bearer {
         Some(bearer) => config.with_auth_token(bearer),

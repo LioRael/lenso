@@ -10,6 +10,7 @@ pub struct ProviderConfig {
     pub(crate) module_release_digest: Option<String>,
     pub(crate) manifest_digest: Option<String>,
     pub(crate) contract_digests: Vec<String>,
+    pub(crate) allowed_host_function_names: Vec<String>,
 }
 
 impl std::fmt::Debug for ProviderConfig {
@@ -48,6 +49,7 @@ impl ProviderConfig {
             module_release_digest: None,
             manifest_digest: None,
             contract_digests: Vec::new(),
+            allowed_host_function_names: Vec::new(),
         }
     }
 
@@ -97,6 +99,17 @@ impl ProviderConfig {
         self.module_release_digest = Some(module_release_digest.into());
         self.manifest_digest = Some(manifest_digest.into());
         self.contract_digests = contract_digests;
+        self
+    }
+
+    #[must_use]
+    pub(crate) fn with_allowed_host_functions(
+        mut self,
+        function_names: impl IntoIterator<Item = String>,
+    ) -> Self {
+        self.allowed_host_function_names = function_names.into_iter().collect();
+        self.allowed_host_function_names.sort();
+        self.allowed_host_function_names.dedup();
         self
     }
 

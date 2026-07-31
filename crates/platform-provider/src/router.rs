@@ -524,9 +524,16 @@ async fn forward_provider_invocation(
                 request_ctx,
             )
         })?;
-    let outcome = invocation::send(&client, &matched.config, "http:invoke", &invocation)
-        .await
-        .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
+    let effects = crate::ProviderHostEffectCoordinator::new(request.ctx.db.clone());
+    let outcome = invocation::send(
+        &client,
+        &matched.config,
+        &effects,
+        "http:invoke",
+        &invocation,
+    )
+    .await
+    .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
     let value = invocation::result(&invocation, outcome)
         .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
     let response: ProviderHttpProxyInvokeResponse =

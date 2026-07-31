@@ -7,6 +7,7 @@ mod admin_action;
 mod admin_data;
 mod binding;
 mod config;
+mod effects;
 mod event;
 mod grpc;
 mod invocation;
@@ -24,13 +25,15 @@ pub use admin_action::ProviderAdminActionSource;
 pub use admin_data::ProviderAdminDataSource;
 pub use binding::ProviderBinding;
 pub use config::{ProviderConfig, ProviderTransport};
+pub use effects::ProviderHostEffectCoordinator;
 pub use event::{ProviderEventHandler, ProviderEventHostActionRunner};
 pub use protocol::{
     PROVIDER_PROTOCOL, ProviderDescriptor, ProviderErrorBody, ProviderErrorDetail,
     ProviderErrorEnvelope, ProviderExport, ProviderExportHealth, ProviderHealth,
-    ProviderHostEffectBatch, ProviderInvocation, ProviderInvocationAcknowledgement,
-    ProviderInvocationMode, ProviderInvocationReference, ProviderManifestResponse,
-    ProviderOperationKind, ProviderOutcome, ProviderOutcomeStatus, ProviderTransportBinding,
+    ProviderHostEffectBatch, ProviderHostEventEffect, ProviderHostRuntimeFunctionRequest,
+    ProviderInvocation, ProviderInvocationAcknowledgement, ProviderInvocationMode,
+    ProviderInvocationReference, ProviderManifestResponse, ProviderOperationKind, ProviderOutcome,
+    ProviderOutcomeStatus, ProviderTransportBinding,
 };
 pub use provider_runtime::{
     BEARER_ENV_TRUST_PROFILE, EnvironmentBearerCredentialResolver, FixedBearerCredentialResolver,

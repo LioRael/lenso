@@ -1,3 +1,4 @@
+use crate::ProviderHostEffectCoordinator;
 use crate::admin_action::ProviderAdminActionSource;
 use crate::admin_data::ProviderAdminDataSource;
 use crate::binding::ProviderBinding;
@@ -19,6 +20,7 @@ use std::time::Duration;
 pub struct ProviderSource {
     client: reqwest::Client,
     config: ProviderConfig,
+    effects: ProviderHostEffectCoordinator,
 }
 
 #[derive(Debug)]
@@ -38,7 +40,17 @@ impl ProviderSource {
                     format!("failed to build Provider Service client: {error}"),
                 )
             })?;
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            effects: ProviderHostEffectCoordinator::rejecting(),
+        })
+    }
+
+    #[must_use]
+    pub fn with_effect_coordinator(mut self, effects: ProviderHostEffectCoordinator) -> Self {
+        self.effects = effects;
+        self
     }
 
     /// Verifies the live Provider descriptor against a locked Manifest, then
@@ -112,10 +124,11 @@ impl ProviderSource {
         config: ProviderConfig,
     ) -> AppResult<LoadedProvider> {
         validate_provider_http_routes(&manifest.http_routes)?;
-        let binding = ProviderBinding::from_surfaces(
+        let binding = ProviderBinding::from_surfaces_with_effects(
             config.clone(),
             manifest.runtime.as_ref(),
             manifest.events.as_ref(),
+            self.effects.clone(),
         )?;
 
         let has_admin_data = match &manifest.admin {
@@ -133,16 +146,22 @@ impl ProviderSource {
         );
         let mut module = Module::service(manifest, Arc::new(binding));
         if has_admin_data {
-            module =
-                module.with_admin_data(Arc::new(ProviderAdminDataSource::new(config.clone())?));
+            module = module.with_admin_data(Arc::new(
+                ProviderAdminDataSource::new(config.clone())?
+                    .with_effect_coordinator(self.effects.clone()),
+            ));
         }
         if has_admin_actions {
-            module = module
-                .with_admin_actions(Arc::new(ProviderAdminActionSource::new(config.clone())?));
+            module = module.with_admin_actions(Arc::new(
+                ProviderAdminActionSource::new(config.clone())?
+                    .with_effect_coordinator(self.effects.clone()),
+            ));
         }
         if has_admin_queries {
-            module =
-                module.with_admin_queries(Arc::new(ProviderAdminDataSource::new(config.clone())?));
+            module = module.with_admin_queries(Arc::new(
+                ProviderAdminDataSource::new(config.clone())?
+                    .with_effect_coordinator(self.effects.clone()),
+            ));
         }
         Ok(LoadedProvider { module, config })
     }
