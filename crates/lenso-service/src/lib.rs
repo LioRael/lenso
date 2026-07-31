@@ -261,10 +261,14 @@ pub const SERVICE_WORKSPACE_SCHEMA_JSON: &str =
 pub const SERVICE_SYSTEM_SCHEMA_JSON: &str = include_str!("../schemas/lenso-system.v1.schema.json");
 pub const SYSTEM_V2_CONTRACT_SCHEMA_JSON: &str =
     include_str!("../schemas/lenso-system.v2.schema.json");
-pub const MODULE_MANIFEST_SCHEMA_JSON: &str =
-    include_str!("../../../contracts/modules/lenso.module-manifest.v1.schema.json");
-pub const MODULE_RELEASE_SCHEMA_JSON: &str =
-    include_str!("../../../contracts/modules/lenso.module-release.v1.schema.json");
+pub const MODULE_MANIFEST_SCHEMA_JSON: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/lenso.module-manifest.v1.schema.json"
+));
+pub const MODULE_RELEASE_SCHEMA_JSON: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/lenso.module-release.v1.schema.json"
+));
 pub const LEGACY_SERVICE_V1_FIXTURE_JSON: &str =
     include_str!("../fixtures/contracts/v1/service-provider.json");
 pub const LEGACY_SYSTEM_V1_FIXTURE_JSON: &str =
