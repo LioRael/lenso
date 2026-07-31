@@ -207,7 +207,7 @@ shape:
     },
     "commands": [
       {
-        "command": "pnpm --dir ../lenso-runtime-console install",
+        "command": "pnpm --dir ../lenso-console install",
         "cwd": "."
       }
     ],
@@ -406,10 +406,10 @@ files and evidence; catalog records and manifests cannot directly write the
 host environment, launch processes, install npm packages, or compile code into
 the official Runtime Console bundle.
 
-`pnpm demo:remote-module-install` in the `lenso-runtime-console` repository runs
+`pnpm demo:remote-module-install` in the `lenso-console` repository runs
 the same flow against a temporary host fixture without mutating the working tree.
 The operator-facing walkthrough lives in
-`lenso-runtime-console/docs/remote-module-install-flow.md`.
+`lenso-console/docs/remote-module-install-flow.md`.
 
 The plan file is intentionally ignored by git. It is an operator/developer
 handoff artifact, not a trust database.

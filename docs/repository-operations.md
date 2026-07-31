@@ -11,15 +11,16 @@ Keep the backend and Runtime Console checked out as siblings:
 ```text
 framework/
   lenso/
-  lenso-runtime-console/
+  lenso-console/
 ```
 
 - Backend: `LioRael/lenso`
-- Runtime Console: `LioRael/lenso-runtime-console`
+- Lenso Console: `LioRael/lenso-console`
 
-The Runtime Console repository owns the React/Vite frontend. This backend
-repository owns the `/admin/runtime/*`, `/admin/data/*`, module manifest, and
-contract surfaces that the Console consumes.
+The Lenso Console repository owns the React/Vite frontend, deployable Console
+Service backend, Console extensions, and service SDKs. This framework
+repository owns public contracts, module manifests, and the compatible Host
+admin APIs consumed by the Console.
 
 ## Branch Protection
 
@@ -57,7 +58,7 @@ against the backend admin API contracts and fixtures.
 
 The cross-repository checkout is configured with:
 
-- Backend deploy key: `lenso-runtime-console CI read key`
+- Backend deploy key: the read-only Console CI key
 - Backend deploy key mode: read-only
 - Runtime Console secret: `LENSO_REPO_DEPLOY_KEY`
 
@@ -90,7 +91,7 @@ somewhere else.
 
 When moving the Lenso repositories to a new owner or recreating one of them:
 
-1. Push `lenso`, `lenso-runtime-console`, and `lenso-cli`, and keep them as private repos unless intentionally publishing them.
+1. Push `lenso`, `lenso-console`, and `lenso-cli`, and keep them as private repos unless intentionally publishing them.
 2. Reapply `main` branch protection in each repository.
 3. Verify the required check name is still `quality`.
 4. Recreate the Runtime Console read-only backend deploy key.

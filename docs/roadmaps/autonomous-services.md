@@ -424,7 +424,7 @@ the repository that owns the contract or runtime behavior.
 | --- | --- |
 | `lenso` | Core contracts, Autonomous Service runtime, context, Store/Outbox/Inbox primitives, Workflow semantics, Story Segments, admin APIs, architecture checks |
 | `lenso-cli` | Service/System manifests, System Sandbox, extraction plans, compatibility checks, releases, Policy Packs, deployment and Gateway generation |
-| `lenso-runtime-console` | Federated topology, Stories, workflows, communication evidence, contracts, config, policies, reliability, release and Cutover UI |
+| `lenso-console` | Federated topology, Stories, workflows, communication evidence, contracts, config, policies, reliability, release and Cutover UI |
 | `lenso-examples` | Support tracer bullet, Failure Scenarios, extraction smoke, production-adapter fixtures, fresh-starter proof |
 | `lenso-auth-module` | Actor/session integration needed to issue bounded Delegated Actor Context; not Workload Identity infrastructure |
 | `lenso-organization-module` | Tenant lifecycle and membership; not Tenant Context propagation in platform core |

@@ -2,7 +2,7 @@
 
 Thanks for contributing. Lenso is a Rust-first modular monolith backend.
 Runtime Console source lives in the sibling
-`lenso-runtime-console` repository. This guide covers the backend workflow,
+`lenso-console` repository. This guide covers the backend workflow,
 conventions, and quality gates for changes. For deeper context, read
 [`README.md`](README.md), [`AGENTS.md`](AGENTS.md),
 [`docs/architecture/overview.md`](docs/architecture/overview.md), and
@@ -12,7 +12,7 @@ conventions, and quality gates for changes. For deeper context, read
 
 - Rust toolchain compatible with the workspace (`rust-version = 1.94`).
 - [`just`](https://github.com/casey/just) as the root task runner.
-- The sibling `../lenso-runtime-console` checkout for Runtime Console work.
+- The sibling `../lenso-console` checkout for Runtime Console work.
 - Docker if you want local Postgres via `just db-up`.
 
 ## Development Workflow
@@ -84,7 +84,7 @@ regenerated output in the same commit.
 
 ## Runtime Console
 
-The console lives in the sibling `../lenso-runtime-console` repository. Backend
+The console lives in the sibling `../lenso-console` repository. Backend
 changes may still affect Console contracts through `/admin/runtime/*`,
 `/admin/data/*`, `ModuleManifest.console`, and generated OpenAPI output.
 When changing those contracts, update and verify the frontend repository in the

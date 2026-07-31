@@ -27,7 +27,7 @@ This gate intentionally excludes service smoke checks. Run those separately
 when validating a release candidate end to end. CLI starter checks live in the
 standalone `lenso-cli` repository.
 
-Runtime Console checks run in the sibling `lenso-runtime-console` repository.
+Runtime Console checks run in the sibling `lenso-console` repository.
 
 ## Package Gate
 
@@ -60,7 +60,7 @@ just first-user-smoke
 ```
 
 Verify Runtime Console and service package behavior in the sibling
-`lenso-runtime-console` repository.
+`lenso-console` repository.
 User-facing examples that install published packages live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
 
@@ -95,7 +95,7 @@ The first publishable scope is intentionally narrow:
 - Service-provided modules can declare schema-admin, HTTP routes, runtime
   functions, and lifecycle activation jobs.
 - Runtime Console integration is provided by the separate
-  `lenso-runtime-console` repository.
+  `lenso-console` repository.
 - Generated contracts are committed and reproducible.
 
 ## Non-Goals For The First Release
@@ -119,7 +119,7 @@ Before publishing, collect:
 
 - the commit SHA;
 - `just release-check` result;
-- the corresponding `lenso-runtime-console` check result, when publishing a
+- the corresponding `lenso-console` check result, when publishing a
   coordinated backend/frontend version;
 - generated artifact status from `just generated-check`;
 - any known local infrastructure caveats;

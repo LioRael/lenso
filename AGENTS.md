@@ -8,7 +8,7 @@ Do not infer production authority from repository write access or bypass the rev
 
 ## Project Shape
 
-Lenso is a Rust-first modular monolith backend. Runtime Console source lives in the sibling `../lenso-runtime-console` repository.
+Lenso is a Rust-first modular monolith backend. Runtime Console source lives in the sibling `../lenso-console` repository.
 
 - `crates/lenso-api`: Axum HTTP API.
 - `crates/lenso-worker`: background worker and outbox relay.
@@ -100,18 +100,18 @@ Claude Code project memory was imported into Codex on 2026-06-03. Keep these des
 
 ## Runtime Console Guidelines
 
-The Runtime Console is developed in the sibling `../lenso-runtime-console`
+The Runtime Console is developed in the sibling `../lenso-console`
 repository. This backend repository owns the admin APIs, generated contracts,
 and `ModuleManifest.console` declarations consumed by that frontend.
 
 - Keep backend `ModuleManifest.console` data aligned with the frontend package surface contracts.
-- Validate substantial frontend changes inside `../lenso-runtime-console`.
+- Validate substantial frontend changes inside `../lenso-console`.
 
 ## CI Expectations
 
 GitHub Actions runs `just ci` on pull requests and pushes to `main`.
 
-Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run `just ci`. For changes that affect Runtime Console behavior, also run the relevant checks in `../lenso-runtime-console`.
+Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run `just ci`. For changes that affect Runtime Console behavior, also run the relevant checks in `../lenso-console`.
 
 If a command fails because network access is blocked while installing dependencies, rerun the same command with the required approval rather than changing project files to work around the sandbox.
 

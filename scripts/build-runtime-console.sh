@@ -2,13 +2,13 @@
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-console_root=${RUNTIME_CONSOLE_ROOT:-"$repo_root/../lenso-runtime-console"}
+console_root=${RUNTIME_CONSOLE_ROOT:-"$repo_root/../lenso-console"}
 dist_dir=${LENSO_CONSOLE_DIST_DIR:-"$repo_root/.lenso/console/dist"}
 extensions_dir=${LENSO_CONSOLE_EXTENSIONS_DIR:-"$repo_root/.lenso/console/extensions"}
 
 if [ ! -f "$console_root/package.json" ]; then
   echo "Runtime Console repo not found: $console_root" >&2
-  echo "Set RUNTIME_CONSOLE_ROOT=/path/to/lenso-runtime-console" >&2
+  echo "Set RUNTIME_CONSOLE_ROOT=/path/to/lenso-console" >&2
   exit 1
 fi
 

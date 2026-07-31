@@ -118,7 +118,7 @@ should provide:
 - stable request and response envelopes that match the host protocol.
 
 Examples must not depend on a sibling `file:` path into
-`../lenso-runtime-console`. Before examples move into an external repository,
+`../lenso-console`. Before examples move into an external repository,
 this package needs a clean build output, declarations, package metadata, and
 `pnpm pack --dry-run` coverage.
 

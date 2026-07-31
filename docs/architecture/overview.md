@@ -401,9 +401,10 @@ on NATS, Kafka, a service mesh, or broker-specific types.
 
 ## Runtime Console
 
-The Runtime Console is a Vite/React operator UI developed in the sibling
-`lenso-runtime-console` repository. It can run with local mock data or against
-this backend API.
+The Lenso Console product is developed in the sibling `lenso-console`
+repository. It contains the Vite/React operator UI and its independently
+deployable Console Service backend. The UI can run with local mock data or
+against the compatible Host APIs in this repository.
 
 The API exposes admin runtime endpoints under `/admin/runtime/*` for summaries, stories, story timeline items, heatmaps, outbox events, function runs, retries, execution payloads, and technical operations. Story timeline data is returned by the Runtime Story detail endpoint rather than a standalone timeline endpoint. These are served by the compatible `platform-admin` backend while Story ownership moves into `modules/story`; they use the same OpenAPI contract as the public linked-module APIs. Story display names are module-owned, so the composition root injects the aggregated catalog into `platform-admin` (via `install_story_display`) rather than having it depend on concrete modules.
 
