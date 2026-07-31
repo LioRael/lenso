@@ -1,0 +1,45 @@
+{
+  "name": "@lenso/service-kit",
+  "version": "0.1.1",
+  "description": "Helpers for building Lenso services that provide modules.",
+  "keywords": [
+    "backend",
+    "lenso",
+    "module",
+    "runtime-console",
+    "service"
+  ],
+  "homepage": "https://github.com/LioRael/lenso#readme",
+  "bugs": {
+    "url": "https://github.com/LioRael/lenso/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "sdk/typescript/packages/service-kit"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "pnpm clean && tsc -p tsconfig.build.json",
+    "prepack": "pnpm build"
+  }
+}
