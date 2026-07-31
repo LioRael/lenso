@@ -18,9 +18,6 @@
 //! When adding a module, register it in the appropriate profile entry lists and
 //! expose its config-aware loader contributions from this crate.
 
-use platform_admin_data::{
-    AdminModule, AdminModuleMetadata, AdminModuleSourceDiagnostics, AdminServiceProviderDiagnostics,
-};
 use platform_core::error::ErrorDetail;
 use platform_core::{
     ActorContext, AppContext, AppError, CorrelationId, ErrorCode, EventHandlerRegistry, Migration,
@@ -31,20 +28,33 @@ use platform_http::ApiOpenApiRouter;
 use platform_module::CronSchedule;
 pub use platform_module::HostLinkedModule;
 use platform_module::{
-    AdminSchema, AdminSurface, EventHandlerRegistrationContext, LifecycleActivationRunPolicy,
-    LifecycleStartupCheckKind, LinkedBinding, Module, ModuleHttpMethod, ModuleLoadStatus,
-    ModuleManifest, ModuleSource,
+    EventHandlerRegistrationContext, LifecycleActivationRunPolicy, LifecycleStartupCheckKind,
+    LinkedBinding, Module, ModuleHttpMethod, ModuleLoadStatus, ModuleManifest, ModuleSource,
 };
-use platform_module_remote::{
-    ProviderRuntimeAdapter, ProviderRuntimeAdapters, RemoteHttpProxyRegistry, RemoteModuleConfig,
-};
+use platform_provider::{ProviderRuntimeAdapter, ProviderRuntimeAdapters};
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
     ScheduledFunctionDefinition,
 };
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleBridgeGrantRequest {
+    pub module_id: String,
+    pub module_release_digest: String,
+    pub ui_artifact_digest: String,
+    pub permission: String,
+}
+
+#[async_trait::async_trait]
+pub trait ConsoleBridgeAuthority: std::fmt::Debug + Send + Sync {
+    async fn authorize(
+        &self,
+        ctx: &AppContext,
+        request: &ConsoleBridgeGrantRequest,
+    ) -> platform_core::AppResult<()>;
+}
 
 struct LinkedModuleEntry {
     module_name: &'static str,
@@ -64,6 +74,7 @@ const MODULES_CONFIG_GROUP: RuntimeConfigGroupDescriptor = RuntimeConfigGroupDes
 pub struct HostComposition {
     linked_modules: Vec<HostLinkedModule>,
     provider_runtime_adapters: ProviderRuntimeAdapters,
+    console_bridge_authority: Option<Arc<dyn ConsoleBridgeAuthority>>,
 }
 
 impl Default for HostComposition {
@@ -71,6 +82,7 @@ impl Default for HostComposition {
         Self {
             linked_modules: Vec::new(),
             provider_runtime_adapters: ProviderRuntimeAdapters::production_defaults(),
+            console_bridge_authority: None,
         }
     }
 }
@@ -105,6 +117,20 @@ impl HostComposition {
     #[must_use]
     pub fn provider_runtime_adapters(&self) -> &ProviderRuntimeAdapters {
         &self.provider_runtime_adapters
+    }
+
+    #[must_use]
+    pub fn with_console_bridge_authority(
+        mut self,
+        authority: Arc<dyn ConsoleBridgeAuthority>,
+    ) -> Self {
+        self.console_bridge_authority = Some(authority);
+        self
+    }
+
+    #[must_use]
+    pub fn console_bridge_authority(&self) -> Option<&Arc<dyn ConsoleBridgeAuthority>> {
+        self.console_bridge_authority.as_ref()
     }
 }
 
@@ -156,7 +182,7 @@ const CORE_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[LinkedModuleEntry {
     module_name: "platform-story",
     manifest: story::module::manifest,
     load: story::module::module,
-    http_binding: Some(story::module::binding),
+    http_binding: None,
 }];
 
 const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
@@ -212,7 +238,7 @@ const DEMO_LINKED_MODULE_ENTRIES: &[LinkedModuleEntry] = &[
         module_name: "platform-story",
         manifest: story::module::manifest,
         load: story::module::module,
-        http_binding: Some(story::module::binding),
+        http_binding: None,
     },
 ];
 
@@ -372,20 +398,6 @@ fn linked_module_with_dependencies_enabled_from_config(
         && first_disabled_dependency_from_config(config, manifest).is_none()
 }
 
-fn linked_module_disabled_reason(
-    ctx: &AppContext,
-    module_name: &str,
-    manifest: fn() -> ModuleManifest,
-) -> Option<String> {
-    if !linked_module_enabled(ctx, module_name) {
-        return Some("module disabled by configuration".to_owned());
-    }
-    if let Some(dependency) = first_disabled_dependency(ctx, manifest) {
-        return Some(format!("module dependency disabled: {dependency}"));
-    }
-    None
-}
-
 pub fn auth_actor_resolver_for_context(
     ctx: &AppContext,
 ) -> platform_core::AppResult<Option<Arc<dyn platform_core::ActorResolver>>> {
@@ -474,19 +486,6 @@ fn linked_module_entries_for_config(
     )
 }
 
-fn disabled_linked_module_entries_for_context(
-    ctx: &AppContext,
-) -> platform_core::AppResult<Vec<&'static LinkedModuleEntry>> {
-    Ok(
-        linked_module_entries(CompositionProfile::from_config(&ctx.config)?)
-            .iter()
-            .filter(|entry| {
-                linked_module_disabled_reason(ctx, entry.module_name, entry.manifest).is_some()
-            })
-            .collect(),
-    )
-}
-
 fn linked_profile_has_module(profile: CompositionProfile, module_name: &str) -> bool {
     linked_module_entries(profile)
         .iter()
@@ -528,18 +527,6 @@ fn host_linked_modules_for_context(
     host_linked_modules_not_in_profile(composition, profile)
         .filter(|entry| {
             linked_module_with_dependencies_enabled(ctx, entry.module_name, entry.manifest)
-        })
-        .collect()
-}
-
-fn disabled_host_linked_modules_for_context(
-    ctx: &AppContext,
-    composition: &HostComposition,
-    profile: CompositionProfile,
-) -> Vec<HostLinkedModule> {
-    host_linked_modules_not_in_profile(composition, profile)
-        .filter(|entry| {
-            linked_module_disabled_reason(ctx, entry.module_name, entry.manifest).is_some()
         })
         .collect()
 }
@@ -641,18 +628,30 @@ pub async fn load_modules_with_composition_and_provider_plan(
     plan: Option<&lenso_module_management::ProviderRuntimePlan>,
 ) -> platform_core::AppResult<Vec<Module>> {
     let mut loaded = modules_for_config_with_composition(ctx, composition)?;
-    if let Some(plan) = plan {
-        loaded.extend(
-            ProviderRuntimeAdapter::with_adapters(
-                plan.clone(),
-                composition.provider_runtime_adapters.clone(),
-            )?
-            .load_verified()
-            .await?
-            .into_modules(),
-        );
+    if let Some(runtime) = load_provider_runtime_with_composition(ctx, composition, plan).await? {
+        loaded.extend(runtime.into_modules());
     }
     Ok(loaded)
+}
+
+pub async fn load_provider_runtime_with_composition(
+    ctx: &AppContext,
+    composition: &HostComposition,
+    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
+) -> platform_core::AppResult<Option<platform_provider::LoadedProviderRuntime>> {
+    let Some(plan) = plan else {
+        return Ok(None);
+    };
+    ProviderRuntimeAdapter::with_adapters(
+        plan.clone(),
+        composition.provider_runtime_adapters.clone(),
+    )?
+    .with_effect_coordinator(platform_provider::ProviderHostEffectCoordinator::new(
+        ctx.db.clone(),
+    ))
+    .load_verified()
+    .await
+    .map(Some)
 }
 
 pub fn migrations_for_config(
@@ -891,29 +890,6 @@ pub fn linked_runtime_function_declaration_sources_for_context_with_composition(
     Ok(sources)
 }
 
-/// Runtime function declaration sources from loaded module metadata, including
-/// configured remote modules.
-#[must_use]
-pub fn runtime_function_declaration_sources_from_metadata(
-    modules: &[AdminModuleMetadata],
-) -> Vec<(
-    String,
-    ModuleSource,
-    Option<platform_module::RuntimeSurface>,
-)> {
-    modules
-        .iter()
-        .filter(|module| matches!(module.load_status, ModuleLoadStatus::Loaded))
-        .map(|module| {
-            (
-                module.module_name.clone(),
-                module.source,
-                module.runtime.clone(),
-            )
-        })
-        .collect()
-}
-
 /// Public HTTP path ownership for linked modules.
 ///
 /// Projected from context-free linked modules so OpenAPI guards and router
@@ -999,337 +975,6 @@ pub fn linked_http_modules_for_context_with_composition(
             }),
     );
     Ok(modules)
-}
-
-/// Aggregate admin-capable modules: those declaring an admin surface and
-/// providing either an `AdminDataSource` or an `AdminActionSource`. Modules
-/// without an admin behavior source are filtered out — "optional capability"
-/// semantics.
-#[must_use]
-pub fn admin_modules(ctx: &AppContext) -> Vec<AdminModule> {
-    admin_modules_from_modules(modules(ctx))
-}
-
-pub async fn load_admin_modules_with_composition_and_provider_plan(
-    ctx: &AppContext,
-    composition: &HostComposition,
-    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
-) -> platform_core::AppResult<Vec<AdminModule>> {
-    let mut admin_modules =
-        admin_modules_from_modules(modules_for_config_with_composition(ctx, composition)?);
-    if let Some(plan) = plan {
-        admin_modules.extend(admin_modules_from_modules(
-            ProviderRuntimeAdapter::with_adapters(
-                plan.clone(),
-                composition.provider_runtime_adapters.clone(),
-            )?
-            .load_verified()
-            .await?
-            .into_modules(),
-        ));
-    }
-    Ok(admin_modules)
-}
-
-/// Load registry metadata for every configured module, including modules with
-/// no admin surface and custom surfaces not consumable by schema-admin
-/// list/detail.
-pub async fn load_admin_module_metadata_with_composition_and_provider_plan(
-    ctx: &AppContext,
-    composition: &HostComposition,
-    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
-) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-    let mut metadata =
-        admin_metadata_from_modules(modules_for_config_with_composition(ctx, composition)?);
-    metadata.extend(disabled_linked_admin_metadata(ctx)?);
-    metadata.extend(disabled_host_linked_admin_metadata(ctx, composition)?);
-    if let Some(plan) = plan {
-        let checked_at = current_timestamp();
-        let started = Instant::now();
-        let (modules, configs) = ProviderRuntimeAdapter::with_adapters(
-            plan.clone(),
-            composition.provider_runtime_adapters.clone(),
-        )?
-        .load_verified()
-        .await?
-        .into_parts();
-        let load_duration_ms = Some(duration_ms(started));
-        for (module, config) in modules.into_iter().zip(&configs) {
-            metadata.extend(remote_admin_metadata_from_module(
-                module,
-                config,
-                checked_at.clone(),
-                load_duration_ms,
-                None,
-            ));
-        }
-    }
-    Ok(metadata)
-}
-
-pub async fn load_provider_http_proxy_registry(
-    plan: Option<&lenso_module_management::ProviderRuntimePlan>,
-    composition: &HostComposition,
-) -> platform_core::AppResult<RemoteHttpProxyRegistry> {
-    let Some(plan) = plan else {
-        return Ok(RemoteHttpProxyRegistry::from_modules(&[], &[]));
-    };
-    Ok(ProviderRuntimeAdapter::with_adapters(
-        plan.clone(),
-        composition.provider_runtime_adapters.clone(),
-    )?
-    .load_verified()
-    .await?
-    .proxy_registry())
-}
-
-fn admin_modules_from_modules(modules: Vec<Module>) -> Vec<AdminModule> {
-    modules
-        .into_iter()
-        .filter_map(|module| {
-            // `modules(ctx)` yields owned Modules — move the fields out.
-            let data_source = module.admin_data;
-            let action_source = module.admin_actions;
-            let query_source = module.admin_queries;
-            if data_source.is_none() && action_source.is_none() && query_source.is_none() {
-                return None;
-            }
-            let ModuleManifest {
-                module_id, admin, ..
-            } = module.manifest;
-            let admin = admin?;
-            let (schema, listed_in_schema) = match &admin {
-                AdminSurface::Schema(schema) => (schema.clone(), true),
-                AdminSurface::DeclarativeCustom(surface) => (
-                    surface.fallback_schema.clone().unwrap_or(AdminSchema {
-                        entities: Vec::new(),
-                    }),
-                    false,
-                ),
-                AdminSurface::EmbeddedCustom(_) => return None,
-                _ => return None,
-            };
-            Some(AdminModule {
-                module_name: module_id,
-                source: module.source,
-                load_status: module.load_status,
-                schema,
-                admin: Some(admin),
-                listed_in_schema,
-                data_source,
-                action_source,
-                query_source,
-            })
-        })
-        .collect()
-}
-
-fn admin_metadata_from_modules(modules: Vec<Module>) -> Vec<AdminModuleMetadata> {
-    modules
-        .into_iter()
-        .map(|module| {
-            let ModuleManifest {
-                module_id,
-                admin,
-                http_routes,
-                runtime,
-                events,
-                lifecycle,
-                console,
-                console_slots,
-                console_contributions,
-                story_display,
-                capabilities,
-                requires,
-                ..
-            } = module.manifest;
-            AdminModuleMetadata {
-                module_name: module_id,
-                source: module.source,
-                load_status: module.load_status,
-                http_routes,
-                runtime,
-                events,
-                lifecycle,
-                console,
-                console_slots,
-                console_contributions,
-                story_display,
-                capabilities,
-                dependencies: requires
-                    .into_iter()
-                    .map(|requirement| requirement.module_id)
-                    .collect(),
-                admin,
-                source_diagnostics: None,
-            }
-        })
-        .collect()
-}
-
-fn remote_admin_metadata_from_module(
-    module: Module,
-    config: &RemoteModuleConfig,
-    checked_at: String,
-    load_duration_ms: Option<u64>,
-    load_error: Option<String>,
-) -> Vec<AdminModuleMetadata> {
-    admin_metadata_from_modules(vec![module])
-        .into_iter()
-        .map(|mut metadata| {
-            metadata.module_name.clone_from(&config.name);
-            metadata.source_diagnostics = Some(remote_source_diagnostics(
-                config,
-                Some(checked_at.clone()),
-                load_duration_ms,
-                load_error.clone(),
-            ));
-            metadata
-        })
-        .collect()
-}
-
-fn disabled_linked_admin_metadata(
-    ctx: &AppContext,
-) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-    Ok(disabled_linked_module_entries_for_context(ctx)?
-        .into_iter()
-        .map(|entry| {
-            let ModuleManifest {
-                module_id,
-                admin,
-                http_routes,
-                runtime,
-                events,
-                lifecycle,
-                console,
-                console_slots,
-                console_contributions,
-                story_display,
-                capabilities,
-                requires,
-                ..
-            } = (entry.manifest)();
-            AdminModuleMetadata {
-                module_name: module_id,
-                source: ModuleSource::Linked,
-                load_status: ModuleLoadStatus::Error {
-                    message: linked_module_disabled_reason(ctx, entry.module_name, entry.manifest)
-                        .unwrap_or_else(|| "module disabled by configuration".to_owned()),
-                },
-                http_routes,
-                runtime,
-                events,
-                lifecycle,
-                console,
-                console_slots,
-                console_contributions,
-                story_display,
-                capabilities,
-                dependencies: requires
-                    .into_iter()
-                    .map(|requirement| requirement.module_id)
-                    .collect(),
-                admin,
-                source_diagnostics: None,
-            }
-        })
-        .collect())
-}
-
-fn disabled_host_linked_admin_metadata(
-    ctx: &AppContext,
-    composition: &HostComposition,
-) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-    let profile = CompositionProfile::from_config(&ctx.config)?;
-    Ok(
-        disabled_host_linked_modules_for_context(ctx, composition, profile)
-            .into_iter()
-            .map(|entry| {
-                let ModuleManifest {
-                    module_id,
-                    admin,
-                    http_routes,
-                    runtime,
-                    events,
-                    lifecycle,
-                    console,
-                    console_slots,
-                    console_contributions,
-                    story_display,
-                    capabilities,
-                    requires,
-                    ..
-                } = (entry.manifest)();
-                AdminModuleMetadata {
-                    module_name: module_id,
-                    source: ModuleSource::Linked,
-                    load_status: ModuleLoadStatus::Error {
-                        message: linked_module_disabled_reason(
-                            ctx,
-                            entry.module_name,
-                            entry.manifest,
-                        )
-                        .unwrap_or_else(|| "module disabled by configuration".to_owned()),
-                    },
-                    http_routes,
-                    runtime,
-                    events,
-                    lifecycle,
-                    console,
-                    console_slots,
-                    console_contributions,
-                    story_display,
-                    capabilities,
-                    dependencies: requires
-                        .into_iter()
-                        .map(|requirement| requirement.module_id)
-                        .collect(),
-                    admin,
-                    source_diagnostics: None,
-                }
-            })
-            .collect(),
-    )
-}
-
-fn remote_source_diagnostics(
-    config: &RemoteModuleConfig,
-    checked_at: Option<String>,
-    load_duration_ms: Option<u64>,
-    load_error: Option<String>,
-) -> AdminModuleSourceDiagnostics {
-    let (transport, manifest_url) = match config.transport {
-        platform_module_remote::RemoteModuleTransport::HttpJson => {
-            ("http_json", format!("{}/manifest", config.base_url))
-        }
-        platform_module_remote::RemoteModuleTransport::Grpc => (
-            "grpc",
-            format!(
-                "{}#lenso.remote.v1.RemoteModule/GetManifest",
-                config.base_url
-            ),
-        ),
-    };
-    AdminModuleSourceDiagnostics::Remote(AdminServiceProviderDiagnostics {
-        transport: transport.to_owned(),
-        base_url: config.base_url.clone(),
-        manifest_url,
-        timeout_ms: config.timeout_ms,
-        auth_configured: config.auth_configured(),
-        load_duration_ms,
-        last_checked_at: checked_at,
-        last_load_error: load_error,
-    })
-}
-
-fn current_timestamp() -> String {
-    use platform_core::Clock;
-    platform_core::SystemClock.now().to_rfc3339()
-}
-
-fn duration_ms(started: Instant) -> u64 {
-    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// Build a [`FunctionRegistry`] from every module's binding.
@@ -1707,7 +1352,7 @@ pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
 }
 
 /// Build an [`EventHandlerRegistry`] with host runtime actions enabled for
-/// remote event-handler result actions.
+/// provider event-handler result actions.
 #[must_use]
 pub fn event_handlers_with_runtime_actions(
     ctx: &AppContext,
@@ -1844,26 +1489,6 @@ pub fn install_default_story_display_catalog_with_composition(
     );
     story::backend::install_default_story_display(descriptors);
     Ok(())
-}
-
-pub fn install_story_display_catalog(metadata: &[AdminModuleMetadata]) {
-    story::backend::install_story_display(
-        metadata
-            .iter()
-            .flat_map(story_display_descriptors_from_metadata)
-            .collect(),
-    );
-}
-
-fn story_display_descriptors_from_metadata(
-    module: &AdminModuleMetadata,
-) -> Vec<StoryDisplayDescriptor> {
-    story_display_descriptors_from_manifest(
-        ModuleManifest::builder(module.module_name.clone())
-            .story_display(module.story_display.clone())
-            .http_routes(module.http_routes.clone())
-            .build(),
-    )
 }
 
 fn story_display_descriptors_from_manifest(
@@ -2038,8 +1663,8 @@ mod tests {
         TelemetryConfig, apply_migrations,
     };
     use platform_module::{
-        ConsoleArea, LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration,
-        LifecycleSurface, ModuleManifestLintSeverity, RuntimeFunctionDeclaration, RuntimeSurface,
+        LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleSurface,
+        ModuleManifestLintSeverity, RuntimeFunctionDeclaration, RuntimeSurface,
         lint_module_manifest,
     };
     use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
@@ -2059,17 +1684,6 @@ mod tests {
         fn snapshot(&self) -> Arc<RuntimeConfigSnapshot> {
             Arc::clone(&self.snapshot)
         }
-    }
-
-    async fn load_admin_module_metadata(
-        ctx: &AppContext,
-    ) -> platform_core::AppResult<Vec<AdminModuleMetadata>> {
-        load_admin_module_metadata_with_composition_and_provider_plan(
-            ctx,
-            &HostComposition::default(),
-            None,
-        )
-        .await
     }
 
     #[test]
@@ -2474,13 +2088,7 @@ mod tests {
 
     #[test]
     fn linked_http_route_owners_are_profile_aware() {
-        assert_eq!(
-            linked_http_route_owners_for_profile(CompositionProfile::Core),
-            vec![LinkedHttpRouteOwner {
-                module_name: "lenso/platform-story".to_owned(),
-                public_prefixes: &["/admin/runtime/stories"],
-            }]
-        );
+        assert!(linked_http_route_owners_for_profile(CompositionProfile::Core).is_empty());
         assert_eq!(
             linked_http_route_owners_for_profile(CompositionProfile::Demo),
             vec![
@@ -2511,10 +2119,6 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "lenso/auth-oidc".to_owned(),
                     public_prefixes: &["/.well-known/", "/oauth/"],
-                },
-                LinkedHttpRouteOwner {
-                    module_name: "lenso/platform-story".to_owned(),
-                    public_prefixes: &["/admin/runtime/stories"],
                 },
             ]
         );
@@ -2653,20 +2257,6 @@ mod tests {
         assert!(names.iter().any(|name| name == "lenso/auth-password"));
         assert!(names.iter().any(|name| name == "lenso/auth-phone"));
         assert!(names.iter().any(|name| name == "lenso/auth-oidc"));
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let auth_github = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-github")
-            .expect("dependency-disabled GitHub provider should remain visible in metadata");
-
-        assert!(matches!(
-            &auth_github.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth-oauth"
-        ));
     }
 
     #[tokio::test]
@@ -2695,119 +2285,6 @@ mod tests {
         assert!(names.iter().any(|name| name == "lenso/auth-password"));
         assert!(names.iter().any(|name| name == "lenso/auth-phone"));
         assert!(names.iter().any(|name| name == "lenso/auth-oidc"));
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let auth_google = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-google")
-            .expect("dependency-disabled Google provider should remain visible in metadata");
-
-        assert!(matches!(
-            &auth_google.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth-oauth"
-        ));
-    }
-
-    #[tokio::test]
-    async fn auth_provider_dependency_status_is_visible_in_metadata() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.modules.insert(
-            auth::module::MODULE_NAME.to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let auth_oauth = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-oauth")
-            .expect("dependency-disabled substrate should remain visible in metadata");
-        let auth_anonymous = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-anonymous")
-            .expect("dependency-disabled provider should remain visible in metadata");
-        let auth_password = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-password")
-            .expect("dependency-disabled provider should remain visible in metadata");
-        let auth_phone = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-phone")
-            .expect("dependency-disabled provider should remain visible in metadata");
-        let auth_github = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-github")
-            .expect("dependency-disabled provider should remain visible in metadata");
-        let auth_google = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-google")
-            .expect("dependency-disabled provider should remain visible in metadata");
-        let auth_oidc = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-oidc")
-            .expect("dependency-disabled provider should remain visible in metadata");
-
-        assert_eq!(auth_oauth.dependencies, vec!["lenso/auth".to_owned()]);
-        assert_eq!(auth_anonymous.dependencies, vec!["lenso/auth".to_owned()]);
-        assert_eq!(auth_password.dependencies, vec!["lenso/auth".to_owned()]);
-        assert_eq!(
-            auth_phone.dependencies,
-            vec!["lenso/auth".to_owned(), "lenso/auth-password".to_owned(),]
-        );
-        assert_eq!(
-            auth_github.dependencies,
-            vec!["lenso/auth".to_owned(), "lenso/auth-oauth".to_owned()]
-        );
-        assert_eq!(
-            auth_google.dependencies,
-            vec!["lenso/auth".to_owned(), "lenso/auth-oauth".to_owned()]
-        );
-        assert_eq!(auth_oidc.dependencies, vec!["lenso/auth".to_owned()]);
-        assert!(matches!(
-            &auth_oauth.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth"
-        ));
-        assert!(matches!(
-            &auth_anonymous.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth"
-        ));
-        assert!(matches!(
-            &auth_password.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth"
-        ));
-        assert!(matches!(
-            &auth_phone.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth"
-        ));
-        assert!(matches!(
-            &auth_github.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth"
-        ));
-        assert!(matches!(
-            &auth_google.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth"
-        ));
-        assert!(matches!(
-            &auth_oidc.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module dependency disabled: lenso/auth"
-        ));
     }
 
     #[tokio::test]
@@ -2900,7 +2377,7 @@ mod tests {
                 "lenso/auth-github",
                 "lenso/auth-google",
                 "lenso/auth-oidc",
-                "lenso/platform-story"
+                "lenso/platform-story",
             ]
         );
     }
@@ -2939,7 +2416,7 @@ mod tests {
                 "lenso/auth-github",
                 "lenso/auth-google",
                 "lenso/auth-oidc",
-                "lenso/platform-story"
+                "lenso/platform-story",
             ]
         );
         let linked_http_names = linked_http_modules_for_context(&ctx)
@@ -2956,13 +2433,12 @@ mod tests {
                 "lenso/auth-github",
                 "lenso/auth-google",
                 "lenso/auth-oidc",
-                "lenso/platform-story"
             ]
         );
     }
 
     #[tokio::test]
-    async fn story_module_runtime_config_disables_backend_metadata() {
+    async fn story_module_runtime_config_disables_linked_http() {
         let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
             .expect("lazy pool should build");
         let config = test_config_with_database_url("postgres://localhost/lenso_test");
@@ -2997,22 +2473,6 @@ mod tests {
                 "lenso/auth-oidc",
             ]
         );
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let story = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/platform-story")
-            .expect("disabled story module should remain visible in metadata");
-
-        assert!(matches!(
-            &story.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module disabled by configuration"
-        ));
-        assert_eq!(story.console.len(), 1);
-        assert_eq!(story.http_routes.len(), story::module::http_routes().len());
     }
 
     #[tokio::test]
@@ -3178,7 +2638,6 @@ mod tests {
                 "lenso/auth-github",
                 "lenso/auth-google",
                 "lenso/auth-oidc",
-                "lenso/platform-story"
             ]
         );
     }
@@ -3247,35 +2706,6 @@ mod tests {
         assert!(story::backend::story_display_catalog_snapshot().is_empty());
     }
 
-    #[tokio::test]
-    async fn module_metadata_reports_disabled_linked_modules() {
-        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
-            .expect("lazy pool should build");
-        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
-        config.modules.insert(
-            "auth-password".to_owned(),
-            ModuleConfig {
-                enabled: Some(false),
-                values: BTreeMap::new(),
-            },
-        );
-        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
-
-        let metadata = load_admin_module_metadata(&ctx)
-            .await
-            .expect("module metadata should load");
-        let auth_password = metadata
-            .iter()
-            .find(|module| module.module_name == "lenso/auth-password")
-            .expect("disabled module should remain visible in metadata");
-
-        assert!(matches!(
-            &auth_password.load_status,
-            ModuleLoadStatus::Error { message }
-                if message == "module disabled by configuration"
-        ));
-    }
-
     #[test]
     fn composition_profile_rejects_unknown_values() {
         let error = CompositionProfile::parse("fixture")
@@ -3322,10 +2752,6 @@ mod tests {
                 LinkedHttpRouteOwner {
                     module_name: "lenso/auth-oidc".to_owned(),
                     public_prefixes: &["/.well-known/", "/oauth/"],
-                },
-                LinkedHttpRouteOwner {
-                    module_name: "lenso/platform-story".to_owned(),
-                    public_prefixes: &["/admin/runtime/stories"],
                 },
             ]
         );
@@ -3378,15 +2804,12 @@ mod tests {
     }
 
     #[test]
-    fn linked_http_routes_include_story_module_routes() {
+    fn linked_http_routes_exclude_retired_story_admin_routes() {
         let document = merge_linked_http(platform_http::OpenApiRouter::new()).to_openapi();
         let value = serde_json::to_value(document).expect("OpenAPI document should serialize");
         let paths = value["paths"].as_object().expect("OpenAPI paths object");
 
-        assert!(paths.contains_key("/admin/runtime/stories"));
-        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}"));
-        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}/heatmap"));
-        assert!(paths.contains_key("/admin/runtime/stories/{correlation_id}/technical-operations"));
+        assert!(paths.keys().all(|path| !path.starts_with("/admin/")));
     }
 
     #[test]
@@ -3413,16 +2836,10 @@ mod tests {
         assert_eq!(manifest.module_id, console_surface_contract["id"]);
         assert_eq!(surface.name, console_surface_contract["surfaceName"]);
         assert_eq!(surface.label, console_surface_contract["label"]);
-        assert_eq!(surface.area, ConsoleArea::Runtime);
-        assert_eq!(surface_json["area"], console_surface_contract["area"]);
         assert_eq!(surface.route, console_surface_contract["route"]);
         assert_eq!(
-            surface.package.name,
-            console_surface_contract["packageName"]
-        );
-        assert_eq!(
-            surface.package.export,
-            console_surface_contract["exportName"]
+            surface_json["presentation"],
+            console_surface_contract["presentation"]
         );
         assert_eq!(surface_json["icon"], console_surface_contract["icon"]);
         assert_eq!(surface.navigation, None);
@@ -3885,7 +3302,6 @@ mod tests {
             http: HttpConfig::default(),
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
-            console: Default::default(),
             module_sources: ModuleSourcesConfig::default(),
             modules: BTreeMap::new(),
         }

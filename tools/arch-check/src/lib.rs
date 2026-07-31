@@ -27,10 +27,8 @@ pub fn run() -> anyhow::Result<()> {
             &root,
             &[
                 "lenso-module-management",
-                "platform-admin",
-                "platform-admin-data",
                 "platform-module-management",
-                "platform-module-remote",
+                "platform-provider",
             ],
         ),
         "shared crate concrete-module dependency",
@@ -520,26 +518,20 @@ pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
         fs::read_to_string(root.join("crates/lenso-module-management/src/provider_runtime.rs"))
             .context("Provider runtime compiler should be readable")?;
     let provider_adapter =
-        fs::read_to_string(root.join("crates/platform-module-remote/src/provider_runtime.rs"))
+        fs::read_to_string(root.join("crates/platform-provider/src/provider_runtime.rs"))
             .context("Provider runtime transport adapter should be readable")?;
-    let provider_config =
-        fs::read_to_string(root.join("crates/platform-module-remote/src/config.rs"))
-            .context("Provider runtime config should be readable")?;
-    let provider_proxy =
-        fs::read_to_string(root.join("crates/platform-module-remote/src/proxy.rs"))
-            .context("Provider proxy config should be readable")?;
+    let provider_config = fs::read_to_string(root.join("crates/platform-provider/src/config.rs"))
+        .context("Provider runtime config should be readable")?;
+    let provider_proxy = fs::read_to_string(root.join("crates/platform-provider/src/proxy.rs"))
+        .context("Provider proxy config should be readable")?;
     let api_startup = fs::read_to_string(root.join("crates/lenso-api/src/lib.rs"))
         .context("API startup source should be readable")?;
     let worker_startup = fs::read_to_string(root.join("crates/lenso-worker/src/lib.rs"))
         .context("worker startup source should be readable")?;
     let bootstrap = fs::read_to_string(root.join("crates/lenso-bootstrap/src/lib.rs"))
         .context("Host bootstrap source should be readable")?;
-    let admin_data = fs::read_to_string(root.join("crates/platform-admin-data/src/handlers.rs"))
-        .context("admin data source should be readable")?;
     let first_user_smoke = fs::read_to_string(root.join("scripts/first-user-smoke.sh"))
         .context("first user smoke should be readable")?;
-    let console_fixture = fs::read_to_string(root.join("scripts/runtime-console-api-fixture.sh"))
-        .context("Runtime Console API fixture should be readable")?;
     let provider_runtime_schema =
         read_json(root.join("contracts/management/lenso.provider-runtime-plan.v1.schema.json"))?;
     let openapi: Value = serde_yaml::from_str(
@@ -585,22 +577,20 @@ pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
     {
         violations.push("public lenso-contracts must not expose ModuleSource".to_owned());
     }
-    if host_config.contains("REMOTE_MODULES") || host_config.contains("RemoteModuleSourceConfig") {
+    if host_config.contains("REMOTE_MODULES") || host_config.contains("ProviderSourceConfig") {
         violations
-            .push("public Host config must not expose Remote Module source aliases".to_owned());
+            .push("public Host config must not expose retired remote source aliases".to_owned());
     }
     for (surface, source) in [
         ("Host config", host_config.as_str()),
         ("Host bootstrap", bootstrap.as_str()),
-        ("admin data", admin_data.as_str()),
         ("first user smoke", first_user_smoke.as_str()),
-        ("Runtime Console fixture", console_fixture.as_str()),
     ] {
         for removed in [
             "LENSO_SERVICE_PROVIDERS",
             "module-services.json",
             "ServiceProviderSourceConfig",
-            "start_installed_remote_module_services",
+            "start_installed_provider_services",
             "auth_token_env",
         ] {
             if source.contains(removed) {
@@ -611,51 +601,22 @@ pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
         }
     }
     if root
-        .join("crates/lenso-api/tests/remote_module_smoke.rs")
+        .join("crates/lenso-api/tests/provider_smoke.rs")
         .exists()
     {
-        violations.push(
-            "legacy environment-discovery remote_module_smoke test must stay removed".to_owned(),
-        );
-    }
-    let admin_module_sources = openapi
-        .pointer("/components/schemas/ModuleSource/enum")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect::<BTreeSet<_>>();
-    if admin_module_sources != BTreeSet::from(["linked", "service"]) {
-        violations.push(format!(
-            "admin Module source projection must be exactly linked/service, got {admin_module_sources:?}"
-        ));
+        violations
+            .push("legacy environment-discovery provider_smoke test must stay removed".to_owned());
     }
     if openapi
-        .pointer("/paths/~1admin~1runtime~1remote-proxy-calls")
+        .pointer("/components/schemas/ModuleSource")
         .is_some()
         || openapi
-            .pointer("/paths/~1admin~1runtime~1service-proxy-calls")
-            .is_none()
-        || openapi
-            .pointer(
-                "/components/schemas/AdminModuleCompatibilityDto/properties/remoteProtocolVersion",
-            )
-            .is_some()
-        || openapi
-            .pointer(
-                "/components/schemas/AdminModuleCompatibilityDto/properties/serviceProtocolVersion",
-            )
-            .is_none()
-        || openapi
-            .pointer("/components/schemas/AdminServiceOperationLinksDto/properties/remoteCalls")
-            .is_some()
-        || openapi
-            .pointer("/components/schemas/AdminServiceOperationLinksDto/properties/serviceCalls")
-            .is_none()
+            .get("paths")
+            .and_then(Value::as_object)
+            .is_some_and(|paths| paths.keys().any(|path| path.starts_with("/admin/")))
     {
         violations.push(
-            "admin contracts must expose Service Provider paths and fields without Remote Module aliases"
-                .to_owned(),
+            "application OpenAPI must not retain the retired same-host admin plane".to_owned(),
         );
     }
     for removed_path in [
@@ -670,17 +631,17 @@ pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
         }
     }
     if service
-        .pointer("/$defs/compatibility/properties/remoteProtocolVersion")
+        .pointer("/$defs/compatibility/properties/providerProtocolVersion")
         .is_some()
         || service
-            .pointer("/$defs/compatibility/properties/remote_protocol_version")
+            .pointer("/$defs/compatibility/properties/provider_protocol_version")
             .is_some()
         || service
             .pointer("/$defs/compatibility/properties/serviceProtocolVersion")
             .is_none()
     {
         violations.push(
-            "Service contract compatibility must expose serviceProtocolVersion without Remote Module aliases"
+            "Service contract compatibility must expose serviceProtocolVersion without retired remote aliases"
                 .to_owned(),
         );
     }
@@ -717,12 +678,7 @@ pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
             ));
         }
     }
-    for forbidden_discovery in [
-        "reqwest",
-        "LENSO_SERVICE_PROVIDERS",
-        "RemoteModule",
-        "/lenso/module/v1",
-    ] {
+    for forbidden_discovery in ["reqwest", "LENSO_SERVICE_PROVIDERS", "/lenso/provider/v1"] {
         if provider_runtime.contains(forbidden_discovery) {
             violations.push(format!(
                 "Provider runtime compiler must not perform live or legacy discovery via `{forbidden_discovery}`"
@@ -741,26 +697,28 @@ pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
                 .to_owned(),
         );
     }
-    for (name, startup, required_loader) in [
-        (
-            "API",
-            api_startup.as_str(),
-            "load_admin_modules_with_composition_and_provider_plan",
-        ),
-        (
-            "worker",
-            worker_startup.as_str(),
-            "load_modules_with_composition_and_provider_plan",
-        ),
-    ] {
+    for (name, startup, required_loader) in [(
+        "worker",
+        worker_startup.as_str(),
+        "load_modules_with_composition_and_provider_plan",
+    )] {
         if !startup.contains("provider_runtime_plan_from_workspace")
             || !startup.contains(required_loader)
-            || startup.contains("start_installed_remote_module_services")
+            || startup.contains("start_installed_provider_services")
         {
             violations.push(format!(
                 "{name} startup must consume Provider Runtime Plan without the legacy Service supervisor"
             ));
         }
+    }
+    if !api_startup.contains("provider_runtime_plan_from_workspace")
+        || !api_startup.contains("load_provider_runtime_with_composition")
+        || !api_startup.contains("install_provider_http_proxy_registry")
+    {
+        violations.push(
+            "API startup must install the locked Provider HTTP registry without same-host admin APIs"
+                .to_owned(),
+        );
     }
     if host_config.contains("services: service_provider_sources_from_env()?") {
         violations.push(

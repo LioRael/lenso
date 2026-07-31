@@ -1,10 +1,12 @@
 {
-  "area": "runtime",
-  "exportName": "storyConsoleModule",
   "icon": "workflow",
   "id": "lenso/platform-story",
   "label": "Stories",
-  "packageName": "@lenso/story-console",
+  "presentation": {
+    "bridge_protocol": "lenso.console-bridge.v1",
+    "entry": "runtime-stories",
+    "kind": "isolated"
+  },
   "requiredCapabilities": ["runtime.stories.read"],
   "route": "/runtime/stories",
   "source": "first_party",

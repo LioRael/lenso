@@ -11,11 +11,11 @@ keywords = ["backend", "framework", "modules"]
 rust-version.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 platform-core.workspace = true
 platform-module.workspace = true
-platform-module-remote.workspace = true
+platform-provider.workspace = true
 platform-module-management.workspace = true
-platform-admin-data.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 auth.workspace = true
@@ -34,7 +34,6 @@ tracing.workspace = true
 lenso-module-management.workspace = true
 
 [dev-dependencies]
-async-trait.workspace = true
 platform-testing.workspace = true
 sqlx.workspace = true
 tokio.workspace = true

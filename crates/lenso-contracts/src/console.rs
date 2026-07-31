@@ -1,21 +1,59 @@
-//! Runtime Console contribution contracts.
+//! Lenso Console Module declarations.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use utoipa::ToSchema;
+
+pub const CONSOLE_BRIDGE_PROTOCOL: &str = "lenso.console-bridge.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 pub struct ConsoleSurface {
     pub name: String,
     pub label: String,
-    pub area: ConsoleArea,
     pub route: String,
-    pub package: ConsolePackage,
+    pub presentation: ConsoleSurfacePresentation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default)]
     pub required_capabilities: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub navigation: Option<ConsoleNavigation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ConsoleSurfacePresentation {
+    Declarative {
+        schema: Value,
+    },
+    Isolated {
+        entry: String,
+        bridge_protocol: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
+pub struct ConsolePermissionRequest {
+    pub permission_id: String,
+    #[serde(default)]
+    pub operations: Vec<String>,
+    #[serde(default)]
+    pub resources: Vec<String>,
+    #[serde(default)]
+    pub outbound_destinations: Vec<String>,
+    #[serde(default)]
+    pub secret_references: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
+pub struct ConsolePermissionGrant {
+    pub module_id: String,
+    pub module_release_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_artifact_digest: Option<String>,
+    #[serde(default)]
+    pub granted_permissions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
@@ -96,22 +134,6 @@ pub struct ConsoleActionInputBinding {
 #[non_exhaustive]
 pub enum ConsoleActionInputValue {
     SlotContext { path: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum ConsoleArea {
-    Runtime,
-    Operations,
-    Data,
-    Configuration,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
-pub struct ConsolePackage {
-    pub name: String,
-    pub export: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]

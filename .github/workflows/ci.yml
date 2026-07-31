@@ -32,6 +32,12 @@ jobs:
       LENSO_SPIFFE_TEST_INFRASTRUCTURE_APPROVED: true
     steps:
       - uses: actions/checkout@v6
+      - name: Checkout the coordinated Auth contract
+        uses: actions/checkout@v6
+        with:
+          repository: LioRael/lenso-auth-module
+          ref: ae047e2428f56279a3778f55202e8016d9d9b664
+          path: .ci/lenso-auth-module
       - uses: pnpm/action-setup@f2b2b233b538f500472c7274c7012f57857d8ce0
         with:
           run_install: false
@@ -39,6 +45,31 @@ jobs:
         with:
           node-version: 24.18.0
       - uses: dtolnay/rust-toolchain@stable
+      - name: Bind the coordinated Auth packages
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml <<'EOF'
+          [patch.crates-io]
+          lenso-module-auth = { path = ".ci/lenso-auth-module/crates/auth" }
+          lenso-module-auth-anonymous = { path = ".ci/lenso-auth-module/crates/auth-anonymous" }
+          lenso-module-auth-github = { path = ".ci/lenso-auth-module/crates/auth-github" }
+          lenso-module-auth-google = { path = ".ci/lenso-auth-module/crates/auth-google" }
+          lenso-module-auth-oauth = { path = ".ci/lenso-auth-module/crates/auth-oauth" }
+          lenso-module-auth-oidc = { path = ".ci/lenso-auth-module/crates/auth-oidc" }
+          lenso-module-auth-password = { path = ".ci/lenso-auth-module/crates/auth-password" }
+          lenso-module-auth-phone = { path = ".ci/lenso-auth-module/crates/auth-phone" }
+          EOF
+          for package in \
+            lenso-module-auth \
+            lenso-module-auth-anonymous \
+            lenso-module-auth-github \
+            lenso-module-auth-google \
+            lenso-module-auth-oauth \
+            lenso-module-auth-oidc \
+            lenso-module-auth-password \
+            lenso-module-auth-phone; do
+            cargo update --package "$package"
+          done
       - uses: Swatinem/rust-cache@v2
         with:
           env-vars: CARGO_PROFILE_DEV_DEBUG CARGO_PROFILE_TEST_DEBUG

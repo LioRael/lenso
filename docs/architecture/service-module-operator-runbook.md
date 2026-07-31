@@ -48,7 +48,7 @@ Debug output show only `auth_configured`; they never print the resolved value.
 | `missing_config` | A host-started service declares required env that is absent from `.env`. | `lenso service verify <manifest> --env-file .env --json` | Services shows missing config. | Set the env value and restart API/worker. |
 | `stale_state` | Lock or pid files exist but the ready URL is failing. | Doctor lists lock or pid paths. | Modules shows stale state. | Stop the service, then remove stale files if needed. |
 | `not_configured` | The target has no exact active Service Installation for the locked Module export. | Doctor has no installation entry. | Module is absent or install state is empty. | Apply the reviewed Service Installation plan. |
-| `resolver_missing` | The Provider plan names an endpoint source ID or trust profile that the Host did not compose. | Startup error names the missing adapter ID. | Provider Module remains unavailable. | Register the exact adapter in `HostComposition`, then restart API and worker. |
+| `resolver_missing` | The Provider plan names an endpoint source ID or trust profile that the Host did not compose. | Startup error names the missing adapter ID. | Provider Service remains unavailable. | Register the exact adapter in `HostComposition`, then restart API and worker. |
 
 Services can also declare `compatibility`, `statusUrl` or `statusPath`,
 `deployment`, and `install.services` metadata. The host records standard

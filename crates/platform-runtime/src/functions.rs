@@ -180,9 +180,33 @@ impl RuntimeClient {
         Ok(run.id)
     }
 
+    /// Enqueues one function run with a caller-owned durable identity inside an
+    /// existing Host transaction. This is used by durable transport adapters
+    /// that must atomically commit their own receipt and Runtime work.
+    pub async fn enqueue_function_with_id_in_tx(
+        &self,
+        tx: &mut DbTransaction<'_>,
+        run_id: impl Into<String>,
+        request: EnqueueFunctionRequest,
+    ) -> AppResult<()> {
+        self.enqueue_function_in_tx_with_id(tx, run_id.into(), request)
+            .await
+            .map(|_| ())
+    }
+
     pub(crate) async fn enqueue_function_in_tx(
         &self,
         tx: &mut DbTransaction<'_>,
+        request: EnqueueFunctionRequest,
+    ) -> AppResult<EnqueuedFunctionRun> {
+        self.enqueue_function_in_tx_with_id(tx, format!("fnrun_{}", Uuid::now_v7()), request)
+            .await
+    }
+
+    async fn enqueue_function_in_tx_with_id(
+        &self,
+        tx: &mut DbTransaction<'_>,
+        id: String,
         request: EnqueueFunctionRequest,
     ) -> AppResult<EnqueuedFunctionRun> {
         if !request.tenancy_mode.accepts(request.tenant_id.as_ref()) {
@@ -191,7 +215,6 @@ impl RuntimeClient {
                 "function tenant context is incompatible with its tenancy mode",
             ));
         }
-        let id = format!("fnrun_{}", Uuid::now_v7());
         let max_attempts = request.max_attempts.unwrap_or(3);
         let mut input_json = request.input_json;
         attach_runtime_context_to_input(

@@ -1,415 +1,109 @@
-# Third-Party Modules
+# Third-Party Modules and Services
 
-This document defines the target shape for modules contributed outside a Lenso
-application repository.
+This document defines the supported third-party boundary. Read it together with
+`service-module-boundary.md`, `module-console-surfaces.md`, and
+`provider-runtime.md`.
 
-## Definition
+## Vocabulary
 
-A third-party Module Release is not just a Rust crate. It is an immutable
-package the Host can inspect, authorize, and load:
+- A **Module** is a logical business capability selected by an immutable Module
+  Release. The current executable source is `Linked`.
+- A **Service** is an independently deployed process. It can provide one or more
+  Module exports through a Provider Runtime Plan, but the process itself is not
+  a Module.
+- A **Provider** is a Host-subordinate transport binding to a Service export.
+  The Host retains authorization, queues, retries, runtime records, outbox
+  publication, and story ownership.
+- `Remote Module` is retired vocabulary. Future Wasm support will be a new
+  Module source and will not restore the old remote-process model.
 
-```text
-Module Release = canonical Manifest + exactly one delivery + optional Console artifact
-```
+## Immutable Releases
 
-- Manifest data is the portable contract. It declares identity,
-  capabilities, HTTP routes, runtime functions, admin surfaces, and console
-  surfaces.
-- Release delivery determines where behavior runs. `linked` is the primary
-  experience and runs in the Host. `service` binds the Module to one exact
-  Service Release/export. No public `remote`, `source`, or `bundled` value
-  exists in Module Ecosystem V1.
-- Runtime Console packages are optional frontend contributions loaded by the
-  host console registry.
+A Module Release binds the normalized `ModuleManifest`, compatibility metadata,
+and optional isolated Console UI artifact to content digests. A Service Release
+separately binds deployment and Provider protocol evidence. Installation selects
+exact releases in `lenso.modules.lock.json` and the environment service
+installation ledger; mutable manifest URLs are discovery inputs, not authority.
 
-The host owns runtime policy. A module declares what it needs and implements its
-own behavior; it does not own host auth, runtime queues, retries, story records,
-or HTTP proxy policy. Install trust is operator-owned: explicit manifest URLs are
-treated like direct CLI installs, and official catalogs are curated before
-publication.
+Every change is previewed as a Module Change Plan. Provider delivery adds an
+exact Service Installation Plan. The durable management operation applies only
+the approved effects and records receipts. Catalog entries and manifests cannot
+write arbitrary environment values, run commands, launch processes, or mutate
+Console files directly.
 
-## Delivery Choice
+## Service Contract
 
-`linked` is the primary and richest Module experience for Rust applications,
-including third-party crates deliberately compiled into the Host. `service` is
-used when independent deployment, language choice, storage, or release cadence
-matters; each Service may own and export multiple Modules.
+A Service exposes the versioned Provider protocol declared by its selected
+Service Release. The Host verifies the live descriptor against the locked
+descriptor before activating the Provider. HTTP routes, runtime functions,
+event handlers, admin data, and admin actions are usable only when declared by
+the selected Module Release and allowed by Host policy.
 
-`wasm` remains a future delivery kind for stronger sandbox and marketplace
-scenarios and is rejected by V1 until its execution, permission, and packaging
-rules are defined.
+Provider responses may request typed Host effects. The Host validates those
+effects against the Module declarations, commits outbox/runtime requests in one
+database transaction, and acknowledges only after commit. An invocation ID and
+canonical effect digest make an exact replay idempotent and reject conflicting
+replays. A Service never writes Host queues or runtime tables directly.
 
-## Contributor Package Shape
+## Console UI Artifacts
 
-A third-party service package should be understandable without cloning a Lenso
-host application:
+Optional third-party UI is an immutable artifact referenced by the Module
+Release, not an npm package installed into the hosted Console. Runtime Console
+loads the artifact in a sandboxed cross-origin iframe with `allow-scripts` only.
+The artifact receives no Host token, cookies, stores, or internal imports.
 
-```text
-lenso-billing-service/
-  lenso.service-package.json
-  lenso.service.json
-  modules/
-    billing/
-      lenso.module.json
-      lenso.module-release.json
-  backend/
-    src/
-    openapi.yaml
-  console/
-    package.json
-    src/
-      index.tsx
-      manifest.ts
-      page.tsx
-  contracts/
-    events/
-    runtime-functions/
-  README.md
-```
+The artifact and Console Service communicate through `lenso.console-bridge.v1`. The
+handshake binds the Module identity, surface name, Module Release digest, UI
+artifact digest, granted capabilities, nonce, and expiry. The Console exposes only
+typed operations authorized by the exact grant; the backend independently
+checks the operator scope and the Module declaration for every operation.
 
-The exact backend language is not prescribed. The service must expose the
-service manifest and module protocol endpoints that `platform-module-remote`
-expects.
+The retired mechanisms must not return:
 
-`lenso.service-package.json` is the V9 delivery manifest for handoff to
-catalog, release, and deployment tooling. It is intentionally small:
-
-```json
-{
-  "protocol": "lenso.service-package.v1",
-  "name": "billing-service",
-  "version": "0.1.0",
-  "serviceManifest": "lenso.service.json",
-  "modules": ["billing"]
-}
-```
-
-The host may install the package file directly, but the CLI resolves it to
-`lenso.service.json` before writing host-local state. The package manifest
-records which provider and modules are inside the artifact; it does not make
-the service a peer runtime and does not grant trust by itself.
-Generate it, plus per-module release artifacts, with:
-
-```sh
-lenso service package --manifest https://example.com/lenso/service/v1/manifest
-```
-
-`lenso.module-release.json` is the module release channel. It is not a new
-runtime source; it is the business-module entrypoint. A release may point to a
-provider service, linked Rust code, or a bundled host capability:
-
-```json
-{
-  "protocol": "lenso.module-release.v1",
-  "name": "billing",
-  "version": "0.1.0",
-  "source": "service",
-  "provider": {
-    "name": "billing-service",
-    "servicePackage": "lenso.service-package.json"
-  },
-  "capabilities": ["billing.read", "billing.write"],
-  "dependencies": []
-}
-```
-
-The same release protocol can describe linked modules:
-
-```json
-{
-  "protocol": "lenso.module-release.v1",
-  "name": "auth-password",
-  "version": "0.1.0",
-  "source": "linked",
-  "capabilities": ["auth.password.login"],
-  "dependencies": ["auth"]
-}
-```
-
-`lenso.module.v1` is the standalone module contract. It names the business
-capability before release/provider concerns:
-
-```json
-{
-  "protocol": "lenso.module.v1",
-  "name": "support-ticket",
-  "version": "0.1.0",
-  "source": "service",
-  "capabilities": ["support_ticket.tickets.read"]
-}
-```
-
-Install a module release with `lenso module install <module-release.json>`.
-Add it to a local catalog with `lenso module catalog add <module-release.json>`
-so users can later run `lenso module install billing`. The CLI validates that
-service releases are provided by the target service manifest, then writes
-`moduleRelease` provenance into `.lenso/module-installs.json` next to the normal
-service/package receipt. Linked releases enable linked code through the same
-module install surface.
-Operators can inspect the release before install with
-`lenso module release inspect <module-release.json>` or fail the command on
-missing install inputs with `lenso module release check <module-release.json>`.
-The package command writes these release files under
-`modules/<module>/lenso.module-release.json`.
-When a release points at a local service package artifact, pass `--base-url`
-to `module install` or `module catalog add` so the host records the runtime
-service endpoint rather than the artifact path.
-
-`lenso.service-release-plan.v1` is the operator upgrade channel for an
-already-installed provider. It compares the installed service manifest snapshot
-with a candidate manifest or service package, evaluates built-in policy, and
-can later apply the same candidate:
-
-```sh
-lenso service release plan billing-service ./dist/lenso-service/billing-service/lenso.service-package.json \
-  --output .lenso/billing-service.release-plan.json
-lenso service policy check .lenso/billing-service.release-plan.json --fail-on breaking
-lenso service release apply .lenso/billing-service.release-plan.json
-```
-
-The policy gate treats removed modules, capabilities, routes, runtime
-functions, event handlers, and admin actions as `breaking`; new required env or
-runtime config as `needs_attention`; and host protocol incompatibility as
-`blocked`. Apply records `.lenso/service-releases.json`; Console Services uses
-that ledger to show latest release risk and recent release history. This is
-separate from `lenso module install`: modules remain installable business
-capabilities, while service releases are provider operations.
-
-## Manifest Contract
-
-The service manifest is the source of truth for install-time inspection. A
-service should expose it at a stable base URL such as
-`https://example.com/lenso/service/v1`:
-
-```text
-GET /lenso/service/v1/manifest
-```
-
-The service manifest contains one or more module manifests. A representative
-shape:
-
-```json
-{
-  "protocol": "lenso.service.v1",
-  "name": "billing-service",
-  "version": "0.1.0",
-  "capabilities": ["billing.read", "billing.write"],
-  "http_routes": [],
-  "runtime": {
-    "functions": []
-  },
-  "admin": {
-    "kind": "schema"
-  },
-  "install": {
-    "env": {
-      "BILLING_API_BASE_URL": "https://billing.example.com"
-    },
-    "commands": [
-      {
-        "command": "pnpm --dir ../lenso-console install",
-        "cwd": "."
-      }
-    ],
-    "services": [
-      {
-        "name": "billing-api",
-        "command": "pnpm --dir ../lenso-billing/backend dev",
-        "cwd": ".",
-        "readyUrl": "https://billing.example.com/lenso/service/v1/status",
-        "readyTimeoutMs": 10000,
-        "autoStart": true
-      }
-    ]
-  },
-  "console": [
-    {
-      "name": "billing",
-      "label": "Billing",
-      "area": "data",
-      "route": "/data/billing",
-      "package": {
-        "name": "@vendor/lenso-billing-console",
-        "export": "billingConsoleModule",
-        "bundleUrl": "./console/billing-console.js",
-        "hostApi": "1"
-      },
-      "required_capabilities": ["billing.read"]
-    }
-  ]
-}
-```
-
-The host may cache the manifest, lint it through `platform-module`, and reject
-or degrade modules that request unsupported surfaces. Installation is always a
-reviewed Module Change Plan plus, for Provider delivery, an exact Service
-Installation Plan. The Service deployment adapter owns process or platform
-lifecycle; API and worker startup only compile the resulting Provider Runtime
-Plan and connect verified behavior. Module manifests cannot cause arbitrary
-commands, host environment writes, or process supervision.
-
-## Runtime Console Package
-
-Third-party frontend code must be packaged as a normal npm package that imports
-host capabilities only through `@lenso/runtime-console-api`.
-
-Allowed:
-
-- `@lenso/runtime-console-api`
-- local package files
-- declared package dependencies
-
-Forbidden:
-
-- deep imports from `apps/runtime-console/src/*`
-- host bearer tokens
-- ad hoc host bridges
-- direct access to host stores or query clients
-
-Console packages must declare their install manifest separately from backend
-metadata, but the `package.name`, `package.export`, route, and required
-capabilities must match the backend `ConsoleSurface`.
+- `@lenso/runtime-console-api` or a host-internals alias;
+- `@lenso/remote-module-kit`;
+- same-origin dynamic bundles or `/console/extensions/*` routes;
+- copied bundle ledgers or a Console extension registry;
+- Module install or uninstall code that mutates Console assets.
 
 ## Host Responsibilities
 
-The host is responsible for:
+The Host owns:
 
-- module source configuration
-- manifest fetch, validation, linting, and compatibility checks
-- capability enforcement
-- HTTP proxy routing and header policy
-- request and response size limits
-- runtime queues, retry policy, and worker execution
-- persisted Runtime Story and Technical Operations records
-- admin action authorization and projection
-- console package installation and registry resolution
+- release, compatibility, signature, and policy verification;
+- capability enforcement and request/response limits;
+- Provider endpoint and credential resolution;
+- runtime queues, retries, outbox publication, and Runtime Story records;
+- admin authorization and generic data/action dispatch;
+- durable Module and Service management operations;
 
-Services must not write host runtime tables, consume host outbox rows,
-receive caller bearer tokens, or claim host-owned story/function-run records.
+The Console Service owns Console composition grants and the Console Bridge
+backend. A managed Host does not expose that route unless it is explicitly
+composed as the Console Service with a Console-owned authority adapter.
 
-## Current Support
+Services own their business execution and stable effect identities. They must
+not receive caller bearer tokens, impersonate Host-owned records, supervise the
+Host, or depend on Console implementation details.
 
-Current service support includes:
+## CLI and Console Flow
 
-- remote manifest loading
-- schema-admin read data
-- schema, declarative custom, and embedded custom admin metadata
-- read-only declarative admin query values
-- declared host-owned HTTP proxy routes
-- remote runtime function execution through host-owned queues
-- persisted remote proxy calls and runtime-operation visibility
-
-Current Runtime Console support includes:
-
-- workspace-installed console packages
-- package manifests derived into install metadata
-- module metadata showing missing frontend bundle registrations
-- low-friction service install through `lenso service install <manifest-url>`
-- service install CLI that writes local source configuration and console
-  extension registry entries
-- dynamic same-origin bundle loading from `/console/extensions/registry.json`
-- boundary checks that forbid package imports from host internals
-
-## Deferred Support
-
-The following are intentionally deferred:
-
-- automatic npm package installation
-- JavaScript bundle loading from module manifests
-- Wasm execution
-- embedded host bridges
-- streaming proxy protocols
-- per-module OpenAPI fragment ingestion
-- write-capable schema-admin CRUD
-
-Each deferred area needs a versioned protocol and host-side enforcement before
-third-party modules can rely on it.
-
-## CLI Direction
-
-The local scaffold command is optimized for project-owned linked modules:
+Discovery may add a catalog entry, but installation always resolves an
+immutable Module Release before preview and apply:
 
 ```sh
-lenso module create billing --with-console
-```
-
-Third-party scaffolding uses a separate service lane:
-
-```sh
-lenso module catalog add https://example.com/releases/billing/lenso.module-release.json
+lenso module catalog add https://example.com/releases/billing/index.json
 lenso module install billing
-lenso service install https://example.com/lenso/service/v1/manifest
 lenso module uninstall billing
 ```
 
-The default install path is user-driven: see a module release, install the
-business module, restart the host, reload Runtime Console, and use the module.
-Provider operators can still install or upgrade the service directly with
-`lenso service install <manifest-or-package>`.
-`service install` updates host-local service configuration, applies
-manifest-declared `install.env` values, runs opted-in `install.commands`,
-writes `install.services`, writes an install receipt to
-`.lenso/module-installs.json`, copies declared console bundles to
-`.lenso/console/extensions`, and updates
-`.lenso/console/extensions/registry.json` when the manifest declares console
-packages with `bundleUrl`. `module install <manifest-url>` remains a
-compatibility path for legacy remote module manifests.
-`module uninstall <name>` removes the host-local service source and any
-console extension registry/install-receipt entry for that module; it leaves
-module data alone.
+Runtime Console uses the same `/admin/modules/*` management workflow. Neither
+path copies frontend bundles. Console Composition resolves the selected UI
+artifact digest and creates the bounded bridge grant when the surface opens.
 
-`.lenso/module-catalog.json` is the optional discovery list behind Available
-Modules. A host can add entries with `lenso module catalog add <manifest-url>`.
-The catalog only records module basics, manifest URL, base URL, summary, and
-console package hints. The admin API reflects that discovery data back to
-Runtime Console with capability counts, host compatibility preflight results,
-and archived catalog entries; official catalogs are curated at publication time,
-while arbitrary catalog entries remain operator-selected.
+## Current and Deferred Sources
 
-When a host has no local catalog, Available Modules preserves the current loaded
-service view if any services are already configured. If neither a
-local catalog nor loaded services exist, the API falls back to the
-read-only `builtin:lenso-official-module-catalog` so a fresh host has an
-official discovery source without fetching remote marketplace state.
-
-If the manifest is installed from a local file or non-protocol URL, pass the
-runtime module base URL explicitly:
-
-```sh
-lenso service install ./lenso.service.json --base-url https://example.com/lenso/service/v1
-```
-
-The service lane should generate a service package, not a host workspace
-member.
-Host installation should record source configuration and extension registry
-state without compiling third-party code into the application bundle.
-
-The legacy CLI install lane wrote host-local state including `.env` source
-configuration. Module Ecosystem V1 replaces that lane with reviewed management
-artifacts:
-
-- `.lenso/module-catalog.json`: optional local discovery entries for Available
-  Modules.
-- `lenso.modules.lock.json`: selects the exact Module Release and Service export.
-- `.lenso/environments/<environment>/service-installations.json`: records the
-  exact Service Release, endpoint binding, identity policy, and installed exports.
-- `.lenso/console/extensions/<module>/*.js`: copied third-party Runtime Console
-  bundles.
-- `.lenso/console/extensions/registry.json`: same-origin dynamic bundle registry
-  consumed by the hosted Runtime Console.
-
-Runtime Console performs installation through the `/admin/modules/*` workflow:
-preview the immutable Module Change Plan, start the durable Operation, satisfy
-its plan-bound approval, and apply it. Provider delivery includes the exact
-Service Installation subplan. The effect adapter materializes only plan-owned
-files and evidence; catalog records and manifests cannot directly write the
-host environment, launch processes, install npm packages, or compile code into
-the official Runtime Console bundle.
-
-`pnpm demo:remote-module-install` in the `lenso-console` repository runs
-the same flow against a temporary host fixture without mutating the working tree.
-The operator-facing walkthrough lives in
-`lenso-console/docs/remote-module-install-flow.md`.
-
-The plan file is intentionally ignored by git. It is an operator/developer
-handoff artifact, not a trust database.
+Current Module execution is Linked, with Provider bindings available for
+Service-provided behavior under Host control. Wasm is deferred until it has an
+immutable artifact contract, resource limits, capability imports, and the same
+Host-owned effect semantics. No generic independently running `Remote` Module
+source is supported.

@@ -9,14 +9,12 @@ use platform_core::{
 };
 use platform_http::request_context_middleware;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
-use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
 
+mod console_bridge;
 pub mod openapi;
-mod system_delivery;
 
 pub use openapi::openapi_document;
 
@@ -30,10 +28,6 @@ pub async fn run_from_env_with_composition(
     let config = AppConfig::try_from_env().context("invalid application configuration")?;
     telemetry::init(&config.telemetry)?;
 
-    let provider_workspace = PathBuf::from(".");
-    let provider_plan = lenso_bootstrap::provider_runtime_plan_from_workspace(&provider_workspace)
-        .context("failed to compile Provider Runtime Plan")?;
-
     let db = connect_pool(&config.database).await?;
     let redis = connect_redis(&config.redis).await?;
     let mut ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher)).with_redis(redis);
@@ -46,7 +40,6 @@ pub async fn run_from_env_with_composition(
             .context("failed to collect runtime-config groups")?;
     let registry = RuntimeConfigRegistry::try_new_with_groups(descriptors, groups)
         .context("duplicate runtime-config descriptor registered")?;
-    platform_admin::install_runtime_config_registry(registry.clone());
     let runtime_config =
         PostgresRuntimeConfigProvider::connect(ctx.db.clone(), Arc::new(registry), "api")
             .await
@@ -54,66 +47,18 @@ pub async fn run_from_env_with_composition(
     runtime_config.spawn_listener();
     ctx = ctx.with_runtime_config_provider(runtime_config);
 
-    let admin_modules = lenso_bootstrap::load_admin_modules_with_composition_and_provider_plan(
+    let provider_plan = lenso_bootstrap::provider_runtime_plan_from_workspace(".")
+        .context("failed to compile Provider Runtime Plan")?;
+    if let Some(provider_runtime) = lenso_bootstrap::load_provider_runtime_with_composition(
         &ctx,
         &composition,
         provider_plan.as_ref(),
     )
     .await
-    .context("failed to load admin modules")?;
-    platform_admin_data::install_admin_modules(admin_modules);
-    let admin_module_metadata =
-        lenso_bootstrap::load_admin_module_metadata_with_composition_and_provider_plan(
-            &ctx,
-            &composition,
-            provider_plan.as_ref(),
-        )
-        .await
-        .context("failed to load admin module metadata")?;
-    install_admin_module_metadata(admin_module_metadata);
-    let remote_http_proxy_registry =
-        lenso_bootstrap::load_provider_http_proxy_registry(provider_plan.as_ref(), &composition)
-            .await
-            .context("failed to load Provider HTTP proxy registry")?;
-    platform_module_remote::install_remote_http_proxy_registry(remote_http_proxy_registry);
-
-    let admin_refresh_ctx = ctx.clone();
-    let admin_refresh_composition = composition.clone();
-    let admin_refresh_workspace = provider_workspace.clone();
-    platform_admin_data::install_admin_module_refresh_fn(move || {
-        let ctx = admin_refresh_ctx.clone();
-        let composition = admin_refresh_composition.clone();
-        let workspace = admin_refresh_workspace.clone();
-        async move {
-            let plan = lenso_bootstrap::provider_runtime_plan_from_workspace(workspace)?;
-            lenso_bootstrap::load_admin_modules_with_composition_and_provider_plan(
-                &ctx,
-                &composition,
-                plan.as_ref(),
-            )
-            .await
-        }
-    });
-    let admin_metadata_refresh_ctx = ctx.clone();
-    let admin_metadata_refresh_composition = composition.clone();
-    let admin_metadata_refresh_workspace = provider_workspace;
-    platform_admin_data::install_admin_module_metadata_refresh_fn(move || {
-        let ctx = admin_metadata_refresh_ctx.clone();
-        let composition = admin_metadata_refresh_composition.clone();
-        let workspace = admin_metadata_refresh_workspace.clone();
-        async move {
-            let plan = lenso_bootstrap::provider_runtime_plan_from_workspace(workspace)?;
-            let metadata =
-                lenso_bootstrap::load_admin_module_metadata_with_composition_and_provider_plan(
-                    &ctx,
-                    &composition,
-                    plan.as_ref(),
-                )
-                .await?;
-            install_platform_admin_catalogs(&metadata);
-            Ok(metadata)
-        }
-    });
+    .context("failed to load locked Provider Runtime")?
+    {
+        platform_provider::install_provider_http_proxy_registry(provider_runtime.proxy_registry());
+    }
 
     let app = try_build_router_with_composition(ctx.clone(), &composition)
         .context("failed to build API router")?;
@@ -160,25 +105,28 @@ pub fn try_build_router_with_composition(
         ctx = ctx.with_actor_resolver(actor_resolver);
     }
     let host_wiring = lenso_bootstrap::host_wiring_for_context_with_composition(&ctx, composition)?;
-    install_default_platform_admin_catalogs(&ctx, composition)?;
+    let console_bridge = if let Some(authority) = composition.console_bridge_authority() {
+        Some(console_bridge::ConsoleBridgeRegistry::from_modules(
+            lenso_bootstrap::modules_for_config_with_composition(&ctx, composition)?,
+            authority.clone(),
+        ))
+    } else {
+        None
+    };
     let (router, mut document) =
         openapi::api_router_for_context_with_composition(&ctx, composition)?.split_for_parts();
     openapi::normalize_error_response_content_types(&mut document);
     let document = Arc::new(document);
-    let console_dist_dir = ctx.config.console.dist_dir.clone();
-    let console_index = PathBuf::from(&console_dist_dir).join("index.html");
+
+    let router = if let Some(console_bridge) = console_bridge {
+        router.layer(axum::Extension(console_bridge))
+    } else {
+        router
+    };
 
     Ok(router
         .route("/docs", axum::routing::get(scalar_docs))
         .route("/openapi.json", axum::routing::get(serve_openapi))
-        .nest_service(
-            "/console/extensions",
-            ServeDir::new(ctx.config.console.extensions_dir.clone()),
-        )
-        .nest_service(
-            "/console",
-            ServeDir::new(console_dist_dir).fallback(ServeFile::new(console_index)),
-        )
         .layer(axum::Extension(document))
         .layer(axum::Extension(host_wiring.auth_session_policy()))
         .layer(middleware::from_fn_with_state(
@@ -187,36 +135,6 @@ pub fn try_build_router_with_composition(
         ))
         .layer(cors_layer(&ctx))
         .with_state(ctx))
-}
-
-fn install_default_platform_admin_catalogs(
-    ctx: &AppContext,
-    composition: &lenso_bootstrap::HostComposition,
-) -> platform_core::AppResult<()> {
-    lenso_bootstrap::install_default_story_display_catalog_with_composition(ctx, composition)?;
-    platform_admin::install_default_runtime_function_declarations(
-        platform_admin::runtime_function_declarations_from_modules(
-            lenso_bootstrap::linked_runtime_function_declaration_sources_for_context_with_composition(
-                ctx,
-                composition,
-            )?,
-        ),
-    );
-    Ok(())
-}
-
-fn install_admin_module_metadata(metadata: Vec<platform_admin_data::AdminModuleMetadata>) {
-    install_platform_admin_catalogs(&metadata);
-    platform_admin_data::install_admin_module_metadata(metadata);
-}
-
-fn install_platform_admin_catalogs(metadata: &[platform_admin_data::AdminModuleMetadata]) {
-    lenso_bootstrap::install_story_display_catalog(metadata);
-    platform_admin::install_runtime_function_declarations(
-        platform_admin::runtime_function_declarations_from_modules(
-            lenso_bootstrap::runtime_function_declaration_sources_from_metadata(metadata),
-        ),
-    );
 }
 
 async fn scalar_docs() -> ([(HeaderName, HeaderValue); 3], Html<&'static str>) {

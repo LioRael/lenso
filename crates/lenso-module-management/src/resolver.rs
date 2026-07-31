@@ -1,6 +1,6 @@
 use crate::{
     APPLICATION_MODULE_LOCK_PROTOCOL, ApplicationModuleLock, DesiredModuleComposition,
-    DesiredModuleSelection, LockedCapabilityBinding, LockedConsoleArtifact, LockedModule,
+    DesiredModuleSelection, LockedCapabilityBinding, LockedConsoleUiArtifact, LockedModule,
     LockedModuleReason, ManagedDeliveryKind, ModuleRootChange,
 };
 use lenso_contracts::{
@@ -648,13 +648,14 @@ fn build_lock(
                 dependency_module_ids,
                 crate_features,
                 migration_artifacts,
-                console_artifact: release.console_artifact.as_ref().map(|artifact| {
-                    LockedConsoleArtifact {
-                        package: artifact.package.clone(),
-                        version: artifact.version.clone(),
-                        integrity: artifact.integrity.clone(),
-                        host_api_version: artifact.host_api_requirement.clone(),
-                        exports: artifact.exports.clone(),
+                console_ui_artifact: release.console_ui_artifact.as_ref().map(|artifact| {
+                    LockedConsoleUiArtifact {
+                        locator: artifact.artifact.locator.clone(),
+                        digest: artifact.artifact.digest.clone(),
+                        format: artifact.format.clone(),
+                        entries: artifact.entries.clone(),
+                        bridge_protocol: artifact.bridge_protocol.clone(),
+                        requested_permissions: artifact.requested_permissions.clone(),
                     }
                 }),
                 verification: candidate.eligibility.verification.clone(),

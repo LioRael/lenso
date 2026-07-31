@@ -49,14 +49,14 @@ rather than renaming it as new work.
 
 | Existing capability | Keep and extend | Missing autonomous capability |
 | --- | --- | --- |
-| Shared Module manifests for linked and remote sources | Preserve Module identity across extraction | Service-owned contracts independent of one Host |
-| Remote Module HTTP/JSON and gRPC protocol | Retain as the Provider Protocol | Direct Autonomous Service HTTP/gRPC contracts and clients |
+| Linked Module manifests plus Provider export descriptors | Preserve capability identity across extraction without treating Provider as a Module source | Service-owned contracts independent of one Host |
+| Provider HTTP/JSON and gRPC protocol | Retain as the Provider Protocol | Direct Autonomous Service HTTP/gRPC contracts and clients |
 | Host-owned auth, proxy policy, retries, runtime queues, Outbox, and Story evidence | Preserve for Provider mode | Service-owned runtime, identity, Store, Outbox, Inbox, and Story Segments |
 | Transactional Postgres Outbox and in-process relay | Reuse as the local publication source | Transport Adapters, durable Inbox, replay, and broker delivery evidence |
 | `lenso.workspace.json` and `lenso service dev` | Reuse process startup and readiness knowledge | A clusterless multi-Service System Sandbox |
 | `lenso.system.json`, graph, drift, release trains, and runbooks | Evolve into a federated System contract | Autonomous topology, Contract Versions, reliability, and regional evidence |
 | Service packages, release plans, promotion, Kubernetes export, and Operator | Reuse delivery adapters and observations | Immutable multi-Workload Service Releases and Policy Packs |
-| Runtime Story, Remote Calls, Technical Operations, and OpenTelemetry enrichment | Keep the business-evidence model | Service-owned Story Segments and Federated Runtime Stories |
+| Runtime Story, Provider Calls, Technical Operations, and OpenTelemetry enrichment | Keep the business-evidence model | Service-owned Story Segments and Federated Runtime Stories |
 | Generated OpenAPI, JSON Schema, Protobuf, lints, and release gates | Keep generated artifacts authoritative | Cross-Service compatibility and can-I-deploy evidence |
 | Machine-readable plans and agent task artifacts | Apply the same interaction model everywhere | Bounded extraction, release, incident, and contract-evolution workflows |
 

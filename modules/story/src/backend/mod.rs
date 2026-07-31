@@ -349,7 +349,7 @@ async fn get_story_technical_operations(
     let node_index = runtime_node_index(&rows);
     let mut data = technical_operations_from_spans(spans.clone(), &node_index);
     data.extend(
-        remote_proxy_technical_operations(&ctx, &request_ctx, &correlation_id, &spans, &node_index)
+        provider_technical_operations(&ctx, &request_ctx, &correlation_id, &spans, &node_index)
             .await?,
     );
     data.extend(

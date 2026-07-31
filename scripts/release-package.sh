@@ -50,9 +50,9 @@ $summary
 ## First Release Scope
 
 - Linked modules load through the lenso-bootstrap composition root.
-- Remote modules install through \`lenso module add <manifest-url>\`.
-- Remote module manifests can declare schema-admin, HTTP routes, runtime functions, and lifecycle activation jobs.
-- Runtime Console is served by the API from \`.lenso/console\` after \`lenso host update-console\`.
+- Service-provided Modules install through reviewed Module Release and Service composition operations.
+- Managed Services expose management only through capability-neutral System Plane contracts.
+- Lenso Console is an independent Service and is never served by a managed Service API.
 - Generated contracts are committed and reproducible.
 
 ## Getting Started
@@ -66,7 +66,7 @@ just check
 ## Known Caveats
 
 - Source-only local smoke still requires Postgres and separate API, worker, and Runtime Console shells.
-- Remote module install is intentionally decentralized and low-friction.
+- Provider releases are pinned by the Application Module Lock and target-owned Service Installation Set.
 - Publisher trust, registry review, install history, doctor flows, bundle import/export, provenance, and signatures are not release blockers.
 EOF
 
@@ -81,8 +81,8 @@ This release workflow uploads these artifacts:
 
 The source archive contains repository source files, committed contracts,
 examples, docs, and scripts. It does not include local build output, \`.git\`,
-\`target/\`, or \`dist/\`. Install the Runtime Console separately with
-\`lenso host update-console\`.
+\`target/\`, or \`dist/\`. Install the independent Console Service separately
+with \`lenso console install\`.
 
 After extracting either archive:
 

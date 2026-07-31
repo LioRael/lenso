@@ -1,0 +1,37 @@
+[package]
+name = "provider-fixture"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+platform-module.workspace = true
+platform-provider.workspace = true
+prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tonic = { workspace = true, features = ["router", "server"] }
+tonic-prost.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+http.workspace = true
+platform-core.workspace = true
+tower = { workspace = true, features = ["util"] }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "provider-fixture"
+path = "src/main.rs"
+
+[lints]
+workspace = true

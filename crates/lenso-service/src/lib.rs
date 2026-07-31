@@ -232,8 +232,8 @@ pub use workload_identity::{
 };
 
 pub use lenso_contracts::{
-    ArtifactReference, LinkedModuleDelivery, MODULE_MANIFEST_PROTOCOL, MODULE_RELEASE_PROTOCOL,
-    ModuleCompatibilityDeclaration, ModuleConsoleArtifact, ModuleContractIssue, ModuleDelivery,
+    ArtifactReference, ConsoleUiArtifact, LinkedModuleDelivery, MODULE_MANIFEST_PROTOCOL,
+    MODULE_RELEASE_PROTOCOL, ModuleCompatibilityDeclaration, ModuleContractIssue, ModuleDelivery,
     ModuleManifest, ModuleRelease, ServiceModuleDelivery, ServiceResponsibilityProfile,
     canonical_json as canonical_module_json, digest_json as digest_module_json,
 };
@@ -7235,7 +7235,7 @@ mod tests {
     #[test]
     fn invalid_service_package_reports_protocol_and_modules() {
         let issues = validate_service_package_value(&json!({
-            "protocol": "remote-module",
+            "protocol": "retired.delivery.v0",
             "name": "support-suite-provider",
             "version": "0.2.0",
             "serviceManifest": "lenso.service.json",

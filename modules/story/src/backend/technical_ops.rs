@@ -84,7 +84,7 @@ fn admin_action_to_technical_operation(
     }
 }
 
-pub(super) async fn remote_proxy_technical_operations(
+pub(super) async fn provider_technical_operations(
     ctx: &AppContext,
     request_ctx: &RequestContext,
     correlation_id: &str,
@@ -98,9 +98,9 @@ pub(super) async fn remote_proxy_technical_operations(
             module_name,
             method,
             declared_path,
-            remote_path,
+            provider_path,
             capability,
-            remote_status,
+            provider_status,
             duration_ms,
             success,
             error_code,
@@ -112,7 +112,7 @@ pub(super) async fn remote_proxy_technical_operations(
             path_params,
             error_details,
             occurred_at
-        from platform.remote_http_proxy_calls
+        from platform.provider_http_calls
         where correlation_id = $1
         order by occurred_at asc, id asc
         limit $2
@@ -125,28 +125,26 @@ pub(super) async fn remote_proxy_technical_operations(
     .map_err(|source| query_error(source, request_ctx))?;
 
     rows.into_iter()
-        .map(|row| remote_proxy_call_from_row(&row))
+        .map(|row| provider_call_from_row(&row))
         .map(|result| {
             result.map(|call| {
-                let related_node_id = remote_proxy_related_node_id(&call, spans, node_index);
-                remote_proxy_call_to_technical_operation(call, related_node_id)
+                let related_node_id = provider_related_node_id(&call, spans, node_index);
+                provider_call_to_technical_operation(call, related_node_id)
             })
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|source| query_error(source, request_ctx))
 }
 
-fn remote_proxy_call_from_row(
-    row: &sqlx::postgres::PgRow,
-) -> Result<AdminRemoteProxyCall, sqlx::Error> {
-    Ok(AdminRemoteProxyCall {
+fn provider_call_from_row(row: &sqlx::postgres::PgRow) -> Result<AdminProviderCall, sqlx::Error> {
+    Ok(AdminProviderCall {
         id: row.try_get("id")?,
         module_name: row.try_get("module_name")?,
         method: row.try_get("method")?,
         declared_path: row.try_get("declared_path")?,
-        remote_path: row.try_get("remote_path")?,
+        provider_path: row.try_get("provider_path")?,
         capability: row.try_get("capability")?,
-        remote_status: row.try_get("remote_status")?,
+        provider_status: row.try_get("provider_status")?,
         duration_ms: row.try_get("duration_ms")?,
         success: row.try_get("success")?,
         error_code: row.try_get("error_code")?,
@@ -159,8 +157,8 @@ fn remote_proxy_call_from_row(
     })
 }
 
-fn remote_proxy_related_node_id(
-    call: &AdminRemoteProxyCall,
+fn provider_related_node_id(
+    call: &AdminProviderCall,
     spans: &[TelemetrySpan],
     node_index: &RuntimeNodeIndex,
 ) -> Option<String> {
@@ -176,17 +174,17 @@ fn remote_proxy_related_node_id(
     let trace_id = call.trace_id.as_deref()?;
     spans
         .iter()
-        .filter(|span| remote_proxy_span_trace_id(span) == Some(trace_id))
+        .filter(|span| provider_span_trace_id(span) == Some(trace_id))
         .find_map(|span| related_node_id(&span.attributes, node_index))
         .or_else(|| {
-            let remote_proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
+            let provider_node_id = platform_core::provider_call_story_event_id(&call.id);
             node_index
-                .contains(&remote_proxy_node_id)
-                .then_some(remote_proxy_node_id)
+                .contains(&provider_node_id)
+                .then_some(provider_node_id)
         })
 }
 
-fn remote_proxy_span_trace_id(span: &TelemetrySpan) -> Option<&str> {
+fn provider_span_trace_id(span: &TelemetrySpan) -> Option<&str> {
     [
         "otel.trace_id",
         "trace_id",
@@ -197,8 +195,8 @@ fn remote_proxy_span_trace_id(span: &TelemetrySpan) -> Option<&str> {
     .find_map(|key| span_attribute(&span.attributes, key))
 }
 
-fn remote_proxy_call_to_technical_operation(
-    call: AdminRemoteProxyCall,
+fn provider_call_to_technical_operation(
+    call: AdminProviderCall,
     related_node_id: Option<String>,
 ) -> AdminRuntimeTechnicalOperation {
     let ended_at = call.occurred_at + Duration::milliseconds(call.duration_ms.max(0));
@@ -207,9 +205,9 @@ fn remote_proxy_call_to_technical_operation(
             "module_name": call.module_name,
             "method": call.method,
             "declared_path": call.declared_path,
-            "remote_path": call.remote_path,
+            "provider_path": call.provider_path,
             "capability": call.capability,
-            "remote_status": call.remote_status,
+            "provider_status": call.provider_status,
             "duration_ms": call.duration_ms,
             "success": call.success,
             "error_code": call.error_code,
@@ -222,13 +220,13 @@ fn remote_proxy_call_to_technical_operation(
         correlation_id: call.correlation_id.clone(),
         duration_ms: call.duration_ms,
         ended_at,
-        id: format!("remote_proxy:{}", call.id),
+        id: format!("provider:{}", call.id),
         name: format!(
             "{} {} {}",
             call.module_name, call.method, call.declared_path
         ),
         related_node_id,
-        source: "remote_proxy".to_owned(),
+        source: "provider".to_owned(),
         started_at: call.occurred_at,
         status: if call.success { "ok" } else { "error" }.to_owned(),
         story_id: call.correlation_id,
@@ -539,59 +537,55 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn remote_proxy_prefers_execution_span_over_proxy_node() {
-        let call = remote_proxy_call(
+    fn provider_prefers_execution_span_over_proxy_node() {
+        let call = provider_call(
             "rproxy_story_external",
-            Some("trace_story_remote_proxy"),
+            Some("trace_story_provider"),
             Some("span_without_matching_telemetry"),
         );
-        let proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
+        let proxy_node_id = platform_core::provider_call_story_event_id(&call.id);
         let node_index = RuntimeNodeIndex {
             ids: BTreeSet::from(["fnrun_story".to_owned(), proxy_node_id]),
         };
         let spans = vec![telemetry_span(
-            "span_remote_proxy_trace_fallback",
+            "span_provider_trace_fallback",
             serde_json::json!({
                 "lenso.correlation_id": "corr_story",
                 "lenso.story_id": "corr_story",
                 "lenso.function_run_id": "fnrun_story",
-                "otel.trace_id": "trace_story_remote_proxy",
+                "otel.trace_id": "trace_story_provider",
             }),
         )];
 
         assert_eq!(
-            remote_proxy_related_node_id(&call, &spans, &node_index).as_deref(),
+            provider_related_node_id(&call, &spans, &node_index).as_deref(),
             Some("fnrun_story")
         );
     }
 
     #[test]
-    fn remote_proxy_falls_back_to_proxy_node_without_execution_span() {
-        let call = remote_proxy_call("rproxy_story_external", Some("trace_remote_proxy"), None);
-        let proxy_node_id = platform_core::remote_proxy_call_story_event_id(&call.id);
+    fn provider_falls_back_to_proxy_node_without_execution_span() {
+        let call = provider_call("rproxy_story_external", Some("trace_provider"), None);
+        let proxy_node_id = platform_core::provider_call_story_event_id(&call.id);
         let node_index = RuntimeNodeIndex {
             ids: BTreeSet::from([proxy_node_id.clone()]),
         };
 
         assert_eq!(
-            remote_proxy_related_node_id(&call, &[], &node_index).as_deref(),
+            provider_related_node_id(&call, &[], &node_index).as_deref(),
             Some(proxy_node_id.as_str())
         );
     }
 
-    fn remote_proxy_call(
-        id: &str,
-        trace_id: Option<&str>,
-        span_id: Option<&str>,
-    ) -> AdminRemoteProxyCall {
-        AdminRemoteProxyCall {
+    fn provider_call(id: &str, trace_id: Option<&str>, span_id: Option<&str>) -> AdminProviderCall {
+        AdminProviderCall {
             id: id.to_owned(),
             module_name: "remote-crm".to_owned(),
             method: "GET".to_owned(),
             declared_path: "/contacts/{id}".to_owned(),
-            remote_path: "/contacts/contact_1".to_owned(),
+            provider_path: "/contacts/contact_1".to_owned(),
             capability: Some("remote_crm.contacts.read".to_owned()),
-            remote_status: Some(200),
+            provider_status: Some(200),
             duration_ms: 125,
             success: true,
             error_code: None,

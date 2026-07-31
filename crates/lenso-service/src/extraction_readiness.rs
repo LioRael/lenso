@@ -2075,9 +2075,9 @@ fn issue_code_label(code: ExtractionReadinessIssueCode) -> &'static str {
 mod tests {
     use super::*;
     use lenso_contracts::{
-        AdminSchema, ConsoleArea, ConsolePackage, ConsoleSurface, EntitySchema,
-        EventHandlerDeclaration, EventSurface, FieldSchema, FieldType, ModuleHttpRoute,
-        RuntimeFunctionDeclaration, RuntimeSurface, ScheduledFunctionDeclaration,
+        AdminSchema, CONSOLE_BRIDGE_PROTOCOL, ConsoleSurface, ConsoleSurfacePresentation,
+        EntitySchema, EventHandlerDeclaration, EventSurface, FieldSchema, FieldType,
+        ModuleHttpRoute, RuntimeFunctionDeclaration, RuntimeSurface, ScheduledFunctionDeclaration,
         StoryDisplayDescriptor, WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
     };
     fn manifest() -> ModuleManifest {
@@ -2145,11 +2145,11 @@ mod tests {
             .console(vec![ConsoleSurface {
                 name: "support-tickets".to_owned(),
                 label: "Support tickets".to_owned(),
-                area: ConsoleArea::Data,
                 route: "/support/tickets".to_owned(),
-                package: ConsolePackage {
-                    name: "@lenso/support-ticket-console".to_owned(),
-                    export: "supportTicketConsoleModule".to_owned(),
+                presentation: ConsoleSurfacePresentation::Isolated {
+                    entry: "supportTicketConsoleModule".to_owned(),
+
+                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: vec!["support.tickets.read".to_owned()],

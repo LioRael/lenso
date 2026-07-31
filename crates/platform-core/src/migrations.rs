@@ -38,8 +38,8 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         sql: include_str!("../migrations/0007_create_config_schema.sql"),
     },
     Migration {
-        name: "platform/0008_create_remote_http_proxy_calls",
-        sql: include_str!("../migrations/0008_create_remote_http_proxy_calls.sql"),
+        name: "platform/0008_create_provider_http_calls",
+        sql: include_str!("../migrations/0008_create_provider_http_calls.sql"),
     },
     Migration {
         name: "platform/0009_add_story_query_indexes",
@@ -56,6 +56,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
     Migration {
         name: "platform/0012_create_delivery_artifacts",
         sql: include_str!("../migrations/0012_create_delivery_artifacts.sql"),
+    },
+    Migration {
+        name: "platform/0013_create_provider_host_effect_commits",
+        sql: include_str!("../migrations/0013_create_provider_host_effect_commits.sql"),
     },
 ];
 

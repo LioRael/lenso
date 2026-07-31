@@ -76,10 +76,10 @@ Most release-smoke failures are local setup issues:
 - API or Console ports are busy: change `HTTP_PORT`, `CONSOLE_PORT`, or
   `VITE_API_BASE_URL` for that shell.
 - `first-user-smoke` port defaults are busy: set `FIRST_USER_SMOKE_HTTP_PORT`
-  or `FIRST_USER_SMOKE_REMOTE_MODULE_ADDR` for that shell.
+  for that shell.
 - The service manifest URL does not respond: start the service process and open
   `/lenso/service/v1/manifest` in a browser or with `curl`.
-- A Provider Module is not visible: inspect the Application Module Lock and the
+- A Provider export is not visible: inspect the Application Module Lock and the
   target environment's Service Installation Set, repair any exact-release or
   endpoint mismatch, then restart the API and worker.
 - OTLP collector is not running: unset `OTEL_EXPORTER_OTLP_ENDPOINT` for normal

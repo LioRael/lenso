@@ -18,8 +18,6 @@ pub struct AppConfig {
     pub telemetry: TelemetryConfig,
     pub auth: AuthConfig,
     #[serde(default)]
-    pub console: ConsoleConfig,
-    #[serde(default)]
     pub module_sources: ModuleSourcesConfig,
     #[serde(default)]
     pub modules: BTreeMap<String, ModuleConfig>,
@@ -45,7 +43,6 @@ impl AppConfig {
             http,
             telemetry: TelemetryConfig::default(),
             auth: AuthConfig::default(),
-            console: ConsoleConfig::default(),
             modules: module_configs_from_env(),
         })
     }
@@ -206,23 +203,6 @@ impl LogFormat {
 pub struct AuthConfig {
     pub issuer: Option<String>,
     pub audience: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ConsoleConfig {
-    pub dist_dir: String,
-    pub extensions_dir: String,
-}
-
-impl Default for ConsoleConfig {
-    fn default() -> Self {
-        Self {
-            dist_dir: std::env::var("LENSO_CONSOLE_DIST_DIR")
-                .unwrap_or_else(|_| ".lenso/console/dist".to_owned()),
-            extensions_dir: std::env::var("LENSO_CONSOLE_EXTENSIONS_DIR")
-                .unwrap_or_else(|_| ".lenso/console/extensions".to_owned()),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

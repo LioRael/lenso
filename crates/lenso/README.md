@@ -131,7 +131,7 @@ let manifest = ModuleManifest::builder("example")
     })
     .build();
 
-let lints = lint_module_manifest(ModuleSource::Remote, &manifest);
+let lints = lint_module_manifest(ModuleSource::Service, &manifest);
 assert!(
     lints
         .iter()

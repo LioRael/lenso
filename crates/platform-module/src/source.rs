@@ -9,6 +9,5 @@ use utoipa::ToSchema;
 #[serde(rename_all = "snake_case")]
 pub enum ModuleSource {
     Linked,
-    #[serde(rename = "service")]
-    Remote,
+    Service,
 }
