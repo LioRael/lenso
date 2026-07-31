@@ -464,14 +464,19 @@ the Data Plane, including `/modules/{module}/http/*`. Existing
 `/system/delivery/*` management behavior moves to its System Plane Capability
 Contract.
 
-The following same-Host artifacts are retired explicitly:
+The following managed-Host artifacts are retired explicitly:
 
 - `.lenso/console/dist`, `.lenso/console/extensions`, and
   `.lenso/console-package-install-plan.json`;
-- Console extension registries and copied-bundle ledgers;
+- managed-Host Console extension registries and copied-bundle ledgers;
 - `LENSO_CONSOLE_DIST_DIR`, `LENSO_CONSOLE_EXTENSIONS_DIR`,
   `LENSO_CONSOLE_BASE`, and all hosted-asset `LENSO_RUNTIME_CONSOLE_*` variables;
 - `lenso-runtime-console.tar.gz` and hosted-archive download/publish workflows.
+
+This retirement does not remove Module Console extensions. The standalone
+Console Service owns the replacement registry at `/extensions/registry.json`
+and serves verified artifacts from `/extensions/runtime/*`; those paths never
+exist on a managed application Service.
 
 `lenso.system.json` may remain a developer or CLI planning artifact but never
 becomes Console Registry runtime state. Historical tags, changelogs, and release

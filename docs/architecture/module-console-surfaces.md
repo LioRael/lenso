@@ -146,8 +146,8 @@ API and Console Service-owned package composition.
 The Runtime Console may show install and operation status from backend module
 metadata, but the browser must not install packages by itself. Installation is a
 reviewed management operation. The managed application host materializes only
-business module and Service state; Console package composition belongs to the
-Console Service release and deployment.
+business module and Service state; the Console Service materializes verified
+Console artifacts into its own extension root.
 
 ## Installed Package Registry
 
@@ -169,26 +169,33 @@ export const installedConsolePackages = [
 ];
 ```
 
-This Console-owned registry is intentionally static. It gives Vite a real import to bundle,
-lets reviewers inspect package additions in source control, and keeps unknown
-package exports visible as Missing Console Packages until the host explicitly
-trusts and registers them.
+This Console-owned registry covers built-in packages. It gives Vite a real
+import to bundle and lets reviewers inspect first-party package additions in
+source control. Installable Module Console artifacts use the runtime registry
+described below instead of requiring a Console rebuild.
 
 ## Console Service Ownership
 
 The application API does not host the Console shell, Console packages, or an
 extension registry. It exposes target-owned management APIs and serializable
 `ModuleManifest.console` declarations. The standalone Console Service owns its
-web root, trusted package selection, package compatibility checks, and frontend
-release lifecycle.
+web root, trusted package selection, package compatibility checks, production
+extension registry, and frontend release lifecycle.
 
 This boundary means managed application hosts do not need Node.js or copied
 Console assets, and no `/console` or `/console/extensions/*` compatibility route
 is mounted by `lenso-api`.
 
-This is not arbitrary browser-side package installation. The host installation
-lane is still responsible for downloading, verifying, and placing bundle files
-in the configured console extension directory.
+The Console Service exposes its registry at `/extensions/registry.json` and
+installed artifacts at `/extensions/runtime/*`. Registry entries must be
+same-origin, must match the supported Console host API, and must resolve to a
+valid `ConsoleModule` export. A missing registry is an empty extension set, not
+a reason to disable the extension capability.
+
+This is not arbitrary browser-side package installation. The Console Service
+installation adapter is responsible for downloading, verifying, and placing
+bundle files in its configured extension root; managed application hosts never
+serve those files.
 
 The local developer workflow is supported by:
 
