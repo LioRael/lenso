@@ -398,7 +398,7 @@ on NATS, Kafka, a service mesh, or broker-specific types.
 
 ## Runtime Console
 
-The Lenso Console product is developed in the sibling `lenso-runtime-console`
+The Lenso Console product is developed in the sibling `lenso-console`
 repository as an independent Service. It owns operator identity, its composition
 Store and the web shell. Managed Services expose only authenticated
 `/system-plane/v1/*` contracts on a dedicated listener; Console never reads a

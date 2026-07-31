@@ -293,7 +293,7 @@ Console Service and CLI development shortcuts:
 
 ```sh
 # Run the complete local Console Service from its own repository.
-cd ../lenso-runtime-console
+cd ../lenso-console
 pnpm run service:serve
 
 # Serve a generated host through the local lenso-cli checkout.
