@@ -1,67 +1,39 @@
 core:changelogs:
-  - content: "---\npackages:\n  \"@lenso/service-kit\":\n    type: patch\n  lenso-autonomous-service:\n    type: patch\n  lenso-contracts:\n    type: patch\n  lenso-module-management:\n    type: patch\n  lenso-platform-core:\n    type: patch\n  lenso-platform-http:\n    type: patch\n  lenso-platform-module:\n    type: patch\n  lenso-platform-module-management:\n    type: patch\n  lenso-platform-provider:\n    type: patch\n  lenso-platform-runtime:\n    type: patch\n  lenso-platform-runtime-observability:\n    type: patch\n  lenso-platform-runtime-operations:\n    type: patch\n  lenso-platform-system-plane:\n    type: patch\n  lenso-platform-testing:\n    type: patch\n  lenso-service:\n    type: patch\n---\n\n### Maintenance\n\nRetry the current Foundation and Service Kit package set after reviewing the\nnew System Plane dependencies and moving that review into plan generation.\n"
-    filename: foundation-reviewed-edge-retry.md
+  - content: "---\npackages:\n  \"@lenso/service-kit\":\n    type: patch\n---\n\n### Fixed\n\nBuild the Service Kit public entrypoints before the reviewed publisher seals its\nnpm archive, and reject any future archive that omits a declared entrypoint.\n"
+    filename: service-kit-artifact.md
     v: 0.0.0
 core:packages:
   - changelogIds:
-      - foundation-reviewed-edge-retry.md
+      - service-kit-artifact.md
     id: npm:@lenso/service-kit
     updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-autonomous-service
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-contracts
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-module-management
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-service
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-core
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-http
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-module-management
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-provider
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-module
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-runtime
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-runtime-observability
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-runtime-operations
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-system-plane
-    updated: true
-  - changelogIds:
-      - foundation-reviewed-edge-retry.md
-    id: cargo:lenso-platform-testing
-    updated: true
+  - id: cargo:lenso-contracts
+    updated: false
+  - id: cargo:lenso-autonomous-service
+    updated: false
+  - id: cargo:lenso-service
+    updated: false
+  - id: cargo:lenso-module-management
+    updated: false
+  - id: cargo:lenso-platform-core
+    updated: false
+  - id: cargo:lenso-platform-http
+    updated: false
+  - id: cargo:lenso-platform-module
+    updated: false
+  - id: cargo:lenso-platform-provider
+    updated: false
+  - id: cargo:lenso-platform-module-management
+    updated: false
+  - id: cargo:lenso-platform-runtime
+    updated: false
+  - id: cargo:lenso-platform-runtime-observability
+    updated: false
+  - id: cargo:lenso-platform-runtime-operations
+    updated: false
+  - id: cargo:lenso-platform-system-plane
+    updated: false
+  - id: cargo:lenso-platform-testing
+    updated: false
 npm:packages:
   - id: npm:@lenso/service-kit
