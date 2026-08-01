@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "pnpm --filter @lenso/service-kit build",
     "release:intent-check": "node scripts/release-plan.mjs --check-intent",
     "release:plan": "node scripts/release-plan.mjs",
     "release:verify": "just release-check && node scripts/release-plan.mjs --verify"
