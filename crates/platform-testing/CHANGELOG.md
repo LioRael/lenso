@@ -1,3 +1,10 @@
+## lenso-platform-testing@0.1.16
+
+### Maintenance
+
+Retry the current Foundation and Service Kit package set after reviewing the
+new System Plane dependencies and moving that review into plan generation.
+
 ## lenso-platform-testing@0.1.15
 
 ### Maintenance

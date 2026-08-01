@@ -1,3 +1,10 @@
+## lenso-module-management@0.1.4
+
+### Maintenance
+
+Retry the current Foundation and Service Kit package set after reviewing the
+new System Plane dependencies and moving that review into plan generation.
+
 ## lenso-module-management@0.1.3
 
 ### Maintenance

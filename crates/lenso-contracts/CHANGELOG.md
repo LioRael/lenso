@@ -1,3 +1,10 @@
+## lenso-contracts@0.3.20
+
+### Maintenance
+
+Retry the current Foundation and Service Kit package set after reviewing the
+new System Plane dependencies and moving that review into plan generation.
+
 ## lenso-contracts@0.3.19
 
 ### Maintenance
