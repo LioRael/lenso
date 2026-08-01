@@ -124,7 +124,7 @@ just worker
 ```
 
 For Console development, run the complete Service from the sibling
-`../lenso-runtime-console` repository with `pnpm run service:serve`.
+`../lenso-console` repository with `pnpm run service:serve`.
 
 ## Install The Example Service
 

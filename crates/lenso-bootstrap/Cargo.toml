@@ -16,6 +16,9 @@ platform-core.workspace = true
 platform-module.workspace = true
 platform-provider.workspace = true
 platform-module-management.workspace = true
+platform-runtime-observability.workspace = true
+platform-runtime-operations.workspace = true
+platform-system-plane.workspace = true
 platform-http.workspace = true
 platform-runtime.workspace = true
 auth.workspace = true
@@ -31,6 +34,7 @@ serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 lenso-module-management.workspace = true
+lenso-service.workspace = true
 
 [dev-dependencies]
 platform-testing.workspace = true

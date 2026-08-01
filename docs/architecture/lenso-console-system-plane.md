@@ -405,8 +405,8 @@ roles are deleted after behavior moves to its authority owner. Generic
 and the broad `Admin*` declaration family are not mechanically renamed: business
 administration and System Plane management have different authority models.
 `ModuleManifest.console`, Console surface/navigation declarations, and slots
-remain. `ConsolePackage` becomes `ConsoleUiArtifact`; fixed Console areas and
-same-origin JavaScript bundle execution are removed. Specifically,
+remain. `ConsoleUiArtifact` carries the isolated artifact contract; fixed
+Console areas and same-origin JavaScript bundle execution are removed. Specifically,
 `ConsoleArea::{Runtime, Operations, Data, Configuration}` and
 `AdminEmbeddedRuntime::JsBundle` have no target equivalent.
 
@@ -418,17 +418,16 @@ changing the approved atomic-release invariant.
 
 The Console repository root is not published as `@lenso/runtime-console`.
 Internal web source may use private `@lenso/console-web`; the isolated bridge is
-`@lenso/console-bridge`. Existing `@lenso/*-console` packages become UI artifacts
-inside their owning Module Releases or leave the Console. `@lenso/service-kit`
-moves to framework/SDK ownership, and remote-module kit behavior folds into it
-under Service Module Delivery language.
+`@lenso/console-bridge`. Module-owned UI is carried as an artifact inside its
+owning Module Release. `@lenso/service-kit` is owned by the framework SDK; the
+old Remote Module kit is retired after its supported behavior moved under
+Service Module Delivery language.
 
 Concretely, `@lenso/runtime-console-api` is retired rather than aliased;
-`@lenso/story-console` becomes the Runtime Stories Module's UI artifact;
-`@lenso/identity-console` moves to the appropriate identity-role or managed-auth
-Module; and `@lenso/remote-crm-console` becomes a Business Administration Surface
-or is deleted. `@lenso/remote-module-kit` folds into `@lenso/service-kit`; Remote
-Module is not retained as a public package category.
+Runtime Stories UI belongs to the Runtime Stories Module; identity UI belongs
+to the Console identity-role Module; and business administration UI belongs to
+its business Module rather than the Console repository. `@lenso/remote-module-kit`
+is retired; Remote Module is not a public package category.
 
 The external CLI surface is `lenso console install|upgrade|backup|restore|doctor`,
 `lenso console operator bootstrap`, `lenso console composition plan|apply`, and
@@ -461,8 +460,8 @@ HTTP namespaces are:
 The target contains no managed-Service `/admin/*`, `/console/*`, or
 `/console/extensions/*` compatibility routes. Business Module HTTP remains in
 the Data Plane, including `/modules/{module}/http/*`. Existing
-`/system/delivery/*` management behavior moves to its System Plane Capability
-Contract.
+`/system/delivery/*` management behavior is represented by its System Plane
+Capability Contract.
 
 The following managed-Host artifacts are retired explicitly:
 

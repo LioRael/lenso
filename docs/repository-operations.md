@@ -71,7 +71,7 @@ Runtime Console repository secret with the same name.
 Current repository metadata should stay aligned with the README:
 
 - Description: `Rust-first modular monolith backend with generated contracts and Runtime Console admin APIs`
-- Topics: `axum`, `lenso`, `modular-monolith`, `openapi`, `postgres`, `runtime-console`, `rust`
+- Topics: `axum`, `lenso`, `lenso-console`, `modular-monolith`, `openapi`, `postgres`, `rust`
 
 Update GitHub metadata when the repository role changes materially.
 

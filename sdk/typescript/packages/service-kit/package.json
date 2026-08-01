@@ -6,7 +6,7 @@
     "backend",
     "lenso",
     "module",
-    "runtime-console",
+    "lenso-console",
     "service"
   ],
   "homepage": "https://github.com/LioRael/lenso#readme",

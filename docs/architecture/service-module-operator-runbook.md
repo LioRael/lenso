@@ -98,24 +98,19 @@ real Capability Provider. Production deployments must supply their own Workload
 Identity, delegated-context, and authenticated TLS transport adapters; the
 development sandbox providers are never selected implicitly.
 
-Production Hosts call `lenso_api::run_production_system_plane` with a bound TCP
-listener, Host context and composition, production configuration, and shutdown
-future. Configuration supplies the Workload API endpoint, trust domain, stable
-Service Principal, and one or more exact `(issuer, verification method,
-Ed25519 public key)` records. The helper composes the runtime, builds the Router,
-serves rotating X.509-SVID mTLS, derives `AuthenticatedTransportBinding` from
-the verified peer certificate, restricts the listener to `/system-plane/v1/*`,
-and shuts down its Workload API sources after graceful server termination.
-`compose_host_production_system_plane_runtime` and
-`try_build_router_with_production_system_plane` remain lower-level embedding
-seams, but their returned runtime must be kept alive and explicitly shut down.
-The normal API listener deliberately does not mount a production System Plane,
-and proxy or caller headers are not accepted as transport proof.
+Embedding Hosts compose `HostSystemPlaneRuntime`, build its independent Router,
+and call `lenso_api::run_production_system_plane` with a separately bound TCP
+listener, a production `SpiffeWorkloadIdentityProvider`, an exact non-empty peer
+SPIFFE allow list, and a shutdown future. The helper serves rotating X.509-SVID
+mTLS, derives `AuthenticatedTransportBinding` from the verified peer
+certificate, and shuts down its Workload API source after graceful termination.
+The normal API listener deliberately does not mount System Plane routes, and
+proxy or caller headers are not accepted as transport proof.
 
-The default `lenso::host::run_api_from_env_with_composition` startup can own
-both listeners. It remains Data Plane-only unless
-`LENSO_SYSTEM_PLANE_ENABLED=true`. When enabled, configure these required
-values:
+Framework environment startup remains Data Plane-only. The embedding Service
+owns parsing and validation of its System Plane deployment configuration before
+constructing the injected identity, Enrollment authorizer, providers, and
+listener. A typical deployment configuration includes:
 
 ```dotenv
 LENSO_SYSTEM_PLANE_BIND=127.0.0.1:3443
@@ -125,17 +120,10 @@ SPIFFE_ENDPOINT_SOCKET=unix:///run/spire/sockets/agent.sock
 LENSO_SYSTEM_PLANE_DELEGATED_KEYS_JSON=[{"issuer":"console","verificationMethod":"key-1","publicKeyBase64url":"..."}]
 ```
 
-The delegated-key array must be non-empty and rejects unknown fields. Optional
-values select the stable Service ID and Principal, positive Service revision,
-positive plan lifetime, runtime and Enrollment state paths, and workspace root;
-see `.env.example` for their exact names and defaults. Service environment
-defaults to `APP_ENV`. The core protocol version, canonical schema digest, and
-supported capability features are framework-owned rather than caller-authored.
-Startup rejects incomplete or malformed configuration before connecting to the
-database. It binds the Data Plane first, then the independent System Plane
-socket, and starts neither server if either bind fails. A process signal or an
-exit from either server requests graceful shutdown of both and closes the live
-SPIFFE Workload API sources.
+These names are deployment examples, not framework-owned environment parsing.
+The embedding Service must reject incomplete or malformed configuration before
+serving traffic, bind System Plane separately from the Data Plane, and coordinate
+graceful shutdown for both listeners.
 
 A newly managed Service can import an owner-approved Enrollment during startup
 without exposing enrollment over the network:
@@ -146,15 +134,14 @@ LENSO_SYSTEM_PLANE_ENROLLMENT_VERIFICATION_EVIDENCE_DIGEST=sha256:...
 ```
 
 Provision both values together only after the Service owner has verified the
-Receipt signature and approval through the owning trust process. Startup parses
-the strict Receipt contract and checks its exact Service identity, configured
-SPIFFE trust domain, and every delegated issuer/key-method pair before writing
-the Service-owned Enrollment Record atomically. Replaying the exact Receipt and
-evidence is safe across restarts. A changed evidence digest, same-revision
-replacement, conflicting Console authority, or missing local verification key
-fails closed. Authority transfer still requires explicit local revocation and a
-newer verified Receipt; no remote System Plane endpoint can activate, transfer,
-or revoke Enrollment.
+Receipt signature and approval through the owning trust process. An embedding
+startup adapter that supports this import must parse the strict Receipt contract,
+check its exact Service identity, trust domain, and delegated issuer/key-method
+pairs, and write the Service-owned Enrollment Record atomically. Replaying the
+exact Receipt and evidence is safe; changed evidence or authority must fail
+closed. Authority transfer still requires explicit local revocation and a newer
+verified Receipt; no remote System Plane endpoint can activate, transfer, or
+revoke Enrollment.
 
 The production delegated-context adapter accepts URL-safe, unpadded Base64
 encodings of raw 32-byte Ed25519 public keys. Configure each key under the exact
@@ -164,13 +151,12 @@ method, then remove the retired pair after its last credential has expired. The
 Service receives verification keys only; the Console signing key never crosses
 the System Plane boundary.
 
-During Service startup, System Plane runtime composition resumes all durably
-accepted or running management Operations before exposing its Router. Providers
-must therefore treat `operation_id` as their effect idempotency identity. Once
-the kernel has recorded its internal completion checkpoint, recovery only
-rebuilds terminal evidence and Operation state; it does not invoke the Provider
-again. Missing capability registration, unreadable state, or an invalid
-checkpoint fails startup instead of silently discarding accepted work.
+Providers must treat `operation_id` as their effect idempotency identity. An
+embedding Service that accepts durable management Operations must resume or
+reconcile them before exposing its Router. Once an owning kernel has recorded
+its internal completion checkpoint, recovery rebuilds terminal evidence and
+Operation state without invoking the Provider effect again. Missing capability
+registration, unreadable state, or an invalid checkpoint must fail startup.
 
 Each capability has its own monotonic Operation Evidence sequence. Consumers
 must persist the returned opaque `nextCursor` and continue until it equals the

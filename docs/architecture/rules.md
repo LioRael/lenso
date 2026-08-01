@@ -90,12 +90,10 @@ Do not create DDD or Clean Architecture folders:
   `AuthenticatedTransportBinding`, and it must derive the value from the
   verified peer certificate. Its dedicated listener exposes only
   `/system-plane/v1/*`. The ordinary API listener never exposes System Plane
-  routes. Environment-driven Host startup may opt into a distinct production
-  listener with `LENSO_SYSTEM_PLANE_ENABLED=true`; it must validate the full
-  production identity configuration before connecting to storage or serving
-  traffic, and its bind address must remain distinct from `HTTP_HOST` and
-  `HTTP_PORT`. No forwarded or caller-authored header may substitute for
-  verified mTLS state.
+  routes. The embedding Service owns the distinct production listener and must
+  validate the full production identity configuration before serving traffic;
+  its bind address must remain distinct from the ordinary API listener. No
+  forwarded or caller-authored header may substitute for verified mTLS state.
 - System Plane authorization is an intersection: stable Console Service
   Principal, active Service-owned Enrollment, negotiated capability major,
   capability/operation ceiling, current authorization epoch, Console Module
@@ -128,7 +126,7 @@ Do not create DDD or Clean Architecture folders:
 - Every install, update, uninstall, optional-requirement change, and delivery switch must re-resolve the complete Module graph through `ModuleGraphResolver`. Preserve a currently locked release only while it remains eligible and satisfies every accumulated constraint; otherwise prefer Linked delivery for a new unconstrained selection, then highest SemVer, then release digest. Exact pins constrain selection but never bypass trust, lifecycle, provenance, compatibility, capability, or delivery policy.
 - Optional requirements enter the graph only when explicitly selected in desired composition. Missing capabilities, incompatible version or delivery constraints, dependency cycles, blocked candidates, and duplicate release identities fail before planning with deterministic dependency paths and eligible alternatives. Uninstall must re-resolve and report orphaned transitive Modules rather than deleting only the requested root.
 - Linked Cargo resolution must run in an isolated workspace materialized from the exact plan read set plus reviewed candidate files. The resulting `Cargo.lock` candidate must expose its package and feature diff, match each selected Linked release's package/version/archive checksum, and reject changes outside the selected package dependency closure before any workspace mutation.
-- The trusted catalog adapter materializes `.lenso/module-planning-context.json`; System Plane clients submit only a `ModuleRootChange` through the `service-installations` Capability Contract. The target must read target-owned desired/lock state and call the shared Plan Builder. Adapters must not accept caller-authored resolved locks, Cargo files, effect lists, or shell commands.
+- The trusted catalog adapter materializes `.lenso/module-planning-context.json`; management clients submit business-level changes only through negotiated target-owned System Plane Capability Contracts. The target must read target-owned desired/lock state and call the shared Plan Builder. Adapters must not accept caller-authored resolved locks, Cargo files, effect lists, or shell commands.
 - Writable targets materialize `.lenso/module-environment-policy.json`. Starting an operation submits the reviewed backend plan, but the backend must rebuild it from target-owned state and reject any byte-level difference before journaling it.
 - Exact plans, operation state, approvals, effect receipts, backups, fencing leases, and hash-chained journals live under `.lenso/module-management`; System Plane callers provide revisions and business decisions, never state transitions or receipts.
 - The Host effect adapter may execute only backend-produced validation commands or target-owned Service deployment actions already bound into the immutable plan. Local and Kubernetes actions use argv execution without a shell and a workspace-confined working directory; externally managed targets provide a content-addressed deployment receipt. Missing actions produce a durable `blocked` operation with a retry action; they are never successful no-ops.

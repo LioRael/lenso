@@ -2,6 +2,10 @@
 //! The adapter accepts business changes and returns kernel-owned snapshots or
 //! immutable plans; it never reimplements resolution, Cargo, or workspace rules.
 
+mod system_plane;
+
+pub use system_plane::*;
+
 use axum::{
     Json,
     extract::{Path as AxumPath, Query, State},

@@ -15,7 +15,6 @@
     "cargo:lenso-worker",
     "cargo:otel-smoke",
     "cargo:provider-fixture",
-    "cargo:remote-module-fixture",
     "generate-contracts",
     "lenso",
     "lenso-api",
@@ -26,7 +25,6 @@
     "lenso-worker",
     "npm:@lenso/framework-release-workspace",
     "otel-smoke",
-    "provider-fixture",
-    "remote-module-fixture"
+    "provider-fixture"
   ]
 }

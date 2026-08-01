@@ -96,9 +96,11 @@ lenso module install billing
 lenso module uninstall billing
 ```
 
-Runtime Console uses the same `/admin/modules/*` management workflow. Neither
-path copies frontend bundles. Console Composition resolves the selected UI
-artifact digest and creates the bounded bridge grant when the surface opens.
+Runtime Console reaches target-owned management only through negotiated System
+Plane capabilities; the retired same-host `/admin/modules/*` adapter is not a
+production authority boundary. Neither path copies frontend bundles. Console
+Composition resolves the selected UI artifact digest and creates the bounded
+bridge grant when the surface opens.
 
 ## Current and Deferred Sources
 
