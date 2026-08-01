@@ -1,3 +1,16 @@
+## lenso-platform-runtime@0.1.14
+
+### Features
+
+Publish the Linked Module management, Provider V1, Console Bridge authority, and
+signed Service enrollment contracts required by the isolated System Plane.
+
+### Breaking changes
+
+Remove the legacy Remote Module and in-host Console package declarations from
+the active Module contract. Remote processes are Services and Module sources are
+Linked.
+
 ## lenso-platform-runtime@0.1.12
 
 ### Features

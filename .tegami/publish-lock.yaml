@@ -1,42 +1,44 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-service:\n    type: patch\n  lenso:\n    type: patch\n---\n\n### Features\n\nPublish the signed System Plane enrollment, observability, and operations\ncontracts, then expose the Console and System Plane authoring boundaries through\nthe public `lenso` facade.\n\n### Security\n\nRequire consumers to verify the Console-signed Offer and Service-signed Receipt\nas one bilateral enrollment exchange before accepting registry evidence.\n"
-    filename: console-system-plane.md
+  - content: "---\npackages:\n  lenso-contracts:\n    type: patch\n  lenso-module-management:\n    type: patch\n  lenso-platform-core:\n    type: patch\n  lenso-platform-http:\n    type: patch\n  lenso-platform-module:\n    type: patch\n  lenso-platform-provider:\n    type: patch\n  lenso-platform-runtime:\n    type: patch\n  lenso-service:\n    type: patch\n---\n\n### Features\n\nPublish the Linked Module management, Provider V1, Console Bridge authority, and\nsigned Service enrollment contracts required by the isolated System Plane.\n\n### Breaking changes\n\nRemove the legacy Remote Module and in-host Console package declarations from\nthe active Module contract. Remote processes are Services and Module sources are\nLinked.\n"
+    filename: console-foundation.md
     v: 0.0.0
 core:packages:
-  - changelogIds:
-      - console-system-plane.md
-    id: cargo:lenso
-    updated: true
   - id: cargo:lenso-autonomous-service
     updated: true
-  - id: cargo:lenso-api
-    updated: true
-  - id: cargo:lenso-contracts
-    updated: false
-  - id: cargo:lenso-bootstrap
-    updated: true
-  - id: cargo:lenso-migrate
+  - changelogIds:
+      - console-foundation.md
+    id: cargo:lenso-contracts
     updated: true
   - changelogIds:
-      - console-system-plane.md
+      - console-foundation.md
     id: cargo:lenso-service
     updated: true
-  - id: cargo:lenso-worker
+  - changelogIds:
+      - console-foundation.md
+    id: cargo:lenso-module-management
     updated: true
-  - id: cargo:lenso-platform-admin
+  - changelogIds:
+      - console-foundation.md
+    id: cargo:lenso-platform-core
     updated: true
-  - id: cargo:lenso-platform-admin-data
+  - changelogIds:
+      - console-foundation.md
+    id: cargo:lenso-platform-http
     updated: true
-  - id: cargo:lenso-platform-core
-    updated: false
-  - id: cargo:lenso-platform-http
-    updated: false
-  - id: cargo:lenso-platform-module
-    updated: false
-  - id: cargo:lenso-platform-module-remote
-    updated: false
-  - id: cargo:lenso-platform-runtime
-    updated: false
+  - changelogIds:
+      - console-foundation.md
+    id: cargo:lenso-platform-module
+    updated: true
+  - id: cargo:lenso-platform-module-management
+    updated: true
+  - changelogIds:
+      - console-foundation.md
+    id: cargo:lenso-platform-provider
+    updated: true
+  - changelogIds:
+      - console-foundation.md
+    id: cargo:lenso-platform-runtime
+    updated: true
   - id: cargo:lenso-platform-runtime-observability
     updated: true
   - id: cargo:lenso-platform-runtime-operations
@@ -44,6 +46,4 @@ core:packages:
   - id: cargo:lenso-platform-system-plane
     updated: true
   - id: cargo:lenso-platform-testing
-    updated: false
-  - id: cargo:lenso-module-story
     updated: true
