@@ -20,11 +20,16 @@ check:
     just test
     just generated-check
     just arch-check
+    just release-mode-check
     just m6-skills-check
     just m6-docs-check
 
 release-check:
     just check
+
+release-mode-check:
+    REQUESTED_MODE=production node scripts/release-mode.mjs > /dev/null
+    LENSO_SHADOW_NPM_REGISTRY_URL=https://example.invalid/npm LENSO_SHADOW_CRATES_API_URL=https://example.invalid/cargo LENSO_SHADOW_CRATES_UPLOAD_URL=https://example.invalid/cargo/upload LENSO_SHADOW_GITHUB_API_URL=https://example.invalid/github LENSO_SHADOW_OCI_REGISTRY_URL=https://example.invalid/oci LENSO_SHADOW_ATTESTATION_URL=https://example.invalid/attestations REQUESTED_MODE=shadow node scripts/release-mode.mjs > /dev/null
 
 release-plan:
     pnpm release:plan
