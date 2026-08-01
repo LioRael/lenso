@@ -49,8 +49,8 @@ Use `just` as the root task runner.
 ## Validation Strategy
 
 Default to narrow validation during feature work. Run full `just check` locally
-only for high-risk changes such as contracts, migrations, runtime or remote
-module core paths, package/release gates, or when explicitly requested. For
+only for high-risk changes such as contracts, migrations, runtime or Service
+protocol core paths, package/release gates, or when explicitly requested. For
 normal feature slices, use focused local gates that match the changed surface
 and rely on GitHub Actions for full workspace coverage.
 
@@ -91,7 +91,7 @@ If generated files change, include the source change and generated output togeth
 Claude Code project memory was imported into Codex on 2026-06-03. Keep these design decisions current:
 
 - Lenso is moving from a fixed modular monolith toward an installable module framework. The current declaration source of truth is the public `lenso` facade crate plus `platform-module` behavior seams, not the older `platform-domain`/`DomainDescriptor` model.
-- Step 1 is done: `DomainDescriptor` was split into owned, serializable `ModuleManifest` data plus narrow `ModuleBinding` behavior. `ModuleManifest` and pure declarations now live in `crates/lenso`; `platform-module` re-exports them for workspace compatibility and owns behavior seams. Only `LinkedBinding` is implemented today; future `Remote` and `Wasm` loading sources should be added as new bindings/sources without collapsing the manifest/behavior split.
+- Step 1 is done: `DomainDescriptor` was split into owned, serializable `ModuleManifest` data plus narrow `ModuleBinding` behavior. `ModuleManifest` and pure declarations now live in `crates/lenso`; `platform-module` re-exports them for workspace compatibility and owns behavior seams. `LinkedBinding` is the only current Module source. Independently running code is a Service, never a Remote Module. A future Wasm source must be introduced as its own reviewed Module source without restoring the retired remote-process category or collapsing the manifest/behavior split.
 - Step 2 schema-admin is done as a read-only vertical slice. `AdminSurface::Schema(AdminSchema)` is manifest data; `AdminDataSource` is the behavior seam returning `serde_json::Value`; auth provides the current User schema/list/detail implementation.
 - Do not re-add `#[non_exhaustive]` to producer-constructed structs `AdminSchema`, `EntitySchema`, `FieldSchema`, or `AdminPage`; it blocks struct literal construction from other crates. Keep it on consumer-matched enums such as `FieldType` and `AdminSurface`.
 - `platform-admin` is runtime observability, not business CRUD. `platform-admin-data` is schema-admin business data. Both are platform crates and must not depend on concrete modules; `lenso-bootstrap` injects the module/data registries.

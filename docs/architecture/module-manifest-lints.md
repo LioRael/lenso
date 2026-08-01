@@ -41,7 +41,7 @@ Console category mapping and tests in the same change.
 | `warning` | `capability.reference.{surface}` | HTTP route, admin read, or admin action capability is referenced but not declared in the module manifest. |
 | `ok` | `routes` | Empty route declaration state for a Linked Module. |
 | `error` | `METHOD /path` | Duplicate HTTP route method/path. |
-| `warning` | `METHOD /path` | Route display, story title, or remote capability metadata is missing. |
+| `warning` | `METHOD /path` | Route display, story title, or capability metadata is missing. |
 | `warning` | `admin.schema` | Schema surface declares no entities. |
 | `warning` | `admin.schema.{entity}` | Schema entity is missing read capability. |
 | `warning` | `admin.declarative.pages` | Declarative surface declares no pages. |
