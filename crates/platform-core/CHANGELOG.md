@@ -1,3 +1,11 @@
+## lenso-platform-core@0.1.19
+
+### Maintenance
+
+Rebind the current Foundation and Service Kit package set to the reviewed
+release-mode contract after the previous shadow publisher stopped before
+preflight and registry access.
+
 ## lenso-platform-core@0.1.18
 
 ### Features
