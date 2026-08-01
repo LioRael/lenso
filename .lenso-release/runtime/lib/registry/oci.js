@@ -91,7 +91,7 @@ export async function observeOciImage(name, version, options = {}) {
                 if (!location)
                     return { failure: "schema", detail: "OCI registry config redirect omitted its location" };
                 const target = new URL(location, registry);
-                const trustedGhcrBlob = registry.hostname === "ghcr.io" && target.protocol === "https:" && target.hostname === "pkg-containers.githubusercontent.com" && !target.username && !target.password && !target.hash && /^\/ghcr[0-9]+\/blobs\/sha256:[0-9a-f]{64}$/u.test(target.pathname);
+                const trustedGhcrBlob = registry.hostname === "ghcr.io" && target.protocol === "https:" && target.hostname === "pkg-containers.githubusercontent.com" && !target.username && !target.password && !target.hash && /^\/ghcrblobs[0-9]+\/blobs\/sha256:[0-9a-f]{64}$/u.test(target.pathname);
                 if (!trustedGhcrBlob)
                     return { failure: "schema", detail: "OCI registry config redirect was not trusted" };
                 configResponse = await request(target, { signal: controller.signal, redirect: "error" });
@@ -114,8 +114,11 @@ export async function observeOciImage(name, version, options = {}) {
         }
         const labels = object(object(imageConfig?.config)?.Labels);
         const created = imageConfig?.created;
-        if (labels?.["org.opencontainers.image.version"] !== version || typeof created !== "string" || !isRfc3339(created))
-            return { failure: "schema", detail: "OCI image config did not bind the requested version and creation time" };
+        if (labels?.["org.opencontainers.image.version"] !== version ||
+            (options.sourceCommit !== undefined && labels?.["org.opencontainers.image.revision"] !== options.sourceCommit) ||
+            typeof created !== "string" ||
+            !isRfc3339(created))
+            return { failure: "schema", detail: "OCI image config did not bind the requested release identity and creation time" };
         return { version, digest: manifestDigest, publishedAt: created, canonicalUrl };
     }
     finally {
