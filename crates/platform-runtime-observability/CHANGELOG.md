@@ -1,3 +1,11 @@
+## lenso-platform-runtime-observability@0.1.4
+
+### Maintenance
+
+Rebind the current Foundation and Service Kit package set to the reviewed
+release-mode contract after the previous shadow publisher stopped before
+preflight and registry access.
+
 ## lenso-platform-runtime-observability@0.1.3
 
 ### Features

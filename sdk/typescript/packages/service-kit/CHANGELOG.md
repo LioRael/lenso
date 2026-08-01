@@ -1,3 +1,11 @@
+## @lenso/service-kit@0.1.3
+
+### Maintenance
+
+Rebind the current Foundation and Service Kit package set to the reviewed
+release-mode contract after the previous shadow publisher stopped before
+preflight and registry access.
+
 ## @lenso/service-kit@0.1.2
 
 ### Features

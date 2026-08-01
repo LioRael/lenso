@@ -1,3 +1,11 @@
+## lenso-contracts@0.3.19
+
+### Maintenance
+
+Rebind the current Foundation and Service Kit package set to the reviewed
+release-mode contract after the previous shadow publisher stopped before
+preflight and registry access.
+
 ## lenso-contracts@0.3.18
 
 ### Features
