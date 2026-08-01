@@ -39,6 +39,88 @@ use platform_runtime::{
 use std::path::Path;
 use std::sync::Arc;
 
+#[derive(Clone)]
+pub struct HostSystemPlaneConfig {
+    pub service_id: String,
+    pub service_principal: String,
+    pub service_revision: String,
+    pub audience: String,
+    pub workspace_root: std::path::PathBuf,
+    pub workload_identity: Arc<dyn lenso_service::WorkloadIdentityProvider>,
+    pub enrollment_authorizer: Arc<dyn platform_system_plane::EnrollmentAuthorizer>,
+    pub runtime_observability:
+        Option<Arc<platform_runtime_observability::RuntimeObservabilityProvider>>,
+    pub runtime_operations: Option<Arc<platform_runtime_operations::RuntimeOperationsProvider>>,
+}
+
+impl std::fmt::Debug for HostSystemPlaneConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HostSystemPlaneConfig")
+            .field("service_id", &self.service_id)
+            .field("service_principal", &self.service_principal)
+            .field("service_revision", &self.service_revision)
+            .field("audience", &self.audience)
+            .field("workspace_root", &self.workspace_root)
+            .field("workload_identity", &self.workload_identity)
+            .field("enrollment_authorizer", &self.enrollment_authorizer)
+            .field("runtime_observability", &self.runtime_observability)
+            .field("runtime_operations", &self.runtime_operations)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HostSystemPlaneRuntime {
+    pub core: Arc<platform_system_plane::SystemPlaneRuntime>,
+    pub service_installations: Arc<platform_module_management::ServiceInstallationsProvider>,
+    pub runtime_observability:
+        Option<Arc<platform_runtime_observability::RuntimeObservabilityProvider>>,
+    pub runtime_operations: Option<Arc<platform_runtime_operations::RuntimeOperationsProvider>>,
+}
+
+pub fn compose_host_system_plane_runtime(
+    config: HostSystemPlaneConfig,
+) -> platform_core::AppResult<HostSystemPlaneRuntime> {
+    let service_installations = Arc::new(
+        platform_module_management::ServiceInstallationsProvider::new(config.workspace_root),
+    );
+    let mut registry = platform_system_plane::SystemPlaneRegistryBuilder::new(
+        &config.service_id,
+        &config.service_principal,
+        &config.service_revision,
+    )
+    .register(platform_module_management::ServiceInstallationsProvider::advertisement());
+    if config.runtime_observability.is_some() {
+        registry = registry.register(
+            platform_runtime_observability::RuntimeObservabilityProvider::advertisement(),
+        );
+    }
+    if config.runtime_operations.is_some() {
+        registry = registry
+            .register(platform_runtime_operations::RuntimeOperationsProvider::advertisement());
+    }
+    let registry = registry.build().map_err(|issues| {
+        AppError::new(
+            ErrorCode::Validation,
+            format!("Host System Plane registry is invalid: {issues:?}"),
+        )
+    })?;
+    let access = platform_system_plane::SystemPlaneAccess::new(
+        config.workload_identity,
+        config.audience,
+        config.enrollment_authorizer,
+    );
+    Ok(HostSystemPlaneRuntime {
+        core: Arc::new(platform_system_plane::SystemPlaneRuntime::new(
+            registry, access,
+        )),
+        service_installations,
+        runtime_observability: config.runtime_observability,
+        runtime_operations: config.runtime_operations,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsoleBridgeGrantRequest {
     pub module_id: String,
@@ -656,6 +738,9 @@ pub fn migrations_for_config_with_composition(
     let mut migrations = PLATFORM_MIGRATIONS
         .iter()
         .chain(RUNTIME_MIGRATIONS)
+        .chain(platform_system_plane::SYSTEM_PLANE_MIGRATIONS)
+        .chain(platform_runtime_observability::RUNTIME_OBSERVABILITY_MIGRATIONS)
+        .chain(platform_runtime_operations::RUNTIME_OPERATIONS_MIGRATIONS)
         .copied()
         .collect::<Vec<_>>();
 

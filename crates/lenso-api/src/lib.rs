@@ -1,15 +1,28 @@
 use anyhow::Context as _;
 use axum::Router;
+use axum::body::Body;
 use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::middleware;
 use axum::response::Html;
+use hyper::body::Incoming;
+use hyper::service::service_fn;
+use hyper_util::{
+    rt::{TokioExecutor, TokioIo},
+    server::conn::auto::Builder as HyperConnectionBuilder,
+};
 use platform_core::{
     AppConfig, AppContext, LoggingEventPublisher, PostgresRuntimeConfigProvider,
     RuntimeConfigRegistry, Shutdown, connect_pool, connect_redis, telemetry,
 };
 use platform_http::request_context_middleware;
+use spiffe_rustls::{LocalOnly, authorizer, mtls_server};
+use spiffe_rustls_tokio::TlsAcceptor;
+use std::convert::Infallible;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::sync::watch;
+use tower::ServiceExt as _;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
@@ -135,6 +148,128 @@ pub fn try_build_router_with_composition(
         ))
         .layer(cors_layer(&ctx))
         .with_state(ctx))
+}
+
+/// Builds the independent System Plane Router. Callers must serve it on a
+/// listener that injects a transport binding authenticated by mTLS.
+pub fn try_build_router_with_composition_and_system_plane(
+    _ctx: AppContext,
+    _composition: &lenso_bootstrap::HostComposition,
+    runtime: &lenso_bootstrap::HostSystemPlaneRuntime,
+) -> platform_core::AppResult<Router> {
+    let core = Some(Arc::clone(&runtime.core));
+    let installations = Some(Arc::clone(&runtime.service_installations));
+    let observability = runtime.runtime_observability.clone();
+    let operations = runtime.runtime_operations.clone();
+    let (router, _document) = platform_system_plane::router(core.clone())
+        .merge(platform_module_management::system_plane_router(
+            installations,
+        ))
+        .merge(platform_runtime_observability::router(observability))
+        .merge(platform_runtime_operations::router(operations))
+        .layer(axum::Extension(core))
+        .split_for_parts();
+    Ok(router)
+}
+
+/// Serves a System Plane-only Router over rotating SPIFFE X.509-SVID mTLS.
+/// The verified peer SPIFFE ID is injected as the transport binding; request
+/// headers cannot manufacture or replace it.
+pub async fn run_production_system_plane<F>(
+    listener: tokio::net::TcpListener,
+    router: Router,
+    identity: Arc<lenso_service::SpiffeWorkloadIdentityProvider>,
+    allowed_peer_spiffe_ids: impl IntoIterator<Item = String>,
+    shutdown: F,
+) -> anyhow::Result<()>
+where
+    F: Future<Output = ()> + Send,
+{
+    let allowed_peer_spiffe_ids = allowed_peer_spiffe_ids.into_iter().collect::<Vec<_>>();
+    if allowed_peer_spiffe_ids.is_empty() {
+        anyhow::bail!("production System Plane requires at least one allowed peer SPIFFE ID");
+    }
+    let tls = mtls_server(identity.x509_source())
+        .authorize(
+            authorizer::exact(allowed_peer_spiffe_ids)
+                .context("invalid System Plane peer SPIFFE allow list")?,
+        )
+        .trust_domain_policy(LocalOnly(identity.config().trust_domain().clone()))
+        .with_alpn_protocols([b"http/1.1"])
+        .build()
+        .context("failed to build System Plane mTLS configuration")?;
+    let acceptor = TlsAcceptor::new(Arc::new(tls));
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let mut connections = tokio::task::JoinSet::new();
+    tokio::pin!(shutdown);
+
+    loop {
+        tokio::select! {
+            () = &mut shutdown => break,
+            accepted = listener.accept() => {
+                let (stream, peer_address) = accepted.context("System Plane listener failed")?;
+                let acceptor = acceptor.clone();
+                let router = router.clone();
+                let mut connection_shutdown = shutdown_rx.clone();
+                connections.spawn(async move {
+                    let (tls, peer) = match acceptor.accept(stream).await {
+                        Ok(result) => result,
+                        Err(error) => {
+                            tracing::warn!(%peer_address, %error, "rejected System Plane mTLS connection");
+                            return;
+                        }
+                    };
+                    let Some(peer_spiffe_id) = peer.spiffe_id() else {
+                        tracing::warn!(%peer_address, "rejected System Plane peer without a SPIFFE ID");
+                        return;
+                    };
+                    let binding =
+                        lenso_service::SpiffeWorkloadIdentityProvider::authenticated_transport_binding(
+                            peer_spiffe_id,
+                        );
+                    let service = service_fn(move |request: hyper::Request<Incoming>| {
+                        let router = router.clone();
+                        let binding = binding.clone();
+                        async move {
+                            let (mut parts, incoming) = request.into_parts();
+                            parts.extensions.insert(binding);
+                            let request = hyper::Request::from_parts(parts, Body::new(incoming));
+                            let response = router.oneshot(request).await?;
+                            Ok::<_, Infallible>(response)
+                        }
+                    });
+                    let connection_builder = HyperConnectionBuilder::new(TokioExecutor::new());
+                    let connection =
+                        connection_builder.serve_connection(TokioIo::new(tls), service);
+                    tokio::pin!(connection);
+                    tokio::select! {
+                        result = &mut connection => {
+                            if let Err(error) = result {
+                                tracing::warn!(%peer_address, %error, "System Plane connection failed");
+                            }
+                        }
+                        changed = connection_shutdown.changed() => {
+                            if changed.is_ok() {
+                                connection.as_mut().graceful_shutdown();
+                                if let Err(error) = connection.await {
+                                    tracing::warn!(%peer_address, %error, "System Plane graceful shutdown failed");
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    let _ = shutdown_tx.send(true);
+    while let Some(result) = connections.join_next().await {
+        if let Err(error) = result {
+            tracing::warn!(%error, "System Plane connection task failed");
+        }
+    }
+    identity.shutdown().await;
+    Ok(())
 }
 
 async fn scalar_docs() -> ([(HeaderName, HeaderValue); 3], Html<&'static str>) {
