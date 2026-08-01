@@ -1,49 +1,70 @@
 core:changelogs:
-  - content: "---\npackages:\n  lenso-contracts:\n    type: patch\n  lenso-module-management:\n    type: patch\n  lenso-platform-core:\n    type: patch\n  lenso-platform-http:\n    type: patch\n  lenso-platform-module:\n    type: patch\n  lenso-platform-provider:\n    type: patch\n  lenso-platform-runtime:\n    type: patch\n  lenso-service:\n    type: patch\n---\n\n### Features\n\nPublish the Linked Module management, Provider V1, Console Bridge authority, and\nsigned Service enrollment contracts required by the isolated System Plane.\n\n### Breaking changes\n\nRemove the legacy Remote Module and in-host Console package declarations from\nthe active Module contract. Remote processes are Services and Module sources are\nLinked.\n"
-    filename: console-foundation.md
+  - content: "---\npackages:\n  \"@lenso/service-kit\":\n    type: patch\n---\n\n### Features\n\nPublish the Framework-owned Service authoring kit with Provider V1 delivery,\ntyped Module manifests, signed enrollment, and System Plane integration.\n"
+    filename: service-kit.md
+    v: 0.0.0
+  - content: "---\npackages:\n  lenso-autonomous-service:\n    type: patch\n  lenso-contracts:\n    type: patch\n  lenso-module-management:\n    type: patch\n  lenso-platform-core:\n    type: patch\n  lenso-platform-http:\n    type: patch\n  lenso-platform-module:\n    type: patch\n  lenso-platform-module-management:\n    type: patch\n  lenso-platform-provider:\n    type: patch\n  lenso-platform-runtime:\n    type: patch\n  lenso-platform-runtime-observability:\n    type: patch\n  lenso-platform-runtime-operations:\n    type: patch\n  lenso-platform-system-plane:\n    type: patch\n  lenso-platform-testing:\n    type: patch\n  lenso-service:\n    type: patch\n---\n\n### Features\n\nPublish the current Linked Module, Provider V1, signed Service enrollment, and\nindependent System Plane composition contracts from the completed architecture.\n\n### Breaking changes\n\nRemote Module is not an active loading source. Independently running code is a\nService, and current Modules are Linked into their owning Host.\n"
+    filename: current-system-plane-foundation.md
     v: 0.0.0
 core:packages:
-  - id: cargo:lenso-autonomous-service
+  - changelogIds:
+      - service-kit.md
+    id: npm:@lenso/service-kit
     updated: true
   - changelogIds:
-      - console-foundation.md
+      - current-system-plane-foundation.md
     id: cargo:lenso-contracts
     updated: true
   - changelogIds:
-      - console-foundation.md
-    id: cargo:lenso-service
+      - current-system-plane-foundation.md
+    id: cargo:lenso-autonomous-service
     updated: true
   - changelogIds:
-      - console-foundation.md
+      - current-system-plane-foundation.md
     id: cargo:lenso-module-management
     updated: true
   - changelogIds:
-      - console-foundation.md
+      - current-system-plane-foundation.md
+    id: cargo:lenso-service
+    updated: true
+  - changelogIds:
+      - current-system-plane-foundation.md
     id: cargo:lenso-platform-core
     updated: true
   - changelogIds:
-      - console-foundation.md
+      - current-system-plane-foundation.md
     id: cargo:lenso-platform-http
     updated: true
   - changelogIds:
-      - console-foundation.md
+      - current-system-plane-foundation.md
     id: cargo:lenso-platform-module
     updated: true
-  - id: cargo:lenso-platform-module-management
+  - changelogIds:
+      - current-system-plane-foundation.md
+    id: cargo:lenso-platform-module-management
     updated: true
   - changelogIds:
-      - console-foundation.md
+      - current-system-plane-foundation.md
     id: cargo:lenso-platform-provider
     updated: true
   - changelogIds:
-      - console-foundation.md
+      - current-system-plane-foundation.md
     id: cargo:lenso-platform-runtime
     updated: true
-  - id: cargo:lenso-platform-runtime-observability
+  - changelogIds:
+      - current-system-plane-foundation.md
+    id: cargo:lenso-platform-runtime-observability
     updated: true
-  - id: cargo:lenso-platform-runtime-operations
+  - changelogIds:
+      - current-system-plane-foundation.md
+    id: cargo:lenso-platform-runtime-operations
     updated: true
-  - id: cargo:lenso-platform-system-plane
+  - changelogIds:
+      - current-system-plane-foundation.md
+    id: cargo:lenso-platform-system-plane
     updated: true
-  - id: cargo:lenso-platform-testing
+  - changelogIds:
+      - current-system-plane-foundation.md
+    id: cargo:lenso-platform-testing
     updated: true
+npm:packages:
+  - id: npm:@lenso/service-kit
