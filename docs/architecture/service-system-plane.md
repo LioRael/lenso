@@ -147,10 +147,12 @@ such as `lenso service workspace add` and `lenso service env add`. It does not
 invent install commands that the host cannot execute yet.
 
 V19 added the original system drift projection. Current Module and Provider
-changes no longer write service-start files: Runtime Console previews and
-applies reviewed Module Change Plans and Service Installation Plans through
-`/admin/modules/*`. Deployment adapters own process or platform lifecycle, and
-the target-owned installation set is the only Provider desired-state input.
+changes no longer write service-start files. Operators negotiate the target's
+`lenso.system-plane.service-installations.v1` capability and use its
+`/system-plane/v1/service-installations/*` endpoints for target-owned Service
+Installation snapshots, plans, and receipts. Deployment adapters own process
+or platform lifecycle, and the target-owned installation set is the only
+Provider desired-state input.
 
 V20 adds system release trains. `lenso.system-release.v1` records one
 environment-scoped system change set: graph snapshot, affected services,

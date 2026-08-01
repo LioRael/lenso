@@ -625,7 +625,7 @@ pub fn check_module_contract_reset(root: &Path) -> anyhow::Result<()> {
     ] {
         if openapi.pointer(removed_path).is_some() {
             violations.push(
-                "catalog install mutations must stay behind reviewed /admin/modules plans"
+                "catalog install mutations must stay behind reviewed target-owned System Plane plans"
                     .to_owned(),
             );
         }

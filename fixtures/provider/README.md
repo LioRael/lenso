@@ -48,7 +48,7 @@ Run the same fixture as a native gRPC Provider Service:
 cargo run --locked -p provider-fixture -- --grpc
 ```
 
-Connect it through Runtime Console or the `/admin/modules/*` management
+Connect it through Runtime Console and the target-owned System Plane management
 interface: preview and approve an exact Module Change Plan, apply its Service
 Installation Plan with either the HTTP or gRPC endpoint binding, then restart
 API and worker. Provider endpoints are never discovered from environment
