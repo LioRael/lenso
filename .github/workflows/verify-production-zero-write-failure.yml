@@ -1,0 +1,116 @@
+name: Verify production zero-write failure
+run-name: verify-production-zero-write-failure:${{ inputs.plan_id }}:${{ inputs.failed_run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      plan_id:
+        description: Exact reviewed plan ID
+        required: true
+        type: string
+      release_commit:
+        description: Exact reviewed release commit
+        required: true
+        type: string
+      event_id:
+        description: Exact coordinator publisher event ID
+        required: true
+        type: string
+      failed_run_id:
+        description: Exact failed publisher run ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: verify-production-zero-write-failure-${{ inputs.plan_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact reviewed release commit
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          ref: ${{ inputs.release_commit }}
+          persist-credentials: false
+      - name: Verify proof consumption and registry authentication failure
+        env:
+          EVENT_ID: ${{ inputs.event_id }}
+          FAILED_RUN_ID: ${{ inputs.failed_run_id }}
+          GH_TOKEN: ${{ github.token }}
+          PLAN_ID: ${{ inputs.plan_id }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test "$(jq -r .planId .lenso-release/plan.json)" = "$PLAN_ID"
+          jq -e '
+            any(.packages[]; .id == "cargo:lenso-module-management" and .nextVersion == "0.1.4") and
+            any(.packages[]; .id == "cargo:lenso-platform-core" and .nextVersion == "0.1.20") and
+            any(.packages[]; .id == "cargo:lenso-service" and .nextVersion == "0.1.20")
+          ' .lenso-release/plan.json
+
+          run_json="$(mktemp)"
+          jobs_json="$(mktemp)"
+          failed_log="$(mktemp)"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" > "$run_json"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}/jobs" > "$jobs_json"
+          gh run view "$FAILED_RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > "$failed_log"
+          jq -e \
+            --arg commit "$RELEASE_COMMIT" \
+            --arg event_id "$EVENT_ID" \
+            --arg plan_id "$PLAN_ID" '
+              .event == "workflow_dispatch" and
+              .status == "completed" and
+              .conclusion == "failure" and
+              .head_sha == $commit and
+              .head_branch == ("release-execution/" + ($plan_id | sub("^sha256:"; ""))) and
+              .path == ".github/workflows/publish.yml" and
+              .display_title == ("lenso-publish-requested:" + $event_id)
+            ' "$run_json"
+          jq -e '
+            [.jobs[] | select(.name == "publish")] as $publish |
+            [.jobs[] | select(.name == "recover" or .name == "recover-partial")] as $recovery |
+            ($publish | length == 1) and
+            ($publish[0].conclusion == "failure") and
+            ($recovery | length == 2) and
+            all($recovery[]; .conclusion == "skipped") and
+            ($publish[0].steps | any(.name == "Complete fail-closed preflight before any registry OIDC" and .conclusion == "success")) and
+            ($publish[0].steps | any(.name == "Atomically consume proof and seal exact registry artifacts" and .conclusion == "success")) and
+            ($publish[0].steps | any(.name == "Attest sealed production artifacts" and .conclusion == "success")) and
+            ($publish[0].steps | any(.name == "Run rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18" and .conclusion == "success")) and
+            ($publish[0].steps | any(.name == "Publish and confirm receipts" and .conclusion == "failure"))
+          ' "$jobs_json"
+          grep -F 'INPUT_PACKAGES_JSON: [{"id":"cargo:lenso-module-management","version":"0.1.4"},{"id":"cargo:lenso-platform-core","version":"0.1.20"},{"id":"cargo:lenso-service","version":"0.1.20"}]' "$failed_log" >/dev/null
+          grep -F 'Error: repository runtime: crates exact archive upload 403' "$failed_log" >/dev/null
+
+          for package_version in \
+            lenso-module-management/0.1.4 \
+            lenso-platform-core/0.1.20 \
+            lenso-service/0.1.20; do
+            response="$(mktemp)"
+            status="$(curl --silent --show-error --output "$response" --write-out '%{http_code}' \
+              --user-agent 'lenso-zero-write-verifier/1.0 (https://github.com/LioRael/lenso)' \
+              "https://crates.io/api/v1/crates/${package_version}")"
+            test "$status" = 404
+          done
+      - name: Prove the production npm version is absent
+        env:
+          FAILED_RUN_ID: ${{ inputs.failed_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          failed_log="$(mktemp)"
+          gh run view "$FAILED_RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > "$failed_log"
+          grep -F 'INPUT_PACKAGES_JSON: [{"id":"cargo:lenso-module-management","version":"0.1.4"},{"id":"cargo:lenso-platform-core","version":"0.1.20"},{"id":"cargo:lenso-service","version":"0.1.20"}]' "$failed_log" >/dev/null
+      - name: Prove the production OCI manifest is absent
+        env:
+          FAILED_RUN_ID: ${{ inputs.failed_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          failed_log="$(mktemp)"
+          gh run view "$FAILED_RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > "$failed_log"
+          grep -F 'INPUT_PACKAGES_JSON: [{"id":"cargo:lenso-module-management","version":"0.1.4"},{"id":"cargo:lenso-platform-core","version":"0.1.20"},{"id":"cargo:lenso-service","version":"0.1.20"}]' "$failed_log" >/dev/null
