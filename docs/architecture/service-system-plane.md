@@ -34,10 +34,13 @@ to normalize to `provider_system` through its compatibility adapter.
 Lenso keeps the legacy Provider/Module split explicit:
 
 ```text
-Provider = Host-managed remote process, SDK, package, and v1 manifest
+Provider = legacy Host-managed Service role, SDK, package, and v1 manifest
 Module = business capability contract used by the Host and Runtime Console
 System v1 = graph that explains how Providers and Modules form one product system
 ```
+
+Provider is not a Module source or delivery kind. The compatibility term names
+the role of an independently running Service in the v1 protocol only.
 
 `lenso.service.json`, service packages, service workspaces, release plans, and
 deployment state with protocol `lenso.service.v1` describe Providers and their

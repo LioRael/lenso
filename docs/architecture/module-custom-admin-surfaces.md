@@ -115,7 +115,7 @@ Rules:
 Deferred from the first implementation:
 
 - Bidirectional host/module action bridge.
-- Remote JavaScript bundle loading.
+- Network-loaded JavaScript bundles.
 - Wasm component execution.
 - Module-owned routing inside the Runtime Console shell.
 
@@ -153,7 +153,8 @@ The loading source axis remains separate:
    and `/admin/data/{module}/{entity}/{id}` when `fallback_schema` declares the
    entity. Query values are read-only and use `/admin/data/{module}/queries/{query}`.
 5. Invoke declarative actions through host-owned admin action endpoints with
-   manifest capability checks, remote protocol support, and Runtime Story /
-   Technical Operations projection. Done for linked and remote action sources.
+   manifest capability checks, Service protocol support, and Runtime Story /
+   Technical Operations projection. Done for Linked and Provider-backed action
+   sources; Provider describes a Service role, not a Module source.
 6. Specify a versioned host/module message protocol before enabling any embedded
    surface to call back into the host.
