@@ -10,9 +10,8 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso@0.3.18 --features host
-pnpm add @lenso/service-kit@0.1.0
-pnpm add @lenso/provider-kit@0.1.1
+cargo add lenso@0.3.34 --features host
+pnpm add @lenso/service-kit@0.1.4
 ```
 
 Not every project needs every package:
@@ -28,11 +27,10 @@ package boundary is the user-facing contract.
 
 Current registry baseline:
 
-- `lenso@0.3.18` is the crates.io facade line for generated hosts with the
+- `lenso@0.3.34` is the crates.io facade line for generated hosts with the
   `host` feature.
-- `@lenso/service-kit@0.1.0` is published from the Runtime Console repository.
-- `@lenso/provider-kit` remains as the compatibility package for the old
-  single provider entrypoint.
+- `@lenso/service-kit@0.1.4` is owned and published from
+  `sdk/typescript/packages/service-kit` in this framework repository.
 
 ## Rust Facade Crate
 
@@ -68,10 +66,9 @@ The current host-facing surface is intentionally narrow:
 - `run_api_from_env_with_composition`, `run_worker_from_env_with_composition`,
   and `run_migrations_from_env_with_composition` for booting the three host
   entrypoints;
-- the API boot entrypoint may opt into the production System Plane through
-  environment configuration. It then owns a second, SPIFFE mTLS-only listener
-  and the two listeners share one shutdown lifecycle; this does not add System
-  Plane controls to `HostBuilder` or mount management routes on the Data Plane;
+- System Plane capability providers are composed explicitly beside the Host
+  and mounted on an independent SPIFFE mTLS-only router. They are never enabled
+  implicitly through environment configuration or mounted on the Data Plane;
 - `run_api_with_embedded_worker_from_env_with_composition` for explicit
   single-process local or small-host boot when independent worker scaling is
   not needed;
@@ -117,10 +114,9 @@ should provide:
   handlers;
 - stable request and response envelopes that match the host protocol.
 
-Examples must not depend on a sibling `file:` path into
-`../lenso-console`. Before examples move into an external repository,
-this package needs a clean build output, declarations, package metadata, and
-`pnpm pack --dry-run` coverage.
+Examples must consume the registry package or an exact integration-set override
+to this repository's SDK workspace. The package has its own build output,
+declarations, metadata, tests, and package-readiness coverage.
 
 ## Starter And Examples
 
@@ -165,15 +161,13 @@ local dependency. If an example cannot run without an internal package, either
 promote a small facade or keep the example inside this repository until the
 facade exists.
 
-## Near-Term Sequence
+## Current Direction
 
-1. Keep `@lenso/service-kit` in the Runtime Console repository and grow it as
-   the service authoring facade.
-2. Keep the crates.io `lenso` facade limited to stable module-authoring
-   declarations until a host application API is intentionally designed.
-3. Keep the standalone `lenso-cli` starter template as the host facade pressure
-   test until its boot, migration, HTTP, and app-owned data slices stabilize.
+1. Keep `@lenso/service-kit` in the framework SDK workspace as the Service
+   authoring facade.
+2. Keep the crates.io `lenso` facade limited to stable declarations and narrow
+   Host composition seams.
+3. Use the standalone `lenso-cli` starter as the Host facade pressure test.
 4. Leave app-owned SQL, repositories, CRUD shape, auth/session policy, and
-   console UI out of `lenso::host`.
-5. Grow the external examples repository without reintroducing sibling
-   workspace dependencies.
+   Console UI out of `lenso::host`.
+5. Keep examples on registry packages or exact reviewed integration sets.
