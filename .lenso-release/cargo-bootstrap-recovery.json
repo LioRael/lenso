@@ -1,0 +1,19 @@
+{
+  "schema": "lenso.cargo-bootstrap-recovery.v1",
+  "planId": "sha256:3be3f8482f66324d459a230217abc49d533d625befa1a48f9ee525d4fd1bdbee",
+  "releaseCommit": "ea0174207235dbc26711bcb2584fb7c15c0d3980",
+  "packages": [
+    {
+      "id": "cargo:lenso-module-management",
+      "version": "0.1.4"
+    },
+    {
+      "id": "cargo:lenso-platform-module-management",
+      "version": "0.1.4"
+    },
+    {
+      "id": "cargo:lenso-platform-provider",
+      "version": "0.1.20"
+    }
+  ]
+}
