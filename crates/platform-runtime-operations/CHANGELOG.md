@@ -1,4 +1,4 @@
-## lenso-platform-testing@0.1.14
+## lenso-platform-runtime-operations@0.1.3
 
 ### Features
 
@@ -9,10 +9,3 @@ independent System Plane composition contracts from the completed architecture.
 
 Remote Module is not an active loading source. Independently running code is a
 Service, and current Modules are Linked into their owning Host.
-
-## lenso-platform-testing@0.1.11
-
-### Features
-
-Publish the M6 General Availability Support Manifest and the complete public
-package closure required by its exact supported component combination.
