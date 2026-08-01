@@ -1612,7 +1612,7 @@
     },
     {
       "path": ".lenso-release/shadow.json",
-      "sha256": "sha256:18878ebc72e62a6756522c42f67d2ca4aaa92eae176cc09851831266d22c40c6"
+      "sha256": "sha256:7500452e10ee2cc3d006726ba6a93cf0c37fe6a937926c347819ea74cddc2aa3"
     },
     {
       "path": "scripts/publish-cargo.sh",
@@ -1624,7 +1624,7 @@
     },
     {
       "path": "scripts/release-mode.mjs",
-      "sha256": "sha256:1f51fde77c17c75d185768dac5fecf73a6d2404ed76ed8f5a34a1891287cd719"
+      "sha256": "sha256:226d4441f498b5afe6b091065b5e6f0939314e2b4c34213842a40e8008c42a78"
     },
     {
       "path": "scripts/release-plan.mjs",
