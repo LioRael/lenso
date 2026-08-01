@@ -24,6 +24,7 @@
     "lenso-operator",
     "lenso-worker",
     "npm:@lenso/framework-release-workspace",
+    "npm:@lenso/typescript-sdk-workspace",
     "otel-smoke",
     "provider-fixture"
   ]
