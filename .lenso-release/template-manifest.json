@@ -1612,7 +1612,7 @@
     },
     {
       "path": ".lenso-release/shadow.json",
-      "sha256": "sha256:7500452e10ee2cc3d006726ba6a93cf0c37fe6a937926c347819ea74cddc2aa3"
+      "sha256": "sha256:18878ebc72e62a6756522c42f67d2ca4aaa92eae176cc09851831266d22c40c6"
     },
     {
       "path": "scripts/publish-cargo.sh",
