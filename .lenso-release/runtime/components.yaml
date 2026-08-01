@@ -71,6 +71,8 @@ packages:
       - cargo:lenso-module-management
       - cargo:lenso-platform-core
       - cargo:lenso-platform-http
+      - cargo:lenso-platform-system-plane
+      - cargo:lenso-service
   - id: cargo:lenso-platform-provider
     repository: LioRael/lenso
     registry: crates-io
@@ -277,6 +279,14 @@ packages:
       - cargo:lenso-platform-http
       - cargo:lenso-platform-module
   - id: npm:@lenso/console-bridge
+    repository: LioRael/lenso-console
+    registry: npm
+    releaseGroup: console
+    userFacing: true
+    publishable: true
+    dependencies: []
+  # Retained only to complete the reviewed 0.1.2 replacement release.
+  - id: npm:@lenso/console-package-api
     repository: LioRael/lenso-console
     registry: npm
     releaseGroup: console
