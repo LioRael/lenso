@@ -284,7 +284,7 @@ fragments after validation and versioning are specified.
    Done.
 8. Normalize provider errors through the existing platform error model. Done for
    GET, POST, PUT, PATCH, and DELETE.
-9. Add telemetry and runtime-console visibility for proxied calls. Done for GET,
+9. Add telemetry and Console Runtime Stories visibility for proxied calls. Done for GET,
    POST, PUT, PATCH, and DELETE tracing events, persisted call history, Provider
    Calls filtering, Story `provider_proxy_call` nodes, and Story Technical
    Operations.

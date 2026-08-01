@@ -108,7 +108,7 @@ Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`.
 
 Examples:
 
-- `feat(runtime-console): drill into story heatmap cells`
+- `feat(console): drill into story heatmap cells`
 - `fix(api): preserve request correlation ids`
 - `docs: add contributor guide`
 

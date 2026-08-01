@@ -77,11 +77,12 @@ it:
 - linked modules today and service-backed modules when a boundary is ready to
   leave the host.
 
-## Runtime Console
+## Lenso Console
 
-Runtime Console is the operator and verification surface bundled with a Lenso
-host. It connects generated app state, module declarations, runtime execution,
-and failure evidence so humans and coding agents can review the same system.
+Lenso Console is the separately installed operator service for one Lenso
+System. It projects managed-Service state through the System Plane so humans and
+coding agents can review the same system without putting Console code in a
+business Host.
 
 [![Runtime Console App Lifecycle view showing services, modules, Doctor checks, App Proof, and next actions](https://lenso.dev/lenso-assets/console/app-lifecycle.png)](https://lenso.dev/lenso-assets/console/app-lifecycle.png)
 
@@ -99,8 +100,8 @@ _Runtime Overview brings queue pressure, active work, recent activity, failures,
 and dead letters into one operator workspace._
 
 These screenshots use the seeded demo dataset so the workflows are reproducible.
-Read the [Runtime Console guide](https://lenso.dev/docs/runtime-console) for the
-host setup, access controls, evidence files, and extension boundary.
+Read the [Console System Plane architecture](docs/architecture/lenso-console-system-plane.md)
+for service boundaries, access controls, evidence, and Module UI isolation.
 
 ## Agent-ready development
 
@@ -115,7 +116,7 @@ Proof, and visible evidence in `/console`, not just a scaffold that compiles.
 The working loop is:
 
 ```text
-product brief -> app compose -> change plan -> implementation -> checks + App Proof -> Runtime Console
+product brief -> app compose -> change plan -> implementation -> checks + App Proof -> Lenso Console
 ```
 
 Lenso's public skills cover business planning, app startup, linked Module

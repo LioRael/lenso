@@ -141,7 +141,7 @@ Keep the subject under 72 characters when practical, use lowercase type names, a
 
 Examples:
 
-- `feat(runtime-console): add trace layout tests`
+- `feat(console): add trace layout tests`
 - `fix(api): preserve request correlation ids`
 - `chore: align project workflows`
 - `docs: add agent contributor guide`
