@@ -5,12 +5,7 @@ import { readFile } from "node:fs/promises";
 const config = JSON.parse(await readFile(new URL("../.lenso-release/shadow.json", import.meta.url), "utf-8"));
 assert.equal(config.schema, "lenso.release-mode.v1");
 assert.equal(config.mode, "shadow");
-assert.ok(Array.isArray(config.allowedModes) && config.allowedModes.length > 0);
-assert.deepEqual(config.allowedModes, [...new Set(config.allowedModes)]);
-for (const allowedMode of config.allowedModes) {
-  assert.match(allowedMode, /^(?:shadow|production)$/u);
-}
-assert.ok(config.allowedModes.includes(config.mode));
+assert.deepEqual(config.allowedModes, ["shadow"]);
 const mode = process.env.REQUESTED_MODE || config.mode;
 assert.match(mode, /^(?:shadow|production)$/u);
 assert.ok(config.allowedModes.includes(mode), `release mode ${mode} is disabled by the reviewed repository config`);
