@@ -172,7 +172,7 @@ external broker in their Data Plane.
 ### Exit gate
 
 - Service A calls Service B directly through a generated client.
-- Stopping the Runtime Console and System Plane does not interrupt the call.
+- Stopping the Console and System Plane does not interrupt the call.
 - Deadline and no-unsafe-retry rules are visible in evidence and tests.
 - The entire proof runs on a developer machine without Kubernetes or an
   external broker.
@@ -260,7 +260,7 @@ business-first observability across Service boundaries.
    - Development, standard, and critical baselines.
    - Dependency criticality, Degraded Modes, queue and workflow backlog,
      startup/readiness/liveness meaning, SLOs, and error budgets.
-5. Extend Runtime Console.
+5. Extend Console.
    - Cross-Service story timeline and workflow graph.
    - Inbox, Outbox, retry, dead-letter, compensation, degraded dependency, and
      identity evidence.

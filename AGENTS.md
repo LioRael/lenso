@@ -8,7 +8,7 @@ Do not infer production authority from repository write access or bypass the rev
 
 ## Project Shape
 
-Lenso is a Rust-first modular monolith backend. Runtime Console source lives in the sibling `../lenso-console` repository.
+Lenso is a Rust-first modular monolith backend. Console source lives in the sibling `../lenso-console` repository.
 
 - `crates/lenso-api`: Axum HTTP API.
 - `crates/lenso-worker`: background worker and outbox relay.
@@ -16,7 +16,7 @@ Lenso is a Rust-first modular monolith backend. Runtime Console source lives in 
 - `crates/platform-*`: shared platform primitives for config, HTTP, runtime, module contracts, admin backends, testing, migrations, outbox, errors, health, and telemetry.
 - `crates/lenso`: public Rust facade crate for serializable module-authoring declarations: `ModuleManifest`, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, console surfaces, story display metadata, and manifest lints.
 - `crates/platform-module`: internal module behavior seams plus compatibility re-exports: `ModuleBinding`, `LinkedBinding` for compile-time modules, `AdminDataSource` for schema-admin reads, and `AdminActionSource` for executable admin actions.
-- `crates/platform-admin`: Runtime Console observability backend mounted under `/admin/runtime/*`; it observes runtime/outbox/story tables and must not depend on concrete modules.
+- `crates/platform-admin`: Console observability backend mounted under `/admin/runtime/*`; it observes runtime/outbox/story tables and must not depend on concrete modules.
 - `crates/platform-admin-data`: schema-admin backend mounted under `/admin/data/*`; it serves generic module data through `AdminSurface::Schema` and `AdminDataSource`, with no concrete-module dependencies.
 - `crates/lenso-bootstrap`: composition root that enumerates concrete modules for the API and worker.
 - `modules/*`: product or fixture capabilities packaged as modules. Modules should stay vertical and avoid cross-module imports.
@@ -98,9 +98,9 @@ Claude Code project memory was imported into Codex on 2026-06-03. Keep these des
 - OpenAPI is single-source through `utoipa-axum`: put `#[utoipa::path]` on real handlers and register routes with `OpenApiRouter::routes(routes!(handler))`. `crates/lenso-api/src/openapi.rs::openapi_document()` must stay pure and context-free because generators, arch checks, and sync tests call it outside a runtime.
 - Durable Workflow compensation persists completed effects and deterministic compensation order in the owning Service Store. Compensation request publication is atomic with local dispatch state, remote reversal remains inside the remote Service Inbox transaction, and the Workflow reaches `compensated` only after a declared completion Event confirms the stable effect and compensation identities. Rejected compensation uses the distinct `compensation_failed` state with intervention evidence; no distributed transaction is introduced.
 
-## Runtime Console Guidelines
+## Console Guidelines
 
-The Runtime Console is developed in the sibling `../lenso-console`
+The Console is developed in the sibling `../lenso-console`
 repository. This framework repository owns managed-Service System Plane and
 compatibility admin APIs plus their generated contracts. The Console repository
 owns Console Service APIs and Console Modules such as `lenso/platform-story`,
@@ -113,7 +113,7 @@ including their backend, migrations, and `ModuleManifest.console` declarations.
 
 GitHub Actions runs `just ci` on pull requests and pushes to `main`.
 
-Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run `just ci`. For changes that affect Runtime Console behavior, also run the relevant checks in `../lenso-console`.
+Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run `just ci`. For changes that affect Console behavior, also run the relevant checks in `../lenso-console`.
 
 If a command fails because network access is blocked while installing dependencies, rerun the same command with the required approval rather than changing project files to work around the sandbox.
 

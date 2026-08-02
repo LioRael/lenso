@@ -17,7 +17,7 @@ The default facade exposes serializable module manifest declarations:
 - runtime function declarations;
 - event handler declarations;
 - lifecycle declarations;
-- Runtime Console surface declarations;
+- Console surface declarations;
 - story display metadata.
 
 Enable the `host` feature for the narrow host boot facade:

@@ -38,7 +38,7 @@ The Host owns:
 - caller auth, capability checks, request limits, and header policy;
 - runtime queues, retries, outbox claims, story records, and technical
   operations;
-- service diagnosis through the CLI and Runtime Console metadata.
+- service diagnosis through the CLI and Console metadata.
 
 ## Provider Runtime Authority
 

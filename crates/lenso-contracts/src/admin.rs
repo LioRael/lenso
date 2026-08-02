@@ -7,14 +7,14 @@ use utoipa::ToSchema;
 /// A module's admin surface.
 ///
 /// `Schema` is implemented today. Custom surface variants are data contracts
-/// only until the Runtime Console implements their renderers/policies.
+/// only until the Console implements their renderers/policies.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum AdminSurface {
     /// Schema-driven CRUD: console renders a generic UI from this declaration.
     Schema(AdminSchema),
-    /// Host-rendered custom UI built from trusted Runtime Console components.
+    /// Host-rendered custom UI built from trusted Console components.
     DeclarativeCustom(AdminDeclarativeSurface),
     /// Module-owned UI embedded behind a sandbox boundary.
     EmbeddedCustom(AdminEmbeddedSurface),

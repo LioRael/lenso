@@ -1,7 +1,7 @@
 # Contributing to Lenso
 
 Thanks for contributing. Lenso is a Rust-first modular monolith backend.
-Runtime Console source lives in the sibling
+Console source lives in the sibling
 `lenso-console` repository. This guide covers the backend workflow,
 conventions, and quality gates for changes. For deeper context, read
 [`README.md`](README.md), [`AGENTS.md`](AGENTS.md),
@@ -12,7 +12,7 @@ conventions, and quality gates for changes. For deeper context, read
 
 - Rust toolchain compatible with the workspace (`rust-version = 1.94`).
 - [`just`](https://github.com/casey/just) as the root task runner.
-- The sibling `../lenso-console` checkout for Runtime Console work.
+- The sibling `../lenso-console` checkout for Console work.
 - Docker if you want local Postgres via `just db-up`.
 
 ## Development Workflow
@@ -82,7 +82,7 @@ then regenerate:
 Contract artifacts live under `contracts`. Always include the source change and
 regenerated output in the same commit.
 
-## Runtime Console
+## Console
 
 The console lives in the sibling `../lenso-console` repository. Backend
 changes may still affect Console contracts through `/admin/runtime/*`,

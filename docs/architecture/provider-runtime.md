@@ -25,7 +25,7 @@ parallel runtime.
 - Keep `runtime.function_runs` as the durable source of truth.
 - Keep the worker as the only component that claims, retries, and completes
   function runs.
-- Reuse existing Runtime Console stories, timelines, retries, execution logs,
+- Reuse existing Console stories, timelines, retries, execution logs,
   payloads, and Technical Operations.
 - Preserve the `ModuleManifest` data / `ModuleBinding` behavior split.
 
@@ -153,7 +153,7 @@ look like any other runtime function run:
 - Execution logs are written by the host before/after the provider invocation.
 - Technical Operations may include a `source = "provider_runtime"` operation for
   the outbound invocation, but the business Story node remains the function run.
-- Retry and dead-letter behavior use the same Runtime Console flows as linked
+- Retry and dead-letter behavior use the same Console flows as linked
   functions.
 
 The host should attach compact provider invocation metadata to execution logs or
@@ -256,7 +256,7 @@ dead through the existing relay path.
    loading. Done.
 5. Add worker/runtime tests proving success, retryable failure, exhausted
    attempts, timeout, and missing provider function behavior. Done.
-6. Add Runtime Console tests only if existing function-run views need additional
+6. Add Console tests only if existing function-run views need additional
    provider invocation metadata.
 7. Add manifest event declarations plus proxy-backed provider event handlers that
    dispatch through the host-owned outbox relay. Done.

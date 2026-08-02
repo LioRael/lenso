@@ -35,7 +35,7 @@ Lenso keeps the legacy Provider/Module split explicit:
 
 ```text
 Provider = legacy Host-managed Service role, SDK, package, and v1 manifest
-Module = business capability contract used by the Host and Runtime Console
+Module = business capability contract used by the Host and Console
 System v1 = graph that explains how Providers and Modules form one product system
 ```
 
@@ -66,7 +66,7 @@ The public `lenso-service` contract check reports both the detected protocol and
 its semantic kind. It normalizes `lenso.service.v1` to `provider` and
 `lenso.system.v1` to `provider_system` in a separate read model; it never
 rewrites the source artifact. Unsupported or missing protocols return stable
-machine-readable codes and a next action. Backend, CLI, and Runtime Console
+machine-readable codes and a next action. Backend, CLI, and Console
 consumers should use that shared result instead of inferring v1 semantics.
 
 ## Manifest Shape
@@ -194,7 +194,7 @@ When `lenso.contract-compatibility.json` exists beside `lenso.system.json`, the
 endpoint also returns its already-evaluated results as `compatibilityResults`.
 The backend projection preserves the public category, contract kind, changed
 version, affected references, reasons, and next actions produced by
-`lenso-service`; Runtime Console must render those values without duplicating
+`lenso-service`; Console must render those values without duplicating
 compatibility rules in TypeScript.
 
 V19 also exposes:
@@ -225,7 +225,7 @@ GET /admin/data/service-system/runbooks
 The runbooks endpoint reads `.lenso/system-runbooks.json` and returns active or
 recent runbooks, the current step, and the next operator commands.
 
-Runtime Console uses the response on the Services page so operators can see the
+Console uses the response on the Services page so operators can see the
 system name, service count, module count, dependency count, environment lanes,
 and graph issues beside provider lifecycle, deployment, release, Remote Calls,
 Runtime Story, and Technical Operations evidence.

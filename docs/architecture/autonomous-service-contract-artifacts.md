@@ -264,7 +264,7 @@ content-addressed plan ID. Every plan reports `mutatesState: false` and the
 `in_flight_workflow_migration` Approval Boundary. Lenso does not automatically
 execute a plan during definition deployment or worker restart. The generated
 Autonomous Service Runtime OpenAPI is the versioned migration-plan contract;
-Runtime Console may consume that contract but is not in the execution path.
+Console may consume that contract but is not in the execution path.
 
 ## Direct HTTP bindings
 
@@ -303,7 +303,7 @@ implementation: it reads rotating X.509-SVID, JWT-SVID, and bundle material from
 an operator-owned SPIFFE Workload API. `SpiffeWorkloadIdentityConfig` maps one
 exact `spiffe://<trust-domain>/service/<service-id>` identity to its stable Lenso
 Principal. Verification uses the cached JWT bundle and requires no synchronous
-Runtime Console, Host, or System Plane lookup.
+Console, Host, or System Plane lookup.
 
 The provider boundary retains its original synchronous `issue` method for
 source compatibility and adds a defaulted `issue_async` extension. Synchronous
@@ -458,9 +458,9 @@ The Service runtime exposes versioned start and inspection results through
 problem-details envelope with stable workflow codes and `next_actions`.
 Inspection includes completed transition identity, safe outgoing Event Contract
 metadata, retry policy, latest failure, attempt history, timer due times and
-claim state, and child workflow evidence for Runtime Console and other operator
+claim state, and child workflow evidence for Console and other operator
 consumers. It reads only Service-owned workflow tables and does not require the
-Host, Runtime Console, System Plane, or an external workflow engine.
+Host, Console, System Plane, or an external workflow engine.
 
 Operator control is a separate durable dispatch gate, not a new business
 lifecycle state. Pausing changes an instance from control state `active` to
@@ -591,7 +591,7 @@ Collection also snapshots the latest report-only `lenso.reliability-report.v1`
 evidence for each source Service. The shared report contract includes the
 selected profile, explicit overrides, deterministic effective values, Degraded
 Modes, pressure and SLO checks, evidence references, issue codes, and next
-actions. Runtime Console renders that backend projection and does not duplicate
+actions. Console renders that backend projection and does not duplicate
 Story aggregation or Reliability Contract evaluation in TypeScript.
 
 ## Event Envelopes
@@ -635,7 +635,7 @@ clients remain outside Module code and Event Contracts.
 
 The local adapter persists transport deliveries and diagnostics in an injected
 PostgreSQL Store and needs no external broker, Kubernetes, service mesh,
-Runtime Console, or System Plane. Producers write the business change and
+Console, or System Plane. Producers write the business change and
 Service-owned Outbox publication intent in one transaction. Consumers persist
 the received envelope in their own Inbox and invoke Module-owned behavior in a
 Service Store transaction before acknowledging delivery. Service-local Outbox,

@@ -48,7 +48,7 @@ replays. A Service never writes Host queues or runtime tables directly.
 ## Console UI Artifacts
 
 Optional third-party UI is an immutable artifact referenced by the Module
-Release, not an npm package installed into the hosted Console. Runtime Console
+Release, not an npm package installed into the hosted Console. Console
 loads the artifact in a sandboxed cross-origin iframe with `allow-scripts` only.
 The artifact receives no Host token, cookies, stores, or internal imports.
 
@@ -96,7 +96,7 @@ lenso module install billing
 lenso module uninstall billing
 ```
 
-Runtime Console reaches target-owned management only through negotiated System
+Console reaches target-owned management only through negotiated System
 Plane capabilities; the retired same-host `/admin/modules/*` adapter is not a
 production authority boundary. Neither path copies frontend bundles. Console
 Composition resolves the selected UI artifact digest and creates the bounded

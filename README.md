@@ -7,7 +7,7 @@ Agent-ready Rust business systems.
 Lenso is a Rust-first modular app framework for composing real product shapes,
 verifying every change, and evolving stable boundaries into services. Start
 with a runnable host, services, modules, local processes, contracts, migrations,
-and Runtime Console already connected instead of assembling the surrounding
+and Console already connected instead of assembling the surrounding
 system one library at a time.
 
 Humans and coding agents work from the same explicit model: product blueprints,
@@ -44,7 +44,7 @@ The generated application includes:
 - explicit module, service, system, and contract declarations;
 - Launchpad state for services, modules, addons, and next actions;
 - Doctor, App Proof, and App Change Plan evidence;
-- Runtime Console at `/console`.
+- Console at `/console`.
 
 Use `cargo install lenso-cli` instead when you prefer the Rust distribution of
 the same CLI.
@@ -56,7 +56,7 @@ the same CLI.
 2. **Extend explicit capabilities.** Add modules, services, addons, or reusable
    capability packs through a reviewable App Change Plan.
 3. **Verify the generated system.** Doctor, App Proof, contract checks, smoke
-   checks, and Runtime Console turn generated state into reviewable evidence.
+   checks, and Console turn generated state into reviewable evidence.
 4. **Evolve stable boundaries.** Keep the product modular, then move selected
    capabilities across process or service boundaries without rewriting the
    product model.
@@ -84,7 +84,7 @@ System. It projects managed-Service state through the System Plane so humans and
 coding agents can review the same system without putting Console code in a
 business Host.
 
-[![Runtime Console App Lifecycle view showing services, modules, Doctor checks, App Proof, and next actions](https://lenso.dev/lenso-assets/console/app-lifecycle.png)](https://lenso.dev/lenso-assets/console/app-lifecycle.png)
+[![Console App Lifecycle view showing services, modules, Doctor checks, App Proof, and next actions](https://lenso.dev/lenso-assets/console/app-lifecycle.png)](https://lenso.dev/lenso-assets/console/app-lifecycle.png)
 
 _App Lifecycle shows the generated services and modules alongside readiness,
 Doctor checks, App Proof, change plans, and the next safe command._
@@ -239,7 +239,7 @@ Prerequisites:
 - Rust toolchain compatible with the workspace (`rust-version = 1.94`).
 - `just`.
 - Docker if you want local Postgres via `just db-up`.
-- The sibling `../lenso-console` checkout if you want to work on the Runtime Console.
+- The sibling `../lenso-console` checkout if you want to work on the Console.
 
 Create local environment config:
 
@@ -393,7 +393,7 @@ Generated files are source-controlled artifacts, but they are not hand-edited. U
 ## Release Readiness
 
 Use `just release-check` before cutting a release branch or tag. It runs the
-backend quality gate. Runtime Console release checks live in the sibling
+backend quality gate. Console release checks live in the sibling
 `lenso-console` repository. The release scope and manual smoke checklist live in
 [docs/release-readiness.md](docs/release-readiness.md).
 

@@ -2,9 +2,9 @@
 
 This note specifies the admin-surface direction for the module framework.
 `AdminSurface::Schema` is the generic data-admin surface. `EmbeddedCustom`
-currently has a first Runtime Console iframe renderer with origin checks,
+currently has a first Console iframe renderer with origin checks,
 sandbox attributes, and no host bridge. `DeclarativeCustom` currently has a
-first host-rendered Runtime Console slice for `MetricStrip`, `QueryValue`,
+first host-rendered Console slice for `MetricStrip`, `QueryValue`,
 `EntityTable`, and `EntityDetail` components. Entity components are backed by
 `fallback_schema`; query values call host-owned read-only query endpoints.
 
@@ -13,7 +13,7 @@ first host-rendered Runtime Console slice for `MetricStrip`, `QueryValue`,
 Custom admin UI has two different meanings:
 
 - Host-rendered custom UI: the module declares screens, sections, actions, and
-  data bindings as structured manifest data. The Runtime Console renders those
+  data bindings as structured manifest data. The Console renders those
   declarations with its own trusted React components.
 - Module-owned custom UI: the module provides a UI artifact that is embedded or
   executed across a stricter boundary, such as a sandboxed iframe first, then
@@ -54,7 +54,7 @@ pub struct AdminDeclarativeSurface {
 Rules:
 
 - The manifest is pure serializable data.
-- The Runtime Console owns rendering, styling, accessibility, layout, and
+- The Console owns rendering, styling, accessibility, layout, and
   component behavior.
 - Declarative actions call host-defined admin action endpoints. They do not run
   module-provided frontend code.
@@ -101,7 +101,7 @@ reserved names until they have separate execution, signing, and lifecycle specs.
 
 Rules:
 
-- The Runtime Console embeds the surface behind a sandbox boundary.
+- The Console embeds the surface behind a sandbox boundary.
 - Iframe entries must be absolute URLs whose origins match an explicit allowlist.
 - The host must not pass bearer tokens, service credentials, or database access
   into the embedded surface.
@@ -117,7 +117,7 @@ Deferred from the first implementation:
 - Bidirectional host/module action bridge.
 - Network-loaded JavaScript bundles.
 - Wasm component execution.
-- Module-owned routing inside the Runtime Console shell.
+- Module-owned routing inside the Console shell.
 
 ## Relationship To Existing Surfaces
 
@@ -148,7 +148,7 @@ The loading source axis remains separate:
    Console Data page.
 4. Implement a small `DeclarativeCustom` renderer for one or two trusted
    components. Done for `MetricStrip`, `QueryValue`, `EntityTable`, and
-   `EntityDetail` on the Runtime Console Data page. Entity tables/details are
+   `EntityDetail` on the Console Data page. Entity tables/details are
    read-only and use `AdminDataSource` through `/admin/data/{module}/{entity}`
    and `/admin/data/{module}/{entity}/{id}` when `fallback_schema` declares the
    entity. Query values are read-only and use `/admin/data/{module}/queries/{query}`.

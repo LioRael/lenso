@@ -287,7 +287,7 @@
         "evidenceReferences": [
           "module:console/surface:support-tickets@/support/tickets"
         ],
-        "message": "Runtime Console declarations are part of the Module's operator-facing identity.",
+        "message": "Console declarations are part of the Module's operator-facing identity.",
         "nextActions": [
           "Preserve Console routes, packages, slots, and contributions during extraction."
         ],

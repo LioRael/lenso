@@ -1,6 +1,6 @@
 # Runtime Telemetry Architecture
 
-Runtime Console uses the business runtime model as the source of truth.
+Console uses the business runtime model as the source of truth.
 
 ## Source Of Truth
 
@@ -11,7 +11,7 @@ Runtime stories come from runtime tables and execution records:
 - `correlation_id`
 - causation and runtime metadata carried through headers/input payloads
 
-The Runtime Console product model remains:
+The Console product model remains:
 
 - Story
 - Execution
@@ -59,7 +59,7 @@ story-level operations.
 
 ## Remote Proxy Views
 
-Runtime Console intentionally exposes remote proxy calls in two complementary
+Console intentionally exposes remote proxy calls in two complementary
 ways:
 
 - The Provider Calls page is the horizontal operations view. It supports filtering
@@ -111,11 +111,11 @@ available.
 - no-op provider for normal operation without telemetry storage
 - in-memory provider for integration tests
 
-A future queryable backend should implement this provider without changing Runtime Console story semantics.
+A future queryable backend should implement this provider without changing Console story semantics.
 
-## Runtime Console Routes
+## Console Routes
 
-Runtime Console exposes canonical product routes only:
+Console exposes canonical product routes only:
 
 - `/runtime/stories` is the Story workbench, including graph, waterfall,
   flame, and timeline views for a selected story.
@@ -127,7 +127,7 @@ Runtime Story detail is the API surface for story timeline data:
 `GET /admin/runtime/stories/{correlation_id}` returns `timeline_items`.
 There is no standalone admin runtime timeline endpoint.
 
-Legacy Runtime Console aliases such as `/runtime/traces`, `/timeline`,
+Legacy Console aliases such as `/runtime/traces`, `/timeline`,
 `/events`, `/functions`, `/dead-letters`, `/remote-proxy-calls`, and `/queues`
 are intentionally not preserved. Architecture checks fail if those aliases are
-reintroduced in the Runtime Console router.
+reintroduced in the Console router.

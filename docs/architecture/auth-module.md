@@ -115,7 +115,7 @@ a normal `auth.sessions` row without collecting PII:
   module data attached to the same `auth_user_id`.
 
 The `auth-oidc` provider exposes the host as an OIDC provider for the hosted
-Runtime Console:
+Console:
 
 - `/.well-known/openid-configuration`
 - `/.well-known/jwks.json`
