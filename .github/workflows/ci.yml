@@ -50,14 +50,14 @@ jobs:
           mkdir -p .cargo
           cat > .cargo/config.toml <<'EOF'
           [patch.crates-io]
-          lenso-module-auth = { path = ".ci/lenso-auth-module/crates/auth" }
-          lenso-module-auth-anonymous = { path = ".ci/lenso-auth-module/crates/auth-anonymous" }
-          lenso-module-auth-github = { path = ".ci/lenso-auth-module/crates/auth-github" }
-          lenso-module-auth-google = { path = ".ci/lenso-auth-module/crates/auth-google" }
-          lenso-module-auth-oauth = { path = ".ci/lenso-auth-module/crates/auth-oauth" }
-          lenso-module-auth-oidc = { path = ".ci/lenso-auth-module/crates/auth-oidc" }
-          lenso-module-auth-password = { path = ".ci/lenso-auth-module/crates/auth-password" }
-          lenso-module-auth-phone = { path = ".ci/lenso-auth-module/crates/auth-phone" }
+          lenso-module-auth = { path = "../.ci/lenso-auth-module/crates/auth" }
+          lenso-module-auth-anonymous = { path = "../.ci/lenso-auth-module/crates/auth-anonymous" }
+          lenso-module-auth-github = { path = "../.ci/lenso-auth-module/crates/auth-github" }
+          lenso-module-auth-google = { path = "../.ci/lenso-auth-module/crates/auth-google" }
+          lenso-module-auth-oauth = { path = "../.ci/lenso-auth-module/crates/auth-oauth" }
+          lenso-module-auth-oidc = { path = "../.ci/lenso-auth-module/crates/auth-oidc" }
+          lenso-module-auth-password = { path = "../.ci/lenso-auth-module/crates/auth-password" }
+          lenso-module-auth-phone = { path = "../.ci/lenso-auth-module/crates/auth-phone" }
           EOF
           for package in \
             lenso-module-auth \
