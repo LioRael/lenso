@@ -1,3 +1,10 @@
+## lenso@0.3.35
+
+### Fixes
+
+Publish the corrected public facade without the retired Console package type
+re-exports so clean crates.io consumers compile against released contracts.
+
 ## lenso@0.3.34
 
 ### Features

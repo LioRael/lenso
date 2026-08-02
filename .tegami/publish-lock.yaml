@@ -1,39 +1,41 @@
 core:changelogs:
-  - content: "---\npackages:\n  \"@lenso/service-kit\":\n    type: patch\n---\n\n### Fixed\n\nBuild the Service Kit public entrypoints before the reviewed publisher seals its\nnpm archive, and reject any future archive that omits a declared entrypoint.\n"
-    filename: service-kit-artifact.md
+  - content: "---\npackages:\n  lenso:\n    type: patch\n---\n\n### Fixes\n\nPublish the corrected public facade without the retired Console package type\nre-exports so clean crates.io consumers compile against released contracts.\n"
+    filename: lenso-facade.md
     v: 0.0.0
 core:packages:
-  - changelogIds:
-      - service-kit-artifact.md
-    id: npm:@lenso/service-kit
-    updated: true
-  - id: cargo:lenso-contracts
+  - id: npm:@lenso/service-kit
     updated: false
+  - changelogIds:
+      - lenso-facade.md
+    id: cargo:lenso
+    updated: true
   - id: cargo:lenso-autonomous-service
     updated: false
-  - id: cargo:lenso-service
+  - id: cargo:lenso-contracts
     updated: false
   - id: cargo:lenso-module-management
+    updated: false
+  - id: cargo:lenso-service
     updated: false
   - id: cargo:lenso-platform-core
     updated: false
   - id: cargo:lenso-platform-http
     updated: false
+  - id: cargo:lenso-platform-module-management
+    updated: false
   - id: cargo:lenso-platform-module
     updated: false
   - id: cargo:lenso-platform-provider
     updated: false
-  - id: cargo:lenso-platform-module-management
-    updated: false
   - id: cargo:lenso-platform-runtime
-    updated: false
-  - id: cargo:lenso-platform-runtime-observability
     updated: false
   - id: cargo:lenso-platform-runtime-operations
     updated: false
   - id: cargo:lenso-platform-system-plane
     updated: false
   - id: cargo:lenso-platform-testing
+    updated: false
+  - id: cargo:lenso-platform-runtime-observability
     updated: false
 npm:packages:
   - id: npm:@lenso/service-kit
