@@ -1,7 +1,7 @@
 {
   "schema": "lenso.release-plan.v1",
   "repository": "LioRael/lenso",
-  "sourceCommit": "a08eb04d883e6b2bf2a42ef8435ae8c61688b8a0",
+  "sourceCommit": "66d215de05649ef1414e6e68800fdf9aeafa7f28",
   "tegamiVersion": "1.2.5",
   "publisher": {
     "workflow": ".github/workflows/publish.yml",
@@ -16,31 +16,38 @@
   "generatedFiles": [
     {
       "path": ".tegami/publish-lock.yaml",
-      "sha256": "sha256:ef5975fa836887e689f0495eca3f217428a0029bb634561056abf002598c8bf5"
+      "sha256": "sha256:0da09fe77ca1e18f39af6185b3460d40f1decc25a1f11f1c5022beff9e0b6391"
     },
     {
-      "path": "pnpm-lock.yaml",
-      "sha256": "sha256:19d80ec44c39a41dc7a9e46816ad0b9c7ae7d71ee66acea02d41d30f5c71f1e2"
+      "path": "Cargo.lock",
+      "sha256": "sha256:4416aeec596ff8fc43f943fd25b4ab36ee48606c4ff455b79fe14bbff728a067"
     },
     {
-      "path": "sdk/typescript/packages/service-kit/CHANGELOG.md",
-      "sha256": "sha256:57a89ccf6ae27abf7592f5ac64bd8eea34cb9fe228ef0cc94ba38753613cf262"
+      "path": "crates/lenso/CHANGELOG.md",
+      "sha256": "sha256:7d3172b90ecd68d782a9a022ccd9579ef6d60caa88cf2b0aade330e8e5a4305b"
     },
     {
-      "path": "sdk/typescript/packages/service-kit/package.json",
-      "sha256": "sha256:bf4f75bb8a8a0e8b1438bb8b20a7aaa5f093a4811b5501940000e61fbaf7b970"
+      "path": "crates/lenso/Cargo.toml",
+      "sha256": "sha256:57a5f22a96260b8777c755b97da52a68c84dd344d4fecf259dcda1f1ac6f872e"
     }
   ],
   "packages": [
     {
-      "id": "npm:@lenso/service-kit",
-      "previousVersion": "0.1.4",
-      "nextVersion": "0.1.5",
+      "id": "cargo:lenso",
+      "previousVersion": "0.3.34",
+      "nextVersion": "0.3.35",
       "bump": "patch",
-      "releaseGroup": "modules",
+      "releaseGroup": "host",
       "userFacing": true,
-      "dependencies": []
+      "dependencies": [
+        {
+          "id": "cargo:lenso-contracts",
+          "requirement": "^0.3.20",
+          "resolvedVersion": "0.3.20",
+          "source": "registry"
+        }
+      ]
     }
   ],
-  "planId": "sha256:00a4a3c68a0dc3c81d0feca3b38a5ebad61af56e1a323119eabac537cfd47e5e"
+  "planId": "sha256:ee37951059e212ab621c22434a9f35457aebe808c7a74721a5d98715f51a3a5b"
 }
