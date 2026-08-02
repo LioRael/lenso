@@ -733,11 +733,7 @@ pub fn generated_ga_support_manifest() -> Value {
         component(ComponentKind::Contracts, "lenso-contracts", "0.3.16"),
         component(ComponentKind::Provider, "lenso-service-provider-v1", "1"),
         component(ComponentKind::Operator, "lenso-operator", "0.1.0"),
-        component(
-            ComponentKind::RuntimeConsole,
-            "@lenso/runtime-console",
-            "0.1.2",
-        ),
+        component(ComponentKind::RuntimeConsole, "lenso-console", "0.1.2"),
     ];
     let references = components.iter().map(GaComponent::reference).collect();
     let manifest = assemble_ga_support_manifest_with_trust(GaSupportManifestInput {

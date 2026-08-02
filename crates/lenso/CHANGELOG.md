@@ -1,3 +1,12 @@
+## lenso@0.3.36
+
+### Fixes
+
+Publish a coherent Host dependency closure that removes the retired Remote
+Module crate and resolves Auth Modules built against digest-bound Console UI
+artifact contracts. Auth UI is part of its owning Module Release and is not an
+independently versioned npm product.
+
 ## lenso@0.3.35
 
 ### Fixes

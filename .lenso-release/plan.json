@@ -1,13 +1,13 @@
 {
   "schema": "lenso.release-plan.v1",
   "repository": "LioRael/lenso",
-  "sourceCommit": "c15c8176189c010854388ee7e9d0fb57ad26ccf1",
+  "sourceCommit": "2195e2f31606b67ce9968ad9aaaa64c0f541aa8e",
   "tegamiVersion": "1.2.5",
   "publisher": {
     "workflow": ".github/workflows/publish.yml",
     "workflowSha256": "sha256:1cb28eed0a089186c1f20a579ef4c49ad87c603f02c817cc7926e00cb6c2352e",
-    "sharedRevision": "448863708f8d41e74b8635ef673b9a6d755a535f",
-    "sharedBundleSha256": "sha256:fa72b5b0c2c3f7abf1a353e76eede714fc7e1e7b889e6d81a7f144caee0d0a0a",
+    "sharedRevision": "358cbc874ee916736a416c6b6a089d3d948ddbd9",
+    "sharedBundleSha256": "sha256:054ad5e8be4da2f13f0c55707ce6792f73cef4818a2568f19588d48f6cf944d2",
     "runner": "ubuntu-24.04",
     "node": "24.18.0",
     "npm": "11.7.0",
@@ -16,26 +16,26 @@
   "generatedFiles": [
     {
       "path": ".tegami/publish-lock.yaml",
-      "sha256": "sha256:0da09fe77ca1e18f39af6185b3460d40f1decc25a1f11f1c5022beff9e0b6391"
+      "sha256": "sha256:c2aecc24109f5f1a7808a47a6dc6fb062bbf7212bbae8d94425cd5008e427233"
     },
     {
       "path": "Cargo.lock",
-      "sha256": "sha256:4416aeec596ff8fc43f943fd25b4ab36ee48606c4ff455b79fe14bbff728a067"
+      "sha256": "sha256:1863bc6949e5a97021350cf67d0f05cbad75f2c9a792109464537541841e3925"
     },
     {
       "path": "crates/lenso/CHANGELOG.md",
-      "sha256": "sha256:7d3172b90ecd68d782a9a022ccd9579ef6d60caa88cf2b0aade330e8e5a4305b"
+      "sha256": "sha256:aef78d1142c88cfdbeac1f9ebcb9f5d646eb9a18d24f5b5f1a221450ff30a836"
     },
     {
       "path": "crates/lenso/Cargo.toml",
-      "sha256": "sha256:57a5f22a96260b8777c755b97da52a68c84dd344d4fecf259dcda1f1ac6f872e"
+      "sha256": "sha256:9247a440bd4ec84fb46376c489908b3cd18c71530ce9bae6c018fda8fc25a088"
     }
   ],
   "packages": [
     {
       "id": "cargo:lenso",
-      "previousVersion": "0.3.34",
-      "nextVersion": "0.3.35",
+      "previousVersion": "0.3.35",
+      "nextVersion": "0.3.36",
       "bump": "patch",
       "releaseGroup": "host",
       "userFacing": true,
@@ -49,5 +49,5 @@
       ]
     }
   ],
-  "planId": "sha256:08f6505efbeab3f8cad2789320d97e4fb272d690703d0a6148a1dc1e24f6cdcf"
+  "planId": "sha256:72f17b253c4ad5f2311368118bb8b17967f533c836634b41545960527017b738"
 }
