@@ -123,14 +123,14 @@ arch-check = { path = "tools/arch-check" }
 provider-fixture = { path = "fixtures/provider" }
 
 [patch.crates-io]
-lenso-module-auth = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
-lenso-module-auth-anonymous = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
-lenso-module-auth-github = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
-lenso-module-auth-google = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
-lenso-module-auth-oauth = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
-lenso-module-auth-oidc = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
-lenso-module-auth-password = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
-lenso-module-auth-phone = { git = "https://github.com/LioRael/lenso-auth-module", rev = "1a9dd0b28c7d73aee036125ed3e4e68d19acca6c" }
+lenso-module-auth = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
+lenso-module-auth-anonymous = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
+lenso-module-auth-github = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
+lenso-module-auth-google = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
+lenso-module-auth-oauth = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
+lenso-module-auth-oidc = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
+lenso-module-auth-password = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
+lenso-module-auth-phone = { git = "https://github.com/LioRael/lenso-auth-module", rev = "6f689d6aa38aa74a490d9877287fa6f0aa2aacc1" }
 lenso-contracts = { path = "crates/lenso-contracts" }
 lenso-platform-core = { path = "crates/platform-core" }
 lenso-platform-http = { path = "crates/platform-http" }
