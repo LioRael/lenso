@@ -425,7 +425,7 @@
       "type": "object"
     },
     "AdminSurface": {
-      "description": "A module's admin surface.\n\n`Schema` is implemented today. Custom surface variants are data contracts\nonly until the Runtime Console implements their renderers/policies.",
+      "description": "A module's admin surface.\n\n`Schema` is implemented today. Custom surface variants are data contracts\nonly until the Console implements their renderers/policies.",
       "oneOf": [
         {
           "$ref": "#/$defs/AdminSchema",
@@ -443,7 +443,7 @@
         },
         {
           "$ref": "#/$defs/AdminDeclarativeSurface",
-          "description": "Host-rendered custom UI built from trusted Runtime Console components.",
+          "description": "Host-rendered custom UI built from trusted Console components.",
           "properties": {
             "kind": {
               "const": "declarative_custom",
@@ -1575,7 +1575,7 @@
         },
         "console": {
           "default": [],
-          "description": "Declared Runtime Console surfaces provided by trusted frontend packages.",
+          "description": "Declared Console surfaces provided by trusted frontend packages.",
           "items": {
             "$ref": "#/$defs/ConsoleSurface"
           },
@@ -1583,7 +1583,7 @@
         },
         "console_contributions": {
           "default": [],
-          "description": "Declared Runtime Console slot contributions attached to host or module-owned surfaces.",
+          "description": "Declared Console slot contributions attached to host or module-owned surfaces.",
           "items": {
             "$ref": "#/$defs/ConsoleContribution"
           },
@@ -1591,7 +1591,7 @@
         },
         "console_slots": {
           "default": [],
-          "description": "Declared Runtime Console extension slots owned by host or module surfaces.",
+          "description": "Declared Console extension slots owned by host or module surfaces.",
           "items": {
             "$ref": "#/$defs/ConsoleSlot"
           },

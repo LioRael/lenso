@@ -16,7 +16,7 @@ Keep the public module contract unchanged:
 - admin action/query names and schemas;
 - console surface route and package identity when one exists.
 
-Runtime Console, Remote Calls, Runtime Story, Technical Operations, and host
+Console, Remote Calls, Runtime Story, Technical Operations, and host
 admin APIs should keep showing the same business operation names after the
 implementation moves out of process.
 

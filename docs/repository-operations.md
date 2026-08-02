@@ -2,11 +2,11 @@
 
 This repository is the backend half of the Lenso repo pair. It owns the Rust
 services, platform crates, modules, migrations, contracts, and admin APIs
-consumed by the Runtime Console.
+consumed by the Console.
 
 ## Repository Pair
 
-Keep the backend and Runtime Console checked out as siblings:
+Keep the backend and Console checked out as siblings:
 
 ```text
 framework/
@@ -51,26 +51,26 @@ just ci
 That gate checks Rust formatting, compiles and tests the Rust workspace,
 verifies generated contracts, and runs architecture checks.
 
-## Runtime Console CI Dependency
+## Console CI Dependency
 
-The Runtime Console CI checks out this backend repository to typecheck and build
+The Console CI checks out this backend repository to typecheck and build
 against the backend admin API contracts and fixtures.
 
 The cross-repository checkout is configured with:
 
 - Backend deploy key: the read-only Console CI key
 - Backend deploy key mode: read-only
-- Runtime Console secret: `LENSO_REPO_DEPLOY_KEY`
+- Console secret: `LENSO_REPO_DEPLOY_KEY`
 
 If either repository is recreated, transferred, or renamed, recreate the
 read-only deploy key on the backend repository and store the private key in the
-Runtime Console repository secret with the same name.
+Console repository secret with the same name.
 
 ## GitHub Repository Metadata
 
 Current repository metadata should stay aligned with the README:
 
-- Description: `Rust-first modular monolith backend with generated contracts and Runtime Console admin APIs`
+- Description: `Rust-first modular monolith backend with generated contracts and Console admin APIs`
 - Topics: `axum`, `lenso`, `lenso-console`, `modular-monolith`, `openapi`, `postgres`, `rust`
 
 Update GitHub metadata when the repository role changes materially.
@@ -78,7 +78,7 @@ Update GitHub metadata when the repository role changes materially.
 ## History Backup
 
 The backend repository was reset to a clean single-commit baseline after the
-Runtime Console split. The pre-squash history is preserved on:
+Console split. The pre-squash history is preserved on:
 
 ```text
 archive/pre-squash-history
@@ -94,8 +94,8 @@ When moving the Lenso repositories to a new owner or recreating one of them:
 1. Push `lenso`, `lenso-console`, and `lenso-cli`, and keep them as private repos unless intentionally publishing them.
 2. Reapply `main` branch protection in each repository.
 3. Verify the required check name is still `quality`.
-4. Recreate the Runtime Console read-only backend deploy key.
-5. Recreate `LENSO_REPO_DEPLOY_KEY` in the Runtime Console repository.
+4. Recreate the Console read-only backend deploy key.
+5. Recreate `LENSO_REPO_DEPLOY_KEY` in the Console repository.
 6. Run the main-branch CI workflows and confirm they pass.
 7. Preserve or intentionally replace `archive/pre-squash-history`.
 8. Update README repository links and GitHub metadata if owner or repo names changed.

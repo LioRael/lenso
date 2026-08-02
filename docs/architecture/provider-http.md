@@ -230,7 +230,7 @@ error code/retryability when present. Calls are also persisted to
 `platform.provider_http_proxy_calls` with module, route, status, duration,
 request/correlation, trace/span, path parameter, and error detail fields.
 
-Runtime Console exposes persisted proxy calls through three surfaces:
+Console exposes persisted proxy calls through three surfaces:
 
 - `/operations/provider-calls` is the horizontal operational view for filtering
   across stories by module, success, error code, provider status, and correlation

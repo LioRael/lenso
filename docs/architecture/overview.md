@@ -2,7 +2,7 @@
 
 Lenso is a Rust-first backend framework and service-ready modular monolith with
 an embedded runtime, an Axum HTTP API, a background worker, a migration runner,
-committed contracts, and a sibling Runtime Console. The platform gives future
+committed contracts, and a sibling Console. The platform gives future
 projects reliable defaults without hiding the system. The public package surface
 is defined in
 [`framework-public-surface.md`](framework-public-surface.md).
@@ -52,7 +52,7 @@ assets.
 The service kit is split into a few crates:
 
 - `platform-core`: config, error model, request context, actor context, IDs, clock, DB pool, migrations, events, transactional outbox, relay primitives, health, shutdown, telemetry foundations, and telemetry query abstractions.
-- `lenso-contracts`: shared serializable declaration contracts for module manifests, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, Runtime Console surfaces, story display metadata, and manifest lints.
+- `lenso-contracts`: shared serializable declaration contracts for module manifests, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, Console surfaces, story display metadata, and manifest lints.
 - `lenso`: the public Rust facade crate. Its default surface re-exports declaration contracts; its `host` feature exposes the narrow API, worker, migration, and linked HTTP host boot facade.
 - `lenso-module-management`: the shared lifecycle kernel. One deep Plan Builder owns graph resolution, isolated Cargo candidate resolution, immutable plans, approvals, operation journals, crash recovery, repair, and Linked workspace transactions for every caller.
 - `platform-http`: Axum request context middleware, auth extractors, standard JSON error responses, JSON extractor, response helpers, health routes, and the `OpenApiRouter` re-exports used for single-source OpenAPI.
@@ -73,7 +73,7 @@ out-of-process owner or provider that still contains and exports Modules; it is
 not a separate peer capability model. The older `platform-module-provider`
 runtime remains temporarily as an internal Provider compatibility
 implementation, but `provider`, `source`, and `bundled` are not public Module
-contract values. Runtime Console, backend automation, and CLI are peer adapters
+contract values. Console, backend automation, and CLI are peer adapters
 over `lenso-module-management`; no adapter delegates lifecycle work to another.
 The target-owned `lenso.service-installations.v1` document records desired
 Service releases, exported Modules, Config bindings, Endpoint resolution, and
@@ -179,7 +179,7 @@ nodes without determining Story identity or business completion.
 The runtime admin backend now presents those collected Stories through the
 existing tenant-scoped Stories API. It projects cross-Service graph and
 timeline nodes, exact Workflow evidence states, typed Segment gaps, correlated
-technical operations, and collected Reliability Reports for Runtime Console;
+technical operations, and collected Reliability Reports for Console;
 the frontend does not recompute federation or reliability rules.
 Modules can now declare engine-neutral, versioned Durable Workflow definitions
 under `ModuleManifest.runtime.workflows`. Autonomous Service composition
@@ -306,7 +306,7 @@ deadline and declared Idempotency Key semantics, and enforce the same explicit,
 protocol-neutral Call Policy for safe attempts, circuit breaking, concurrency
 isolation, overload evidence, and composition-supplied business fallback while
 retaining native transport failures. Policy state stays inside the calling or
-receiving Service and has no Runtime Console or System Plane dependency.
+receiving Service and has no Console or System Plane dependency.
 Declared JSON Schema Event Contracts generate transport-independent Event
 Contract artifacts and `lenso.event-envelope.v1` envelopes. The envelope keeps
 stable Service, Module, Contract, Story, causation, tenant, identity, region,
@@ -321,7 +321,7 @@ SPIFFE X.509-SVID mTLS plus an audience-limited JWT-SVID from the Workload API.
 Lenso maps the authenticated peer SPIFFE ID to the stable Service Principal and
 does not become a certificate authority. Direct HTTP, gRPC, and event admission
 verify signed, expiring credentials plus authenticated transport binding before
-business behavior, without a Runtime Console, Host, or System Plane lookup.
+business behavior, without a Console, Host, or System Plane lookup.
 Route proxying is specified
 separately in `docs/architecture/module-provider-http-proxy.md`. Provider runtime
 execution and event-handler dispatch are scoped in
@@ -342,7 +342,7 @@ queues, Outbox delivery, and Story evidence remain Host-owned:
 - Provider schema-admin data can be read through `/admin/data/*` when the module
   exposes `AdminSurface::Schema` and protocol-backed records.
 - Provider admin metadata can expose schema, declarative custom, or embedded
-  custom surfaces; the Runtime Console has read-only examples for schema,
+  custom surfaces; the Console has read-only examples for schema,
   host-rendered declarative sections, and sandboxed iframe embedded surfaces.
 - Declared provider HTTP routes are proxied under
   `/modules/{module}/http/{*path}` with host-owned auth, capability checks,
@@ -397,7 +397,7 @@ It remains optional and confined to Autonomous Service composition; linked
 Modules, Event Contracts, the Host runtime, and the System Plane do not depend
 on NATS, Kafka, a service mesh, or broker-specific types.
 
-## Runtime Console
+## Console
 
 The Lenso Console product is developed in the sibling `lenso-console`
 repository as an independent Service. It owns operator identity, its composition

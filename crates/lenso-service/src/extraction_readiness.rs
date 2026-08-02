@@ -1650,7 +1650,7 @@ fn collect_surface_findings(
         ExtractionReadinessIssueCode::ConsoleSurfacePresent,
         "console",
         &surfaces.console,
-        "Runtime Console declarations are part of the Module's operator-facing identity.",
+        "Console declarations are part of the Module's operator-facing identity.",
         "Preserve Console routes, packages, slots, and contributions during extraction.",
     );
     push_surface_finding(

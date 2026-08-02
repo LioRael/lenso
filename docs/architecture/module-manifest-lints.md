@@ -1,7 +1,7 @@
 # Module Manifest Lints
 
 `platform-module` owns module manifest lint rules. Backends expose the resulting
-`manifest_lints` through module metadata endpoints, and the Runtime Console only
+`manifest_lints` through module metadata endpoints, and the Console only
 filters, groups, and renders those results.
 
 Each lint has:
@@ -13,7 +13,7 @@ Each lint has:
 
 ## Subject Categories
 
-The Runtime Console derives categories from `subject`:
+The Console derives categories from `subject`:
 
 | Subject pattern | Console category |
 | --- | --- |

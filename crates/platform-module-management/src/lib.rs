@@ -1,4 +1,4 @@
-//! Runtime Console HTTP adapter for the shared Module management kernel.
+//! Console HTTP adapter for the shared Module management kernel.
 //! The adapter accepts business changes and returns kernel-owned snapshots or
 //! immutable plans; it never reimplements resolution, Cargo, or workspace rules.
 

@@ -8,13 +8,13 @@ It exposes a read-only CRM-style Contacts module:
 - `GET /lenso/provider/v1/admin/contacts?limit=50&cursor=...`
 - `GET /lenso/provider/v1/admin/contacts/{id}`
 
-The default manifest also declares a host-rendered Runtime Console surface:
+The default manifest also declares a host-rendered Console surface:
 
 - package: `@lenso/provider-crm-console`
 - export: `providerCrmConsoleModule`
 - route: `/data/provider-crm`
 
-The frontend package itself is owned by the Runtime Console repository. This
+The frontend package itself is owned by the Console repository. This
 backend fixture only declares the surface metadata that the host API exposes.
 
 It also exposes a second embedded-admin module base for testing
@@ -48,7 +48,7 @@ Run the same fixture as a native gRPC Provider Service:
 cargo run --locked -p provider-fixture -- --grpc
 ```
 
-Connect it through Runtime Console and the target-owned System Plane management
+Connect it through Console and the target-owned System Plane management
 interface: preview and approve an exact Module Change Plan, apply its Service
 Installation Plan with either the HTTP or gRPC endpoint binding, then restart
 API and worker. Provider endpoints are never discovered from environment
@@ -66,7 +66,7 @@ under `/admin/data/modules` and exposes matched routes through:
 ```
 
 Proxy calls are persisted in `platform.provider_http_proxy_calls` with
-request/correlation/trace/span context. Runtime Console shows them in the
+request/correlation/trace/span context. Console shows them in the
 horizontal Provider Calls page, as `provider_proxy_call` nodes in Runtime Story
 graph/timeline views, and as `source = "provider_proxy"` rows in Technical
 Operations.
@@ -83,7 +83,7 @@ fixture and API in separate shells:
 just db-up
 just migrate
 cargo run --locked -p provider-fixture
-# Apply the reviewed Module and Service Installation plans in Runtime Console.
+# Apply the reviewed Module and Service Installation plans in Console.
 just api
 ```
 
@@ -113,7 +113,7 @@ The host path after `/modules/provider-crm/http` is matched against the module
 manifest route `/contacts/{id}`. A path such as `/contact_1` or a token missing
 `provider_crm.contacts.read` will not hit this declared route.
 
-In Runtime Console, verify:
+In Console, verify:
 
 - Provider Calls contains `corr_console_api_fixture`.
 - Stories contains `corr_console_api_fixture` with a `Provider Call` timeline row.
@@ -151,7 +151,7 @@ descriptor may verify those selections but cannot discover or enable sibling
 exports.
 
 The embedded manifest points at the example's `/embedded/admin` page with an
-origin allowlist for the current request host, so the Runtime Console can render
+origin allowlist for the current request host, so the Console can render
 it in a sandboxed iframe without a host bridge.
 The declarative manifest uses host-rendered `metric_strip`, `entity_table`, and
 `entity_detail` sections backed by the same Contacts fallback schema. The table

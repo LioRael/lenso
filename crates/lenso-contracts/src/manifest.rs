@@ -194,15 +194,15 @@ pub struct ModuleManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle: Option<LifecycleSurface>,
 
-    /// Declared Runtime Console surfaces provided by trusted frontend packages.
+    /// Declared Console surfaces provided by trusted frontend packages.
     #[serde(default)]
     pub console: Vec<ConsoleSurface>,
 
-    /// Declared Runtime Console extension slots owned by host or module surfaces.
+    /// Declared Console extension slots owned by host or module surfaces.
     #[serde(default)]
     pub console_slots: Vec<ConsoleSlot>,
 
-    /// Declared Runtime Console slot contributions attached to host or module-owned surfaces.
+    /// Declared Console slot contributions attached to host or module-owned surfaces.
     #[serde(default)]
     pub console_contributions: Vec<ConsoleContribution>,
 
@@ -2131,21 +2131,21 @@ impl ModuleManifestBuilder {
         self
     }
 
-    /// Attach trusted Runtime Console frontend surface declarations.
+    /// Attach trusted Console frontend surface declarations.
     #[must_use]
     pub fn console(mut self, console: Vec<ConsoleSurface>) -> Self {
         self.manifest.console = console;
         self
     }
 
-    /// Attach Runtime Console extension slot declarations.
+    /// Attach Console extension slot declarations.
     #[must_use]
     pub fn console_slots(mut self, console_slots: Vec<ConsoleSlot>) -> Self {
         self.manifest.console_slots = console_slots;
         self
     }
 
-    /// Attach trusted Runtime Console slot contribution declarations.
+    /// Attach trusted Console slot contribution declarations.
     #[must_use]
     pub fn console_contributions(
         mut self,

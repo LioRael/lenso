@@ -348,7 +348,7 @@ pub fn prove_system_plane_outage(
     if claims.system_plane_available || claims.runtime_console_available {
         issues.push(issue(
             DeliveryIssueCode::CoordinationUnavailable,
-            "The outage proof must actually withhold the System Plane and Runtime Console.",
+            "The outage proof must actually withhold the System Plane and Console.",
             "Run the proof with both coordination surfaces unavailable.",
             "Repeat the outage window without stopping the Autonomous Service.",
         ));

@@ -8,7 +8,7 @@
 
 - Commit: `<sha>`
 - Gate: `just release-check` result
-- Runtime Console: sibling repository check result, if coordinated
+- Console: sibling repository check result, if coordinated
 - Generated artifacts: `just generated-check` result
 
 ## First Release Scope
@@ -18,7 +18,7 @@
   provide modules to the host.
 - Service-provided modules can declare schema-admin, HTTP routes, runtime
   functions, and lifecycle activation jobs.
-- Runtime Console integration is provided by the separate
+- Console integration is provided by the separate
   `lenso-console` repository.
 - Generated contracts are committed and reproducible.
 

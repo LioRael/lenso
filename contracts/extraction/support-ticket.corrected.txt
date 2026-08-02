@@ -14,7 +14,7 @@ Findings:
 - [needs_attention] admin_surface_present module.admin: Admin declarations are part of the Module's operator-facing identity.
   evidence: module:admin/schema
   next: Preserve admin declarations and authorization requirements in the candidate Service.
-- [needs_attention] console_surface_present module.console: Runtime Console declarations are part of the Module's operator-facing identity.
+- [needs_attention] console_surface_present module.console: Console declarations are part of the Module's operator-facing identity.
   evidence: module:console/surface:support-tickets@/support/tickets
   next: Preserve Console routes, packages, slots, and contributions during extraction.
 - [needs_attention] runtime_surface_present module.runtime: Runtime functions and schedules must retain their identities and execution ownership.

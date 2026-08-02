@@ -42,7 +42,7 @@ _Avoid_: Host control plane, service mesh
 
 **Data Plane**:
 The Service-to-Service request and event paths that execute business behavior independently of System Plane availability.
-_Avoid_: System Plane, Runtime Console
+_Avoid_: System Plane, Console
 
 ## Events
 

@@ -20,7 +20,7 @@ Not every project needs every package:
 - JavaScript or TypeScript service authors use `@lenso/service-kit`.
 - API consumers use the OpenAPI contract directly.
 - Application starters and example repositories compose those packages into a
-  runnable backend, worker, migration, Runtime Console, and service demo.
+  runnable backend, worker, migration, Console, and service demo.
 
 The source repositories can stay organized around implementation ownership. The
 package boundary is the user-facing contract.

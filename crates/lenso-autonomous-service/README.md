@@ -49,7 +49,7 @@ The public `TransportAdapter` boundary carries authoritative Event Envelopes
 through protocol-neutral publish, receive, acknowledgement, negative
 acknowledgement, health, and diagnostic operations. `LocalTransportAdapter`
 uses an injected PostgreSQL Store as the dependency-free System Sandbox
-transport: it requires no broker, Kubernetes, service mesh, Runtime Console,
+transport: it requires no broker, Kubernetes, service mesh, Console,
 or System Plane. A Service records publication intent through
 `ServiceEventPublisher` in the same Store transaction as its business write;
 the relay and consumer helpers retain Service-owned Outbox, Inbox, terminal

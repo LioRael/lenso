@@ -75,14 +75,14 @@ action. Apply writes `.lenso/service-releases.json`; Console Services renders
 the latest release and the recent provider history next to health, lifecycle,
 operations, and config state.
 
-Module composition operations initiated from Runtime Console can also own the
+Module composition operations initiated from Console can also own the
 deployment step. The target materializes exact Service actions in
 `.lenso/module-planning-context.json`; plan preview copies the selected adapter
 and action into the immutable Module Change Plan before review.
 
 The desired Service topology is stored independently at
 `.lenso/environments/<environment-id>/service-installations.json` using
-`lenso.service-installations.v1`. Runtime Console and other management clients
+`lenso.service-installations.v1`. Console and other management clients
 use the same backend API to read the set, preview an immutable install or
 uninstall plan, and apply it with `service.manage`. Apply uses revision plus
 state-digest CAS and writes an idempotent receipt below

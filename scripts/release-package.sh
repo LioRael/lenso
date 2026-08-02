@@ -45,7 +45,7 @@ $summary
 - Gate: \`just release-check\` passed in the release workflow.
 - Package preflight: \`just package-readiness\` passed in the release workflow.
 - Registry uploads: controlled by the release workflow publish inputs.
-- Runtime Console artifacts are published by the separate \`lenso-console\` repository.
+- Console artifacts are published by the separate \`lenso-console\` repository.
 
 ## First Release Scope
 
@@ -65,7 +65,7 @@ just check
 
 ## Known Caveats
 
-- Source-only local smoke still requires Postgres and separate API, worker, and Runtime Console shells.
+- Source-only local smoke still requires Postgres and separate API, worker, and Console shells.
 - Provider releases are pinned by the Application Module Lock and target-owned Service Installation Set.
 - Publisher trust, registry review, install history, doctor flows, bundle import/export, provenance, and signatures are not release blockers.
 EOF

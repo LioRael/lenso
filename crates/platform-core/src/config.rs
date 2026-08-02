@@ -116,7 +116,7 @@ impl RedisConfig {
 pub struct HttpConfig {
     pub host: String,
     pub port: u16,
-    /// Origins permitted by CORS. Defaults to the local Runtime Console dev
+    /// Origins permitted by CORS. Defaults to the local Console dev
     /// ports; override with `CORS_ALLOWED_ORIGINS` (comma-separated).
     #[serde(default)]
     pub cors_allowed_origins: Vec<String>,

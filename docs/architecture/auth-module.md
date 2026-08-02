@@ -115,7 +115,7 @@ a normal `auth.sessions` row without collecting PII:
   module data attached to the same `auth_user_id`.
 
 The `auth-oidc` provider exposes the host as an OIDC provider for the hosted
-Runtime Console:
+Console:
 
 - `/.well-known/openid-configuration`
 - `/.well-known/jwks.json`
@@ -149,30 +149,24 @@ checks `auth.sessions`, and returns:
 ActorContext::User { user_id, scopes: [] }
 ```
 
-By default `scopes` is empty. Hosts that expose the Runtime Console through
-normal user login can set `auth.console_admin_user_scopes` to a JSON object that
-maps auth user ids to explicit scopes, for example:
-
-```json
-{
-  "usr_admin": ["console.admin", "auth.users.read", "identity.users.read"]
-}
-```
-
-`console.admin` is required before a user can enter admin HTTP endpoints; other
-capabilities are still checked per admin data query, action, or remote route.
-For Runtime Console stories, add `runtime.stories.read`. Bootstrap the first
-production Console admin from the host root after the auth user exists:
+The independently operated Lenso Console owns its operator identities and
+minimum operator scopes. Bootstrap the first operator from outside the Console
+Service after installation:
 
 ```sh
-lenso console bootstrap-admin --user-id usr_admin --scope runtime.stories.read
+lenso console operator bootstrap \
+  --console-root ../lenso-console \
+  --console-url http://127.0.0.1:3030 \
+  --identifier admin@example.com
 ```
 
-For password auth, `--identifier admin@example.com` can resolve the auth user id.
-Restart the API and worker after bootstrapping.
+Interactive use prompts for the password without echoing it. Automation must
+use `--password-stdin` or a private `--password-file`; no default credential or
+SQL bootstrap bypass exists. Add non-minimum capabilities with explicit
+`--scope` arguments. Restart the Console API and Worker after bootstrapping.
 
 Do not embed `dev-user`, `dev-service`, or other service bearer tokens in a
-browser Runtime Console build.
+browser Console build.
 Authorization beyond these explicit Console scopes, product profile lookup,
 tenant membership, and richer claims belong to the installing application or
 later focused auth slices.
