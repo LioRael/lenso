@@ -1,7 +1,7 @@
 {
   "schema": "lenso.release-plan.v1",
   "repository": "LioRael/lenso",
-  "sourceCommit": "e0735616b18805884d46796d9725af63386cc2fe",
+  "sourceCommit": "a08eb04d883e6b2bf2a42ef8435ae8c61688b8a0",
   "tegamiVersion": "1.2.5",
   "publisher": {
     "workflow": ".github/workflows/publish.yml",
@@ -42,5 +42,5 @@
       "dependencies": []
     }
   ],
-  "planId": "sha256:704089a99408a95d5e4c7fba279a1c9abf746e9cd44d88b79fb4a0db481c2fe3"
+  "planId": "sha256:00a4a3c68a0dc3c81d0feca3b38a5ebad61af56e1a323119eabac537cfd47e5e"
 }
