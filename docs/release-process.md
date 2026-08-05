@@ -1,108 +1,70 @@
 # Release Process
 
-Use this process when cutting a local Lenso release candidate or first release.
+This repository releases its own packages. Cargo and npm have separate
+version streams; there is no repository-wide release plan, shadow registry, or
+central publisher.
 
-## 1. Prepare Main
+## Cargo packages
 
-Make sure `main` is clean and current:
+Release-plz runs on pushes to `main` in two jobs:
 
-```sh
-git switch main
-git status --short
-```
+1. `release-pr` opens or updates a release pull request for changed public
+   workspace crates.
+2. `release` publishes the versions from a merged release pull request through
+   crates.io Trusted Publishing and creates one package tag and GitHub Release
+   per crate.
 
-Run the local release gate:
+The workflow uses the existing crate tag convention, `<crate>@<version>`. The
+crates.io registry is the source of truth for already published versions; an
+older shadow candidate is never treated as a public release. Configure a
+crates.io Trusted Publisher for each existing crate before merging the first
+Release-plz publish PR. New crates still require their first publication to be
+established according to crates.io's current onboarding rules.
 
-```sh
-just release-check
-```
+When migrating a repository whose manifest is ahead only because of an old
+shadow candidate, align that manifest and its workspace lock with the latest
+public registry version first. The next Release-plz PR then carries the normal
+SemVer bump without rewriting any public tag or archive.
 
-## 2. Create A Release Branch
-
-```sh
-git switch -c release/vX.Y.Z
-```
-
-Use the version you plan to publish. Keep the branch focused on release notes,
-last-mile docs, and blocking fixes only.
-
-## 3. Package The Release
-
-Build local release artifacts:
+Local checks:
 
 ```sh
-LENSO_RELEASE_VERSION=vX.Y.Z just release-package
+just check
+cargo package --locked -p lenso --allow-dirty
+cargo publish --dry-run --locked -p lenso --allow-dirty
 ```
 
-This writes:
+Run the package command for the changed crate set, not for unrelated workspace
+tools or fixtures.
 
-- `dist/release/lenso-vX.Y.Z-release-notes.md`
-- `dist/release/lenso-vX.Y.Z-source.tar.gz`
-- `dist/release/lenso-vX.Y.Z-artifact-readme.md`
+## npm packages
 
-The source archive is generated from `git archive HEAD`, so it contains committed
-source files and excludes local build output, `.git`, `target/`, and `dist/`.
-The Console Service is released independently. It is never installed into a
-managed host or included in the framework source archive.
-
-## 4. Run The GitHub Workflow
-
-Open the `release` workflow in GitHub Actions and trigger it with:
-
-- `version`: `vX.Y.Z`
-- `notes`: a short release summary
-- `publish_rust_crate`: `false`
-
-With `publish_rust_crate=false`, the workflow runs `just release-check`,
-verifies that the release version matches the `lenso` crate metadata, runs
-`just package-readiness`, dry-runs the `lenso-contracts` crates.io publish,
-generates a release notes draft, and uploads the source package plus artifact
-README. The workflow starts a Postgres service for DB-backed checks.
-
-## 5. Configure Registry Secrets
-
-Before a real registry publish, configure these repository secrets in GitHub:
-
-- `CARGO_REGISTRY_TOKEN`: crates.io token with publish access to `lenso-contracts`.
-
-Run the workflow once with `publish_rust_crate=false` before using the secret.
-The dry-run path does not upload package versions.
-
-## 6. Publish Packages
-
-After the dry-run workflow passes, trigger the same workflow again with the
-artifact you intend to publish:
-
-- `version`: `vX.Y.Z`
-- `notes`: the release summary
-- `publish_rust_crate`: `true` to publish the staged Rust crates to crates.io
-
-The publish path first repeats the full release and package gates, then uploads
-the selected artifact. If the secret is missing, the workflow stops before
-registry upload.
-
-## 7. Verify The GitHub Release
-
-When `publish_rust_crate=true`, the workflow publishes `lenso-contracts` to
-crates.io, then creates the GitHub Release from the same commit. The release
-uses the requested version as the tag, the generated release notes as the body,
-and attaches the source package plus artifact README.
-
-After the publish workflow passes, verify the release:
+The TypeScript workspace uses Changesets:
 
 ```sh
-git rev-parse vX.Y.Z
-gh release view vX.Y.Z
+pnpm changeset
+pnpm --dir sdk/typescript check
 ```
 
-## 8. Keep The First Release Narrow
+The Changesets workflow opens a version pull request. Merging it publishes the
+changed public npm packages through npm Trusted Publishing from
+`.github/workflows/release-changesets.yml`. Configure the npm Trusted Publisher
+for `@lenso/service-kit` with this repository and workflow before the first
+publish. No long-lived npm token is part of the default path.
 
-The first release should ship the installable service happy path:
+## Cross-repository compatibility
 
-```sh
-lenso service install <service-name-or-manifest>
-```
+The framework, auth, organization, audit-log, CLI, and Console repositories
+may release on different days. Compatibility is proven by SemVer requirements,
+machine-readable contracts, consumer dependency updates, and focused
+integration checks. A tested multi-repository combination is evidence, not a
+shared version or central release object.
 
-Do not block this release on centralized marketplace features such as publisher
-trust, registry review, install history, doctor flows, bundle import/export,
-provenance, or signatures.
+## Release hygiene
+
+Existing public versions, tags, and changelog entries remain authoritative and
+are not rewritten. A release pull request must contain the exact source commit
+and package versions it intends to publish. Verify registry metadata and the
+published package archive after the workflow completes. Do not publish from a
+dirty working tree or bypass the repository workflow with a manually selected
+version.

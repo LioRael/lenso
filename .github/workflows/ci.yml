@@ -38,12 +38,6 @@ jobs:
           repository: LioRael/lenso-auth-module
           ref: 6f689d6aa38aa74a490d9877287fa6f0aa2aacc1
           path: .ci/lenso-auth-module
-      - uses: pnpm/action-setup@f2b2b233b538f500472c7274c7012f57857d8ce0
-        with:
-          run_install: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24.18.0
       - uses: dtolnay/rust-toolchain@stable
       - name: Bind the coordinated Auth packages
         run: |
@@ -162,20 +156,3 @@ jobs:
       - name: Stop ephemeral NATS JetStream verification infrastructure
         if: always()
         run: docker rm --force lenso-nats || true
-      - name: Verify reviewed release plan and packages
-        if: ${{ startsWith(github.head_ref, 'release/') }}
-        run: |
-          git restore --source=HEAD -- Cargo.lock
-          rm .cargo/config.toml
-          cargo fetch --locked
-          corepack enable
-          pnpm install --frozen-lockfile
-          node scripts/release-plan.mjs --verify
-          just package-readiness
-          cargo_packages=()
-          while read -r package; do
-            cargo_packages+=(--package "$package")
-          done < <(jq -r '.packages[] | select(.id | startswith("cargo:")) | select(.releaseGroup == "foundation") | .id | sub("^cargo:"; "")' .lenso-release/plan.json)
-          if (( ${#cargo_packages[@]} > 0 )); then
-            cargo publish --dry-run --locked --allow-dirty "${cargo_packages[@]}"
-          fi

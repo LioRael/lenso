@@ -7,7 +7,7 @@
 ## Release Inputs
 
 - Commit: `<sha>`
-- Gate: `just release-check` result
+- Gate: `just check` result
 - Console: sibling repository check result, if coordinated
 - Generated artifacts: `just generated-check` result
 

@@ -10,8 +10,8 @@ user needs to install before writing their own backend or module.
 The intended first-user flow is:
 
 ```sh
-cargo add lenso@0.3.34 --features host
-pnpm add @lenso/service-kit@0.1.4
+cargo add lenso@0.3.35 --features host
+pnpm add @lenso/service-kit@0.1.5
 ```
 
 Not every project needs every package:
@@ -27,9 +27,9 @@ package boundary is the user-facing contract.
 
 Current registry baseline:
 
-- `lenso@0.3.34` is the crates.io facade line for generated hosts with the
+- `lenso@0.3.35` is the crates.io facade line for generated hosts with the
   `host` feature.
-- `@lenso/service-kit@0.1.4` is owned and published from
+- `@lenso/service-kit@0.1.5` is owned and published from
   `sdk/typescript/packages/service-kit` in this framework repository.
 
 ## Rust Facade Crate
@@ -116,7 +116,7 @@ should provide:
 
 Examples must consume the registry package or an exact integration-set override
 to this repository's SDK workspace. The package has its own build output,
-declarations, metadata, tests, and package-readiness coverage.
+declarations, metadata, tests, and package packaging coverage.
 
 ## Starter And Examples
 

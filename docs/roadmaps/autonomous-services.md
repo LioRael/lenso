@@ -428,7 +428,7 @@ the repository that owns the contract or runtime behavior.
 | `lenso-examples` | Support tracer bullet, Failure Scenarios, extraction smoke, production-adapter fixtures, fresh-starter proof |
 | `lenso-auth-module` | Actor/session integration needed to issue bounded Delegated Actor Context; not Workload Identity infrastructure |
 | `lenso-organization-module` | Tenant lifecycle and membership; not Tenant Context propagation in platform core |
-| `lenso-release` | Repository-family package/version orchestration where it intersects immutable Service Release artifacts |
+| Repository-local release workflows | Release-plz, Changesets, and immutable Service artifact evidence owned by each repository |
 | `lenso-catalog-worker` | Catalog metadata when Module releases need to declare Autonomous Service compatibility |
 | `lenso-site` | Public concepts, tutorials, reference, positioning, and migration guides after contracts stabilize |
 

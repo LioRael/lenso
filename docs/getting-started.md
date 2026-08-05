@@ -181,9 +181,9 @@ just first-user-smoke
 Before cutting a local release branch or tag, run:
 
 ```sh
-just release-check
+just check
 ```
 
-`release-check` runs the backend repository quality gate without slow smoke
-checks. Run the CLI repository's starter smoke checks when touching the
-standalone scaffolder.
+`just check` runs the backend repository quality gate without slow smoke checks.
+Run the CLI repository's starter smoke checks when touching the standalone
+scaffolder.

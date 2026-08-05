@@ -369,7 +369,7 @@ just generate
 - `just arch-check`: run architecture guardrails.
 - `just generate`: generate OpenAPI and JSON Schema artifacts.
 - `just generated-check`: regenerate committed artifacts and fail if they differ from git.
-- `just release-check`: run the local release gate.
+- `just check`: run the local quality and release-readiness gate.
 - `just ci`: run the local CI script.
 
 ## Quality Gates
@@ -392,10 +392,10 @@ Generated files are source-controlled artifacts, but they are not hand-edited. U
 
 ## Release Readiness
 
-Use `just release-check` before cutting a release branch or tag. It runs the
-backend quality gate. Console release checks live in the sibling
-`lenso-console` repository. The release scope and manual smoke checklist live in
-[docs/release-readiness.md](docs/release-readiness.md).
+Use `just check` before a Release-plz or Changesets release pull request. Cargo
+and npm publish independently from this repository; Console checks live in the
+sibling `lenso-console` repository. The release scope and package checklist
+live in [docs/release-readiness.md](docs/release-readiness.md).
 
 Release packaging and tagging steps live in
 [docs/release-process.md](docs/release-process.md).

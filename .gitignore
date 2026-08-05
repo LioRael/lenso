@@ -1,7 +1,5 @@
 target/
 node_modules/
-!/.lenso-release/runtime/node_modules/
-!/.lenso-release/runtime/node_modules/**
 dist/
 .pnpm-store/
 

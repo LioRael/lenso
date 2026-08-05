@@ -377,8 +377,9 @@ Other ownership remains explicit:
   contracts, managed-Service Core/Capability Provider seams, generators, and
   architecture enforcement; it owns no Console executable or Console state;
 - `LioRael/lenso-cli` remains external Console Installation Authority tooling;
-- `LioRael/lenso-release` publishes and promotes `service:lenso-console` under
-  the reviewed release process;
+- `LioRael/lenso-console` publishes its own Console Service OCI image from the
+  exact application release tag; no framework repository or central coordinator
+  promotes it;
 - business Module repositories own business behavior, Service-side Capability
   Providers, and separately identified companion Console Module source;
 - the catalog indexes signed Module Releases and compatibility metadata, never

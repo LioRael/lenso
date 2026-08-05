@@ -1,145 +1,62 @@
 # Release Readiness
 
-This checklist defines the first local release gate for the Lenso backend
-workspace. It is meant to answer one practical question: can this workspace be
-built and checked without extra product decisions?
+Release readiness is repository-local. Run the quality gate and the package
+check for the ecosystem that changed; do not wait for a cross-repository plan.
 
-## Release Gate
-
-Run the local gate before tagging or cutting a release branch:
+## Repository gate
 
 ```sh
-just release-check
+just check
 ```
 
-`release-check` runs the backend repository quality gate:
+This runs Rust formatting, workspace compilation and tests, generated contract
+checks, architecture guardrails, and the documented repository checks.
 
-- Rust formatting checks.
-- Rust workspace compile check.
-- Rust workspace tests.
-- Contract regeneration checks.
-- Architecture guardrails.
+## Cargo package gate
 
-If this command fails, treat the failure as release blocking unless it is a
-documented local infrastructure issue.
-
-This gate intentionally excludes service smoke checks. Run those separately
-when validating a release candidate end to end. CLI starter checks live in the
-standalone `lenso-cli` repository.
-
-Console checks run in the sibling `lenso-console` repository.
-
-## Package Gate
-
-Run the package preflight before publishing crates.io artifacts:
+For each changed public crate:
 
 ```sh
-just package-readiness
+cargo package --locked -p <crate> --allow-dirty
+cargo publish --dry-run --locked -p <crate> --allow-dirty
 ```
 
-This verifies the public `lenso` facade crate package. The detailed package and
-examples split checklist lives in [package-readiness.md](package-readiness.md).
+Release-plz repeats the package verification before publishing. Its release
+PR is the review boundary for the exact versions and dependency closure.
 
-## Local Smoke
-
-Use this sequence for a manual service smoke:
+## npm package gate
 
 ```sh
-cp .env.example .env
+pnpm --dir sdk/typescript check
+pnpm --dir sdk/typescript --filter @lenso/service-kit pack --dry-run
+```
+
+Changesets owns npm version and changelog updates. The npm workflow publishes
+only packages changed by a merged Changesets version PR.
+
+## Cross-repository checks
+
+When a contract or dependency affects another repository, update that consumer
+and run its focused integration check. Do not create a synchronized framework
+version or a coordinator release plan to represent the combination.
+
+## Local smoke
+
+Use the existing service smoke commands when runtime behavior changed:
+
+```sh
 just db-up
 just migrate
 just api
 just worker
 ```
 
-For the first-user backend flow, including a service fixture and
-Console-facing admin APIs, run:
+Console checks run in the sibling `lenso-console` repository. User-facing
+examples live in `LioRael/lenso-examples` and own their package dependencies.
 
-```sh
-just first-user-smoke
-```
+## Evidence after publishing
 
-Verify Console and service package behavior in the sibling
-`lenso-console` repository.
-User-facing examples that install published packages live in
-[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
-
-The manual first-user flow lives in [getting-started.md](getting-started.md).
-
-## Troubleshooting
-
-Most release-smoke failures are local setup issues:
-
-- Docker is not running: start Docker, then run `just db-up` again.
-- Postgres is not ready: run `just db-up`, wait for the container to be healthy,
-  then run `just migrate`.
-- API or Console ports are busy: change `HTTP_PORT`, `CONSOLE_PORT`, or
-  `VITE_API_BASE_URL` for that shell.
-- `first-user-smoke` port defaults are busy: set `FIRST_USER_SMOKE_HTTP_PORT`
-  for that shell.
-- The service manifest URL does not respond: start the service process and open
-  `/lenso/service/v1/manifest` in a browser or with `curl`.
-- A Provider export is not visible: inspect the Application Module Lock and the
-  target environment's Service Installation Set, repair any exact-release or
-  endpoint mismatch, then restart the API and worker.
-- OTLP collector is not running: unset `OTEL_EXPORTER_OTLP_ENDPOINT` for normal
-  local smoke, or start it with `just observability-up`.
-
-## First Release Scope
-
-The first publishable scope is intentionally narrow:
-
-- Linked modules load through the app bootstrap composition root.
-- Services install through `lenso service install <service-name-or-manifest>` and
-  provide modules to the host.
-- Service-provided modules can declare schema-admin, HTTP routes, runtime
-  functions, and lifecycle activation jobs.
-- Console integration is provided by the separate
-  `lenso-console` repository.
-- Generated contracts are committed and reproducible.
-
-## Non-Goals For The First Release
-
-Do not block the first release on centralized marketplace hardening:
-
-- publisher trust;
-- registry review;
-- install history;
-- doctor flows;
-- bundle import/export;
-- provenance and signature verification.
-
-Those can return later as optional advanced tooling. The default marketplace
-path stays decentralized and low-friction: users choose a manifest URL, install
-it, restart services, and inspect the loaded module in the Console.
-
-## Release Notes Inputs
-
-Before publishing, collect:
-
-- the commit SHA;
-- `just release-check` result;
-- the corresponding `lenso-console` check result, when publishing a
-  coordinated backend/frontend version;
-- generated artifact status from `just generated-check`;
-- any known local infrastructure caveats;
-- the minimum supported local stack: Rust toolchain, Docker, and Postgres.
-
-Use [release-notes-template.md](release-notes-template.md) for manual notes, or
-run:
-
-```sh
-LENSO_RELEASE_VERSION=vX.Y.Z just release-package
-```
-
-The end-to-end release branch and GitHub Actions flow lives in
-[release-process.md](release-process.md).
-
-The release workflow runs with a Postgres service because backend checks include
-DB-backed Rust integration tests.
-
-When triggered with `publish_rust_crate=false`, the workflow performs the
-backend `lenso-contracts` package dry-run only. When `publish_rust_crate=true`,
-it requires the `CARGO_REGISTRY_TOKEN` repository secret and publishes that
-backend-owned Rust artifact after the same gates pass. `lenso-cli` publishing is
-owned by the standalone CLI repository.
+Record the source commit, package version, registry URL, tag, archive digest,
+and provenance URL in the repository or release notes. Keep evidence static and
+credential-free. The registry and published archive are authoritative; do not
+restore the retired `lenso-release` coordinator to repair a failed publication.
