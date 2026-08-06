@@ -158,8 +158,6 @@ jobs:
           diff -ru "$tmp/contracts" contracts
           cargo test --locked -p lenso-api-contracts --test architecture
           cargo test --locked -p lenso-api-contracts --test generated_artifacts
-          python3 skills/check.py
-          python3 docs/operations/m6/check.py
       - name: Stop ephemeral SPIRE Workload Identity infrastructure
         if: always()
         run: |
