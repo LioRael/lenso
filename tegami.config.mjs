@@ -5,10 +5,8 @@
 export default {
   ignore: [
     "@lenso/framework-release-workspace",
-    "arch-check",
-    "generate-contracts",
+    "lenso-api-contracts",
     "lenso-operator",
-    "otel-smoke",
     "provider-fixture",
   ],
   packages: {

@@ -22,9 +22,11 @@ Lenso is a Rust-first modular monolith backend. Console source lives in the sibl
 - `crates/platform-admin`: Console observability backend mounted under `/admin/runtime/*`; it observes runtime/outbox/story tables and must not depend on concrete modules.
 - `crates/platform-admin-data`: schema-admin backend mounted under `/admin/data/*`; it serves generic module data through `AdminSurface::Schema` and `AdminDataSource`, with no concrete-module dependencies.
 - `crates/lenso-bootstrap`: composition root that enumerates concrete modules for the API and worker.
+- `crates/lenso-api-contracts`: owner-local contract generator and architecture integration tests.
 - `modules/*`: product or fixture capabilities packaged as modules. Modules should stay vertical and avoid cross-module imports.
 - `contracts/*`: committed OpenAPI, JSON Schema, event, error, and runtime contracts.
-- `tools/*`: generators and architecture checks.
+- Contract generation and architecture checks live in the `lenso-api-contracts`
+  owner crate.
 - `infrastructure/local`: local Postgres and optional OpenTelemetry collector.
 
 Read `docs/architecture/overview.md` and `docs/architecture/rules.md` before making architecture-level changes.
@@ -35,44 +37,40 @@ The worktree may contain user changes. Do not revert, reformat, stage, or commit
 
 ## Common Commands
 
-Use `just` as the root task runner.
+Use the owning Cargo package, integration test, or Docker Compose file directly.
+There is no root task runner; commands belong to the crate, package, or workflow
+that owns them.
 
-- `just`: list available recipes.
-- `just fmt`: format Rust code.
-- `just fmt-check`: check Rust formatting.
-- `just rust-check`: run `cargo check --locked --workspace --all-targets`.
-- `just test`: run Rust workspace tests.
-- `just generate`: regenerate contracts.
-- `just generated-check`: regenerate committed artifacts and fail if they differ from git.
-- `just arch-check`: run architecture guardrails.
-- `just check`: run the default local quality gate, excluding dependency installation and slow smoke checks.
-- `just smoke-check`: run slower scaffolded-host smoke checks.
-- `just ci`: run the same quality gate used by GitHub Actions.
+- `cargo fmt --all -- --check`: check Rust formatting.
+- `cargo check --locked --workspace --all-targets`: compile the workspace.
+- `cargo test --locked --workspace`: run workspace tests.
+- `cargo run --locked -p lenso-api-contracts --bin generate-contracts`: regenerate committed contracts.
+- `cargo test --locked -p lenso-api-contracts --test architecture`: run architecture rules.
+- `cargo test --locked -p lenso-api-contracts --test generated_artifacts`: verify committed contract bytes.
+- `cargo test --locked -p lenso-api --test first_user`: run the first-user host integration test.
+- `docker compose -f infrastructure/local/docker-compose.yml up -d postgres`: start local Postgres.
+- `cargo run --locked -p lenso-migrate`: apply migrations.
+- `cargo run --locked -p lenso-api`: start the API.
+- `cargo run --locked -p lenso-worker`: start the worker.
 
 ## Validation Strategy
 
-Default to narrow validation during feature work. Run full `just check` locally
-only for high-risk changes such as contracts, migrations, runtime or Service
+Default to narrow validation during feature work. Run the full explicit quality
+gate locally only for high-risk changes such as contracts, migrations, runtime or Service
 protocol core paths, package/release gates, or when explicitly requested. For
 normal feature slices, use focused local gates that match the changed surface
 and rely on GitHub Actions for full workspace coverage.
 
-For local services:
-
-- `just db-up`: start local Postgres.
-- `just migrate`: run migrations.
-- `just api`: start the API on the configured HTTP host/port.
-- `just worker`: start the worker.
-- `just observability-up`: start Postgres plus the optional OpenTelemetry collector profile.
-- `just down`: stop local infrastructure.
+For local services, use `infrastructure/local/docker-compose.yml` directly and
+run the API, worker, and migration packages with Cargo.
 
 ## Generated Artifacts
 
 Generated files are committed but must not be edited by hand.
 
 - Update Rust/OpenAPI/event sources first.
-- Run `just generate`.
-- Run `just generated-check` before finishing.
+- Run `cargo run --locked -p lenso-api-contracts --bin generate-contracts`.
+- Compare the generated output with the committed artifacts before finishing.
 - Contract artifacts live under `contracts`.
 
 If generated files change, include the source change and generated output together.
@@ -114,9 +112,10 @@ including their backend, migrations, and `ModuleManifest.console` declarations.
 
 ## CI Expectations
 
-GitHub Actions runs `just ci` on pull requests and pushes to `main`.
+GitHub Actions runs the explicit quality commands on pull requests and pushes to
+`main`; there is no root task-runner shim.
 
-Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run `just ci`. For changes that affect Console behavior, also run the relevant checks in `../lenso-console`.
+Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run the explicit quality gate from `.github/workflows/ci.yml`. For changes that affect Console behavior, also run the relevant checks in `../lenso-console`.
 
 If a command fails because network access is blocked while installing dependencies, rerun the same command with the required approval rather than changing project files to work around the sandbox.
 

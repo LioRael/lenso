@@ -197,6 +197,7 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `lenso-contracts`: shared declaration contracts re-exported by `lenso` and consumed by platform crates.
   - `lenso`: public Rust facade crate for serializable module-authoring declarations and manifest lints.
   - `lenso-api`: Axum HTTP API app.
+  - `lenso-api-contracts`: owner-local contract generator and architecture checks.
   - `lenso-worker`: background worker and outbox relay app.
   - `lenso-migrate`: deterministic migration runner.
   - `lenso-bootstrap`: composition root listing the concrete modules; both `lenso-api` and `lenso-worker` wire their module set from here.
@@ -221,9 +222,6 @@ First-time local setup lives in [docs/getting-started.md](docs/getting-started.m
   - `provider`: internal provider fixture for integration and protocol checks.
 - `contracts/`
 - Generated and curated OpenAPI, JSON Schema, and error contracts.
-- `tools/`
-  - `generate-contracts`: writes committed contract artifacts from Rust sources.
-  - `arch-check`: lightweight architecture rule checker.
 - `infrastructure/local/`
   - Local Postgres and optional OpenTelemetry collector config.
 
@@ -237,8 +235,8 @@ capability contracts consumed by the Console.
 Prerequisites:
 
 - Rust toolchain compatible with the workspace (`rust-version = 1.94`).
-- `just`.
-- Docker if you want local Postgres via `just db-up`.
+- Cargo and Docker Compose for development commands.
+- Docker if you want local Postgres.
 - The sibling `../lenso-console` checkout if you want to work on the Console.
 
 Create local environment config:
@@ -278,15 +276,15 @@ starter Docker Compose file only starts Postgres by default.
 Typical loop:
 
 ```sh
-just db-up
-just migrate
-just api
+docker compose -f infrastructure/local/docker-compose.yml up -d postgres
+cargo run --locked -p lenso-migrate
+cargo run --locked -p lenso-api
 ```
 
 Worker:
 
 ```sh
-just worker
+cargo run --locked -p lenso-worker
 ```
 
 Console Service and CLI development shortcuts:
@@ -297,7 +295,7 @@ cd ../lenso-console
 pnpm run service:serve
 
 # Serve a generated host through the local lenso-cli checkout.
-just host-serve <host-root>
+cargo run --locked --manifest-path ../lenso-cli/Cargo.toml -- serve --repo-root <host-root>
 ```
 
 Use an absolute or relative path for `<host-root>`; it does not need to be a
@@ -311,9 +309,9 @@ the Console Service's own operator grant through `lenso console operator bootstr
 OpenTelemetry collector for local span export:
 
 ```sh
-just observability-up
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 just api
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 just worker
+docker compose -f infrastructure/local/docker-compose.yml --profile observability up --pull missing --wait --wait-timeout 45 postgres otel-collector
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 cargo run --locked -p lenso-api
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 cargo run --locked -p lenso-worker
 ```
 
 The local collector receives OTLP over gRPC on `localhost:4317` and OTLP over
@@ -326,27 +324,28 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 To verify the local loop without starting the API and worker, run:
 
 ```sh
-just otel-smoke
+docker compose -f infrastructure/local/docker-compose.yml --profile observability up --pull missing --wait --wait-timeout 45 otel-collector
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 cargo run --locked -p lenso-platform-core --example otel
 ```
 
 User-facing examples live in
 [LioRael/lenso-examples](https://github.com/LioRael/lenso-examples).
 
-The smoke command starts the collector, emits one outbox-style span and one
-function-style span, and checks collector debug logs for
+The platform example emits one outbox-style span and one function-style span.
+Inspect collector debug logs for
 `lenso.correlation_id`, `lenso.story_id`, `lenso.execution.kind`,
 `lenso.outbox_event_id`, and `lenso.function_run_id`.
 
 Common local collector failures:
 
-- Docker is not running: `just observability-up` fails during the Docker daemon
+- Docker is not running: the observability Compose command fails during the Docker daemon
   preflight.
 - The observability profile is not selected: start the collector through
-  `just observability-up` or use
+  the observability Compose command or use
   `docker compose -f infrastructure/local/docker-compose.yml --profile observability ...`.
 - Ports `4317` or `4318` are already occupied: stop the conflicting process or
   update both the compose ports and `OTEL_EXPORTER_OTLP_ENDPOINT`.
-- The collector config path is wrong: `just observability-up` validates
+- The collector config path is wrong: the observability Compose command validates
   `infrastructure/local/docker-compose.yml` before startup; the expected mount is
   `infrastructure/local/otel-collector.yaml` to `/etc/otelcol/config.yaml`.
 - First startup needs an image pull: the recipe uses visible Compose output and a
@@ -355,47 +354,45 @@ Common local collector failures:
 Regenerate contracts after changing Rust/OpenAPI sources:
 
 ```sh
-just generate
+cargo run --locked -p lenso-api-contracts --bin generate-contracts
 ```
 
 ## Common Commands
 
-- `just`: list available recipes.
-- `just fmt`: format Rust code.
-- `just fmt-check`: check Rust formatting.
-- `just check`: run the default local quality gate without slow smoke checks.
-- `just test`: run Rust workspace tests with the locked dependency graph.
-- `just rust-check`: run `cargo check` for the whole workspace.
-- `just arch-check`: run architecture guardrails.
-- `just generate`: generate OpenAPI and JSON Schema artifacts.
-- `just generated-check`: regenerate committed artifacts and fail if they differ from git.
-- `just check`: run the local quality and release-readiness gate.
-- `just ci`: run the local CI script.
+- `cargo fmt --all -- --check`: check Rust formatting.
+- `cargo test --locked --workspace`: run Rust workspace tests.
+- `cargo check --locked --workspace --all-targets`: compile the whole workspace.
+- `cargo test --locked -p lenso-api-contracts --test architecture`: run architecture guardrails.
+- `cargo test --locked -p lenso-api-contracts --test generated_artifacts`: verify committed contract bytes.
+- `cargo run --locked -p lenso-api-contracts --bin generate-contracts`: generate OpenAPI and JSON Schema artifacts.
+- `.github/workflows/ci.yml`: the explicit CI quality gate.
 
 ## Quality Gates
 
-`just ci` runs the same gates as GitHub Actions:
+The CI quality gate runs:
 
 - Check Rust formatting, compile every Rust workspace target, and run Rust tests.
 - Regenerate contracts, then fail if committed artifacts changed.
 - Run architecture guardrails.
 
-The architecture checker also fails on:
+The owner integration tests also fail on:
 
+- A root `tools/`, `scripts/`, or task-runner file.
 - DDD/Clean Architecture folders inside modules: `api`, `application`, `domain`, `infrastructure`.
 - Cross-module imports inside module source code.
-- Missing OpenAPI artifacts.
-- Stale contract artifacts.
+- OpenAPI route invariants in the API owner test.
+- Stale contract artifacts in the generated-artifact test.
 - Missing event payload contracts for current events.
 
 Generated files are source-controlled artifacts, but they are not hand-edited. Update Rust/OpenAPI sources, then regenerate.
 
 ## Release Readiness
 
-Use `just check` before a Release-plz or Changesets release pull request. Cargo
-and npm publish independently from this repository; Console checks live in the
-sibling `lenso-console` repository. The release scope and package checklist
-live in [docs/release-readiness.md](docs/release-readiness.md).
+Run the explicit quality commands from `.github/workflows/ci.yml` before a
+Release-plz or Changesets release pull request. Cargo and npm publish
+independently from this repository; Console checks live in the sibling
+`lenso-console` repository. The release scope and package checklist live in
+[docs/release-readiness.md](docs/release-readiness.md).
 
 Release packaging and tagging steps live in
 [docs/release-process.md](docs/release-process.md).

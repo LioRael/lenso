@@ -71,43 +71,25 @@ horizontal Provider Calls page, as `provider_proxy_call` nodes in Runtime Story
 graph/timeline views, and as `source = "provider_proxy"` rows in Technical
 Operations.
 
-## Runtime Story Smoke Test
+## Runtime Story Verification
 
-Use this flow when checking that the provider HTTP proxy is visible from the
-Runtime Story perspective.
+Use this manual cross-service flow when checking that the provider HTTP proxy is
+visible from the Runtime Story perspective.
 
 From the repo root, start Postgres and migrations, then run the Provider Service
 fixture and API in separate shells:
 
 ```sh
-just db-up
-just migrate
+docker compose -f ../../infrastructure/local/docker-compose.yml up -d postgres
+cargo run --locked -p lenso-migrate
 cargo run --locked -p provider-fixture
 # Apply the reviewed Module and Service Installation plans in Console.
-just api
+cargo run --locked -p lenso-api
 ```
 
-Seed and verify the provider story path:
-
-```sh
-just console-api-qa
-```
-
-`console-api-qa` creates a deterministic provider proxy call with
-`correlation_id = corr_console_api_fixture`, then verifies Provider Calls, Runtime
-Story nodes/timeline, Technical Operations, payloads, and logs.
-
-To create only the fixture without running the full QA assertions:
-
-```sh
-just console-api-fixture
-```
-
-To run only the API smoke assertions against existing data:
-
-```sh
-just console-api-smoke
-```
+Seed and verify the provider story path with the direct HTTP request below. The
+Runtime Console in the sibling repository can then inspect the resulting
+Provider Call, Runtime Story, and Technical Operations evidence.
 
 The host path after `/modules/provider-crm/http` is matched against the module
 manifest route `/contacts/{id}`. A path such as `/contact_1` or a token missing
@@ -158,5 +140,7 @@ The declarative manifest uses host-rendered `metric_strip`, `entity_table`, and
 and detail sections are read-only and use the declarative admin data endpoints
 above; the fallback schema is not advertised as a generic schema-admin module.
 
-Use `just console-api-qa` for the broader Provider Calls and Runtime Story QA
-flow after the backend services are running.
+Use the direct HTTP requests above for the Provider Calls and Runtime Story
+verification flow after the backend services are running. The resulting
+evidence is inspected in the sibling Runtime Console; it is not a fixture-local
+test.

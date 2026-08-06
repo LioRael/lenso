@@ -35,7 +35,15 @@ SemVer bump without rewriting any public tag or archive.
 Local checks:
 
 ```sh
-just check
+cargo fmt --all -- --check
+cargo check --locked --workspace --all-targets
+cargo test --locked --workspace
+cargo test --locked -p lenso --features host-transactions --test host_outbox_relay
+cargo run --locked -p lenso-api-contracts --bin generate-contracts
+cargo test --locked -p lenso-api-contracts --test architecture
+cargo test --locked -p lenso-api-contracts --test generated_artifacts
+python3 skills/check.py
+python3 docs/operations/m6/check.py
 cargo package --locked -p lenso --allow-dirty
 cargo publish --dry-run --locked -p lenso --allow-dirty
 ```

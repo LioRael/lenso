@@ -15,4 +15,5 @@ health, backlog, error-budget, or rollout expectations at runtime.
 
 The Event, Config, and Reliability golden pairs under `fixtures/compatibility` are authoritative
 deterministic examples. Their exact sorted machine results are generated into
-`contracts/compatibility/contract-compatibility.v1.json` and freshness-checked by `arch-check`.
+`contracts/compatibility/contract-compatibility.v1.json` and freshness-checked by
+the `lenso-api-contracts` architecture integration test.
