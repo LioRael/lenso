@@ -1,0 +1,8 @@
+[workspace]
+release_always = true
+release = false
+changelog_update = false
+
+[[package]]
+name = "lenso-platform-testing"
+release = true
