@@ -71,6 +71,7 @@ describe("defineServiceContract", () => {
       },
       modules: [{ name: "support-ticket" }],
       name: "support-suite-provider",
+      protocol: "lenso.service.v1",
       provider: { vendor: "Lenso" },
     });
     expect(validateServiceContract(manifest)).toEqual([]);
@@ -97,6 +98,9 @@ describe("defineServiceContract", () => {
   it("exports the packaged service contract schema", () => {
     expect(serviceContractSchema.title).toBe("LensoServiceContract");
     expect(serviceContractSchema.required).toEqual(["name", "modules"]);
+    expect(serviceContractSchema.properties.protocol.const).toBe(
+      "lenso.service.v1",
+    );
   });
 
   it("defines and validates a service package manifest", () => {
@@ -448,10 +452,12 @@ describe("defineServiceContract", () => {
         },
       ],
       name: "",
+      protocol: "lenso.service.v0",
     });
 
     expect(issues.map((issue) => issue.path)).toEqual(
       expect.arrayContaining([
+        "$.protocol",
         "$.name",
         "$.install.services[0].command",
         "$.modules[0].capabilities[1]",
