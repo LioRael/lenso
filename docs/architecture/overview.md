@@ -133,8 +133,8 @@ gives a logical Service a stable `serviceId` independent
 of its Workload count or deployment topology, and declares its API, Worker,
 Migration, or extension Workloads alongside owned Modules, logical Service
 Stores, Tenancy Mode, and Operating Regions. Its authoritative fixture and
-packaged schema live in `crates/lenso-service`; `just generate` publishes the
-matching committed schema under `contracts/services/`.
+packaged schema live in `crates/lenso-service`; the owner-local generator
+publishes the matching committed schema under `contracts/services/`.
 `crates/lenso-autonomous-service` supplies the Host-independent runtime profile
 for definitions containing API, Migration, and Worker Workloads. It
 validates Service, Workload, Store, and declared configuration coherence before
@@ -436,7 +436,10 @@ JSON Schema contracts belong under `contracts/events/{module}/` and
 Generated contract artifacts are committed. The current generator writes the OpenAPI artifact and the standard error response schema:
 
 ```sh
-just generate-contracts
+cargo run --locked -p lenso-api-contracts --bin generate-contracts
 ```
 
-Freshness and contract coverage are checked by Rust tests and `arch-check`. Handwritten contract files are still checked for parseability and naming consistency.
+Generated artifact freshness is checked by the `lenso-api-contracts`
+`generated_artifacts` integration test. The architecture integration test owns
+structural and naming rules; handwritten contract files are still checked for
+parseability and naming consistency.

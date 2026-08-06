@@ -8,7 +8,7 @@ module.
 ## Prerequisites
 
 - Rust toolchain compatible with the workspace.
-- `just`.
+- Cargo for workspace commands.
 - Docker for local Postgres.
 
 For a blank Rust module-authoring project outside this repository, install the
@@ -45,7 +45,7 @@ serves Console web assets.
 
 ## Try The Audit Log Module
 
-For a minimal first-party module smoke in a generated host, install
+For a minimal first-party module verification in a generated host, install
 `audit-log` by name from the official catalog before starting the app:
 
 ```sh
@@ -112,15 +112,15 @@ never cross into a managed Service.
 Start Postgres and apply migrations:
 
 ```sh
-just db-up
-just migrate
+docker compose -f infrastructure/local/docker-compose.yml up -d postgres
+cargo run --locked -p lenso-migrate
 ```
 
 Start the API and worker in separate shells:
 
 ```sh
-just api
-just worker
+cargo run --locked -p lenso-api
+cargo run --locked -p lenso-worker
 ```
 
 For Console development, run the complete Service from the sibling
@@ -170,20 +170,24 @@ After changing the active Module composition, restart the API and worker. A
 separately deployed Console Service observes the resulting Service state through
 System Plane capabilities; it is not a Host-loaded package export.
 
-To run the backend part of this flow without opening the frontend:
+To verify the backend host contract boundary without opening the frontend:
 
 ```sh
-just first-user-smoke
+cargo test --locked -p lenso-api --test first_user -- --nocapture
 ```
 
 ## Release Check
 
-Before cutting a local release branch or tag, run:
+Before approving a Release-plz or Changesets release pull request, run:
 
 ```sh
-just check
+cargo fmt --all -- --check
+cargo check --locked --workspace --all-targets
+cargo test --locked --workspace
+cargo run --locked -p lenso-api-contracts --bin generate-contracts
+cargo test --locked -p lenso-api-contracts --test architecture
+cargo test --locked -p lenso-api-contracts --test generated_artifacts
 ```
 
-`just check` runs the backend repository quality gate without slow smoke checks.
-Run the CLI repository's starter smoke checks when touching the standalone
+Run the CLI repository's starter checks when touching the standalone
 scaffolder.

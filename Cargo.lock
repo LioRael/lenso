@@ -73,17 +73,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arch-check"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "generate-contracts",
- "lenso-api",
- "serde_json",
- "serde_yaml",
-]
-
-[[package]]
 name = "arcstr"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1256,26 +1245,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "generate-contracts"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "jsonschema",
- "kube",
- "lenso-api",
- "lenso-autonomous-service",
- "lenso-contracts",
- "lenso-module-management",
- "lenso-operator",
- "lenso-service",
- "schemars",
- "serde",
- "serde_json",
- "serde_yaml",
- "utoipa",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2158,6 +2127,26 @@ dependencies = [
  "tracing",
  "utoipa",
  "utoipa-axum",
+]
+
+[[package]]
+name = "lenso-api-contracts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jsonschema",
+ "kube",
+ "lenso-api",
+ "lenso-autonomous-service",
+ "lenso-contracts",
+ "lenso-module-management",
+ "lenso-operator",
+ "lenso-service",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "utoipa",
 ]
 
 [[package]]
@@ -3079,16 +3068,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
 dependencies = [
  "num-traits",
-]
-
-[[package]]
-name = "otel-smoke"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "lenso-platform-core",
- "tokio",
- "tracing",
 ]
 
 [[package]]

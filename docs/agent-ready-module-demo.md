@@ -30,7 +30,7 @@ lenso module create support --with-console-ui
    - create or update action
    - one runtime workflow or function
    - one module-owned isolated Console UI artifact
-   - one smoke check that fails if the module is not wired
+   - one verification check that fails if the module is not wired
 6. Run the focused checks for the changed surface.
 7. Open `/console` and confirm the module appears with its data, actions, and
    runtime visibility.

@@ -11,9 +11,9 @@ conventions, and quality gates for changes. For deeper context, read
 ## Prerequisites
 
 - Rust toolchain compatible with the workspace (`rust-version = 1.94`).
-- [`just`](https://github.com/casey/just) as the root task runner.
+- Cargo and Docker Compose for development commands.
 - The sibling `../lenso-console` checkout for Console work.
-- Docker if you want local Postgres via `just db-up`.
+- Docker if you want local Postgres.
 
 ## Development Workflow
 
@@ -22,18 +22,19 @@ conventions, and quality gates for changes. For deeper context, read
    stage unrelated files (see [AGENTS.md](AGENTS.md#do-not-disturb-unrelated-work)).
 3. **Regenerate artifacts** if you touched Rust/OpenAPI/event sources:
    ```sh
-   just generate
+   cargo run --locked -p lenso-api-contracts --bin generate-contracts
    ```
 4. **Verify** with the narrowest meaningful gate (see below).
 5. **Commit** using Conventional Commits.
-6. **Open a PR.** CI runs `just ci`; it must pass.
+6. **Open a PR.** CI runs the explicit quality gate in `.github/workflows/ci.yml`;
+   it must pass.
 
 Typical local loop:
 
 ```sh
-just db-up
-just migrate
-just api      # and `just worker` for background work
+docker compose -f infrastructure/local/docker-compose.yml up -d postgres
+cargo run --locked -p lenso-migrate
+cargo run --locked -p lenso-api      # and lenso-worker in another shell
 ```
 
 ## Quality Gates
@@ -43,19 +44,19 @@ changes to Rust, contracts, or CI, run the full backend gate.
 
 | Command | Scope |
 | --- | --- |
-| `just rust-check` | `cargo check --locked --workspace --all-targets` |
-| `just test` | Rust workspace tests |
-| `just arch-check` | architecture guardrails |
-| `just generated-check` | regenerate artifacts and fail if they differ from git |
-| `just check` | full local quality gate (no dependency install) |
-| `just ci` | the exact gate GitHub Actions runs |
-
-Run `just` to list all recipes.
+| `cargo check --locked --workspace --all-targets` | compile the Rust workspace |
+| `cargo test --locked --workspace` | Rust workspace tests |
+| `cargo test --locked -p lenso-api-contracts --test architecture` | architecture rules |
+| `cargo test --locked -p lenso-api-contracts --test generated_artifacts` | committed contract freshness |
+| `cargo run --locked -p lenso-api-contracts --bin generate-contracts` | regenerate committed artifacts |
+| `.github/workflows/ci.yml` | exact CI quality gate |
 
 ## Architecture Rules
 
-The architecture checker (`just arch-check`) and CI fail on:
+The owner integration tests and CI fail on:
 
+- A root `tools/`, `scripts/`, or task-runner file.
+- OpenAPI route invariants in the `lenso-api` integration tests.
 - DDD/Clean Architecture folder names inside modules: `api`, `application`,
   `domain`, `infrastructure`.
 - Cross-module imports inside module source code.
@@ -76,8 +77,8 @@ Generated files are committed but **must not be hand-edited**. Update the source
 then regenerate:
 
 1. Edit Rust/OpenAPI/event sources.
-2. Run `just generate`.
-3. Run `just generated-check` before finishing.
+2. Run `cargo run --locked -p lenso-api-contracts --bin generate-contracts`.
+3. Compare the generated output with the committed artifacts before finishing.
 
 Contract artifacts live under `contracts`. Always include the source change and
 regenerated output in the same commit.
@@ -115,6 +116,6 @@ Examples:
 ## Pull Requests
 
 - Keep PRs focused on a single concern.
-- Ensure `just ci` passes locally before requesting review.
+- Ensure the explicit CI quality gate passes locally before requesting review.
 - Include source and regenerated artifacts together when generated files change.
 - Describe the change, the verification you ran, and any migration notes.

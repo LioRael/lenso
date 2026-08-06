@@ -7,9 +7,9 @@
 ## Release Inputs
 
 - Commit: `<sha>`
-- Gate: `just check` result
+- Gate: explicit CI quality commands and generated-artifact check result
 - Console: sibling repository check result, if coordinated
-- Generated artifacts: `just generated-check` result
+- Generated artifacts: owner-local generator and generated-artifact test result
 
 ## First Release Scope
 
@@ -25,14 +25,17 @@
 ## Getting Started
 
 ```sh
-just db-up
-just migrate
-just check
+docker compose -f infrastructure/local/docker-compose.yml up -d postgres
+cargo run --locked -p lenso-migrate
+cargo fmt --all -- --check
+cargo check --locked --workspace --all-targets
+cargo test --locked --workspace
+cargo test --locked -p lenso-api-contracts --test architecture
 ```
 
 ## Known Caveats
 
-- Local service smoke requires Postgres and separate API, worker, and Console
+- Local service verification requires Postgres and separate API, worker, and Console
   shells.
 - Service install is manifest-based and low-friction.
 - Publisher trust, registry review, install history, doctor flows, bundle

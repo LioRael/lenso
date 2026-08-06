@@ -1,16 +1,24 @@
 # Release Readiness
 
-Release readiness is repository-local. Run the quality gate and the package
-check for the ecosystem that changed; do not wait for a cross-repository plan.
+Release readiness is repository-local. Run the explicit quality gate and the
+package check for the ecosystem that changed; do not wait for a
+cross-repository plan.
 
 ## Repository gate
 
+Run the same owner-local commands used by GitHub Actions:
+
 ```sh
-just check
+cargo fmt --all -- --check
+cargo check --locked --workspace --all-targets
+cargo test --locked --workspace
+cargo test --locked -p lenso --features host-transactions --test host_outbox_relay
+cargo run --locked -p lenso-api-contracts --bin generate-contracts
+cargo test --locked -p lenso-api-contracts --test architecture
+cargo test --locked -p lenso-api-contracts --test generated_artifacts
 ```
 
-This runs Rust formatting, workspace compilation and tests, generated contract
-checks, architecture guardrails, and the documented repository checks.
+The committed contract files must be byte-for-byte unchanged after generation.
 
 ## Cargo package gate
 
@@ -21,8 +29,8 @@ cargo package --locked -p <crate> --allow-dirty
 cargo publish --dry-run --locked -p <crate> --allow-dirty
 ```
 
-Release-plz repeats the package verification before publishing. Its release
-PR is the review boundary for the exact versions and dependency closure.
+Release-plz repeats package verification before publishing. Its release PR is
+the review boundary for exact versions and dependency closure.
 
 ## npm package gate
 
@@ -40,15 +48,17 @@ When a contract or dependency affects another repository, update that consumer
 and run its focused integration check. Do not create a synchronized framework
 version or a coordinator release plan to represent the combination.
 
-## Local smoke
+## Local verification
 
-Use the existing service smoke commands when runtime behavior changed:
+When runtime behavior changes, use the owning packages and Compose directly:
 
 ```sh
-just db-up
-just migrate
-just api
-just worker
+cp .env.example .env
+docker compose -f infrastructure/local/docker-compose.yml up -d postgres
+cargo run --locked -p lenso-migrate
+cargo test --locked -p lenso-api --test first_user -- --nocapture
+cargo run --locked -p lenso-api
+cargo run --locked -p lenso-worker
 ```
 
 Console checks run in the sibling `lenso-console` repository. User-facing

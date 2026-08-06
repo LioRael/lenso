@@ -9,7 +9,12 @@ package; tools and fixtures remain non-publishable.
 Run the repository gate first, then package the crates changed by the release:
 
 ```sh
-just check
+cargo fmt --all -- --check
+cargo check --locked --workspace --all-targets
+cargo test --locked --workspace
+cargo run --locked -p lenso-api-contracts --bin generate-contracts
+cargo test --locked -p lenso-api-contracts --test architecture
+cargo test --locked -p lenso-api-contracts --test generated_artifacts
 cargo package --locked -p <crate> --allow-dirty
 cargo publish --dry-run --locked -p <crate> --allow-dirty
 ```

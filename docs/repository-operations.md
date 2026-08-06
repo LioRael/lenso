@@ -42,14 +42,10 @@ commit boundaries matters. Standard merge commits are disabled.
 
 The backend `ci` workflow runs on pull requests and pushes to `main`.
 
-The `quality` job runs:
-
-```sh
-just ci
-```
-
-That gate checks Rust formatting, compiles and tests the Rust workspace,
-verifies generated contracts, and runs architecture checks.
+The `quality` job runs the explicit commands in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml). That gate checks Rust
+formatting, compiles and tests the Rust workspace, verifies generated contracts,
+and runs architecture checks.
 
 ## Console Compatibility
 

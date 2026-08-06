@@ -67,8 +67,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           env-vars: CARGO_PROFILE_DEV_DEBUG CARGO_PROFILE_TEST_DEBUG
-      - name: Install just
-        uses: extractions/setup-just@v4
       - name: Start ephemeral NATS JetStream verification infrastructure
         run: |
           docker run --detach --rm --name lenso-nats --publish 4222:4222 nats:2.14-alpine -js
@@ -147,7 +145,19 @@ jobs:
       - name: Run quality gates
         env:
           SPIFFE_ENDPOINT_SOCKET: unix://${{ runner.temp }}/lenso-spire/agent/api.sock
-        run: just ci
+        run: |
+          cargo fmt --all -- --check
+          cargo check --locked --workspace --all-targets
+          cargo test --locked --workspace
+          cargo test --locked -p lenso --features host-transactions --test host_outbox_relay
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          mkdir -p "$tmp/contracts"
+          cp -R contracts/. "$tmp/contracts/"
+          cargo run --locked -p lenso-api-contracts --bin generate-contracts
+          diff -ru "$tmp/contracts" contracts
+          cargo test --locked -p lenso-api-contracts --test architecture
+          cargo test --locked -p lenso-api-contracts --test generated_artifacts
       - name: Stop ephemeral SPIRE Workload Identity infrastructure
         if: always()
         run: |

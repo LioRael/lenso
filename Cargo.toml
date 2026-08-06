@@ -6,6 +6,7 @@ members = [
     "crates/lenso-module-management",
     "crates/lenso",
     "crates/lenso-api",
+    "crates/lenso-api-contracts",
     "crates/lenso-migrate",
     "crates/lenso-worker",
     "crates/lenso-bootstrap",
@@ -22,9 +23,6 @@ members = [
     "crates/platform-runtime-operations",
     "crates/platform-system-plane",
     "crates/platform-testing",
-    "tools/generate-contracts",
-    "tools/arch-check",
-    "tools/otel-smoke",
 ]
 
 [workspace.package]
@@ -118,8 +116,6 @@ auth-oauth = { package = "lenso-module-auth-oauth", version = "0.1.6" }
 auth-oidc = { package = "lenso-module-auth-oidc", version = "0.1.6" }
 auth-password = { package = "lenso-module-auth-password", version = "0.1.14" }
 auth-phone = { package = "lenso-module-auth-phone", version = "0.1.6" }
-generate-contracts = { path = "tools/generate-contracts" }
-arch-check = { path = "tools/arch-check" }
 provider-fixture = { path = "fixtures/provider" }
 
 [patch.crates-io]
