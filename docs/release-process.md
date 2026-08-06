@@ -21,6 +21,12 @@ crates.io Trusted Publisher for each existing crate before merging the first
 Release-plz publish PR. New crates still require their first publication to be
 established according to crates.io's current onboarding rules.
 
+The release job uses the repository `RELEASE_PLZ_TOKEN` secret because this
+repository's immutable tag ruleset protects package tags from the default
+GitHub Actions token. The token is used only for GitHub tag and release
+metadata; crate publication still uses crates.io Trusted Publishing through
+the workflow's OIDC identity.
+
 When migrating a repository whose manifest is ahead only because of an old
 shadow candidate, align that manifest and its workspace lock with the latest
 public registry version first. The next Release-plz PR then carries the normal
