@@ -1,12 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
-for package in $(sh "$(dirname "$0")/publish-crate-order.sh"); do
-    cargo pkgid -p "$package" >/dev/null
-done
-
-echo "Dry-running cargo package for lenso contracts..."
+echo "Packaging the public Rust facade and contract crates..."
 cargo package --locked -p lenso-contracts --allow-dirty
+cargo package --locked -p lenso --allow-dirty
 
-echo "Downstream host crates are dry-run verified one-by-one during staged publish."
+echo "Checking the public TypeScript Service Kit..."
+pnpm --dir sdk/typescript check
+
 echo "Package readiness checks passed."

@@ -90,7 +90,7 @@ utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
-lenso = { path = "crates/lenso", version = "0.3.36" }
+lenso = { path = "crates/lenso", version = "0.3.35" }
 lenso-contracts = { path = "crates/lenso-contracts", version = "0.3.20" }
 lenso-module-management = { path = "crates/lenso-module-management", version = "0.1.4" }
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.20" }

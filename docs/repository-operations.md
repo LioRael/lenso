@@ -51,20 +51,13 @@ just ci
 That gate checks Rust formatting, compiles and tests the Rust workspace,
 verifies generated contracts, and runs architecture checks.
 
-## Console CI Dependency
+## Console Compatibility
 
-The Console CI checks out this backend repository to typecheck and build
-against the backend admin API contracts and fixtures.
-
-The cross-repository checkout is configured with:
-
-- Backend deploy key: the read-only Console CI key
-- Backend deploy key mode: read-only
-- Console secret: `LENSO_REPO_DEPLOY_KEY`
-
-If either repository is recreated, transferred, or renamed, recreate the
-read-only deploy key on the backend repository and store the private key in the
-Console repository secret with the same name.
+The Console releases independently from this repository. It consumes published
+framework crates, npm packages, and committed contract artifacts rather than
+checking out this repository in CI. When a contract or dependency changes,
+update the Console consumer and run its focused compatibility checks; do not
+restore a cross-repository checkout or a shared release channel.
 
 ## GitHub Repository Metadata
 
@@ -91,11 +84,12 @@ somewhere else.
 
 When moving the Lenso repositories to a new owner or recreating one of them:
 
-1. Push `lenso`, `lenso-console`, and `lenso-cli`, and keep them as private repos unless intentionally publishing them.
+1. Push `lenso`, `lenso-console`, and `lenso-cli` with their repository-local
+   release workflows and independent version streams.
 2. Reapply `main` branch protection in each repository.
 3. Verify the required check name is still `quality`.
-4. Recreate the Console read-only backend deploy key.
-5. Recreate `LENSO_REPO_DEPLOY_KEY` in the Console repository.
-6. Run the main-branch CI workflows and confirm they pass.
-7. Preserve or intentionally replace `archive/pre-squash-history`.
-8. Update README repository links and GitHub metadata if owner or repo names changed.
+4. Verify the Console consumer uses published framework contracts and no
+   central release checkout or deploy key.
+5. Run the main-branch CI workflows and confirm they pass.
+6. Preserve or intentionally replace `archive/pre-squash-history`.
+7. Update README repository links and GitHub metadata if owner or repo names changed.

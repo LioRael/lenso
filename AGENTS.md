@@ -2,9 +2,12 @@
 
 Guidance for coding agents working in this repository.
 
-Before planning, changing, or executing a framework release, read the authoritative
-[Lenso release runbook](https://github.com/LioRael/lenso-release/blob/main/docs/release-runbook.md).
-Do not infer production authority from repository write access or bypass the reviewed release plan.
+Before planning, changing, or executing a framework release, read
+`docs/release-process.md` and the accepted
+[`0025-release-repositories-independently`](docs/adr/0025-release-repositories-independently.md)
+decision. This repository owns its Cargo and npm release workflows; do not
+reintroduce a central coordinator, shadow registry, or repository-wide release
+plan.
 
 ## Project Shape
 

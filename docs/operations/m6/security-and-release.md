@@ -1,4 +1,4 @@
-# M6 Security and Reviewed Release Runbook
+# M6 Security and Repository Release Guidance
 
 Version: `m6.v1`.
 
@@ -16,24 +16,17 @@ finding material. Stale or future-dated reviews block.
 
 ## Reviewed release
 
-Follow the authoritative Lenso release runbook. Prepare the exact component
-set, versions, source and release commits, dependency order, changelogs,
-digests, generated lock, Policy Evidence, shadow evidence, receipts,
-attestations, and production configuration.
+Follow the repository-local process in `docs/release-process.md`. Release-plz
+owns Cargo release pull requests and crates.io Trusted Publishing; Changesets
+owns npm version pull requests and npm Trusted Publishing. The pull request
+binds the exact source commit, package versions, dependency closure, and any
+new changelog entry produced by its ecosystem tool.
 
-The normal coordinator owns protected execution refs and publisher dispatch.
-Never manually parameterize a publisher. Changed plan, ref, nonce, digest,
-package set, or publisher revision invalidates approval.
-Never introduce a long-lived registry or personal access credential; publishers
-use only the reviewed short-lived authority described by the release runbook.
+Do not introduce a central coordinator, shadow registry, reusable release nonce,
+or long-lived registry credential. A failed publication is repaired from the
+registry's immutable state in the same repository workflow; it is never
+reconciled by republishing an existing version.
 
-Shadow mode verifies exact npm, Cargo, GitHub, provenance, SBOM, receipt, and
-attestation bytes without production writes. Receipt recovery may reconcile a
-missing receipt but must not republish an immutable version. Remote byte
-mismatch is a supply-chain incident.
-
-Production mode, public publication, channel promotion, temporary workflow
-changes, and break-glass are named Approval Boundaries. Stop with `ready` or
-`blocked` until the user approves the exact repositories, packages, versions,
-and plan digest. Restore temporary configuration and verify public bytes,
-fresh installation, downstream CI, receipts, attestations, and channel state.
+Record public archive checksums, provenance URLs, and fresh-install evidence
+after publication. Evidence must contain no credentials, private keys, tokens,
+or mutable authorization state.

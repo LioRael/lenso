@@ -20,31 +20,11 @@ check:
     just test
     just generated-check
     just arch-check
-    just release-mode-check
     just m6-skills-check
     just m6-docs-check
 
-release-check:
-    just check
-
-release-mode-check:
-    if REQUESTED_MODE=production node scripts/release-mode.mjs > /dev/null 2>&1; then exit 1; fi
-    LENSO_SHADOW_NPM_REGISTRY_URL=https://example.invalid/npm LENSO_SHADOW_CRATES_API_URL=https://example.invalid/cargo LENSO_SHADOW_CRATES_UPLOAD_URL=https://example.invalid/cargo/upload LENSO_SHADOW_GITHUB_API_URL=https://example.invalid/github LENSO_SHADOW_OCI_REGISTRY_URL=https://example.invalid/oci LENSO_SHADOW_ATTESTATION_URL=https://example.invalid/attestations REQUESTED_MODE=shadow node scripts/release-mode.mjs > /dev/null
-
-release-plan:
-    pnpm release:plan
-
-release-plan-check:
-    pnpm release:intent-check
-
-release-version-check:
-    sh scripts/verify-release-version.sh
-
 package-readiness:
     sh scripts/package-readiness.sh
-
-release-package:
-    sh scripts/release-package.sh
 
 first-user-smoke:
     sh scripts/first-user-smoke.sh
