@@ -1,4 +1,7 @@
 /* eslint-disable func-style, no-use-before-define, sort-keys */
+import { serviceContractSchema as generatedServiceContractSchema } from "./generated/service-contract-schema.js";
+import type { ServiceInstall } from "./service-module-delivery.js";
+
 export {
   actionBooleanField,
   actionConfirmation,
@@ -107,6 +110,7 @@ export type {
 } from "./service-module-delivery.js";
 
 export interface ServiceContract {
+  protocol?: typeof serviceContractProtocol;
   name: string;
   version?: string;
   provider?: ServiceProviderMetadata;
@@ -115,6 +119,8 @@ export interface ServiceContract {
   env?: ServiceEnvField[];
   health?: ServiceHealth;
   localProcess?: ServiceLocalProcess;
+  install?: ServiceInstall;
+  requiredEnv?: string[];
   deployment?: ServiceDeployment;
   modules: ServiceModuleContract[];
 }
@@ -127,10 +133,14 @@ export interface ServiceProviderMetadata {
 }
 
 export interface ServiceCompatibility {
+  serviceProtocolVersion?: string;
   providerProtocolVersion?: string;
   requiredHostFeatures?: string[];
+  required_host_features?: string[];
   sdkLanguage?: "ts" | "rust" | string;
+  sdk_language?: string;
   sdkVersion?: string;
+  sdk_version?: string;
 }
 
 export interface ServiceConfigField {
@@ -184,6 +194,7 @@ export interface ServiceModuleContract {
   version?: string;
   capabilities?: string[];
   dependencies?: string[];
+  console?: unknown[];
 }
 
 export interface ServiceContractIssue {
@@ -191,6 +202,7 @@ export interface ServiceContractIssue {
   message: string;
 }
 
+export const serviceContractProtocol = "lenso.service.v1" as const;
 export const servicePackageProtocol = "lenso.service-package.v1" as const;
 export const serviceWorkspaceProtocol = "lenso.service-workspace.v1" as const;
 export const serviceReleasePlanProtocol =
@@ -328,26 +340,7 @@ export interface ModuleRelease {
   linked?: Record<string, unknown>;
 }
 
-export const serviceContractSchema = {
-  $id: "https://contracts.lenso.local/services/lenso-service.v1.schema.json",
-  $schema: "https://json-schema.org/draft/2020-12/schema",
-  additionalProperties: true,
-  properties: {
-    compatibility: { type: "object" },
-    config: { type: "array" },
-    env: { type: "array" },
-    deployment: { type: "object" },
-    health: { type: "object" },
-    localProcess: { type: "object" },
-    modules: { minItems: 1, type: "array" },
-    name: { minLength: 1, type: "string" },
-    provider: { type: "object" },
-    version: { minLength: 1, type: "string" },
-  },
-  required: ["name", "modules"],
-  title: "LensoServiceContract",
-  type: "object",
-} as const;
+export const serviceContractSchema = generatedServiceContractSchema;
 
 export const servicePackageSchema = {
   $id: "https://contracts.lenso.local/services/lenso-service-package.v1.schema.json",
@@ -466,6 +459,7 @@ export function defineServiceContract(
 ): ServiceContract {
   return {
     ...contract,
+    protocol: contract.protocol ?? serviceContractProtocol,
     config: contract.config ?? [],
     env: contract.env ?? [],
     modules: contract.modules,
@@ -788,6 +782,12 @@ export function validateServiceContract(
   }
 
   const issues: ServiceContractIssue[] = [];
+  if (root.protocol !== undefined && root.protocol !== serviceContractProtocol) {
+    issues.push({
+      message: `protocol must be \`${serviceContractProtocol}\``,
+      path: "$.protocol",
+    });
+  }
   requireNonEmptyString(root.name, "$.name", issues);
   if ("version" in root) {
     requireNonEmptyString(root.version, "$.version", issues);

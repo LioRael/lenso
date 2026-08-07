@@ -76,6 +76,10 @@ _Avoid_: Provider Protocol, internal implementation
 A contract-derived caller interface that applies Lenso context, resilience, and evidence conventions without hiding the underlying Service Contract.
 _Avoid_: Host proxy, Provider Module client
 
+**Service Kit**:
+The authoring and delivery surface that helps a Service produce artifacts conforming to its Service Contract and operational evidence.
+_Avoid_: Remote Module Kit
+
 ## Data Ownership
 
 **Service Data**:
