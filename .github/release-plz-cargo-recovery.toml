@@ -1,0 +1,61 @@
+[workspace]
+release_always = true
+release = false
+changelog_update = false
+git_tag_name = "{{ package }}@{{ version }}"
+
+[[package]]
+name = "lenso-service"
+release = true
+
+[[package]]
+name = "lenso-api"
+release = true
+
+[[package]]
+name = "lenso-platform-runtime"
+release = true
+
+[[package]]
+name = "lenso-platform-module"
+release = true
+
+[[package]]
+name = "lenso-platform-provider"
+release = true
+
+[[package]]
+name = "lenso-platform-system-plane"
+release = true
+
+[[package]]
+name = "lenso-platform-module-management"
+release = true
+
+[[package]]
+name = "lenso-platform-runtime-observability"
+release = true
+
+[[package]]
+name = "lenso-platform-runtime-operations"
+release = true
+
+[[package]]
+name = "lenso-bootstrap"
+release = true
+
+[[package]]
+name = "lenso-migrate"
+release = true
+
+[[package]]
+name = "lenso-worker"
+release = true
+
+[[package]]
+name = "lenso"
+release = true
+
+[[package]]
+name = "lenso-autonomous-service"
+release = true
