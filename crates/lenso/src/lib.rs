@@ -6,12 +6,14 @@ pub mod host;
 /// Console UI and contribution declarations used by Module authors.
 pub mod console {
     pub use lenso_contracts::{
-        CONSOLE_BRIDGE_PROTOCOL, ConsoleActionInputBinding, ConsoleActionInputValue,
-        ConsoleContribution, ConsoleContributionAction, ConsoleContributionKind, ConsoleNavigation,
-        ConsoleNavigationGroup, ConsolePermissionGrant, ConsolePermissionRequest, ConsoleSlot,
-        ConsoleSlotContext, ConsoleSlotContextField, ConsoleSlotContextFieldType, ConsoleSurface,
+        CONSOLE_BRIDGE_PROTOCOL, CONSOLE_MODULE_PROTOCOL, CONSOLE_MODULE_PROTOCOL_MAJOR,
+        CONSOLE_UI_ESM_FORMAT, ConsoleActionInputBinding, ConsoleActionInputValue,
+        ConsoleContribution, ConsoleContributionAction, ConsoleContributionKind,
+        ConsoleModuleManifest, ConsoleModuleSurface, ConsoleNavigation, ConsoleNavigationGroup,
+        ConsolePermissionGrant, ConsolePermissionRequest, ConsoleSlot, ConsoleSlotContext,
+        ConsoleSlotContextField, ConsoleSlotContextFieldType, ConsoleSurface, ConsoleSurfaceArea,
         ConsoleSurfacePresentation, ConsoleUiArtifact, ConsoleUiArtifactEntry,
-        ConsoleUiArtifactFormat, ConsoleWorkspaceRef,
+        ConsoleUiArtifactFormat, ConsoleUiArtifactStyleAsset, ConsoleWorkspaceRef,
     };
 }
 

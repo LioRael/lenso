@@ -18,9 +18,10 @@ pub use platform_runtime_operations::{
 pub use platform_system_plane::{
     CapabilityNegotiation, CapabilityNegotiationIssue, CapabilityNegotiationIssueCode,
     CapabilityRequirement, EnrollmentAuthorization, EnrollmentAuthorizer, EnrollmentError,
-    EnrollmentErrorCode, EnrollmentGrant, EnrollmentRecord, NegotiatedCapability,
-    PostgresEnrollmentStore, SystemPlaneAccess, SystemPlaneRegistry, SystemPlaneRegistryBuilder,
-    SystemPlaneRuntime, SystemSandboxEnrollmentAuthorizer,
+    EnrollmentErrorCode, EnrollmentGrant, EnrollmentRecord, ModuleOperationsProvider,
+    ModuleOperationsProviderError, NegotiatedCapability, PostgresEnrollmentStore,
+    SystemPlaneAccess, SystemPlaneRegistry, SystemPlaneRegistryBuilder, SystemPlaneRuntime,
+    SystemSandboxEnrollmentAuthorizer,
 };
 pub use reliability::*;
 pub use story_feed::*;
@@ -1107,7 +1108,13 @@ pub fn service_router(
     let system_plane = state.system_plane.clone();
     let runtime_observability = state.runtime_observability.clone();
     let runtime_operations = state.runtime_operations.clone();
+    let module_operations = system_plane
+        .as_ref()
+        .and_then(|runtime| runtime.module_operations.clone());
     let system_plane_routes = platform_system_plane::router(system_plane.clone())
+        .merge(platform_system_plane::module_operations_router(
+            module_operations,
+        ))
         .merge(platform_runtime_observability::router(
             runtime_observability,
         ))
@@ -1184,6 +1191,7 @@ pub fn openapi_document() -> utoipa::openapi::OpenApi {
     OpenApiRouter::<ServiceRuntimeState>::with_openapi(ServiceRuntimeApi::openapi())
         .merge(runtime_router())
         .merge(platform_system_plane::router(None))
+        .merge(platform_system_plane::module_operations_router(None))
         .merge(platform_runtime_observability::router(None))
         .merge(platform_runtime_operations::router(None))
         .to_openapi()

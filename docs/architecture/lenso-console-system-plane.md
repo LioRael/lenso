@@ -109,9 +109,10 @@ Supported delivery follows ordinary Module Delivery:
 - future runtimes such as Wasm require a new implemented contract revision.
 
 UI composition has two lanes: Shell-rendered declarative surfaces and
-Module-owned UI in a sandboxed iframe. Isolated UI uses the versioned Console
-Bridge with short-lived handles derived from the exact Console Permission Grant.
-The Shell never dynamically imports same-origin extension JavaScript, and a UI
+Module-owned `console_ui_esm` surfaces. The Shell loads a reviewed, digest-bound
+ESM artifact in the same realm and verifies its generated
+`lenso.console-module.v1` manifest, entry, style assets, Module identity, and
+independent `hostApi`/`consoleUi` compatibility ranges before mounting it. The
 artifact never receives the operator's original credential or an ambient
 Console bearer token.
 
@@ -141,7 +142,9 @@ Protocol identifiers are:
 
 - `lenso.system-plane.v1` for the Core Protocol;
 - `lenso.system-plane.<capability>.v1` for a Capability Contract;
-- `lenso.console-bridge.v1` for isolated Console UI communication.
+- `lenso.system-plane.module-operations.v1` for typed installed-Module
+  inventory, action-contribution resolution, and descriptor-bound configuration
+  operations.
 
 Core and Capability Contracts version independently. Compatible additions use
 feature identifiers within a major version. An incompatible optional capability
@@ -368,8 +371,7 @@ The GitHub repository is `LioRael/lenso-console`, renamed in place from its
 former Runtime Console identity. It is the complete product repository and
 owns the Console Service composition and release, Workload entrypoints, Console
 Shell, Console Service API, registry, official Console Modules, projections,
-intents, System Operations, Console Bridge, tests, OCI build, and deployment
-templates.
+intents, System Operations, tests, OCI build, and deployment templates.
 
 Other ownership remains explicit:
 
@@ -387,9 +389,10 @@ Other ownership remains explicit:
 
 Public Rust wire contracts live under `lenso-service::system_plane`, with
 author declarations re-exported through `lenso::system_plane` and
-`lenso::console`. A focused internal `lenso-platform-system-plane` package owns
-Core routing, negotiation, common operation handling, and provider registration
-without concrete capability policy or Console state.
+`lenso::console`. This includes the typed Module Operations messages and
+deterministic schema. A focused internal `lenso-platform-system-plane` package
+owns Core routing, admission, common operation handling, and provider
+registration without Console state.
 
 `lenso::console` is available on the default facade for Module UI declarations.
 `lenso::system_plane` is enabled by the opt-in `service` feature, which is also
@@ -406,10 +409,11 @@ roles are deleted after behavior moves to its authority owner. Generic
 and the broad `Admin*` declaration family are not mechanically renamed: business
 administration and System Plane management have different authority models.
 `ModuleManifest.console`, Console surface/navigation declarations, and slots
-remain. `ConsoleUiArtifact` carries the isolated artifact contract; fixed
-Console areas and same-origin JavaScript bundle execution are removed. Specifically,
-`ConsoleArea::{Runtime, Operations, Data, Configuration}` and
-`AdminEmbeddedRuntime::JsBundle` have no target equivalent.
+remain. `ConsoleUiArtifact` carries the `console_ui_esm` artifact contract and
+`ConsoleModuleManifest` carries the generated surface identity, route, area,
+capabilities, and navigation data. The former isolated-web/Console Bridge
+runtime is removed; its protocol and artifact shapes are negative release
+vectors, not compatibility paths.
 
 `ModuleManifest` remains the delivery-independent capability declaration from
 the ubiquitous language. Release version, delivery form, artifact coordinates,
@@ -418,11 +422,11 @@ older wording that placed release metadata directly in the manifest without
 changing the approved atomic-release invariant.
 
 The Console repository root is not published as `@lenso/runtime-console`.
-Internal web source may use private `@lenso/console-web`; the isolated bridge is
-`@lenso/console-bridge`. Module-owned UI is carried as an artifact inside its
-owning Module Release. `@lenso/service-kit` is owned by the framework SDK; the
-old Remote Module kit is retired after its supported behavior moved under
-Service Module Delivery language.
+Internal web source may use private `@lenso/console-web`; Module UI uses the
+public typed `@lenso/console-module-api` and `@lenso/console-ui` packages.
+Module-owned UI is carried as a `console_ui_esm` artifact inside its owning
+Module Release. `@lenso/service-kit` is owned by the framework SDK; the old
+Remote Module kit and `@lenso/console-bridge` are retired.
 
 Concretely, `@lenso/runtime-console-api` is retired rather than aliased;
 Runtime Stories UI belongs to the Runtime Stories Module; identity UI belongs

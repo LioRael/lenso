@@ -640,6 +640,84 @@
       ],
       "type": "string"
     },
+    "ConsoleModuleManifest": {
+      "additionalProperties": false,
+      "description": "The immutable presentation manifest embedded in a `console_ui_esm`\nartifact. Its field names intentionally match the public Console SDK.",
+      "properties": {
+        "consoleUi": {
+          "type": "string"
+        },
+        "hostApi": {
+          "type": "string"
+        },
+        "moduleId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "surfaces": {
+          "items": {
+            "$ref": "#/$defs/ConsoleModuleSurface"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol",
+        "moduleId",
+        "hostApi",
+        "consoleUi",
+        "surfaces"
+      ],
+      "type": "object"
+    },
+    "ConsoleModuleSurface": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/ConsoleSurfaceArea"
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "navigation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConsoleNavigation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "requiredCapabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "label",
+        "area"
+      ],
+      "type": "object"
+    },
     "ConsoleNavigation": {
       "properties": {
         "group": {
@@ -705,14 +783,14 @@
           },
           "type": "array"
         },
-        "outbound_destinations": {
+        "outboundDestinations": {
           "default": [],
           "items": {
             "type": "string"
           },
           "type": "array"
         },
-        "permission_id": {
+        "permissionId": {
           "type": "string"
         },
         "resources": {
@@ -722,7 +800,7 @@
           },
           "type": "array"
         },
-        "secret_references": {
+        "secretReferences": {
           "default": [],
           "items": {
             "type": "string"
@@ -731,7 +809,7 @@
         }
       },
       "required": [
-        "permission_id"
+        "permissionId"
       ],
       "type": "object"
     },
@@ -862,6 +940,15 @@
       ],
       "type": "object"
     },
+    "ConsoleSurfaceArea": {
+      "enum": [
+        "runtime",
+        "operations",
+        "data",
+        "configuration"
+      ],
+      "type": "string"
+    },
     "ConsoleSurfacePresentation": {
       "oneOf": [
         {
@@ -879,22 +966,19 @@
           "type": "object"
         },
         {
+          "description": "A same-realm ESM surface loaded from the owning Module Release.",
           "properties": {
-            "bridge_protocol": {
-              "type": "string"
-            },
             "entry": {
               "type": "string"
             },
             "kind": {
-              "const": "isolated",
+              "const": "esm",
               "type": "string"
             }
           },
           "required": [
             "kind",
-            "entry",
-            "bridge_protocol"
+            "entry"
           ],
           "type": "object"
         }
@@ -906,17 +990,25 @@
         "artifact": {
           "$ref": "#/$defs/ArtifactReference"
         },
-        "bridge_protocol": {
-          "type": "string"
-        },
         "entries": {
           "items": {
             "$ref": "#/$defs/ConsoleUiArtifactEntry"
           },
           "type": "array"
         },
+        "entry": {
+          "type": "string"
+        },
         "format": {
           "$ref": "#/$defs/ConsoleUiArtifactFormat"
+        },
+        "manifest": {
+          "$ref": "#/$defs/ConsoleModuleManifest"
+        },
+        "protocolMajor": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         },
         "provenance": {
           "items": {
@@ -924,9 +1016,15 @@
           },
           "type": "array"
         },
-        "requested_permissions": {
+        "requestedPermissions": {
           "items": {
             "$ref": "#/$defs/ConsolePermissionRequest"
+          },
+          "type": "array"
+        },
+        "styleAssets": {
+          "items": {
+            "$ref": "#/$defs/ConsoleUiArtifactStyleAsset"
           },
           "type": "array"
         }
@@ -934,7 +1032,9 @@
       "required": [
         "artifact",
         "format",
-        "bridge_protocol"
+        "protocolMajor",
+        "entry",
+        "manifest"
       ],
       "type": "object"
     },
@@ -956,9 +1056,34 @@
     },
     "ConsoleUiArtifactFormat": {
       "enum": [
-        "isolated_web"
+        "console_ui_esm"
       ],
       "type": "string"
+    },
+    "ConsoleUiArtifactStyleAsset": {
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "order": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
     },
     "ConsoleWorkspaceRef": {
       "properties": {
@@ -1458,6 +1583,12 @@
     "ModuleCompatibilityDeclaration": {
       "additionalProperties": false,
       "properties": {
+        "console_ui_requirement": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "host_api_requirement": {
           "type": [
             "string",
@@ -1534,6 +1665,13 @@
         "mutability": {
           "$ref": "#/$defs/ModuleConfigMutability"
         },
+        "read_capability": {
+          "description": "Capability required to read this field through the Managed Service\nSystem Plane operation. Sensitive fields are write-only and must leave\nthis unset.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "required": {
           "type": "boolean"
         },
@@ -1554,6 +1692,13 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "write_capability": {
+          "description": "Capability required to write this field through the Managed Service\nSystem Plane operation.",
+          "type": [
+            "string",
+            "null"
           ]
         }
       },
@@ -1854,7 +1999,7 @@
     },
     "ModuleManifest": {
       "additionalProperties": false,
-      "description": "The serializable metadata a module exposes. Runtime config is deliberately\nNOT here — it stays an internal `&'static` field on [`crate::Module`]\nbecause the config registry needs the real (non-serde) `RuntimeConfigType`\nto validate. Only round-trippable fields belong here.",
+      "description": "The serializable metadata a module exposes. Runtime configuration is part\nof this contract so a Managed Service can enforce a descriptor-bound\nSystem Plane operation without opening a generic key/value seam.",
       "properties": {
         "admin": {
           "anyOf": [

@@ -250,8 +250,11 @@ fn non_workspace_effects(
                     locator: artifact.locator.clone(),
                     digest: artifact.digest.clone(),
                     format: artifact.format.clone(),
+                    protocol_major: artifact.protocol_major,
+                    entry: artifact.entry.clone(),
                     entries: artifact.entries.clone(),
-                    bridge_protocol: artifact.bridge_protocol.clone(),
+                    style_assets: artifact.style_assets.clone(),
+                    manifest: artifact.manifest.clone(),
                     requested_permissions: artifact.requested_permissions.clone(),
                 }
             })

@@ -8,7 +8,8 @@ fn managed_service_openapi_excludes_retired_console_and_admin_namespaces() {
 
     for path in document.paths.paths.keys() {
         assert!(
-            forbidden.iter().all(|prefix| !path.starts_with(prefix)),
+            forbidden.iter().all(|prefix| !path.starts_with(prefix))
+                && !path.contains("console-bridge"),
             "managed Service OpenAPI still exposes retired route {path}"
         );
     }
@@ -42,5 +43,9 @@ fn committed_openapi_preserves_the_api_owner_invariants() {
     assert!(!paths.keys().any(|path| {
         path.as_str()
             .is_some_and(|path| path == "/admin/runtime/timeline/{correlation_id}")
+    }));
+    assert!(!paths.keys().any(|path| {
+        path.as_str()
+            .is_some_and(|path| path.contains("console-bridge"))
     }));
 }
