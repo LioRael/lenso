@@ -26,7 +26,6 @@ use tower::ServiceExt as _;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
-mod console_bridge;
 pub mod openapi;
 
 pub use openapi::openapi_document;
@@ -118,24 +117,10 @@ pub fn try_build_router_with_composition(
         ctx = ctx.with_actor_resolver(actor_resolver);
     }
     let host_wiring = lenso_bootstrap::host_wiring_for_context_with_composition(&ctx, composition)?;
-    let console_bridge = if let Some(authority) = composition.console_bridge_authority() {
-        Some(console_bridge::ConsoleBridgeRegistry::from_modules(
-            lenso_bootstrap::modules_for_config_with_composition(&ctx, composition)?,
-            authority.clone(),
-        ))
-    } else {
-        None
-    };
     let (router, mut document) =
         openapi::api_router_for_context_with_composition(&ctx, composition)?.split_for_parts();
     openapi::normalize_error_response_content_types(&mut document);
     let document = Arc::new(document);
-
-    let router = if let Some(console_bridge) = console_bridge {
-        router.layer(axum::Extension(console_bridge))
-    } else {
-        router
-    };
 
     Ok(router
         .route("/docs", axum::routing::get(scalar_docs))

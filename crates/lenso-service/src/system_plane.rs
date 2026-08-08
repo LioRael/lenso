@@ -5,10 +5,12 @@ use std::collections::{BTreeSet, HashSet};
 use utoipa::ToSchema;
 
 pub mod enrollment;
+pub mod module_operations;
 pub mod runtime_observability;
 pub mod runtime_operations;
 
 pub use enrollment::*;
+pub use module_operations::*;
 pub use runtime_observability::*;
 pub use runtime_operations::*;
 

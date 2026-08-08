@@ -405,9 +405,12 @@ Store and the web shell. Managed Services expose only authenticated
 `/system-plane/v1/*` contracts on a dedicated listener; Console never reads a
 managed Service Store or loads executable code from its Data Plane.
 
-Module-owned Console pages are immutable `ConsoleUiArtifact`s bound to the same
-Module Release. Isolated web artifacts communicate only through
-`lenso.console-bridge.v1` and the exact composition grant.
+Module-owned Console pages are immutable `console_ui_esm` `ConsoleUiArtifact`s
+bound to the same Module Release. The Console loads the digest-bound ESM entry
+in the same realm after validating the generated `lenso.console-module.v1`
+manifest, independent `hostApi`/`consoleUi` ranges, entry table, and ordered
+style assets. Managed-Service interaction uses the typed
+`lenso.system-plane.module-operations.v1` contract rather than a Bridge route.
 
 OpenTelemetry data is an enrichment layer for technical operations. See `docs/architecture/runtime-telemetry.md` for the boundary between runtime story semantics and telemetry span enrichment.
 

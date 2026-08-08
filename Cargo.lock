@@ -2221,6 +2221,7 @@ name = "lenso-contracts"
 version = "0.3.21"
 dependencies = [
  "chrono",
+ "regex",
  "schemars",
  "semver",
  "serde",
@@ -2617,6 +2618,7 @@ dependencies = [
  "axum",
  "http",
  "http-body-util",
+ "lenso-contracts",
  "lenso-platform-core",
  "lenso-platform-testing",
  "lenso-service",

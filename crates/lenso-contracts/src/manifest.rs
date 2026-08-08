@@ -8,8 +8,8 @@ use crate::admin::{
 };
 use crate::admin_schema::AdminSchema;
 use crate::console::{
-    ConsoleActionInputValue, ConsoleContribution, ConsoleContributionAction, ConsoleSlot,
-    ConsoleSurface,
+    ConsoleActionInputValue, ConsoleContribution, ConsoleContributionAction, ConsoleModuleManifest,
+    ConsoleModuleSurface, ConsoleSlot, ConsoleSurface, ConsoleSurfacePresentation,
 };
 use crate::events::{EventHandlerDeclaration, EventSurface};
 use crate::http::{ModuleHttpMethod, ModuleHttpRoute, lint_module_http_routes};
@@ -59,7 +59,7 @@ impl ModuleRequirement {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleConfigFieldType {
     String,
@@ -68,7 +68,7 @@ pub enum ModuleConfigFieldType {
     Json,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleConfigScope {
     Module,
@@ -76,7 +76,7 @@ pub enum ModuleConfigScope {
     Environment,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleConfigMutability {
     Static,
@@ -84,7 +84,7 @@ pub enum ModuleConfigMutability {
     Runtime,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ModuleConfigActivation {
     None,
@@ -117,6 +117,15 @@ pub struct ModuleConfigField {
     pub secret_reference: bool,
     pub mutability: ModuleConfigMutability,
     pub activation: ModuleConfigActivation,
+    /// Capability required to read this field through the Managed Service
+    /// System Plane operation. Sensitive fields are write-only and must leave
+    /// this unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_capability: Option<String>,
+    /// Capability required to write this field through the Managed Service
+    /// System Plane operation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_capability: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -148,10 +157,9 @@ pub struct ModuleMigrationDeclaration {
     pub activation: ModuleMigrationActivation,
 }
 
-/// The serializable metadata a module exposes. Runtime config is deliberately
-/// NOT here — it stays an internal `&'static` field on [`crate::Module`]
-/// because the config registry needs the real (non-serde) `RuntimeConfigType`
-/// to validate. Only round-trippable fields belong here.
+/// The serializable metadata a module exposes. Runtime configuration is part
+/// of this contract so a Managed Service can enforce a descriptor-bound
+/// System Plane operation without opening a generic key/value seam.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
@@ -246,12 +254,115 @@ impl ModuleManifest {
             },
         }
     }
+
+    /// Derive the Console SDK manifest from the typed Module declaration.
+    /// Declarative Shell surfaces are intentionally excluded because they do
+    /// not load executable ESM; the owning Release artifact carries only the
+    /// executable surface set.
+    #[must_use]
+    pub fn console_module_manifest(
+        &self,
+        host_api: impl Into<String>,
+        console_ui: impl Into<String>,
+    ) -> ConsoleModuleManifest {
+        let mut surfaces = self
+            .console
+            .iter()
+            .filter_map(|surface| {
+                if !matches!(surface.presentation, ConsoleSurfacePresentation::Esm { .. }) {
+                    return None;
+                }
+                Some(ConsoleModuleSurface {
+                    id: surface.name.clone(),
+                    path: surface.route.clone(),
+                    label: surface.label.clone(),
+                    area: console_surface_area(&surface.route),
+                    required_capabilities: surface.required_capabilities.clone(),
+                    icon: surface.icon.clone(),
+                    navigation: surface.navigation.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        surfaces.sort_by(|left, right| left.id.cmp(&right.id));
+        ConsoleModuleManifest {
+            protocol: crate::CONSOLE_MODULE_PROTOCOL.to_owned(),
+            module_id: self.module_id.clone(),
+            host_api: host_api.into(),
+            console_ui: console_ui.into(),
+            surfaces,
+        }
+    }
 }
 
 impl ModuleConfigContract {
     fn is_empty(&self) -> bool {
         self.fields.is_empty()
     }
+}
+
+fn console_surface_area(route: &str) -> crate::ConsoleSurfaceArea {
+    match route.split('/').nth(1) {
+        Some("operations") => crate::ConsoleSurfaceArea::Operations,
+        Some("data") => crate::ConsoleSurfaceArea::Data,
+        Some("configuration") => crate::ConsoleSurfaceArea::Configuration,
+        _ => crate::ConsoleSurfaceArea::Runtime,
+    }
+}
+
+/// Validates one System Plane configuration write against its immutable
+/// Module descriptor. This is deliberately independent of the storage
+/// implementation so every Managed Service applies the same type rules.
+pub fn validate_module_config_value(
+    field: &ModuleConfigField,
+    value: &Value,
+) -> Result<(), String> {
+    let type_matches = match field.field_type {
+        ModuleConfigFieldType::String => value.is_string(),
+        ModuleConfigFieldType::Integer => value.as_i64().is_some(),
+        ModuleConfigFieldType::Boolean => value.is_boolean(),
+        ModuleConfigFieldType::Json => true,
+    };
+    if !type_matches {
+        return Err(format!("value for `{}` has the wrong type", field.key));
+    }
+
+    let Some(validation) = &field.validation else {
+        return Ok(());
+    };
+    if let Some(minimum) = validation.minimum
+        && value.as_i64().is_some_and(|number| number < minimum)
+    {
+        return Err(format!("value for `{}` is below the minimum", field.key));
+    }
+    if let Some(maximum) = validation.maximum
+        && value.as_i64().is_some_and(|number| number > maximum)
+    {
+        return Err(format!("value for `{}` is above the maximum", field.key));
+    }
+    if !validation.allowed_values.is_empty()
+        && !value.as_str().is_some_and(|candidate| {
+            validation
+                .allowed_values
+                .iter()
+                .any(|allowed| allowed == candidate)
+        })
+    {
+        return Err(format!("value for `{}` is not an allowed value", field.key));
+    }
+    if let Some(pattern) = &validation.pattern {
+        let regex = regex::Regex::new(pattern)
+            .map_err(|_| format!("validation pattern for `{}` is invalid", field.key))?;
+        if !value
+            .as_str()
+            .is_some_and(|candidate| regex.is_match(candidate))
+        {
+            return Err(format!(
+                "value for `{}` does not match its pattern",
+                field.key
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[derive(
@@ -373,6 +484,56 @@ fn lint_manifest_contract(manifest: &ModuleManifest, lints: &mut Vec<ModuleManif
                 format!("config {} secret_reference", field.key),
                 "Sensitive config must be declared as a secret reference.",
                 "Set secret_reference and keep the value outside the Manifest.",
+            );
+        }
+        if field.sensitive && field.read_capability.is_some() {
+            push_contract_error(
+                lints,
+                format!("config {} read_capability", field.key),
+                "Sensitive config fields are write-only and must not declare a read capability.",
+                "Remove read_capability and use a write capability for secret rotation.",
+            );
+        }
+        if !field.sensitive
+            && field
+                .read_capability
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            push_contract_error(
+                lints,
+                format!("config {} read_capability", field.key),
+                "Readable config fields require a non-empty read capability.",
+                "Declare the least-privilege capability that can read this field.",
+            );
+        }
+        if field.mutability != ModuleConfigMutability::Static
+            && field
+                .write_capability
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            push_contract_error(
+                lints,
+                format!("config {} write_capability", field.key),
+                "Mutable config fields require a non-empty write capability.",
+                "Declare the least-privilege capability that can update this field.",
+            );
+        }
+        if field
+            .read_capability
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+            || field
+                .write_capability
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+        {
+            push_contract_error(
+                lints,
+                format!("config {} capabilities", field.key),
+                "Config capability identifiers must be non-empty when present.",
+                "Remove empty capability values or replace them with stable identifiers.",
             );
         }
     }
@@ -1365,32 +1526,26 @@ fn lint_console_surfaces(console: &[ConsoleSurface], lints: &mut Vec<ModuleManif
                     });
                 }
             }
-            crate::ConsoleSurfacePresentation::Isolated {
-                entry,
-                bridge_protocol,
-            } => {
+            crate::ConsoleSurfacePresentation::Esm { entry } => {
                 if !present(entry) {
                     lints.push(ModuleManifestLint {
                         severity: ModuleManifestLintSeverity::Error,
                         subject: format!("{subject}.presentation.entry"),
-                        message: "Isolated Console surface entry is missing.".to_owned(),
+                        message: "ESM Console surface entry is missing.".to_owned(),
                         suggestion:
                             "Reference an entry from the Module Release Console UI artifact."
                                 .to_owned(),
                     });
                 }
-                if bridge_protocol != crate::CONSOLE_BRIDGE_PROTOCOL {
-                    lints.push(ModuleManifestLint {
-                        severity: ModuleManifestLintSeverity::Error,
-                        subject: format!("{subject}.presentation.bridge_protocol"),
-                        message: "Isolated Console surface uses an unsupported bridge protocol."
-                            .to_owned(),
-                        suggestion: format!(
-                            "Use the supported bridge protocol {}.",
-                            crate::CONSOLE_BRIDGE_PROTOCOL
-                        ),
-                    });
-                }
+            }
+            crate::ConsoleSurfacePresentation::Isolated { .. } => {
+                lints.push(ModuleManifestLint {
+                    severity: ModuleManifestLintSeverity::Error,
+                    subject: format!("{subject}.presentation"),
+                    message: "Retired Console Bridge surfaces cannot be published.".to_owned(),
+                    suggestion: "Publish a console_ui_esm Module Release artifact instead."
+                        .to_owned(),
+                });
             }
         }
 
@@ -2177,9 +2332,9 @@ mod tests {
     };
     use crate::{
         AdminEmbeddedEntry, AdminEmbeddedRuntime, AdminEmbeddedSurface, AdminSandboxPolicy,
-        CONSOLE_BRIDGE_PROTOCOL, ConsoleActionInputBinding, ConsoleActionInputValue,
-        ConsoleContribution, ConsoleContributionAction, ConsoleContributionKind, ConsoleSlot,
-        ConsoleSlotContext, ConsoleSlotContextField, ConsoleSlotContextFieldType, ConsoleSurface,
+        ConsoleActionInputBinding, ConsoleActionInputValue, ConsoleContribution,
+        ConsoleContributionAction, ConsoleContributionKind, ConsoleSlot, ConsoleSlotContext,
+        ConsoleSlotContextField, ConsoleSlotContextFieldType, ConsoleSurface,
         ConsoleSurfacePresentation, EventHandlerDeclaration, EventSurface,
     };
     use crate::{
@@ -2219,10 +2374,8 @@ mod tests {
                 name: "stories".to_owned(),
                 label: "Stories".to_owned(),
                 route: "/runtime/stories".to_owned(),
-                presentation: ConsoleSurfacePresentation::Isolated {
+                presentation: ConsoleSurfacePresentation::Esm {
                     entry: "storyConsoleModule".to_owned(),
-
-                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: Some("workflow".to_owned()),
                 required_capabilities: vec!["runtime.stories.read".to_owned()],
@@ -2233,7 +2386,7 @@ mod tests {
 
         let json = serde_json::to_string(&manifest).expect("serialize");
         assert!(json.contains(r#""console""#), "got {json}");
-        assert!(json.contains(r#""kind":"isolated""#), "got {json}");
+        assert!(json.contains(r#""kind":"esm""#), "got {json}");
 
         let back: ModuleManifest = serde_json::from_str(&json).expect("deserialize");
 
@@ -2348,10 +2501,8 @@ mod tests {
             name: "contacts".to_owned(),
             label: "Contacts".to_owned(),
             route: "/crm/contacts".to_owned(),
-            presentation: ConsoleSurfacePresentation::Isolated {
+            presentation: ConsoleSurfacePresentation::Esm {
                 entry: "crmConsoleModule".to_owned(),
-
-                bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
             },
             icon: Some("users".to_owned()),
             required_capabilities: vec!["crm.contacts.read".to_owned()],
@@ -2385,10 +2536,8 @@ mod tests {
                 name: "contacts".to_owned(),
                 label: "Contacts".to_owned(),
                 route: "/crm/contacts".to_owned(),
-                presentation: ConsoleSurfacePresentation::Isolated {
+                presentation: ConsoleSurfacePresentation::Esm {
                     entry: "crmConsoleModule".to_owned(),
-
-                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: vec!["crm.contacts.read".to_owned()],
@@ -2422,10 +2571,8 @@ mod tests {
                 name: "contacts".to_owned(),
                 label: "Contacts".to_owned(),
                 route: "/crm/contacts".to_owned(),
-                presentation: ConsoleSurfacePresentation::Isolated {
+                presentation: ConsoleSurfacePresentation::Esm {
                     entry: "crmConsoleModule".to_owned(),
-
-                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: vec!["crm.contacts.read".to_owned()],
@@ -2459,9 +2606,8 @@ mod tests {
                     name: "stories".to_owned(),
                     label: "Stories".to_owned(),
                     route: "runtime/stories".to_owned(),
-                    presentation: ConsoleSurfacePresentation::Isolated {
+                    presentation: ConsoleSurfacePresentation::Esm {
                         entry: String::new(),
-                        bridge_protocol: "unsupported".to_owned(),
                     },
                     icon: None,
                     required_capabilities: vec!["runtime.stories.read".to_owned()],
@@ -2471,10 +2617,8 @@ mod tests {
                     name: "stories".to_owned(),
                     label: "Stories duplicate".to_owned(),
                     route: "/runtime/stories".to_owned(),
-                    presentation: ConsoleSurfacePresentation::Isolated {
+                    presentation: ConsoleSurfacePresentation::Esm {
                         entry: "storyConsoleModule".to_owned(),
-
-                        bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                     },
                     icon: None,
                     required_capabilities: vec![],
@@ -2491,7 +2635,7 @@ mod tests {
 
         assert!(subjects.contains(&"console.surface.stories.route"));
         assert!(subjects.contains(&"console.surface.stories.presentation.entry"));
-        assert!(subjects.contains(&"console.surface.stories.presentation.bridge_protocol"));
+        assert!(!subjects.contains(&"console.surface.stories.presentation.bridge_protocol"));
         assert!(subjects.contains(&"capability.reference.console.surface.stories"));
         assert!(lints.iter().any(|lint| {
             lint.subject == "console.surface.stories"
@@ -3307,10 +3451,8 @@ mod tests {
                 name: "contacts".to_owned(),
                 label: "Contacts".to_owned(),
                 route: "/remote-crm/contacts".to_owned(),
-                presentation: ConsoleSurfacePresentation::Isolated {
+                presentation: ConsoleSurfacePresentation::Esm {
                     entry: "remoteCrmConsoleModule".to_owned(),
-
-                    bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
                 },
                 icon: None,
                 required_capabilities: Vec::new(),

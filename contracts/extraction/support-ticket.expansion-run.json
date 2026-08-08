@@ -57,10 +57,10 @@
     "migrationWorkloadId": "acme/support-ticket-service-migration",
     "orderedOperationsDigest": "sha256:45c9c7bc39494884bce8244f1e76561c7efc815505e9a999d246c863f27db9d4",
     "phaseId": "03-destination-expansion",
-    "planDigest": "sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-    "planId": "extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-    "scaffoldDigest": "sha256:0eeaf831567f84084ec0b62d09903722915a52cbee9bf2d3e6836a41b429c5e6",
-    "scaffoldId": "extraction-scaffold:sha256:0eeaf831567f84084ec0b62d09903722915a52cbee9bf2d3e6836a41b429c5e6",
+    "planDigest": "sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
+    "planId": "extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
+    "scaffoldDigest": "sha256:ca331dffd4755da09300090a456b2f9d318d423c4df6ea491c24b2a65e3063e0",
+    "scaffoldId": "extraction-scaffold:sha256:ca331dffd4755da09300090a456b2f9d318d423c4df6ea491c24b2a65e3063e0",
     "sourceAuthority": {
       "kind": "linked_host",
       "ownerId": "support-host",
@@ -68,7 +68,7 @@
     },
     "sourceStoreRemainsUnchanged": true
   },
-  "expectedStateDigest": "sha256:d0df615f83d066c683a00c2a37fa7b05e71601f09720060d422ae88b01d46187",
+  "expectedStateDigest": "sha256:15ff8ff626240482a4ae7f86d4419bb16a6c6026b6593b7df71be710f06feed1",
   "mode": "apply",
   "nextActions": [
     "Persist the successful destination expansion evidence before starting backfill."
@@ -524,7 +524,7 @@
         "subject": "acme/support-ticket"
       },
       {
-        "digest": "sha256:13453e21907d63ec3bddbbf84fe3b9c11656258b964a0cc0239ab99bdd640d1c",
+        "digest": "sha256:d2d2948f99684d9f732f3f65f6927f4d481b618a9dffc6bf9e4c66947f5e765f",
         "kind": "module_declaration",
         "subject": "acme/support-ticket"
       },
@@ -584,8 +584,8 @@
         "subject": "readiness-evidence:postgres-observation"
       }
     ],
-    "planDigest": "sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-    "planId": "extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
+    "planDigest": "sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
+    "planId": "extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
     "proposedService": {
       "contractVersions": [
         {
@@ -770,18 +770,18 @@
           "subject": "03-destination-expansion/01-create-isolated-store"
         }
       ],
-      "expectedStateDigest": "sha256:d0df615f83d066c683a00c2a37fa7b05e71601f09720060d422ae88b01d46187",
+      "expectedStateDigest": "sha256:15ff8ff626240482a4ae7f86d4419bb16a6c6026b6593b7df71be710f06feed1",
       "linkedAuthorityRemainsAuthoritative": true,
       "operationDigest": "sha256:b0fdc1d065d947bac63fe70e73b453afd816f154186e7bbe4c082feb84f17bcb",
       "operationId": "03-destination-expansion/01-create-isolated-store",
       "operationKind": "create_isolated_store",
       "outcome": "created",
-      "planDigest": "sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-      "planId": "extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
+      "planDigest": "sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
+      "planId": "extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
       "protocol": "lenso.extraction-operation-receipt.v1",
-      "receiptDigest": "sha256:1225a7d07df1556f1bbd2920471ebf2446d7cbd4ec3dea89c8ccd857307f9415",
-      "receiptId": "extraction-operation-receipt:sha256:1225a7d07df1556f1bbd2920471ebf2446d7cbd4ec3dea89c8ccd857307f9415",
-      "runId": "extraction-run:sha256:b4c6ff45528dfa9f633f3e5874bb4bc5ca7ceb4b537fd1b89f2e8186d6f5eaab",
+      "receiptDigest": "sha256:365208d0b2afcf7880dcc423eea139eb0e01daaacb7be621aa5e79671ee854d4",
+      "receiptId": "extraction-operation-receipt:sha256:365208d0b2afcf7880dcc423eea139eb0e01daaacb7be621aa5e79671ee854d4",
+      "runId": "extraction-run:sha256:a8aa39cb73fc8f88767692d757040940042220ccdcc6bcc33a51e050b1c46a9e",
       "sourceAuthority": {
         "kind": "linked_host",
         "ownerId": "support-host",
@@ -802,18 +802,18 @@
           "subject": "03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets"
         }
       ],
-      "expectedStateDigest": "sha256:d0df615f83d066c683a00c2a37fa7b05e71601f09720060d422ae88b01d46187",
+      "expectedStateDigest": "sha256:15ff8ff626240482a4ae7f86d4419bb16a6c6026b6593b7df71be710f06feed1",
       "linkedAuthorityRemainsAuthoritative": true,
       "operationDigest": "sha256:8fa4821670bf9a55e990dbc45f0afc8340df595d6a4e608d945ddc1da23f15f7",
       "operationId": "03-destination-expansion/02-apply-expand-migration-0001_create_support_tickets",
       "operationKind": "apply_expand_migration",
       "outcome": "applied",
-      "planDigest": "sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-      "planId": "extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
+      "planDigest": "sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
+      "planId": "extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
       "protocol": "lenso.extraction-operation-receipt.v1",
-      "receiptDigest": "sha256:a4de14cc184d1277016e892e154ff64f5b2449b8691ee8b2d77b230bdd2ef558",
-      "receiptId": "extraction-operation-receipt:sha256:a4de14cc184d1277016e892e154ff64f5b2449b8691ee8b2d77b230bdd2ef558",
-      "runId": "extraction-run:sha256:b4c6ff45528dfa9f633f3e5874bb4bc5ca7ceb4b537fd1b89f2e8186d6f5eaab",
+      "receiptDigest": "sha256:6fabda40b44d78ee2d9f448ce7006b1fe91daab0ad0f3a4456fed302539c640a",
+      "receiptId": "extraction-operation-receipt:sha256:6fabda40b44d78ee2d9f448ce7006b1fe91daab0ad0f3a4456fed302539c640a",
+      "runId": "extraction-run:sha256:a8aa39cb73fc8f88767692d757040940042220ccdcc6bcc33a51e050b1c46a9e",
       "sourceAuthority": {
         "kind": "linked_host",
         "ownerId": "support-host",
@@ -834,18 +834,18 @@
           "subject": "03-destination-expansion/03-verify-migration-workload"
         }
       ],
-      "expectedStateDigest": "sha256:d0df615f83d066c683a00c2a37fa7b05e71601f09720060d422ae88b01d46187",
+      "expectedStateDigest": "sha256:15ff8ff626240482a4ae7f86d4419bb16a6c6026b6593b7df71be710f06feed1",
       "linkedAuthorityRemainsAuthoritative": true,
       "operationDigest": "sha256:fd81b960b07a3af12b1e37a471452253a578e323670c7a34169c20f50e79a7bd",
       "operationId": "03-destination-expansion/03-verify-migration-workload",
       "operationKind": "verify_migration_workload",
       "outcome": "healthy",
-      "planDigest": "sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-      "planId": "extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
+      "planDigest": "sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
+      "planId": "extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
       "protocol": "lenso.extraction-operation-receipt.v1",
-      "receiptDigest": "sha256:361df4a2539ca396ec3d947c9b8d2c8e1b57d7ec228952210d52b6289b5c4f75",
-      "receiptId": "extraction-operation-receipt:sha256:361df4a2539ca396ec3d947c9b8d2c8e1b57d7ec228952210d52b6289b5c4f75",
-      "runId": "extraction-run:sha256:b4c6ff45528dfa9f633f3e5874bb4bc5ca7ceb4b537fd1b89f2e8186d6f5eaab",
+      "receiptDigest": "sha256:1e3bbf54f3e1880bb85784f6b284037e8130df5e46411b4c60400f351ac6e94b",
+      "receiptId": "extraction-operation-receipt:sha256:1e3bbf54f3e1880bb85784f6b284037e8130df5e46411b4c60400f351ac6e94b",
+      "runId": "extraction-run:sha256:a8aa39cb73fc8f88767692d757040940042220ccdcc6bcc33a51e050b1c46a9e",
       "sourceAuthority": {
         "kind": "linked_host",
         "ownerId": "support-host",
@@ -866,18 +866,18 @@
           "subject": "03-destination-expansion/04-verify-candidate-health"
         }
       ],
-      "expectedStateDigest": "sha256:d0df615f83d066c683a00c2a37fa7b05e71601f09720060d422ae88b01d46187",
+      "expectedStateDigest": "sha256:15ff8ff626240482a4ae7f86d4419bb16a6c6026b6593b7df71be710f06feed1",
       "linkedAuthorityRemainsAuthoritative": true,
       "operationDigest": "sha256:592ce78c6fbade0edf0bcd6e24e709b0ff92b774bef724b984dd2b4fcc0d3f75",
       "operationId": "03-destination-expansion/04-verify-candidate-health",
       "operationKind": "verify_candidate_health",
       "outcome": "healthy",
-      "planDigest": "sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-      "planId": "extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
+      "planDigest": "sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
+      "planId": "extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
       "protocol": "lenso.extraction-operation-receipt.v1",
-      "receiptDigest": "sha256:9c9c90f8e53fdced0725e7899ce2aa5567db848a53895c961f311f523ba4071c",
-      "receiptId": "extraction-operation-receipt:sha256:9c9c90f8e53fdced0725e7899ce2aa5567db848a53895c961f311f523ba4071c",
-      "runId": "extraction-run:sha256:b4c6ff45528dfa9f633f3e5874bb4bc5ca7ceb4b537fd1b89f2e8186d6f5eaab",
+      "receiptDigest": "sha256:b9f7abcb7afff834887289fa9d376e95b53174db549f4299566b30e8a4906a31",
+      "receiptId": "extraction-operation-receipt:sha256:b9f7abcb7afff834887289fa9d376e95b53174db549f4299566b30e8a4906a31",
+      "runId": "extraction-run:sha256:a8aa39cb73fc8f88767692d757040940042220ccdcc6bcc33a51e050b1c46a9e",
       "sourceAuthority": {
         "kind": "linked_host",
         "ownerId": "support-host",
@@ -888,6 +888,6 @@
     }
   ],
   "revision": 5,
-  "runDigest": "sha256:6f8208649153e17564e83762020c5e0e798272c2cbcf9632a20d21cdd21a4ddd",
-  "runId": "extraction-run:sha256:b4c6ff45528dfa9f633f3e5874bb4bc5ca7ceb4b537fd1b89f2e8186d6f5eaab"
+  "runDigest": "sha256:02b1aba8a0a6228526667728c563e7211d884231924cae20d40488480293164b",
+  "runId": "extraction-run:sha256:a8aa39cb73fc8f88767692d757040940042220ccdcc6bcc33a51e050b1c46a9e"
 }

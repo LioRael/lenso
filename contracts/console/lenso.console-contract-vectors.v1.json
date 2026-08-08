@@ -1,0 +1,1018 @@
+{
+  "negative": [
+    {
+      "expected": "rejected",
+      "failure": "protocol",
+      "id": "protocol",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^1.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "assets/support.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "acme/support-console",
+            "protocol": "lenso.console-module.v9",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/support/tickets",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "assets/support.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "entry": "support",
+                "kind": "esm"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    },
+    {
+      "expected": "rejected",
+      "failure": "compatibility",
+      "id": "host-api-range",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^9.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "assets/support.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "acme/support-console",
+            "protocol": "lenso.console-module.v1",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/support/tickets",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "assets/support.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "entry": "support",
+                "kind": "esm"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    },
+    {
+      "expected": "rejected",
+      "failure": "path",
+      "id": "surface-path",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^1.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "assets/support.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "acme/support-console",
+            "protocol": "lenso.console-module.v1",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/../escape",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "assets/support.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "entry": "support",
+                "kind": "esm"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    },
+    {
+      "expected": "rejected",
+      "failure": "entry",
+      "id": "entry",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^1.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "missing.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "acme/support-console",
+            "protocol": "lenso.console-module.v1",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/support/tickets",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "assets/support.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "entry": "support",
+                "kind": "esm"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    },
+    {
+      "expected": "rejected",
+      "failure": "style_asset",
+      "id": "style-asset-path",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^1.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "assets/support.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "acme/support-console",
+            "protocol": "lenso.console-module.v1",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/support/tickets",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "../style.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "entry": "support",
+                "kind": "esm"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    },
+    {
+      "expected": "rejected",
+      "failure": "style_asset",
+      "id": "style-asset-entry",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^1.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "assets/support.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "acme/support-console",
+            "protocol": "lenso.console-module.v1",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/support/tickets",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "assets/missing.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "entry": "support",
+                "kind": "esm"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    },
+    {
+      "expected": "rejected",
+      "failure": "identity",
+      "id": "module-identity",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^1.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "assets/support.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "other/module",
+            "protocol": "lenso.console-module.v1",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/support/tickets",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "assets/support.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "entry": "support",
+                "kind": "esm"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    },
+    {
+      "expected": "rejected",
+      "failure": "retired_bridge",
+      "id": "retired-bridge",
+      "release": {
+        "compatibility": {
+          "console_ui_requirement": "^2.0.0",
+          "host_api_requirement": "^1.0.0"
+        },
+        "console_ui_artifact": {
+          "artifact": {
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+          },
+          "entries": [
+            {
+              "name": "support",
+              "path": "assets/support.js"
+            },
+            {
+              "name": "support-style",
+              "path": "assets/support.css"
+            }
+          ],
+          "entry": "assets/support.js",
+          "format": "console_ui_esm",
+          "manifest": {
+            "consoleUi": "^2.0.0",
+            "hostApi": "^1.0.0",
+            "moduleId": "acme/support-console",
+            "protocol": "lenso.console-module.v1",
+            "surfaces": [
+              {
+                "area": "data",
+                "icon": "inbox",
+                "id": "support",
+                "label": "Support",
+                "path": "/data/support/tickets",
+                "requiredCapabilities": [
+                  "support.console.read"
+                ]
+              }
+            ]
+          },
+          "protocolMajor": 1,
+          "styleAssets": [
+            {
+              "order": 0,
+              "path": "assets/support.css"
+            }
+          ]
+        },
+        "delivery": {
+          "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "binding": "support_console",
+          "crate_version": "1.2.3",
+          "default_features": true,
+          "kind": "linked",
+          "package": "acme-support-console"
+        },
+        "manifest": {
+          "capabilities": [
+            "support.console.read",
+            "support.endpoint.read",
+            "support.endpoint.write"
+          ],
+          "config": {
+            "fields": [
+              {
+                "activation": "restart",
+                "field_type": "string",
+                "key": "endpoint",
+                "mutability": "reloadable",
+                "read_capability": "support.endpoint.read",
+                "required": true,
+                "scope": "service",
+                "secret_reference": false,
+                "sensitive": false,
+                "write_capability": "support.endpoint.write"
+              }
+            ]
+          },
+          "console": [
+            {
+              "icon": "inbox",
+              "label": "Support",
+              "name": "support",
+              "presentation": {
+                "bridge_protocol": "lenso.console-bridge.v1",
+                "entry": "support",
+                "kind": "isolated"
+              },
+              "required_capabilities": [
+                "support.console.read"
+              ],
+              "route": "/data/support/tickets"
+            }
+          ],
+          "console_contributions": [],
+          "console_slots": [],
+          "http_routes": [],
+          "module_id": "acme/support-console",
+          "protocol": "lenso.module-manifest.v1",
+          "story_display": []
+        },
+        "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-release.v1",
+        "version": "1.2.3"
+      }
+    }
+  ],
+  "negativeOperations": [
+    {
+      "failure": "capability",
+      "id": "config-read-without-field-capability",
+      "operation": "config_read",
+      "request": {
+        "context": {
+          "callerModuleId": "acme/support-console",
+          "capabilities": [],
+          "delegatedActorSubject": "operator-1",
+          "delegatedAuthorityDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "environmentId": "production",
+          "serviceId": "service-1",
+          "systemId": "system-1",
+          "targetServicePrincipal": "spiffe://lenso/service-1"
+        },
+        "keys": [
+          "endpoint"
+        ],
+        "moduleId": "acme/support-console"
+      }
+    }
+  ],
+  "positive": {
+    "expected": "accepted",
+    "id": "esm-module-release",
+    "release": {
+      "compatibility": {
+        "console_ui_requirement": "^2.0.0",
+        "host_api_requirement": "^1.0.0"
+      },
+      "console_ui_artifact": {
+        "artifact": {
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "locator": "oci://registry.example/acme/support-console-ui@sha256:bbbb"
+        },
+        "entries": [
+          {
+            "name": "support",
+            "path": "assets/support.js"
+          },
+          {
+            "name": "support-style",
+            "path": "assets/support.css"
+          }
+        ],
+        "entry": "assets/support.js",
+        "format": "console_ui_esm",
+        "manifest": {
+          "consoleUi": "^2.0.0",
+          "hostApi": "^1.0.0",
+          "moduleId": "acme/support-console",
+          "protocol": "lenso.console-module.v1",
+          "surfaces": [
+            {
+              "area": "data",
+              "icon": "inbox",
+              "id": "support",
+              "label": "Support",
+              "path": "/data/support/tickets",
+              "requiredCapabilities": [
+                "support.console.read"
+              ]
+            }
+          ]
+        },
+        "protocolMajor": 1,
+        "styleAssets": [
+          {
+            "order": 0,
+            "path": "assets/support.css"
+          }
+        ]
+      },
+      "delivery": {
+        "archive_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "binding": "support_console",
+        "crate_version": "1.2.3",
+        "default_features": true,
+        "kind": "linked",
+        "package": "acme-support-console"
+      },
+      "manifest": {
+        "capabilities": [
+          "support.console.read",
+          "support.endpoint.read",
+          "support.endpoint.write"
+        ],
+        "config": {
+          "fields": [
+            {
+              "activation": "restart",
+              "field_type": "string",
+              "key": "endpoint",
+              "mutability": "reloadable",
+              "read_capability": "support.endpoint.read",
+              "required": true,
+              "scope": "service",
+              "secret_reference": false,
+              "sensitive": false,
+              "write_capability": "support.endpoint.write"
+            }
+          ]
+        },
+        "console": [
+          {
+            "icon": "inbox",
+            "label": "Support",
+            "name": "support",
+            "presentation": {
+              "entry": "support",
+              "kind": "esm"
+            },
+            "required_capabilities": [
+              "support.console.read"
+            ],
+            "route": "/data/support/tickets"
+          }
+        ],
+        "console_contributions": [],
+        "console_slots": [],
+        "http_routes": [],
+        "module_id": "acme/support-console",
+        "protocol": "lenso.module-manifest.v1",
+        "story_display": []
+      },
+      "manifest_digest": "sha256:0609c2bf26ff7c233ee058a18ce2f0631a6a974aa13ad84ce72b75b4e11384b3",
+      "module_id": "acme/support-console",
+      "protocol": "lenso.module-release.v1",
+      "version": "1.2.3"
+    }
+  },
+  "protocol": "lenso.console-contract-vectors.v1"
+}

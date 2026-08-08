@@ -1,5 +1,5 @@
 Extraction plan: acme/support-ticket
-Plan ID: extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424
+Plan ID: extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41
 System: support-system
 Expected authority: linked_host:support-host@support-authority-r7
 Candidate Service: acme/support-ticket-service
@@ -8,7 +8,7 @@ Store: acme/support-ticket-service-store (postgres, isolated)
 Effects: dry-run; writesRepositoryFiles=false; startsWorkloads=false; copiesData=false; changesAuthority=false
 Pinned inputs:
 - readiness_evidence acme/support-ticket: sha256:884327bffb633846fa3b79f127ec67b60e68333596863367e443809e2b27f441
-- module_declaration acme/support-ticket: sha256:13453e21907d63ec3bddbbf84fe3b9c11656258b964a0cc0239ab99bdd640d1c
+- module_declaration acme/support-ticket: sha256:d2d2948f99684d9f732f3f65f6927f4d481b618a9dffc6bf9e4c66947f5e765f
 - contract_version support-grpc.v1@v1: sha256:56d78af62735eec6e732f640fc2b64ab033c63482704e09d52380118618bd285
 - contract_version support-ticket-http.v1@v1: sha256:82124e5608b37c0e9859e536e3a711a39d2c635cb4365c173428193337db400b
 - contract_version support.audit-recorded.v1@v1: sha256:fdf2cd822641125c822ab3460c4ee8387cf957b628c89d36fcd717c4104e5c01

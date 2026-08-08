@@ -42,6 +42,140 @@
       ],
       "type": "object"
     },
+    "ConsoleModuleManifest": {
+      "additionalProperties": false,
+      "description": "The immutable presentation manifest embedded in a `console_ui_esm`\nartifact. Its field names intentionally match the public Console SDK.",
+      "properties": {
+        "consoleUi": {
+          "type": "string"
+        },
+        "hostApi": {
+          "type": "string"
+        },
+        "moduleId": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "surfaces": {
+          "items": {
+            "$ref": "#/$defs/ConsoleModuleSurface"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "protocol",
+        "moduleId",
+        "hostApi",
+        "consoleUi",
+        "surfaces"
+      ],
+      "type": "object"
+    },
+    "ConsoleModuleSurface": {
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "$ref": "#/$defs/ConsoleSurfaceArea"
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "navigation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConsoleNavigation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "requiredCapabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "label",
+        "area"
+      ],
+      "type": "object"
+    },
+    "ConsoleNavigation": {
+      "properties": {
+        "group": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConsoleNavigationGroup"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "workspace": {
+          "$ref": "#/$defs/ConsoleWorkspaceRef"
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "type": "object"
+    },
+    "ConsoleNavigationGroup": {
+      "properties": {
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "order": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
     "ConsolePermissionRequest": {
       "properties": {
         "operations": {
@@ -51,14 +185,14 @@
           },
           "type": "array"
         },
-        "outbound_destinations": {
+        "outboundDestinations": {
           "default": [],
           "items": {
             "type": "string"
           },
           "type": "array"
         },
-        "permission_id": {
+        "permissionId": {
           "type": "string"
         },
         "resources": {
@@ -68,7 +202,7 @@
           },
           "type": "array"
         },
-        "secret_references": {
+        "secretReferences": {
           "default": [],
           "items": {
             "type": "string"
@@ -77,9 +211,18 @@
         }
       },
       "required": [
-        "permission_id"
+        "permissionId"
       ],
       "type": "object"
+    },
+    "ConsoleSurfaceArea": {
+      "enum": [
+        "runtime",
+        "operations",
+        "data",
+        "configuration"
+      ],
+      "type": "string"
     },
     "ConsoleUiArtifactEntry": {
       "additionalProperties": false,
@@ -99,9 +242,55 @@
     },
     "ConsoleUiArtifactFormat": {
       "enum": [
-        "isolated_web"
+        "console_ui_esm"
       ],
       "type": "string"
+    },
+    "ConsoleUiArtifactStyleAsset": {
+      "additionalProperties": false,
+      "properties": {
+        "media": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "order": {
+          "format": "int32",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "ConsoleWorkspaceRef": {
+      "properties": {
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
     },
     "LockedCapabilityBinding": {
       "additionalProperties": false,
@@ -126,9 +315,6 @@
     "LockedConsoleUiArtifact": {
       "additionalProperties": false,
       "properties": {
-        "bridge_protocol": {
-          "type": "string"
-        },
         "digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "type": "string"
@@ -139,15 +325,32 @@
           },
           "type": "array"
         },
+        "entry": {
+          "type": "string"
+        },
         "format": {
           "$ref": "#/$defs/ConsoleUiArtifactFormat"
         },
         "locator": {
           "type": "string"
         },
+        "manifest": {
+          "$ref": "#/$defs/ConsoleModuleManifest"
+        },
+        "protocol_major": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
         "requested_permissions": {
           "items": {
             "$ref": "#/$defs/ConsolePermissionRequest"
+          },
+          "type": "array"
+        },
+        "style_assets": {
+          "items": {
+            "$ref": "#/$defs/ConsoleUiArtifactStyleAsset"
           },
           "type": "array"
         }
@@ -156,8 +359,11 @@
         "locator",
         "digest",
         "format",
+        "protocol_major",
+        "entry",
         "entries",
-        "bridge_protocol",
+        "style_assets",
+        "manifest",
         "requested_permissions"
       ],
       "type": "object"

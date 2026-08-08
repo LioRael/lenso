@@ -1,41 +1,68 @@
 # Module Console Surfaces
 
-Status: current after the 2026-07-30 Console System Plane decision.
+Status: current after the Console ESM and typed Module Operations contract.
 
-A Module may declare Shell-rendered declarative surfaces or isolated web
-surfaces through `ModuleManifest.console`. An isolated surface names an entry
-and the exact `lenso.console-bridge.v1` protocol; it never names a package to be
-executed in the Console shell.
+A Module may declare Shell-rendered declarative surfaces or executable ESM
+surfaces through `ModuleManifest.console`. An executable surface uses
+`ConsoleSurfacePresentation::Esm { entry }`; it does not name a bridge protocol,
+iframe, proxy endpoint, or package to be installed into the Console.
 
-Executable UI is delivered only as `ConsoleUiArtifact` inside the same immutable
-Module Release. The release binds the artifact locator and digest, entry paths,
-bridge protocol, requested permissions and provenance. A surface that selects
-isolated presentation is invalid unless the release contains the corresponding
-artifact entry.
+An executable UI is delivered only as a `ConsoleUiArtifact` inside the same
+immutable Module Release. The artifact format is `console_ui_esm` and binds:
 
-The Console Service composition lock selects the exact Module Release and stores
-the granted subset of requested permissions. Loading occurs in a sandboxed
-cross-origin iframe. The shell grants only structured bridge operations allowed
-by that exact `(ModuleId, Module Release digest, UI artifact digest)` grant.
-Artifacts receive no shell imports, ambient credentials, direct managed-Service
-network access, secret values or same-origin storage.
+- `lenso.console-module.v1` and its protocol major;
+- the independent `hostApi` and `consoleUi` compatibility requirements;
+- the default entry and every named entry path;
+- ordered style assets and their media metadata;
+- the generated `ConsoleModuleManifest`, requested permissions, artifact
+  digest, and provenance.
 
-After a Module operation is durably accepted, the target-side management
-adapter submits the complete selected artifact set to the Console Service's
-`/api/console/v1/artifacts/reconcile` endpoint. The adapter permits HTTPS
-locators and loopback HTTP only. The Console Service downloads each artifact,
-verifies its SHA-256 digest, writes the immutable object to content-addressed
-storage, and atomically records the composition receipt. The scoped
-`console.artifacts.manage` credential authorizes only this reconciliation; it
-does not grant a Module or its UI access to a managed Service.
+The release validator rejects protocol, Module identity, compatibility-range,
+entry, style-path, digest, manifest, permission, or provenance drift. Relative
+asset paths are normalized and traversal or absolute paths are invalid. Every
+ESM surface entry must be present in the artifact entry table, and a release
+containing an ESM surface must contain the corresponding artifact.
 
-Declarative surfaces are rendered by the shell from data in the manifest and do
-not load executable Module code. Business administration remains a business
-Module concern and does not enter the System Plane.
+The Console Shell loads a reviewed `console_ui_esm` artifact in the same realm
+from a content-addressed receipt. Module code uses the public typed Console UI
+API and the host API exposed by that receipt. The Shell validates the loaded
+manifest and surface identity before mounting it; an artifact cannot silently
+change its Module identity, compatibility range, or executable entry.
 
-Managed Services never host Console assets. There is no `/console/*`,
-`/console/extensions/*`, Console extension registry, copied-bundle ledger or
-same-origin JavaScript compatibility lane.
+The Console Service does not execute arbitrary Module HTTP routes, data queries,
+or generic key/value configuration through the UI artifact. Managed-Service
+interaction uses the typed System Plane Module Operations contract,
+`lenso.system-plane.module-operations.v1`, with four fixed operations:
 
-See [Lenso Console System Plane Architecture](lenso-console-system-plane.md) for
-composition, trust, permission and lifecycle invariants.
+- inventory of installed Module Releases and their runtime/ESM metadata;
+- resolution of declarative, data-only action contributions against an
+  explicitly typed slot context;
+- descriptor-bound configuration reads with per-key read capabilities;
+- descriptor-bound configuration writes with per-key write capabilities,
+  typed validation, target revision binding, and audit evidence.
+
+Every request carries the target Service, environment, calling Module, delegated
+actor, authority digest, and capabilities. The target Service verifies the
+transport identity, enrollment grant, service principal, and capability subset.
+Configuration access is restricted to the calling Module namespace. Sensitive
+fields are write-only: their values never appear in inventory, read responses,
+or audit evidence; only presence and value digests are exposed.
+
+The contract does not provide an arbitrary endpoint proxy, query language,
+cross-Module configuration namespace, secret reader, or generic operation
+dispatch. Business behavior remains owned by the business Module and its
+declared Service-side implementation.
+
+The deterministic public artifacts are generated from the Rust contract source:
+
+- `contracts/console/lenso.console-module.v1.schema.json`;
+- `contracts/console/lenso.console-ui-esm.v1.schema.json`;
+- `contracts/console/lenso.console-contract-vectors.v1.json`;
+- `contracts/system-plane/lenso.system-plane.module-operations.v1.schema.json`.
+
+The contract vectors include one valid release and negative cases for identity,
+protocol, compatibility, paths, entry/style assets, digests, retired Bridge
+shapes, and configuration capability rules. The former
+`lenso.console-bridge.v1` runtime route and authority seam are retired; old
+Bridge or isolated-web release shapes remain recognizable only so validation
+can reject them explicitly.

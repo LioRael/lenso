@@ -71,6 +71,34 @@ fn committed_module_management_schemas_match_generators() {
 }
 
 #[test]
+fn committed_console_contracts_match_generators() {
+    let schemas = [
+        (
+            include_str!("../../../contracts/console/lenso.console-module.v1.schema.json"),
+            lenso_api_contracts::generated_console_module_manifest_schema(),
+        ),
+        (
+            include_str!("../../../contracts/console/lenso.console-ui-esm.v1.schema.json"),
+            lenso_api_contracts::generated_console_ui_artifact_schema(),
+        ),
+    ];
+    for (committed, generated) in schemas {
+        let committed: serde_json::Value = serde_json::from_str(committed).unwrap();
+        assert_eq!(committed, generated);
+        jsonschema::validator_for(&committed).expect("Console schema should compile");
+    }
+
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/console/lenso.console-contract-vectors.v1.json"
+    ))
+    .expect("Console contract vectors should parse");
+    assert_eq!(
+        committed,
+        lenso_api_contracts::generated_console_contract_vectors()
+    );
+}
+
+#[test]
 fn committed_autonomous_service_runtime_openapi_matches_generator() {
     let committed: serde_yaml::Value = serde_yaml::from_str(include_str!(
         "../../../contracts/openapi/autonomous-service-runtime.v1.yaml"
@@ -202,6 +230,20 @@ fn committed_runtime_operations_schema_matches_generator() {
         committed,
         lenso_api_contracts::generated_runtime_operations_schema()
     );
+}
+
+#[test]
+fn committed_module_operations_schema_matches_generator() {
+    let committed: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/system-plane/lenso.system-plane.module-operations.v1.schema.json"
+    ))
+    .expect("committed Module Operations schema should parse");
+
+    assert_eq!(
+        committed,
+        lenso_api_contracts::generated_module_operations_schema()
+    );
+    jsonschema::validator_for(&committed).expect("Module Operations schema should compile");
 }
 
 #[test]
