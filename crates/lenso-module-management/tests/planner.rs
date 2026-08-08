@@ -1,12 +1,12 @@
 use chrono::{TimeZone as _, Utc};
 use lenso_contracts::{
-    ArtifactReference, CONSOLE_BRIDGE_PROTOCOL, CatalogAction, ConsoleUiArtifact,
-    ConsoleUiArtifactEntry, ConsoleUiArtifactFormat, DeclaredCompatibilityState,
-    LinkedModuleDelivery, ModuleDelivery, ModuleEligibility, ModuleEligibilityState,
-    ModuleLifecycleState, ModuleManifest, ModuleMigrationActivation, ModuleMigrationDeclaration,
-    ModuleRelease, ModuleRequirement, ModuleVerificationCell, ServiceModuleDelivery,
-    ServiceResponsibilityProfile, VerificationEvaluation, VerificationOperation, VerificationState,
-    digest_json,
+    ArtifactReference, CatalogAction, ConsoleModuleManifest, ConsoleSurface,
+    ConsoleSurfacePresentation, ConsoleUiArtifact, ConsoleUiArtifactEntry, ConsoleUiArtifactFormat,
+    DeclaredCompatibilityState, LinkedModuleDelivery, ModuleDelivery, ModuleEligibility,
+    ModuleEligibilityState, ModuleLifecycleState, ModuleManifest, ModuleMigrationActivation,
+    ModuleMigrationDeclaration, ModuleRelease, ModuleRequirement, ModuleVerificationCell,
+    ServiceModuleDelivery, ServiceResponsibilityProfile, VerificationEvaluation,
+    VerificationOperation, VerificationState, digest_json,
 };
 use lenso_module_management::*;
 use std::fs;
@@ -230,17 +230,45 @@ fn candidate() -> ModuleResolutionCandidate {
 
 fn candidate_with_console() -> ModuleResolutionCandidate {
     let mut candidate = candidate();
+    let manifest = ModuleManifest::builder("acme/module")
+        .console(vec![ConsoleSurface {
+            name: "main".to_owned(),
+            label: "Main".to_owned(),
+            route: "/main".to_owned(),
+            presentation: ConsoleSurfacePresentation::Esm {
+                entry: "main".to_owned(),
+            },
+            icon: None,
+            required_capabilities: Vec::new(),
+            navigation: None,
+        }])
+        .build();
+    candidate.release.manifest = manifest.clone();
+    candidate.release.manifest_digest = digest_json(&manifest).unwrap();
+    candidate.release.compatibility.host_api_requirement = Some("^1.0.0".to_owned());
+    candidate.release.compatibility.console_ui_requirement = Some("^1.0.0".to_owned());
     candidate.release.console_ui_artifact = Some(ConsoleUiArtifact {
         artifact: ArtifactReference {
             locator: "https://modules.example/acme-console.js".to_owned(),
             digest: digest('4'),
         },
-        format: ConsoleUiArtifactFormat::IsolatedWeb,
+        format: ConsoleUiArtifactFormat::Esm,
+        protocol_major: 1,
+        entry: "index.js".to_owned(),
         entries: vec![ConsoleUiArtifactEntry {
             name: "main".to_owned(),
-            path: "index.html".to_owned(),
+            path: "index.js".to_owned(),
         }],
-        bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
+        style_assets: Vec::new(),
+        manifest: ConsoleModuleManifest {
+            protocol: "lenso.console-module.v1".to_owned(),
+            module_id: "acme/module".to_owned(),
+            host_api: "^1.0.0".to_owned(),
+            console_ui: "^1.0.0".to_owned(),
+            surfaces: manifest
+                .console_module_manifest("^1.0.0", "^1.0.0")
+                .surfaces,
+        },
         requested_permissions: Vec::new(),
         provenance: Vec::new(),
     });
@@ -432,7 +460,7 @@ fn console_artifact_change_produces_console_composition_effect() {
         artifacts[0].locator,
         "https://modules.example/acme-console.js"
     );
-    assert_eq!(artifacts[0].entries[0].path, "index.html");
+    assert_eq!(artifacts[0].entries[0].path, "index.js");
     fs::remove_dir_all(root).unwrap();
 }
 

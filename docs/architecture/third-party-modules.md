@@ -20,7 +20,7 @@ This document defines the supported third-party boundary. Read it together with
 ## Immutable Releases
 
 A Module Release binds the normalized `ModuleManifest`, compatibility metadata,
-and optional isolated Console UI artifact to content digests. A Service Release
+and optional same-realm `console_ui_esm` Console UI artifact to content digests. A Service Release
 separately binds deployment and Provider protocol evidence. Installation selects
 exact releases in `lenso.modules.lock.json` and the environment service
 installation ledger; mutable manifest URLs are discovery inputs, not authority.
@@ -47,16 +47,23 @@ replays. A Service never writes Host queues or runtime tables directly.
 
 ## Console UI Artifacts
 
-Optional third-party UI is an immutable artifact referenced by the Module
-Release, not an npm package installed into the hosted Console. Console
-loads the artifact in a sandboxed cross-origin iframe with `allow-scripts` only.
-The artifact receives no Host token, cookies, stores, or internal imports.
+Optional third-party UI is an immutable `console_ui_esm` artifact referenced by
+the Module Release, not an npm package installed into the hosted Console. The
+artifact contract binds the Module identity, release and artifact digests,
+protocol major, independent `hostApi` and `consoleUi` ranges, entries, ordered
+style assets, generated surface manifest, permissions, and provenance. The
+Console Shell validates that contract before loading the artifact in the same
+realm.
 
-The artifact and Console Service communicate through `lenso.console-bridge.v1`. The
-handshake binds the Module identity, surface name, Module Release digest, UI
-artifact digest, granted capabilities, nonce, and expiry. The Console exposes only
-typed operations authorized by the exact grant; the backend independently
-checks the operator scope and the Module declaration for every operation.
+The artifact interacts with a Managed Service through the typed
+`lenso.system-plane.module-operations.v1` contract. Inventory, data-only action
+contribution resolution, descriptor-bound configuration reads, and
+descriptor-bound configuration writes are fixed operations. Each request binds
+the target Service, environment, calling Module namespace, delegated authority,
+capabilities, and target revision where mutation is involved. Sensitive
+configuration is write-only and audit evidence contains digests rather than
+values. There is no arbitrary endpoint proxy, query language, generic
+key/value store, or Console Bridge route.
 
 The retired mechanisms must not return:
 
@@ -77,9 +84,10 @@ The Host owns:
 - admin authorization and generic data/action dispatch;
 - durable Module and Service management operations;
 
-The Console Service owns Console composition grants and the Console Bridge
-backend. A managed Host does not expose that route unless it is explicitly
-composed as the Console Service with a Console-owned authority adapter.
+The Console Service owns Console composition and artifact receipts. A managed
+Service exposes only its authenticated System Plane capability contracts; it
+does not expose a Console Bridge compatibility route or accept Console-owned
+state as authority.
 
 Services own their business execution and stable effect identities. They must
 not receive caller bearer tokens, impersonate Host-owned records, supervise the
@@ -96,11 +104,11 @@ lenso module install billing
 lenso module uninstall billing
 ```
 
-Console reaches target-owned management only through negotiated System
-Plane capabilities; the retired same-host `/admin/modules/*` adapter is not a
+Console reaches target-owned management only through negotiated System Plane
+capabilities; the retired same-host `/admin/modules/*` adapter is not a
 production authority boundary. Neither path copies frontend bundles. Console
-Composition resolves the selected UI artifact digest and creates the bounded
-bridge grant when the surface opens.
+Composition resolves the selected UI artifact digest and loads the reviewed
+same-realm ESM entry after manifest and style-asset verification.
 
 ## Current and Deferred Sources
 

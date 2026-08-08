@@ -504,6 +504,206 @@ paths:
                 $ref: '#/components/schemas/SystemPlaneErrorBody'
       security:
       - bearer_auth: []
+  /system-plane/v1/modules:
+    post:
+      tags:
+      - system-plane-module-operations
+      operationId: module_inventory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModuleInventoryRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleInventorySnapshot'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/modules/action-contributions/resolve:
+    post:
+      tags:
+      - system-plane-module-operations
+      operationId: resolve_action_contributions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionContributionResolutionRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionContributionResolution'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/modules/config/read:
+    post:
+      tags:
+      - system-plane-module-operations
+      operationId: read_module_config
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModuleConfigReadRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleConfigReadResponse'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
+  /system-plane/v1/modules/config/write:
+    post:
+      tags:
+      - system-plane-module-operations
+      operationId: write_module_config
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModuleConfigWriteRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleConfigWriteResponse'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '401':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '409':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+        '503':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/SystemPlaneErrorBody'
+      security:
+      - bearer_auth: []
   /system-plane/v1/runtime-observability:
     get:
       tags:
@@ -935,6 +1135,51 @@ paths:
       - bearer_auth: []
 components:
   schemas:
+    ActionContributionResolution:
+      type: object
+      required:
+      - protocol
+      - context
+      - slot
+      - slotVersion
+      - contributions
+      properties:
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+        contributions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResolvedActionContribution'
+        protocol:
+          type: string
+        slot:
+          type: string
+        slotVersion:
+          type: integer
+          format: int32
+          minimum: 0
+      additionalProperties: false
+    ActionContributionResolutionRequest:
+      type: object
+      required:
+      - context
+      - slot
+      - slotVersion
+      properties:
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+        slot:
+          type: string
+        slotContext:
+          type: object
+          additionalProperties: {}
+          propertyNames:
+            type: string
+        slotVersion:
+          type: integer
+          format: int32
+          minimum: 0
+      additionalProperties: false
     ActiveDegradedMode:
       type: object
       required:
@@ -977,6 +1222,49 @@ components:
           type: string
           pattern: ^sha256:[0-9a-f]{64}$
       additionalProperties: false
+    ConsoleActionInputBinding:
+      type: object
+      required:
+      - input
+      - value
+      properties:
+        input:
+          type: string
+        value:
+          $ref: '#/components/schemas/ConsoleActionInputValue'
+    ConsoleActionInputValue:
+      oneOf:
+      - type: object
+        required:
+        - path
+        - kind
+        properties:
+          kind:
+            type: string
+            enum:
+            - slot_context
+          path:
+            type: string
+    ConsoleContributionAction:
+      oneOf:
+      - type: object
+        required:
+        - module
+        - name
+        - kind
+        properties:
+          input_bindings:
+            type: array
+            items:
+              $ref: '#/components/schemas/ConsoleActionInputBinding'
+          kind:
+            type: string
+            enum:
+            - admin_action
+          module:
+            type: string
+          name:
+            type: string
     CoreDocument:
       type: object
       required:
@@ -1095,6 +1383,42 @@ components:
           type: string
         type:
           type: string
+    ManagedServiceContext:
+      type: object
+      description: |-
+        The target and caller identity carried by every Module System Plane request.
+        The target Service verifies this against its authenticated transport,
+        enrollment grant, and installed Module declarations before executing an
+        operation.
+      required:
+      - systemId
+      - serviceId
+      - environmentId
+      - targetServicePrincipal
+      - callerModuleId
+      - delegatedActorSubject
+      - delegatedAuthorityDigest
+      properties:
+        callerModuleId:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        delegatedActorSubject:
+          type: string
+        delegatedAuthorityDigest:
+          type: string
+        environmentId:
+          type: string
+        serviceId:
+          type: string
+        systemId:
+          type: string
+        targetServicePrincipal:
+          type: string
+      additionalProperties: false
     ManagementActor:
       type: object
       required:
@@ -1173,6 +1497,307 @@ components:
         target:
           $ref: '#/components/schemas/RuntimeOperationTarget'
       additionalProperties: false
+    ModuleConfigActivation:
+      type: string
+      enum:
+      - none
+      - build
+      - restart
+      - service_restart
+    ModuleConfigAuditEvidence:
+      type: object
+      required:
+      - sequence
+      - operationId
+      - moduleId
+      - key
+      - sensitive
+      - newValueDigest
+      - recordedAtUnixMs
+      properties:
+        key:
+          type: string
+        moduleId:
+          type: string
+        newValueDigest:
+          type: string
+        oldValueDigest:
+          type:
+          - string
+          - 'null'
+        operationId:
+          type: string
+        recordedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        sensitive:
+          type: boolean
+        sequence:
+          type: integer
+          format: int64
+          minimum: 0
+      additionalProperties: false
+    ModuleConfigFieldType:
+      type: string
+      enum:
+      - string
+      - integer
+      - boolean
+      - json
+    ModuleConfigMutability:
+      type: string
+      enum:
+      - static
+      - reloadable
+      - runtime
+    ModuleConfigReadRequest:
+      type: object
+      required:
+      - context
+      - moduleId
+      properties:
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+        keys:
+          type: array
+          items:
+            type: string
+        moduleId:
+          type: string
+      additionalProperties: false
+    ModuleConfigReadResponse:
+      type: object
+      required:
+      - protocol
+      - context
+      - moduleId
+      - values
+      properties:
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+        moduleId:
+          type: string
+        protocol:
+          type: string
+        values:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleConfigValue'
+      additionalProperties: false
+    ModuleConfigScope:
+      type: string
+      enum:
+      - module
+      - service
+      - environment
+    ModuleConfigValue:
+      type: object
+      required:
+      - key
+      - fieldType
+      - scope
+      - mutability
+      - activation
+      - sensitive
+      - present
+      properties:
+        activation:
+          $ref: '#/components/schemas/ModuleConfigActivation'
+        fieldType:
+          $ref: '#/components/schemas/ModuleConfigFieldType'
+        key:
+          type: string
+        mutability:
+          $ref: '#/components/schemas/ModuleConfigMutability'
+        present:
+          type: boolean
+        scope:
+          $ref: '#/components/schemas/ModuleConfigScope'
+        sensitive:
+          type: boolean
+        value:
+          description: Sensitive values are always omitted, including when present.
+      additionalProperties: false
+    ModuleConfigWriteRequest:
+      type: object
+      required:
+      - context
+      - moduleId
+      - values
+      properties:
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+        moduleId:
+          type: string
+        values:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleConfigWriteValue'
+      additionalProperties: false
+    ModuleConfigWriteResponse:
+      type: object
+      required:
+      - protocol
+      - operationId
+      - context
+      - moduleId
+      - targetRevisionBefore
+      - targetRevisionAfter
+      - authorizationDigest
+      - evidence
+      properties:
+        authorizationDigest:
+          type: string
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleConfigAuditEvidence'
+        moduleId:
+          type: string
+        operationId:
+          type: string
+        protocol:
+          type: string
+        targetRevisionAfter:
+          type: string
+        targetRevisionBefore:
+          type: string
+      additionalProperties: false
+    ModuleConfigWriteValue:
+      type: object
+      required:
+      - key
+      - value
+      properties:
+        key:
+          type: string
+        value: {}
+      additionalProperties: false
+    ModuleInventoryConsoleUi:
+      type: object
+      required:
+      - format
+      - protocolMajor
+      - artifactDigest
+      - entry
+      properties:
+        artifactDigest:
+          type: string
+        entry:
+          type: string
+        format:
+          type: string
+        protocolMajor:
+          type: integer
+          format: int32
+          minimum: 0
+        styleAssets:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+    ModuleInventoryDelivery:
+      type: string
+      enum:
+      - linked
+      - service
+    ModuleInventoryModule:
+      type: object
+      required:
+      - moduleId
+      - version
+      - releaseDigest
+      - manifestDigest
+      - delivery
+      - runtimeStatus
+      properties:
+        consoleUi:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/ModuleInventoryConsoleUi'
+        delivery:
+          $ref: '#/components/schemas/ModuleInventoryDelivery'
+        dependencyModuleIds:
+          type: array
+          items:
+            type: string
+        manifestDigest:
+          type: string
+        moduleId:
+          type: string
+        releaseDigest:
+          type: string
+        routes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleInventoryRoute'
+        runtimeFunctions:
+          type: array
+          items:
+            type: string
+        runtimeStatus:
+          $ref: '#/components/schemas/ModuleRuntimeStatus'
+        version:
+          type: string
+      additionalProperties: false
+    ModuleInventoryRequest:
+      type: object
+      required:
+      - context
+      properties:
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+      additionalProperties: false
+    ModuleInventoryRoute:
+      type: object
+      required:
+      - method
+      - path
+      properties:
+        capability:
+          type:
+          - string
+          - 'null'
+        method:
+          type: string
+        path:
+          type: string
+      additionalProperties: false
+    ModuleInventorySnapshot:
+      type: object
+      required:
+      - protocol
+      - context
+      - serviceRevision
+      - snapshotRevision
+      - schemaDigest
+      - modules
+      properties:
+        context:
+          $ref: '#/components/schemas/ManagedServiceContext'
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModuleInventoryModule'
+        protocol:
+          type: string
+        schemaDigest:
+          type: string
+        serviceRevision:
+          type: string
+        snapshotRevision:
+          type: string
+      additionalProperties: false
+    ModuleRuntimeStatus:
+      type: string
+      enum:
+      - active
+      - disabled
+      - degraded
+      - failed
     ProblemErrorDetail:
       type: object
       required:
@@ -1382,6 +2007,36 @@ components:
       - healthy
       - degraded
       - unavailable
+    ResolvedActionContribution:
+      type: object
+      required:
+      - contributingModuleId
+      - target
+      - targetVersion
+      - label
+      - action
+      properties:
+        action:
+          $ref: '#/components/schemas/ConsoleContributionAction'
+        contributingModuleId:
+          type: string
+        icon:
+          type:
+          - string
+          - 'null'
+        label:
+          type: string
+        requiredCapabilities:
+          type: array
+          items:
+            type: string
+        target:
+          type: string
+        targetVersion:
+          type: integer
+          format: int32
+          minimum: 0
+      additionalProperties: false
     RuntimeHealth:
       type: object
       required:

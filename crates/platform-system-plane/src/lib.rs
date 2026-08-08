@@ -1,8 +1,10 @@
 //! Capability-neutral System Plane Core routing, registration, and negotiation.
 
 mod enrollment;
+mod module_operations;
 
 pub use enrollment::*;
+pub use module_operations::*;
 
 use axum::{
     Extension, Json,
@@ -335,6 +337,7 @@ impl SystemPlaneAccess {
 pub struct SystemPlaneRuntime {
     pub registry: Arc<SystemPlaneRegistry>,
     pub access: Arc<SystemPlaneAccess>,
+    pub module_operations: Option<Arc<ModuleOperationsProvider>>,
 }
 
 impl SystemPlaneRuntime {
@@ -343,7 +346,14 @@ impl SystemPlaneRuntime {
         Self {
             registry: Arc::new(registry),
             access: Arc::new(access),
+            module_operations: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_module_operations(mut self, provider: ModuleOperationsProvider) -> Self {
+        self.module_operations = Some(Arc::new(provider));
+        self
     }
 }
 

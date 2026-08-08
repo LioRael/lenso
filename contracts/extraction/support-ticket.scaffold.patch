@@ -12,7 +12,7 @@ new file mode 100644
 +      "path": "services/acme/support-ticket-service/Cargo.toml"
 +    },
 +    {
-+      "digest": "sha256:d9b5fb29a725f5201333f69b929464bd9c7950866e69c700d4e422c4125ea645",
++      "digest": "sha256:508335e466157b377b01be309654e17dfb8f1961b589686aaddb04b793e217b0",
 +      "path": "services/acme/support-ticket-service/README.md"
 +    },
 +    {
@@ -52,7 +52,7 @@ new file mode 100644
 +      "path": "services/acme/support-ticket-service/generated/clients/acme-support-ticket-service-support-grpc-v1-client.json"
 +    },
 +    {
-+      "digest": "sha256:bb1588e59453d40c75e267abb46d395ed7f62e426c075719336765a7a30f09c0",
++      "digest": "sha256:7f0a16cd2ae5022dae51a4a3249bb19d087bb1ba381616de80ceb8d0f21f0b99",
 +      "path": "services/acme/support-ticket-service/lenso.module.json"
 +    },
 +    {
@@ -60,7 +60,7 @@ new file mode 100644
 +      "path": "services/acme/support-ticket-service/lenso.service.json"
 +    },
 +    {
-+      "digest": "sha256:cb5a5186d26343fac037c20b45c7e365b3856b46dfb450f843fe204c85213405",
++      "digest": "sha256:58bec11a06501b5007b9a55d907bdc070626bc711c34ac62bd7fe7ad9e9eccba",
 +      "path": "services/acme/support-ticket-service/migrations/README.md"
 +    },
 +    {
@@ -80,8 +80,8 @@ new file mode 100644
 +      "path": "services/acme/support-ticket-service/src/lib.rs"
 +    }
 +  ],
-+  "planDigest": "sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
-+  "planId": "extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424",
++  "planDigest": "sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
++  "planId": "extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41",
 +  "protocol": "lenso.extraction-scaffold-ownership.v1"
 +}
 diff --git a/services/acme/support-ticket-service/Cargo.toml b/services/acme/support-ticket-service/Cargo.toml
@@ -116,7 +116,7 @@ new file mode 100644
 @@ -0,0 +1,7 @@
 +# acme/support-ticket-service extraction candidate
 +
-+This scaffold preserves Module `acme/support-ticket` and is bound to `extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424`.
++This scaffold preserves Module `acme/support-ticket` and is bound to `extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41`.
 +
 +The linked Host remains authoritative. These API, Worker, and Migration entrypoints validate the candidate shape only; Store expansion and Workload startup belong to the next approved Extraction Plan phase.
 +
@@ -754,7 +754,7 @@ diff --git a/services/acme/support-ticket-service/lenso.module.json b/services/a
 new file mode 100644
 --- /dev/null
 +++ b/services/acme/support-ticket-service/lenso.module.json
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,117 @@
 +{
 +  "admin": {
 +    "entities": [
@@ -784,9 +784,8 @@ new file mode 100644
 +      "label": "Support tickets",
 +      "name": "support-tickets",
 +      "presentation": {
-+        "bridge_protocol": "lenso.console-bridge.v1",
 +        "entry": "supportTicketConsoleModule",
-+        "kind": "isolated"
++        "kind": "esm"
 +      },
 +      "required_capabilities": [
 +        "support.tickets.read"
@@ -943,7 +942,7 @@ new file mode 100644
 @@ -0,0 +1,6 @@
 +# Candidate migrations
 +
-+The Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `extraction-plan:sha256:ff04c277eb661cb87a649c2191f0dcd5de0eb6213d3f6a7c5b7ac389aa335424`.
++The Migration Workload is scaffolded, but this phase does not apply schema or data changes. The expand-first phase must copy the plan-owned migrations from authoritative Module sources and bind receipts to `extraction-plan:sha256:bb3e80d62edd7043b02e4474ac0d7af0e01ef3cb7b1fead033d9f76c43bbaa41`.
 +
 +Planned Module migrations:
 +- `0001_create_support_tickets` from `modules/support-ticket/migrations/0001_tickets.sql` (`sha256:da4b3d6540ed81176938a3e19d6f591a33810babd4ade7ba91ed27c4750373ac`)

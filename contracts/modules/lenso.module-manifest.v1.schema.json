@@ -781,22 +781,19 @@
           "type": "object"
         },
         {
+          "description": "A same-realm ESM surface loaded from the owning Module Release.",
           "properties": {
-            "bridge_protocol": {
-              "type": "string"
-            },
             "entry": {
               "type": "string"
             },
             "kind": {
-              "const": "isolated",
+              "const": "esm",
               "type": "string"
             }
           },
           "required": [
             "kind",
-            "entry",
-            "bridge_protocol"
+            "entry"
           ],
           "type": "object"
         }
@@ -1123,6 +1120,13 @@
         "mutability": {
           "$ref": "#/$defs/ModuleConfigMutability"
         },
+        "read_capability": {
+          "description": "Capability required to read this field through the Managed Service\nSystem Plane operation. Sensitive fields are write-only and must leave\nthis unset.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "required": {
           "type": "boolean"
         },
@@ -1143,6 +1147,13 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "write_capability": {
+          "description": "Capability required to write this field through the Managed Service\nSystem Plane operation.",
+          "type": [
+            "string",
+            "null"
           ]
         }
       },
@@ -1773,7 +1784,7 @@
   "$id": "https://contracts.lenso.local/modules/lenso.module-manifest.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "The serializable metadata a module exposes. Runtime config is deliberately\nNOT here — it stays an internal `&'static` field on [`crate::Module`]\nbecause the config registry needs the real (non-serde) `RuntimeConfigType`\nto validate. Only round-trippable fields belong here.",
+  "description": "The serializable metadata a module exposes. Runtime configuration is part\nof this contract so a Managed Service can enforce a descriptor-bound\nSystem Plane operation without opening a generic key/value seam.",
   "properties": {
     "admin": {
       "anyOf": [

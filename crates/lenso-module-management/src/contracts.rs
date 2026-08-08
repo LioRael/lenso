@@ -235,8 +235,11 @@ pub struct LockedConsoleUiArtifact {
     pub locator: String,
     pub digest: String,
     pub format: lenso_contracts::ConsoleUiArtifactFormat,
+    pub protocol_major: u32,
+    pub entry: String,
     pub entries: Vec<lenso_contracts::ConsoleUiArtifactEntry>,
-    pub bridge_protocol: String,
+    pub style_assets: Vec<lenso_contracts::ConsoleUiArtifactStyleAsset>,
+    pub manifest: lenso_contracts::ConsoleModuleManifest,
     pub requested_permissions: Vec<lenso_contracts::ConsolePermissionRequest>,
 }
 
@@ -248,8 +251,11 @@ pub struct ConsoleCompositionArtifact {
     pub locator: String,
     pub digest: String,
     pub format: lenso_contracts::ConsoleUiArtifactFormat,
+    pub protocol_major: u32,
+    pub entry: String,
     pub entries: Vec<lenso_contracts::ConsoleUiArtifactEntry>,
-    pub bridge_protocol: String,
+    pub style_assets: Vec<lenso_contracts::ConsoleUiArtifactStyleAsset>,
+    pub manifest: lenso_contracts::ConsoleModuleManifest,
     pub requested_permissions: Vec<lenso_contracts::ConsolePermissionRequest>,
 }
 

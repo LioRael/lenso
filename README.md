@@ -136,7 +136,7 @@ smoke checks and real host API smokes.
 | [`lenso`](https://crates.io/crates/lenso) | Public Rust facade for module declarations, manifest lints, and the narrow host boot API. |
 | [`@lenso/cli`](https://www.npmjs.com/package/@lenso/cli) / [`lenso-cli`](https://crates.io/crates/lenso-cli) | Compose apps, manage generated state, author capabilities, run local systems, and operate modules and services. |
 | [`LioRael/lenso`](https://github.com/LioRael/lenso) | This repository: backend platform crates, built-in Modules, System Plane contracts, framework SDKs, migrations, and architecture checks. |
-| [`LioRael/lenso-console`](https://github.com/LioRael/lenso-console) | Independent Console Service, web shell, composition Store, and isolated Module UI host. |
+| [`LioRael/lenso-console`](https://github.com/LioRael/lenso-console) | Independent Console Service, web shell, composition Store, and reviewed same-realm ESM Module UI host. |
 | [`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples) | Runnable product, module, service, and integration examples. |
 | [`lenso.dev`](https://lenso.dev) | Product documentation, guides, API reference, and agent-readable docs. |
 

@@ -15,6 +15,18 @@ pub fn generate_contracts() -> anyhow::Result<()> {
         &generated_module_release_schema(),
     )?;
     write_json(
+        "contracts/console/lenso.console-module.v1.schema.json",
+        &generated_console_module_manifest_schema(),
+    )?;
+    write_json(
+        "contracts/console/lenso.console-ui-esm.v1.schema.json",
+        &generated_console_ui_artifact_schema(),
+    )?;
+    write_json(
+        "contracts/console/lenso.console-contract-vectors.v1.json",
+        &generated_console_contract_vectors(),
+    )?;
+    write_json(
         "contracts/catalog/lenso.catalog-snapshot.v1.schema.json",
         &generated_catalog_snapshot_schema(),
     )?;
@@ -88,6 +100,10 @@ pub fn generate_contracts() -> anyhow::Result<()> {
     write_json(
         "contracts/system-plane/lenso.system-plane.runtime-operations.v1.schema.json",
         &generated_runtime_operations_schema(),
+    )?;
+    write_json(
+        "contracts/system-plane/lenso.system-plane.module-operations.v1.schema.json",
+        &generated_module_operations_schema(),
     )?;
     write_json(
         "contracts/system-plane/lenso.system-plane.enrollment-offer.v1.schema.json",
@@ -315,6 +331,18 @@ pub fn generated_module_manifest_schema() -> Value {
 
 pub fn generated_module_release_schema() -> Value {
     lenso_contracts::module_release_schema()
+}
+
+pub fn generated_console_module_manifest_schema() -> Value {
+    lenso_contracts::console_module_manifest_schema()
+}
+
+pub fn generated_console_ui_artifact_schema() -> Value {
+    lenso_contracts::console_ui_artifact_schema()
+}
+
+pub fn generated_console_contract_vectors() -> Value {
+    lenso_contracts::console_contract_vectors()
 }
 
 pub fn generated_catalog_snapshot_schema() -> Value {
@@ -653,6 +681,10 @@ pub fn generated_runtime_observability_schema() -> Value {
 
 pub fn generated_runtime_operations_schema() -> Value {
     lenso_service::system_plane::runtime_operations_schema()
+}
+
+pub fn generated_module_operations_schema() -> Value {
+    lenso_service::system_plane::module_operations_schema()
 }
 
 pub fn generated_enrollment_offer_schema() -> Value {
@@ -1384,12 +1416,11 @@ fn support_ticket_migration_sql() -> &'static str {
 
 fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {
     use lenso_contracts::{
-        AdminSchema, CONSOLE_BRIDGE_PROTOCOL, ConsoleSurface, ConsoleSurfacePresentation,
-        EntitySchema, EventHandlerDeclaration, EventSurface, FieldSchema, FieldType,
-        ModuleHttpMethod, ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration,
-        RuntimeSurface, ScheduledFunctionDeclaration, ServiceOperationMetadata,
-        StoryDisplayDescriptor, StoryDisplaySource, WorkflowDataContract, WorkflowDefinition,
-        WorkflowStepDeclaration,
+        AdminSchema, ConsoleSurface, ConsoleSurfacePresentation, EntitySchema,
+        EventHandlerDeclaration, EventSurface, FieldSchema, FieldType, ModuleHttpMethod,
+        ModuleHttpRoute, ModuleManifest, RuntimeFunctionDeclaration, RuntimeSurface,
+        ScheduledFunctionDeclaration, ServiceOperationMetadata, StoryDisplayDescriptor,
+        StoryDisplaySource, WorkflowDataContract, WorkflowDefinition, WorkflowStepDeclaration,
     };
 
     ModuleManifest::builder("acme/support-ticket")
@@ -1461,10 +1492,8 @@ fn support_ticket_extraction_module() -> lenso_contracts::ModuleManifest {
             name: "support-tickets".to_owned(),
             label: "Support tickets".to_owned(),
             route: "/support/tickets".to_owned(),
-            presentation: ConsoleSurfacePresentation::Isolated {
+            presentation: ConsoleSurfacePresentation::Esm {
                 entry: "supportTicketConsoleModule".to_owned(),
-
-                bridge_protocol: CONSOLE_BRIDGE_PROTOCOL.to_owned(),
             },
             icon: None,
             required_capabilities: vec!["support.tickets.read".to_owned()],
