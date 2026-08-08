@@ -1,6 +1,6 @@
 [package]
 name = "lenso-platform-module-management"
-version = "0.1.5"
+version = "0.1.6"
 edition.workspace = true
 license = "MIT"
 description = "Console HTTP adapter for the Lenso Module management kernel."
