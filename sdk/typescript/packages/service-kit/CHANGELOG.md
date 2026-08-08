@@ -1,5 +1,11 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.1.6
+
+### Patch Changes
+
+- 25f01e8: Publish the evolved TypeScript Service Kit contract and generated service schema.
+
 ### Fixed
 
 Build the Service Kit public entrypoints before the reviewed publisher seals its
