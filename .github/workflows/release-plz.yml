@@ -3,13 +3,6 @@ name: Release-plz
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      recover_cargo:
-        description: "Publish the explicitly reviewed remaining Cargo release set"
-        required: true
-        default: false
-        type: boolean
 
 permissions: {}
 
@@ -41,14 +34,6 @@ jobs:
           config: .github/release-plz-platform-testing.toml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish reviewed Cargo recovery set
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.recover_cargo }}
-        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
-        with:
-          command: release
-          config: .github/release-plz-cargo-recovery.toml
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
       - name: Publish released packages
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
