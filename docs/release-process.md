@@ -27,6 +27,14 @@ GitHub Actions token. The token is used only for GitHub tag and release
 metadata; crate publication still uses crates.io Trusted Publishing through
 the workflow's OIDC identity.
 
+The release job's pre- and post-prerequisite publish phases use the recovery
+profile at `.github/release-plz-publish.toml`. It enables `release_always` only
+for those phases so a squash-merged release commit can resume publishing even
+when GitHub does not associate the commit with the release PR. The repository
+default `release-plz.toml` remains gated by the release PR, and
+`lenso-platform-testing` is published between the two phases because its
+metadata depends on a newly published platform crate.
+
 When migrating a repository whose manifest is ahead only because of an old
 shadow candidate, align that manifest and its workspace lock with the latest
 public registry version first. The next Release-plz PR then carries the normal
