@@ -119,10 +119,22 @@ The working loop is:
 product brief -> app compose -> change plan -> implementation -> checks + App Proof -> Lenso Console
 ```
 
-Lenso's public skills cover business planning, app startup, linked Module
-authoring, Service-provided Module authoring, and API client generation. They give coding
-agents stable entrypoints while manifests, contracts, checks, and Console
-evidence keep the result inspectable.
+Install the public skill pack directly from this repository:
+
+```sh
+npx skills add LioRael/lenso
+```
+
+The pack covers business planning, app composition, host setup, linked Module
+authoring, Service authoring, Console Surface authoring, API clients,
+Autonomous Services, Contract evolution, Durable Workflows, Module extraction,
+incident recovery, and reviewed releases. `lenso-start` is the human-invoked
+router; the other skills have narrow task descriptions so agents can discover
+the right workflow without loading unrelated instructions.
+
+See the [public skill catalog](skills/README.md). Manifests, contracts, current
+CLI help, repository checks, and Console evidence remain the inspectable source
+of truth for each workflow.
 
 See the [agent-ready module demo](docs/agent-ready-module-demo.md). Runnable
 support-ticket and account-profile examples are guarded in

@@ -13,26 +13,30 @@ repository path.
 
 ## Flow
 
-1. Use `lenso-business-planning` when the prompt is a broad business idea and
+1. Invoke `lenso-start` when you want the router to pick the public workflow.
+2. Use `lenso-business-planning` when the prompt is a broad business idea and
    module boundaries are still unclear.
-2. Use `lenso-start` to pick the right public path.
-3. Use `lenso-module-authoring` for an in-host linked module, or
-   `lenso-provider-authoring` for an out-of-process service that provides
+3. Use `lenso-app-composition` when a blueprint, addon, capability pack, or
+   generated app is part of the selected path.
+4. Use `lenso-module-authoring` for an in-host linked module, or
+   `lenso-service-authoring` for an out-of-process service that provides
    one or more modules.
-4. Scaffold the module:
+5. Use `lenso-console-surface-authoring` when the slice needs a distinct
+   operator experience rather than only declarative data and actions.
+6. Scaffold the module:
 
 ```sh
 lenso module create support --with-console-ui
 ```
 
-5. Add the smallest useful support-ticket slice:
+7. Add the smallest useful support-ticket slice:
    - ticket list/detail data surface
    - create or update action
    - one runtime workflow or function
    - one module-owned `console_ui_esm` Console UI artifact
    - one verification check that fails if the module is not wired
-6. Run the focused checks for the changed surface.
-7. Open `/console` and confirm the module appears with its data, actions, and
+8. Run the focused checks for the changed surface.
+9. Open the configured Console Service and confirm the module appears with its data, actions, and
    runtime visibility.
 
 ## Run The Example
