@@ -21,6 +21,13 @@ fn workload() -> WorkloadReference {
 }
 
 #[test]
+fn workload_references_are_stable_provider_map_keys() {
+    let references = BTreeSet::from([workload()]);
+
+    assert!(references.contains(&workload()));
+}
+
+#[test]
 fn observation_contract_is_versioned_strict_and_digest_addressed() {
     assert_eq!(WORKLOAD_CONTROL_PROTOCOL, "lenso.workload-control.v1");
     assert_eq!(

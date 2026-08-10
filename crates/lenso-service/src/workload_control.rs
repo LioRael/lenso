@@ -14,7 +14,9 @@ pub const WORKLOAD_CONTROL_OBSERVE_PATH: &str = "/workload-control/v1/observe";
 pub const WORKLOAD_CONTROL_OPERATIONS_PATH: &str = "/workload-control/v1/operations";
 pub const WORKLOAD_CONTROL_OPERATION_PATH: &str = "/workload-control/v1/operations/{operationId}";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, ToSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, ToSchema,
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkloadReference {
     pub system_id: String,
