@@ -35,6 +35,8 @@ mod story_segment;
 mod support_envelope;
 mod workload_identity;
 
+pub mod workload_control;
+
 pub mod system_plane;
 
 pub use call_policy::{

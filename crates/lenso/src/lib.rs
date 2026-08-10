@@ -23,4 +23,10 @@ pub mod system_plane {
     pub use lenso_service::system_plane::*;
 }
 
+/// Public Workload Control Adapter contracts.
+#[cfg(feature = "service")]
+pub mod workload_control {
+    pub use lenso_service::workload_control::*;
+}
+
 pub use lenso_contracts::*;
