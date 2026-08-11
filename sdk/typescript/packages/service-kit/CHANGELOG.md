@@ -1,5 +1,12 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.2.0
+
+### Minor Changes
+
+- 1894bc8: Expose an optional loopback-only Provider Core identity route with exact local
+  bearer validation for Console enrollment checks.
+
 ## 0.1.6
 
 ### Patch Changes
