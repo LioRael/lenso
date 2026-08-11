@@ -91,6 +91,8 @@ export type {
   ModuleStoryDisplaySource,
   ProviderCoreIdentity,
   ProviderCoreOptions,
+  ProviderV1Export,
+  ProviderV1Options,
   ProblemDetails,
   ProblemDetailsOptions,
   ProblemErrorDetail,
