@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 /* eslint-disable func-style, no-use-before-define */
 import type { IncomingMessage } from "node:http";
@@ -575,6 +576,111 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         method: "POST",
       });
       expect(wrongMethod.status).toBe(404);
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("serves the locked Provider v1 descriptor, invocation, recovery, and acknowledgement", async () => {
+    const lockedDigest = (character: string) =>
+      `sha256:${character.repeat(64)}`;
+    const manifest = {
+      capabilities: ["taste.profiles.read"],
+      module_id: "taste/profile",
+      protocol: "lenso.module-manifest.v1",
+    };
+    const manifestDigest = `sha256:${createHash("sha256")
+      .update(JSON.stringify(manifest))
+      .digest("hex")}`;
+    const service = defineService({
+      modules: [
+        defineModule({
+          httpRoutes: [getRoute("/profiles/{id}")],
+          name: "taste-profile",
+        }),
+      ],
+      name: "taste-service",
+    });
+    const served = await serveService(service, {
+      modules: {
+        "taste-profile": {
+          http: {
+            "GET /profiles/{id}": ({ params }) => ({
+              profile: { id: params.id },
+            }),
+          },
+        },
+      },
+      port: 0,
+      providerV1: {
+        exports: [
+          {
+            contractDigests: { http: lockedDigest("4") },
+            exportKey: "taste-profile",
+            manifest,
+            manifestDigest,
+            moduleId: "taste/profile",
+            moduleReleaseDigest: lockedDigest("2"),
+            moduleVersion: "0.1.0",
+          },
+        ],
+        protocolContractDigest: lockedDigest("1"),
+        runtimeInstanceId: "taste-local-1",
+        serviceId: "taste/service",
+        serviceReleaseDigest: lockedDigest("5"),
+        serviceReleaseVersion: "0.1.0",
+      },
+    });
+
+    try {
+      const origin = new URL(served.baseUrl).origin;
+      const providerUrl = `${origin}/lenso/provider/v1`;
+      await expect(fetch(providerUrl).then((response) => response.json())).resolves.toMatchObject({
+        protocol: "lenso.provider.v1",
+        serviceId: "taste/service",
+        exports: [{ exportKey: "taste-profile", moduleId: "taste/profile" }],
+      });
+      const invocation = {
+        protocol: "lenso.provider.v1",
+        invocationId: "invocation-1",
+        serviceReleaseDigest: lockedDigest("5"),
+        exportKey: "taste-profile",
+        moduleReleaseDigest: lockedDigest("2"),
+        manifestDigest,
+        operationKind: "http_route",
+        operationName: "GET /profiles/{id}",
+        inputContractDigest: lockedDigest("4"),
+        outputContractDigest: lockedDigest("4"),
+        payload: {
+          method: "GET",
+          declared_path: "/profiles/{id}",
+          path_params: { id: "profile-1" },
+        },
+      };
+      const invoked = await fetch(`${providerUrl}/exports/taste-profile/http:invoke`, {
+        body: JSON.stringify(invocation),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      expect(invoked.status).toBe(200);
+      const outcome = (await invoked.json()) as { outcomeDigest: string };
+      expect(outcome).toMatchObject({
+        invocationId: "invocation-1",
+        result: { body: { profile: { id: "profile-1" } }, status_code: 200 },
+        status: "succeeded",
+      });
+      await expect(
+        fetch(`${providerUrl}/invocations/invocation-1`).then((response) => response.json())
+      ).resolves.toEqual(outcome);
+      const acknowledged = await fetch(`${providerUrl}/invocations/invocation-1:ack`, {
+        body: JSON.stringify({
+          invocationId: "invocation-1",
+          outcomeDigest: outcome.outcomeDigest,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      expect(acknowledged.status).toBe(200);
     } finally {
       await served.close();
     }

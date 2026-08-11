@@ -1,5 +1,5 @@
 /* eslint-disable complexity, func-style, no-use-before-define */
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { createServer, STATUS_CODES } from "node:http";
 import type {
@@ -743,9 +743,268 @@ export interface ServeServiceOptions {
   basePath?: string;
   modules?: Record<string, ServiceModuleHandlers>;
   providerCore?: ProviderCoreOptions;
+  providerV1?: ProviderV1Options;
   status?: ServiceStatusOptions;
   onReady?: (server: ServedService) => void;
 }
+
+export interface ProviderV1Export {
+  exportKey: string;
+  moduleId: string;
+  moduleVersion: string;
+  moduleReleaseDigest: string;
+  manifestDigest: string;
+  manifest: Record<string, unknown>;
+  contractDigests: Record<string, string>;
+  ready?: boolean;
+  readinessReasons?: readonly string[];
+}
+
+export interface ProviderV1Options {
+  protocolContractDigest: string;
+  serviceId: string;
+  serviceReleaseVersion: string;
+  serviceReleaseDigest: string;
+  runtimeInstanceId: string;
+  exports: readonly ProviderV1Export[];
+  features?: readonly string[];
+}
+
+interface ProviderV1Invocation {
+  protocol: "lenso.provider.v1";
+  invocationId: string;
+  serviceReleaseDigest: string;
+  exportKey: string;
+  moduleReleaseDigest: string;
+  manifestDigest: string;
+  operationKind: string;
+  operationName: string;
+  inputContractDigest: string;
+  outputContractDigest: string;
+  payload: unknown;
+}
+
+interface ProviderV1Outcome {
+  protocol: "lenso.provider.v1";
+  invocationId: string;
+  status: "succeeded";
+  result: unknown;
+  error: null;
+  effectEvidence: readonly unknown[];
+  hostEffects: {
+    events: readonly unknown[];
+    runtimeFunctionRequests: readonly unknown[];
+  };
+  outcomeDigest: string;
+}
+
+const providerV1Protocol = "lenso.provider.v1" as const;
+const providerV1BasePath = "/lenso/provider/v1";
+
+const canonicalize = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize);
+  }
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => (left === right ? 0 : left < right ? -1 : 1))
+      .map(([key, entry]) => [key, canonicalize(entry)])
+  );
+};
+
+const providerOutcome = (
+  invocationId: string,
+  result: unknown
+): ProviderV1Outcome => {
+  const outcome: ProviderV1Outcome = {
+    protocol: providerV1Protocol,
+    invocationId,
+    status: "succeeded",
+    result: canonicalize(result),
+    error: null,
+    effectEvidence: [],
+    hostEffects: { events: [], runtimeFunctionRequests: [] },
+    outcomeDigest: "",
+  };
+  outcome.outcomeDigest = `sha256:${createHash("sha256")
+    .update(JSON.stringify(outcome))
+    .digest("hex")}`;
+  return outcome;
+};
+
+const validDigest = (value: string) => /^sha256:[0-9a-f]{64}$/u.test(value);
+
+const canonicalDigest = (value: unknown) =>
+  `sha256:${createHash("sha256")
+    .update(JSON.stringify(canonicalize(value)))
+    .digest("hex")}`;
+
+const validQualifiedId = (value: string) =>
+  /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/u.test(value);
+
+const validateProviderV1 = (provider: ProviderV1Options) => {
+  for (const [field, value] of [
+    ["protocolContractDigest", provider.protocolContractDigest],
+    ["serviceReleaseDigest", provider.serviceReleaseDigest],
+  ] as const) {
+    if (!validDigest(value)) {
+      throw new Error(`providerV1.${field} must be a sha256 digest`);
+    }
+  }
+  for (const field of [
+    "serviceId",
+    "serviceReleaseVersion",
+    "runtimeInstanceId",
+  ] as const) {
+    if (!provider[field].trim()) {
+      throw new Error(`providerV1.${field} must be a non-empty string`);
+    }
+  }
+  if (provider.exports.length === 0) {
+    throw new Error("providerV1.exports must contain at least one Module export");
+  }
+  const keys = new Set<string>();
+  if (!validQualifiedId(provider.serviceId)) {
+    throw new Error("providerV1.serviceId must use namespace/name");
+  }
+  for (const providerExport of provider.exports) {
+    if (keys.has(providerExport.exportKey)) {
+      throw new Error(`providerV1 export ${providerExport.exportKey} is duplicated`);
+    }
+    keys.add(providerExport.exportKey);
+    if (!providerExport.exportKey.trim()) {
+      throw new Error("providerV1 exportKey must be non-empty");
+    }
+    if (!validQualifiedId(providerExport.moduleId)) {
+      throw new Error(
+        `providerV1 export ${providerExport.exportKey} moduleId must use namespace/name`
+      );
+    }
+    if (canonicalDigest(providerExport.manifest) !== providerExport.manifestDigest) {
+      throw new Error(
+        `providerV1 export ${providerExport.exportKey} manifestDigest does not match the canonical Manifest`
+      );
+    }
+    for (const [field, value] of [
+      ["moduleReleaseDigest", providerExport.moduleReleaseDigest],
+      ["manifestDigest", providerExport.manifestDigest],
+      ...Object.entries(providerExport.contractDigests),
+    ] as const) {
+      if (!validDigest(value)) {
+        throw new Error(
+          `providerV1 export ${providerExport.exportKey} ${field} must be a sha256 digest`
+        );
+      }
+    }
+  }
+};
+
+const providerDescriptor = (provider: ProviderV1Options) => ({
+  exports: provider.exports.map((providerExport) => ({
+    ...providerExport,
+    readinessReasons: [...(providerExport.readinessReasons ?? [])],
+    ready: providerExport.ready ?? true,
+  })),
+  features: [...(provider.features ?? ["durable_invocations"])],
+  protocol: providerV1Protocol,
+  protocolContractDigest: provider.protocolContractDigest,
+  runtimeInstanceId: provider.runtimeInstanceId,
+  serviceId: provider.serviceId,
+  serviceReleaseDigest: provider.serviceReleaseDigest,
+  serviceReleaseVersion: provider.serviceReleaseVersion,
+  transports: ["http_json"],
+});
+
+const validateProviderInvocation = (
+  value: unknown,
+  provider: ProviderV1Options,
+  providerExport: ProviderV1Export
+): ProviderV1Invocation => {
+  const invocation = value as Partial<ProviderV1Invocation> | null;
+  const contracts = Object.values(providerExport.contractDigests);
+  if (
+    !invocation ||
+    invocation.protocol !== providerV1Protocol ||
+    !invocation.invocationId?.trim() ||
+    invocation.serviceReleaseDigest !== provider.serviceReleaseDigest ||
+    invocation.exportKey !== providerExport.exportKey ||
+    invocation.moduleReleaseDigest !== providerExport.moduleReleaseDigest ||
+    invocation.manifestDigest !== providerExport.manifestDigest ||
+    !contracts.includes(invocation.inputContractDigest ?? "") ||
+    !contracts.includes(invocation.outputContractDigest ?? "")
+  ) {
+    throw new Error("Provider invocation does not match the locked export");
+  }
+  return invocation as ProviderV1Invocation;
+};
+
+const invokeProviderV1 = async (
+  invocation: ProviderV1Invocation,
+  handlers: ServiceModuleHandlers,
+  request: IncomingMessage
+) => {
+  const payload = (invocation.payload ?? {}) as Record<string, unknown>;
+  switch (invocation.operationKind) {
+    case "http_route": {
+      const method = String(payload.method ?? "") as ModuleHttpMethod;
+      const declaredPath = String(payload.declared_path ?? "");
+      const handler = handlers.http?.[routeKey(method, declaredPath)];
+      if (!handler) {
+        throw new Error(`${method} ${declaredPath} handler not found`);
+      }
+      const normalized = normalizeHandlerResult(
+        await handler({
+          body: payload.body,
+          params: (payload.path_params ?? {}) as Record<string, string>,
+          request,
+          url: new URL(request.url ?? "", "http://127.0.0.1"),
+        })
+      );
+      return { body: normalized.body, status_code: normalized.statusCode };
+    }
+    case "admin_list": {
+      const data = handlers.data?.[String(payload.entity ?? "")];
+      if (!data) throw new Error("admin list handler not found");
+      return data.list({
+        cursor:
+          typeof payload.cursor === "string" ? payload.cursor : undefined,
+        limit: Number(payload.limit ?? 50),
+      });
+    }
+    case "admin_get": {
+      const data = handlers.data?.[String(payload.entity ?? "")];
+      if (!data) throw new Error("admin detail handler not found");
+      return { record: await data.detail(String(payload.id ?? "")) };
+    }
+    case "admin_query": {
+      const query = String(payload.query ?? "");
+      const handler = handlers.queries?.[query];
+      if (!handler) throw new Error(`${query} query handler not found`);
+      return { data: await handler({ query, request }) };
+    }
+    case "admin_action": {
+      const action = String(payload.action ?? "");
+      const handler = handlers.actions?.[action];
+      if (!handler) throw new Error(`${action} action handler not found`);
+      return { result: await handler({ action, input: payload.input, request }) };
+    }
+    case "runtime_function": {
+      const handler = handlers.runtime?.[invocation.operationName];
+      if (!handler) throw new Error(`${invocation.operationName} runtime handler not found`);
+      return { output: await handler({ input: payload.input, invocation: payload as unknown as ModuleRuntimeInvokeRequest, request }) };
+    }
+    case "event_handler": {
+      const handler = handlers.events?.[invocation.operationName];
+      if (!handler) throw new Error(`${invocation.operationName} event handler not found`);
+      return (await handler({ event: payload as unknown as ModuleEventHandleRequest, request })) ?? { actions: [] };
+    }
+    default:
+      throw new Error(`unsupported Provider operation ${invocation.operationKind}`);
+  }
+};
 
 const normalizeBasePath = (basePath: string) => {
   const trimmed = basePath.replace(/\/+$/u, "");
@@ -1930,10 +2189,78 @@ export const serveService = async (
   const coreBearer = options.providerCore
     ? Buffer.from(options.providerCore.bearerToken, "utf8")
     : undefined;
+  const providerV1 = options.providerV1;
+  if (providerV1) validateProviderV1(providerV1);
+  const providerInvocations = new Map<string, ProviderV1Outcome>();
   let servedBaseUrl = "";
 
   const server = createServer(async (request, response) => {
     const requestPath = new URL(request.url ?? "", "http://127.0.0.1").pathname;
+    if (providerV1 && request.method === "GET" && requestPath === providerV1BasePath) {
+      sendJson(response, 200, providerDescriptor(providerV1));
+      return;
+    }
+    if (
+      providerV1 &&
+      request.method === "GET" &&
+      (requestPath === `${providerV1BasePath}/health/live` ||
+        requestPath === `${providerV1BasePath}/health/ready`)
+    ) {
+      sendJson(response, 200, {
+        exports: Object.fromEntries(
+          providerV1.exports.map((entry) => [entry.exportKey, { ready: entry.ready ?? true, reasons: [...(entry.readinessReasons ?? [])] }])
+        ),
+        live: true,
+        observedAt: new Date().toISOString(),
+        protocol: providerV1Protocol,
+        ready: providerV1.exports.every((entry) => entry.ready ?? true),
+        serviceId: providerV1.serviceId,
+        serviceReleaseDigest: providerV1.serviceReleaseDigest,
+      });
+      return;
+    }
+    if (providerV1 && requestPath.startsWith(`${providerV1BasePath}/invocations/`)) {
+      const suffix = requestPath.slice(`${providerV1BasePath}/invocations/`.length);
+      const acknowledgement = suffix.endsWith(":ack");
+      const invocationId = decodeURIComponent(acknowledgement ? suffix.slice(0, -4) : suffix);
+      if (request.method === "GET" && !acknowledgement) {
+        const outcome = providerInvocations.get(invocationId);
+        sendJson(response, outcome ? 200 : 404, outcome ?? { error: { code: "not_found", message: "Invocation not found", retryable: false, details: [] } });
+        return;
+      }
+      if (request.method === "POST" && acknowledgement) {
+        const body = (await readBody(request)) as { invocationId?: string; outcomeDigest?: string };
+        const outcome = providerInvocations.get(invocationId);
+        if (!outcome || body.invocationId !== invocationId || body.outcomeDigest !== outcome.outcomeDigest) {
+          sendJson(response, 409, { error: { code: "acknowledgement_conflict", message: "Acknowledgement does not match the durable outcome", retryable: false, details: [] } });
+          return;
+        }
+        sendJson(response, 200, { invocationId });
+        return;
+      }
+    }
+    if (providerV1 && request.method === "POST" && requestPath.startsWith(`${providerV1BasePath}/exports/`)) {
+      try {
+        const [encodedExportKey] = requestPath.slice(`${providerV1BasePath}/exports/`.length).split("/");
+        const exportKey = decodeURIComponent(encodedExportKey ?? "");
+        const providerExport = providerV1.exports.find((entry) => entry.exportKey === exportKey);
+        if (!providerExport) throw new Error(`Provider export ${exportKey} is not declared`);
+        const invocation = validateProviderInvocation(await readBody(request), providerV1, providerExport);
+        const existing = providerInvocations.get(invocation.invocationId);
+        if (existing) {
+          sendJson(response, 200, existing);
+          return;
+        }
+        const handlers = options.modules?.[providerExport.moduleId] ?? options.modules?.[providerExport.exportKey] ?? {};
+        const result = await invokeProviderV1(invocation, handlers, request);
+        const outcome = providerOutcome(invocation.invocationId, result);
+        providerInvocations.set(invocation.invocationId, outcome);
+        sendJson(response, 200, outcome);
+      } catch (error) {
+        sendJson(response, 400, { error: { code: "invalid_invocation", message: error instanceof Error ? error.message : "Provider invocation is invalid", retryable: false, details: [] } });
+      }
+      return;
+    }
     if (
       request.method === "GET" &&
       requestPath === systemPlaneCorePath &&
