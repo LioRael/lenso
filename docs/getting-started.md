@@ -1,193 +1,130 @@
 # Getting Started
 
-This guide is the first-user happy path for running Lenso locally and installing
-a service that provides a module. It avoids marketplace hardening flows; you
-choose a manifest URL, install it, restart services, and inspect the loaded
-module.
+This guide follows the public application lifecycle for a local Lenso System.
+It begins with one exact App Composition and uses the same public entrypoints as
+the integrated Support Desk acceptance.
 
 ## Prerequisites
 
-- Rust toolchain compatible with the workspace.
-- Cargo for workspace commands.
-- Docker for local Postgres.
+- Node.js and npm for the `@lenso/cli` distribution.
+- Rust and Cargo when the App contains Linked Rust Modules.
+- Docker when the selected local Store uses Postgres.
+- A separately installed Lenso Console Service.
 
-For a blank Rust module-authoring project outside this repository, install the
-facade crate from crates.io:
-
-```sh
-cargo add lenso@0.3.18
-```
-
-That crate exposes serializable module declarations and manifest linting. Local
-host development in this backend repository still uses the workspace crates.
-
-For a blank host project, install the standalone CLI and scaffold the starter:
+Install the CLI:
 
 ```sh
-cargo install lenso-cli
-lenso host init ../my-lenso-app
-cd ../my-lenso-app
-cp .env.example .env
-docker compose up -d postgres
-cargo run --bin migrate
-cargo run --bin api
+npm install -g @lenso/cli
 ```
 
-Run `cargo run --bin worker` in a second shell. The template depends on the
-crates.io `lenso` package with the `host` feature enabled. `lenso::host` wraps
-the API, worker, migration boot helpers, and a narrow linked HTTP route
-authoring surface; generated hosts should pin a crate version for reproducible
-builds. The starter exposes `GET /v1/app/status` plus `GET`/`POST
-/v1/app/items` as the first host-owned linked routes and data surface.
-Install Lenso Console separately with `lenso console install`. The managed host
-serves only its Data Plane and its dedicated System Plane listener; it never
-serves Console web assets.
+Use `cargo install lenso-cli` instead when you prefer the Rust distribution of
+the same binary.
 
-## Try The Audit Log Module
+## Public lifecycle
 
-For a minimal first-party module verification in a generated host, install
-`audit-log` by name from the official catalog before starting the app:
+### Compose
+
+Compose the Support Desk App and apply the reviewed result:
 
 ```sh
-lenso host init ../my-lenso-audit-app
-cd ../my-lenso-audit-app
-cp .env.example .env
-lenso module install audit-log
-lenso serve
+lenso app compose ./acme-support \
+  --blueprint support-desk \
+  --apply
 ```
 
-Use the separate Console Service to compose the Module Release and grant only
-the exact reviewed capability contracts required by its UI artifact.
+The result is `./acme-support/lenso.app.json`. It is the only application
+composition and lock: its revision, immutable Module release digests,
+dependency selections, and Linked or Service implementation bindings must all
+validate together. Blueprints and addons are authoring inputs, not parallel
+runtime state.
 
-## Enable Auth Redis Sessions In A Host
+The App Composition contains identities and bindings. It does not contain
+process commands, bearer tokens, resolved secrets, or production deployment
+instructions.
 
-Generated hosts can opt into Redis-backed auth session lookup through the auth
-module's install profile:
+### Run locally
+
+Preview and then run the exact App Composition:
 
 ```sh
-lenso module install auth --profile redis-session-cache
+lenso system dev \
+  --system-file ./acme-support/lenso.app.json \
+  --dry-run \
+  --json
+
+lenso system dev \
+  --system-file ./acme-support/lenso.app.json
 ```
 
-That descriptor-owned profile updates the host `Cargo.toml` so
-`lenso-module-auth` builds with `features = ["redis"]`, writes
-`REDIS_URL=redis://localhost:6379/0` to `.env`, and records the runtime default
-`auth.session_cache=redis` in `.lenso/runtime-config-defaults.json`.
+`lenso system dev` realizes Service-backed bindings through a persistent Local
+Control Adapter and starts the declared local Workloads through their public
+entrypoints. Adapter state records only credential references; credentials
+remain in owner-only local files and are never copied into `lenso.app.json`.
 
-Redis is still an external service decision. The starter Docker Compose file
-starts Postgres only, so add or provide Redis before restarting the API and
-worker. If `auth.session_cache=redis` is active without `REDIS_URL`, host boot
-fails validation instead of silently falling back to Postgres.
-
-## Configure Local Environment
-
-Start from the committed local defaults:
+Clean up only Adapter-owned local Workloads when the session ends:
 
 ```sh
-cp .env.example .env
+lenso system dev \
+  --system-file ./acme-support/lenso.app.json \
+  --cleanup
 ```
 
-`.env.example` contains local Postgres, API, CORS, linked composition profile,
-logging, and optional OTLP defaults. Provider exports are selected from
-`lenso.modules.lock.json`; their exact Service releases, endpoints, and identity
-policy come from the target environment's Service Installation Set. They are
-not configured through `.env`.
+### Connect
 
-Local development defaults to `LENSO_COMPOSITION_PROFILE=demo`, which includes
-the first-party auth modules and platform story surface. Starter hosts use
-`LENSO_COMPOSITION_PROFILE=core` and do not install auth by default; add auth
-modules through host composition only when the app needs them. Non-local
-environments must set `LENSO_COMPOSITION_PROFILE=core` or
-`LENSO_COMPOSITION_PROFILE=demo` explicitly.
+Start the separately installed Console Service, authenticate as an operator,
+and submit the exact System topology and Management Binding through the Console
+Service's Connect System API. The connection is bound to the App revision,
+Module releases, Surface artifacts, Service identities, and declared Control
+Adapter.
 
-Development bearer tokens such as `Bearer dev-service:admin` are accepted only
-for local/development API environments. Do not use them as deployment
-credentials.
+Connecting does not require an environment or deployment API. Console records
+the connection and loads eligible receipt-bound `console_ui_esm` Surfaces; it
+does not create, adopt, release, or deploy Workloads.
 
-In production, Console access uses the Console Service's own Auth Module. Create
-the first operator with `lenso console operator bootstrap`; operator credentials
-never cross into a managed Service.
+### Status
 
-## Run The Local Services
+Open Console and inspect the System Connection. System, Service, Module,
+Surface, and Workload objects report one of `connected`, `unavailable`,
+`incompatible`, or `unmanaged`, always with a direct reason.
 
-Start Postgres and apply migrations:
+The Support Desk Surface should list, create, update, and close tickets through
+its generated client and Surface Gateway. It must not receive direct Service
+credentials or read the Service Store. A supported local Suspend/Resume or
+Stop/Start operation is asynchronous: follow its Operation Record until Console
+shows the final operational state.
+
+If the Local Control Adapter is unavailable, Workload observation is unknown
+and mutation is rejected without queueing or fallback. Console does not release or deploy
+the System; production delivery remains repository- and operator-owned.
+
+## Service capability tiers
+
+Provider `lenso.service.v1` can be authored in Rust or TypeScript and relies on
+Host-owned runtime coordination. Autonomous Service `lenso.service.v2` is
+Rust-only and owns its runtime, Service Store, identity boundary, direct
+HTTP/gRPC, Event Contracts, and Durable Workflows. See
+[Service Capability Tiers](architecture/service-capability-tiers.md).
+
+## Framework repository development
+
+When changing the framework itself, use the owner-local commands rather than
+the generated App commands:
 
 ```sh
 docker compose -f infrastructure/local/docker-compose.yml up -d postgres
 cargo run --locked -p lenso-migrate
-```
-
-Start the API and worker in separate shells:
-
-```sh
 cargo run --locked -p lenso-api
 cargo run --locked -p lenso-worker
 ```
 
-For Console development, run the complete Service from the sibling
-`../lenso-console` repository with `pnpm run service:serve`.
+The sibling `lenso-console` repository owns Console Service startup and checks.
+The sibling `lenso-examples` repository owns the integrated Support Desk
+acceptance.
 
-## Install The Example Service
+## Release checks
 
-User-facing examples live in
-[LioRael/lenso-examples](https://github.com/LioRael/lenso-examples). This
-backend repository does not ship JavaScript example modules or manage their
-package dependencies.
-
-Clone and start the example service in a separate checkout:
-
-```sh
-git clone https://github.com/LioRael/lenso-examples ../lenso-examples
-```
-
-Start the support-ticket service from the `lenso-examples` repository,
-then install its manifest here with the same command a user would run.
-
-Install its manifest:
-
-```sh
-lenso service install http://127.0.0.1:4110/lenso/service/v1/manifest
-```
-
-When the provider is already installed and you want to roll a packaged update,
-plan it before applying it:
-
-```sh
-lenso service release plan support-suite-provider \
-  ../lenso-examples/dist/lenso-service/support-suite-provider/lenso.service-package.json \
-  --output .lenso/support-suite-provider.release-plan.json
-lenso service policy check .lenso/support-suite-provider.release-plan.json --fail-on breaking
-lenso service release apply .lenso/support-suite-provider.release-plan.json
-```
-
-The apply step records `.lenso/service-releases.json`; Console Services shows
-the latest release risk and recent provider history.
-
-Restart the local services. The `support-ticket` Module is delivered by the
-`support-suite-provider` Service through the selected Provider Runtime Plan.
-
-Provider Runtime adapters and Linked Modules are selected at process startup.
-After changing the active Module composition, restart the API and worker. A
-separately deployed Console Service observes the resulting Service state through
-System Plane capabilities; it is not a Host-loaded package export.
-
-To verify the backend host contract boundary without opening the frontend:
-
-```sh
-cargo test --locked -p lenso-api --test first_user -- --nocapture
-```
-
-## Release Check
-
-Before approving a Release-plz or Changesets release pull request, run:
-
-```sh
-cargo fmt --all -- --check
-cargo check --locked --workspace --all-targets
-cargo test --locked --workspace
-cargo run --locked -p lenso-api-contracts --bin generate-contracts
-cargo test --locked -p lenso-api-contracts --test architecture
-cargo test --locked -p lenso-api-contracts --test generated_artifacts
-```
-
-Run the CLI repository's starter checks when touching the standalone
-scaffolder.
+Before approving a repository-owned release pull request, run the explicit
+commands from `.github/workflows/ci.yml` and follow
+[the release process](release-process.md). Publication uses the repository's
+Trusted Publisher workflow; local development authority does not grant
+publication or production deployment authority.

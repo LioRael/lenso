@@ -10,6 +10,104 @@ fn architecture_rules_pass_for_current_workspace() {
 }
 
 #[test]
+fn public_application_lifecycle_must_be_complete_and_ordered() {
+    let root = TestRepo::new();
+    root.write(
+        "README.md",
+        r#"
+## Public lifecycle
+
+1. **Compose.** Materialize `lenso.app.json`.
+3. **Connect.** Connect Console.
+2. **Run locally.** Use `lenso system dev`.
+4. **Status.** Inspect the System. Console does not release or deploy.
+        "#,
+    );
+    root.write(
+        "docs/getting-started.md",
+        r#"
+## Public lifecycle
+### Compose
+Materialize `lenso.app.json`.
+### Run locally
+Use `lenso system dev`.
+### Connect
+Connect Console.
+### Status
+Console does not release or deploy.
+        "#,
+    );
+
+    let error = arch_check::check_public_application_lifecycle(root.path())
+        .expect_err("an out-of-order lifecycle should fail");
+
+    assert!(error.to_string().contains("out of order"), "{error}");
+}
+
+#[test]
+fn typescript_service_kit_must_reject_autonomous_parity_claims() {
+    let root = TestRepo::new();
+    root.write(
+        "README.md",
+        "[Service Capability Tiers](docs/architecture/service-capability-tiers.md)",
+    );
+    root.write(
+        "docs/architecture/service-capability-tiers.md",
+        r#"
+# Service Capability Tiers
+## Provider
+`lenso.service.v1` uses Rust and TypeScript.
+## Autonomous Service
+`lenso.service.v2` is Rust only with direct HTTP, direct gRPC, Event Contracts,
+Durable Workflows, Workload Identity, Delegated Actor Context, and Service-owned storage.
+        "#,
+    );
+    root.write(
+        "sdk/typescript/packages/service-kit/README.md",
+        "Provider tier only: `lenso.service.v1`. `lenso.service.v2` support is coming soon.",
+    );
+
+    let error = arch_check::check_service_capability_tiers(root.path())
+        .expect_err("TypeScript must state its Autonomous Service non-parity");
+
+    assert!(
+        error
+            .to_string()
+            .contains("does not provide Autonomous Service parity"),
+        "{error}",
+    );
+}
+
+#[test]
+fn curated_product_docs_reject_retired_workflow_vocabulary() {
+    let root = TestRepo::new();
+    root.write(
+        "README.md",
+        "Create an App Proof from the Launchpad change plan.",
+    );
+
+    let error = arch_check::check_retired_public_product_vocabulary(root.path())
+        .expect_err("retired product vocabulary should fail");
+
+    assert!(
+        error.to_string().contains("retired public term `proof`"),
+        "{error}",
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("retired public term `launchpad`"),
+        "{error}",
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("retired public term `change plan`"),
+        "{error}",
+    );
+}
+
+#[test]
 fn root_tooling_boundary_rejects_generic_tools_and_scripts() {
     let root = TestRepo::new();
     root.write("tools/check.sh", "#!/bin/sh\n");

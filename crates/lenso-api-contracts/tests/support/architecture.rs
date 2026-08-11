@@ -48,6 +48,21 @@ pub fn run() -> anyhow::Result<()> {
         &mut failures,
     );
     collect_result(
+        check_public_application_lifecycle(&root),
+        "public application lifecycle",
+        &mut failures,
+    );
+    collect_result(
+        check_service_capability_tiers(&root),
+        "Service Capability Tiers",
+        &mut failures,
+    );
+    collect_result(
+        check_retired_public_product_vocabulary(&root),
+        "retired public product vocabulary",
+        &mut failures,
+    );
+    collect_result(
         check_contract_files_parse(&root),
         "parseable contract files",
         &mut failures,
@@ -73,6 +88,231 @@ pub fn run() -> anyhow::Result<()> {
     }
 
     bail!("architecture check failed:\n{}", failures.join("\n"));
+}
+
+pub fn check_public_application_lifecycle(root: &Path) -> anyhow::Result<()> {
+    let readme_path = root.join("README.md");
+    let readme = fs::read_to_string(&readme_path)
+        .with_context(|| format!("failed to read {}", readme_path.display()))?;
+    let required_markers = [
+        "## Public lifecycle",
+        "1. **Compose.**",
+        "2. **Run locally.**",
+        "3. **Connect.**",
+        "4. **Status.**",
+    ];
+    let mut violations = Vec::new();
+    let mut previous = None;
+
+    for marker in required_markers {
+        match readme.find(marker) {
+            Some(position) if previous.is_none_or(|previous| position > previous) => {
+                previous = Some(position);
+            }
+            Some(_) => violations.push(format!(
+                "README.md public lifecycle marker `{marker}` is out of order"
+            )),
+            None => violations.push(format!("README.md public lifecycle is missing `{marker}`")),
+        }
+    }
+
+    for marker in [
+        "lenso.app.json",
+        "lenso system dev",
+        "does not release or deploy",
+    ] {
+        if !readme.contains(marker) {
+            violations.push(format!("README.md public lifecycle must state `{marker}`"));
+        }
+    }
+
+    let getting_started_path = root.join("docs/getting-started.md");
+    let getting_started = fs::read_to_string(&getting_started_path)
+        .with_context(|| format!("failed to read {}", getting_started_path.display()))?;
+    let getting_started_markers = [
+        "## Public lifecycle",
+        "### Compose",
+        "### Run locally",
+        "### Connect",
+        "### Status",
+    ];
+    let mut previous = None;
+    for marker in getting_started_markers {
+        match getting_started.find(marker) {
+            Some(position) if previous.is_none_or(|previous| position > previous) => {
+                previous = Some(position);
+            }
+            Some(_) => violations.push(format!(
+                "docs/getting-started.md lifecycle marker `{marker}` is out of order"
+            )),
+            None => violations.push(format!(
+                "docs/getting-started.md lifecycle is missing `{marker}`"
+            )),
+        }
+    }
+
+    for marker in [
+        "lenso.app.json",
+        "lenso system dev",
+        "does not release or deploy",
+    ] {
+        if !getting_started.contains(marker) {
+            violations.push(format!(
+                "docs/getting-started.md public lifecycle must state `{marker}`"
+            ));
+        }
+    }
+
+    for retired_command in [
+        "lenso host init",
+        "lenso service install",
+        "lenso service release plan",
+        "lenso service release apply",
+    ] {
+        if getting_started.contains(retired_command) {
+            violations.push(format!(
+                "docs/getting-started.md must not teach `{retired_command}` as the application lifecycle"
+            ));
+        }
+    }
+
+    ensure_empty(
+        violations,
+        "public product documentation must teach Compose, Run locally, Connect, and Status",
+    )
+}
+
+pub fn check_service_capability_tiers(root: &Path) -> anyhow::Result<()> {
+    let tiers_path = root.join("docs/architecture/service-capability-tiers.md");
+    let tiers = fs::read_to_string(&tiers_path)
+        .with_context(|| format!("failed to read {}", tiers_path.display()))?;
+    let typescript_readme_path = root.join("sdk/typescript/packages/service-kit/README.md");
+    let typescript_readme = fs::read_to_string(&typescript_readme_path)
+        .with_context(|| format!("failed to read {}", typescript_readme_path.display()))?;
+    let product_readme_path = root.join("README.md");
+    let product_readme = fs::read_to_string(&product_readme_path)
+        .with_context(|| format!("failed to read {}", product_readme_path.display()))?;
+    let mut violations = Vec::new();
+
+    for marker in [
+        "# Service Capability Tiers",
+        "## Provider",
+        "`lenso.service.v1`",
+        "Rust and TypeScript",
+        "## Autonomous Service",
+        "`lenso.service.v2`",
+        "Rust only",
+        "direct HTTP",
+        "direct gRPC",
+        "Event Contracts",
+        "Durable Workflows",
+        "Workload Identity",
+        "Delegated Actor Context",
+        "Service-owned storage",
+    ] {
+        if !tiers.contains(marker) {
+            violations.push(format!(
+                "docs/architecture/service-capability-tiers.md is missing `{marker}`"
+            ));
+        }
+    }
+
+    for marker in [
+        "Provider tier only",
+        "`lenso.service.v1`",
+        "`lenso.service.v2`",
+        "does not provide Autonomous Service parity",
+    ] {
+        if !typescript_readme.contains(marker) {
+            violations.push(format!(
+                "sdk/typescript/packages/service-kit/README.md is missing `{marker}`"
+            ));
+        }
+    }
+
+    if !product_readme
+        .contains("[Service Capability Tiers](docs/architecture/service-capability-tiers.md)")
+    {
+        violations
+            .push("README.md must link the authoritative Service Capability Tiers".to_owned());
+    }
+
+    ensure_empty(
+        violations,
+        "public documentation must distinguish Provider v1 from Rust-only Autonomous Service v2",
+    )
+}
+
+pub fn check_retired_public_product_vocabulary(root: &Path) -> anyhow::Result<()> {
+    const CURATED_PUBLIC_FILES: &[&str] = &[
+        "README.md",
+        "docs/getting-started.md",
+        "docs/agent-ready-module-demo.md",
+        "docs/architecture/framework-public-surface.md",
+        "docs/architecture/service-capability-tiers.md",
+        "crates/lenso/README.md",
+        "sdk/typescript/packages/service-kit/README.md",
+        "skills/README.md",
+        "skills/lenso-start/SKILL.md",
+        "skills/lenso-starter-host/SKILL.md",
+        "skills/lenso-app-composition/SKILL.md",
+        "skills/lenso-app-composition/agents/openai.yaml",
+        "skills/lenso-app-composition/references/app-verification.md",
+        "skills/lenso-app-composition/references/generated-state.md",
+        "skills/lenso-module-authoring/SKILL.md",
+        "skills/lenso-module-authoring/references/manifest-and-surfaces.md",
+    ];
+    const RETIRED_PHRASES: &[&str] = &[
+        "proof",
+        "evidence",
+        "readiness",
+        "degradation",
+        "change plan",
+        "launchpad",
+        "environment-owned",
+        "admin data",
+        "schema-admin",
+        "admin action",
+        "admin_action",
+        "isolated_web",
+        "generic query",
+        "generic command",
+        "data workspace",
+    ];
+    let mut violations = Vec::new();
+
+    for relative_path in CURATED_PUBLIC_FILES {
+        let path = root.join(relative_path);
+        let source = match fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(error) => {
+                violations.push(format!("{relative_path} must be readable: {error}"));
+                continue;
+            }
+        };
+        let lowercase = source.to_lowercase();
+        for retired in RETIRED_PHRASES {
+            if lowercase.contains(retired) {
+                violations.push(format!(
+                    "{relative_path} teaches retired public term `{retired}`"
+                ));
+            }
+        }
+    }
+
+    if root
+        .join("skills/lenso-app-composition/references/app-proof.md")
+        .exists()
+    {
+        violations.push(
+            "skills/lenso-app-composition/references/app-proof.md must stay removed".to_owned(),
+        );
+    }
+
+    ensure_empty(
+        violations,
+        "curated product documentation must use the simplified application model",
+    )
 }
 
 pub fn check_forbidden_module_folders(root: &Path) -> anyhow::Result<()> {

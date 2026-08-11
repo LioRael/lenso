@@ -27,12 +27,21 @@ import {
   serviceWorkspaceBaseUrl,
   serviceWorkspaceSchema,
   serviceWorkspaceToModuleServices,
+  systemPlaneCorePath,
+  systemPlaneCoreProtocol,
   validateModuleContract,
   validateModuleRelease,
   validateServiceContract,
   validateServicePackage,
   validateServiceWorkspace,
 } from "./index";
+
+describe("Provider System Plane Core exports", () => {
+  it("exports the exact shared Core protocol and path", () => {
+    expect(systemPlaneCoreProtocol).toBe("lenso.system-plane.v1");
+    expect(systemPlaneCorePath).toBe("/system-plane/v1");
+  });
+});
 
 describe("defineServiceContract", () => {
   it("builds a provider service manifest with modules", () => {

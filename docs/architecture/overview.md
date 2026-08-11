@@ -7,6 +7,12 @@ projects reliable defaults without hiding the system. The public package surface
 is defined in
 [`framework-public-surface.md`](framework-public-surface.md).
 
+The public Service protocols are divided into exact
+[Service Capability Tiers](service-capability-tiers.md): Provider
+`lenso.service.v1` can be authored in Rust or TypeScript and remains
+Host-managed; Autonomous Service `lenso.service.v2` is Rust-only and owns its
+runtime, Service Store, identity boundary, and direct Data Plane contracts.
+
 ## Modular Monolith
 
 The deployable shape is one API app, one worker app, and one migration app. Product capabilities live under `modules/`, and each module is a Rust crate with its own routes, DTOs, commands, queries, models, repositories, events, jobs, runtime registrations, migrations, and tests.
