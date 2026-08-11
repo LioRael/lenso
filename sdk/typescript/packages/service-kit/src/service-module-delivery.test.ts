@@ -28,6 +28,7 @@ import {
   metricBinding,
   metricStrip,
   postRoute,
+  problemDetails,
   queryValue,
   readLensoInvocationContext,
   runtimeFunction,
@@ -40,6 +41,31 @@ import {
 } from "./service-module-delivery";
 
 describe("@lenso/service-kit internal delivery adapter", () => {
+  test("builds the canonical top-level Problem Details contract", () => {
+    expect(
+      problemDetails({
+        code: "validation",
+        detail: "Ticket title is required",
+        errors: [{ field: "title", reason: "required" }],
+        nextActions: ["Provide a non-empty title"],
+        status: 400,
+      })
+    ).toEqual({
+      body: {
+        code: "validation",
+        correlation_id: null,
+        detail: "Ticket title is required",
+        errors: [{ field: "title", reason: "required" }],
+        next_actions: ["Provide a non-empty title"],
+        request_id: null,
+        status: 400,
+        title: "Validation failed",
+        type: "https://lenso.dev/problems/validation",
+      },
+      statusCode: 400,
+    });
+  });
+
   test("defines a serializable service module manifest", () => {
     expect(
       defineProviderModule({
@@ -404,12 +430,24 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         serviceName: "api",
         state: "ready",
       });
-      await expect(
-        fetch(`${served.baseUrl}/missing`).then((response) => response.json())
-      ).resolves.toMatchObject({
-        error: {
-          code: "not_found",
+      const missing = await fetch(`${served.baseUrl}/missing`, {
+        headers: {
+          "x-lenso-correlation-id": "corr-service-kit",
+          "x-request-id": "req-service-kit",
         },
+      });
+      expect(missing.headers.get("content-type")).toBe(
+        "application/problem+json"
+      );
+      await expect(missing.json()).resolves.toEqual({
+        code: "not_found",
+        correlation_id: "corr-service-kit",
+        detail: "billing service module endpoint not found",
+        errors: [],
+        request_id: "req-service-kit",
+        status: 404,
+        title: "Not found",
+        type: "https://lenso.dev/problems/not_found",
       });
     } finally {
       await served.close();
@@ -497,12 +535,19 @@ describe("@lenso/service-kit internal delivery adapter", () => {
       const missingCredential = await fetch(served.systemPlaneCoreUrl);
       const missingBody = await missingCredential.json();
       expect(missingCredential.status).toBe(401);
+      expect(missingCredential.headers.get("content-type")).toBe(
+        "application/problem+json"
+      );
       expect(missingBody).toEqual({
-        error: {
-          code: "system_plane_bearer_required",
-          message:
-            "System Plane Core access requires the configured local bearer credential",
-        },
+        code: "system_plane_bearer_required",
+        correlation_id: null,
+        detail:
+          "System Plane Core access requires the configured local bearer credential",
+        errors: [],
+        request_id: null,
+        status: 401,
+        title: "Unauthorized",
+        type: "https://lenso.dev/problems/system_plane_bearer_required",
       });
 
       const wrongCredential = await fetch(served.systemPlaneCoreUrl, {
@@ -908,10 +953,14 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         }
       );
       expect(missingResponse.status).toBe(404);
+      expect(missingResponse.headers.get("content-type")).toBe(
+        "application/problem+json"
+      );
       await expect(missingResponse.json()).resolves.toMatchObject({
-        error: {
-          code: "not_found",
-        },
+        code: "not_found",
+        detail: "missing admin action handler not found",
+        status: 404,
+        type: "https://lenso.dev/problems/not_found",
       });
     } finally {
       await served.close();
