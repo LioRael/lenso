@@ -1,6 +1,18 @@
 # @lenso/service-kit
 
-Helpers for building Lenso services that provide one or more modules.
+Helpers for building Lenso Provider Services that provide one or more Modules.
+
+## Capability tier
+
+`@lenso/service-kit` implements the Provider tier only through
+`lenso.service.v1`. It does not provide Autonomous Service parity for
+`lenso.service.v2`; the current Autonomous Service runtime and its Service-owned
+storage, direct HTTP/gRPC, Event Contract, Durable Workflow, Workload Identity,
+and Delegated Actor Context capabilities are Rust only.
+
+See the framework's
+[Service Capability Tiers](https://github.com/LioRael/lenso/blob/main/docs/architecture/service-capability-tiers.md)
+for the exact ownership boundary.
 
 ```ts
 import {
@@ -172,6 +184,41 @@ console.log(server.statusUrl);
 - `GET /lenso/service/v1/manifest`
 - `GET /lenso/service/v1/status`
 - module handlers below `/lenso/service/v1/modules/{moduleName}`
+
+## Local Provider Core identity
+
+For a local Console enrollment check, `serveService()` can expose the Provider's
+identity from the same loopback origin at the fixed
+`GET /system-plane/v1` path:
+
+```ts
+const bearerToken = process.env.LENSO_LOCAL_ENROLLMENT_TOKEN;
+if (!bearerToken) {
+  throw new Error("LENSO_LOCAL_ENROLLMENT_TOKEN is required");
+}
+
+const served = await serveService(service, {
+  providerCore: {
+    bearerToken,
+    serviceId: "support-service",
+    servicePrincipal: "service:support-service",
+    serviceRevision: "release:sha256:0123456789abcdef",
+  },
+});
+
+console.log(served.systemPlaneCoreUrl);
+```
+
+The option is disabled by default and accepts only a loopback `host`. When it is
+enabled, the route requires the exact `Authorization: Bearer ...` credential;
+missing or incorrect credentials receive the same fixed `401` response. The
+token is never included in the Core document, manifest, error body, or returned
+server handle.
+
+The response is the strict camelCase `lenso.system-plane.v1` Core identity with
+`serviceId`, `servicePrincipal`, and `serviceRevision`. It advertises no
+capabilities and does not add Autonomous Service runtime behavior to the
+TypeScript Provider tier.
 
 Install it into a host with:
 

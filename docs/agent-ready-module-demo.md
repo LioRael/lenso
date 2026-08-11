@@ -1,94 +1,66 @@
-# Agent-Ready Module Demo
+# Agent-Ready Support Desk Acceptance
 
-This demo is the public proof point for Lenso's agent-ready service
-workflow:
+The Support Desk acceptance is the highest public product seam for Lenso's
+agent-ready application workflow:
 
 ```text
-Build a support ticket module for a Lenso app.
+Build and operate a support ticket application with Lenso.
 ```
 
-The runnable example lives in the sibling
-[`lenso-examples/examples/support-ticket`](https://github.com/LioRael/lenso-examples/tree/main/examples/support-ticket)
-repository path.
+The runnable application lives in
+[`LioRael/lenso-examples`](https://github.com/LioRael/lenso-examples). Lower-level
+framework, CLI, Console, generated-client, browser, transport, and container
+tests support this scenario; they do not replace it.
 
-## Flow
+## Public lifecycle
 
-1. Invoke `lenso-start` when you want the router to pick the public workflow.
-2. Use `lenso-business-planning` when the prompt is a broad business idea and
-   module boundaries are still unclear.
-3. Use `lenso-app-composition` when a blueprint, addon, capability pack, or
-   generated app is part of the selected path.
-4. Use `lenso-module-authoring` for an in-host linked module, or
-   `lenso-service-authoring` for an out-of-process service that provides
-   one or more modules.
-5. Use `lenso-console-surface-authoring` when the slice needs a distinct
-   operator experience rather than only declarative data and actions.
-6. Scaffold the module:
+1. **Compose.** Materialize and validate the exact `lenso.app.json`, including
+   its revision, immutable Module release digests, dependency selections, and
+   Linked or Service implementation bindings.
+2. **Run locally.** Start the System through `lenso system dev` and the typed
+   Local Control Adapter. Runtime commands and credentials remain outside the
+   App Composition.
+3. **Connect.** Start the separate Console Service and connect the exact System
+   topology and Management Binding through the authenticated Console Service
+   API. Console does not create, adopt, release, or deploy Workloads.
+4. **Status.** Use a real browser to inspect System, Service, Module, Surface,
+   and Workload states. Each object is `connected`, `unavailable`,
+   `incompatible`, or `unmanaged` with a direct reason.
 
-```sh
-lenso module create support --with-console-ui
-```
+## Business scenario
 
-7. Add the smallest useful support-ticket slice:
-   - ticket list/detail data surface
-   - create or update action
-   - one runtime workflow or function
-   - one module-owned `console_ui_esm` Console UI artifact
-   - one verification check that fails if the module is not wired
-8. Run the focused checks for the changed surface.
-9. Open the configured Console Service and confirm the module appears with its data, actions, and
-   runtime visibility.
+The browser loads the receipt-bound Support Ticket and Story `console_ui_esm`
+Surfaces without manual enablement. The Support Ticket Surface uses its
+generated client and Surface Gateway to list, create, update, and close tickets
+through the real Business API.
 
-## Run The Example
+The acceptance verifies representative actor, tenant, deadline, idempotency,
+Surface Grant, Console actor, and target Module authorization behavior. Browser
+code never receives a managed-Service credential and never reads a database
+directly.
 
-From `lenso-examples`:
+## Local Workload control
 
-```sh
-pnpm smoke:support-ticket
-pnpm start:support-ticket
-```
+The same scenario completes one supported Suspend/Resume or Stop/Start round
+trip through the Local Control Adapter. It observes the asynchronous Operation
+Record and final operational state through Console.
 
-Install the running service into a local Lenso host:
+When the Adapter is unavailable, observation reports unknown state and mutation
+is rejected without queueing, replay, or fallback. Console and the active
+Adapter remain protected targets.
 
-```sh
-lenso service install http://127.0.0.1:4110/lenso/service/v1/manifest
-```
+## Authoring route
 
-The examples repository also runs:
+Use `lenso-start` when the workflow owner is not yet clear. The usual Support
+Desk path composes the App, implements the Support Ticket Module and its
+Business API, authors its Console Surface, then runs the integrated acceptance.
+The exact package manifests, generated contracts, current CLI help, and
+repository checks remain authoritative.
 
-```sh
-pnpm host-api-smoke:support-ticket
-```
+## Keep out
 
-That smoke scaffolds a temporary host, installs the service through the
-real `lenso` CLI, and verifies loaded module metadata, schema-admin data, HTTP
-proxy calls, and Runtime Story evidence.
-
-## Follow-On Proof
-
-After the support-ticket loop, `examples/account-profile` proves a module that
-depends on `auth` while owning profile, organization, and membership data. It
-also declares HTTP routes, an admin action, and schema-admin pages.
-
-From `lenso-examples`:
-
-```sh
-pnpm smoke:account-profile
-pnpm host-api-smoke:account-profile
-```
-
-## What This Proves
-
-- A business capability can ship as a Lenso module.
-- The module declares its backend and console shape through explicit manifests.
-- Agents have stable rails: scaffolds, skills, contracts, checks, and Console
-  verification.
-- Teams can start in one deployable system and extract hardened module
-  boundaries into independently running services later.
-
-## Keep Out
-
-- Do not add a custom agent runtime for this demo.
-- Do not require marketplace trust, deployment orchestration, or service
-  discovery.
-- Do not build a generic CRUD framework before a real module needs it.
+- Do not add a custom agent runtime for this scenario.
+- Do not route business behavior through Console or the System Plane.
+- Do not introduce a catch-all records surface.
+- Do not require production deployment orchestration or release mutation.
+- Do not give browser code direct Service credentials or database access.

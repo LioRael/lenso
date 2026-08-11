@@ -1,7 +1,7 @@
 {
   "name": "@lenso/service-kit",
   "version": "0.1.6",
-  "description": "Helpers for building Lenso services that provide modules.",
+  "description": "Helpers for building Lenso Provider services that provide modules.",
   "keywords": [
     "backend",
     "lenso",

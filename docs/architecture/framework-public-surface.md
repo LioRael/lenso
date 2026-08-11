@@ -17,7 +17,10 @@ pnpm add @lenso/service-kit@0.1.5
 Not every project needs every package:
 
 - Rust linked-module authors use the `lenso` crate.
-- JavaScript or TypeScript service authors use `@lenso/service-kit`.
+- JavaScript or TypeScript Provider authors use `@lenso/service-kit` for the
+  `lenso.service.v1` tier.
+- Rust Autonomous Service authors use `lenso-service` declarations and the
+  `lenso-autonomous-service` runtime for the `lenso.service.v2` tier.
 - API consumers use the OpenAPI contract directly.
 - Application starters and example repositories compose those packages into a
   runnable backend, worker, migration, Console, and service demo.
@@ -40,7 +43,7 @@ expose the whole backend implementation.
 The first useful facade focuses on serializable module declarations:
 
 - manifest construction and linting;
-- schema-admin declarations;
+- Business API route declarations;
 - runtime function declarations;
 - event handler declarations;
 - HTTP route declarations;
@@ -49,7 +52,7 @@ The first useful facade focuses on serializable module declarations:
 These declaration contracts live in `crates/lenso-contracts`, are re-exported
 by `crates/lenso`, and are re-exported by `crates/platform-module` for backend
 workspace compatibility. Behavior seams that depend on host internals, such as
-linked binding builders, admin data sources, and event/function registration
+linked binding builders, route handlers, and event/function registration
 contexts, remain behind internal crates and are exposed to users through the
 narrow `lenso::host` facade. Those host dependency crates are published with
 Lenso-owned package names, such as `lenso-platform-core`, only so Cargo can
@@ -102,21 +105,38 @@ current API, worker, and migration entrypoints visible from a blank project
 while depending on the crates.io `lenso` package with the `host` feature. Treat
 new needs in that template as a signal for the next host facade extraction.
 
-## Service Kit
+The exact ownership and language support matrix lives in
+[Service Capability Tiers](service-capability-tiers.md).
 
-`@lenso/service-kit` is the primary package for services: independently running
-backends that provide one or more modules to the host. It
+## TypeScript Service Kit — Provider
+
+`@lenso/service-kit` is the primary TypeScript package for Provider Services:
+independently running backends that provide one or more Modules to a Host. It
 should provide:
 
 - service and module manifest types and builders;
 - a small development server for the Lenso service protocol;
-- helpers for schema-admin data, HTTP routes, runtime functions, and event
+- helpers for declared business HTTP routes, runtime functions, and Event
   handlers;
 - stable request and response envelopes that match the host protocol.
+
+This package implements `lenso.service.v1`. It does not provide Autonomous
+Service parity for `lenso.service.v2` and must not advertise Service-owned
+storage, direct Service-to-Service HTTP/gRPC, Durable Workflow, or Workload
+Identity runtime ownership.
 
 Examples must consume the registry package or an exact integration-set override
 to this repository's SDK workspace. The package has its own build output,
 declarations, metadata, tests, and package packaging coverage.
+
+## Rust Autonomous Services
+
+The Rust `lenso.service.v2` surface combines `lenso-service` declarations with
+the `lenso-autonomous-service` runtime. It currently owns Service Stores,
+migrations, Inbox and Outbox delivery, runtime queues, health, shutdown, and
+local Story Segments. Its public Data Plane capabilities include direct HTTP,
+direct gRPC, Event Contracts, Durable Workflows, Workload Identity, and
+Delegated Actor Context.
 
 ## Starter And Examples
 
@@ -164,7 +184,7 @@ facade exists.
 ## Current Direction
 
 1. Keep `@lenso/service-kit` in the framework SDK workspace as the Service
-   authoring facade.
+   authoring facade for Provider `lenso.service.v1` only.
 2. Keep the crates.io `lenso` facade limited to stable declarations and narrow
    Host composition seams.
 3. Use the standalone `lenso-cli` starter as the Host facade pressure test.

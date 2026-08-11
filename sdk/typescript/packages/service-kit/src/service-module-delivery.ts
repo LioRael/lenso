@@ -1,4 +1,5 @@
 /* eslint-disable complexity, func-style, no-use-before-define */
+import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type {
@@ -580,6 +581,23 @@ export interface ServiceManifest {
   transports: readonly string[];
 }
 
+export const systemPlaneCorePath = "/system-plane/v1" as const;
+export const systemPlaneCoreProtocol = "lenso.system-plane.v1" as const;
+
+export interface ProviderCoreIdentity {
+  serviceId: string;
+  servicePrincipal: string;
+  serviceRevision: string;
+}
+
+export interface ProviderCoreOptions extends ProviderCoreIdentity {
+  bearerToken: string;
+}
+
+export interface SystemPlaneCoreDocument extends ProviderCoreIdentity {
+  protocol: typeof systemPlaneCoreProtocol;
+}
+
 export interface ModuleAdminPage {
   records: readonly unknown[];
   next_cursor?: string | null;
@@ -618,7 +636,9 @@ export interface ServedModuleProvider {
   close: () => Promise<void>;
 }
 
-export type ServedService = ServedModuleProvider;
+export interface ServedService extends ServedModuleProvider {
+  systemPlaneCoreUrl?: string;
+}
 
 export type ServiceModuleHandlers = Pick<
   ServeModuleProviderOptions,
@@ -644,6 +664,7 @@ export interface ServeServiceOptions {
   port?: number;
   basePath?: string;
   modules?: Record<string, ServiceModuleHandlers>;
+  providerCore?: ProviderCoreOptions;
   status?: ServiceStatusOptions;
   onReady?: (server: ServedService) => void;
 }
@@ -665,6 +686,51 @@ const sendJson = (
     "content-type": "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(body));
+};
+
+const providerCoreDocument = (
+  options: ProviderCoreOptions | undefined,
+  host: string
+): SystemPlaneCoreDocument | undefined => {
+  if (!options) {
+    return undefined;
+  }
+  if (host !== "127.0.0.1" && host !== "localhost") {
+    throw new Error("providerCore requires a loopback host");
+  }
+  for (const field of [
+    "serviceId",
+    "servicePrincipal",
+    "serviceRevision",
+    "bearerToken",
+  ] as const) {
+    const value = options[field];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`providerCore.${field} must be a non-empty string`);
+    }
+  }
+  return {
+    protocol: systemPlaneCoreProtocol,
+    serviceId: options.serviceId,
+    servicePrincipal: options.servicePrincipal,
+    serviceRevision: options.serviceRevision,
+  };
+};
+
+const localBearerMatches = (
+  request: IncomingMessage,
+  expectedToken: Buffer
+) => {
+  const authorization = request.headers.authorization;
+  const candidate =
+    typeof authorization === "string" && authorization.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+  const candidateBytes = Buffer.from(candidate, "utf8");
+  const paddedCandidate = Buffer.alloc(expectedToken.length);
+  candidateBytes.copy(paddedCandidate, 0, 0, expectedToken.length);
+  const contentsMatch = timingSafeEqual(paddedCandidate, expectedToken);
+  return candidateBytes.length === expectedToken.length && contentsMatch;
 };
 
 const GRPC_PATHS = {
@@ -1792,10 +1858,33 @@ export const serveService = async (
   const basePath = normalizeBasePath(options.basePath ?? "/lenso/service/v1");
   const manifestPath = `${basePath}/manifest`;
   const statusPath = `${basePath}/status`;
+  const coreDocument = providerCoreDocument(options.providerCore, host);
+  const coreBearer = options.providerCore
+    ? Buffer.from(options.providerCore.bearerToken, "utf8")
+    : undefined;
   let servedBaseUrl = "";
 
   const server = createServer(async (request, response) => {
     const requestPath = new URL(request.url ?? "", "http://127.0.0.1").pathname;
+    if (
+      request.method === "GET" &&
+      requestPath === systemPlaneCorePath &&
+      coreDocument &&
+      coreBearer
+    ) {
+      if (!localBearerMatches(request, coreBearer)) {
+        sendJson(response, 401, {
+          error: {
+            code: "system_plane_bearer_required",
+            message:
+              "System Plane Core access requires the configured local bearer credential",
+          },
+        });
+        return;
+      }
+      sendJson(response, 200, coreDocument);
+      return;
+    }
     if (request.method === "GET" && requestPath === manifestPath) {
       sendJson(response, 200, manifest);
       return;
@@ -1902,6 +1991,9 @@ export const serveService = async (
   const boundPort =
     typeof address === "object" && address ? address.port : port;
   const baseUrl = `http://${host}:${boundPort}${basePath}`;
+  const systemPlaneCoreUrl = coreDocument
+    ? `http://${host}:${boundPort}${systemPlaneCorePath}`
+    : undefined;
   servedBaseUrl = baseUrl;
   const served = {
     baseUrl,
@@ -1912,6 +2004,7 @@ export const serveService = async (
     manifestUrl: `${baseUrl}/manifest`,
     server,
     statusUrl: `${baseUrl}/status`,
+    ...(systemPlaneCoreUrl ? { systemPlaneCoreUrl } : {}),
   } satisfies ServedService;
 
   options.onReady?.(served);

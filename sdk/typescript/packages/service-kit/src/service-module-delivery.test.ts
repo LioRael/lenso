@@ -473,6 +473,122 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     }
   });
 
+  test("serves strict Provider Core identity only to the exact local bearer", async () => {
+    const service = defineService({
+      modules: [defineModule({ name: "support-ticket" })],
+      name: "support-service",
+    });
+    const bearerToken = "local-enrollment-token";
+    const served = await serveService(service, {
+      port: 0,
+      providerCore: {
+        bearerToken,
+        serviceId: "support-service",
+        servicePrincipal: "service:support-service",
+        serviceRevision: "release:sha256:0123456789abcdef",
+      },
+    });
+
+    try {
+      expect(served.systemPlaneCoreUrl).toBe(
+        `${new URL(served.baseUrl).origin}/system-plane/v1`
+      );
+
+      const missingCredential = await fetch(served.systemPlaneCoreUrl);
+      const missingBody = await missingCredential.json();
+      expect(missingCredential.status).toBe(401);
+      expect(missingBody).toEqual({
+        error: {
+          code: "system_plane_bearer_required",
+          message:
+            "System Plane Core access requires the configured local bearer credential",
+        },
+      });
+
+      const wrongCredential = await fetch(served.systemPlaneCoreUrl, {
+        headers: { authorization: "Bearer wrong-token" },
+      });
+      expect(wrongCredential.status).toBe(401);
+      await expect(wrongCredential.json()).resolves.toEqual(missingBody);
+
+      const accepted = await fetch(served.systemPlaneCoreUrl, {
+        headers: { authorization: `Bearer ${bearerToken}` },
+      });
+      expect(accepted.status).toBe(200);
+      const coreDocument = await accepted.json();
+      expect(coreDocument).toEqual({
+        protocol: "lenso.system-plane.v1",
+        serviceId: "support-service",
+        servicePrincipal: "service:support-service",
+        serviceRevision: "release:sha256:0123456789abcdef",
+      });
+      expect(JSON.stringify([missingBody, coreDocument])).not.toContain(
+        bearerToken
+      );
+      const wrongMethod = await fetch(served.systemPlaneCoreUrl, {
+        headers: { authorization: `Bearer ${bearerToken}` },
+        method: "POST",
+      });
+      expect(wrongMethod.status).toBe(404);
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("keeps Provider Core disabled unless exact local identity is configured", async () => {
+    const service = defineService({
+      modules: [defineModule({ name: "support-ticket" })],
+      name: "support-service",
+    });
+    const served = await serveService(service, { port: 0 });
+
+    try {
+      expect(served.systemPlaneCoreUrl).toBeUndefined();
+      const response = await fetch(
+        `${new URL(served.baseUrl).origin}/system-plane/v1`,
+        { headers: { authorization: "Bearer unused" } }
+      );
+      expect(response.status).toBe(404);
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("rejects incomplete or non-loopback Provider Core configuration", async () => {
+    const service = defineService({
+      modules: [defineModule({ name: "support-ticket" })],
+      name: "support-service",
+    });
+    const validCore = {
+      bearerToken: "local-enrollment-token",
+      serviceId: "support-service",
+      servicePrincipal: "service:support-service",
+      serviceRevision: "release:sha256:0123456789abcdef",
+    };
+
+    for (const field of [
+      "bearerToken",
+      "serviceId",
+      "servicePrincipal",
+      "serviceRevision",
+    ] as const) {
+      await expect(
+        serveService(service, {
+          port: 0,
+          providerCore: { ...validCore, [field]: " \t" },
+        })
+      ).rejects.toThrow(`providerCore.${field} must be a non-empty string`);
+    }
+
+    await expect(
+      serveService(service, {
+        host: "0.0.0.0",
+        port: 0,
+        providerCore: validCore,
+      })
+    ).rejects.toThrow("providerCore requires a loopback host");
+  });
+
   test("defines schema-admin entities and serves list/detail data", async () => {
     const contacts = defineSchemaEntity({
       fields: [

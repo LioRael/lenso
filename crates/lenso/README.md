@@ -12,7 +12,6 @@ cargo add lenso@0.3.18
 The default facade exposes serializable module manifest declarations:
 
 - module manifests and manifest lints;
-- schema-admin and declarative admin action declarations;
 - HTTP route metadata;
 - runtime function declarations;
 - event handler declarations;
@@ -98,40 +97,13 @@ relay.relay_once(&Consumer, 25).await?;
 ## Example
 
 ```rust
-use lenso::{
-    AdminSchema, EntitySchema, FieldSchema, FieldType, ModuleManifest, ModuleSource,
-    RuntimeFunctionDeclaration, RuntimeSurface, lint_module_manifest,
-};
+use lenso::{ModuleManifest, lint_module_manifest};
 
 let manifest = ModuleManifest::builder("example")
     .capabilities(vec!["example.records.read".to_owned()])
-    .admin(AdminSchema {
-        entities: vec![EntitySchema {
-            name: "records".to_owned(),
-            label: "Records".to_owned(),
-            fields: vec![FieldSchema {
-                name: "id".to_owned(),
-                label: "ID".to_owned(),
-                field_type: FieldType::String,
-                nullable: false,
-            }],
-            read_capability: "example.records.read".to_owned(),
-        }],
-    })
-    .runtime(RuntimeSurface {
-        functions: vec![RuntimeFunctionDeclaration {
-            name: "example.refresh.v1".to_owned(),
-            version: 1,
-            queue: "example".to_owned(),
-            input_schema: Some("example.refresh.v1".to_owned()),
-            retry_policy: None,
-            operation: None,
-        }],
-        schedules: vec![],
-    })
     .build();
 
-let lints = lint_module_manifest(ModuleSource::Service, &manifest);
+let lints = lint_module_manifest(&manifest);
 assert!(
     lints
         .iter()

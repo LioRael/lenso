@@ -38,6 +38,8 @@ export {
   runtimeFunction,
   schemaAdmin,
   serveService,
+  systemPlaneCorePath,
+  systemPlaneCoreProtocol,
   textField,
   timestampField,
 } from "./service-module-delivery.js";
@@ -86,6 +88,8 @@ export type {
   ModuleRuntimeRetryPolicy,
   ModuleStoryDisplayDescriptor,
   ModuleStoryDisplaySource,
+  ProviderCoreIdentity,
+  ProviderCoreOptions,
   SchemaAdminSurface,
   SchemaEntity,
   SchemaField,
@@ -107,6 +111,7 @@ export type {
   ServiceStatusOptions,
   ServiceStatusState,
   ServeServiceOptions,
+  SystemPlaneCoreDocument,
 } from "./service-module-delivery.js";
 
 export interface ServiceContract {

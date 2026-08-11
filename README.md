@@ -10,9 +10,9 @@ with a runnable host, services, modules, local processes, contracts, migrations,
 and Console already connected instead of assembling the surrounding
 system one library at a time.
 
-Humans and coding agents work from the same explicit model: product blueprints,
-module and service manifests, reviewable change plans, generated contracts,
-checks, App Proof, and runtime evidence.
+Humans and coding agents work from the same explicit model: one exact App
+Composition, Module and Service manifests, generated contracts, checks, and
+runtime state.
 
 Build modular first. Keep one deployable app while boundaries are changing,
 then move selected capabilities into independently delivered services when
@@ -24,8 +24,8 @@ those boundaries are ready.
 
 ## Quickstart
 
-Install the CLI, compose a support application from a product blueprint, and
-start the generated system:
+Install the CLI, compose a support application, and start the exact App
+Composition:
 
 ```sh
 npm install -g @lenso/cli
@@ -33,43 +33,57 @@ npm install -g @lenso/cli
 lenso app compose ./acme-support \
   --blueprint support-desk \
   --apply
-cd acme-support
-lenso dev up
+lenso system dev --system-file ./acme-support/lenso.app.json
 ```
-
-The generated application includes:
-
-- a Rust host with API, worker, migrations, and Postgres integration;
-- TypeScript or Rust services registered in a local service workspace;
-- explicit module, service, system, and contract declarations;
-- Launchpad state for services, modules, addons, and next actions;
-- Doctor, App Proof, and App Change Plan evidence;
-- Console at `/console`.
 
 Use `cargo install lenso-cli` instead when you prefer the Rust distribution of
 the same CLI.
 
-## From product blueprint to running system
+## Public lifecycle
 
-1. **Compose a real app.** Begin with a product blueprint that connects the
-   host, services, modules, local processes, and Launchpad state.
-2. **Extend explicit capabilities.** Add modules, services, addons, or reusable
-   capability packs through a reviewable App Change Plan.
-3. **Verify the generated system.** Doctor, App Proof, contract checks, smoke
-   checks, and Console turn generated state into reviewable evidence.
-4. **Evolve stable boundaries.** Keep the product modular, then move selected
-   capabilities across process or service boundaries without rewriting the
-   product model.
+1. **Compose.** `lenso app compose --apply` materializes the exact
+   `lenso.app.json`: one revisioned App Composition and lock with immutable
+   Module release digests, implementation bindings, and dependency selections.
+2. **Run locally.** `lenso system dev --system-file <app>/lenso.app.json` starts
+   the composed System through its public Workload entrypoints and a Local
+   Control Adapter. The App Composition contains identities and bindings, not
+   copied process commands or credentials.
+3. **Connect.** Start the separately installed Console Service and submit that
+   exact composition through its authenticated Connect System API. Connecting
+   records topology and the Management Binding; it does not require an
+   environment or deployment API.
+4. **Status.** Inspect the connected System, Services, Modules, Surfaces, and
+   Workloads in Console. Every object reports `connected`, `unavailable`,
+   `incompatible`, or `unmanaged` with a direct reason, and an unavailable
+   adapter leaves operational state unknown and rejects mutation.
+
+Console does not release or deploy the application. Production release and
+deployment remain repository- and operator-owned activities outside the
+Console authority boundary.
+
+## Service Capability Tiers
+
+- **Provider — `lenso.service.v1`:** Rust and TypeScript Services can provide
+  Modules while a Host owns authentication, queues, retries, and runtime
+  coordination.
+- **Autonomous Service — `lenso.service.v2`:** Rust only. The Service owns its
+  runtime and storage and uses direct HTTP, direct gRPC, Event Contracts,
+  Durable Workflows, Workload Identity, and Delegated Actor Context.
+
+The TypeScript Service Kit implements the Provider tier; it does not claim
+Autonomous Service parity. See the authoritative
+[Service Capability Tiers](docs/architecture/service-capability-tiers.md).
 
 ## Why Lenso instead of assembling the rails yourself?
 
 Axum remains the HTTP layer. Lenso adds the business-system lifecycle around
 it:
 
-- a runnable host with API, worker, migrations, Postgres, and hosted Console;
+- a runnable Host with API, Worker, migrations, Postgres, and a separate
+  Console connection;
 - manifests for routes, data, actions, events, lifecycle, dependencies, and
   operator surfaces;
-- product blueprints, capability packs, and safe generated-state change plans;
+- product blueprints, capability packs, and one revisioned App Composition;
 - Runtime Stories that correlate requests, functions, events, outbox work, and
   service activity;
 - generated contracts, manifest lints, architecture checks, smoke checks, and
@@ -84,10 +98,10 @@ System. It projects managed-Service state through the System Plane so humans and
 coding agents can review the same system without putting Console code in a
 business Host.
 
-[![Console App Lifecycle view showing services, modules, Doctor checks, App Proof, and next actions](https://lenso.dev/lenso-assets/console/app-lifecycle.png)](https://lenso.dev/lenso-assets/console/app-lifecycle.png)
+[![Console System Connection view showing connected services, modules, and direct object states](https://lenso.dev/lenso-assets/console/app-lifecycle.png)](https://lenso.dev/lenso-assets/console/app-lifecycle.png)
 
-_App Lifecycle shows the generated services and modules alongside readiness,
-Doctor checks, App Proof, change plans, and the next safe command._
+_System Connection shows the exact composed Services and Modules with a direct
+state and reason for every object._
 
 [![Runtime Stories execution graph showing a request fan-out across functions, events, and services](https://lenso.dev/lenso-assets/console/runtime-story-graph.png)](https://lenso.dev/lenso-assets/console/runtime-story-graph.png)
 
@@ -101,22 +115,24 @@ and dead letters into one operator workspace._
 
 These screenshots use the seeded demo dataset so the workflows are reproducible.
 Read the [Console System Plane architecture](docs/architecture/lenso-console-system-plane.md)
-for service boundaries, access controls, evidence, and Module UI isolation.
+for service boundaries, access controls, operation records, and Module UI
+isolation.
 
 ## Agent-ready development
 
-The public proof point is intentionally concrete:
+The public acceptance is intentionally concrete:
 
 ```text
 Build a support ticket module for a Lenso app.
 ```
 
-The result should be a bounded change with generated code, passing checks, App
-Proof, and visible evidence in `/console`, not just a scaffold that compiles.
+The result should be a bounded change with generated code, passing checks, a
+working Business API, and visible state in Console, not just a scaffold that
+compiles.
 The working loop is:
 
 ```text
-product brief -> app compose -> change plan -> implementation -> checks + App Proof -> Lenso Console
+product brief -> Compose -> Run locally -> Connect -> Status
 ```
 
 Install the public skill pack directly from this repository:
@@ -133,7 +149,7 @@ router; the other skills have narrow task descriptions so agents can discover
 the right workflow without loading unrelated instructions.
 
 See the [public skill catalog](skills/README.md). Manifests, contracts, current
-CLI help, repository checks, and Console evidence remain the inspectable source
+CLI help, repository checks, and Console state remain the inspectable source
 of truth for each workflow.
 
 See the [agent-ready module demo](docs/agent-ready-module-demo.md). Runnable
@@ -171,16 +187,15 @@ operations notes live in
 - Modular monolith first: linked modules run in-process and can later be
   extracted behind independently running services over HTTP, gRPC, or event boundaries
   ([guide](docs/architecture/linked-to-service-module.md)).
-- Services: independently running backends that provide one or more modules and
-  are observed by the host.
-- Service Workspace: local development control plane in `lenso.workspace.json`;
-  `lenso service create` registers Rust/TS providers there, and
-  `lenso service dev` starts them before the host. Workspace tools also check
-  provider readiness and read older `.lenso/services.json` files during
-  migration.
-- Modules: business capabilities installed through `lenso module install`.
-  A module may resolve to linked Rust code, a service-provided module, a
-  bundled host capability, or a future sandbox package.
+- App Composition: `lenso.app.json` is the exact revisioned application and
+  lock; blueprints and addons are authoring inputs, not competing runtime state.
+- Services: Provider `lenso.service.v1` is Host-managed and available in Rust
+  and TypeScript; Autonomous Service `lenso.service.v2` is Rust-only and owns
+  its runtime and Store.
+- Modules: business capabilities use exactly Linked or Service delivery and
+  carry immutable release and Surface bindings in the App Composition.
+- Local System: `lenso system dev` realizes the App Composition through public
+  Workload entrypoints and a typed Local Control Adapter.
 - Rust first: API, worker, migrations, platform crates, modules, contract generators, and architecture checks are Rust workspace members.
 - Explicit SQL and Postgres: no custom ORM, no hidden database magic.
 - Transactional outbox: module writes and emitted events commit atomically.
@@ -195,11 +210,10 @@ service. `lenso service install` remains the lower-level provider/process
 operation for operators who want to connect a service before enabling one of
 its modules.
 
-A small first-party proof path is `audit-log`: install it by name from the
-official catalog, refresh the hosted Console, then inspect the module in
-`/console/modules?module=audit-log` and its generic admin data in `/console/data`.
-The module declares the `audit_log.events.read` data capability and surfaces
-Audit Events through the Console's Data Surfaces panel.
+The Support Desk example is the product-level acceptance. It composes an exact
+App, runs the local System, connects Console, loads receipt-bound Support Ticket
+and Story `console_ui_esm` Surfaces, exercises the real ticket Business API,
+and completes one typed local Workload control round trip.
 
 First-time local setup lives in [docs/getting-started.md](docs/getting-started.md).
 
@@ -398,13 +412,12 @@ The owner integration tests also fail on:
 
 Generated files are source-controlled artifacts, but they are not hand-edited. Update Rust/OpenAPI sources, then regenerate.
 
-## Release Readiness
+## Release checks
 
 Run the explicit quality commands from `.github/workflows/ci.yml` before a
 Release-plz or Changesets release pull request. Cargo and npm publish
 independently from this repository; Console checks live in the sibling
-`lenso-console` repository. The release scope and package checklist live in
-[docs/release-readiness.md](docs/release-readiness.md).
+`lenso-console` repository.
 
 Release packaging and tagging steps live in
 [docs/release-process.md](docs/release-process.md).
