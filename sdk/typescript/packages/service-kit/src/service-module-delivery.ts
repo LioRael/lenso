@@ -1,7 +1,7 @@
 /* eslint-disable complexity, func-style, no-use-before-define */
 import { timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
-import { createServer } from "node:http";
+import { createServer, STATUS_CODES } from "node:http";
 import type {
   IncomingMessage,
   Server as HttpServer,
@@ -242,12 +242,90 @@ export interface ModuleHttpHandlerContext {
   url: URL;
 }
 
+export interface ProblemErrorDetail {
+  field: string | null;
+  reason: string;
+}
+
+export interface ProblemDetails {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  code: string;
+  request_id: string | null;
+  correlation_id: string | null;
+  errors: readonly ProblemErrorDetail[];
+  next_actions?: readonly string[];
+}
+
+export interface ProblemDetailsOptions {
+  code: string;
+  detail: string;
+  status: number;
+  request?: IncomingMessage;
+  title?: string;
+  type?: string;
+  errors?: readonly ProblemErrorDetail[];
+  nextActions?: readonly string[];
+}
+
 export type ModuleHttpHandlerResult =
   | unknown
   | {
       body: unknown;
       statusCode?: number;
     };
+
+export const problemDetails = ({
+  code,
+  detail,
+  status,
+  request,
+  title,
+  type,
+  errors = [],
+  nextActions,
+}: ProblemDetailsOptions): { body: ProblemDetails; statusCode: number } => {
+  const context = request ? readLensoInvocationContext(request) : {};
+  return {
+    body: {
+      code,
+      correlation_id: context.correlationId ?? null,
+      detail,
+      errors,
+      ...(nextActions ? { next_actions: nextActions } : {}),
+      request_id: context.requestId ?? null,
+      status,
+      title: title ?? problemTitle(status),
+      type: type ?? `https://lenso.dev/problems/${code}`,
+    },
+    statusCode: status,
+  };
+};
+
+const problemTitle = (status: number): string => {
+  switch (status) {
+    case 400:
+      return "Validation failed";
+    case 401:
+      return "Unauthorized";
+    case 403:
+      return "Forbidden";
+    case 404:
+      return "Not found";
+    case 409:
+      return "Conflict";
+    case 429:
+      return "Rate limited";
+    case 500:
+      return "Internal error";
+    case 502:
+      return "External dependency failure";
+    default:
+      return STATUS_CODES[status] ?? "HTTP error";
+  }
+};
 
 export type ModuleHttpHandler = (
   context: ModuleHttpHandlerContext
@@ -683,10 +761,22 @@ const sendJson = (
   body: unknown
 ) => {
   response.writeHead(statusCode, {
-    "content-type": "application/json; charset=utf-8",
+    "content-type": isProblemDetails(body)
+      ? "application/problem+json"
+      : "application/json; charset=utf-8",
   });
   response.end(JSON.stringify(body));
 };
+
+const isProblemDetails = (body: unknown): body is ProblemDetails =>
+  typeof body === "object" &&
+  body !== null &&
+  typeof (body as ProblemDetails).type === "string" &&
+  typeof (body as ProblemDetails).title === "string" &&
+  typeof (body as ProblemDetails).status === "number" &&
+  typeof (body as ProblemDetails).detail === "string" &&
+  typeof (body as ProblemDetails).code === "string" &&
+  Array.isArray((body as ProblemDetails).errors);
 
 const providerCoreDocument = (
   options: ProviderCoreOptions | undefined,
@@ -966,15 +1056,12 @@ const handleHttpRouteRequest = async ({
     const handler =
       handlers[routeKey(declaredRoute.method, declaredRoute.path)];
     if (!handler) {
-      return {
-        body: {
-          error: {
-            code: "not_found",
-            message: `${declaredRoute.method} ${declaredRoute.path} handler not found`,
-          },
-        },
-        statusCode: 404,
-      };
+      return problemDetails({
+        code: "not_found",
+        detail: `${declaredRoute.method} ${declaredRoute.path} handler not found`,
+        request,
+        status: 404,
+      });
     }
     const body = await readBody(request);
     return normalizeHandlerResult(
@@ -1012,27 +1099,21 @@ const handleRuntimeFunctionRequest = async ({
     url.pathname.slice(prefix.length, -"/invoke".length)
   );
   if (!functionName || functionName.includes("/")) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: "runtime function endpoint not found",
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: "runtime function endpoint not found",
+      request,
+      status: 404,
+    });
   }
   const handler = handlers[functionName];
   if (!handler) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: `${functionName} runtime function handler not found`,
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: `${functionName} runtime function handler not found`,
+      request,
+      status: 404,
+    });
   }
   const invocation = (await readBody(request)) as ModuleRuntimeInvokeRequest;
   const output = await handler({
@@ -1067,27 +1148,21 @@ const handleEventRequest = async ({
     url.pathname.slice(prefix.length, -"/invoke".length)
   );
   if (!handlerName || handlerName.includes("/")) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: "event handler endpoint not found",
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: "event handler endpoint not found",
+      request,
+      status: 404,
+    });
   }
   const handler = handlers[handlerName];
   if (!handler) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: `${handlerName} event handler not found`,
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: `${handlerName} event handler not found`,
+      request,
+      status: 404,
+    });
   }
   const event = (await readBody(request)) as ModuleEventHandleRequest;
   const result = await handler({ event, request });
@@ -1133,27 +1208,21 @@ const handleAdminActionRequest = async ({
   }
   const action = decodeURIComponent(url.pathname.slice(prefix.length));
   if (!action || action.includes("/")) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: "admin action endpoint not found",
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: "admin action endpoint not found",
+      request,
+      status: 404,
+    });
   }
   const handler = handlers[action];
   if (!handler) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: `${action} admin action handler not found`,
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: `${action} admin action handler not found`,
+      request,
+      status: 404,
+    });
   }
   const input = await readBody(request);
   const result = await handler({
@@ -1186,27 +1255,21 @@ const handleAdminQueryRequest = async ({
   }
   const query = decodeURIComponent(url.pathname.slice(prefix.length));
   if (!query || query.includes("/")) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: "admin query endpoint not found",
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: "admin query endpoint not found",
+      request,
+      status: 404,
+    });
   }
   const handler = handlers[query];
   if (!handler) {
-    return {
-      body: {
-        error: {
-          code: "not_found",
-          message: `${query} admin query handler not found`,
-        },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: `${query} admin query handler not found`,
+      request,
+      status: 404,
+    });
   }
   const data = await handler({ query, request });
   return {
@@ -1288,13 +1351,13 @@ const actionField = (
 const handleAdminDataRequest = async ({
   basePath,
   data,
-  requestUrl,
+  request,
 }: {
   basePath: string;
   data: Record<string, ModuleAdminDataSource>;
-  requestUrl: string;
+  request: IncomingMessage;
 }): Promise<{ body: unknown; statusCode: number } | null> => {
-  const url = new URL(requestUrl, "http://127.0.0.1");
+  const url = new URL(request.url ?? "", "http://127.0.0.1");
   const prefix = `${basePath}/http/admin/`;
   if (!url.pathname.startsWith(prefix)) {
     return null;
@@ -1302,28 +1365,32 @@ const handleAdminDataRequest = async ({
   const parts = url.pathname.slice(prefix.length).split("/").filter(Boolean);
   const [entity, id] = parts;
   if (!entity || parts.length > 2) {
-    return {
-      body: {
-        error: { code: "not_found", message: "admin endpoint not found" },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: "admin endpoint not found",
+      request,
+      status: 404,
+    });
   }
   const source = data[entity];
   if (!source) {
-    return {
-      body: {
-        error: { code: "not_found", message: `${entity} admin data not found` },
-      },
-      statusCode: 404,
-    };
+    return problemDetails({
+      code: "not_found",
+      detail: `${entity} admin data not found`,
+      request,
+      status: 404,
+    });
   }
   if (id) {
     const record = await source.detail(decodeURIComponent(id));
-    return {
-      body: { record: record ?? null },
-      statusCode: record ? 200 : 404,
-    };
+    return record
+      ? { body: { record }, statusCode: 200 }
+      : problemDetails({
+          code: "not_found",
+          detail: `${entity} record ${decodeURIComponent(id)} not found`,
+          request,
+          status: 404,
+        });
   }
   const limit = Number(url.searchParams.get("limit") ?? "50");
   const cursor = url.searchParams.get("cursor") ?? undefined;
@@ -1771,7 +1838,7 @@ export const serveModuleProvider = async (
       const adminResult = await handleAdminDataRequest({
         basePath,
         data: options.data ?? {},
-        requestUrl: request.url ?? "",
+        request,
       });
       if (adminResult) {
         sendJson(response, adminResult.statusCode, adminResult.body);
@@ -1816,12 +1883,13 @@ export const serveModuleProvider = async (
       return;
     }
 
-    sendJson(response, 404, {
-      error: {
-        code: "not_found",
-        message: `${manifest.name} service module endpoint not found`,
-      },
+    const notFound = problemDetails({
+      code: "not_found",
+      detail: `${manifest.name} service module endpoint not found`,
+      request,
+      status: 404,
     });
+    sendJson(response, notFound.statusCode, notFound.body);
   });
 
   server.listen(port, host);
@@ -1873,13 +1941,14 @@ export const serveService = async (
       coreBearer
     ) {
       if (!localBearerMatches(request, coreBearer)) {
-        sendJson(response, 401, {
-          error: {
-            code: "system_plane_bearer_required",
-            message:
-              "System Plane Core access requires the configured local bearer credential",
-          },
+        const unauthorized = problemDetails({
+          code: "system_plane_bearer_required",
+          detail:
+            "System Plane Core access requires the configured local bearer credential",
+          request,
+          status: 401,
         });
+        sendJson(response, unauthorized.statusCode, unauthorized.body);
         return;
       }
       sendJson(response, 200, coreDocument);
@@ -1930,7 +1999,7 @@ export const serveService = async (
         const adminResult = await handleAdminDataRequest({
           basePath: moduleBasePath,
           data: moduleHandlers.data ?? {},
-          requestUrl: request.url ?? "",
+          request,
         });
         if (adminResult) {
           sendJson(response, adminResult.statusCode, adminResult.body);
@@ -1976,12 +2045,13 @@ export const serveService = async (
       }
     }
 
-    sendJson(response, 404, {
-      error: {
-        code: "not_found",
-        message: `${manifest.name} service endpoint not found`,
-      },
+    const notFound = problemDetails({
+      code: "not_found",
+      detail: `${manifest.name} service endpoint not found`,
+      request,
+      status: 404,
     });
+    sendJson(response, notFound.statusCode, notFound.body);
   });
 
   server.listen(port, host);
@@ -2201,13 +2271,13 @@ async function proxyGrpcHttpRoute(
   );
   const handler = handlers[routeKey(method, declaredPath)];
   if (!handler) {
+    const notFound = problemDetails({
+      code: "not_found",
+      detail: `${method} ${declaredPath} handler not found`,
+      status: 404,
+    });
     return {
-      body: {
-        error: {
-          code: "not_found",
-          message: `${method} ${declaredPath} handler not found`,
-        },
-      },
+      body: notFound.body,
       status_code: 404,
     };
   }
