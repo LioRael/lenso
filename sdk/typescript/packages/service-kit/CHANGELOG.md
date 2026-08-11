@@ -1,5 +1,11 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.3.0
+
+### Minor Changes
+
+- 28e73ac: Add RFC 9457 Problem Details helpers and return `application/problem+json` for Service Kit HTTP errors.
+
 ## 0.2.0
 
 ### Minor Changes
