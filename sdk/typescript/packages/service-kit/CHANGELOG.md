@@ -1,5 +1,11 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.5.0
+
+### Minor Changes
+
+- 5dec5a7: Expose exact Provider Module Releases for local Host composition and pass the authenticated actor into Provider HTTP handlers.
+
 ## 0.4.0
 
 ### Minor Changes
