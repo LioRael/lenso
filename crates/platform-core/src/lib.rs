@@ -43,7 +43,10 @@ pub use error::{AppError, AppResult, ErrorCode};
 pub use events::{EventEnvelope, EventPayload, EventPublisher, LoggingEventPublisher};
 pub use execution::{ExecutionContext, ExecutionId};
 pub use execution_logs::{
-    ExecutionLogProvider, ExecutionLogQuery, ExecutionLogRow, PostgresExecutionLogProvider,
+    EXECUTION_LOG_TARGET, ExecutionLogCaptureReport, ExecutionLogCaptureStatus,
+    ExecutionLogProvider, ExecutionLogQuery, ExecutionLogRecord, ExecutionLogRow,
+    ExecutionLogScope, ExecutionLogWriter, PostgresExecutionLogProvider,
+    PostgresExecutionLogWriter, capture_execution_logs,
 };
 pub use health::{HealthRegistry, HealthStatus};
 pub use idempotency::{IdempotencyClaim, IdempotencyKey, claim_idempotency_key_in_tx};

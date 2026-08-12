@@ -82,8 +82,10 @@ async fn run_worker_loop(
     let shutdown = ctx.shutdown.clone();
     let mut shutdown_rx = shutdown.subscribe();
     let relay = OutboxRelay::new(ctx.db.clone(), "worker-local");
-    let scheduler = RuntimeScheduler::new(ctx.db.clone(), "worker-local");
-    let runtime_worker = RuntimeWorker::new(ctx.db.clone(), registry, "worker-local");
+    let scheduler = RuntimeScheduler::new(ctx.db.clone(), "worker-local")
+        .with_service_name(ctx.config.service.name.clone());
+    let runtime_worker = RuntimeWorker::new(ctx.db.clone(), registry, "worker-local")
+        .with_service_name(ctx.config.service.name.clone());
     loop {
         let cfg: WorkerRuntimeConfig = ctx
             .runtime_config

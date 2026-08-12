@@ -24,6 +24,7 @@ pub struct ScheduledFunctionDefinition {
 pub struct RuntimeScheduler {
     pool: DbPool,
     worker_id: String,
+    service_name: String,
 }
 
 impl RuntimeScheduler {
@@ -32,7 +33,14 @@ impl RuntimeScheduler {
         Self {
             pool,
             worker_id: worker_id.into(),
+            service_name: "lenso".to_owned(),
         }
+    }
+
+    #[must_use]
+    pub fn with_service_name(mut self, service_name: impl Into<String>) -> Self {
+        self.service_name = service_name.into();
+        self
     }
 
     pub async fn enqueue_due(
@@ -40,7 +48,8 @@ impl RuntimeScheduler {
         schedules: &[ScheduledFunctionDefinition],
     ) -> AppResult<Vec<String>> {
         let mut run_ids = Vec::new();
-        let client = RuntimeClient::new(self.pool.clone());
+        let client =
+            RuntimeClient::new(self.pool.clone()).with_service_name(self.service_name.clone());
 
         for schedule in schedules {
             if let Some(run_id) = self.enqueue_due_schedule(&client, schedule).await? {

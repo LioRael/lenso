@@ -1033,7 +1033,8 @@ pub async fn enqueue_lifecycle_activation_jobs(
 ) -> platform_core::AppResult<Vec<String>> {
     validate_lifecycle_activation_jobs(modules, registry)?;
 
-    let client = RuntimeClient::new(ctx.db.clone());
+    let client =
+        RuntimeClient::new(ctx.db.clone()).with_service_name(ctx.config.service.name.clone());
     let mut run_ids = Vec::new();
 
     for module in modules {
@@ -1394,7 +1395,7 @@ pub fn event_handlers_with_runtime_actions(
     function_registry: Arc<FunctionRegistry>,
 ) -> EventHandlerRegistry {
     let context = EventHandlerRegistrationContext::with_runtime(
-        RuntimeClient::new(ctx.db.clone()),
+        RuntimeClient::new(ctx.db.clone()).with_service_name(ctx.config.service.name.clone()),
         function_registry,
     );
     event_handlers_with_context(modules, &context)
