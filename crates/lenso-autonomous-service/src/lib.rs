@@ -780,7 +780,8 @@ pub async fn run_worker(
     let worker_id = state.worker_id();
     persist_worker_phase(&state, RuntimePhase::Ready).await?;
     let relay = OutboxRelay::new(pool.clone(), &worker_id);
-    let worker = RuntimeWorker::new(pool, function_registry, &worker_id);
+    let worker = RuntimeWorker::new(pool, function_registry, &worker_id)
+        .with_service_name(state.identity.service_id.clone());
     let mut receiver = shutdown.subscribe();
 
     let run_result = loop {

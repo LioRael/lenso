@@ -3,8 +3,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use platform_core::{
     ActorContext, AppError, AppResult, CorrelationId, DbPool, ErrorCode, ExecutionContext,
-    ExecutionId, RuntimeSpanAttributes, TenantId, TraceContext, db::DbTransaction,
-    record_runtime_span_attributes, trace_context_from_headers, trace_headers,
+    ExecutionId, ExecutionLogCaptureReport, ExecutionLogCaptureStatus, ExecutionLogScope,
+    ExecutionLogWriter, PostgresExecutionLogWriter, RuntimeSpanAttributes, TenantId, TraceContext,
+    capture_execution_logs, db::DbTransaction, record_runtime_span_attributes,
+    trace_context_from_headers, trace_headers,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -165,11 +167,21 @@ pub struct ClaimedFunctionRun {
 #[derive(Debug, Clone)]
 pub struct RuntimeClient {
     pool: DbPool,
+    service_name: String,
 }
 
 impl RuntimeClient {
     pub fn new(pool: DbPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            service_name: "lenso".to_owned(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_service_name(mut self, service_name: impl Into<String>) -> Self {
+        self.service_name = service_name.into();
+        self
     }
 
     pub async fn enqueue_function(&self, request: EnqueueFunctionRequest) -> AppResult<String> {
@@ -308,7 +320,7 @@ impl RuntimeClient {
         emit_function_lifecycle_event(run, severity, body, &attributes, None);
         if let Err(error) = insert_execution_log_projection(
             &self.pool,
-            function_log_record(run, severity, body, attributes),
+            function_log_record(run, severity, body, attributes, &self.service_name),
         )
         .await
         {
@@ -335,6 +347,8 @@ pub struct RuntimeWorker {
     pool: DbPool,
     registry: Arc<FunctionRegistry>,
     worker_id: String,
+    service_name: String,
+    execution_log_writer: Option<Arc<dyn ExecutionLogWriter>>,
 }
 
 impl RuntimeWorker {
@@ -343,11 +357,37 @@ impl RuntimeWorker {
         registry: Arc<FunctionRegistry>,
         worker_id: impl Into<String>,
     ) -> Self {
+        let execution_log_writer = Arc::new(PostgresExecutionLogWriter::new(pool.clone()));
         Self {
             pool,
             registry,
             worker_id: worker_id.into(),
+            service_name: "lenso".to_owned(),
+            execution_log_writer: Some(execution_log_writer),
         }
+    }
+
+    #[must_use]
+    pub fn with_service_name(mut self, service_name: impl Into<String>) -> Self {
+        self.service_name = service_name.into();
+        self
+    }
+
+    #[must_use]
+    #[doc(hidden)]
+    pub fn with_execution_log_writer(
+        mut self,
+        execution_log_writer: Arc<dyn ExecutionLogWriter>,
+    ) -> Self {
+        self.execution_log_writer = Some(execution_log_writer);
+        self
+    }
+
+    #[must_use]
+    #[doc(hidden)]
+    pub fn without_execution_log_capture(mut self) -> Self {
+        self.execution_log_writer = None;
+        self
     }
 
     pub async fn claim_batch(&self, batch_size: i64) -> AppResult<Vec<ClaimedFunctionRun>> {
@@ -507,11 +547,35 @@ impl RuntimeWorker {
                 deadline: None::<DateTime<Utc>>,
             };
 
+            let execution_log_scope = ExecutionLogScope::function(
+                &ctx,
+                self.service_name.clone(),
+                self.worker_id.clone(),
+            );
             let observability = definition.handler.observability();
-            let started_at = Utc::now();
-            let started = Instant::now();
-            let result = definition.handler.call(ctx, run.input_json.clone()).await;
-            let duration_ms = started.elapsed().as_millis().try_into().unwrap_or(i64::MAX);
+            let ((result, started_at, duration_ms), execution_log_report) = capture_execution_logs(
+                execution_log_scope,
+                self.execution_log_writer.clone(),
+                async {
+                    let started_at = Utc::now();
+                    let started = Instant::now();
+                    let result = definition.handler.call(ctx, run.input_json.clone()).await;
+                    let duration_ms = started.elapsed().as_millis().try_into().unwrap_or(i64::MAX);
+                    (result, started_at, duration_ms)
+                },
+            )
+            .await;
+            if execution_log_capture_is_incomplete(execution_log_report) {
+                tracing::warn!(
+                    function_run_id = %run.id,
+                    status = ?execution_log_report.status,
+                    observed = execution_log_report.observed,
+                    persisted = execution_log_report.persisted,
+                    dropped = execution_log_report.dropped,
+                    write_failures = execution_log_report.write_failures,
+                    "structured execution log capture was incomplete"
+                );
+            }
             if let Some(observability) = observability {
                 self.record_function_handler_operation_log(
                     &run,
@@ -662,7 +726,7 @@ impl RuntimeWorker {
         emit_function_lifecycle_event(run, severity, body, &attributes, Some(&self.worker_id));
         if let Err(error) = insert_execution_log_projection(
             &self.pool,
-            function_log_record(run, severity, body, attributes),
+            function_log_record(run, severity, body, attributes, &self.service_name),
         )
         .await
         {
@@ -702,7 +766,8 @@ impl RuntimeWorker {
         emit_function_lifecycle_event(run, severity, body, &attributes, Some(&self.worker_id));
         if let Err(error) = insert_execution_log_projection(
             &self.pool,
-            function_log_record(run, severity, body, attributes).with_occurred_at(started_at),
+            function_log_record(run, severity, body, attributes, &self.service_name)
+                .with_occurred_at(started_at),
         )
         .await
         {
@@ -713,6 +778,10 @@ impl RuntimeWorker {
             );
         }
     }
+}
+
+fn execution_log_capture_is_incomplete(report: ExecutionLogCaptureReport) -> bool {
+    report.status != ExecutionLogCaptureStatus::Complete
 }
 
 #[derive(Debug)]
@@ -802,6 +871,7 @@ fn function_log_record(
     severity: ExecutionLogSeverity,
     body: impl Into<String>,
     attributes: Value,
+    service_name: &str,
 ) -> ExecutionLogProjectionRecord {
     ExecutionLogProjectionRecord::from_runtime_attrs(
         RuntimeSpanAttributes::function(run.correlation_id(), run.id(), run.function_name()),
@@ -810,6 +880,7 @@ fn function_log_record(
     )
     .with_attributes(attributes)
     .with_trace(run.trace())
+    .with_service_name(service_name)
 }
 
 #[derive(Debug, Clone)]
@@ -859,6 +930,11 @@ impl ExecutionLogProjectionRecord {
 
     fn with_trace(mut self, trace: TraceContext) -> Self {
         self.trace = trace;
+        self
+    }
+
+    fn with_service_name(mut self, service_name: &str) -> Self {
+        self.service_name = service_name.to_owned();
         self
     }
 
@@ -1055,4 +1131,22 @@ pub(crate) fn map_runtime_error(source: sqlx::Error) -> AppError {
 
 fn map_serde_error(source: serde_json::Error) -> AppError {
     AppError::new(ErrorCode::Internal, "Runtime payload serialization failed").with_source(source)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disabled_execution_log_capture_is_reported_as_incomplete() {
+        assert!(execution_log_capture_is_incomplete(
+            ExecutionLogCaptureReport {
+                status: ExecutionLogCaptureStatus::Disabled,
+                observed: 0,
+                persisted: 0,
+                dropped: 0,
+                write_failures: 0,
+            }
+        ));
+    }
 }

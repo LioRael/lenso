@@ -385,7 +385,8 @@ async fn service_worker_runs_module_outbox_and_function_work_with_local_evidence
         retry_policy: platform_runtime::RetryPolicy::default(),
         handler: Arc::new(CountingFunction(function_calls.clone())),
     });
-    platform_runtime::RuntimeClient::new(db.pool.clone())
+    let function_run_id = platform_runtime::RuntimeClient::new(db.pool.clone())
+        .with_service_name("support")
         .enqueue_function(platform_runtime::EnqueueFunctionRequest {
             function_name: "tickets.notify.v1".to_owned(),
             input_json: serde_json::json!({"ticketId": "ticket-1"}),
@@ -419,7 +420,14 @@ async fn service_worker_runs_module_outbox_and_function_work_with_local_evidence
         .await
         .unwrap();
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while event_calls.load(Ordering::SeqCst) == 0 || function_calls.load(Ordering::SeqCst) == 0
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("service worker should process local work");
     shutdown.signal();
     worker.await.unwrap();
 
@@ -433,6 +441,32 @@ async fn service_worker_runs_module_outbox_and_function_work_with_local_evidence
     .unwrap();
     assert!(outcomes.contains(&("ticket.opened.v1".to_owned(), "published".to_owned())));
     assert!(outcomes.contains(&("tickets.notify.v1".to_owned(), "completed".to_owned())));
+    let execution_log_identity: (String, String) = sqlx::query_as(
+        r#"
+        select service_name, attributes ->> 'lenso.workload.id'
+        from platform.execution_logs
+        where execution_name = 'tickets.notify.v1'
+          and body = 'Ticket notification delivered'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(execution_log_identity.0, "support");
+    assert_eq!(execution_log_identity.1, "support/support-worker");
+    let function_log_services: Vec<String> = sqlx::query_scalar(
+        r#"
+        select distinct service_name
+        from platform.execution_logs
+        where execution_id = $1
+        order by service_name
+        "#,
+    )
+    .bind(&function_run_id)
+    .fetch_all(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(function_log_services, vec!["support"]);
     let phase: String = sqlx::query_scalar(
         "select phase from platform.service_worker_health where service_id = 'support' and workload_id = 'support-worker'",
     )
@@ -454,6 +488,11 @@ impl platform_runtime::RuntimeFunction for CountingFunction {
         _input: serde_json::Value,
     ) -> platform_core::AppResult<serde_json::Value> {
         self.0.fetch_add(1, Ordering::SeqCst);
+        tracing::info!(
+            target: platform_core::EXECUTION_LOG_TARGET,
+            attributes = %serde_json::json!({ "channel": "email" }),
+            "Ticket notification delivered"
+        );
         Ok(serde_json::json!({"delivered": true}))
     }
 }
