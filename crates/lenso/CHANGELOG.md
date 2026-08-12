@@ -6,6 +6,9 @@ Expose narrow public `lenso::host::runtime` and `lenso::host::outbox` authoring
 facades for manifest-declared linked Module functions, schedules, and Event
 handlers, with package-consumer verification.
 
+Expose `HostLinkedModule::try_linked` for Modules whose context-bound storage or
+deployment configuration can fail with a structured Host startup error.
+
 ## lenso@0.3.36
 
 ### Fixes

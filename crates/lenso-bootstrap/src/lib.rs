@@ -591,11 +591,22 @@ pub fn host_wiring_for_context_with_composition(
     })
 }
 
-fn load_host_linked_module(ctx: &AppContext, entry: HostLinkedModule) -> Module {
-    match entry.load {
-        Some(load) => load(ctx),
-        None => Module::linked((entry.manifest)(), LinkedBinding::builder().build()),
-    }
+fn load_host_linked_module(
+    ctx: &AppContext,
+    entry: HostLinkedModule,
+) -> platform_core::AppResult<Module> {
+    entry.try_load_module(ctx)
+}
+
+fn load_host_linked_modules_for_config(
+    ctx: &AppContext,
+    composition: &HostComposition,
+    profile: CompositionProfile,
+) -> platform_core::AppResult<Vec<Module>> {
+    host_linked_modules_for_config(&ctx.config, composition, profile)
+        .into_iter()
+        .map(|entry| load_host_linked_module(ctx, entry))
+        .collect()
 }
 
 /// Demo-default linked modules helper (context-bound: builds bindings).
@@ -623,7 +634,8 @@ pub fn modules_for_config_with_composition(
     modules.extend(
         host_linked_modules_for_context(ctx, composition, profile)
             .into_iter()
-            .map(|entry| load_host_linked_module(ctx, entry)),
+            .map(|entry| load_host_linked_module(ctx, entry))
+            .collect::<platform_core::AppResult<Vec<_>>>()?,
     );
     Ok(modules)
 }
@@ -1783,15 +1795,12 @@ pub fn runtime_config_descriptors_with_composition(
             restart_only: true,
             description: "Whether this host linked module is loaded on service startup.",
         });
+    let host_modules = load_host_linked_modules_for_config(ctx, composition, profile)?;
     let module_descriptors = linked_module_entries(profile)
         .iter()
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
         .map(|entry| (entry.load)(ctx))
-        .chain(
-            host_linked_modules_for_config(&ctx.config, composition, profile)
-                .into_iter()
-                .map(|entry| load_host_linked_module(ctx, entry)),
-        )
+        .chain(host_modules)
         .flat_map(|module| module.runtime_config.iter().cloned())
         .collect::<Vec<_>>();
     // Platform-owned descriptors (e.g. worker knobs) plus every module's; keys
@@ -1817,15 +1826,12 @@ pub fn runtime_config_group_descriptors_with_composition(
     composition: &HostComposition,
 ) -> platform_core::AppResult<Vec<RuntimeConfigGroupDescriptor>> {
     let profile = CompositionProfile::from_config(&ctx.config)?;
+    let host_modules = load_host_linked_modules_for_config(ctx, composition, profile)?;
     let module_groups = linked_module_entries(profile)
         .iter()
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
         .map(|entry| (entry.load)(ctx))
-        .chain(
-            host_linked_modules_for_config(&ctx.config, composition, profile)
-                .into_iter()
-                .map(|entry| load_host_linked_module(ctx, entry)),
-        )
+        .chain(host_modules)
         .flat_map(|module| module.runtime_config_groups.iter().cloned())
         .collect::<Vec<_>>();
 
@@ -3605,6 +3611,59 @@ mod tests {
 
     fn test_host_linked_module() -> HostLinkedModule {
         HostLinkedModule::manifest_only("billing", test_host_manifest, TEST_HOST_MIGRATIONS)
+    }
+
+    fn failing_host_linked_module_loader(_ctx: &AppContext) -> platform_core::AppResult<Module> {
+        Err(AppError::validation(
+            "Content Vault storage configuration is invalid",
+            vec![platform_core::error::ErrorDetail {
+                field: Some("content_vault.s3.bucket".to_owned()),
+                reason: "a non-empty bucket is required".to_owned(),
+            }],
+        ))
+    }
+
+    #[tokio::test]
+    async fn host_module_collection_propagates_fallible_loader_errors() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.module_sources.linked_profile = "core".to_owned();
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let composition = HostComposition::new().with_linked_module(HostLinkedModule::try_linked(
+            "content-vault",
+            test_host_manifest,
+            failing_host_linked_module_loader,
+            TEST_HOST_MIGRATIONS,
+        ));
+
+        let error = modules_for_config_with_composition(&ctx, &composition)
+            .expect_err("fallible linked Module loader must fail Host collection");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Content Vault storage configuration is invalid"
+        );
+        assert_eq!(
+            error.details,
+            vec![platform_core::error::ErrorDetail {
+                field: Some("content_vault.s3.bucket".to_owned()),
+                reason: "a non-empty bucket is required".to_owned(),
+            }]
+        );
+        assert_eq!(
+            runtime_config_descriptors_with_composition(&ctx, &composition)
+                .expect_err("runtime config discovery must propagate the loader error")
+                .code,
+            ErrorCode::Validation
+        );
+        assert_eq!(
+            runtime_config_group_descriptors_with_composition(&ctx, &composition)
+                .expect_err("runtime config group discovery must propagate the loader error")
+                .code,
+            ErrorCode::Validation
+        );
     }
 
     fn test_config(db: &TestDatabase) -> AppConfig {

@@ -57,7 +57,13 @@ pub use source::ModuleSource;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use platform_core::{AppContext, Migration};
+    use platform_core::{
+        AppConfig, AppContext, AppError, AuthConfig, DatabaseConfig, ErrorCode, HttpConfig,
+        LoggingEventPublisher, Migration, ModuleSourcesConfig, RedisConfig, ServiceConfig,
+        TelemetryConfig,
+    };
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct TestContribution(&'static str);
@@ -75,6 +81,13 @@ mod tests {
         Module::linked(manifest(), LinkedBinding::builder().build())
     }
 
+    fn fallible_module(_ctx: &AppContext) -> platform_core::AppResult<Module> {
+        Err(AppError::new(
+            ErrorCode::ExternalDependency,
+            "object storage configuration is invalid",
+        ))
+    }
+
     #[test]
     fn host_linked_module_keeps_typed_contributions() {
         let linked_module = HostLinkedModule::linked("test", manifest, module, TEST_MIGRATIONS)
@@ -85,5 +98,42 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(contributions, vec![&TestContribution("wired")]);
+    }
+
+    #[tokio::test]
+    async fn fallible_host_linked_module_preserves_structured_loader_error() {
+        let linked_module =
+            HostLinkedModule::try_linked("test", manifest, fallible_module, TEST_MIGRATIONS);
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let ctx = AppContext::new(
+            AppConfig {
+                service: ServiceConfig::default(),
+                database: DatabaseConfig {
+                    url: "postgres://localhost/lenso_test".to_owned(),
+                    max_connections: 1,
+                },
+                redis: RedisConfig::default(),
+                http: HttpConfig::default(),
+                telemetry: TelemetryConfig::default(),
+                auth: AuthConfig::default(),
+                module_sources: ModuleSourcesConfig {
+                    linked_profile: "core".to_owned(),
+                },
+                modules: BTreeMap::new(),
+            },
+            db,
+            Arc::new(LoggingEventPublisher),
+        );
+
+        let error = linked_module
+            .try_load_module(&ctx)
+            .expect_err("fallible loader error must remain structured");
+
+        assert_eq!(error.code, ErrorCode::ExternalDependency);
+        assert_eq!(
+            error.public_message,
+            "object storage configuration is invalid"
+        );
     }
 }

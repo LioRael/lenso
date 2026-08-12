@@ -87,8 +87,8 @@ fn manifest() -> ModuleManifest {
         .build()
 }
 
-fn load(_context: &AppContext) -> Module {
-    Module::linked(
+fn load(_context: &AppContext) -> AppResult<Module> {
+    Ok(Module::linked(
         manifest(),
         LinkedBinding::builder()
             .event_handlers(vec![Arc::new(RecordItemChanged)])
@@ -104,11 +104,11 @@ fn load(_context: &AppContext) -> Module {
                 ..RuntimeDescriptor::default()
             })
             .build(),
-    )
+    ))
 }
 
 fn linked_module() -> HostLinkedModule {
-    HostLinkedModule::linked("runtime-consumer", manifest, load, MIGRATIONS)
+    HostLinkedModule::try_linked("runtime-consumer", manifest, load, MIGRATIONS)
 }
 
 #[tokio::main]

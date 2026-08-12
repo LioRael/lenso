@@ -2501,6 +2501,7 @@ dependencies = [
  "lenso-platform-runtime",
  "serde",
  "serde_json",
+ "tokio",
  "utoipa",
 ]
 

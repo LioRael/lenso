@@ -30,7 +30,7 @@ done
 
 fixture_root="$repository_root/crates/lenso/tests/fixtures/linked-runtime-consumer"
 function_contract="$fixture_root/contracts/runtime/functions/fixture.reconcile.v1.schema.json"
-test "$(jq -r '.\"$id\"' "$function_contract")" = "fixture.reconcile.v1"
+test "$(jq -r '."$id"' "$function_contract")" = "fixture.reconcile.v1"
 test "$(jq -r '.title' "$function_contract")" = "fixture.reconcile.v1"
 temporary_root="$(mktemp -d)"
 trap 'rm -rf "$temporary_root"' EXIT
@@ -60,4 +60,23 @@ cp "$function_contract" \
 } >> "$consumer_root/Cargo.toml"
 
 cargo generate-lockfile --manifest-path "$consumer_root/Cargo.toml"
+pinned_packages=(
+  lenso-api
+  lenso-migrate
+  lenso-worker
+  lenso-bootstrap
+  lenso-platform-module-management
+  lenso-platform-runtime-observability
+  lenso-platform-runtime-operations
+  lenso-platform-system-plane
+  lenso-platform-provider
+  lenso-platform-module
+  lenso-platform-http
+  lenso-platform-runtime
+  lenso-platform-core
+)
+for package_name in "${pinned_packages[@]}"; do
+  cargo update --manifest-path "$consumer_root/Cargo.toml" \
+    -p "$package_name" --precise "$(package_version "$package_name")"
+done
 cargo check --locked --manifest-path "$consumer_root/Cargo.toml"

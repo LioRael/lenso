@@ -155,6 +155,27 @@ async fn main() {
 }
 ```
 
+If context-bound setup can fail, return an `AppResult<Module>` and use
+`HostLinkedModule::try_linked`. The Host propagates the structured error during
+startup; external Modules do not need to panic or import private platform
+crates.
+
+```rust
+fn try_load(context: &AppContext) -> AppResult<Module> {
+    std::env::var("INVENTORY_BUCKET").map_err(|_| {
+        lenso::host::runtime::AppError::new(
+            lenso::host::runtime::ErrorCode::Validation,
+            "INVENTORY_BUCKET is required",
+        )
+    })?;
+    Ok(load(context))
+}
+
+fn fallible_linked_module() -> HostLinkedModule {
+    HostLinkedModule::try_linked("inventory", manifest, try_load, MIGRATIONS)
+}
+```
+
 The Module owns the schema named by `input_schema` at
 `contracts/runtime/functions/inventory.reconcile.v1.schema.json`; keep its
 `$id` and `title` equal to the stable versioned function name.
