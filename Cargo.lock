@@ -2244,13 +2244,15 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth"
-version = "0.1.13"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69d16282d0ae908839e78a4f9a984e949ed7c503307987c3ee597ed030b8750d"
 dependencies = [
  "async-trait",
  "axum",
  "chrono",
  "getrandom 0.4.3",
+ "lenso-contracts",
  "lenso-platform-core",
  "lenso-platform-http",
  "lenso-platform-module",
@@ -2265,8 +2267,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-anonymous"
-version = "0.1.5"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43933e24396cc6f1c53d9e8169696435673195c651f98cd241ac302daf12ba94"
 dependencies = [
  "axum",
  "chrono",
@@ -2282,8 +2285,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-github"
-version = "0.1.5"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24b14066b63b1b361f06d4b0805e87320a35367cc8e47c48177e83555dffd195"
 dependencies = [
  "async-trait",
  "axum",
@@ -2303,8 +2307,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-google"
-version = "0.1.5"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d12ee2cee87d8a6e8719a57a9569a63daafe1db4a3b79fc90a75c92214b7170b"
 dependencies = [
  "async-trait",
  "axum",
@@ -2324,8 +2329,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-oauth"
-version = "0.1.6"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "888c9f3ceb042a0db5138ab251adde1e967f10bf3ec87e008afd703e6b7a8008"
 dependencies = [
  "chrono",
  "getrandom 0.4.3",
@@ -2338,8 +2344,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-oidc"
-version = "0.1.6"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0af0c871aba8208edbffb67b18ce64febaf4e779e8a13abed702f9f418f39bf"
 dependencies = [
  "axum",
  "chrono",
@@ -2358,8 +2365,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-password"
-version = "0.1.14"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63536ee17845cde84a99841172821badfe8363b88c8c36d8f5a086f941112b9"
 dependencies = [
  "argon2",
  "async-trait",
@@ -2379,8 +2387,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-module-auth-phone"
-version = "0.1.6"
-source = "git+https://github.com/LioRael/lenso-auth-module?rev=6f689d6aa38aa74a490d9877287fa6f0aa2aacc1#6f689d6aa38aa74a490d9877287fa6f0aa2aacc1"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8cc2a5fb49442db3c2e23a9388882db058554ec364231432402c95296b7c768f"
 dependencies = [
  "async-trait",
  "axum",

@@ -470,14 +470,12 @@ pub fn auth_actor_resolver_for_context_with_composition(
             }],
         ));
     }
-    let auth_resolver: Arc<dyn platform_core::ActorResolver> = Arc::new(
-        auth::resolver::AuthActorResolver::new_with_session_cache(
+    let auth_resolver: Arc<dyn platform_core::ActorResolver> =
+        Arc::new(auth::resolver::AuthActorResolver::new_with_session_cache(
             ctx.db.clone(),
             ctx.actor_resolver.clone(),
             auth::redis_cache::session_cache_from_context(ctx),
-        )
-        .with_user_scopes(auth_config.console_admin_user_scopes),
-    );
+        ));
 
     let auth_password_enabled = linked_module_with_dependencies_enabled(
         ctx,
@@ -2107,7 +2105,7 @@ mod tests {
             vec![
                 LinkedHttpRouteOwner {
                     module_name: "lenso/auth".to_owned(),
-                    public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
+                    public_prefixes: &["/v1/auth/console/", "/v1/auth/dev/", "/v1/auth/sessions/",],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "lenso/auth-anonymous".to_owned(),
@@ -2630,7 +2628,7 @@ mod tests {
             vec![
                 LinkedHttpRouteOwner {
                     module_name: "lenso/auth".to_owned(),
-                    public_prefixes: &["/v1/auth/dev/", "/v1/auth/sessions/"],
+                    public_prefixes: &["/v1/auth/console/", "/v1/auth/dev/", "/v1/auth/sessions/",],
                 },
                 LinkedHttpRouteOwner {
                     module_name: "lenso/auth-anonymous".to_owned(),
