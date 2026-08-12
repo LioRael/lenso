@@ -1,3 +1,10 @@
+## Unreleased
+
+### Features
+
+Expose a narrow public `lenso::host::runtime` authoring facade for
+manifest-declared linked Module functions, with package-consumer verification.
+
 ## lenso@0.3.36
 
 ### Fixes

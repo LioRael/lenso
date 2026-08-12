@@ -1,3 +1,10 @@
+## Unreleased
+
+### Security
+
+Track duplicate function registrations so the Host can reject ambiguous linked
+Module runtime bindings before worker startup.
+
 ## lenso-platform-runtime@0.1.17
 
 ### Maintenance

@@ -10,7 +10,7 @@ use platform_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -72,11 +72,15 @@ pub struct FunctionDefinition {
 #[derive(Debug, Default, Clone)]
 pub struct FunctionRegistry {
     functions: BTreeMap<String, FunctionDefinition>,
+    duplicate_names: BTreeSet<String>,
 }
 
 impl FunctionRegistry {
     pub fn register(&mut self, function: FunctionDefinition) {
-        self.functions.insert(function.name.clone(), function);
+        let name = function.name.clone();
+        if self.functions.insert(name.clone(), function).is_some() {
+            self.duplicate_names.insert(name);
+        }
     }
 
     pub fn get(&self, name: &str) -> Option<&FunctionDefinition> {
@@ -85,6 +89,10 @@ impl FunctionRegistry {
 
     pub fn all(&self) -> impl Iterator<Item = &FunctionDefinition> {
         self.functions.values()
+    }
+
+    pub fn duplicate_names(&self) -> impl Iterator<Item = &str> {
+        self.duplicate_names.iter().map(String::as_str)
     }
 }
 

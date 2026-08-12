@@ -1,3 +1,10 @@
+## Unreleased
+
+### Security
+
+Validate all linked runtime bindings against their Module manifests before the
+worker registers or executes them.
+
 ## lenso-worker@0.1.24
 
 ### Features

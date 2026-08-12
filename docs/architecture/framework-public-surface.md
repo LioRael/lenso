@@ -79,6 +79,11 @@ The current host-facing surface is intentionally narrow:
 - `lenso::host::http` re-exports for linked HTTP handlers, including
   `OpenApiRouter`, `routes!`, `Path`, `JsonBody`, standard error response
   helpers, `AppContext`, and `LinkedHttpContribution`.
+- `lenso::host::runtime` re-exports for behavior-bearing linked Modules,
+  including `Module`, `LinkedBinding`, runtime function definitions and
+  handlers, retry policy, execution context, and the standard app error types.
+  This seam registers only Module-owned behavior already declared in the
+  manifest; runtime queues and scheduling remain Host-owned.
 - `lenso::host::transaction::LinkedTransaction` for the one stable persistence
   boundary shared by host-owned linked modules: a scoped idempotency claim,
   app-owned SQL, and Outbox publication can commit or roll back atomically. It

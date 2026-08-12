@@ -36,6 +36,7 @@ use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
     ScheduledFunctionDefinition,
 };
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -1011,14 +1012,99 @@ pub fn linked_http_modules_for_context_with_composition(
     Ok(modules)
 }
 
-/// Build a [`FunctionRegistry`] from every module's binding.
-#[must_use]
-pub fn function_registry(modules: &[Module]) -> FunctionRegistry {
+/// Build a [`FunctionRegistry`] from manifest-declared module bindings.
+///
+/// Registration fails closed when executable behavior is missing from the
+/// owning manifest or when its stable name, version, or queue drifts from the
+/// declaration. Function names must also remain unique across loaded modules.
+pub fn try_function_registry(modules: &[Module]) -> platform_core::AppResult<FunctionRegistry> {
     let mut registry = FunctionRegistry::default();
+
     for module in modules {
-        module.binding.register_functions(&mut registry);
+        let declared_functions = module
+            .manifest
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.functions.as_slice())
+            .unwrap_or_default();
+        let mut module_registry = FunctionRegistry::default();
+        module.binding.register_functions(&mut module_registry);
+
+        if let Some(duplicate) = module_registry.duplicate_names().next() {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!(
+                    "Module {} binds runtime function {} more than once",
+                    module.manifest.module_id, duplicate
+                ),
+            ));
+        }
+
+        let mut declared_names = HashSet::new();
+        if let Some(duplicate) = declared_functions
+            .iter()
+            .find(|declaration| !declared_names.insert(declaration.name.as_str()))
+        {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!(
+                    "Module {} declares runtime function {} more than once",
+                    module.manifest.module_id, duplicate.name
+                ),
+            ));
+        }
+
+        for function in module_registry.all() {
+            let Some(declaration) = declared_functions
+                .iter()
+                .find(|declaration| declaration.name == function.name)
+            else {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} binds undeclared runtime function {}",
+                        module.manifest.module_id, function.name
+                    ),
+                ));
+            };
+
+            if declaration.version != function.version || declaration.queue != function.queue {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} runtime binding for {} does not match its manifest version and queue",
+                        module.manifest.module_id, function.name
+                    ),
+                ));
+            }
+
+            if registry.get(&function.name).is_some() {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Runtime function {} is bound by more than one loaded module",
+                        function.name
+                    ),
+                ));
+            }
+
+            registry.register(function.clone());
+        }
+
+        for declaration in declared_functions {
+            if module_registry.get(&declaration.name).is_none() {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} declares runtime function {} without a binding",
+                        module.manifest.module_id, declaration.name
+                    ),
+                ));
+            }
+        }
     }
-    registry
+
+    Ok(registry)
 }
 
 /// Validate and enqueue every startup activation job declared by loaded modules.
@@ -1678,7 +1764,9 @@ mod tests {
         LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleSurface,
         RuntimeFunctionDeclaration, RuntimeSurface,
     };
-    use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
+    use platform_runtime::{
+        FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy, RuntimeDescriptor,
+    };
     use platform_testing::{SequentialIdGenerator, TestDatabase};
     use serde_json::{Value, json};
     use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -3021,6 +3109,142 @@ mod tests {
         ) -> platform_core::AppResult<Value> {
             Ok(Value::Null)
         }
+    }
+
+    fn runtime_contract_module(
+        module_id: &'static str,
+        declaration: Option<(&str, u16, &str)>,
+        binding: Option<(&str, u16, &str)>,
+    ) -> Module {
+        let manifest = ModuleManifest::builder(module_id)
+            .runtime(RuntimeSurface {
+                functions: declaration
+                    .map(|(name, version, queue)| RuntimeFunctionDeclaration {
+                        name: name.to_owned(),
+                        version,
+                        queue: queue.to_owned(),
+                        input_schema: None,
+                        retry_policy: None,
+                        operation: None,
+                    })
+                    .into_iter()
+                    .collect(),
+                schedules: Vec::new(),
+                workflows: Vec::new(),
+            })
+            .build();
+        let runtime = RuntimeDescriptor {
+            module: module_id,
+            functions: binding
+                .map(|(name, version, queue)| FunctionDefinition {
+                    name: name.to_owned(),
+                    version,
+                    queue: queue.to_owned(),
+                    retry_policy: RetryPolicy::none(),
+                    handler: Arc::new(NoopFunctionHandler),
+                })
+                .into_iter()
+                .collect(),
+            ..RuntimeDescriptor::default()
+        };
+
+        Module::linked(manifest, LinkedBinding::builder().runtime(runtime).build())
+    }
+
+    #[test]
+    fn runtime_registry_accepts_manifest_declared_binding() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+        );
+
+        let registry = try_function_registry(&[module]).expect("matching binding should register");
+
+        assert!(registry.get("fixture.reconcile.v1").is_some());
+    }
+
+    #[test]
+    fn runtime_registry_rejects_undeclared_binding() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            None,
+            Some(("fixture.hidden.v1", 1, "fixture")),
+        );
+
+        let error = try_function_registry(&[module]).expect_err("hidden binding must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("binds undeclared"));
+    }
+
+    #[test]
+    fn runtime_registry_rejects_manifest_binding_drift() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            Some(("fixture.reconcile.v1", 2, "other")),
+        );
+
+        let error = try_function_registry(&[module]).expect_err("metadata drift must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("does not match"));
+    }
+
+    #[test]
+    fn runtime_registry_rejects_unbound_declaration() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            None,
+        );
+
+        let error = try_function_registry(&[module]).expect_err("missing binding must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("without a binding"));
+    }
+
+    #[test]
+    fn runtime_registry_rejects_duplicate_binding_names() {
+        let manifest = ModuleManifest::builder("fixture/runtime-contract")
+            .runtime(RuntimeSurface {
+                functions: vec![RuntimeFunctionDeclaration {
+                    name: "fixture.reconcile.v1".to_owned(),
+                    version: 1,
+                    queue: "fixture".to_owned(),
+                    input_schema: None,
+                    retry_policy: None,
+                    operation: None,
+                }],
+                schedules: Vec::new(),
+                workflows: Vec::new(),
+            })
+            .build();
+        let definition = || FunctionDefinition {
+            name: "fixture.reconcile.v1".to_owned(),
+            version: 1,
+            queue: "fixture".to_owned(),
+            retry_policy: RetryPolicy::none(),
+            handler: Arc::new(NoopFunctionHandler),
+        };
+        let module = Module::linked(
+            manifest,
+            LinkedBinding::builder()
+                .runtime(RuntimeDescriptor {
+                    module: "fixture/runtime-contract",
+                    functions: vec![definition(), definition()],
+                    ..RuntimeDescriptor::default()
+                })
+                .build(),
+        );
+
+        let error = try_function_registry(&[module]).expect_err("duplicates must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("binds runtime function"));
+        assert!(error.public_message.contains("more than once"));
     }
 
     fn lifecycle_activation_job(required: bool, input: Value) -> LifecycleActivationJobDeclaration {
