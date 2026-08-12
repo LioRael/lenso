@@ -1,7 +1,8 @@
 use lenso_contracts::CronSchedule;
 use platform_core::{
-    ActorContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext,
-    PLATFORM_MIGRATIONS, TenantId, TraceContext, apply_migrations,
+    ActorContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext, ExecutionId,
+    ExecutionLogProvider, ExecutionLogQuery, ExecutionLogRecord, ExecutionLogWriter,
+    PLATFORM_MIGRATIONS, PostgresExecutionLogProvider, TenantId, TraceContext, apply_migrations,
 };
 use platform_runtime::{
     EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, RUNTIME_MIGRATIONS, RetryPolicy,
@@ -208,6 +209,132 @@ async fn worker_executes_function_and_marks_completed() {
 }
 
 #[tokio::test]
+async fn handler_structured_logs_use_the_runtime_bound_execution_scope() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let mut registry = FunctionRegistry::default();
+    registry.register(test_function(
+        "test.structured-log.v1",
+        Arc::new(EmitsStructuredExecutionLog),
+    ));
+    let run_id = enqueue(&db.pool, "test.structured-log.v1", 3).await;
+
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a")
+        .with_service_name("inventory-service");
+    worker
+        .claim_and_run_batch(10)
+        .await
+        .expect("runtime worker should run");
+
+    let logs = PostgresExecutionLogProvider::new(db.pool.clone())
+        .query_execution_logs(ExecutionLogQuery {
+            execution_id: run_id.clone(),
+            occurred_before: None,
+            limit: 100,
+        })
+        .await
+        .expect("execution logs should query");
+    let log = logs
+        .iter()
+        .find(|log| log.body == "Inventory reservation checked")
+        .expect("structured handler log should be persisted");
+
+    assert_eq!(log.execution_id, run_id);
+    assert_eq!(log.story_id, "corr_1");
+    assert_eq!(log.correlation_id, "corr_1");
+    assert_eq!(log.execution_type, "function_run");
+    assert_eq!(log.execution_name, "test.structured-log.v1");
+    assert_eq!(log.trace_id.as_deref(), Some("trace_1"));
+    assert_eq!(log.span_id.as_deref(), Some("span_1"));
+    assert_eq!(log.service_name, "inventory-service");
+    assert_eq!(log.attributes["code"], "inventory.reservation.checked");
+    assert_eq!(log.attributes["nested"]["password"], "[REDACTED]");
+    assert!(log.attributes.get("lenso.execution.id").is_none());
+    assert!(
+        log.redacted_fields
+            .iter()
+            .any(|field| field == "nested.password")
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn structured_log_writer_failure_does_not_fail_the_function_run() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let mut registry = FunctionRegistry::default();
+    registry.register(test_function(
+        "test.structured-log-failure.v1",
+        Arc::new(EmitsStructuredExecutionLog),
+    ));
+    enqueue(&db.pool, "test.structured-log-failure.v1", 3).await;
+
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a")
+        .with_execution_log_writer(Arc::new(AlwaysFailsExecutionLogWriter));
+    worker
+        .claim_and_run_batch(10)
+        .await
+        .expect("execution-log failure must not fail the runtime worker");
+
+    assert_eq!(
+        run_status(&db.pool, "test.structured-log-failure.v1").await,
+        "completed"
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn stalled_structured_log_writer_does_not_inflate_handler_duration() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let mut registry = FunctionRegistry::default();
+    registry.register(test_function(
+        "test.structured-log-duration.v1",
+        Arc::new(EmitsStructuredExecutionLog),
+    ));
+    let run_id = enqueue(&db.pool, "test.structured-log-duration.v1", 3).await;
+
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a")
+        .with_execution_log_writer(Arc::new(StalledExecutionLogWriter));
+    let wall_started = std::time::Instant::now();
+    worker
+        .claim_and_run_batch(10)
+        .await
+        .expect("runtime worker should finish despite a stalled execution-log writer");
+    assert!(wall_started.elapsed() >= Duration::from_millis(90));
+
+    let handler_duration_ms: i64 = sqlx::query_scalar(
+        r#"
+        select (attributes ->> 'duration_ms')::bigint
+        from platform.execution_logs
+        where execution_id = $1
+          and body = 'Function handler operation completed'
+        "#,
+    )
+    .bind(&run_id)
+    .fetch_one(&db.pool)
+    .await
+    .expect("handler operation duration should be recorded");
+    assert!(
+        handler_duration_ms < 50,
+        "handler duration must exclude the execution-log drain delay: {handler_duration_ms}ms"
+    );
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn failure_retries_function_run() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -380,6 +507,61 @@ struct AlwaysRetryableFailure;
 impl RuntimeFunction for AlwaysRetryableFailure {
     async fn call(&self, _ctx: ExecutionContext, _input: Value) -> AppResult<Value> {
         Err(AppError::new(ErrorCode::ExternalDependency, "temporary failure").retryable())
+    }
+}
+
+#[derive(Debug)]
+struct EmitsStructuredExecutionLog;
+
+#[async_trait::async_trait]
+impl RuntimeFunction for EmitsStructuredExecutionLog {
+    async fn call(&self, mut ctx: ExecutionContext, _input: Value) -> AppResult<Value> {
+        ctx.execution_id = ExecutionId("fnrun_forged".to_owned());
+        tracing::info!(
+            target: "lenso::execution",
+            {
+                code = "inventory.reservation.checked",
+                attributes = %json!({
+                    "nested": {
+                        "password": "do-not-store"
+                    }
+                }),
+                lenso.execution.id = "fnrun_forged",
+            },
+            "Inventory reservation checked"
+        );
+        Ok(json!({ "ok": true }))
+    }
+
+    fn observability(&self) -> Option<platform_runtime::FunctionHandlerObservability> {
+        Some(platform_runtime::FunctionHandlerObservability::new(
+            "handler",
+            json!({ "operation": "inventory.reserve" }),
+        ))
+    }
+}
+
+#[derive(Debug)]
+struct AlwaysFailsExecutionLogWriter;
+
+#[async_trait::async_trait]
+impl ExecutionLogWriter for AlwaysFailsExecutionLogWriter {
+    async fn write_execution_log(&self, _record: ExecutionLogRecord) -> AppResult<String> {
+        Err(AppError::new(
+            ErrorCode::ExternalDependency,
+            "execution log store unavailable",
+        ))
+    }
+}
+
+#[derive(Debug)]
+struct StalledExecutionLogWriter;
+
+#[async_trait::async_trait]
+impl ExecutionLogWriter for StalledExecutionLogWriter {
+    async fn write_execution_log(&self, _record: ExecutionLogRecord) -> AppResult<String> {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        Ok("elog_stalled".to_owned())
     }
 }
 

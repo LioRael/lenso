@@ -95,6 +95,52 @@ These operations attach to the function run node through `execution_id`. They do
 not replace function run lifecycle logs or create a horizontal Provider Calls
 page; the Provider Calls page remains specific to HTTP proxy call history.
 
+## Application Execution Logs
+
+In-process function handlers can add business-relevant logs with the standard
+`tracing::{info, warn, error}!` macros. Use the exact
+`lenso::execution` target, keep the message static, and put dynamic values in a
+JSON `attributes` object:
+
+```rust
+use serde_json::json;
+
+tracing::info!(
+    target: "lenso::execution",
+    attributes = %json!({
+        "reservation_id": reservation_id,
+        "outcome": "available",
+    }),
+    "Inventory reservation checked"
+);
+```
+
+The runtime binds correlation, story, function-run, trace, function, service,
+and workload identity from the immutable execution scope. Handler fields whose
+names start with `lenso.` are discarded and cannot override that identity.
+
+Attributes are recursively redacted when a key contains a sensitive term such
+as `authorization`, `cookie`, `password`, `secret`, `token`, `api_key`,
+`access_key`, `credential`, or `email` (case-insensitive). Messages that look
+like credentials or email addresses are replaced as a whole; this is why
+messages should be static. Bodies, attributes, and the in-flight log queue are
+bounded. A full queue, disabled writer, timeout, or storage failure produces an
+incomplete capture report and a sanitized Runtime warning, but never changes the
+function's business result. This first slice does not durably project that
+capture report: local Inspector coverage describes whether its read source was
+available, not whether every handler event was captured. Durable capture-status
+projection remains a later evidence-contract extension.
+
+This first slice captures events emitted while an in-process function handler
+future is being polled. It does not yet establish an execution-log scope for
+HTTP handlers, outbox handlers, provider-service runtimes, or detached tasks
+created with `tokio::spawn`. The scoped forwarding subscriber preserves normal
+span and event callbacks to an installed Host subscriber, but the `tracing`
+subscriber API cannot forward dispatch downcasts. Code inside this initial
+handler scope should not call dispatch-downcast extensions such as
+`tracing_opentelemetry::OpenTelemetrySpanExt`; use the `ExecutionContext` trace
+data supplied by the runtime instead.
+
 These are not replacements for each other: Story views explain one business
 chain through nodes, while the Provider Calls page supports cross-story
 operational diagnosis. Story and Provider Calls navigation is a convenience link
