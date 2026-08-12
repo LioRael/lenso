@@ -1,5 +1,12 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.4.0
+
+### Minor Changes
+
+- 65c8d65: Serve the exact `lenso.provider.v1` descriptor, health, invocation, recovery,
+  and acknowledgement protocol from the standard Service Kit server.
+
 ## 0.3.0
 
 ### Minor Changes
