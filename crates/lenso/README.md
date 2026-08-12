@@ -34,22 +34,28 @@ Manifest-declared behavior for a host-owned linked Module is authored through
 `lenso::host::runtime`. It exposes the linked loader, binding, function handler,
 descriptor, retry, execution context, and standard error types needed to return
 a behavior-bearing `HostLinkedModule`; external Modules do not import a
-`lenso-platform-*` crate.
+`lenso-platform-*` crate. The same public facade exposes Event handlers through
+`lenso::host::outbox`.
 
 ```rust
 use async_trait::async_trait;
+use lenso::host::outbox::{ClaimedOutboxEvent, EventHandler};
 use lenso::host::runtime::{
     AppContext, AppResult, ExecutionContext, FunctionDefinition, FunctionHandler,
     LinkedBinding, Module, RetryPolicy, RuntimeDescriptor,
 };
 use lenso::host::{HostBuilder, HostLinkedModule, Migration};
 use lenso::{
-    ModuleManifest, RuntimeFunctionDeclaration, RuntimeRetryPolicyDeclaration, RuntimeSurface,
+    EventHandlerDeclaration, EventSurface, ModuleManifest, RuntimeFunctionDeclaration,
+    RuntimeRetryPolicyDeclaration, RuntimeSurface, ScheduledFunctionDeclaration,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 
 const FUNCTION_NAME: &str = "inventory.reconcile.v1";
+const SCHEDULE_NAME: &str = "inventory-reconcile-hourly";
+const EVENT_HANDLER_NAME: &str = "inventory.project-item-changed.v1";
+const EVENT_NAME: &str = "inventory.item-changed.v1";
 const MIGRATIONS: &[Migration] = &[];
 
 #[derive(Debug)]
@@ -62,21 +68,54 @@ impl FunctionHandler for Reconcile {
     }
 }
 
+#[derive(Debug)]
+struct ProjectItemChanged;
+
+#[async_trait]
+impl EventHandler for ProjectItemChanged {
+    fn handler_name(&self) -> &str {
+        EVENT_HANDLER_NAME
+    }
+
+    fn event_name(&self) -> &str {
+        EVENT_NAME
+    }
+
+    async fn handle(&self, event: &ClaimedOutboxEvent) -> AppResult<()> {
+        // Claim this stable id in the same database transaction as the
+        // projection update. A retry receives the same id.
+        let _stable_delivery_id = &event.id;
+        Ok(())
+    }
+}
+
 fn manifest() -> ModuleManifest {
     ModuleManifest::builder("example/inventory")
+        .events(EventSurface {
+            handlers: vec![EventHandlerDeclaration {
+                name: EVENT_HANDLER_NAME.to_owned(),
+                event_name: EVENT_NAME.to_owned(),
+                operation: None,
+            }],
+        })
         .runtime(RuntimeSurface {
             functions: vec![RuntimeFunctionDeclaration {
                 name: FUNCTION_NAME.to_owned(),
                 version: 1,
                 queue: "inventory".to_owned(),
-                input_schema: None,
+                input_schema: Some(FUNCTION_NAME.to_owned()),
                 retry_policy: Some(RuntimeRetryPolicyDeclaration {
                     max_attempts: 3,
                     initial_delay_ms: 5_000,
                 }),
                 operation: None,
             }],
-            schedules: Vec::new(),
+            schedules: vec![ScheduledFunctionDeclaration {
+                name: SCHEDULE_NAME.to_owned(),
+                function_name: FUNCTION_NAME.to_owned(),
+                cron: "0 * * * *".to_owned(),
+                input: json!({ "reason": "scheduled" }),
+            }],
             workflows: Vec::new(),
         })
         .build()
@@ -86,6 +125,7 @@ fn load(_context: &AppContext) -> Module {
     Module::linked(
         manifest(),
         LinkedBinding::builder()
+            .event_handlers(vec![Arc::new(ProjectItemChanged)])
             .runtime(RuntimeDescriptor {
                 module: "inventory",
                 functions: vec![FunctionDefinition {
@@ -114,6 +154,18 @@ async fn main() {
         .expect("run Lenso worker");
 }
 ```
+
+The Module owns the schema named by `input_schema` at
+`contracts/runtime/functions/inventory.reconcile.v1.schema.json`; keep its
+`$id` and `title` equal to the stable versioned function name.
+
+The Host rejects declarations and bindings whose stable function, handler,
+Event, version, or queue identities do not agree.
+
+Event delivery is at least once. Persist `ClaimedOutboxEvent::id` as an
+idempotency key in the owning Module, atomically with the handler's business
+side effect, and acknowledge only after commit. In-memory deduplication is not
+sufficient because process restarts and retries preserve the same Event id.
 
 Host-owned linked modules can use `lenso::host::transaction` when one operation
 must atomically claim an idempotency key, execute app-owned SQL, and publish an

@@ -1,3 +1,10 @@
+## Unreleased
+
+### Maintenance
+
+Report each Provider Event handler's stable declared identity through the Host
+Event binding contract.
+
 ## lenso-platform-provider@0.1.20
 
 ### Maintenance

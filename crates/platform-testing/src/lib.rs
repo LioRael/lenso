@@ -126,6 +126,22 @@ impl TestDatabase {
             admin_pool.close().await;
         }
     }
+
+    /// Advance one Runtime schedule for an integration test without exposing
+    /// Runtime storage details in a public-facade acceptance fixture.
+    pub async fn make_runtime_schedule_due(&self, schedule_key: &str) {
+        sqlx::query(
+            r#"
+            update runtime.scheduled_functions
+            set next_run_at = now() - interval '1 minute'
+            where schedule_key = $1
+            "#,
+        )
+        .bind(schedule_key)
+        .execute(&self.pool)
+        .await
+        .expect("test Runtime schedule should become due");
+    }
 }
 
 fn database_url_with_name(url: &str, name: &str) -> String {

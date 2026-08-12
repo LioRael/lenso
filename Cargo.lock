@@ -2082,6 +2082,7 @@ dependencies = [
  "lenso-platform-http",
  "lenso-platform-module",
  "lenso-platform-runtime",
+ "lenso-platform-testing",
  "lenso-service",
  "lenso-worker",
  "serde_json",

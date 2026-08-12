@@ -1,3 +1,9 @@
+## Unreleased
+
+### Maintenance
+
+Add a Runtime schedule clock-advance helper for public-facade integration tests.
+
 ## lenso-platform-testing@0.1.16
 
 ### Maintenance

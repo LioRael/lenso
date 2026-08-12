@@ -2,8 +2,9 @@
 
 ### Features
 
-Expose a narrow public `lenso::host::runtime` authoring facade for
-manifest-declared linked Module functions, with package-consumer verification.
+Expose narrow public `lenso::host::runtime` and `lenso::host::outbox` authoring
+facades for manifest-declared linked Module functions, schedules, and Event
+handlers, with package-consumer verification.
 
 ## lenso@0.3.36
 

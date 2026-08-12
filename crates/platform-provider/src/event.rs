@@ -131,6 +131,10 @@ impl ProviderEventHandler {
 
 #[async_trait::async_trait]
 impl EventHandler for ProviderEventHandler {
+    fn handler_name(&self) -> &str {
+        &self.handler_name
+    }
+
     fn event_name(&self) -> &str {
         &self.event_name
     }

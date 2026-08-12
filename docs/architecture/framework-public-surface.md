@@ -83,7 +83,13 @@ The current host-facing surface is intentionally narrow:
   including `Module`, `LinkedBinding`, runtime function definitions and
   handlers, retry policy, execution context, and the standard app error types.
   This seam registers only Module-owned behavior already declared in the
-  manifest; runtime queues and scheduling remain Host-owned.
+  manifest. Modules may declare UTC cron schedules that reference those
+  functions; queue persistence, retry enforcement, and schedule execution
+  remain Host-owned;
+- `lenso::host::outbox` re-exports for manifest-declared linked Event handlers
+  and Host-owned relay behavior. Event delivery is at least once, and the
+  stable `ClaimedOutboxEvent::id` is the Module's idempotency key across retries
+  and process restarts;
 - `lenso::host::transaction::LinkedTransaction` for the one stable persistence
   boundary shared by host-owned linked modules: a scoped idempotency claim,
   app-owned SQL, and Outbox publication can commit or roll back atomically. It

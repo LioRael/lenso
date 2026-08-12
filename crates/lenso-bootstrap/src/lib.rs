@@ -1088,7 +1088,14 @@ pub fn try_function_registry(modules: &[Module]) -> platform_core::AppResult<Fun
                 ));
             }
 
-            registry.register(function.clone());
+            let mut admitted = function.clone();
+            if let Some(policy) = &declaration.retry_policy {
+                admitted.retry_policy = platform_runtime::RetryPolicy::fixed(
+                    policy.max_attempts,
+                    std::time::Duration::from_millis(policy.initial_delay_ms),
+                );
+            }
+            registry.register(admitted);
         }
 
         for declaration in declared_functions {
@@ -1466,38 +1473,124 @@ pub fn scheduled_functions(
     Ok(schedules)
 }
 
-/// Build an [`EventHandlerRegistry`] from every module's binding.
-#[must_use]
-pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
-    event_handlers_with_context(modules, &EventHandlerRegistrationContext::empty())
+/// Build a validated [`EventHandlerRegistry`] from every Module binding.
+///
+/// Registration fails closed when executable behavior is missing from the
+/// owning manifest or when a stable handler or consumed Event name drifts from
+/// its declaration. Handler names must also remain unique across Modules.
+pub fn try_event_handlers(modules: &[Module]) -> platform_core::AppResult<EventHandlerRegistry> {
+    try_event_handlers_with_context(modules, &EventHandlerRegistrationContext::empty())
 }
 
-/// Build an [`EventHandlerRegistry`] with host runtime actions enabled for
-/// provider event-handler result actions.
-#[must_use]
-pub fn event_handlers_with_runtime_actions(
+/// Build a validated registry with host runtime actions enabled for provider
+/// Event-handler result actions.
+pub fn try_event_handlers_with_runtime_actions(
     ctx: &AppContext,
     modules: &[Module],
     function_registry: Arc<FunctionRegistry>,
-) -> EventHandlerRegistry {
+) -> platform_core::AppResult<EventHandlerRegistry> {
     let context = EventHandlerRegistrationContext::with_runtime(
         RuntimeClient::new(ctx.db.clone()).with_service_name(ctx.config.service.name.clone()),
         function_registry,
     );
-    event_handlers_with_context(modules, &context)
+    try_event_handlers_with_context(modules, &context)
 }
 
-fn event_handlers_with_context(
+fn try_event_handlers_with_context(
     modules: &[Module],
     context: &EventHandlerRegistrationContext,
-) -> EventHandlerRegistry {
+) -> platform_core::AppResult<EventHandlerRegistry> {
     let mut registry = EventHandlerRegistry::new();
+    let mut registered_names = HashSet::new();
+
     for module in modules {
+        let declared_handlers = module
+            .manifest
+            .events
+            .as_ref()
+            .map(|events| events.handlers.as_slice())
+            .unwrap_or_default();
+        let mut module_registry = EventHandlerRegistry::new();
         module
             .binding
-            .register_event_handlers(&mut registry, context);
+            .register_event_handlers(&mut module_registry, context);
+
+        let mut declared_names = HashSet::new();
+        if let Some(duplicate) = declared_handlers
+            .iter()
+            .find(|declaration| !declared_names.insert(declaration.name.as_str()))
+        {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!(
+                    "Module {} declares Event handler {} more than once",
+                    module.manifest.module_id, duplicate.name
+                ),
+            ));
+        }
+
+        let mut bound_names = HashSet::new();
+        for handler in module_registry.registrations() {
+            let handler_name = handler.handler_name();
+            if !bound_names.insert(handler_name) {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} binds Event handler {} more than once",
+                        module.manifest.module_id, handler_name
+                    ),
+                ));
+            }
+
+            let Some(declaration) = declared_handlers
+                .iter()
+                .find(|declaration| declaration.name == handler_name)
+            else {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} binds undeclared Event handler {}",
+                        module.manifest.module_id, handler_name
+                    ),
+                ));
+            };
+
+            if declaration.event_name != handler.event_name() {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} Event binding for {} consumes {} but its manifest declares {}",
+                        module.manifest.module_id,
+                        handler_name,
+                        handler.event_name(),
+                        declaration.event_name
+                    ),
+                ));
+            }
+
+            if !registered_names.insert(handler_name.to_owned()) {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!("Event handler {handler_name} is bound by more than one loaded Module"),
+                ));
+            }
+            registry.register(Arc::clone(handler));
+        }
+
+        for declaration in declared_handlers {
+            if !bound_names.contains(declaration.name.as_str()) {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} declares Event handler {} without a binding",
+                        module.manifest.module_id, declaration.name
+                    ),
+                ));
+            }
+        }
     }
-    registry
+
+    Ok(registry)
 }
 
 /// Merge every linked module's HTTP routes (and their `OpenAPI` docs) onto `base`.
@@ -1755,14 +1848,15 @@ mod tests {
         AuthHostExtension, AuthSessionPolicy, SessionCreateDecision, SessionCreateInput,
     };
     use platform_core::{
-        AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
-        LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS, RedisConfig,
-        RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigSnapshot, ServiceConfig,
-        TelemetryConfig, apply_migrations,
+        AppConfig, AuthConfig, ClaimedOutboxEvent, DatabaseConfig, ErrorCode, EventHandler,
+        ExecutionContext, HttpConfig, LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig,
+        PLATFORM_MIGRATIONS, RedisConfig, RuntimeConfigProvider, RuntimeConfigRegistry,
+        RuntimeConfigSnapshot, ServiceConfig, TelemetryConfig, apply_migrations,
     };
     use platform_module::{
-        LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleSurface,
-        RuntimeFunctionDeclaration, RuntimeSurface,
+        EventHandlerDeclaration, EventSurface, LifecycleActivationJobDeclaration,
+        LifecycleStartupCheckDeclaration, LifecycleSurface, RuntimeFunctionDeclaration,
+        RuntimeSurface,
     };
     use platform_runtime::{
         FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy, RuntimeDescriptor,
@@ -1782,6 +1876,60 @@ mod tests {
     impl RuntimeConfigProvider for TestRuntimeConfigProvider {
         fn snapshot(&self) -> Arc<RuntimeConfigSnapshot> {
             Arc::clone(&self.snapshot)
+        }
+    }
+
+    #[derive(Debug)]
+    struct NamedTestEventHandler {
+        handler_name: &'static str,
+        event_name: &'static str,
+    }
+
+    #[async_trait]
+    impl EventHandler for NamedTestEventHandler {
+        fn handler_name(&self) -> &str {
+            self.handler_name
+        }
+
+        fn event_name(&self) -> &str {
+            self.event_name
+        }
+
+        async fn handle(&self, _event: &ClaimedOutboxEvent) -> platform_core::AppResult<()> {
+            Ok(())
+        }
+    }
+
+    fn test_event_handler(
+        handler_name: &'static str,
+        event_name: &'static str,
+    ) -> Arc<dyn EventHandler> {
+        Arc::new(NamedTestEventHandler {
+            handler_name,
+            event_name,
+        })
+    }
+
+    fn test_event_module(
+        module_id: &str,
+        declarations: Vec<EventHandlerDeclaration>,
+        handlers: Vec<Arc<dyn EventHandler>>,
+    ) -> Module {
+        Module::linked(
+            ModuleManifest::builder(module_id)
+                .events(EventSurface {
+                    handlers: declarations,
+                })
+                .build(),
+            LinkedBinding::builder().event_handlers(handlers).build(),
+        )
+    }
+
+    fn test_event_declaration(name: &str, event_name: &str) -> EventHandlerDeclaration {
+        EventHandlerDeclaration {
+            name: name.to_owned(),
+            event_name: event_name.to_owned(),
+            operation: None,
         }
     }
 
@@ -1808,6 +1956,93 @@ mod tests {
         assert!(
             names.is_empty(),
             "framework core must not implicitly install Console-owned modules"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_an_undeclared_binding() {
+        let module = test_event_module(
+            "example/notifications",
+            Vec::new(),
+            vec![test_event_handler(
+                "notifications.deliver.v1",
+                "notification.requested.v1",
+            )],
+        );
+
+        let error = try_event_handlers(&[module])
+            .expect_err("an executable handler without a declaration must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Module example/notifications binds undeclared Event handler notifications.deliver.v1"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_a_declaration_without_a_binding() {
+        let module = test_event_module(
+            "example/notifications",
+            vec![test_event_declaration(
+                "notifications.deliver.v1",
+                "notification.requested.v1",
+            )],
+            Vec::new(),
+        );
+
+        let error = try_event_handlers(&[module])
+            .expect_err("a declared handler without executable behavior must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Module example/notifications declares Event handler notifications.deliver.v1 without a binding"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_event_name_drift() {
+        let module = test_event_module(
+            "example/notifications",
+            vec![test_event_declaration(
+                "notifications.deliver.v1",
+                "notification.requested.v1",
+            )],
+            vec![test_event_handler(
+                "notifications.deliver.v1",
+                "notification.retried.v1",
+            )],
+        );
+
+        let error = try_event_handlers(&[module])
+            .expect_err("a binding that consumes a different Event must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Module example/notifications Event binding for notifications.deliver.v1 consumes notification.retried.v1 but its manifest declares notification.requested.v1"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_duplicate_handler_identity_across_modules() {
+        let declaration =
+            || test_event_declaration("notifications.deliver.v1", "notification.requested.v1");
+        let handler =
+            || test_event_handler("notifications.deliver.v1", "notification.requested.v1");
+        let modules = vec![
+            test_event_module("example/email", vec![declaration()], vec![handler()]),
+            test_event_module("example/sms", vec![declaration()], vec![handler()]),
+        ];
+
+        let error = try_event_handlers(&modules)
+            .expect_err("handler identity must be unique across loaded Modules");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Event handler notifications.deliver.v1 is bound by more than one loaded Module"
         );
     }
 
@@ -3190,6 +3425,34 @@ mod tests {
 
         assert_eq!(error.code, ErrorCode::Validation);
         assert!(error.public_message.contains("does not match"));
+    }
+
+    #[test]
+    fn runtime_registry_applies_manifest_retry_policy() {
+        let mut module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+        );
+        module
+            .manifest
+            .runtime
+            .as_mut()
+            .expect("runtime surface should exist")
+            .functions[0]
+            .retry_policy = Some(platform_module::RuntimeRetryPolicyDeclaration {
+            max_attempts: 4,
+            initial_delay_ms: 60_000,
+        });
+
+        let registry = try_function_registry(&[module])
+            .expect("Host should resolve the manifest-requested retry policy");
+        let admitted = registry
+            .get("fixture.reconcile.v1")
+            .expect("runtime function should be admitted");
+
+        assert_eq!(admitted.retry_policy.max_attempts, 4);
+        assert_eq!(admitted.retry_policy.initial_delay, Duration::from_secs(60));
     }
 
     #[test]

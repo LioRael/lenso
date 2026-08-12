@@ -63,7 +63,8 @@ pub async fn run_from_env_with_composition(
     let schedules = lenso_bootstrap::scheduled_functions(&modules, registry.as_ref())
         .context("failed to collect scheduled runtime functions")?;
     let event_handlers =
-        lenso_bootstrap::event_handlers_with_runtime_actions(&ctx, &modules, registry.clone());
+        lenso_bootstrap::try_event_handlers_with_runtime_actions(&ctx, &modules, registry.clone())
+            .context("invalid module Event handler binding")?;
 
     info!(
         functions = registry.all().count(),
