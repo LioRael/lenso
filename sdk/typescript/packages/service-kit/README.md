@@ -185,6 +185,14 @@ console.log(server.statusUrl);
 - `GET /lenso/service/v1/status`
 - module handlers below `/lenso/service/v1/modules/{moduleName}`
 
+When `providerV1.moduleReleases` supplies the exact release for an export,
+`serveService()` also serves it from
+`GET /lenso/provider/v1/exports/{exportKey}/module-release`. The public Provider
+descriptor continues to contain only the locked release digest. Provider V1
+HTTP handlers receive the Host-authenticated `actor` in their handler context;
+authorization remains a Host boundary and the Service does not parse client
+credentials itself.
+
 ## Local Provider Core identity
 
 For a local Console enrollment check, `serveService()` can expose the Provider's

@@ -592,6 +592,27 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     const manifestDigest = `sha256:${createHash("sha256")
       .update(JSON.stringify(manifest))
       .digest("hex")}`;
+    const moduleRelease = {
+      compatibility: {},
+      delivery: {
+        contract_digests: [lockedDigest("4")],
+        export: "taste-profile",
+        kind: "service",
+        responsibility_profile: "provider",
+        service_id: "taste/service",
+        service_release_digest: lockedDigest("5"),
+        service_release_version: "0.1.0",
+      },
+      manifest,
+      manifest_digest: manifestDigest,
+      module_id: "taste/profile",
+      protocol: "lenso.module-release.v1",
+      version: "0.1.0",
+    };
+    const moduleReleaseDigest = `sha256:${createHash("sha256")
+      .update(JSON.stringify(moduleRelease))
+      .digest("hex")}`;
+    let observedActor: unknown;
     const service = defineService({
       modules: [
         defineModule({
@@ -605,9 +626,10 @@ describe("@lenso/service-kit internal delivery adapter", () => {
       modules: {
         "taste-profile": {
           http: {
-            "GET /profiles/{id}": ({ params }) => ({
-              profile: { id: params.id },
-            }),
+            "GET /profiles/{id}": ({ actor, params }) => {
+              observedActor = actor;
+              return { profile: { id: params.id } };
+            },
           },
         },
       },
@@ -620,10 +642,11 @@ describe("@lenso/service-kit internal delivery adapter", () => {
             manifest,
             manifestDigest,
             moduleId: "taste/profile",
-            moduleReleaseDigest: lockedDigest("2"),
+            moduleReleaseDigest,
             moduleVersion: "0.1.0",
           },
         ],
+        moduleReleases: { "taste-profile": moduleRelease },
         protocolContractDigest: lockedDigest("1"),
         runtimeInstanceId: "taste-local-1",
         serviceId: "taste/service",
@@ -635,17 +658,29 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     try {
       const origin = new URL(served.baseUrl).origin;
       const providerUrl = `${origin}/lenso/provider/v1`;
-      await expect(fetch(providerUrl).then((response) => response.json())).resolves.toMatchObject({
+      const descriptor = await fetch(providerUrl).then((response) => response.json());
+      expect(descriptor).toMatchObject({
         protocol: "lenso.provider.v1",
         serviceId: "taste/service",
         exports: [{ exportKey: "taste-profile", moduleId: "taste/profile" }],
       });
+      expect(descriptor).not.toHaveProperty("moduleReleases");
+      await expect(
+        fetch(`${providerUrl}/exports/taste-profile/module-release`).then(
+          (response) => response.json()
+        )
+      ).resolves.toEqual(moduleRelease);
       const invocation = {
+        actor: {
+          kind: "user",
+          scopes: ["taste.profiles.read"],
+          user_id: "taste-user",
+        },
         protocol: "lenso.provider.v1",
         invocationId: "invocation-1",
         serviceReleaseDigest: lockedDigest("5"),
         exportKey: "taste-profile",
-        moduleReleaseDigest: lockedDigest("2"),
+        moduleReleaseDigest,
         manifestDigest,
         operationKind: "http_route",
         operationName: "GET /profiles/{id}",
@@ -669,6 +704,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         result: { body: { profile: { id: "profile-1" } }, status_code: 200 },
         status: "succeeded",
       });
+      expect(observedActor).toEqual(invocation.actor);
       await expect(
         fetch(`${providerUrl}/invocations/invocation-1`).then((response) => response.json())
       ).resolves.toEqual(outcome);
