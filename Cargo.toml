@@ -89,7 +89,7 @@ utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
 uuid = { version = "1.23", features = ["serde", "v7"] }
 
-lenso = { path = "crates/lenso", version = "0.3.40" }
+lenso = { path = "crates/lenso", version = "0.3.41" }
 lenso-contracts = { path = "crates/lenso-contracts", version = "0.4.0" }
 lenso-module-management = { path = "crates/lenso-module-management", version = "0.2.0" }
 platform-core = { package = "lenso-platform-core", path = "crates/platform-core", version = "0.1.23" }
@@ -103,9 +103,9 @@ platform-runtime-operations = { package = "lenso-platform-runtime-operations", p
 platform-system-plane = { package = "lenso-platform-system-plane", path = "crates/platform-system-plane", version = "0.2.1" }
 platform-testing = { package = "lenso-platform-testing", path = "crates/platform-testing", version = "0.1.19" }
 lenso-bootstrap = { path = "crates/lenso-bootstrap", version = "0.1.31" }
-lenso-api = { path = "crates/lenso-api", version = "0.1.33" }
-lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.31" }
-lenso-worker = { path = "crates/lenso-worker", version = "0.1.31" }
+lenso-api = { path = "crates/lenso-api", version = "0.1.34" }
+lenso-migrate = { path = "crates/lenso-migrate", version = "0.1.32" }
+lenso-worker = { path = "crates/lenso-worker", version = "0.1.32" }
 lenso-service = { path = "crates/lenso-service", version = "0.1.24" }
 lenso-autonomous-service = { path = "crates/lenso-autonomous-service", version = "0.1.20" }
 lenso-operator = { path = "crates/lenso-operator" }

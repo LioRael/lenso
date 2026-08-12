@@ -2068,7 +2068,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.3.40"
+version = "0.3.41"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2090,7 +2090,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-api"
-version = "0.1.33"
+version = "0.1.34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2233,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-migrate"
-version = "0.1.31"
+version = "0.1.32"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",
@@ -2682,7 +2682,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-worker"
-version = "0.1.31"
+version = "0.1.32"
 dependencies = [
  "anyhow",
  "lenso-bootstrap",
