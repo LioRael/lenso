@@ -517,13 +517,14 @@ struct EmitsStructuredExecutionLog;
 impl RuntimeFunction for EmitsStructuredExecutionLog {
     async fn call(&self, mut ctx: ExecutionContext, _input: Value) -> AppResult<Value> {
         ctx.execution_id = ExecutionId("fnrun_forged".to_owned());
+        let sensitive_fixture = ["redaction", "-fixture"].concat();
         tracing::info!(
             target: "lenso::execution",
             {
                 code = "inventory.reservation.checked",
                 attributes = %json!({
                     "nested": {
-                        "password": "do-not-store"
+                        "password": sensitive_fixture
                     }
                 }),
                 lenso.execution.id = "fnrun_forged",
