@@ -236,6 +236,7 @@ export const readLensoInvocationContext = (
 };
 
 export interface ModuleHttpHandlerContext {
+  actor?: ProviderActorContext;
   body: unknown;
   params: Record<string, string>;
   request: IncomingMessage;
@@ -760,6 +761,12 @@ export interface ProviderV1Export {
   readinessReasons?: readonly string[];
 }
 
+export type ProviderActorContext =
+  | { kind: "anonymous" }
+  | { kind: "system" }
+  | { kind: "user"; user_id: string; scopes: readonly string[] }
+  | { kind: "service"; service_id: string; scopes: readonly string[] };
+
 export interface ProviderV1Options {
   protocolContractDigest: string;
   serviceId: string;
@@ -768,6 +775,7 @@ export interface ProviderV1Options {
   runtimeInstanceId: string;
   exports: readonly ProviderV1Export[];
   features?: readonly string[];
+  moduleReleases?: Readonly<Record<string, Record<string, unknown>>>;
 }
 
 interface ProviderV1Invocation {
@@ -781,6 +789,7 @@ interface ProviderV1Invocation {
   operationName: string;
   inputContractDigest: string;
   outputContractDigest: string;
+  actor: ProviderActorContext;
   payload: unknown;
 }
 
@@ -899,8 +908,35 @@ const validateProviderV1 = (provider: ProviderV1Options) => {
         );
       }
     }
+    const moduleRelease = provider.moduleReleases?.[providerExport.exportKey];
+    if (
+      moduleRelease &&
+      canonicalDigest(moduleRelease) !== providerExport.moduleReleaseDigest
+    ) {
+      throw new Error(
+        `providerV1 module release ${providerExport.exportKey} does not match moduleReleaseDigest`
+      );
+    }
   }
 };
+
+const validProviderActor = (
+  value: Partial<ProviderActorContext> | null | undefined
+) =>
+  value?.kind === "anonymous" ||
+  value?.kind === "system" ||
+  (value?.kind === "user" &&
+    typeof (value as { user_id?: unknown }).user_id === "string" &&
+    Array.isArray((value as { scopes?: unknown }).scopes) &&
+    (value as { scopes: unknown[] }).scopes.every(
+      (scope) => typeof scope === "string"
+    )) ||
+  (value?.kind === "service" &&
+    typeof (value as { service_id?: unknown }).service_id === "string" &&
+    Array.isArray((value as { scopes?: unknown }).scopes) &&
+    (value as { scopes: unknown[] }).scopes.every(
+      (scope) => typeof scope === "string"
+    ));
 
 const providerDescriptor = (provider: ProviderV1Options) => ({
   exports: provider.exports.map((providerExport) => ({
@@ -933,6 +969,7 @@ const validateProviderInvocation = (
     invocation.exportKey !== providerExport.exportKey ||
     invocation.moduleReleaseDigest !== providerExport.moduleReleaseDigest ||
     invocation.manifestDigest !== providerExport.manifestDigest ||
+    !validProviderActor(invocation.actor) ||
     !contracts.includes(invocation.inputContractDigest ?? "") ||
     !contracts.includes(invocation.outputContractDigest ?? "")
   ) {
@@ -957,6 +994,7 @@ const invokeProviderV1 = async (
       }
       const normalized = normalizeHandlerResult(
         await handler({
+          actor: invocation.actor,
           body: payload.body,
           params: (payload.path_params ?? {}) as Record<string, string>,
           request,
@@ -2198,6 +2236,32 @@ export const serveService = async (
     const requestPath = new URL(request.url ?? "", "http://127.0.0.1").pathname;
     if (providerV1 && request.method === "GET" && requestPath === providerV1BasePath) {
       sendJson(response, 200, providerDescriptor(providerV1));
+      return;
+    }
+    if (
+      providerV1 &&
+      request.method === "GET" &&
+      requestPath.startsWith(`${providerV1BasePath}/exports/`) &&
+      requestPath.endsWith("/module-release")
+    ) {
+      const encodedExportKey = requestPath.slice(
+        `${providerV1BasePath}/exports/`.length,
+        -"/module-release".length
+      );
+      const exportKey = decodeURIComponent(encodedExportKey);
+      const moduleRelease = providerV1.moduleReleases?.[exportKey];
+      if (moduleRelease) {
+        sendJson(response, 200, moduleRelease);
+      } else {
+        sendJson(response, 404, {
+          error: {
+            code: "module_release_not_found",
+            details: [],
+            message: `Provider export ${exportKey} does not expose an exact Module Release`,
+            retryable: false,
+          },
+        });
+      }
       return;
     }
     if (
