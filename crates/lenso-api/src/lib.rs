@@ -26,6 +26,8 @@ use tower::ServiceExt as _;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
+mod local_system_plane;
+
 pub mod openapi;
 
 pub use openapi::openapi_document;
@@ -72,8 +74,14 @@ pub async fn run_from_env_with_composition(
         platform_provider::install_provider_http_proxy_registry(provider_runtime.proxy_registry());
     }
 
-    let app = try_build_router_with_composition(ctx.clone(), &composition)
+    let mut app = try_build_router_with_composition(ctx.clone(), &composition)
         .context("failed to build API router")?;
+    if let Some(local_system_plane) = local_system_plane::router_from_env(&ctx.config)
+        .context("failed to configure the local System Plane")?
+    {
+        app = app.merge(local_system_plane);
+        info!("enabled loopback-only local System Plane");
+    }
     let address: SocketAddr = format!("{}:{}", ctx.config.http.host, ctx.config.http.port)
         .parse()
         .context("invalid HTTP bind address")?;
