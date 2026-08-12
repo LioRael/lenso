@@ -536,6 +536,229 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/console/artifact:
+    get:
+      tags:
+      - auth-console
+      operationId: auth_console_artifact
+      responses:
+        '200':
+          description: Exact Auth Console ESM artifact
+          content:
+            application/gzip: {}
+  /v1/auth/console/release:
+    get:
+      tags:
+      - auth-console
+      operationId: auth_console_release
+      responses:
+        '200':
+          description: Auth Module-owned Console artifact release template
+          content:
+            application/json:
+              schema: {}
+  /v1/auth/console/sessions:
+    get:
+      tags:
+      - auth-console
+      operationId: auth_console_list_sessions
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          maximum: 200
+          minimum: 1
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthConsoleSessionPage'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/console/sessions/{session_id}/revoke:
+    post:
+      tags:
+      - auth-console
+      operationId: auth_console_revoke_session
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionMutationResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/console/users:
+    get:
+      tags:
+      - auth-console
+      operationId: auth_console_list_users
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
+          maximum: 200
+          minimum: 1
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthConsoleUserPage'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/console/users/{user_id}/disable:
+    post:
+      tags:
+      - auth-console
+      operationId: auth_console_disable_user
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableAuthUserRequest'
+        required: true
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserMutationResponse'
+        '400':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/auth/console/users/{user_id}/enable:
+    post:
+      tags:
+      - auth-console
+      operationId: auth_console_enable_user
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserMutationResponse'
+        '403':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: ''
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/auth/dev/sessions:
     post:
       tags:
@@ -1240,6 +1463,115 @@ components:
           type:
           - string
           - 'null'
+    AuthConsoleSession:
+      type: object
+      required:
+      - id
+      - user_id
+      - created_at
+      - expires_at
+      properties:
+        client_ip:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+          format: date-time
+        device_id:
+          type:
+          - string
+          - 'null'
+        expires_at:
+          type: string
+          format: date-time
+        id:
+          type: string
+        revoked_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        user_agent:
+          type:
+          - string
+          - 'null'
+        user_id:
+          type: string
+    AuthConsoleSessionPage:
+      type: object
+      required:
+      - records
+      properties:
+        next_cursor:
+          type:
+          - string
+          - 'null'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthConsoleSession'
+    AuthConsoleUser:
+      type: object
+      required:
+      - id
+      - is_anonymous
+      - created_at
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        disabled_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        disabled_reason:
+          type:
+          - string
+          - 'null'
+        disabled_until:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        id:
+          type: string
+        is_anonymous:
+          type: boolean
+    AuthConsoleUserPage:
+      type: object
+      required:
+      - records
+      properties:
+        next_cursor:
+          type:
+          - string
+          - 'null'
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthConsoleUser'
+    AuthSessionMutationResponse:
+      type: object
+      required:
+      - session_id
+      - revoked
+      properties:
+        revoked:
+          type: boolean
+        session_id:
+          type: string
+    AuthUserMutationResponse:
+      type: object
+      required:
+      - user_id
+      - changed
+      properties:
+        changed:
+          type: boolean
+        user_id:
+          type: string
     CreateDevSessionRequest:
       type: object
       required:
@@ -1264,6 +1596,18 @@ components:
           type: string
         user_id:
           type: string
+    DisableAuthUserRequest:
+      type: object
+      properties:
+        disabled_until:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        reason:
+          type:
+          - string
+          - 'null'
     ErrorResponse:
       type: object
       required:
