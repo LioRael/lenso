@@ -608,10 +608,61 @@ export type ServiceModuleDefinition = Omit<
   "compatibility" | "service"
 >;
 
-export type ServiceModuleManifest = Omit<
-  ProviderModuleManifest,
-  "compatibility" | "service" | "source"
->;
+export interface ServiceModuleRequirement {
+  module_id: string;
+  version_requirement: string;
+  capabilities: readonly string[];
+  optional: boolean;
+}
+
+export interface ServiceModuleConsoleSurface {
+  name: string;
+  label: string;
+  route: string;
+  presentation: {
+    kind: "esm";
+    entry: string;
+  };
+  required_capabilities: readonly string[];
+  icon?: string;
+  navigation?: {
+    workspace: {
+      id: string;
+      label: string;
+      icon?: string;
+    };
+    group?: {
+      id: string;
+      label: string;
+      order?: number;
+    };
+    order?: number;
+  };
+}
+
+export interface ServiceModuleManifest {
+  protocol: "lenso.module-manifest.v1";
+  module_id: string;
+  story_display: readonly ModuleStoryDisplayDescriptor[];
+  capabilities: readonly string[];
+  requires: readonly ServiceModuleRequirement[];
+  http_routes: readonly ModuleHttpRoute[];
+  runtime: {
+    functions: readonly ModuleRuntimeFunctionDeclaration[];
+  };
+  events?: ModuleEventSurface;
+  lifecycle?: ModuleLifecycleSurface;
+  admin: unknown | null;
+  console: readonly ServiceModuleConsoleSurface[];
+  console_slots: readonly unknown[];
+  console_contributions: readonly unknown[];
+  /** @deprecated Use module_id. This compatibility alias is omitted from JSON. */
+  readonly name: string;
+  /** @deprecated Module versions belong to Module Releases. This alias is omitted from JSON. */
+  readonly version: string;
+  /** @deprecated Use requires. This compatibility alias is omitted from JSON. */
+  readonly dependencies: readonly string[];
+}
 
 export interface ServiceInstallCommand {
   command: string;
@@ -1734,13 +1785,56 @@ export const defineProviderModule = (
 export const defineModule = (
   definition: ServiceModuleDefinition
 ): ServiceModuleManifest => {
-  const {
-    compatibility: _compatibility,
-    service: _service,
-    source: _source,
-    ...module
-  } = defineProviderModule(definition);
-  return module;
+  const module = defineProviderModule(definition);
+  const manifest = {
+    admin: module.admin,
+    capabilities: module.capabilities,
+    console: (module.console ?? []).map((surface) => ({
+      ...(surface.icon ? { icon: surface.icon } : {}),
+      label: surface.label,
+      name: surface.name,
+      ...(surface.navigation?.workspace
+        ? {
+            navigation: {
+              ...(surface.navigation.group
+                ? { group: surface.navigation.group }
+                : {}),
+              ...(surface.navigation.order === undefined
+                ? {}
+                : { order: surface.navigation.order }),
+              workspace: surface.navigation.workspace,
+            },
+          }
+        : {}),
+      presentation: {
+        entry: surface.package.export,
+        kind: "esm" as const,
+      },
+      required_capabilities: surface.required_capabilities ?? [],
+      route: surface.route,
+    })),
+    console_contributions: [],
+    console_slots: [],
+    ...(module.events ? { events: module.events } : {}),
+    http_routes: module.http_routes,
+    ...(module.lifecycle ? { lifecycle: module.lifecycle } : {}),
+    module_id: module.name,
+    protocol: "lenso.module-manifest.v1",
+    requires: module.dependencies.map((moduleId) => ({
+      capabilities: [],
+      module_id: moduleId,
+      optional: false,
+      version_requirement: "*",
+    })),
+    runtime: module.runtime,
+    story_display: module.story_display,
+  };
+  Object.defineProperties(manifest, {
+    dependencies: { value: module.dependencies },
+    name: { value: module.name },
+    version: { value: module.version },
+  });
+  return manifest as unknown as ServiceModuleManifest;
 };
 
 export const defineService = (
@@ -1755,13 +1849,13 @@ export const defineService = (
   }
   const moduleNames = new Set<string>();
   for (const module of definition.modules) {
-    if (!module.name.trim()) {
+    if (!module.module_id.trim()) {
       throw new Error("Service module name is required");
     }
-    if (moduleNames.has(module.name)) {
-      throw new Error(`Duplicate service module: ${module.name}`);
+    if (moduleNames.has(module.module_id)) {
+      throw new Error(`Duplicate service module: ${module.module_id}`);
     }
-    moduleNames.add(module.name);
+    moduleNames.add(module.module_id);
   }
   return {
     ...(definition.compatibility
@@ -2065,8 +2159,8 @@ const serviceStatusResponse = async ({
   checks: await serviceStatusChecks(options),
   manifestUrl: `${baseUrl}/manifest`,
   modules: manifest.modules.map((module) => ({
-    name: module.name,
-    version: module.version,
+    name: module.module_id,
+    version: manifest.version,
   })),
   protocolVersion: "1",
   serviceName: manifest.name,
@@ -2079,8 +2173,16 @@ const providerManifestForServiceModule = (
   service: ServiceManifest,
   module: ServiceModuleManifest
 ): ProviderModuleManifest => ({
-  ...module,
+  admin: module.admin,
+  capabilities: module.capabilities,
   ...(service.compatibility ? { compatibility: service.compatibility } : {}),
+  console: [],
+  dependencies: module.requires.map((requirement) => requirement.module_id),
+  ...(module.events ? { events: module.events } : {}),
+  http_routes: module.http_routes,
+  ...(module.lifecycle ? { lifecycle: module.lifecycle } : {}),
+  name: module.module_id,
+  runtime: module.runtime,
   service: {
     ...(service.deployment ? { deployment: service.deployment } : {}),
     name: service.name,
@@ -2091,6 +2193,8 @@ const providerManifestForServiceModule = (
     version: service.version,
   },
   source: "service",
+  story_display: module.story_display,
+  version: service.version,
 });
 
 export const serveModuleProvider = async (
@@ -2363,8 +2467,8 @@ export const serveService = async (
     }
 
     for (const module of manifest.modules) {
-      const moduleBasePath = `${basePath}/modules/${module.name}`;
-      const moduleHandlers = options.modules?.[module.name] ?? {};
+      const moduleBasePath = `${basePath}/modules/${module.module_id}`;
+      const moduleHandlers = options.modules?.[module.module_id] ?? {};
       const providerManifest = providerManifestForServiceModule(
         manifest,
         module

@@ -195,6 +195,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
   test("defines a service manifest with provided modules", () => {
     const supportTicket = defineModule({
       capabilities: ["support_ticket.tickets.read"],
+      dependencies: ["lenso/identity"],
       httpRoutes: [
         getRoute("/tickets/{id}", {
           capability: "support_ticket.tickets.read",
@@ -202,8 +203,32 @@ describe("@lenso/service-kit internal delivery adapter", () => {
           storyTitle: "Get Ticket",
         }),
       ],
-      name: "support-ticket",
+      name: "acme/support-ticket",
     });
+
+    expect(supportTicket).toMatchObject({
+      capabilities: ["support_ticket.tickets.read"],
+      module_id: "acme/support-ticket",
+      protocol: "lenso.module-manifest.v1",
+      requires: [
+        {
+          capabilities: [],
+          module_id: "lenso/identity",
+          optional: false,
+          version_requirement: "*",
+        },
+      ],
+    });
+    expect(supportTicket.name).toBe("acme/support-ticket");
+    expect(supportTicket.version).toBe("0.1.0");
+    expect(supportTicket.dependencies).toEqual(["lenso/identity"]);
+    expect(JSON.parse(JSON.stringify(supportTicket))).not.toHaveProperty(
+      "dependencies"
+    );
+    expect(JSON.parse(JSON.stringify(supportTicket))).not.toHaveProperty("name");
+    expect(JSON.parse(JSON.stringify(supportTicket))).not.toHaveProperty(
+      "version"
+    );
 
     expect(
       defineService({
@@ -467,14 +492,14 @@ describe("@lenso/service-kit internal delivery adapter", () => {
               storyTitle: "Get Ticket",
             }),
           ],
-          name: "support-ticket",
+          name: "acme/support-ticket",
         }),
       ],
       name: "support-service",
     });
     const served = await serveService(service, {
       modules: {
-        "support-ticket": {
+        "acme/support-ticket": {
           http: {
             "GET /tickets/{id}": ({ params }) => ({
               ticket: { id: params.id },
@@ -489,19 +514,24 @@ describe("@lenso/service-kit internal delivery adapter", () => {
       await expect(
         fetch(served.manifestUrl).then((response) => response.json())
       ).resolves.toMatchObject({
-        modules: [{ name: "support-ticket" }],
+        modules: [
+          {
+            module_id: "acme/support-ticket",
+            protocol: "lenso.module-manifest.v1",
+          },
+        ],
         name: "support-service",
         protocol: "lenso.service.v1",
       });
       await expect(
         fetch(served.statusUrl).then((response) => response.json())
       ).resolves.toMatchObject({
-        modules: [{ name: "support-ticket" }],
+        modules: [{ name: "acme/support-ticket", version: "0.1.0" }],
         serviceName: "support-service",
         state: "ready",
       });
       await expect(
-        fetch(`${served.baseUrl}/modules/support-ticket/tickets/ticket_1`).then(
+        fetch(`${served.baseUrl}/modules/acme/support-ticket/tickets/ticket_1`).then(
           (response) => response.json()
         )
       ).resolves.toEqual({
