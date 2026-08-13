@@ -83,6 +83,23 @@ impl ProviderHttpBodyEvidence {
 }
 
 #[derive(Debug, Clone)]
+pub struct ProviderHttpCallBodyEvidence {
+    pub request: ProviderHttpBodyEvidence,
+    pub response: ProviderHttpBodyEvidence,
+}
+
+impl ProviderHttpCallBodyEvidence {
+    #[must_use]
+    pub fn not_captured(reason: impl Into<String>) -> Self {
+        let reason = reason.into();
+        Self {
+            request: ProviderHttpBodyEvidence::not_captured(reason.clone(), None),
+            response: ProviderHttpBodyEvidence::not_captured(reason, None),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ProviderHttpCallRecord {
     pub module_name: String,
     pub method: String,
@@ -98,8 +115,6 @@ pub struct ProviderHttpCallRecord {
     pub retryable: bool,
     pub path_params: Value,
     pub error_details: Value,
-    pub request_body: ProviderHttpBodyEvidence,
-    pub response_body: ProviderHttpBodyEvidence,
 }
 
 pub async fn insert_provider_http_call(
@@ -107,6 +122,23 @@ pub async fn insert_provider_http_call(
     ids: &dyn crate::IdGenerator,
     request_ctx: &RequestContext,
     record: ProviderHttpCallRecord,
+) -> AppResult<String> {
+    insert_provider_http_call_with_body_evidence(
+        pool,
+        ids,
+        request_ctx,
+        record,
+        ProviderHttpCallBodyEvidence::not_captured("caller_did_not_supply_evidence"),
+    )
+    .await
+}
+
+pub async fn insert_provider_http_call_with_body_evidence(
+    pool: &DbPool,
+    ids: &dyn crate::IdGenerator,
+    request_ctx: &RequestContext,
+    record: ProviderHttpCallRecord,
+    body_evidence: ProviderHttpCallBodyEvidence,
 ) -> AppResult<String> {
     let id = ids.new_id("rproxy");
     let path_params = normalize_object(record.path_params.clone());
@@ -164,20 +196,28 @@ pub async fn insert_provider_http_call(
     .bind(&request_ctx.trace.span_id)
     .bind(&path_params)
     .bind(&error_details)
-    .bind(&record.request_body.body)
-    .bind(record.request_body.capture_status.as_str())
-    .bind(&record.request_body.capture_reason)
-    .bind(record.request_body.observed_bytes)
-    .bind(&record.response_body.body)
-    .bind(record.response_body.capture_status.as_str())
-    .bind(&record.response_body.capture_reason)
-    .bind(record.response_body.observed_bytes)
+    .bind(&body_evidence.request.body)
+    .bind(body_evidence.request.capture_status.as_str())
+    .bind(&body_evidence.request.capture_reason)
+    .bind(body_evidence.request.observed_bytes)
+    .bind(&body_evidence.response.body)
+    .bind(body_evidence.response.capture_status.as_str())
+    .bind(&body_evidence.response.capture_reason)
+    .bind(body_evidence.response.observed_bytes)
     .fetch_one(pool)
     .await
     .map_err(map_provider_call_error)?;
 
-    insert_provider_call_story_event(pool, &id, request_ctx, &record, &path_params, occurred_at)
-        .await?;
+    insert_provider_call_story_event(
+        pool,
+        &id,
+        request_ctx,
+        &record,
+        &body_evidence,
+        &path_params,
+        occurred_at,
+    )
+    .await?;
 
     Ok(id)
 }
@@ -205,6 +245,7 @@ async fn insert_provider_call_story_event(
     id: &str,
     request_ctx: &RequestContext,
     record: &ProviderHttpCallRecord,
+    body_evidence: &ProviderHttpCallBodyEvidence,
     path_params: &Value,
     occurred_at: DateTime<Utc>,
 ) -> AppResult<()> {
@@ -270,6 +311,7 @@ async fn insert_provider_call_story_event(
         id,
         request_ctx,
         record,
+        body_evidence,
         path_params,
     ))
     .bind(&request_ctx.trace.trace_id)
@@ -311,6 +353,7 @@ fn provider_call_story_event_metadata(
     id: &str,
     request_ctx: &RequestContext,
     record: &ProviderHttpCallRecord,
+    body_evidence: &ProviderHttpCallBodyEvidence,
     path_params: &Value,
 ) -> Value {
     serde_json::json!({
@@ -332,11 +375,11 @@ fn provider_call_story_event_metadata(
         "retryable": record.retryable,
         "path_params": path_params,
         "error_details": &record.error_details,
-        "request_body_capture_status": record.request_body.capture_status.as_str(),
-        "request_body_capture_reason": &record.request_body.capture_reason,
-        "request_body_observed_bytes": record.request_body.observed_bytes,
-        "response_body_capture_status": record.response_body.capture_status.as_str(),
-        "response_body_capture_reason": &record.response_body.capture_reason,
-        "response_body_observed_bytes": record.response_body.observed_bytes,
+        "request_body_capture_status": body_evidence.request.capture_status.as_str(),
+        "request_body_capture_reason": &body_evidence.request.capture_reason,
+        "request_body_observed_bytes": body_evidence.request.observed_bytes,
+        "response_body_capture_status": body_evidence.response.capture_status.as_str(),
+        "response_body_capture_reason": &body_evidence.response.capture_reason,
+        "response_body_observed_bytes": body_evidence.response.observed_bytes,
     })
 }

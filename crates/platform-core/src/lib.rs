@@ -58,8 +58,9 @@ pub use outbox::{
     LoggingEventDispatcher, OutboxEvent, OutboxPublisher, OutboxRelay, OutboxStatus,
 };
 pub use provider_calls::{
-    ProviderHttpBodyCaptureStatus, ProviderHttpBodyEvidence, ProviderHttpCallRecord,
-    insert_provider_http_call, provider_call_story_event_id,
+    ProviderHttpBodyCaptureStatus, ProviderHttpBodyEvidence, ProviderHttpCallBodyEvidence,
+    ProviderHttpCallRecord, insert_provider_http_call,
+    insert_provider_http_call_with_body_evidence, provider_call_story_event_id,
 };
 pub use redis::{RedisConnection, connect_redis};
 pub use runtime_config::{

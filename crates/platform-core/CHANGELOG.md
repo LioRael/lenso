@@ -11,6 +11,11 @@ runtime and outbox error handling.
 Persist typed Provider HTTP body evidence coverage and bounded, pre-sanitized
 request and response JSON copies without duplicating bodies into Story metadata.
 
+### Maintenance
+
+Keep existing `ProviderHttpCallRecord` struct literals source-compatible and
+add a body-aware insertion interface for adapters that provide evidence.
+
 ## lenso-platform-core@0.1.20
 
 ### Maintenance
