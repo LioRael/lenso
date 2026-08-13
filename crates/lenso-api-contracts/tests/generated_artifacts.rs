@@ -649,6 +649,22 @@ fn committed_event_envelope_schema_matches_generator() {
 }
 
 #[test]
+fn runtime_function_terminal_event_schema_is_committed_and_parseable() {
+    let schema: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../contracts/events/lenso/lenso.runtime-function-terminal.v1.schema.json"
+    ))
+    .expect("runtime function terminal Event schema should parse");
+
+    assert_eq!(schema["title"], "lenso.runtime-function-terminal.v1");
+    assert_eq!(
+        schema["$id"],
+        "https://lenso.dev/contracts/lenso.runtime-function-terminal.v1.schema.json"
+    );
+    assert_eq!(schema["additionalProperties"], false);
+    assert_eq!(schema["properties"]["terminalState"]["const"], "dead");
+}
+
+#[test]
 fn committed_support_event_artifacts_match_generator() {
     let schema: serde_json::Value = serde_json::from_str(include_str!(
         "../../../contracts/events/support/support.ticket-opened.v1.schema.json"

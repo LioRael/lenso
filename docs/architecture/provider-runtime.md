@@ -143,6 +143,33 @@ The host maps retryable failures through the existing runtime retry machinery.
 The Provider Service export may suggest retryability, but the host applies the registered
 retry policy and maximum attempts.
 
+For a Provider-backed runtime function, one stable `function_run_id` represents
+one owning-Module business attempt. The outer Provider `invocation_id` is
+deterministic per `(function_run_id, attempt)`: it remains stable for POST
+timeout recovery and acknowledgement of that exact technical attempt, then
+changes when the Host runs the next technical attempt. A known business
+observation is a succeeded Provider operation, even when the observed business
+result is transient or permanent failure. A retryable failed Provider outcome
+means the operation could not establish a business observation and therefore
+belongs only to the Host's technical retry rail. The owning Module decides
+whether a known business result creates a new business attempt and therefore a
+new stable function run.
+
+Provider-backed runs opt into a bounded terminal lifecycle Event when the Host
+exhausts technical retries before any Provider business observation can be
+committed. The Event is inserted atomically with the `dead` transition, has a
+stable identity derived from the function run, and contains only run, function,
+owner Module, correlation, and sanitized failure classification.
+It never includes function input, rendered content, credentials, or raw
+Provider responses. Owning Modules consume this public lifecycle fact instead
+of reading `runtime.function_runs`.
+
+Provider outcomes are bounded to 1 MiB by the Host response decoder before
+deserialization. This aggregate bound covers effect evidence, Event payloads
+and headers, and Runtime Function inputs. Before committing anything, the Host
+also caps a batch at 100 effects and rejects duplicate Event or Runtime request
+identities.
+
 ## Runtime Story Semantics
 
 Provider function execution should not create a new product surface. It should
@@ -243,6 +270,12 @@ Failure uses the standard provider error envelope, and retryability is mapped
 through the existing outbox retry/dead-letter machinery. Invalid result actions
 are non-retryable protocol failures and cause the claimed outbox row to become
 dead through the existing relay path.
+
+Stable Host Event and Runtime request identities are compare-and-replay
+boundaries: identical content is safe across a new technical invocation
+identity, while content drift is a conflict. Runtime effects preserve the
+invocation actor, tenant, and trace exactly; delegation does not implicitly
+authorize a Service to mint broader Host execution authority.
 
 ## Implementation Order
 

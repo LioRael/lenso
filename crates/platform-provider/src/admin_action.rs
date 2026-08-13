@@ -58,6 +58,7 @@ impl AdminActionSource for ProviderAdminActionSource {
                 invocation_id,
                 attempt: 1,
                 actor: ActorContext::System,
+                tenant_id: None,
                 correlation_id: uuid::Uuid::now_v7().to_string(),
                 causation_id: None,
                 trace: TraceContext::default(),

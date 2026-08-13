@@ -497,6 +497,10 @@ async fn forward_provider_invocation(
             request_id: request_ctx.request_id.0.clone(),
             attempt: 1,
             actor: request_ctx.actor.clone(),
+            tenant_id: request_ctx
+                .tenant_id
+                .as_ref()
+                .map(|tenant| tenant.0.clone()),
             correlation_id: request_ctx.correlation_id.0.clone(),
             causation_id: request_ctx.causation_id.clone(),
             trace: request_ctx.trace.clone(),

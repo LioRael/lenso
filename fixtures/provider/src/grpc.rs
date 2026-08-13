@@ -140,9 +140,7 @@ async fn handle(
                     invocation,
                 )
                 .await
-                .map_err(|(status, body)| {
-                    Status::failed_precondition(format!("{status}: {}", body.0))
-                })?;
+                .map_err(|(_status, body)| Status::failed_precondition(body.0.to_string()))?;
             encode(&outcome)
         }
     }

@@ -99,7 +99,7 @@ pub struct ProviderInvocation {
     pub payload: Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderOutcomeStatus {
     Pending,
@@ -213,20 +213,22 @@ pub struct ProviderErrorEnvelope {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderErrorBody {
     pub code: String,
     pub message: String,
     #[serde(default)]
     pub retryable: bool,
-    #[serde(default)]
+    #[serde(default, alias = "retry_after_ms")]
     pub retry_after_ms: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "provider_trace_reference")]
     pub provider_trace_reference: Option<String>,
     #[serde(default)]
     pub details: Vec<ProviderErrorDetail>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderErrorDetail {
     pub field: Option<String>,
     pub reason: String,

@@ -1,7 +1,7 @@
 use crate::config::ProviderConfig;
 use crate::protocol::{
-    ProviderDescriptor, ProviderInvocation, ProviderInvocationAcknowledgement,
-    ProviderInvocationReference, ProviderOutcome,
+    ProviderDescriptor, ProviderErrorEnvelope, ProviderInvocation,
+    ProviderInvocationAcknowledgement, ProviderInvocationReference, ProviderOutcome,
 };
 use platform_core::{AppError, AppResult, ErrorCode};
 use serde::Serialize;
@@ -46,7 +46,7 @@ pub(crate) async fn invoke(
     config: &ProviderConfig,
     binding: &str,
     invocation: &ProviderInvocation,
-) -> AppResult<ProviderOutcome> {
+) -> Result<ProviderOutcome, GrpcInvocationError> {
     let path = match binding {
         "http:invoke" => INVOKE_HTTP_ROUTE_PATH,
         "admin:list" => LIST_ADMIN_RECORDS_PATH,
@@ -56,13 +56,22 @@ pub(crate) async fn invoke(
         "runtime:invoke" => INVOKE_FUNCTION_PATH,
         "events:handle" => HANDLE_EVENT_PATH,
         _ => {
-            return Err(AppError::new(
+            return Err(GrpcInvocationError::Received(AppError::new(
                 ErrorCode::Validation,
                 format!("unsupported Provider binding {binding}"),
-            ));
+            )));
         }
     };
-    unary_json(config, path, "Provider invocation", invocation).await
+    unary_invocation_json(config, path, "Provider invocation", invocation).await
+}
+
+#[derive(Debug)]
+pub(crate) enum GrpcInvocationError {
+    /// The request may have reached the Provider, so GET recovery is required
+    /// before the Host can decide whether to retry it.
+    Ambiguous(AppError),
+    /// The Host received a definitive semantic result or failed before sending.
+    Received(AppError),
 }
 
 pub(crate) async fn get_invocation(
@@ -140,6 +149,62 @@ where
     })
 }
 
+async fn unary_invocation_json<TRequest, TResponse>(
+    config: &ProviderConfig,
+    path: &'static str,
+    operation: &'static str,
+    request: &TRequest,
+) -> Result<TResponse, GrpcInvocationError>
+where
+    TRequest: Serialize,
+    TResponse: DeserializeOwned,
+{
+    let mut client = connect(config, operation)
+        .await
+        .map_err(GrpcInvocationError::Received)?;
+    let mut request = Request::new(JsonEnvelope {
+        payload_json: serde_json::to_string(request)
+            .map_err(|error| {
+                AppError::new(
+                    ErrorCode::Internal,
+                    format!("provider {operation} gRPC request could not be encoded: {error}"),
+                )
+            })
+            .map_err(GrpcInvocationError::Received)?,
+    });
+    request.set_timeout(Duration::from_millis(config.timeout_ms));
+    apply_auth(&mut request, config.auth_token.as_deref(), operation)
+        .map_err(GrpcInvocationError::Received)?;
+
+    client
+        .ready()
+        .await
+        .map_err(|error| {
+            status_error(
+                Status::unknown(format!("provider gRPC service was not ready: {error}")),
+                operation,
+            )
+        })
+        .map_err(GrpcInvocationError::Received)?;
+    request.extensions_mut().insert(GrpcMethod::new(
+        "lenso.provider.v1.Provider",
+        method_name(path),
+    ));
+    let codec = tonic_prost::ProstCodec::<JsonEnvelope, JsonEnvelope>::default();
+    let response = client
+        .unary(request, PathAndQuery::from_static(path), codec)
+        .await
+        .map_err(|status| invocation_status_error(status, operation))?
+        .into_inner();
+
+    serde_json::from_str(&response.payload_json).map_err(|error| {
+        GrpcInvocationError::Received(AppError::new(
+            ErrorCode::ExternalDependency,
+            format!("provider {operation} gRPC response was invalid JSON: {error}"),
+        ))
+    })
+}
+
 async fn connect(
     config: &ProviderConfig,
     operation: &'static str,
@@ -190,6 +255,9 @@ fn apply_auth<T>(
 }
 
 fn status_error(status: Status, operation: &'static str) -> AppError {
+    if let Ok(envelope) = serde_json::from_str::<ProviderErrorEnvelope>(status.message()) {
+        return crate::response::provider_error(http_status_from_code(status.code()), envelope);
+    }
     let code = status.code();
     let mut error = AppError::new(
         error_code_from_status(code),
@@ -199,6 +267,33 @@ fn status_error(status: Status, operation: &'static str) -> AppError {
         error = error.retryable();
     }
     error
+}
+
+fn invocation_status_error(status: Status, operation: &'static str) -> GrpcInvocationError {
+    let received_provider_envelope =
+        serde_json::from_str::<ProviderErrorEnvelope>(status.message()).is_ok();
+    let ambiguous = !received_provider_envelope && status_is_ambiguous(status.code());
+    let error = status_error(status, operation);
+    if ambiguous {
+        GrpcInvocationError::Ambiguous(error)
+    } else {
+        GrpcInvocationError::Received(error)
+    }
+}
+
+fn http_status_from_code(code: Code) -> reqwest::StatusCode {
+    match code {
+        Code::InvalidArgument | Code::FailedPrecondition | Code::OutOfRange => {
+            reqwest::StatusCode::BAD_REQUEST
+        }
+        Code::Unauthenticated => reqwest::StatusCode::UNAUTHORIZED,
+        Code::PermissionDenied => reqwest::StatusCode::FORBIDDEN,
+        Code::NotFound => reqwest::StatusCode::NOT_FOUND,
+        Code::AlreadyExists | Code::Aborted => reqwest::StatusCode::CONFLICT,
+        Code::ResourceExhausted => reqwest::StatusCode::TOO_MANY_REQUESTS,
+        Code::Unavailable => reqwest::StatusCode::SERVICE_UNAVAILABLE,
+        _ => reqwest::StatusCode::BAD_GATEWAY,
+    }
 }
 
 fn error_code_from_status(code: Code) -> ErrorCode {
@@ -220,6 +315,126 @@ fn status_is_retryable(code: Code) -> bool {
         code,
         Code::Unavailable | Code::DeadlineExceeded | Code::ResourceExhausted | Code::Unknown
     )
+}
+
+fn status_is_ambiguous(code: Code) -> bool {
+    matches!(
+        code,
+        Code::Cancelled
+            | Code::Unknown
+            | Code::DeadlineExceeded
+            | Code::ResourceExhausted
+            | Code::Internal
+            | Code::Unavailable
+            | Code::DataLoss
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grpc_error_envelope_preserves_provider_retry_metadata() {
+        let status = Status::resource_exhausted(
+            serde_json::json!({
+                "error": {
+                    "code": "rate_limited",
+                    "message": "Provider throttled",
+                    "retryable": true,
+                    "retryAfterMs": 2500,
+                    "providerTraceReference": "provider-trace-1",
+                    "details": []
+                }
+            })
+            .to_string(),
+        );
+
+        let error = status_error(status, "test");
+        assert_eq!(error.code, ErrorCode::RateLimited);
+        assert!(error.retryable);
+        assert_eq!(error.retry_after_ms, Some(2_500));
+        assert_eq!(
+            error.provider_trace_reference.as_deref(),
+            Some("provider-trace-1")
+        );
+    }
+
+    #[test]
+    fn received_retryable_error_envelope_does_not_request_get_recovery() {
+        let status = Status::resource_exhausted(
+            serde_json::json!({
+                "error": {
+                    "code": "rate_limited",
+                    "message": "Provider throttled",
+                    "retryable": true,
+                    "retryAfterMs": 2500,
+                    "providerTraceReference": "provider-trace-1",
+                    "details": []
+                }
+            })
+            .to_string(),
+        );
+
+        match invocation_status_error(status, "test") {
+            GrpcInvocationError::Received(error) => {
+                assert!(error.retryable);
+                assert_eq!(error.retry_after_ms, Some(2_500));
+            }
+            GrpcInvocationError::Ambiguous(_) => {
+                panic!("received Provider error envelope must not trigger GET recovery")
+            }
+        }
+    }
+
+    #[test]
+    fn ambiguous_transport_status_requests_get_recovery() {
+        match invocation_status_error(Status::unavailable("connection lost"), "test") {
+            GrpcInvocationError::Ambiguous(error) => assert!(error.retryable),
+            GrpcInvocationError::Received(_) => {
+                panic!("ambiguous transport status must trigger GET recovery")
+            }
+        }
+    }
+
+    #[test]
+    fn ambiguous_non_retryable_transport_status_requests_fail_closed_recovery() {
+        match invocation_status_error(Status::internal("stream reset"), "test") {
+            GrpcInvocationError::Ambiguous(error) => assert!(!error.retryable),
+            GrpcInvocationError::Received(_) => {
+                panic!("ambiguous stream reset must trigger GET recovery")
+            }
+        }
+    }
+
+    #[test]
+    fn bare_retryable_status_without_provider_envelope_requests_get_recovery() {
+        match invocation_status_error(Status::resource_exhausted("server busy"), "test") {
+            GrpcInvocationError::Ambiguous(error) => assert!(error.retryable),
+            GrpcInvocationError::Received(_) => {
+                panic!("retryable status without a Provider envelope must trigger GET recovery")
+            }
+        }
+    }
+
+    #[test]
+    fn decoded_grpc_response_with_invalid_json_is_received_not_ambiguous() {
+        let error = serde_json::from_str::<ProviderOutcome>("not-json")
+            .map_err(|source| {
+                GrpcInvocationError::Received(AppError::new(
+                    ErrorCode::ExternalDependency,
+                    format!("provider test gRPC response was invalid JSON: {source}"),
+                ))
+            })
+            .expect_err("invalid response JSON should fail");
+
+        match error {
+            GrpcInvocationError::Received(error) => assert!(!error.retryable),
+            GrpcInvocationError::Ambiguous(_) => {
+                panic!("fully received invalid JSON must not trigger GET recovery")
+            }
+        }
+    }
 }
 
 fn method_name(path: &str) -> &'static str {

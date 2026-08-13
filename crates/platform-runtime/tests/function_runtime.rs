@@ -5,8 +5,9 @@ use platform_core::{
     PLATFORM_MIGRATIONS, PostgresExecutionLogProvider, TenantId, TraceContext, apply_migrations,
 };
 use platform_runtime::{
-    EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, RUNTIME_MIGRATIONS, RetryPolicy,
-    RuntimeClient, RuntimeFunction, RuntimeScheduler, RuntimeWorker, ScheduledFunctionDefinition,
+    EnqueueFunctionRequest, FunctionDefinition, FunctionRegistry, FunctionTerminalObservation,
+    RUNTIME_MIGRATIONS, RetryPolicy, RuntimeClient, RuntimeFunction, RuntimeScheduler,
+    RuntimeWorker, ScheduledFunctionDefinition,
 };
 use platform_testing::TestDatabase;
 use serde_json::{Value, json};
@@ -91,6 +92,68 @@ async fn enqueue_creates_function_run_row() {
     assert_eq!(row.3, 5);
     assert_eq!(row.4, "corr_1");
     assert_eq!(row.5["kind"], "user");
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn caller_owned_function_run_identity_replays_only_the_same_request() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let client = RuntimeClient::new(db.pool.clone());
+    let request = EnqueueFunctionRequest {
+        function_name: "test.echo.v1".to_owned(),
+        input_json: json!({ "hello": "world" }),
+        correlation_id: CorrelationId::new("corr_stable"),
+        actor: ActorContext::System,
+        tenant_id: None,
+        tenancy_mode: platform_runtime::FunctionTenancyMode::None,
+        trace: trace_context(),
+        causation_id: Some("event_stable".to_owned()),
+        max_attempts: Some(5),
+    };
+
+    let mut first = db.pool.begin().await.unwrap();
+    client
+        .enqueue_function_with_id_in_tx(&mut first, "fnrun_stable", request.clone())
+        .await
+        .expect("first request should enqueue");
+    first.commit().await.unwrap();
+
+    sqlx::query("update runtime.function_runs set status = 'completed' where id = $1")
+        .bind("fnrun_stable")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let mut replay = db.pool.begin().await.unwrap();
+    client
+        .enqueue_function_with_id_in_tx(&mut replay, "fnrun_stable", request.clone())
+        .await
+        .expect("the same durable request should replay safely");
+    replay.commit().await.unwrap();
+
+    let row = sqlx::query_as::<_, (i64, String)>(
+        "select count(*), max(status) from runtime.function_runs where id = $1",
+    )
+    .bind("fnrun_stable")
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(row, (1, "completed".to_owned()));
+
+    let mut drifted = request;
+    drifted.input_json = json!({ "hello": "different" });
+    let mut conflict = db.pool.begin().await.unwrap();
+    let error = client
+        .enqueue_function_with_id_in_tx(&mut conflict, "fnrun_stable", drifted)
+        .await
+        .expect_err("a stable run identity cannot be rebound");
+    assert_eq!(error.code, ErrorCode::Conflict);
+    conflict.rollback().await.unwrap();
 
     db.cleanup().await;
 }
@@ -404,6 +467,42 @@ async fn retryable_failure_uses_function_retry_delay() {
 }
 
 #[tokio::test]
+async fn provider_retry_after_overrides_the_function_default_delay() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let mut registry = FunctionRegistry::default();
+    registry.register(test_function_with_retry_policy(
+        "test.provider-delay.v1",
+        RetryPolicy::fixed(3, Duration::ZERO),
+        Arc::new(ProviderRetryAfterFailure),
+    ));
+    enqueue(&db.pool, "test.provider-delay.v1", 3).await;
+
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a");
+    worker
+        .claim_and_run_batch(10)
+        .await
+        .expect("runtime worker should preserve Provider retry-after");
+
+    let retry_is_delayed: bool = sqlx::query_scalar(
+        r#"
+        select available_at > now() + interval '50 seconds'
+        from runtime.function_runs
+        where function_name = 'test.provider-delay.v1'
+        "#,
+    )
+    .fetch_one(&db.pool)
+    .await
+    .expect("available_at should query");
+
+    assert!(retry_is_delayed);
+    db.cleanup().await;
+}
+
+#[tokio::test]
 async fn stale_processing_function_run_can_be_reclaimed() {
     let Some(db) = TestDatabase::create().await else {
         return;
@@ -463,6 +562,51 @@ async fn exhausted_attempts_marks_function_run_dead() {
     let (status, attempts) = run_status_and_attempts(&db.pool, "test.dead.v1").await;
     assert_eq!(status, "dead");
     assert_eq!(attempts, 1);
+
+    db.cleanup().await;
+}
+
+#[tokio::test]
+async fn opted_in_dead_run_publishes_one_bounded_terminal_observation() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_runtime_stack_migrations(&db).await;
+
+    let mut registry = FunctionRegistry::default();
+    registry.register(test_function(
+        "test.provider-dead.v1",
+        Arc::new(ObservedProviderFailure),
+    ));
+    let run_id = enqueue(&db.pool, "test.provider-dead.v1", 1).await;
+
+    let worker = RuntimeWorker::new(db.pool.clone(), Arc::new(registry), "worker-a");
+    worker
+        .claim_and_run_batch(10)
+        .await
+        .expect("runtime worker should publish the terminal observation");
+
+    let rows = sqlx::query_as::<_, (String, String, String, Value)>(
+        r#"
+        select id, event_name, correlation_id, payload
+        from platform.outbox
+        where event_name = 'lenso.runtime-function-terminal.v1'
+        "#,
+    )
+    .fetch_all(&db.pool)
+    .await
+    .expect("terminal observation should query");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].0, format!("runtime:function-run:{run_id}:terminal"));
+    assert_eq!(rows[0].1, "lenso.runtime-function-terminal.v1");
+    assert_eq!(rows[0].2, "corr_1");
+    assert_eq!(rows[0].3["functionRunId"], run_id);
+    assert_eq!(rows[0].3["functionName"], "test.provider-dead.v1");
+    assert_eq!(rows[0].3["ownerModule"], "test/provider");
+    assert_eq!(rows[0].3["failureClassification"], "retry_exhausted");
+    assert!(rows[0].3.get("input").is_none());
+    assert!(rows[0].3.get("message").is_none());
+    assert!(rows[0].3.get("providerResponse").is_none());
 
     db.cleanup().await;
 }
@@ -543,6 +687,20 @@ impl RuntimeFunction for EmitsStructuredExecutionLog {
 }
 
 #[derive(Debug)]
+struct ProviderRetryAfterFailure;
+
+#[async_trait::async_trait]
+impl RuntimeFunction for ProviderRetryAfterFailure {
+    async fn call(&self, _ctx: ExecutionContext, _input: Value) -> AppResult<Value> {
+        Err(
+            AppError::new(ErrorCode::ExternalDependency, "Provider throttled")
+                .retryable()
+                .with_retry_after_ms(Some(60_000)),
+        )
+    }
+}
+
+#[derive(Debug)]
 struct AlwaysFailsExecutionLogWriter;
 
 #[async_trait::async_trait]
@@ -563,6 +721,20 @@ impl ExecutionLogWriter for StalledExecutionLogWriter {
     async fn write_execution_log(&self, _record: ExecutionLogRecord) -> AppResult<String> {
         tokio::time::sleep(Duration::from_secs(1)).await;
         Ok("elog_stalled".to_owned())
+    }
+}
+
+#[derive(Debug)]
+struct ObservedProviderFailure;
+
+#[async_trait::async_trait]
+impl RuntimeFunction for ObservedProviderFailure {
+    async fn call(&self, _ctx: ExecutionContext, _input: Value) -> AppResult<Value> {
+        Err(AppError::new(ErrorCode::ExternalDependency, "sensitive provider response").retryable())
+    }
+
+    fn terminal_observation(&self) -> Option<FunctionTerminalObservation> {
+        Some(FunctionTerminalObservation::new("test/provider"))
     }
 }
 

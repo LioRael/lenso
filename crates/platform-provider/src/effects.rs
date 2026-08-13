@@ -7,7 +7,10 @@ use platform_core::{
 };
 use platform_runtime::{EnqueueFunctionRequest, FunctionTenancyMode, RuntimeClient};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fmt::Write as _;
+
+const MAX_PROVIDER_HOST_EFFECTS: usize = 100;
 
 #[derive(Debug, Clone)]
 pub struct ProviderHostEffectCoordinator {
@@ -150,6 +153,13 @@ fn validate_effects(
     invocation: &ProviderInvocation,
     effects: &ProviderHostEffectBatch,
 ) -> AppResult<()> {
+    if effects.events.len() + effects.runtime_function_requests.len() > MAX_PROVIDER_HOST_EFFECTS {
+        return Err(AppError::new(
+            ErrorCode::Validation,
+            format!("Provider Host effects exceed the {MAX_PROVIDER_HOST_EFFECTS} effect limit"),
+        ));
+    }
+    let mut event_ids = HashSet::with_capacity(effects.events.len());
     for event in &effects.events {
         if event.event_id.trim().is_empty()
             || event.event_name.trim().is_empty()
@@ -157,6 +167,7 @@ fn validate_effects(
             || event.aggregate_id.trim().is_empty()
             || event.source_module != config.name
             || event.correlation_id != invocation.correlation_id
+            || !event_ids.insert(event.event_id.as_str())
         {
             return Err(AppError::new(
                 ErrorCode::Validation,
@@ -164,12 +175,17 @@ fn validate_effects(
             ));
         }
     }
+    let mut request_ids = HashSet::with_capacity(effects.runtime_function_requests.len());
     for request in &effects.runtime_function_requests {
         if request.request_id.trim().is_empty()
             || request.correlation_id != invocation.correlation_id
             || !config
                 .allowed_host_function_names
                 .contains(&request.function_name)
+            || request.actor != invocation.actor
+            || request.tenant_id != invocation.tenant_id
+            || request.trace != invocation.trace
+            || !request_ids.insert(request.request_id.as_str())
             || request
                 .max_attempts
                 .is_some_and(|value| !(1..=100).contains(&value))
@@ -214,7 +230,7 @@ fn runtime_request(effect: &ProviderHostRuntimeFunctionRequest) -> EnqueueFuncti
 }
 
 fn digest(value: &ProviderHostEffectBatch) -> AppResult<String> {
-    let encoded = serde_json::to_vec(value).map_err(|error| {
+    let encoded = serde_json_canonicalizer::to_vec(value).map_err(|error| {
         AppError::new(
             ErrorCode::Internal,
             format!("Provider Host effects could not be encoded: {error}"),
@@ -267,16 +283,16 @@ mod tests {
                 vec![],
             )
             .with_allowed_host_functions(["support.follow_up.v1".to_owned()]);
-        let invocation = invocation("invocation-1", "correlation-1");
+        let base_invocation = invocation("invocation-1", "correlation-1");
         let outcome = outcome("invocation-1", "correlation-1");
         let coordinator = ProviderHostEffectCoordinator::new(db.pool.clone());
 
         coordinator
-            .commit(&config, &invocation, &outcome)
+            .commit(&config, &base_invocation, &outcome)
             .await
             .unwrap();
         coordinator
-            .commit(&config, &invocation, &outcome)
+            .commit(&config, &base_invocation, &outcome)
             .await
             .unwrap();
 
@@ -290,12 +306,107 @@ mod tests {
         let mut rebound = outcome;
         rebound.outcome_digest = digest_value('9');
         let error = coordinator
-            .commit(&config, &invocation, &rebound)
+            .commit(&config, &base_invocation, &rebound)
             .await
             .expect_err("committed invocation identity cannot be rebound");
         assert_eq!(error.code, ErrorCode::Conflict);
 
         db.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn stable_host_effects_replay_across_technical_invocation_identities() {
+        let Some(db) = TestDatabase::create().await else {
+            return;
+        };
+        apply_migrations(&db.pool, platform_core::PLATFORM_MIGRATIONS)
+            .await
+            .unwrap();
+        apply_migrations(&db.pool, platform_runtime::RUNTIME_MIGRATIONS)
+            .await
+            .unwrap();
+
+        let config = ProviderConfig::new("lenso/support", "http://provider.test")
+            .with_export_key("support")
+            .with_locked_contract(
+                digest_value('1'),
+                digest_value('2'),
+                digest_value('3'),
+                vec![],
+            )
+            .with_allowed_host_functions(["support.follow_up.v1".to_owned()]);
+        let first_invocation = invocation("invocation-attempt-1", "correlation-1");
+        let first_outcome = outcome("invocation-attempt-1", "correlation-1");
+        let second_invocation = invocation("invocation-attempt-2", "correlation-1");
+        let mut second_outcome = outcome("invocation-attempt-2", "correlation-1");
+        second_outcome.host_effects = first_outcome.host_effects.clone();
+        second_outcome.outcome_digest = digest_value('9');
+        let coordinator = ProviderHostEffectCoordinator::new(db.pool.clone());
+
+        coordinator
+            .commit(&config, &first_invocation, &first_outcome)
+            .await
+            .unwrap();
+        coordinator
+            .commit(&config, &second_invocation, &second_outcome)
+            .await
+            .expect("stable effects should survive a new technical invocation identity");
+
+        assert_eq!(
+            count(&db.pool, "platform.provider_host_effect_commits").await,
+            2
+        );
+        assert_eq!(count(&db.pool, "platform.outbox").await, 1);
+        assert_eq!(count(&db.pool, "runtime.function_runs").await, 1);
+
+        db.cleanup().await;
+    }
+
+    #[test]
+    fn rejects_unbounded_or_duplicate_host_effects_before_commit() {
+        let config = ProviderConfig::new("lenso/support", "http://provider.test")
+            .with_allowed_host_functions(["support.follow_up.v1".to_owned()]);
+        let base_invocation = invocation("invocation-1", "correlation-1");
+        let mut effects = outcome("invocation-1", "correlation-1").host_effects;
+        effects.events.push(effects.events[0].clone());
+
+        let duplicate = validate_effects(&config, &base_invocation, &effects)
+            .expect_err("duplicate Host Event identities must be rejected");
+        assert_eq!(duplicate.code, ErrorCode::Validation);
+
+        let mut effects = ProviderHostEffectBatch::default();
+        effects.events = (0..=MAX_PROVIDER_HOST_EFFECTS)
+            .map(|index| ProviderHostEventEffect {
+                event_id: format!("event-{index}"),
+                event_name: "support.updated.v1".to_owned(),
+                event_version: 1,
+                source_module: "lenso/support".to_owned(),
+                aggregate_type: "ticket".to_owned(),
+                aggregate_id: format!("ticket-{index}"),
+                correlation_id: "correlation-1".to_owned(),
+                causation_id: Some("invocation-1".to_owned()),
+                occurred_at: Utc::now(),
+                payload: json!({}),
+                headers: json!({}),
+            })
+            .collect();
+
+        let unbounded = validate_effects(&config, &base_invocation, &effects)
+            .expect_err("Host effect batches must be bounded");
+        assert_eq!(unbounded.code, ErrorCode::Validation);
+
+        let mut elevated = outcome("invocation-1", "correlation-1").host_effects;
+        elevated.runtime_function_requests[0].actor = ActorContext::System;
+        let invocation = ProviderInvocation {
+            actor: ActorContext::User {
+                user_id: "user-1".to_owned(),
+                scopes: vec!["support.read".to_owned()],
+            },
+            ..invocation("invocation-1", "correlation-1")
+        };
+        let privilege_error = validate_effects(&config, &invocation, &elevated)
+            .expect_err("a Provider must not mint Host Runtime authority");
+        assert_eq!(privilege_error.code, ErrorCode::Validation);
     }
 
     fn invocation(id: &str, correlation_id: &str) -> ProviderInvocation {

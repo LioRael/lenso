@@ -5,6 +5,12 @@
 Track duplicate function registrations so the Host can reject ambiguous linked
 Module runtime bindings before worker startup.
 
+### Features
+
+Allow Provider-backed functions to preserve bounded retry guidance and emit one
+idempotent, sanitized terminal lifecycle observation when technical retries are
+exhausted.
+
 ## lenso-platform-runtime@0.1.17
 
 ### Maintenance

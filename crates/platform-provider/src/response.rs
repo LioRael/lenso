@@ -59,6 +59,59 @@ pub(crate) async fn decode_json_response_with_policy<T: serde::de::DeserializeOw
     Err(fallback_status_error(status, operation))
 }
 
+/// Reads a Provider JSON response while preserving whether the failure was an
+/// ambiguous body-read loss after a successful POST or a fully received
+/// semantic HTTP response. Only the former is safe for GET recovery.
+pub(crate) async fn decode_invocation_response<T: serde::de::DeserializeOwned>(
+    response: Response,
+    operation: &str,
+    policy: ResponseBodyPolicy,
+) -> Result<Option<T>, InvocationResponseError> {
+    let status = response.status();
+    if let Some(max_bytes) = policy.max_bytes {
+        ensure_content_length(&response, operation, max_bytes)
+            .map_err(InvocationResponseError::Received)?;
+    }
+    let content_type_error = if policy.require_json_content_type && status.is_success() {
+        json_content_type_error(&response, operation)
+    } else {
+        None
+    };
+    let body = read_invocation_response_body(response, operation, policy.max_bytes).await?;
+
+    if status.is_success() {
+        if policy.allow_empty_success && status == StatusCode::NO_CONTENT && body.is_empty() {
+            return Ok(None);
+        }
+        if let Some(error) = content_type_error {
+            return Err(InvocationResponseError::Received(error));
+        }
+        return serde_json::from_slice::<T>(&body)
+            .map(Some)
+            .map_err(|error| {
+                InvocationResponseError::Received(AppError::new(
+                    ErrorCode::ExternalDependency,
+                    format!("provider {operation} response was invalid JSON: {error}"),
+                ))
+            });
+    }
+
+    if let Ok(envelope) = serde_json::from_slice::<ProviderErrorEnvelope>(&body) {
+        return Err(InvocationResponseError::Received(provider_error(
+            status, envelope,
+        )));
+    }
+    Err(InvocationResponseError::Received(fallback_status_error(
+        status, operation,
+    )))
+}
+
+#[derive(Debug)]
+pub(crate) enum InvocationResponseError {
+    Ambiguous(AppError),
+    Received(AppError),
+}
+
 async fn read_response_body(
     mut response: Response,
     operation: &str,
@@ -77,6 +130,35 @@ async fn read_response_body(
             && next_len > max_bytes
         {
             return Err(response_too_large(operation, next_len, max_bytes));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
+async fn read_invocation_response_body(
+    mut response: Response,
+    operation: &str,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, InvocationResponseError> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|source| {
+        InvocationResponseError::Ambiguous(
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("provider {operation} response body could not be read"),
+            )
+            .with_source(source)
+            .retryable(),
+        )
+    })? {
+        let next_len = body.len() as u64 + chunk.len() as u64;
+        if let Some(max_bytes) = max_bytes
+            && next_len > max_bytes
+        {
+            return Err(InvocationResponseError::Received(response_too_large(
+                operation, next_len, max_bytes,
+            )));
         }
         body.extend_from_slice(&chunk);
     }
@@ -141,10 +223,15 @@ fn invalid_content_type(operation: &str, content_type: Option<&str>) -> AppError
 
 pub(crate) fn provider_error(status: StatusCode, envelope: ProviderErrorEnvelope) -> AppError {
     let provider = envelope.error;
+    let retryable =
+        provider.retryable || status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS;
+    let retry_after_ms = retryable.then_some(provider.retry_after_ms).flatten();
     let mut error = AppError::new(
         error_code_from_provider(&provider.code, status),
         provider.message,
-    );
+    )
+    .with_retry_after_ms(retry_after_ms)
+    .with_provider_trace_reference(provider.provider_trace_reference);
     error.details = provider
         .details
         .into_iter()
@@ -160,7 +247,7 @@ pub(crate) fn provider_error(status: StatusCode, envelope: ProviderErrorEnvelope
             },
         ])
         .collect();
-    if provider.retryable || status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS {
+    if retryable {
         error = error.retryable();
     }
     error
@@ -265,5 +352,90 @@ mod tests {
         .expect_err("chunked body must exceed the policy limit");
 
         assert!(error.to_string().contains("exceeded"));
+    }
+
+    #[tokio::test]
+    async fn received_retryable_error_is_not_classified_as_ambiguous_response_loss() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let address = listener.local_addr().expect("test server address");
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            let body = serde_json::json!({
+                "error": {
+                    "code": "rate_limited",
+                    "message": "Provider throttled",
+                    "retryable": true,
+                    "retryAfterMs": 2500,
+                    "providerTraceReference": "provider-trace-1",
+                    "details": []
+                }
+            })
+            .to_string();
+            write!(
+                stream,
+                "HTTP/1.1 429 Too Many Requests\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write response");
+        });
+
+        let response = reqwest::Client::new()
+            .post(format!("http://{address}/invoke"))
+            .send()
+            .await
+            .expect("request should receive the semantic response");
+        let error = decode_invocation_response::<serde_json::Value>(
+            response,
+            "invocation",
+            ResponseBodyPolicy {
+                max_bytes: Some(MAX_PROVIDER_JSON_RESPONSE_BYTES),
+                require_json_content_type: true,
+                allow_empty_success: false,
+            },
+        )
+        .await
+        .expect_err("received semantic failure should fail");
+
+        match error {
+            InvocationResponseError::Received(error) => {
+                assert!(error.retryable);
+                assert_eq!(error.retry_after_ms, Some(2_500));
+                assert_eq!(
+                    error.provider_trace_reference.as_deref(),
+                    Some("provider-trace-1")
+                );
+            }
+            InvocationResponseError::Ambiguous(_) => {
+                panic!("received 429 must not trigger invocation recovery")
+            }
+        }
+    }
+
+    #[test]
+    fn http_error_envelope_preserves_provider_retry_metadata() {
+        let error = provider_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            ProviderErrorEnvelope {
+                error: crate::ProviderErrorBody {
+                    code: "rate_limited".to_owned(),
+                    message: "Provider throttled".to_owned(),
+                    retryable: true,
+                    retry_after_ms: Some(2_500),
+                    provider_trace_reference: Some("provider-trace-1".to_owned()),
+                    details: Vec::new(),
+                },
+            },
+        );
+
+        assert_eq!(error.code, ErrorCode::RateLimited);
+        assert!(error.retryable);
+        assert_eq!(error.retry_after_ms, Some(2_500));
+        assert_eq!(
+            error.provider_trace_reference.as_deref(),
+            Some("provider-trace-1")
+        );
     }
 }

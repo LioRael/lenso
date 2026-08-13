@@ -5,7 +5,9 @@ use crate::protocol::{ProviderFunctionInvokeRequest, ProviderFunctionInvokeRespo
 use crate::protocol::{ProviderInvocationMode, ProviderOperationKind};
 use crate::validation::validate_path_segment;
 use platform_core::{AppError, AppResult, ErrorCode, ExecutionContext};
-use platform_runtime::{FunctionHandlerObservability, RuntimeFunction};
+use platform_runtime::{
+    FunctionHandlerObservability, FunctionTerminalObservation, RuntimeFunction,
+};
 use serde_json::Value;
 use std::time::Duration;
 
@@ -23,6 +25,12 @@ impl ProviderRuntimeFunction {
         function_name: impl Into<String>,
         effects: ProviderHostEffectCoordinator,
     ) -> AppResult<Self> {
+        if config.name.trim().is_empty() {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                "provider runtime Module identity must be non-empty",
+            ));
+        }
         let function_name = function_name.into();
         validate_function_name(&function_name)?;
         let client = reqwest::Client::builder()
@@ -43,10 +51,11 @@ impl ProviderRuntimeFunction {
     }
 
     pub async fn invoke(&self, ctx: ExecutionContext, input: Value) -> AppResult<Value> {
-        let invocation_id = ctx.execution_id.0.clone();
+        let function_run_id = ctx.execution_id.0.clone();
+        let invocation_id = runtime_invocation_id(&function_run_id, ctx.attempt);
         let request_body = ProviderFunctionInvokeRequest {
-            request_id: ctx.execution_id.0.clone(),
-            function_run_id: ctx.execution_id.0.clone(),
+            request_id: invocation_id.clone(),
+            function_run_id,
             function_name: self.function_name.clone(),
             attempt: ctx.attempt,
             correlation_id: ctx.correlation_id.0,
@@ -66,6 +75,7 @@ impl ProviderRuntimeFunction {
                 request_id: request_body.request_id.clone(),
                 attempt: request_body.attempt,
                 actor: request_body.actor.clone(),
+                tenant_id: ctx.tenant_id.map(|tenant| tenant.0),
                 correlation_id: request_body.correlation_id.clone(),
                 causation_id: request_body.causation_id.clone(),
                 trace: request_body.trace.clone(),
@@ -114,6 +124,10 @@ impl RuntimeFunction for ProviderRuntimeFunction {
             }),
         ))
     }
+
+    fn terminal_observation(&self) -> Option<FunctionTerminalObservation> {
+        Some(FunctionTerminalObservation::new(self.config.name.clone()))
+    }
 }
 
 pub(crate) fn validate_function_name(function_name: &str) -> AppResult<()> {
@@ -121,4 +135,29 @@ pub(crate) fn validate_function_name(function_name: &str) -> AppResult<()> {
         function_name,
         "provider runtime function name must be a stable path segment",
     )
+}
+
+fn runtime_invocation_id(function_run_id: &str, attempt: u32) -> String {
+    format!("{function_run_id}:attempt:{attempt}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_invocation_id;
+
+    #[test]
+    fn outer_invocation_identity_is_stable_per_function_run_attempt() {
+        assert_eq!(
+            runtime_invocation_id("fnrun-1", 2),
+            runtime_invocation_id("fnrun-1", 2)
+        );
+        assert_ne!(
+            runtime_invocation_id("fnrun-1", 1),
+            runtime_invocation_id("fnrun-1", 2)
+        );
+        assert_ne!(
+            runtime_invocation_id("fnrun-1", 1),
+            runtime_invocation_id("fnrun-2", 1)
+        );
+    }
 }

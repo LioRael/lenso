@@ -329,7 +329,7 @@ pub fn descriptor() -> ProviderDescriptor {
 }
 
 fn digest(value: &impl Serialize) -> String {
-    let bytes = serde_json::to_vec(value).expect("fixture value serializes");
+    let bytes = serde_json_canonicalizer::to_vec(value).expect("fixture value canonicalizes");
     let encoded = Sha256::digest(bytes)
         .iter()
         .map(|byte| format!("{byte:02x}"))

@@ -1,5 +1,5 @@
 /* eslint-disable complexity, func-style, no-use-before-define */
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { createServer, STATUS_CODES } from "node:http";
 import type {
@@ -800,6 +800,46 @@ export interface ServeServiceOptions {
   onReady?: (server: ServedService) => void;
 }
 
+type ProviderAwareModuleAdminDataSource = {
+  list: (query: {
+    limit: number;
+    cursor?: string;
+  }) =>
+    | ModuleAdminPage
+    | ProviderV1HandlerOutcome
+    | Promise<ModuleAdminPage | ProviderV1HandlerOutcome>;
+  detail: (
+    id: string
+  ) =>
+    | unknown
+    | null
+    | undefined
+    | ProviderV1HandlerOutcome
+    | Promise<unknown | null | undefined | ProviderV1HandlerOutcome>;
+};
+
+type ProviderAwareModuleEventHandler = (
+  context: ModuleEventHandlerContext
+) =>
+  | ModuleEventHandleResponse
+  | ProviderV1HandlerOutcome
+  | undefined
+  | Promise<
+      ModuleEventHandleResponse | ProviderV1HandlerOutcome | undefined
+    >;
+
+type ProviderAwareServiceModuleHandlers = Omit<
+  ServiceModuleHandlers,
+  "data" | "events"
+> & {
+  data?: Record<string, ProviderAwareModuleAdminDataSource>;
+  events?: Record<string, ProviderAwareModuleEventHandler>;
+};
+
+type ProviderAwareServeServiceOptions = Omit<ServeServiceOptions, "modules"> & {
+  modules?: Record<string, ProviderAwareServiceModuleHandlers>;
+};
+
 export interface ProviderV1Export {
   exportKey: string;
   moduleId: string;
@@ -826,86 +866,1572 @@ export interface ProviderV1Options {
   runtimeInstanceId: string;
   exports: readonly ProviderV1Export[];
   features?: readonly string[];
+  invocationStore?: ProviderInvocationStore;
   moduleReleases?: Readonly<Record<string, Record<string, unknown>>>;
+  /** Required when Provider V1 is exposed beyond loopback. Never advertised. */
+  bearerToken?: string;
 }
 
-interface ProviderV1Invocation {
+export type ProviderV1InvocationMode = "read_only" | "durable";
+
+export interface ProviderV1Invocation {
   protocol: "lenso.provider.v1";
   invocationId: string;
+  requestId: string;
+  attempt: number;
+  deadline: string;
   serviceReleaseDigest: string;
   exportKey: string;
   moduleReleaseDigest: string;
   manifestDigest: string;
   operationKind: string;
   operationName: string;
+  operationVersion: string;
+  mode: ProviderV1InvocationMode;
   inputContractDigest: string;
   outputContractDigest: string;
+  tenantId?: string | null;
   actor: ProviderActorContext;
+  delegation?: unknown;
+  locale?: string | null;
+  context?: Readonly<Record<string, unknown>>;
+  correlationId: string;
+  causationId?: string | null;
+  trace: unknown;
+  contentType: string;
   payload: unknown;
 }
 
-interface ProviderV1Outcome {
+export type ProviderV1OutcomeStatus =
+  | "pending"
+  | "succeeded"
+  | "rejected"
+  | "failed";
+
+export interface ProviderV1ErrorDetail {
+  field: string | null;
+  reason: string;
+}
+
+export interface ProviderV1Error {
+  code: string;
+  message: string;
+  retryable: boolean;
+  retryAfterMs: number | null;
+  providerTraceReference: string | null;
+  details: readonly ProviderV1ErrorDetail[];
+}
+
+export interface ProviderV1ErrorInput {
+  code: string;
+  message: string;
+  retryable?: boolean;
+  retryAfterMs?: number | null;
+  providerTraceReference?: string | null;
+  details?: readonly ProviderV1ErrorDetail[];
+}
+
+export interface ProviderV1HostEventEffect {
+  eventId: string;
+  eventName: string;
+  eventVersion: number;
+  sourceModule: string;
+  aggregateType: string;
+  aggregateId: string;
+  correlationId: string;
+  causationId?: string | null;
+  occurredAt: string;
+  payload: unknown;
+  headers?: unknown;
+}
+
+export interface ProviderV1TraceContext {
+  trace_id?: string | null;
+  span_id?: string | null;
+  baggage?: readonly (readonly [string, string])[];
+}
+
+export interface ProviderV1HostRuntimeFunctionRequest {
+  requestId: string;
+  functionName: string;
+  input: unknown;
+  correlationId: string;
+  actor: ProviderActorContext;
+  tenantId?: string | null;
+  trace?: ProviderV1TraceContext;
+  causationId?: string | null;
+  maxAttempts?: number | null;
+}
+
+export interface ProviderV1HostEffects {
+  events: readonly ProviderV1HostEventEffect[];
+  runtimeFunctionRequests: readonly ProviderV1HostRuntimeFunctionRequest[];
+}
+
+export interface ProviderV1Outcome {
   protocol: "lenso.provider.v1";
   invocationId: string;
-  status: "succeeded";
+  status: ProviderV1OutcomeStatus;
   result: unknown;
-  error: null;
+  error: ProviderV1Error | null;
   effectEvidence: readonly unknown[];
-  hostEffects: {
-    events: readonly unknown[];
-    runtimeFunctionRequests: readonly unknown[];
-  };
+  hostEffects: ProviderV1HostEffects;
+  outcomeDigest: string;
+}
+
+const providerV1HandlerOutcomeMarker = Symbol(
+  "@lenso/service-kit/provider-v1-handler-outcome"
+);
+
+export interface ProviderV1HandlerOutcome {
+  readonly [providerV1HandlerOutcomeMarker]: true;
+  status: ProviderV1OutcomeStatus;
+  result: unknown;
+  error: ProviderV1ErrorInput | null;
+  effectEvidence: readonly unknown[];
+  hostEffects: ProviderV1HostEffects;
+}
+
+export interface ProviderV1SucceededOptions {
+  effectEvidence?: readonly unknown[];
+  hostEffects?: Partial<ProviderV1HostEffects>;
+}
+
+export interface ProviderV1PendingOptions {
+  error?: ProviderV1ErrorInput | null;
+  effectEvidence?: readonly unknown[];
+}
+
+export interface ProviderV1FailureOptions {
+  effectEvidence?: readonly unknown[];
+}
+
+export type ProviderInvocationStoreDurability = "process" | "durable";
+export type ProviderStoredInvocationPhase =
+  | "executing"
+  | "pending"
+  | "completed";
+
+export interface ProviderStoredInvocation {
+  invocationId: string;
+  requestDigest: string;
+  phase: ProviderStoredInvocationPhase;
+  outcome: ProviderV1Outcome;
+  createdAt: string;
+  updatedAt: string;
+  acknowledgedAt: string | null;
+  acknowledgedOutcomeDigest: string | null;
+}
+
+export interface ProviderInvocationStoreClaimInput {
+  invocationId: string;
+  requestDigest: string;
+  pendingOutcome: ProviderV1Outcome;
+  now: string;
+}
+
+export type ProviderInvocationStoreClaimResult =
+  | { kind: "claimed"; record: ProviderStoredInvocation }
+  | { kind: "replay"; record: ProviderStoredInvocation }
+  | { kind: "conflict" };
+
+export interface ProviderInvocationStoreCompleteInput {
+  invocationId: string;
+  requestDigest: string;
+  outcome: ProviderV1Outcome;
+  now: string;
+}
+
+export interface ProviderInvocationStoreAcknowledgeInput {
+  invocationId: string;
+  outcomeDigest: string;
+  now: string;
+}
+
+export type ProviderInvocationStoreAcknowledgeResult =
+  | { kind: "acknowledged"; record: ProviderStoredInvocation }
+  | { kind: "not_found" }
+  | { kind: "conflict" };
+
+/**
+ * Durable implementations must make each method atomic across all service
+ * instances. `claim` owns the unique invocation id, `complete` compares the
+ * request digest before writing an immutable final outcome, and `acknowledge`
+ * compares the exact outcome digest. Replacing an acknowledged executing or
+ * pending outcome with a new outcome must clear the stale acknowledgement.
+ * Methods must resolve only after their writes are durable.
+ */
+export interface ProviderInvocationStore {
+  readonly durability: ProviderInvocationStoreDurability;
+  claim: (
+    input: ProviderInvocationStoreClaimInput
+  ) => Promise<ProviderInvocationStoreClaimResult>;
+  get: (invocationId: string) => Promise<ProviderStoredInvocation | undefined>;
+  complete: (
+    input: ProviderInvocationStoreCompleteInput
+  ) => Promise<ProviderStoredInvocation>;
+  acknowledge: (
+    input: ProviderInvocationStoreAcknowledgeInput
+  ) => Promise<ProviderInvocationStoreAcknowledgeResult>;
+}
+
+export interface ProviderInvocationStoreConformanceOptions {
+  /**
+   * Return a fresh adapter instance connected to the same durable backend.
+   * The conformance vector calls this repeatedly to prove restart recovery.
+   */
+  createStore: () => ProviderInvocationStore | Promise<ProviderInvocationStore>;
+  invocationId?: string;
+}
+
+export interface ProviderInvocationStoreConformanceResult {
+  invocationId: string;
   outcomeDigest: string;
 }
 
 const providerV1Protocol = "lenso.provider.v1" as const;
 const providerV1BasePath = "/lenso/provider/v1";
 
-const canonicalize = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(canonicalize);
+const canonicalJsonString = (value: string) => {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) {
+        throw new Error("Canonical JSON cannot contain an unpaired surrogate");
+      }
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      throw new Error("Canonical JSON cannot contain an unpaired surrogate");
+    }
   }
-  if (typeof value !== "object" || value === null) {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => (left === right ? 0 : left < right ? -1 : 1))
-      .map(([key, entry]) => [key, canonicalize(entry)])
-  );
+  return JSON.stringify(value);
 };
 
-const providerOutcome = (
-  invocationId: string,
-  result: unknown
-): ProviderV1Outcome => {
-  const outcome: ProviderV1Outcome = {
-    protocol: providerV1Protocol,
-    invocationId,
-    status: "succeeded",
-    result: canonicalize(result),
-    error: null,
-    effectEvidence: [],
-    hostEffects: { events: [], runtimeFunctionRequests: [] },
-    outcomeDigest: "",
+const canonicalJson = (
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet()
+): string => {
+  if (value === null || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "string") {
+    return canonicalJsonString(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("Canonical JSON cannot contain a non-finite number");
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value !== "object") {
+    throw new Error(`Canonical JSON cannot contain a ${typeof value} value`);
+  }
+  if (seen.has(value)) {
+    throw new Error("Canonical JSON cannot contain a cyclic value");
+  }
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const entries: string[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.hasOwn(value, index)) {
+          throw new Error("Canonical JSON cannot contain a sparse array");
+        }
+        entries.push(canonicalJson(value[index], seen));
+      }
+      return `[${entries.join(",")}]`;
+    }
+    const prototype = Object.getPrototypeOf(value) as unknown;
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error("Canonical JSON cannot contain a non-JSON object");
+    }
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      throw new Error("Canonical JSON cannot contain symbol-keyed values");
+    }
+    return `{${Object.keys(value)
+      .sort()
+      .map(
+        (key) =>
+          `${canonicalJsonString(key)}:${canonicalJson(
+            (value as Record<string, unknown>)[key],
+            seen
+          )}`
+      )
+      .join(",")}}`;
+  } finally {
+    seen.delete(value);
+  }
+};
+
+export const providerV1OutcomeLimits = Object.freeze({
+  maxEffectEvidenceItems: 100,
+  maxErrorDetails: 100,
+  maxErrorMessageBytes: 4_096,
+  maxHostEffects: 100,
+  maxOutcomeBytes: 1024 * 1024,
+  maxProviderTraceReferenceBytes: 512,
+  maxRetryAfterMs: 24 * 60 * 60 * 1000,
+});
+
+const emptyProviderHostEffects = (): ProviderV1HostEffects => ({
+  events: [],
+  runtimeFunctionRequests: [],
+});
+
+export const providerSucceeded = (
+  result: unknown,
+  options: ProviderV1SucceededOptions = {}
+): ProviderV1HandlerOutcome => ({
+  [providerV1HandlerOutcomeMarker]: true,
+  effectEvidence: options.effectEvidence ?? [],
+  error: null,
+  hostEffects: {
+    events: options.hostEffects?.events ?? [],
+    runtimeFunctionRequests:
+      options.hostEffects?.runtimeFunctionRequests ?? [],
+  },
+  result,
+  status: "succeeded",
+});
+
+export const providerPending = (
+  options: ProviderV1PendingOptions = {}
+): ProviderV1HandlerOutcome => ({
+  [providerV1HandlerOutcomeMarker]: true,
+  effectEvidence: options.effectEvidence ?? [],
+  error: options.error ?? null,
+  hostEffects: emptyProviderHostEffects(),
+  result: null,
+  status: "pending",
+});
+
+export const providerRejected = (
+  error: ProviderV1ErrorInput,
+  options: ProviderV1FailureOptions = {}
+): ProviderV1HandlerOutcome => ({
+  [providerV1HandlerOutcomeMarker]: true,
+  effectEvidence: options.effectEvidence ?? [],
+  error,
+  hostEffects: emptyProviderHostEffects(),
+  result: null,
+  status: "rejected",
+});
+
+export const providerFailed = (
+  error: ProviderV1ErrorInput,
+  options: ProviderV1FailureOptions = {}
+): ProviderV1HandlerOutcome => ({
+  [providerV1HandlerOutcomeMarker]: true,
+  effectEvidence: options.effectEvidence ?? [],
+  error,
+  hostEffects: emptyProviderHostEffects(),
+  result: null,
+  status: "failed",
+});
+
+const isProviderHandlerOutcome = (
+  value: unknown
+): value is ProviderV1HandlerOutcome =>
+  typeof value === "object" &&
+  value !== null &&
+  providerV1HandlerOutcomeMarker in value;
+
+const mapProviderHandlerOutcome = (
+  outcome: ProviderV1HandlerOutcome,
+  mapResult: (result: unknown) => unknown
+): ProviderV1HandlerOutcome =>
+  outcome.status === "succeeded"
+    ? { ...outcome, result: mapResult(outcome.result) }
+    : outcome;
+
+const normalizeJsonValue = (
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet()
+): unknown => {
+  if (
+    value === null ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "string") {
+    canonicalJsonString(value);
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("Provider outcome contains a non-finite number");
+    }
+    return value;
+  }
+  if (typeof value !== "object") {
+    throw new Error(`Provider outcome contains a ${typeof value} value`);
+  }
+  if (seen.has(value)) {
+    throw new Error("Provider outcome contains a cyclic value");
+  }
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const entries: unknown[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.hasOwn(value, index)) {
+          throw new Error("Provider outcome contains a sparse array");
+        }
+        entries.push(normalizeJsonValue(value[index], seen));
+      }
+      return entries;
+    }
+    const prototype = Object.getPrototypeOf(value) as unknown;
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error("Provider outcome contains a non-JSON object");
+    }
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      throw new Error("Provider outcome contains a symbol-keyed value");
+    }
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) =>
+          left === right ? 0 : left < right ? -1 : 1
+        )
+        .map(([key, entry]) => {
+          canonicalJsonString(key);
+          return [key, normalizeJsonValue(entry, seen)];
+        })
+    );
+  } finally {
+    seen.delete(value);
+  }
+};
+
+const normalizeProviderError = (
+  value: ProviderV1ErrorInput
+): ProviderV1Error => {
+  if (
+    typeof value.code !== "string" ||
+    !value.code.trim() ||
+    typeof value.message !== "string" ||
+    !value.message.trim()
+  ) {
+    throw new Error("Provider outcome errors require code and message");
+  }
+  if (!/^[a-z0-9][a-z0-9._-]{0,127}$/u.test(value.code)) {
+    throw new Error("Provider outcome error code is invalid");
+  }
+  if (
+    /[\u0000-\u001f\u007f]/u.test(value.message) ||
+    Buffer.byteLength(value.message, "utf8") >
+      providerV1OutcomeLimits.maxErrorMessageBytes
+  ) {
+    throw new Error(
+      "Provider outcome error message must be control-free and at most " +
+        `${providerV1OutcomeLimits.maxErrorMessageBytes} bytes`
+    );
+  }
+  if (
+    value.retryable !== undefined &&
+    typeof value.retryable !== "boolean"
+  ) {
+    throw new Error("Provider outcome retryable must be a boolean");
+  }
+  if (
+    value.retryAfterMs !== undefined &&
+    value.retryAfterMs !== null &&
+    (!Number.isSafeInteger(value.retryAfterMs) || value.retryAfterMs < 0)
+  ) {
+    throw new Error("Provider outcome retryAfterMs must be a non-negative integer");
+  }
+  if (
+    value.retryAfterMs !== undefined &&
+    value.retryAfterMs !== null &&
+    value.retryAfterMs > providerV1OutcomeLimits.maxRetryAfterMs
+  ) {
+    throw new Error(
+      `Provider outcome retryAfterMs must not exceed ${providerV1OutcomeLimits.maxRetryAfterMs}`
+    );
+  }
+  if (
+    value.retryAfterMs !== undefined &&
+    value.retryAfterMs !== null &&
+    value.retryable !== true
+  ) {
+    throw new Error("Provider outcome retryAfterMs requires retryable: true");
+  }
+  if (
+    value.providerTraceReference !== undefined &&
+    value.providerTraceReference !== null &&
+    (typeof value.providerTraceReference !== "string" ||
+      !value.providerTraceReference.trim() ||
+      /[\u0000-\u001f\u007f]/u.test(value.providerTraceReference) ||
+      Buffer.byteLength(value.providerTraceReference, "utf8") >
+        providerV1OutcomeLimits.maxProviderTraceReferenceBytes)
+  ) {
+    throw new Error(
+      "Provider outcome providerTraceReference must be non-empty, " +
+        `control-free, and at most ${providerV1OutcomeLimits.maxProviderTraceReferenceBytes} bytes`
+    );
+  }
+  if (
+    value.details !== undefined &&
+    (!Array.isArray(value.details) ||
+      value.details.length > providerV1OutcomeLimits.maxErrorDetails)
+  ) {
+    throw new Error(
+      `Provider outcome errors allow at most ${providerV1OutcomeLimits.maxErrorDetails} details`
+    );
+  }
+  const details = (value.details ?? []).map((detail) => {
+    if (
+      (detail.field !== null && typeof detail.field !== "string") ||
+      typeof detail.reason !== "string" ||
+      !detail.reason.trim()
+    ) {
+      throw new Error("Provider outcome error details require a reason");
+    }
+    return { field: detail.field, reason: detail.reason };
+  });
+  return {
+    code: value.code,
+    message: value.message,
+    retryable: value.retryable ?? false,
+    retryAfterMs: value.retryAfterMs ?? null,
+    providerTraceReference: value.providerTraceReference ?? null,
+    details,
   };
-  outcome.outcomeDigest = `sha256:${createHash("sha256")
-    .update(JSON.stringify(outcome))
-    .digest("hex")}`;
+};
+
+const normalizeProviderActor = (
+  actor: ProviderActorContext
+): ProviderActorContext => {
+  if (!validProviderActor(actor)) {
+    throw new Error("Provider Host Runtime effect actor is invalid");
+  }
+  switch (actor.kind) {
+    case "user":
+      return { kind: "user", user_id: actor.user_id, scopes: [...actor.scopes] };
+    case "service":
+      return {
+        kind: "service",
+        service_id: actor.service_id,
+        scopes: [...actor.scopes],
+      };
+    case "system":
+      return { kind: "system" };
+    default:
+      return { kind: "anonymous" };
+  }
+};
+
+const normalizeProviderTrace = (
+  trace: ProviderV1TraceContext | undefined
+): Required<ProviderV1TraceContext> => {
+  if (
+    trace?.trace_id !== undefined &&
+    trace.trace_id !== null &&
+    typeof trace.trace_id !== "string"
+  ) {
+    throw new Error("Provider trace_id must be a string or null");
+  }
+  if (
+    trace?.span_id !== undefined &&
+    trace.span_id !== null &&
+    typeof trace.span_id !== "string"
+  ) {
+    throw new Error("Provider span_id must be a string or null");
+  }
+  const baggage = (trace?.baggage ?? []).map((entry) => {
+    if (
+      !Array.isArray(entry) ||
+      entry.length !== 2 ||
+      typeof entry[0] !== "string" ||
+      typeof entry[1] !== "string"
+    ) {
+      throw new Error("Provider Host Runtime effect trace baggage is invalid");
+    }
+    return [entry[0], entry[1]] as const;
+  });
+  return {
+    trace_id: trace?.trace_id ?? null,
+    span_id: trace?.span_id ?? null,
+    baggage,
+  };
+};
+
+const requireProviderEffectText = (value: string, field: string) => {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`Provider Host effect ${field} must be non-empty`);
+  }
+  return value;
+};
+
+const normalizeProviderTimestamp = (value: string) => {
+  if (
+    typeof value !== "string" ||
+    !/T.*(?:Z|[+-]\d{2}:\d{2})$/u.test(value) ||
+    Number.isNaN(Date.parse(value))
+  ) {
+    throw new Error("Provider Host Event effect occurredAt is invalid");
+  }
+  const fractional = value.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/u)?.[1];
+  if (fractional && fractional.slice(3).replace(/0/gu, "") !== "") {
+    throw new Error(
+      "Provider Host Event effect occurredAt exceeds millisecond precision"
+    );
+  }
+  return new Date(value).toISOString().replace(/\.000Z$/u, "Z");
+};
+
+const normalizeHostEffects = (
+  invocation: ProviderV1Invocation,
+  effects: ProviderV1HostEffects,
+  providerExport: ProviderV1Export
+): ProviderV1HostEffects => {
+  const count = effects.events.length + effects.runtimeFunctionRequests.length;
+  if (count > providerV1OutcomeLimits.maxHostEffects) {
+    throw new Error(
+      `Provider outcome exceeds ${providerV1OutcomeLimits.maxHostEffects} Host effects`
+    );
+  }
+  const correlationId = invocation.correlationId;
+  const eventIds = new Set<string>();
+  const events = effects.events.map((event) => {
+    if (
+      !Number.isInteger(event.eventVersion) ||
+      event.eventVersion < 0 ||
+      event.eventVersion > 65_535
+    ) {
+      throw new Error("Provider Host Event effect version is invalid");
+    }
+    if (correlationId !== undefined && event.correlationId !== correlationId) {
+      throw new Error(
+        "Provider Host Event effect correlationId does not match the invocation"
+      );
+    }
+    if (event.sourceModule !== providerExport.moduleId) {
+      throw new Error(
+        "Provider Host Event effect sourceModule does not match the locked Module"
+      );
+    }
+    if (eventIds.has(event.eventId)) {
+      throw new Error("Provider Host Event effect eventId is duplicated");
+    }
+    eventIds.add(event.eventId);
+    return {
+      eventId: requireProviderEffectText(event.eventId, "eventId"),
+      eventName: requireProviderEffectText(event.eventName, "eventName"),
+      eventVersion: event.eventVersion,
+      sourceModule: requireProviderEffectText(event.sourceModule, "sourceModule"),
+      aggregateType: requireProviderEffectText(
+        event.aggregateType,
+        "aggregateType"
+      ),
+      aggregateId: requireProviderEffectText(event.aggregateId, "aggregateId"),
+      correlationId: requireProviderEffectText(
+        event.correlationId,
+        "correlationId"
+      ),
+      causationId: event.causationId ?? null,
+      occurredAt: normalizeProviderTimestamp(event.occurredAt),
+      payload: normalizeJsonValue(event.payload),
+      headers: normalizeJsonValue(event.headers ?? {}),
+    };
+  });
+  const manifestRuntime = providerExport.manifest.runtime as
+    | { functions?: readonly { name?: unknown }[] }
+    | undefined;
+  const allowedRuntimeFunctions = new Set(
+    (manifestRuntime?.functions ?? [])
+      .map((definition) => definition.name)
+      .filter((name): name is string => typeof name === "string")
+  );
+  const runtimeRequestIds = new Set<string>();
+  const runtimeFunctionRequests = effects.runtimeFunctionRequests.map(
+    (runtimeRequest) => {
+      if (
+        runtimeRequest.maxAttempts !== undefined &&
+        runtimeRequest.maxAttempts !== null &&
+        (!Number.isInteger(runtimeRequest.maxAttempts) ||
+          runtimeRequest.maxAttempts < 1 ||
+          runtimeRequest.maxAttempts > 100)
+      ) {
+        throw new Error(
+          "Provider Host Runtime effect maxAttempts must be between 1 and 100"
+        );
+      }
+      if (
+        correlationId !== undefined &&
+        runtimeRequest.correlationId !== correlationId
+      ) {
+        throw new Error(
+          "Provider Host Runtime effect correlationId does not match the invocation"
+        );
+      }
+      if (!allowedRuntimeFunctions.has(runtimeRequest.functionName)) {
+        throw new Error(
+          "Provider Host Runtime effect functionName is not declared by the locked Module"
+        );
+      }
+      const actor = normalizeProviderActor(runtimeRequest.actor);
+      const tenantId = runtimeRequest.tenantId ?? null;
+      const trace = normalizeProviderTrace(runtimeRequest.trace);
+      if (canonicalJson(actor) !== canonicalJson(invocation.actor)) {
+        throw new Error(
+          "Provider Host Runtime effect actor does not match the invocation"
+        );
+      }
+      if (tenantId !== (invocation.tenantId ?? null)) {
+        throw new Error(
+          "Provider Host Runtime effect tenantId does not match the invocation"
+        );
+      }
+      if (canonicalJson(trace) !== canonicalJson(invocation.trace)) {
+        throw new Error(
+          "Provider Host Runtime effect trace does not match the invocation"
+        );
+      }
+      if (runtimeRequestIds.has(runtimeRequest.requestId)) {
+        throw new Error(
+          "Provider Host Runtime effect requestId is duplicated"
+        );
+      }
+      runtimeRequestIds.add(runtimeRequest.requestId);
+      return {
+        requestId: requireProviderEffectText(
+          runtimeRequest.requestId,
+          "requestId"
+        ),
+        functionName: requireProviderEffectText(
+          runtimeRequest.functionName,
+          "functionName"
+        ),
+        input: normalizeJsonValue(runtimeRequest.input),
+        correlationId: requireProviderEffectText(
+          runtimeRequest.correlationId,
+          "correlationId"
+        ),
+        actor,
+        tenantId,
+        trace,
+        causationId: runtimeRequest.causationId ?? null,
+        maxAttempts: runtimeRequest.maxAttempts ?? null,
+      };
+    }
+  );
+  return { events, runtimeFunctionRequests };
+};
+
+const outcomeDigest = (outcome: Omit<ProviderV1Outcome, "outcomeDigest">) =>
+  canonicalDigest({ ...outcome, outcomeDigest: "" });
+
+const providerOutcome = (
+  invocation: ProviderV1Invocation,
+  handlerResult: unknown,
+  providerExport: ProviderV1Export
+): ProviderV1Outcome => {
+  const handlerOutcome = isProviderHandlerOutcome(handlerResult)
+    ? handlerResult
+    : providerSucceeded(handlerResult);
+  const error = handlerOutcome.error
+    ? normalizeProviderError(handlerOutcome.error)
+    : null;
+  if (
+    (handlerOutcome.status === "failed" ||
+      handlerOutcome.status === "rejected") &&
+    error === null
+  ) {
+    throw new Error(
+      `Provider ${handlerOutcome.status} outcomes require an error`
+    );
+  }
+  if (handlerOutcome.status === "rejected" && error?.retryable) {
+    throw new Error("Provider rejected outcomes cannot be retryable");
+  }
+  if (
+    handlerOutcome.status !== "succeeded" &&
+    (handlerOutcome.hostEffects.events.length > 0 ||
+      handlerOutcome.hostEffects.runtimeFunctionRequests.length > 0)
+  ) {
+    throw new Error("Only succeeded Provider outcomes may contain Host effects");
+  }
+  if (
+    handlerOutcome.effectEvidence.length >
+    providerV1OutcomeLimits.maxEffectEvidenceItems
+  ) {
+    throw new Error(
+      "Provider outcome exceeds " +
+        `${providerV1OutcomeLimits.maxEffectEvidenceItems} effect evidence items`
+    );
+  }
+  const withoutDigest: Omit<ProviderV1Outcome, "outcomeDigest"> = {
+    protocol: providerV1Protocol,
+    invocationId: invocation.invocationId,
+    status: handlerOutcome.status,
+    result: normalizeJsonValue(handlerOutcome.result),
+    error,
+    effectEvidence: handlerOutcome.effectEvidence.map((item) =>
+      normalizeJsonValue(item)
+    ),
+    hostEffects: normalizeHostEffects(
+      invocation,
+      handlerOutcome.hostEffects,
+      providerExport
+    ),
+  };
+  const outcome: ProviderV1Outcome = {
+    ...withoutDigest,
+    outcomeDigest: outcomeDigest(withoutDigest),
+  };
+  if (
+    Buffer.byteLength(JSON.stringify(outcome), "utf8") >
+    providerV1OutcomeLimits.maxOutcomeBytes
+  ) {
+    throw new Error(
+      `Provider outcome exceeds ${providerV1OutcomeLimits.maxOutcomeBytes} bytes`
+    );
+  }
   return outcome;
 };
+
+const cloneStoredInvocation = (
+  value: ProviderStoredInvocation
+): ProviderStoredInvocation => structuredClone(value);
+
+class MemoryProviderInvocationStore implements ProviderInvocationStore {
+  readonly durability = "process" as const;
+  readonly #records = new Map<string, ProviderStoredInvocation>();
+
+  async claim(
+    input: ProviderInvocationStoreClaimInput
+  ): Promise<ProviderInvocationStoreClaimResult> {
+    const existing = this.#records.get(input.invocationId);
+    if (existing) {
+      if (existing.requestDigest !== input.requestDigest) {
+        return { kind: "conflict" };
+      }
+      return { kind: "replay", record: cloneStoredInvocation(existing) };
+    }
+    const record: ProviderStoredInvocation = {
+      invocationId: input.invocationId,
+      requestDigest: input.requestDigest,
+      phase: "executing",
+      outcome: structuredClone(input.pendingOutcome),
+      createdAt: input.now,
+      updatedAt: input.now,
+      acknowledgedAt: null,
+      acknowledgedOutcomeDigest: null,
+    };
+    this.#records.set(input.invocationId, record);
+    return { kind: "claimed", record: cloneStoredInvocation(record) };
+  }
+
+  async get(
+    invocationId: string
+  ): Promise<ProviderStoredInvocation | undefined> {
+    const record = this.#records.get(invocationId);
+    return record ? cloneStoredInvocation(record) : undefined;
+  }
+
+  async complete(
+    input: ProviderInvocationStoreCompleteInput
+  ): Promise<ProviderStoredInvocation> {
+    const existing = this.#records.get(input.invocationId);
+    if (!existing || existing.requestDigest !== input.requestDigest) {
+      throw new Error("Provider invocation completion conflicts with its claim");
+    }
+    if (existing.phase === "completed") {
+      if (existing.outcome.outcomeDigest !== input.outcome.outcomeDigest) {
+        throw new Error("Provider invocation final outcome is immutable");
+      }
+      return cloneStoredInvocation(existing);
+    }
+    if (
+      existing.phase === "pending" &&
+      input.outcome.status === "pending" &&
+      existing.outcome.outcomeDigest !== input.outcome.outcomeDigest
+    ) {
+      throw new Error("Provider invocation pending outcome cannot be rebound");
+    }
+    const outcomeChanged =
+      existing.outcome.outcomeDigest !== input.outcome.outcomeDigest;
+    const record: ProviderStoredInvocation = {
+      ...existing,
+      phase: input.outcome.status === "pending" ? "pending" : "completed",
+      outcome: structuredClone(input.outcome),
+      updatedAt: input.now,
+      acknowledgedAt: outcomeChanged ? null : existing.acknowledgedAt,
+      acknowledgedOutcomeDigest: outcomeChanged
+        ? null
+        : existing.acknowledgedOutcomeDigest,
+    };
+    this.#records.set(input.invocationId, record);
+    return cloneStoredInvocation(record);
+  }
+
+  async acknowledge(
+    input: ProviderInvocationStoreAcknowledgeInput
+  ): Promise<ProviderInvocationStoreAcknowledgeResult> {
+    const existing = this.#records.get(input.invocationId);
+    if (!existing) {
+      return { kind: "not_found" };
+    }
+    if (existing.outcome.outcomeDigest !== input.outcomeDigest) {
+      return { kind: "conflict" };
+    }
+    if (existing.acknowledgedOutcomeDigest === input.outcomeDigest) {
+      return { kind: "acknowledged", record: cloneStoredInvocation(existing) };
+    }
+    const record: ProviderStoredInvocation = {
+      ...existing,
+      updatedAt: input.now,
+      acknowledgedAt: input.now,
+      acknowledgedOutcomeDigest: input.outcomeDigest,
+    };
+    this.#records.set(input.invocationId, record);
+    return { kind: "acknowledged", record: cloneStoredInvocation(record) };
+  }
+}
+
+/** Process-local store for development and tests; it never advertises durability. */
+export const createMemoryProviderInvocationStore =
+  (): ProviderInvocationStore => new MemoryProviderInvocationStore();
+
+/**
+ * Mutating conformance vector for durable Provider invocation Store adapters.
+ * Run it against an isolated test database; it leaves a small set of rows so
+ * restart, conflict, and retention behavior remain inspectable.
+ */
+export const verifyProviderInvocationStoreConformance = async ({
+  createStore,
+  invocationId = `provider-store-conformance:${randomUUID()}`,
+}: ProviderInvocationStoreConformanceOptions): Promise<
+  ProviderInvocationStoreConformanceResult
+> => {
+  const adapters = new Set<ProviderInvocationStore>();
+  const createDurableAdapter = async () => {
+    const adapter = await createStore();
+    if (adapter.durability !== "durable") {
+      throw new Error(
+        "Provider invocation Store conformance requires durable storage"
+      );
+    }
+    if (adapters.has(adapter)) {
+      throw new Error(
+        "Provider invocation Store conformance requires fresh adapter instances"
+      );
+    }
+    adapters.add(adapter);
+    return adapter;
+  };
+  const requestDigest = canonicalDigest({ invocationId, vector: 1 });
+  const conflictingDigest = canonicalDigest({ invocationId, vector: 2 });
+  const claimPending = conformanceOutcome({
+    invocationId,
+    status: "pending",
+  });
+  const pending = conformanceOutcome({
+    effectEvidence: [
+      { kind: "remote_receipt", receiptId: "conformance-pending" },
+    ],
+    error: {
+      code: "conformance_pending",
+      details: [{ field: "receipt", reason: "delivery is not final" }],
+      message: "The conformance delivery remains pending",
+      providerTraceReference: "conformance-pending-trace",
+      retryAfterMs: 750,
+      retryable: true,
+    },
+    invocationId,
+    status: "pending",
+  });
+  const failed = conformanceOutcome({
+    effectEvidence: [
+      { kind: "remote_receipt", receiptId: "conformance-failed" },
+    ],
+    error: {
+      code: "conformance_failed",
+      details: [{ field: null, reason: "the upstream remained unavailable" }],
+      message: "The conformance delivery failed",
+      providerTraceReference: "conformance-failed-trace",
+      retryAfterMs: 2_500,
+      retryable: true,
+    },
+    invocationId,
+    status: "failed",
+  });
+  const [leftAdapter, rightAdapter] = await Promise.all([
+    createDurableAdapter(),
+    createDurableAdapter(),
+  ]);
+  const [left, right] = await Promise.all([
+    leftAdapter.claim({
+      invocationId,
+      now: "2026-01-01T00:00:00.000Z",
+      pendingOutcome: claimPending,
+      requestDigest,
+    }),
+    rightAdapter.claim({
+      invocationId,
+      now: "2026-01-01T00:00:00.000Z",
+      pendingOutcome: claimPending,
+      requestDigest,
+    }),
+  ]);
+  const kinds = [left.kind, right.kind].sort();
+  if (kinds[0] !== "claimed" || kinds[1] !== "replay") {
+    throw new Error("Provider invocation Store claim is not atomic");
+  }
+  for (const claim of [left, right]) {
+    if (claim.kind === "conflict") {
+      throw new Error("Provider invocation Store lost its concurrent claim");
+    }
+    assertConformanceRecord(
+      claim.record,
+      invocationId,
+      requestDigest,
+      "executing",
+      claimPending
+    );
+  }
+  const conflict = await (await createDurableAdapter()).claim({
+    invocationId,
+    now: "2026-01-01T00:00:01.000Z",
+    pendingOutcome: claimPending,
+    requestDigest: conflictingDigest,
+  });
+  if (conflict.kind !== "conflict") {
+    throw new Error("Provider invocation Store allowed request identity rebinding");
+  }
+  const restarted = await createDurableAdapter();
+  const recovered = await restarted.get(invocationId);
+  assertConformanceRecord(
+    recovered,
+    invocationId,
+    requestDigest,
+    "executing",
+    claimPending
+  );
+  let completionConflict = false;
+  try {
+    await restarted.complete({
+      invocationId,
+      now: "2026-01-01T00:00:01.500Z",
+      outcome: failed,
+      requestDigest: conflictingDigest,
+    });
+  } catch {
+    completionConflict = true;
+  }
+  if (!completionConflict) {
+    throw new Error(
+      "Provider invocation Store completed a mismatched request digest"
+    );
+  }
+  assertConformanceRecord(
+    await (await createDurableAdapter()).get(invocationId),
+    invocationId,
+    requestDigest,
+    "executing",
+    claimPending
+  );
+  const pendingCompleted = await (await createDurableAdapter()).complete({
+    invocationId,
+    now: "2026-01-01T00:00:02.000Z",
+    outcome: pending,
+    requestDigest,
+  });
+  assertConformanceRecord(
+    pendingCompleted,
+    invocationId,
+    requestDigest,
+    "pending",
+    pending
+  );
+  assertConformanceRecord(
+    await (await createDurableAdapter()).get(invocationId),
+    invocationId,
+    requestDigest,
+    "pending",
+    pending
+  );
+
+  const [pendingAckLeftAdapter, pendingAckRightAdapter] = await Promise.all([
+    createDurableAdapter(),
+    createDurableAdapter(),
+  ]);
+  const pendingAcknowledgements = await Promise.all([
+    pendingAckLeftAdapter.acknowledge({
+      invocationId,
+      now: "2026-01-01T00:00:03.000Z",
+      outcomeDigest: pending.outcomeDigest,
+    }),
+    pendingAckRightAdapter.acknowledge({
+      invocationId,
+      now: "2026-01-01T00:00:03.500Z",
+      outcomeDigest: pending.outcomeDigest,
+    }),
+  ]);
+  const pendingAckRecords = pendingAcknowledgements.map((acknowledgement) => {
+    if (acknowledgement.kind !== "acknowledged") {
+      throw new Error(
+        "Provider invocation Store did not atomically acknowledge a pending outcome"
+      );
+    }
+    return assertConformanceRecord(
+      acknowledgement.record,
+      invocationId,
+      requestDigest,
+      "pending",
+      pending
+    );
+  });
+  if (
+    pendingAckRecords[0]?.acknowledgedAt === null ||
+    pendingAckRecords[0]?.acknowledgedAt !== pendingAckRecords[1]?.acknowledgedAt
+  ) {
+    throw new Error(
+      "Provider invocation Store pending acknowledgement is not idempotent"
+    );
+  }
+
+  const completed = await (await createDurableAdapter()).complete({
+    invocationId,
+    now: "2026-01-01T00:00:04.000Z",
+    outcome: failed,
+    requestDigest,
+  });
+  const completedRecord = assertConformanceRecord(
+    completed,
+    invocationId,
+    requestDigest,
+    "completed",
+    failed
+  );
+  if (
+    completedRecord.acknowledgedAt !== null ||
+    completedRecord.acknowledgedOutcomeDigest !== null
+  ) {
+    throw new Error(
+      "Provider invocation Store retained a stale pending acknowledgement"
+    );
+  }
+  assertConformanceRecord(
+    await (await createDurableAdapter()).get(invocationId),
+    invocationId,
+    requestDigest,
+    "completed",
+    failed
+  );
+
+  const differentOutcome = conformanceOutcome({
+    invocationId,
+    result: { conformance: false },
+    status: "succeeded",
+  });
+  let immutable = false;
+  try {
+    await (await createDurableAdapter()).complete({
+      invocationId,
+      now: "2026-01-01T00:00:05.000Z",
+      outcome: differentOutcome,
+      requestDigest,
+    });
+  } catch {
+    immutable = true;
+  }
+  if (!immutable) {
+    throw new Error("Provider invocation Store replaced an immutable final outcome");
+  }
+  const wrongAck = await (await createDurableAdapter()).acknowledge({
+    invocationId,
+    now: "2026-01-01T00:00:06.000Z",
+    outcomeDigest: conflictingDigest,
+  });
+  if (wrongAck.kind !== "conflict") {
+    throw new Error("Provider invocation Store acknowledged the wrong outcome digest");
+  }
+  const afterWrongAck = assertConformanceRecord(
+    await (await createDurableAdapter()).get(invocationId),
+    invocationId,
+    requestDigest,
+    "completed",
+    failed
+  );
+  if (
+    afterWrongAck.acknowledgedAt !== null ||
+    afterWrongAck.acknowledgedOutcomeDigest !== null
+  ) {
+    throw new Error("Provider invocation Store mutated a conflicting acknowledgement");
+  }
+
+  const [ackLeftAdapter, ackRightAdapter] = await Promise.all([
+    createDurableAdapter(),
+    createDurableAdapter(),
+  ]);
+  const [firstAck, replayedAck] = await Promise.all([
+    ackLeftAdapter.acknowledge({
+      invocationId,
+      now: "2026-01-01T00:00:07.000Z",
+      outcomeDigest: failed.outcomeDigest,
+    }),
+    ackRightAdapter.acknowledge({
+      invocationId,
+      now: "2026-01-01T00:00:08.000Z",
+      outcomeDigest: failed.outcomeDigest,
+    }),
+  ]);
+  if (
+    firstAck.kind !== "acknowledged" ||
+    replayedAck.kind !== "acknowledged" ||
+    firstAck.record.acknowledgedAt === null ||
+    firstAck.record.acknowledgedAt !== replayedAck.record.acknowledgedAt
+  ) {
+    throw new Error("Provider invocation Store acknowledgement is not idempotent");
+  }
+  assertConformanceRecord(
+    firstAck.record,
+    invocationId,
+    requestDigest,
+    "completed",
+    failed
+  );
+  assertConformanceRecord(
+    replayedAck.record,
+    invocationId,
+    requestDigest,
+    "completed",
+    failed
+  );
+
+  const rejectedInvocationId = `${invocationId}:rejected`;
+  const rejectedRequestDigest = canonicalDigest({
+    invocationId: rejectedInvocationId,
+    vector: "rejected",
+  });
+  const rejectedClaim = conformanceOutcome({
+    invocationId: rejectedInvocationId,
+    status: "pending",
+  });
+  const rejected = conformanceOutcome({
+    effectEvidence: [
+      { kind: "remote_receipt", receiptId: "conformance-rejected" },
+    ],
+    error: {
+      code: "conformance_rejected",
+      details: [{ field: "recipient", reason: "recipient was rejected" }],
+      message: "The conformance delivery was rejected",
+      providerTraceReference: "conformance-rejected-trace",
+      retryAfterMs: null,
+      retryable: false,
+    },
+    invocationId: rejectedInvocationId,
+    status: "rejected",
+  });
+  const rejectedClaimResult = await (await createDurableAdapter()).claim({
+    invocationId: rejectedInvocationId,
+    now: "2026-01-01T00:00:09.000Z",
+    pendingOutcome: rejectedClaim,
+    requestDigest: rejectedRequestDigest,
+  });
+  if (rejectedClaimResult.kind !== "claimed") {
+    throw new Error("Provider invocation Store could not claim the rejected vector");
+  }
+  assertConformanceRecord(
+    await (await createDurableAdapter()).complete({
+      invocationId: rejectedInvocationId,
+      now: "2026-01-01T00:00:10.000Z",
+      outcome: rejected,
+      requestDigest: rejectedRequestDigest,
+    }),
+    rejectedInvocationId,
+    rejectedRequestDigest,
+    "completed",
+    rejected
+  );
+  assertConformanceRecord(
+    await (await createDurableAdapter()).get(rejectedInvocationId),
+    rejectedInvocationId,
+    rejectedRequestDigest,
+    "completed",
+    rejected
+  );
+
+  const completionRaceInvocationId = `${invocationId}:completion-race`;
+  const completionRaceRequestDigest = canonicalDigest({
+    invocationId: completionRaceInvocationId,
+    vector: "completion-race",
+  });
+  const completionRaceClaim = conformanceOutcome({
+    invocationId: completionRaceInvocationId,
+    status: "pending",
+  });
+  const completionRaceClaimResult = await (
+    await createDurableAdapter()
+  ).claim({
+    invocationId: completionRaceInvocationId,
+    now: "2026-01-01T00:00:11.000Z",
+    pendingOutcome: completionRaceClaim,
+    requestDigest: completionRaceRequestDigest,
+  });
+  if (completionRaceClaimResult.kind !== "claimed") {
+    throw new Error("Provider invocation Store could not claim the completion race");
+  }
+  const completionRaceOutcomes = [
+    conformanceOutcome({
+      invocationId: completionRaceInvocationId,
+      result: { winner: "left" },
+      status: "succeeded",
+    }),
+    conformanceOutcome({
+      invocationId: completionRaceInvocationId,
+      result: { winner: "right" },
+      status: "succeeded",
+    }),
+  ] as const;
+  const [completionLeftAdapter, completionRightAdapter] = await Promise.all([
+    createDurableAdapter(),
+    createDurableAdapter(),
+  ]);
+  const completionResults = await Promise.allSettled([
+    completionLeftAdapter.complete({
+      invocationId: completionRaceInvocationId,
+      now: "2026-01-01T00:00:12.000Z",
+      outcome: completionRaceOutcomes[0],
+      requestDigest: completionRaceRequestDigest,
+    }),
+    completionRightAdapter.complete({
+      invocationId: completionRaceInvocationId,
+      now: "2026-01-01T00:00:12.000Z",
+      outcome: completionRaceOutcomes[1],
+      requestDigest: completionRaceRequestDigest,
+    }),
+  ]);
+  const completedRaceResults = completionResults.filter(
+    (result): result is PromiseFulfilledResult<ProviderStoredInvocation> =>
+      result.status === "fulfilled"
+  );
+  const rejectedRaceResults = completionResults.filter(
+    (result) => result.status === "rejected"
+  );
+  if (completedRaceResults.length !== 1 || rejectedRaceResults.length !== 1) {
+    throw new Error("Provider invocation Store final completion is not atomic");
+  }
+  const winningOutcome = completionRaceOutcomes.find(
+    (outcome) =>
+      outcome.outcomeDigest ===
+      completedRaceResults[0]?.value.outcome.outcomeDigest
+  );
+  if (!winningOutcome) {
+    throw new Error("Provider invocation Store returned an unknown race outcome");
+  }
+  assertConformanceRecord(
+    completedRaceResults[0]?.value,
+    completionRaceInvocationId,
+    completionRaceRequestDigest,
+    "completed",
+    winningOutcome
+  );
+  assertConformanceRecord(
+    await (await createDurableAdapter()).get(completionRaceInvocationId),
+    completionRaceInvocationId,
+    completionRaceRequestDigest,
+    "completed",
+    winningOutcome
+  );
+
+  const finalAdapter = await createDurableAdapter();
+  const finalRecord = await finalAdapter.get(invocationId);
+  if (
+    finalRecord?.acknowledgedOutcomeDigest !== failed.outcomeDigest ||
+    finalRecord.outcome.outcomeDigest !== failed.outcomeDigest
+  ) {
+    throw new Error("Provider invocation Store lost its acknowledgement after restart");
+  }
+  assertConformanceRecord(
+    finalRecord,
+    invocationId,
+    requestDigest,
+    "completed",
+    failed
+  );
+  return { invocationId, outcomeDigest: failed.outcomeDigest };
+};
+
+const conformanceOutcome = ({
+  effectEvidence = [],
+  error = null,
+  invocationId,
+  result = null,
+  status,
+}: {
+  effectEvidence?: readonly unknown[];
+  error?: ProviderV1Error | null;
+  invocationId: string;
+  result?: unknown;
+  status: ProviderV1OutcomeStatus;
+}): ProviderV1Outcome => {
+  const withoutDigest: Omit<ProviderV1Outcome, "outcomeDigest"> = {
+    protocol: providerV1Protocol,
+    invocationId,
+    status,
+    result,
+    error,
+    effectEvidence,
+    hostEffects: emptyProviderHostEffects(),
+  };
+  return { ...withoutDigest, outcomeDigest: outcomeDigest(withoutDigest) };
+};
+
+const assertConformanceRecord = (
+  record: ProviderStoredInvocation | undefined,
+  invocationId: string,
+  requestDigest: string,
+  phase: ProviderStoredInvocationPhase,
+  outcome: ProviderV1Outcome
+): ProviderStoredInvocation => {
+  if (!record) {
+    throw new Error("Provider invocation Store did not recover its durable record");
+  }
+  validateStoredProviderInvocation(record, invocationId, requestDigest);
+  if (
+    record.phase !== phase ||
+    canonicalJson(record.outcome) !== canonicalJson(outcome)
+  ) {
+    throw new Error("Provider invocation Store did not preserve its exact outcome");
+  }
+  return record;
+};
+
+const validateStoredProviderInvocation = (
+  record: ProviderStoredInvocation,
+  invocationId: string,
+  requestDigest?: string
+) => {
+  const phases: readonly ProviderStoredInvocationPhase[] = [
+    "executing",
+    "pending",
+    "completed",
+  ];
+  const statuses: readonly ProviderV1OutcomeStatus[] = [
+    "pending",
+    "succeeded",
+    "rejected",
+    "failed",
+  ];
+  if (
+    record.invocationId !== invocationId ||
+    !validDigest(record.requestDigest) ||
+    (requestDigest !== undefined && record.requestDigest !== requestDigest) ||
+    record.outcome.protocol !== providerV1Protocol ||
+    record.outcome.invocationId !== invocationId ||
+    !validDigest(record.outcome.outcomeDigest) ||
+    !phases.includes(record.phase) ||
+    !statuses.includes(record.outcome.status) ||
+    Number.isNaN(Date.parse(record.createdAt)) ||
+    Number.isNaN(Date.parse(record.updatedAt)) ||
+    Date.parse(record.updatedAt) < Date.parse(record.createdAt) ||
+    (record.acknowledgedAt !== null &&
+      (Number.isNaN(Date.parse(record.acknowledgedAt)) ||
+        Date.parse(record.acknowledgedAt) < Date.parse(record.createdAt)))
+  ) {
+    throw new Error("Provider invocation Store returned a mismatched record");
+  }
+  const { outcomeDigest: actualDigest, ...withoutDigest } = record.outcome;
+  if (actualDigest !== outcomeDigest(withoutDigest)) {
+    throw new Error("Provider invocation Store returned a corrupt outcome");
+  }
+  if (
+    (record.phase === "completed") ===
+    (record.outcome.status === "pending")
+  ) {
+    throw new Error("Provider invocation Store returned an invalid phase");
+  }
+  if (
+    (record.outcome.status === "succeeded" && record.outcome.error !== null) ||
+    ((record.outcome.status === "failed" ||
+      record.outcome.status === "rejected") &&
+      record.outcome.error === null) ||
+    (record.outcome.status === "rejected" &&
+      record.outcome.error?.retryable) ||
+    (record.outcome.status !== "succeeded" &&
+      (record.outcome.hostEffects.events.length > 0 ||
+        record.outcome.hostEffects.runtimeFunctionRequests.length > 0))
+  ) {
+    throw new Error("Provider invocation Store returned an invalid outcome");
+  }
+  if (
+    (record.acknowledgedAt === null) !==
+      (record.acknowledgedOutcomeDigest === null) ||
+    (record.acknowledgedOutcomeDigest !== null &&
+      record.acknowledgedOutcomeDigest !== record.outcome.outcomeDigest)
+  ) {
+    throw new Error(
+      "Provider invocation Store returned an invalid acknowledgement"
+    );
+  }
+};
+
+const providerOutcomeStatusCode = (outcome: ProviderV1Outcome) =>
+  outcome.status === "pending" ? 202 : 200;
+
+const providerErrorEnvelope = (
+  code: string,
+  message: string,
+  retryable: boolean
+) => ({
+  error: {
+    code,
+    message,
+    retryable,
+    retryAfterMs: null,
+    providerTraceReference: null,
+    details: [],
+  },
+});
 
 const validDigest = (value: string) => /^sha256:[0-9a-f]{64}$/u.test(value);
 
 const canonicalDigest = (value: unknown) =>
   `sha256:${createHash("sha256")
-    .update(JSON.stringify(canonicalize(value)))
+    .update(canonicalJson(value))
     .digest("hex")}`;
 
 const validQualifiedId = (value: string) =>
   /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/u.test(value);
 
 const validateProviderV1 = (provider: ProviderV1Options) => {
+  if (
+    provider.bearerToken !== undefined &&
+    (typeof provider.bearerToken !== "string" || !provider.bearerToken.trim())
+  ) {
+    throw new Error("providerV1.bearerToken must be a non-empty string");
+  }
+  if (
+    provider.features?.includes("durable_invocations") &&
+    provider.invocationStore?.durability !== "durable"
+  ) {
+    throw new Error(
+      "providerV1 durable_invocations requires a durable invocationStore"
+    );
+  }
+  if (
+    provider.invocationStore &&
+    provider.invocationStore.durability !== "durable" &&
+    provider.invocationStore.durability !== "process"
+  ) {
+    throw new Error(
+      "providerV1.invocationStore must declare durable or process durability"
+    );
+  }
+  if (provider.invocationStore) {
+    for (const method of ["claim", "get", "complete", "acknowledge"] as const) {
+      if (typeof provider.invocationStore[method] !== "function") {
+        throw new Error(
+          `providerV1.invocationStore.${method} must be a function`
+        );
+      }
+    }
+  }
   for (const [field, value] of [
     ["protocolContractDigest", provider.protocolContractDigest],
     ["serviceReleaseDigest", provider.serviceReleaseDigest],
@@ -974,28 +2500,45 @@ const validateProviderV1 = (provider: ProviderV1Options) => {
 const validProviderActor = (
   value: Partial<ProviderActorContext> | null | undefined
 ) =>
-  value?.kind === "anonymous" ||
-  value?.kind === "system" ||
+  (value?.kind === "anonymous" &&
+    Object.keys(value as object).length === 1) ||
+  (value?.kind === "system" && Object.keys(value as object).length === 1) ||
   (value?.kind === "user" &&
     typeof (value as { user_id?: unknown }).user_id === "string" &&
     Array.isArray((value as { scopes?: unknown }).scopes) &&
     (value as { scopes: unknown[] }).scopes.every(
       (scope) => typeof scope === "string"
+    ) &&
+    Object.keys(value as object).every((key) =>
+      ["kind", "user_id", "scopes"].includes(key)
     )) ||
   (value?.kind === "service" &&
     typeof (value as { service_id?: unknown }).service_id === "string" &&
     Array.isArray((value as { scopes?: unknown }).scopes) &&
     (value as { scopes: unknown[] }).scopes.every(
       (scope) => typeof scope === "string"
+    ) &&
+    Object.keys(value as object).every((key) =>
+      ["kind", "service_id", "scopes"].includes(key)
     ));
 
-const providerDescriptor = (provider: ProviderV1Options) => ({
+const providerDescriptor = (
+  provider: ProviderV1Options,
+  invocationStore: ProviderInvocationStore
+) => ({
   exports: provider.exports.map((providerExport) => ({
     ...providerExport,
     readinessReasons: [...(providerExport.readinessReasons ?? [])],
     ready: providerExport.ready ?? true,
   })),
-  features: [...(provider.features ?? ["durable_invocations"])],
+  features: [
+    ...new Set([
+      ...(provider.features ?? []),
+      ...(invocationStore.durability === "durable"
+        ? ["durable_invocations"]
+        : []),
+    ]),
+  ],
   protocol: providerV1Protocol,
   protocolContractDigest: provider.protocolContractDigest,
   runtimeInstanceId: provider.runtimeInstanceId,
@@ -1012,26 +2555,131 @@ const validateProviderInvocation = (
 ): ProviderV1Invocation => {
   const invocation = value as Partial<ProviderV1Invocation> | null;
   const contracts = Object.values(providerExport.contractDigests);
+  const operationKinds = [
+    "http_route",
+    "admin_list",
+    "admin_get",
+    "admin_query",
+    "admin_action",
+    "runtime_function",
+    "event_handler",
+  ];
   if (
     !invocation ||
     invocation.protocol !== providerV1Protocol ||
     !invocation.invocationId?.trim() ||
+    !invocation.requestId?.trim() ||
+    !Number.isInteger(invocation.attempt) ||
+    (invocation.attempt ?? 0) < 1 ||
+    typeof invocation.deadline !== "string" ||
+    Number.isNaN(Date.parse(invocation.deadline)) ||
     invocation.serviceReleaseDigest !== provider.serviceReleaseDigest ||
     invocation.exportKey !== providerExport.exportKey ||
     invocation.moduleReleaseDigest !== providerExport.moduleReleaseDigest ||
     invocation.manifestDigest !== providerExport.manifestDigest ||
+    !invocation.operationKind?.trim() ||
+    !operationKinds.includes(invocation.operationKind) ||
+    !invocation.operationName?.trim() ||
+    !invocation.operationVersion?.trim() ||
+    (invocation.mode !== "read_only" && invocation.mode !== "durable") ||
     !validProviderActor(invocation.actor) ||
     !contracts.includes(invocation.inputContractDigest ?? "") ||
-    !contracts.includes(invocation.outputContractDigest ?? "")
+    !contracts.includes(invocation.outputContractDigest ?? "") ||
+    !invocation.correlationId?.trim() ||
+    typeof invocation.trace !== "object" ||
+    invocation.trace === null ||
+    Array.isArray(invocation.trace) ||
+    invocation.contentType !== "application/json"
   ) {
     throw new Error("Provider invocation does not match the locked export");
   }
-  return invocation as ProviderV1Invocation;
+  if (
+    !Object.keys(invocation).every((key) =>
+      [
+        "protocol",
+        "invocationId",
+        "requestId",
+        "attempt",
+        "deadline",
+        "serviceReleaseDigest",
+        "exportKey",
+        "moduleReleaseDigest",
+        "manifestDigest",
+        "operationKind",
+        "operationName",
+        "operationVersion",
+        "mode",
+        "inputContractDigest",
+        "outputContractDigest",
+        "tenantId",
+        "actor",
+        "delegation",
+        "locale",
+        "context",
+        "correlationId",
+        "causationId",
+        "trace",
+        "contentType",
+        "payload",
+      ].includes(key)
+    )
+  ) {
+    throw new Error("Provider invocation contains unknown fields");
+  }
+  if (
+    (invocation.tenantId !== undefined &&
+      invocation.tenantId !== null &&
+      typeof invocation.tenantId !== "string") ||
+    (invocation.locale !== undefined &&
+      invocation.locale !== null &&
+      typeof invocation.locale !== "string") ||
+    (invocation.causationId !== undefined &&
+      invocation.causationId !== null &&
+      typeof invocation.causationId !== "string") ||
+    (invocation.context !== undefined &&
+      (typeof invocation.context !== "object" ||
+        invocation.context === null ||
+        Array.isArray(invocation.context)))
+  ) {
+    throw new Error("Provider invocation context fields are invalid");
+  }
+  const validated = invocation as ProviderV1Invocation;
+  return {
+    protocol: providerV1Protocol,
+    invocationId: validated.invocationId,
+    requestId: validated.requestId,
+    attempt: validated.attempt,
+    deadline: validated.deadline,
+    serviceReleaseDigest: validated.serviceReleaseDigest,
+    exportKey: validated.exportKey,
+    moduleReleaseDigest: validated.moduleReleaseDigest,
+    manifestDigest: validated.manifestDigest,
+    operationKind: validated.operationKind,
+    operationName: validated.operationName,
+    operationVersion: validated.operationVersion,
+    mode: validated.mode,
+    inputContractDigest: validated.inputContractDigest,
+    outputContractDigest: validated.outputContractDigest,
+    tenantId: validated.tenantId ?? null,
+    actor: normalizeProviderActor(validated.actor),
+    delegation: normalizeJsonValue(validated.delegation ?? null),
+    locale: validated.locale ?? null,
+    context: normalizeJsonValue(validated.context ?? {}) as Readonly<
+      Record<string, unknown>
+    >,
+    correlationId: validated.correlationId,
+    causationId: validated.causationId ?? null,
+    trace: normalizeProviderTrace(
+      validated.trace as ProviderV1TraceContext
+    ),
+    contentType: validated.contentType,
+    payload: normalizeJsonValue(validated.payload),
+  };
 };
 
 const invokeProviderV1 = async (
   invocation: ProviderV1Invocation,
-  handlers: ServiceModuleHandlers,
+  handlers: ProviderAwareServiceModuleHandlers,
   request: IncomingMessage
 ) => {
   const payload = (invocation.payload ?? {}) as Record<string, unknown>;
@@ -1043,52 +2691,98 @@ const invokeProviderV1 = async (
       if (!handler) {
         throw new Error(`${method} ${declaredPath} handler not found`);
       }
-      const normalized = normalizeHandlerResult(
-        await handler({
-          actor: invocation.actor,
-          body: payload.body,
-          params: (payload.path_params ?? {}) as Record<string, string>,
-          request,
-          url: new URL(request.url ?? "", "http://127.0.0.1"),
-        })
-      );
+      const handlerResult = await handler({
+        actor: invocation.actor,
+        body: payload.body,
+        params: (payload.path_params ?? {}) as Record<string, string>,
+        request,
+        url: new URL(request.url ?? "", "http://127.0.0.1"),
+      });
+      if (isProviderHandlerOutcome(handlerResult)) {
+        return mapProviderHandlerOutcome(handlerResult, (result) => {
+          const normalized = normalizeHandlerResult(result);
+          return {
+            body: normalized.body,
+            status_code: normalized.statusCode,
+          };
+        });
+      }
+      const normalized = normalizeHandlerResult(handlerResult);
       return { body: normalized.body, status_code: normalized.statusCode };
     }
     case "admin_list": {
       const data = handlers.data?.[String(payload.entity ?? "")];
       if (!data) throw new Error("admin list handler not found");
-      return data.list({
+      const handlerResult: unknown = await data.list({
         cursor:
           typeof payload.cursor === "string" ? payload.cursor : undefined,
         limit: Number(payload.limit ?? 50),
       });
+      return handlerResult;
     }
     case "admin_get": {
       const data = handlers.data?.[String(payload.entity ?? "")];
       if (!data) throw new Error("admin detail handler not found");
-      return { record: await data.detail(String(payload.id ?? "")) };
+      const handlerResult: unknown = await data.detail(String(payload.id ?? ""));
+      return isProviderHandlerOutcome(handlerResult)
+        ? mapProviderHandlerOutcome(handlerResult, (result) => ({
+            record: result,
+          }))
+        : { record: handlerResult };
     }
     case "admin_query": {
       const query = String(payload.query ?? "");
       const handler = handlers.queries?.[query];
       if (!handler) throw new Error(`${query} query handler not found`);
-      return { data: await handler({ query, request }) };
+      const handlerResult = await handler({ query, request });
+      return isProviderHandlerOutcome(handlerResult)
+        ? mapProviderHandlerOutcome(handlerResult, (result) => ({
+            data: result,
+          }))
+        : { data: handlerResult };
     }
     case "admin_action": {
       const action = String(payload.action ?? "");
       const handler = handlers.actions?.[action];
       if (!handler) throw new Error(`${action} action handler not found`);
-      return { result: await handler({ action, input: payload.input, request }) };
+      const handlerResult = await handler({
+        action,
+        input: payload.input,
+        request,
+      });
+      return isProviderHandlerOutcome(handlerResult)
+        ? mapProviderHandlerOutcome(handlerResult, (result) => ({
+            result,
+          }))
+        : { result: handlerResult };
     }
     case "runtime_function": {
       const handler = handlers.runtime?.[invocation.operationName];
       if (!handler) throw new Error(`${invocation.operationName} runtime handler not found`);
-      return { output: await handler({ input: payload.input, invocation: payload as unknown as ModuleRuntimeInvokeRequest, request }) };
+      const handlerResult = await handler({
+        input: payload.input,
+        invocation: payload as unknown as ModuleRuntimeInvokeRequest,
+        request,
+      });
+      return isProviderHandlerOutcome(handlerResult)
+        ? mapProviderHandlerOutcome(handlerResult, (result) => ({
+            output: result,
+          }))
+        : { output: handlerResult };
     }
     case "event_handler": {
       const handler = handlers.events?.[invocation.operationName];
       if (!handler) throw new Error(`${invocation.operationName} event handler not found`);
-      return (await handler({ event: payload as unknown as ModuleEventHandleRequest, request })) ?? { actions: [] };
+      const handlerResult = await handler({
+        event: payload as unknown as ModuleEventHandleRequest,
+        request,
+      });
+      return isProviderHandlerOutcome(handlerResult)
+        ? mapProviderHandlerOutcome(
+            handlerResult,
+            (result) => result ?? { actions: [] }
+          )
+        : handlerResult ?? { actions: [] };
     }
     default:
       throw new Error(`unsupported Provider operation ${invocation.operationKind}`);
@@ -2316,11 +4010,22 @@ export const serveModuleProvider = async (
   return served;
 };
 
+type ServeServiceFunction = {
+  (
+    manifest: ServiceManifest,
+    options?: ProviderAwareServeServiceOptions
+  ): Promise<ServedService>;
+  (
+    manifest: ServiceManifest,
+    options?: ServeServiceOptions
+  ): Promise<ServedService>;
+};
+
 // ponytail: shared server wrapper is intentionally flat; split handlers if this grows again.
 // eslint-disable-next-line complexity
-export const serveService = async (
+export const serveService: ServeServiceFunction = async (
   manifest: ServiceManifest,
-  options: ServeServiceOptions = {}
+  options: ServeServiceOptions | ProviderAwareServeServiceOptions = {}
 ): Promise<ServedService> => {
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 4100;
@@ -2333,13 +4038,50 @@ export const serveService = async (
     : undefined;
   const providerV1 = options.providerV1;
   if (providerV1) validateProviderV1(providerV1);
-  const providerInvocations = new Map<string, ProviderV1Outcome>();
+  const providerBearer = providerV1?.bearerToken
+    ? Buffer.from(providerV1.bearerToken, "utf8")
+    : undefined;
+  if (
+    providerV1 &&
+    host !== "127.0.0.1" &&
+    host !== "localhost" &&
+    !providerBearer
+  ) {
+    throw new Error(
+      "Provider V1 requires providerV1.bearerToken outside loopback"
+    );
+  }
+  const providerInvocationStore = providerV1
+    ? providerV1.invocationStore ?? createMemoryProviderInvocationStore()
+    : undefined;
   let servedBaseUrl = "";
 
   const server = createServer(async (request, response) => {
     const requestPath = new URL(request.url ?? "", "http://127.0.0.1").pathname;
+    if (
+      providerV1 &&
+      providerBearer &&
+      (requestPath === providerV1BasePath ||
+        requestPath.startsWith(`${providerV1BasePath}/`)) &&
+      !localBearerMatches(request, providerBearer)
+    ) {
+      sendJson(
+        response,
+        401,
+        providerErrorEnvelope(
+          "provider_bearer_required",
+          "Provider V1 access requires the configured bearer credential",
+          false
+        )
+      );
+      return;
+    }
     if (providerV1 && request.method === "GET" && requestPath === providerV1BasePath) {
-      sendJson(response, 200, providerDescriptor(providerV1));
+      sendJson(
+        response,
+        200,
+        providerDescriptor(providerV1, providerInvocationStore!)
+      );
       return;
     }
     if (
@@ -2392,40 +4134,241 @@ export const serveService = async (
       const acknowledgement = suffix.endsWith(":ack");
       const invocationId = decodeURIComponent(acknowledgement ? suffix.slice(0, -4) : suffix);
       if (request.method === "GET" && !acknowledgement) {
-        const outcome = providerInvocations.get(invocationId);
-        sendJson(response, outcome ? 200 : 404, outcome ?? { error: { code: "not_found", message: "Invocation not found", retryable: false, details: [] } });
+        try {
+          const record = await providerInvocationStore!.get(invocationId);
+          if (!record) {
+            sendJson(
+              response,
+              404,
+              providerErrorEnvelope(
+                "not_found",
+                "Invocation not found",
+                false
+              )
+            );
+            return;
+          }
+          validateStoredProviderInvocation(record, invocationId);
+          sendJson(
+            response,
+            providerOutcomeStatusCode(record.outcome),
+            record.outcome
+          );
+        } catch {
+          sendJson(
+            response,
+            503,
+            providerErrorEnvelope(
+              "invocation_store_unavailable",
+              "Provider invocation Store is unavailable",
+              true
+            )
+          );
+        }
         return;
       }
       if (request.method === "POST" && acknowledgement) {
-        const body = (await readBody(request)) as { invocationId?: string; outcomeDigest?: string };
-        const outcome = providerInvocations.get(invocationId);
-        if (!outcome || body.invocationId !== invocationId || body.outcomeDigest !== outcome.outcomeDigest) {
-          sendJson(response, 409, { error: { code: "acknowledgement_conflict", message: "Acknowledgement does not match the durable outcome", retryable: false, details: [] } });
+        const value = await readBody(request);
+        const body =
+          typeof value === "object" && value !== null
+            ? (value as {
+                invocationId?: string;
+                outcomeDigest?: string;
+              })
+            : {};
+        if (
+          body.invocationId !== invocationId ||
+          typeof body.outcomeDigest !== "string"
+        ) {
+          sendJson(
+            response,
+            409,
+            providerErrorEnvelope(
+              "acknowledgement_conflict",
+              "Acknowledgement does not match the durable outcome",
+              false
+            )
+          );
           return;
         }
-        sendJson(response, 200, { invocationId });
+        try {
+          const acknowledged = await providerInvocationStore!.acknowledge({
+            invocationId,
+            now: new Date().toISOString(),
+            outcomeDigest: body.outcomeDigest,
+          });
+          if (acknowledged.kind !== "acknowledged") {
+            sendJson(
+              response,
+              409,
+              providerErrorEnvelope(
+                "acknowledgement_conflict",
+                "Acknowledgement does not match the durable outcome",
+                false
+              )
+            );
+            return;
+          }
+          validateStoredProviderInvocation(
+            acknowledged.record,
+            invocationId
+          );
+          sendJson(response, 200, { invocationId });
+        } catch {
+          sendJson(
+            response,
+            503,
+            providerErrorEnvelope(
+              "invocation_store_unavailable",
+              "Provider invocation Store is unavailable",
+              true
+            )
+          );
+        }
         return;
       }
     }
     if (providerV1 && request.method === "POST" && requestPath.startsWith(`${providerV1BasePath}/exports/`)) {
+      let invocation: ProviderV1Invocation;
+      let providerExport: ProviderV1Export;
       try {
         const [encodedExportKey] = requestPath.slice(`${providerV1BasePath}/exports/`.length).split("/");
         const exportKey = decodeURIComponent(encodedExportKey ?? "");
-        const providerExport = providerV1.exports.find((entry) => entry.exportKey === exportKey);
-        if (!providerExport) throw new Error(`Provider export ${exportKey} is not declared`);
-        const invocation = validateProviderInvocation(await readBody(request), providerV1, providerExport);
-        const existing = providerInvocations.get(invocation.invocationId);
-        if (existing) {
-          sendJson(response, 200, existing);
-          return;
-        }
-        const handlers = options.modules?.[providerExport.moduleId] ?? options.modules?.[providerExport.exportKey] ?? {};
-        const result = await invokeProviderV1(invocation, handlers, request);
-        const outcome = providerOutcome(invocation.invocationId, result);
-        providerInvocations.set(invocation.invocationId, outcome);
-        sendJson(response, 200, outcome);
+        const foundExport = providerV1.exports.find((entry) => entry.exportKey === exportKey);
+        if (!foundExport) throw new Error(`Provider export ${exportKey} is not declared`);
+        providerExport = foundExport;
+        invocation = validateProviderInvocation(
+          await readBody(request),
+          providerV1,
+          providerExport
+        );
       } catch (error) {
-        sendJson(response, 400, { error: { code: "invalid_invocation", message: error instanceof Error ? error.message : "Provider invocation is invalid", retryable: false, details: [] } });
+        sendJson(
+          response,
+          400,
+          providerErrorEnvelope(
+            "invalid_invocation",
+            error instanceof Error
+              ? error.message
+              : "Provider invocation is invalid",
+            false
+          )
+        );
+        return;
+      }
+      const requestDigest = canonicalDigest(invocation);
+      const pendingOutcome = providerOutcome(
+        invocation,
+        providerPending(),
+        providerExport
+      );
+      let claim: ProviderInvocationStoreClaimResult;
+      try {
+        claim = await providerInvocationStore!.claim({
+          invocationId: invocation.invocationId,
+          now: new Date().toISOString(),
+          pendingOutcome,
+          requestDigest,
+        });
+      } catch {
+        sendJson(
+          response,
+          503,
+          providerErrorEnvelope(
+            "invocation_store_unavailable",
+            "Provider invocation Store is unavailable",
+            true
+          )
+        );
+        return;
+      }
+      if (claim.kind === "conflict") {
+        sendJson(
+          response,
+          409,
+          providerErrorEnvelope(
+            "invocation_identity_conflict",
+            "Invocation id is already bound to a different canonical request",
+            false
+          )
+        );
+        return;
+      }
+      try {
+        validateStoredProviderInvocation(
+          claim.record,
+          invocation.invocationId,
+          requestDigest
+        );
+      } catch {
+        sendJson(
+          response,
+          503,
+          providerErrorEnvelope(
+            "invocation_store_unavailable",
+            "Provider invocation Store is unavailable",
+            true
+          )
+        );
+        return;
+      }
+      if (claim.kind === "replay") {
+        sendJson(
+          response,
+          providerOutcomeStatusCode(claim.record.outcome),
+          claim.record.outcome
+        );
+        return;
+      }
+      const providerModules = options.modules as
+        | Record<string, ProviderAwareServiceModuleHandlers>
+        | undefined;
+      const handlers =
+        providerModules?.[providerExport.moduleId] ??
+        providerModules?.[providerExport.exportKey] ??
+        {};
+      let outcome: ProviderV1Outcome;
+      try {
+        const result = await invokeProviderV1(invocation, handlers, request);
+        outcome = providerOutcome(invocation, result, providerExport);
+      } catch {
+        outcome = providerOutcome(
+          invocation,
+          providerFailed({
+            code: "provider_handler_failed",
+            message: "Provider handler failed",
+            retryable: false,
+          }),
+          providerExport
+        );
+      }
+      try {
+        const completed = await providerInvocationStore!.complete({
+          invocationId: invocation.invocationId,
+          now: new Date().toISOString(),
+          outcome,
+          requestDigest,
+        });
+        validateStoredProviderInvocation(
+          completed,
+          invocation.invocationId,
+          requestDigest
+        );
+        sendJson(
+          response,
+          providerOutcomeStatusCode(completed.outcome),
+          completed.outcome
+        );
+      } catch {
+        sendJson(
+          response,
+          503,
+          providerErrorEnvelope(
+            "invocation_store_unavailable",
+            "Provider invocation Store is unavailable",
+            true
+          )
+        );
       }
       return;
     }
@@ -2468,7 +4411,8 @@ export const serveService = async (
 
     for (const module of manifest.modules) {
       const moduleBasePath = `${basePath}/modules/${module.module_id}`;
-      const moduleHandlers = options.modules?.[module.module_id] ?? {};
+      const moduleHandlers = (options.modules?.[module.module_id] ??
+        {}) as ServiceModuleHandlers;
       const providerManifest = providerManifestForServiceModule(
         manifest,
         module

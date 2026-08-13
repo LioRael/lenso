@@ -121,7 +121,7 @@ impl OutboxPublisher {
         );
 
         async {
-            sqlx::query(
+            let inserted = sqlx::query_scalar::<_, bool>(
                 r#"
             insert into platform.outbox (
                 id,
@@ -137,6 +137,8 @@ impl OutboxPublisher {
                 headers
             )
             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            on conflict (id) do nothing
+            returning true
             "#,
             )
             .bind(&event.id)
@@ -150,10 +152,69 @@ impl OutboxPublisher {
             .bind(event.occurred_at)
             .bind(&event.payload)
             .bind(&event.headers)
-            .execute(&mut **tx)
+            .fetch_optional(&mut **tx)
             .await
-            .map(|_| ())
-            .map_err(map_outbox_error)
+            .map_err(map_outbox_error)?
+            .unwrap_or(false);
+
+            if inserted {
+                return Ok(());
+            }
+
+            let existing = sqlx::query_as::<
+                _,
+                (
+                    String,
+                    i32,
+                    String,
+                    String,
+                    String,
+                    String,
+                    Option<String>,
+                    DateTime<Utc>,
+                    Value,
+                    Value,
+                ),
+            >(
+                r#"
+                select
+                    event_name,
+                    event_version,
+                    source_module,
+                    aggregate_type,
+                    aggregate_id,
+                    correlation_id,
+                    causation_id,
+                    occurred_at,
+                    payload,
+                    headers
+                from platform.outbox
+                where id = $1
+                "#,
+            )
+            .bind(&event.id)
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(map_outbox_error)?;
+
+            let same_event = existing.0 == event.event_name
+                && existing.1 == i32::from(event.event_version)
+                && existing.2 == event.source_module
+                && existing.3 == event.aggregate_type
+                && existing.4 == event.aggregate_id
+                && existing.5 == event.correlation_id
+                && existing.6 == event.causation_id
+                && existing.7.timestamp_micros() == event.occurred_at.timestamp_micros()
+                && existing.8 == event.payload
+                && existing.9 == event.headers;
+            if !same_event {
+                return Err(AppError::new(
+                    ErrorCode::Conflict,
+                    "outbox event identity is already bound to different content",
+                ));
+            }
+
+            Ok(())
         }
         .instrument(span)
         .await
@@ -496,7 +557,7 @@ impl OutboxRelay {
             .bind(&event.id)
             .bind(status.as_str())
             .bind(error.public_message.as_str())
-            .bind(outbox_retry_delay_seconds())
+            .bind(outbox_retry_delay_seconds(error))
             .execute(&self.pool)
             .await
             .map(|_| ())
@@ -515,6 +576,8 @@ impl OutboxRelay {
                     "max_attempts": event.max_attempts,
                     "status": status.as_str(),
                     "retryable": error.retryable,
+                    "retry_after_ms": error.retry_after_ms,
+                    "provider_trace_reference": error.provider_trace_reference,
                     "error": error.public_message,
                     "worker_id": self.worker_id,
                 }),
@@ -608,8 +671,11 @@ fn map_outbox_error(source: sqlx::Error) -> AppError {
     AppError::new(ErrorCode::Internal, "Outbox operation failed").with_source(source)
 }
 
-fn outbox_retry_delay_seconds() -> f64 {
-    OUTBOX_RETRY_DELAY_SECONDS as f64
+fn outbox_retry_delay_seconds(error: &AppError) -> f64 {
+    error.retry_after_ms.map_or_else(
+        || OUTBOX_RETRY_DELAY_SECONDS as f64,
+        |milliseconds| std::time::Duration::from_millis(milliseconds).as_secs_f64(),
+    )
 }
 
 fn stale_processing_lock_seconds() -> f64 {

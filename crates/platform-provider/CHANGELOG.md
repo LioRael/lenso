@@ -5,6 +5,12 @@
 Report each Provider Event handler's stable declared identity through the Host
 Event binding contract.
 
+### Features
+
+Make Provider V1 outcomes retry-safe with attempt-specific invocation identities,
+canonical digests, timeout recovery, typed retry metadata, and idempotent Host
+effect commits across HTTP and gRPC.
+
 ## lenso-platform-provider@0.1.20
 
 ### Maintenance

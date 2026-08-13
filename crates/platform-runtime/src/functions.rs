@@ -4,9 +4,9 @@ use chrono::{DateTime, Utc};
 use platform_core::{
     ActorContext, AppError, AppResult, CorrelationId, DbPool, ErrorCode, ExecutionContext,
     ExecutionId, ExecutionLogCaptureReport, ExecutionLogCaptureStatus, ExecutionLogScope,
-    ExecutionLogWriter, PostgresExecutionLogWriter, RuntimeSpanAttributes, TenantId, TraceContext,
-    capture_execution_logs, db::DbTransaction, record_runtime_span_attributes,
-    trace_context_from_headers, trace_headers,
+    ExecutionLogWriter, OutboxEvent, OutboxPublisher, PostgresExecutionLogWriter,
+    RuntimeSpanAttributes, TenantId, TraceContext, capture_execution_logs, db::DbTransaction,
+    record_runtime_span_attributes, trace_context_from_headers, trace_headers,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,6 +26,12 @@ pub trait FunctionHandler: Debug + Send + Sync {
     fn observability(&self) -> Option<FunctionHandlerObservability> {
         None
     }
+
+    /// Requests one bounded Host-owned terminal observation if this handler's
+    /// run becomes dead. The default keeps linked functions unchanged.
+    fn terminal_observation(&self) -> Option<FunctionTerminalObservation> {
+        None
+    }
 }
 
 pub use FunctionHandler as RuntimeFunction;
@@ -41,6 +47,20 @@ impl FunctionHandlerObservability {
         Self {
             source: source.into(),
             attributes: normalize_log_attributes(attributes),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionTerminalObservation {
+    pub owner_module: String,
+}
+
+impl FunctionTerminalObservation {
+    #[must_use]
+    pub fn new(owner_module: impl Into<String>) -> Self {
+        Self {
+            owner_module: owner_module.into(),
         }
     }
 }
@@ -243,6 +263,8 @@ impl RuntimeClient {
             &request.trace,
             request.causation_id.as_deref(),
         );
+        let actor = serde_json::to_value(&request.actor).map_err(map_serde_error)?;
+        let tenant_id = request.tenant_id.as_ref().map(|tenant| tenant.0.clone());
         let span = tracing::info_span!(
             "function_enqueue",
             lenso.correlation_id = tracing::field::Empty,
@@ -261,7 +283,7 @@ impl RuntimeClient {
         );
 
         async {
-            sqlx::query(
+            let inserted = sqlx::query_scalar::<_, bool>(
                 r#"
                 insert into runtime.function_runs (
                     id,
@@ -274,6 +296,8 @@ impl RuntimeClient {
                     tenancy_mode
                 )
                 values ($1, $2, $3, $4, $5, $6, $7, $8)
+                on conflict (id) do nothing
+                returning true
                 "#,
             )
             .bind(&id)
@@ -281,12 +305,55 @@ impl RuntimeClient {
             .bind(&input_json)
             .bind(max_attempts)
             .bind(&request.correlation_id.0)
-            .bind(serde_json::to_value(&request.actor).map_err(map_serde_error)?)
-            .bind(request.tenant_id.as_ref().map(|tenant| &tenant.0))
+            .bind(&actor)
+            .bind(&tenant_id)
             .bind(request.tenancy_mode.as_str())
-            .execute(&mut **tx)
+            .fetch_optional(&mut **tx)
             .await
-            .map_err(map_runtime_error)
+            .map_err(map_runtime_error)?
+            .unwrap_or(false);
+
+            if inserted {
+                return Ok(());
+            }
+
+            let existing =
+                sqlx::query_as::<_, (String, Value, i32, String, Value, Option<String>, String)>(
+                    r#"
+                select
+                    function_name,
+                    input_json,
+                    max_attempts,
+                    correlation_id,
+                    actor,
+                    tenant_id,
+                    tenancy_mode
+                from runtime.function_runs
+                where id = $1
+                "#,
+                )
+                .bind(&id)
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(map_runtime_error)?;
+
+            let expected = (
+                request.function_name.clone(),
+                input_json.clone(),
+                max_attempts,
+                request.correlation_id.0.clone(),
+                actor.clone(),
+                tenant_id.clone(),
+                request.tenancy_mode.as_str().to_owned(),
+            );
+            if existing != expected {
+                return Err(AppError::new(
+                    ErrorCode::Conflict,
+                    "function run identity is already bound to a different request",
+                ));
+            }
+
+            Ok(())
         }
         .instrument(span)
         .await?;
@@ -561,6 +628,7 @@ impl RuntimeWorker {
                 self.worker_id.clone(),
             );
             let observability = definition.handler.observability();
+            let terminal_observation = definition.handler.terminal_observation();
             let ((result, started_at, duration_ms), execution_log_report) = capture_execution_logs(
                 execution_log_scope,
                 self.execution_log_writer.clone(),
@@ -598,8 +666,13 @@ impl RuntimeWorker {
             match result {
                 Ok(_output) => self.mark_completed(&run).await,
                 Err(error) => {
-                    self.mark_failed(&run, &error, definition.retry_policy.initial_delay)
-                        .await
+                    self.mark_failed_with_terminal_observation(
+                        &run,
+                        &error,
+                        retry_delay_for_error(definition.retry_policy.initial_delay, &error),
+                        terminal_observation.as_ref(),
+                    )
+                    .await
                 }
             }
         }
@@ -647,6 +720,17 @@ impl RuntimeWorker {
         error: &AppError,
         retry_delay: Duration,
     ) -> AppResult<()> {
+        self.mark_failed_with_terminal_observation(run, error, retry_delay, None)
+            .await
+    }
+
+    async fn mark_failed_with_terminal_observation(
+        &self,
+        run: &ClaimedFunctionRun,
+        error: &AppError,
+        retry_delay: Duration,
+        terminal_observation: Option<&FunctionTerminalObservation>,
+    ) -> AppResult<()> {
         let next_attempt = run.attempts + 1;
         let status = if next_attempt >= run.max_attempts {
             FunctionRunStatus::Dead
@@ -674,7 +758,8 @@ impl RuntimeWorker {
         );
 
         async {
-            sqlx::query(
+            let mut tx = self.pool.begin().await.map_err(map_runtime_error)?;
+            let updated = sqlx::query(
                 r#"
             update runtime.function_runs
             set status = $2,
@@ -687,17 +772,31 @@ impl RuntimeWorker {
                 locked_by = null,
                 last_error = $3,
                 updated_at = now()
-            where id = $1
+            where id = $1 and status = 'processing'
             "#,
             )
             .bind(&run.id)
             .bind(status.as_str())
             .bind(error.public_message.as_str())
             .bind(retry_delay_seconds(retry_delay))
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
-            .map(|_| ())
             .map_err(map_runtime_error)?;
+
+            if updated.rows_affected() == 0 {
+                tx.commit().await.map_err(map_runtime_error)?;
+                return Ok(());
+            }
+
+            if status == FunctionRunStatus::Dead
+                && let Some(observation) = terminal_observation
+            {
+                OutboxPublisher
+                    .publish_in_tx(&mut tx, &terminal_function_event(run, error, observation))
+                    .await?;
+            }
+
+            tx.commit().await.map_err(map_runtime_error)?;
 
             self.record_function_execution_log(
                 run,
@@ -712,6 +811,8 @@ impl RuntimeWorker {
                     "max_attempts": run.max_attempts,
                     "status": status.as_str(),
                     "retryable": error.retryable,
+                    "retry_after_ms": error.retry_after_ms,
+                    "provider_trace_reference": error.provider_trace_reference,
                     "error": error.public_message,
                     "worker_id": self.worker_id,
                 }),
@@ -790,6 +891,40 @@ impl RuntimeWorker {
 
 fn execution_log_capture_is_incomplete(report: ExecutionLogCaptureReport) -> bool {
     report.status != ExecutionLogCaptureStatus::Complete
+}
+
+fn terminal_function_event(
+    run: &ClaimedFunctionRun,
+    error: &AppError,
+    observation: &FunctionTerminalObservation,
+) -> OutboxEvent {
+    const EVENT_NAME: &str = "lenso.runtime-function-terminal.v1";
+    OutboxEvent {
+        id: format!("runtime:function-run:{}:terminal", run.id),
+        event_name: EVENT_NAME.to_owned(),
+        event_version: 1,
+        source_module: "lenso/runtime".to_owned(),
+        aggregate_type: "runtime_function_run".to_owned(),
+        aggregate_id: run.id.clone(),
+        correlation_id: run.correlation_id.clone(),
+        causation_id: Some(run.id.clone()),
+        occurred_at: Utc::now(),
+        payload: serde_json::json!({
+            "failureClassification": if error.retryable {
+                "retry_exhausted"
+            } else {
+                "permanent_failure"
+            },
+            "failureCode": error.code.as_str(),
+            "functionName": run.function_name,
+            "functionRunId": run.id,
+            "ownerModule": observation.owner_module,
+            "terminalState": "dead",
+        }),
+        headers: serde_json::json!({
+            "schema_ref": "contracts/events/lenso/lenso.runtime-function-terminal.v1.schema.json",
+        }),
+    }
 }
 
 #[derive(Debug)]
@@ -1036,6 +1171,14 @@ fn function_handler_operation_attributes(
         );
         attributes.insert("error".to_owned(), serde_json::json!(error.public_message));
         attributes.insert("retryable".to_owned(), serde_json::json!(error.retryable));
+        attributes.insert(
+            "retry_after_ms".to_owned(),
+            serde_json::json!(error.retry_after_ms),
+        );
+        attributes.insert(
+            "provider_trace_reference".to_owned(),
+            serde_json::json!(error.provider_trace_reference),
+        );
         attributes.insert("error_details".to_owned(), serde_json::json!(error.details));
     }
 
@@ -1055,6 +1198,13 @@ fn stale_processing_lock_seconds() -> f64 {
 
 fn retry_delay_seconds(delay: Duration) -> f64 {
     delay.as_secs_f64()
+}
+
+fn retry_delay_for_error(default: Duration, error: &AppError) -> Duration {
+    error
+        .retry_after_ms
+        .map(Duration::from_millis)
+        .unwrap_or(default)
 }
 
 type FunctionRunRow = (

@@ -12,7 +12,7 @@ pub use flows::{FlowDefinition, FlowRun};
 pub use functions::{
     ClaimedFunctionRun, EnqueueFunctionRequest, FunctionDefinition, FunctionHandler,
     FunctionHandlerObservability, FunctionRegistry, FunctionRunStatus, FunctionTenancyMode,
-    RuntimeClient, RuntimeFunction, RuntimeWorker,
+    FunctionTerminalObservation, RuntimeClient, RuntimeFunction, RuntimeWorker,
 };
 pub use migrations::RUNTIME_MIGRATIONS;
 pub use queues::{Queue, QueueName};
