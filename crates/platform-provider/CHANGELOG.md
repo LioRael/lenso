@@ -11,6 +11,10 @@ Make Provider V1 outcomes retry-safe with attempt-specific invocation identities
 canonical digests, timeout recovery, typed retry metadata, and idempotent Host
 effect commits across HTTP and gRPC.
 
+Capture Provider HTTP request and response body evidence through a separate
+64 KiB policy, recursively redact sensitive fields before persistence, and keep
+explicit coverage reasons when a body is absent or omitted.
+
 ## lenso-platform-provider@0.1.20
 
 ### Maintenance

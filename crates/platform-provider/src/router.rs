@@ -1,3 +1,4 @@
+use crate::body_evidence::{ProviderHttpCallBodyEvidence, capture_json_body};
 use crate::invocation::{self, InvocationContext};
 use crate::protocol::{
     ProviderHttpProxyInvokeRequest, ProviderHttpProxyInvokeResponse, ProviderInvocationMode,
@@ -482,6 +483,7 @@ async fn forward_provider_invocation(
         headers: parts.headers,
         body: parts.body,
     };
+    let request_body_evidence = capture_json_body(payload.body.as_ref(), "method_without_body");
     let invocation = invocation::build(
         &matched.config,
         ProviderOperationKind::HttpRoute,
@@ -540,22 +542,9 @@ async fn forward_provider_invocation(
     .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
     let value = invocation::result(&invocation, outcome)
         .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
-    let response: ProviderHttpProxyInvokeResponse =
-        serde_json::from_value(value).map_err(|error| {
-            ApiErrorResponse::with_context(
-                AppError::new(
-                    ErrorCode::ExternalDependency,
-                    format!("Provider HTTP result violated its contract: {error}"),
-                ),
-                request_ctx,
-            )
-        })?;
-    let provider_status = reqwest::StatusCode::from_u16(response.status_code).map_err(|error| {
-        ApiErrorResponse::with_context(
-            AppError::new(ErrorCode::ExternalDependency, error.to_string()),
-            request_ctx,
-        )
-    })?;
+    let (response, provider_status) = decode_http_proxy_result(value)
+        .map_err(|error| ApiErrorResponse::with_context(error, request_ctx))?;
+    let response_body_evidence = capture_json_body(response.body.as_ref(), "empty_response_body");
     record_proxy_call(
         request.ctx,
         matched,
@@ -563,6 +552,10 @@ async fn forward_provider_invocation(
         started_at,
         Some(provider_status),
         None,
+        ProviderHttpCallBodyEvidence {
+            request: request_body_evidence,
+            response: response_body_evidence,
+        },
     )
     .await;
     Ok(response.body.unwrap_or(Value::Null))
@@ -575,6 +568,7 @@ async fn record_proxy_call(
     started_at: Instant,
     provider_status: Option<reqwest::StatusCode>,
     error: Option<&AppError>,
+    body_evidence: ProviderHttpCallBodyEvidence,
 ) {
     let duration_ms = started_at.elapsed().as_millis().min(i64::MAX as u128) as i64;
     match error {
@@ -625,6 +619,8 @@ async fn record_proxy_call(
         error_details: error
             .map(|error| json!(error.details))
             .unwrap_or_else(|| Value::Array(Vec::new())),
+        request_body: body_evidence.request,
+        response_body: body_evidence.response,
     };
 
     if let Err(error) =
@@ -641,6 +637,21 @@ async fn record_proxy_call(
             "failed to persist provider HTTP proxy call"
         );
     }
+}
+
+fn decode_http_proxy_result(
+    value: Value,
+) -> platform_core::AppResult<(ProviderHttpProxyInvokeResponse, reqwest::StatusCode)> {
+    let response: ProviderHttpProxyInvokeResponse =
+        serde_json::from_value(value).map_err(|error| {
+            AppError::new(
+                ErrorCode::ExternalDependency,
+                format!("Provider HTTP result violated its contract: {error}"),
+            )
+        })?;
+    let provider_status = reqwest::StatusCode::from_u16(response.status_code)
+        .map_err(|error| AppError::new(ErrorCode::ExternalDependency, error.to_string()))?;
+    Ok((response, provider_status))
 }
 
 fn module_http_method_label(method: ModuleHttpMethod) -> &'static str {
