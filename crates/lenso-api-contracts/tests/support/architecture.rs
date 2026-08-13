@@ -873,14 +873,16 @@ fn collect_rust_files(root: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<(
 
 fn event_schema_refs(root: &Path) -> anyhow::Result<BTreeSet<String>> {
     let mut references = BTreeSet::new();
-    for file in rust_files(&root.join("modules"))? {
-        let source = fs::read_to_string(&file)
-            .with_context(|| format!("failed to read {}", file.display()))?;
-        references.extend(extract_contract_refs(
-            &source,
-            "contracts/events/",
-            ".schema.json",
-        ));
+    for source_root in [root.join("modules"), root.join("crates/platform-runtime")] {
+        for file in rust_files(&source_root)? {
+            let source = fs::read_to_string(&file)
+                .with_context(|| format!("failed to read {}", file.display()))?;
+            references.extend(extract_contract_refs(
+                &source,
+                "contracts/events/",
+                ".schema.json",
+            ));
+        }
     }
     Ok(references)
 }

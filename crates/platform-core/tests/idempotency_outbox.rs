@@ -80,6 +80,50 @@ async fn idempotency_business_write_and_outbox_share_one_transaction() {
     db.cleanup().await;
 }
 
+#[tokio::test]
+async fn stable_outbox_identity_replays_only_the_same_event() {
+    let Some(db) = TestDatabase::create().await else {
+        return;
+    };
+    apply_migrations(&db.pool, platform_core::PLATFORM_MIGRATIONS)
+        .await
+        .unwrap();
+
+    let original = event("event-stable", "run-stable");
+    let mut first = db.pool.begin().await.unwrap();
+    OutboxPublisher
+        .publish_in_tx(&mut first, &original)
+        .await
+        .expect("first event should publish");
+    first.commit().await.unwrap();
+
+    sqlx::query("update platform.outbox set status = 'published' where id = $1")
+        .bind(&original.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let mut replay = db.pool.begin().await.unwrap();
+    OutboxPublisher
+        .publish_in_tx(&mut replay, &original)
+        .await
+        .expect("the same event should replay safely");
+    replay.commit().await.unwrap();
+    assert_eq!(count(&db.pool, "platform.outbox").await, 1);
+
+    let mut drifted = original;
+    drifted.payload = json!({ "run_id": "different" });
+    let mut conflict = db.pool.begin().await.unwrap();
+    let error = OutboxPublisher
+        .publish_in_tx(&mut conflict, &drifted)
+        .await
+        .expect_err("an event identity cannot be rebound");
+    assert_eq!(error.code, platform_core::ErrorCode::Conflict);
+    conflict.rollback().await.unwrap();
+
+    db.cleanup().await;
+}
+
 fn event(id: &str, aggregate_id: &str) -> OutboxEvent {
     OutboxEvent {
         id: id.into(),

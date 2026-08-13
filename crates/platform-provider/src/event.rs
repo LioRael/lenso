@@ -64,8 +64,11 @@ impl ProviderEventHandler {
     }
 
     pub async fn invoke(&self, event: &ClaimedOutboxEvent) -> AppResult<()> {
+        let attempt = u32::try_from(event.attempts + 1).unwrap_or(u32::MAX);
+        let stable_request_id = format!("{}:{}", event.id, self.handler_name);
+        let invocation_id = format!("{stable_request_id}:attempt:{attempt}");
         let request_body = ProviderEventHandleRequest {
-            request_id: format!("{}:{}", event.id, self.handler_name),
+            request_id: invocation_id.clone(),
             outbox_event_id: event.id.clone(),
             handler_name: self.handler_name.clone(),
             event_name: event.event_name.clone(),
@@ -88,10 +91,11 @@ impl ProviderEventHandler {
             event.event_version.to_string(),
             ProviderInvocationMode::Durable,
             InvocationContext {
-                invocation_id: request_body.request_id.clone(),
+                invocation_id,
                 request_id: request_body.request_id.clone(),
-                attempt: 1,
+                attempt,
                 actor: request_body.actor.clone(),
+                tenant_id: tenant_from_event(event).map(|tenant| tenant.0),
                 correlation_id: request_body.correlation_id.clone(),
                 causation_id: request_body.causation_id.clone(),
                 trace: request_body.trace.clone(),

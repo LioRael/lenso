@@ -12,6 +12,7 @@ import {
   adminAction,
   adminSchema,
   booleanField,
+  createMemoryProviderInvocationStore,
   declarativeCustom,
   declarativePage,
   declarativeSection,
@@ -30,6 +31,11 @@ import {
   metricStrip,
   postRoute,
   problemDetails,
+  providerFailed,
+  providerPending,
+  providerRejected,
+  providerSucceeded,
+  providerV1OutcomeLimits,
   queryValue,
   readLensoInvocationContext,
   runtimeFunction,
@@ -39,9 +45,226 @@ import {
   serveService,
   textField,
   timestampField,
+  verifyProviderInvocationStoreConformance,
+} from "./service-module-delivery";
+import type {
+  ModuleAdminDataSource,
+  ModuleEventHandler,
+  ProviderInvocationStore,
+  ProviderV1Options,
 } from "./service-module-delivery";
 
+const providerTestDigest = (character: string) =>
+  `sha256:${character.repeat(64)}`;
+
+const providerTestFixture = () => {
+  const manifest = {
+    capabilities: ["taste.profiles.read"],
+    module_id: "taste/profile",
+    protocol: "lenso.module-manifest.v1",
+    runtime: {
+      functions: [{ name: "taste.confirm-receipt.v1" }],
+    },
+  };
+  const manifestDigest = `sha256:${createHash("sha256")
+    .update(JSON.stringify(manifest))
+    .digest("hex")}`;
+  const moduleRelease = {
+    compatibility: {},
+    delivery: {
+      contract_digests: [providerTestDigest("4")],
+      export: "taste-profile",
+      kind: "service",
+      responsibility_profile: "provider",
+      service_id: "taste/service",
+      service_release_digest: providerTestDigest("5"),
+      service_release_version: "0.1.0",
+    },
+    manifest,
+    manifest_digest: manifestDigest,
+    module_id: "taste/profile",
+    protocol: "lenso.module-release.v1",
+    version: "0.1.0",
+  };
+  const moduleReleaseDigest = `sha256:${createHash("sha256")
+    .update(JSON.stringify(moduleRelease))
+    .digest("hex")}`;
+  const service = defineService({
+    modules: [
+      defineModule({
+        httpRoutes: [getRoute("/profiles/{id}")],
+        name: "taste-profile",
+      }),
+    ],
+    name: "taste-service",
+  });
+  const providerV1 = {
+    exports: [
+      {
+        contractDigests: { http: providerTestDigest("4") },
+        exportKey: "taste-profile",
+        manifest,
+        manifestDigest,
+        moduleId: "taste/profile",
+        moduleReleaseDigest,
+        moduleVersion: "0.1.0",
+      },
+    ],
+    moduleReleases: { "taste-profile": moduleRelease },
+    protocolContractDigest: providerTestDigest("1"),
+    runtimeInstanceId: "taste-local-1",
+    serviceId: "taste/service",
+    serviceReleaseDigest: providerTestDigest("5"),
+    serviceReleaseVersion: "0.1.0",
+  } satisfies ProviderV1Options;
+  const invocation = {
+    actor: {
+      kind: "user" as const,
+      scopes: ["taste.profiles.read"],
+      user_id: "taste-user",
+    },
+    attempt: 1,
+    contentType: "application/json",
+    correlationId: "correlation-1",
+    deadline: "2026-08-13T01:00:00Z",
+    exportKey: "taste-profile",
+    inputContractDigest: providerTestDigest("4"),
+    invocationId: "invocation-1",
+    manifestDigest,
+    moduleReleaseDigest,
+    operationKind: "http_route",
+    operationName: "GET /profiles/{id}",
+    operationVersion: "1",
+    outputContractDigest: providerTestDigest("4"),
+    payload: {
+      declared_path: "/profiles/{id}",
+      method: "GET",
+      path_params: { id: "profile-1" },
+    },
+    protocol: "lenso.provider.v1" as const,
+    requestId: "request-1",
+    serviceReleaseDigest: providerTestDigest("5"),
+    mode: "durable" as const,
+    trace: { baggage: [], span_id: null, trace_id: null },
+  };
+  return {
+    invocation,
+    manifest,
+    manifestDigest,
+    moduleRelease,
+    moduleReleaseDigest,
+    providerV1,
+    service,
+  };
+};
+
+const durableProviderTestStore = (
+  inner = createMemoryProviderInvocationStore()
+): ProviderInvocationStore => {
+  return {
+    acknowledge: (input) => inner.acknowledge(input),
+    claim: (input) => inner.claim(input),
+    complete: (input) => inner.complete(input),
+    durability: "durable",
+    get: (invocationId) => inner.get(invocationId),
+  };
+};
+
 describe("@lenso/service-kit internal delivery adapter", () => {
+  test("publishes a reusable durable invocation Store conformance vector", async () => {
+    const backingStore = createMemoryProviderInvocationStore();
+    const result = await verifyProviderInvocationStoreConformance({
+      createStore: () => durableProviderTestStore(backingStore),
+    });
+    expect(result).toMatchObject({
+      invocationId: expect.stringContaining("provider-store-conformance:"),
+      outcomeDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+    });
+    await expect(backingStore.get(result.invocationId)).resolves.toMatchObject({
+      acknowledgedOutcomeDigest: result.outcomeDigest,
+      outcome: {
+        effectEvidence: [
+          { kind: "remote_receipt", receiptId: "conformance-failed" },
+        ],
+        error: {
+          providerTraceReference: "conformance-failed-trace",
+          retryAfterMs: 2_500,
+          retryable: true,
+        },
+        status: "failed",
+      },
+      phase: "completed",
+    });
+    await expect(
+      backingStore.get(`${result.invocationId}:rejected`)
+    ).resolves.toMatchObject({
+      outcome: {
+        effectEvidence: [
+          { kind: "remote_receipt", receiptId: "conformance-rejected" },
+        ],
+        error: {
+          providerTraceReference: "conformance-rejected-trace",
+          retryAfterMs: null,
+          retryable: false,
+        },
+        status: "rejected",
+      },
+      phase: "completed",
+    });
+    await expect(
+      verifyProviderInvocationStoreConformance({
+        createStore: createMemoryProviderInvocationStore,
+      })
+    ).rejects.toThrow("requires durable storage");
+
+    const singleton = durableProviderTestStore();
+    await expect(
+      verifyProviderInvocationStoreConformance({
+        createStore: () => singleton,
+      })
+    ).rejects.toThrow("requires fresh adapter instances");
+  });
+
+  test("preserves legacy handler result types while accepting Provider-aware handlers", async () => {
+    const readLegacyRecords = async (source: ModuleAdminDataSource) => {
+      const page = await source.list({ limit: 1 });
+      return page.records;
+    };
+    const readLegacyActions = async (
+      handler: ModuleEventHandler,
+      context: Parameters<ModuleEventHandler>[0]
+    ) => {
+      const result = await handler(context);
+      return result?.actions;
+    };
+    expect(readLegacyRecords).toBeTypeOf("function");
+    expect(readLegacyActions).toBeTypeOf("function");
+
+    const fixture = providerTestFixture();
+    const served = await serveService(fixture.service, {
+      modules: {
+        "taste-profile": {
+          data: {
+            profiles: {
+              detail: () => null,
+              list: () =>
+                providerFailed({
+                  code: "provider_unavailable",
+                  message: "The Provider is unavailable",
+                }),
+            },
+          },
+          events: {
+            "taste.profile-observed.v1": () => providerPending(),
+          },
+        },
+      },
+      port: 0,
+      providerV1: fixture.providerV1,
+    });
+    await served.close();
+  });
+
   test("builds the canonical top-level Problem Details contract", () => {
     expect(
       problemDetails({
@@ -690,6 +913,7 @@ describe("@lenso/service-kit internal delivery adapter", () => {
       const providerUrl = `${origin}/lenso/provider/v1`;
       const descriptor = await fetch(providerUrl).then((response) => response.json());
       expect(descriptor).toMatchObject({
+        features: [],
         protocol: "lenso.provider.v1",
         serviceId: "taste/service",
         exports: [{ exportKey: "taste-profile", moduleId: "taste/profile" }],
@@ -706,6 +930,10 @@ describe("@lenso/service-kit internal delivery adapter", () => {
           scopes: ["taste.profiles.read"],
           user_id: "taste-user",
         },
+        attempt: 1,
+        contentType: "application/json",
+        correlationId: "correlation-1",
+        deadline: "2026-08-13T01:00:00Z",
         protocol: "lenso.provider.v1",
         invocationId: "invocation-1",
         serviceReleaseDigest: lockedDigest("5"),
@@ -714,6 +942,8 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         manifestDigest,
         operationKind: "http_route",
         operationName: "GET /profiles/{id}",
+        operationVersion: "1",
+        mode: "durable",
         inputContractDigest: lockedDigest("4"),
         outputContractDigest: lockedDigest("4"),
         payload: {
@@ -721,6 +951,8 @@ describe("@lenso/service-kit internal delivery adapter", () => {
           declared_path: "/profiles/{id}",
           path_params: { id: "profile-1" },
         },
+        requestId: "request-1",
+        trace: { baggage: [], span_id: null, trace_id: null },
       };
       const invoked = await fetch(`${providerUrl}/exports/taste-profile/http:invoke`, {
         body: JSON.stringify(invocation),
@@ -752,6 +984,561 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     }
   });
 
+  test("does not advertise durable invocations for the process-local default Store", async () => {
+    const fixture = providerTestFixture();
+    const served = await serveService(fixture.service, {
+      port: 0,
+      providerV1: fixture.providerV1,
+    });
+
+    try {
+      const providerUrl = `${new URL(served.baseUrl).origin}/lenso/provider/v1`;
+      await expect(
+        fetch(providerUrl).then((response) => response.json())
+      ).resolves.toMatchObject({ features: [] });
+    } finally {
+      await served.close();
+    }
+
+    await expect(
+      serveService(fixture.service, {
+        port: 0,
+        providerV1: {
+          ...fixture.providerV1,
+          features: ["durable_invocations"],
+        },
+      })
+    ).rejects.toThrow(
+      "providerV1 durable_invocations requires a durable invocationStore"
+    );
+  });
+
+  test("uses RFC 8785 object-key order and rejects non-JSON digest inputs", async () => {
+    const fixture = providerTestFixture();
+    const manifest = { "2": "two", "10": "ten" };
+    const manifestDigest = `sha256:${createHash("sha256")
+      .update('{"10":"ten","2":"two"}')
+      .digest("hex")}`;
+    const providerV1: ProviderV1Options = {
+      ...fixture.providerV1,
+      exports: [
+        {
+          ...fixture.providerV1.exports[0]!,
+          manifest,
+          manifestDigest,
+        },
+      ],
+      moduleReleases: undefined,
+    };
+    const served = await serveService(fixture.service, {
+      port: 0,
+      providerV1,
+    });
+    await served.close();
+
+    await expect(
+      serveService(fixture.service, {
+        port: 0,
+        providerV1: {
+          ...providerV1,
+          exports: [
+            {
+              ...providerV1.exports[0]!,
+              manifest: { invalid: "\ud800" },
+            },
+          ],
+        },
+      })
+    ).rejects.toThrow("Canonical JSON cannot contain an unpaired surrogate");
+
+    await expect(
+      serveService(fixture.service, {
+        port: 0,
+        providerV1: {
+          ...providerV1,
+          exports: [
+            {
+              ...providerV1.exports[0]!,
+              manifest: { invalid: new Array(1) },
+            },
+          ],
+        },
+      })
+    ).rejects.toThrow("Canonical JSON cannot contain a sparse array");
+  });
+
+  test("recovers one durable outcome after restart without executing the side effect again", async () => {
+    const fixture = providerTestFixture();
+    const backingStore = createMemoryProviderInvocationStore();
+    const adapters: ProviderInvocationStore[] = [];
+    let executions = 0;
+    const start = () => {
+      const invocationStore = durableProviderTestStore(backingStore);
+      adapters.push(invocationStore);
+      return serveService(fixture.service, {
+        modules: {
+          "taste-profile": {
+            http: {
+              "GET /profiles/{id}": ({ params }) => {
+                executions += 1;
+                return providerSucceeded(
+                  { profile: { id: params.id } },
+                  {
+                    effectEvidence: [
+                      { kind: "remote_receipt", receiptId: "receipt-1" },
+                    ],
+                  }
+                );
+              },
+            },
+          },
+        },
+        port: 0,
+        providerV1: { ...fixture.providerV1, invocationStore },
+      });
+    };
+
+    const first = await start();
+    let outcomeDigest = "";
+    try {
+      const providerUrl = `${new URL(first.baseUrl).origin}/lenso/provider/v1`;
+      const descriptor = await fetch(providerUrl).then((response) =>
+        response.json()
+      );
+      expect(descriptor.features).toContain("durable_invocations");
+      const discardedResponse = await fetch(
+        `${providerUrl}/exports/taste-profile/http:invoke`,
+        {
+          body: JSON.stringify(fixture.invocation),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }
+      );
+      expect(discardedResponse.status).toBe(200);
+      await discardedResponse.body?.cancel();
+      expect(executions).toBe(1);
+    } finally {
+      await first.close();
+    }
+
+    const restarted = await start();
+    try {
+      expect(adapters).toHaveLength(2);
+      expect(adapters[0]).not.toBe(adapters[1]);
+      const providerUrl = `${new URL(restarted.baseUrl).origin}/lenso/provider/v1`;
+      const replayedResponse = await fetch(
+        `${providerUrl}/exports/taste-profile/http:invoke`,
+        {
+          body: JSON.stringify(fixture.invocation),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        }
+      );
+      expect(replayedResponse.status).toBe(200);
+      const replayed = (await replayedResponse.json()) as {
+        outcomeDigest: string;
+      };
+      outcomeDigest = replayed.outcomeDigest;
+      expect(replayed).toMatchObject({
+        effectEvidence: [
+          { kind: "remote_receipt", receiptId: "receipt-1" },
+        ],
+        result: {
+          body: { profile: { id: "profile-1" } },
+          status_code: 200,
+        },
+        status: "succeeded",
+      });
+      expect(executions).toBe(1);
+      await expect(
+        fetch(`${providerUrl}/invocations/invocation-1`).then((response) =>
+          response.json()
+        )
+      ).resolves.toEqual(replayed);
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const acknowledged = await fetch(
+          `${providerUrl}/invocations/invocation-1:ack`,
+          {
+            body: JSON.stringify({
+              invocationId: "invocation-1",
+              outcomeDigest,
+            }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          }
+        );
+        expect(acknowledged.status).toBe(200);
+      }
+      const stored = await durableProviderTestStore(backingStore).get(
+        "invocation-1"
+      );
+      expect(stored).toMatchObject({
+        acknowledgedOutcomeDigest: outcomeDigest,
+        phase: "completed",
+      });
+      expect(stored?.acknowledgedAt).not.toBeNull();
+    } finally {
+      await restarted.close();
+    }
+  });
+
+  test("replays canonical requests and rejects rebinding one invocation id", async () => {
+    const fixture = providerTestFixture();
+    const invocationStore = durableProviderTestStore();
+    let executions = 0;
+    const served = await serveService(fixture.service, {
+      modules: {
+        "taste-profile": {
+          http: {
+            "GET /profiles/{id}": ({ params }) => {
+              executions += 1;
+              return { profile: { id: params.id } };
+            },
+          },
+        },
+      },
+      port: 0,
+      providerV1: { ...fixture.providerV1, invocationStore },
+    });
+
+    try {
+      const invokeUrl = `${new URL(served.baseUrl).origin}/lenso/provider/v1/exports/taste-profile/http:invoke`;
+      const invoke = (body: unknown) =>
+        fetch(invokeUrl, {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+      const initial = await invoke(fixture.invocation);
+      expect(initial.status).toBe(200);
+      const initialOutcome = await initial.json();
+
+      const reordered = {
+        requestId: fixture.invocation.requestId,
+        protocol: fixture.invocation.protocol,
+        payload: {
+          path_params: { id: "profile-1" },
+          method: "GET",
+          declared_path: "/profiles/{id}",
+        },
+        outputContractDigest: fixture.invocation.outputContractDigest,
+        operationName: fixture.invocation.operationName,
+        operationKind: fixture.invocation.operationKind,
+        moduleReleaseDigest: fixture.invocation.moduleReleaseDigest,
+        manifestDigest: fixture.invocation.manifestDigest,
+        invocationId: fixture.invocation.invocationId,
+        inputContractDigest: fixture.invocation.inputContractDigest,
+        exportKey: fixture.invocation.exportKey,
+        deadline: fixture.invocation.deadline,
+        correlationId: fixture.invocation.correlationId,
+        contentType: fixture.invocation.contentType,
+        attempt: fixture.invocation.attempt,
+        actor: fixture.invocation.actor,
+        trace: fixture.invocation.trace,
+        serviceReleaseDigest: fixture.invocation.serviceReleaseDigest,
+        operationVersion: fixture.invocation.operationVersion,
+        mode: fixture.invocation.mode,
+      };
+      const canonicalReplay = await invoke(reordered);
+      expect(canonicalReplay.status).toBe(200);
+      await expect(canonicalReplay.json()).resolves.toEqual(initialOutcome);
+      expect(executions).toBe(1);
+
+      const conflict = await invoke({ ...fixture.invocation, attempt: 2 });
+      expect(conflict.status).toBe(409);
+      await expect(conflict.json()).resolves.toMatchObject({
+        error: {
+          code: "invocation_identity_conflict",
+          retryable: false,
+        },
+      });
+      expect(executions).toBe(1);
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("returns typed pending, rejected, failed, and succeeded Provider outcomes", async () => {
+    const fixture = providerTestFixture();
+    const invocationStore = durableProviderTestStore();
+    const served = await serveService(fixture.service, {
+      modules: {
+        "taste-profile": {
+          http: {
+            "GET /profiles/{id}": ({ params }) => {
+              switch (params.id) {
+                case "pending":
+                  return providerPending({
+                    error: {
+                      code: "provider_pending",
+                      message: "The remote receipt is not final",
+                      providerTraceReference: "smtp-attempt-1",
+                      retryAfterMs: 250,
+                      retryable: true,
+                    },
+                  });
+                case "rejected":
+                  return providerRejected({
+                    code: "recipient_rejected",
+                    details: [
+                      { field: "recipient", reason: "mailbox unavailable" },
+                    ],
+                    message: "The recipient was rejected",
+                  });
+                case "failed":
+                  return providerFailed({
+                    code: "smtp_unavailable",
+                    message: "SMTP is temporarily unavailable",
+                    providerTraceReference: "smtp-attempt-3",
+                    retryAfterMs: 2_500,
+                    retryable: true,
+                  });
+                default:
+                  return providerSucceeded(
+                    { profile: { id: params.id } },
+                    {
+                      effectEvidence: [
+                        { kind: "smtp_receipt", receiptId: "receipt-1" },
+                      ],
+                      hostEffects: {
+                        events: [
+                          {
+                            aggregateId: params.id,
+                            aggregateType: "profile",
+                            correlationId: "correlation-1",
+                            eventId: "event-1",
+                            eventName: "taste.profile-delivered.v1",
+                            eventVersion: 1,
+                            occurredAt: "2026-08-13T00:00:00.000Z",
+                            payload: { profileId: params.id },
+                            sourceModule: "taste/profile",
+                          },
+                        ],
+                        runtimeFunctionRequests: [
+                          {
+                            actor: fixture.invocation.actor,
+                            correlationId: "correlation-1",
+                            functionName: "taste.confirm-receipt.v1",
+                            input: { profileId: params.id },
+                            maxAttempts: 3,
+                            requestId: "function-request-1",
+                          },
+                        ],
+                      },
+                    }
+                  );
+              }
+            },
+          },
+        },
+      },
+      port: 0,
+      providerV1: { ...fixture.providerV1, invocationStore },
+    });
+
+    try {
+      const invokeUrl = `${new URL(served.baseUrl).origin}/lenso/provider/v1/exports/taste-profile/http:invoke`;
+      const invoke = async (status: string) => {
+        const response = await fetch(invokeUrl, {
+          body: JSON.stringify({
+            ...fixture.invocation,
+            invocationId: `invocation-${status}`,
+            payload: {
+              ...fixture.invocation.payload,
+              path_params: { id: status },
+            },
+            requestId: `request-${status}`,
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        return { body: await response.json(), status: response.status };
+      };
+
+      const pending = await invoke("pending");
+      expect(pending.status).toBe(202);
+      expect(pending.body).toMatchObject({
+        error: {
+          code: "provider_pending",
+          providerTraceReference: "smtp-attempt-1",
+          retryAfterMs: 250,
+          retryable: true,
+        },
+        hostEffects: { events: [], runtimeFunctionRequests: [] },
+        result: null,
+        status: "pending",
+      });
+
+      const rejected = await invoke("rejected");
+      expect(rejected.status).toBe(200);
+      expect(rejected.body).toMatchObject({
+        error: {
+          code: "recipient_rejected",
+          retryAfterMs: null,
+          retryable: false,
+        },
+        status: "rejected",
+      });
+
+      const failed = await invoke("failed");
+      expect(failed.status).toBe(200);
+      expect(failed.body).toMatchObject({
+        error: {
+          code: "smtp_unavailable",
+          providerTraceReference: "smtp-attempt-3",
+          retryAfterMs: 2_500,
+          retryable: true,
+        },
+        outcomeDigest:
+          "sha256:a7d26349366917a4012bf47b4f207416171819f558dc69ca851c05146936681f",
+        status: "failed",
+      });
+
+      const succeeded = await invoke("succeeded");
+      expect(succeeded.status).toBe(200);
+      expect(succeeded.body).toMatchObject({
+        effectEvidence: [
+          { kind: "smtp_receipt", receiptId: "receipt-1" },
+        ],
+        error: null,
+        hostEffects: {
+          events: [{ eventId: "event-1" }],
+          runtimeFunctionRequests: [
+            {
+              functionName: "taste.confirm-receipt.v1",
+              maxAttempts: 3,
+              trace: { baggage: [], span_id: null, trace_id: null },
+            },
+          ],
+        },
+        status: "succeeded",
+      });
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("rejects unbounded Provider retry metadata before making it durable", async () => {
+    const fixture = providerTestFixture();
+    const served = await serveService(fixture.service, {
+      modules: {
+        "taste-profile": {
+          http: {
+            "GET /profiles/{id}": ({ params }) =>
+              providerFailed({
+                code: "upstream_unavailable",
+                message: "The upstream is unavailable",
+                providerTraceReference:
+                  params.id === "trace"
+                    ? `trace\n${"x".repeat(1_000)}`
+                    : "bounded-trace",
+                retryAfterMs:
+                  params.id === "delay"
+                    ? providerV1OutcomeLimits.maxRetryAfterMs + 1
+                    : 1_000,
+                retryable: true,
+              }),
+          },
+        },
+      },
+      port: 0,
+      providerV1: {
+        ...fixture.providerV1,
+        invocationStore: durableProviderTestStore(),
+      },
+    });
+
+    try {
+      const invokeUrl = `${new URL(served.baseUrl).origin}/lenso/provider/v1/exports/taste-profile/http:invoke`;
+      for (const invalid of ["trace", "delay"]) {
+        const response = await fetch(invokeUrl, {
+          body: JSON.stringify({
+            ...fixture.invocation,
+            invocationId: `invocation-unbounded-${invalid}`,
+            payload: {
+              ...fixture.invocation.payload,
+              path_params: { id: invalid },
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toMatchObject({
+          error: { code: "provider_handler_failed", retryable: false },
+          status: "failed",
+        });
+      }
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("fails closed before persisting unbounded or non-JSON outcomes", async () => {
+    const fixture = providerTestFixture();
+    const served = await serveService(fixture.service, {
+      modules: {
+        "taste-profile": {
+          http: {
+            "GET /profiles/{id}": ({ params }) =>
+              params.id === "unbounded"
+                ? providerSucceeded(
+                    {},
+                    {
+                      effectEvidence: Array.from(
+                        {
+                          length:
+                            providerV1OutcomeLimits.maxEffectEvidenceItems + 1,
+                        },
+                        (_, index) => ({ index })
+                      ),
+                    }
+                  )
+                : params.id === "sparse"
+                  ? providerSucceeded({ values: new Array(1) })
+                  : providerSucceeded({ value: Number.NaN }),
+          },
+        },
+      },
+      port: 0,
+      providerV1: {
+        ...fixture.providerV1,
+        invocationStore: durableProviderTestStore(),
+      },
+    });
+
+    try {
+      const invokeUrl = `${new URL(served.baseUrl).origin}/lenso/provider/v1/exports/taste-profile/http:invoke`;
+      for (const invalidResult of ["unbounded", "sparse", "non-json"]) {
+        const response = await fetch(invokeUrl, {
+          body: JSON.stringify({
+            ...fixture.invocation,
+            invocationId: `invocation-${invalidResult}`,
+            payload: {
+              ...fixture.invocation.payload,
+              path_params: { id: invalidResult },
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        });
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toMatchObject({
+          error: {
+            code: "provider_handler_failed",
+            retryable: false,
+          },
+          hostEffects: { events: [], runtimeFunctionRequests: [] },
+          result: null,
+          status: "failed",
+        });
+      }
+    } finally {
+      await served.close();
+    }
+  });
+
   test("keeps Provider Core disabled unless exact local identity is configured", async () => {
     const service = defineService({
       modules: [defineModule({ name: "support-ticket" })],
@@ -766,6 +1553,51 @@ describe("@lenso/service-kit internal delivery adapter", () => {
         { headers: { authorization: "Bearer unused" } }
       );
       expect(response.status).toBe(404);
+    } finally {
+      await served.close();
+    }
+  });
+
+  test("requires and verifies a Provider bearer outside loopback", async () => {
+    const fixture = providerTestFixture();
+    await expect(
+      serveService(fixture.service, {
+        host: "0.0.0.0",
+        port: 0,
+        providerV1: fixture.providerV1,
+      })
+    ).rejects.toThrow(
+      "Provider V1 requires providerV1.bearerToken outside loopback"
+    );
+
+    const served = await serveService(fixture.service, {
+      host: "0.0.0.0",
+      port: 0,
+      providerV1: {
+        ...fixture.providerV1,
+        bearerToken: "provider-network-secret",
+      },
+    });
+    const descriptorUrl = `${new URL(served.baseUrl).origin.replace(
+      "0.0.0.0",
+      "127.0.0.1"
+    )}/lenso/provider/v1`;
+    try {
+      expect((await fetch(descriptorUrl)).status).toBe(401);
+      expect(
+        (
+          await fetch(descriptorUrl, {
+            headers: { authorization: "Bearer wrong" },
+          })
+        ).status
+      ).toBe(401);
+      expect(
+        (
+          await fetch(descriptorUrl, {
+            headers: { authorization: "Bearer provider-network-secret" },
+          })
+        ).status
+      ).toBe(200);
     } finally {
       await served.close();
     }

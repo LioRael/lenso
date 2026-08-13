@@ -193,6 +193,122 @@ HTTP handlers receive the Host-authenticated `actor` in their handler context;
 authorization remains a Host boundary and the Service does not parse client
 credentials itself.
 
+## Durable Provider invocations
+
+Provider V1 uses a process-local invocation Store by default so existing local
+Services keep working, but the descriptor does not advertise
+`durable_invocations` for that Store. A Service that can perform side effects
+must inject a `ProviderInvocationStore` backed by durable storage:
+
+```ts
+import type { ProviderInvocationStore } from "@lenso/service-kit";
+
+const invocationStore: ProviderInvocationStore = {
+  durability: "durable",
+  async claim(input) {
+    // Atomically insert invocationId + requestDigest + pendingOutcome, or load
+    // the existing row and return replay/conflict after comparing the digest.
+    throw new Error(`Implement durable claim for ${input.invocationId}`);
+  },
+  async get(invocationId) {
+    // Return the durable row used by timeout recovery.
+    throw new Error(`Implement durable recovery for ${invocationId}`);
+  },
+  async complete(input) {
+    // Compare requestDigest and atomically persist the immutable outcome.
+    throw new Error(`Implement durable completion for ${input.invocationId}`);
+  },
+  async acknowledge(input) {
+    // Compare outcomeDigest and persist an idempotent acknowledgement.
+    throw new Error(`Implement durable acknowledgement for ${input.invocationId}`);
+  },
+};
+
+await serveService(service, {
+  providerV1: {
+    // ...the exact locked Provider release and exports
+    invocationStore,
+  },
+});
+```
+
+A production implementation should put these fields in one invocation table:
+the invocation id as a unique key, canonical request digest, execution phase,
+complete outcome JSON and digest, created/updated timestamps, and nullable
+acknowledgement timestamp/digest. `claim`, `complete`, and `acknowledge` must be
+atomic across every Service instance. An identical claim replays its stored
+outcome; the same id with a different request digest returns `conflict` without
+executing the handler. `complete` must reject request-digest mismatches and must
+not replace one final outcome with another. When a new pending or final outcome
+replaces an acknowledged executing/pending outcome, `complete` must clear that
+stale acknowledgement. `acknowledge` must compare the exact outcome digest and
+be idempotent. Do not delete acknowledged rows until the Service's documented
+recovery and audit retention period has elapsed.
+Declaring `durability: "durable"` is an adapter assertion; the Service Kit
+cannot infer storage guarantees from an implementation. Provider packages
+should run the exported mutating conformance vector against an isolated Store:
+
+```ts
+import { verifyProviderInvocationStoreConformance } from "@lenso/service-kit";
+
+await verifyProviderInvocationStoreConformance({
+  createStore: () => createPostgresInvocationStore(testPool),
+});
+```
+
+Each `createStore` call must return a fresh adapter connected to the same test
+backend. The vector leaves a small group of namespaced rows and proves
+cross-adapter claim and completion races, conflict non-mutation, pending-to-final
+transitions, failed/rejected retry metadata and persisted receipt round trips,
+idempotent acknowledgement, and recovery through fresh adapters.
+
+Handlers remain backward-compatible: returning an ordinary value produces a
+successful outcome with no effects. Explicit helpers expose the complete
+Provider V1 result vocabulary:
+
+```ts
+import {
+  providerFailed,
+  providerPending,
+  providerRejected,
+  providerSucceeded,
+} from "@lenso/service-kit";
+
+return providerSucceeded(result, {
+  hostEffects: { events: [deliveredEvent] },
+});
+
+return providerFailed({
+  code: "upstream_unavailable",
+  message: "The upstream provider is unavailable",
+  retryable: true,
+  retryAfterMs: 1_000,
+  providerTraceReference: remoteRequestId,
+});
+```
+
+Use `providerSucceeded` for a known business observation, including an
+upstream-declared transient or permanent business result. `providerFailed`
+means the Provider operation itself failed before it could establish that
+business observation, so it may enter the Host's technical retry rail. One
+stable `functionRunId` is one owning-Module business attempt; outer Provider
+invocation ids vary by Host technical attempt and must not multiply the
+owning Module's retry policy.
+
+`pending`, `rejected`, and `failed` outcomes cannot include Host effects;
+`rejected` is always permanent. Effect records and successful Host Event or
+Runtime Function effects are JSON-validated and bounded before the outcome is
+made durable. Recovery uses
+`GET /lenso/provider/v1/invocations/{invocationId}`; acknowledgement uses
+`POST /lenso/provider/v1/invocations/{invocationId}:ack` with the exact outcome
+digest.
+
+When `serveService()` binds Provider V1 outside loopback, configure
+`providerV1.bearerToken`. Descriptor, health, invocation, recovery, and
+acknowledgement routes then require that bearer, and non-loopback startup fails
+closed without it. Runtime Host effects must preserve the exact invocation
+actor, tenant, and trace context so a Service cannot mint Host authority.
+
 ## Local Provider Core identity
 
 For a local Console enrollment check, `serveService()` can expose the Provider's

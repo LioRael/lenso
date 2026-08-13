@@ -3,6 +3,9 @@ use std::error::Error;
 use std::fmt::{Debug, Display};
 use thiserror::Error;
 
+const MAX_RETRY_AFTER_MS: u64 = 24 * 60 * 60 * 1_000;
+const MAX_PROVIDER_TRACE_REFERENCE_BYTES: usize = 512;
+
 pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -38,6 +41,10 @@ pub struct AppError {
     pub code: ErrorCode,
     pub public_message: String,
     pub retryable: bool,
+    /// Provider-supplied retry delay hint preserved for the Host retry rail.
+    pub retry_after_ms: Option<u64>,
+    /// Opaque Provider trace reference suitable for operational correlation.
+    pub provider_trace_reference: Option<String>,
     pub details: Vec<ErrorDetail>,
     #[source]
     source: Option<Box<dyn Error + Send + Sync>>,
@@ -50,6 +57,8 @@ impl Debug for AppError {
             .field("code", &self.code)
             .field("public_message", &self.public_message)
             .field("retryable", &self.retryable)
+            .field("retry_after_ms", &self.retry_after_ms)
+            .field("provider_trace_reference", &self.provider_trace_reference)
             .field("details", &self.details)
             .finish_non_exhaustive()
     }
@@ -73,6 +82,8 @@ impl AppError {
             code,
             public_message: public_message.into(),
             retryable: false,
+            retry_after_ms: None,
+            provider_trace_reference: None,
             details: Vec::new(),
             source: None,
         }
@@ -83,6 +94,8 @@ impl AppError {
             code: ErrorCode::Validation,
             public_message: public_message.into(),
             retryable: false,
+            retry_after_ms: None,
+            provider_trace_reference: None,
             details,
             source: None,
         }
@@ -97,4 +110,37 @@ impl AppError {
         self.retryable = true;
         self
     }
+
+    #[must_use]
+    pub fn with_retry_after_ms(mut self, retry_after_ms: Option<u64>) -> Self {
+        self.retry_after_ms = retry_after_ms.map(|value| value.min(MAX_RETRY_AFTER_MS));
+        self
+    }
+
+    #[must_use]
+    pub fn with_provider_trace_reference(
+        mut self,
+        provider_trace_reference: Option<String>,
+    ) -> Self {
+        self.provider_trace_reference = provider_trace_reference
+            .filter(|value| !value.is_empty())
+            .map(|value| sanitize_provider_trace_reference(&value));
+        self
+    }
+}
+
+fn sanitize_provider_trace_reference(value: &str) -> String {
+    let mut sanitized = String::with_capacity(value.len().min(MAX_PROVIDER_TRACE_REFERENCE_BYTES));
+    for character in value.chars() {
+        let sanitized_character = if character.is_control() {
+            '�'
+        } else {
+            character
+        };
+        if sanitized.len() + sanitized_character.len_utf8() > MAX_PROVIDER_TRACE_REFERENCE_BYTES {
+            break;
+        }
+        sanitized.push(sanitized_character);
+    }
+    sanitized
 }

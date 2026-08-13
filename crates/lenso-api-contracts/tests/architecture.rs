@@ -239,6 +239,30 @@ fn event_contract_name_must_match_path() {
 }
 
 #[test]
+fn runtime_terminal_event_schema_reference_is_discoverable() {
+    let root = TestRepo::new();
+    root.write(
+        "crates/platform-runtime/src/functions.rs",
+        r#"
+        fn terminal_event() {
+            let schema_ref =
+                "contracts/events/lenso/lenso.runtime-function-terminal.v1.schema.json";
+        }
+        "#,
+    );
+
+    let error = arch_check::check_event_schema_refs_exist(root.path())
+        .expect_err("a runtime Event schema reference must be discovered");
+
+    assert!(
+        error
+            .to_string()
+            .contains("contracts/events/lenso/lenso.runtime-function-terminal.v1.schema.json"),
+        "{error}",
+    );
+}
+
+#[test]
 fn cross_module_public_import_is_allowed() {
     let root = TestRepo::new();
     root.write("modules/auth/src/lib.rs", "pub mod public;");
