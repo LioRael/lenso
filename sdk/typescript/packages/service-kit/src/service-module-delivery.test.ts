@@ -445,6 +445,10 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     expect(supportTicket.name).toBe("acme/support-ticket");
     expect(supportTicket.version).toBe("0.1.0");
     expect(supportTicket.dependencies).toEqual(["lenso/identity"]);
+    expect(JSON.parse(JSON.stringify(supportTicket))).toHaveProperty(
+      "requires",
+      supportTicket.requires
+    );
     expect(JSON.parse(JSON.stringify(supportTicket))).not.toHaveProperty(
       "dependencies"
     );
@@ -500,6 +504,27 @@ describe("@lenso/service-kit internal delivery adapter", () => {
       transports: ["http"],
       version: "0.1.0",
     });
+  });
+
+  test("serializes the Rust canonical Module Manifest shape", () => {
+    const manifest = defineModule({ name: "acme/empty-runtime" });
+
+    expect(JSON.parse(JSON.stringify(manifest))).toEqual({
+      capabilities: [],
+      console: [],
+      console_contributions: [],
+      console_slots: [],
+      http_routes: [],
+      module_id: "acme/empty-runtime",
+      protocol: "lenso.module-manifest.v1",
+      runtime: {
+        functions: [],
+        schedules: [],
+      },
+      story_display: [],
+    });
+    expect(manifest.admin).toBeNull();
+    expect(manifest.requires).toEqual([]);
   });
 
   test("defines HTTP route declarations", () => {
