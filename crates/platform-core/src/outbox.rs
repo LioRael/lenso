@@ -180,6 +180,11 @@ pub trait EventDispatcher: Debug + Send + Sync {
 
 #[async_trait]
 pub trait EventHandler: Debug + Send + Sync {
+    /// Stable handler identity declared by the owning Module manifest.
+    fn handler_name(&self) -> &str {
+        self.event_name()
+    }
+
     fn event_name(&self) -> &str;
     async fn handle(&self, event: &ClaimedOutboxEvent) -> AppResult<()>;
 }
@@ -209,6 +214,10 @@ impl EventHandlerRegistry {
 
     pub fn handler_count(&self, event_name: &str) -> usize {
         self.handlers.get(event_name).map_or(0, Vec::len)
+    }
+
+    pub fn registrations(&self) -> impl Iterator<Item = &Arc<dyn EventHandler>> {
+        self.handlers.values().flatten()
     }
 }
 

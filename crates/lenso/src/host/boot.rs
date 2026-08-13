@@ -32,10 +32,30 @@ pub mod http {
     };
 }
 
+/// Runtime behavior authoring for host-owned linked modules.
+///
+/// This is the narrow public seam for registering a manifest-declared runtime
+/// function without importing Lenso's internal `platform-*` crates.
+pub mod runtime {
+    pub use platform_core::{
+        ActorContext, AppContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext,
+        ExecutionId, TenantId, TraceContext,
+    };
+    pub use platform_module::{LinkedBinding, Module};
+    pub use platform_runtime::{
+        FunctionDefinition, FunctionHandler, RetryPolicy, RuntimeDescriptor,
+    };
+}
+
 /// Common host-authoring imports for starter applications.
 pub mod prelude {
     pub use crate::host::http::{
         LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
+    };
+    pub use crate::host::outbox::{ClaimedOutboxEvent, EventHandler};
+    pub use crate::host::runtime::{
+        AppResult, ExecutionContext, FunctionDefinition, FunctionHandler, Module, RetryPolicy,
+        RuntimeDescriptor,
     };
     pub use crate::host::{
         HostBuilder, HostComposition, HostLinkedModule, HostWiring, Migration, ModuleManifest,

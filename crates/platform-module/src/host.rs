@@ -1,5 +1,5 @@
 use crate::{LinkedBinding, Module, ModuleManifest};
-use platform_core::{AppContext, Migration};
+use platform_core::{AppContext, AppResult, Migration};
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 
@@ -44,6 +44,7 @@ pub struct HostLinkedModule {
     pub module_name: &'static str,
     pub manifest: fn() -> ModuleManifest,
     pub load: Option<fn(&AppContext) -> Module>,
+    try_load: Option<fn(&AppContext) -> AppResult<Module>>,
     pub http_binding: Option<fn() -> LinkedBinding>,
     pub migrations: &'static [Migration],
     contributions: Vec<HostContribution>,
@@ -60,6 +61,7 @@ impl HostLinkedModule {
             module_name,
             manifest,
             load: None,
+            try_load: None,
             http_binding: None,
             migrations,
             contributions: Vec::new(),
@@ -77,10 +79,42 @@ impl HostLinkedModule {
             module_name,
             manifest,
             load: Some(load),
+            try_load: None,
             http_binding: None,
             migrations,
             contributions: Vec::new(),
         }
+    }
+
+    /// Compose a linked Module whose context-bound setup can reject invalid
+    /// deployment configuration without panicking.
+    #[must_use]
+    pub fn try_linked(
+        module_name: &'static str,
+        manifest: fn() -> ModuleManifest,
+        load: fn(&AppContext) -> AppResult<Module>,
+        migrations: &'static [Migration],
+    ) -> Self {
+        Self {
+            module_name,
+            manifest,
+            load: None,
+            try_load: Some(load),
+            http_binding: None,
+            migrations,
+            contributions: Vec::new(),
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn try_load_module(&self, context: &AppContext) -> AppResult<Module> {
+        if let Some(load) = self.try_load {
+            return load(context);
+        }
+        Ok(match self.load {
+            Some(load) => load(context),
+            None => Module::linked((self.manifest)(), LinkedBinding::builder().build()),
+        })
     }
 
     #[must_use]

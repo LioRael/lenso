@@ -36,6 +36,7 @@ use platform_runtime::{
     EnqueueFunctionRequest, FunctionRegistry, RUNTIME_MIGRATIONS, RuntimeClient,
     ScheduledFunctionDefinition,
 };
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -590,11 +591,22 @@ pub fn host_wiring_for_context_with_composition(
     })
 }
 
-fn load_host_linked_module(ctx: &AppContext, entry: HostLinkedModule) -> Module {
-    match entry.load {
-        Some(load) => load(ctx),
-        None => Module::linked((entry.manifest)(), LinkedBinding::builder().build()),
-    }
+fn load_host_linked_module(
+    ctx: &AppContext,
+    entry: HostLinkedModule,
+) -> platform_core::AppResult<Module> {
+    entry.try_load_module(ctx)
+}
+
+fn load_host_linked_modules_for_config(
+    ctx: &AppContext,
+    composition: &HostComposition,
+    profile: CompositionProfile,
+) -> platform_core::AppResult<Vec<Module>> {
+    host_linked_modules_for_config(&ctx.config, composition, profile)
+        .into_iter()
+        .map(|entry| load_host_linked_module(ctx, entry))
+        .collect()
 }
 
 /// Demo-default linked modules helper (context-bound: builds bindings).
@@ -622,7 +634,8 @@ pub fn modules_for_config_with_composition(
     modules.extend(
         host_linked_modules_for_context(ctx, composition, profile)
             .into_iter()
-            .map(|entry| load_host_linked_module(ctx, entry)),
+            .map(|entry| load_host_linked_module(ctx, entry))
+            .collect::<platform_core::AppResult<Vec<_>>>()?,
     );
     Ok(modules)
 }
@@ -1011,14 +1024,106 @@ pub fn linked_http_modules_for_context_with_composition(
     Ok(modules)
 }
 
-/// Build a [`FunctionRegistry`] from every module's binding.
-#[must_use]
-pub fn function_registry(modules: &[Module]) -> FunctionRegistry {
+/// Build a [`FunctionRegistry`] from manifest-declared module bindings.
+///
+/// Registration fails closed when executable behavior is missing from the
+/// owning manifest or when its stable name, version, or queue drifts from the
+/// declaration. Function names must also remain unique across loaded modules.
+pub fn try_function_registry(modules: &[Module]) -> platform_core::AppResult<FunctionRegistry> {
     let mut registry = FunctionRegistry::default();
+
     for module in modules {
-        module.binding.register_functions(&mut registry);
+        let declared_functions = module
+            .manifest
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.functions.as_slice())
+            .unwrap_or_default();
+        let mut module_registry = FunctionRegistry::default();
+        module.binding.register_functions(&mut module_registry);
+
+        if let Some(duplicate) = module_registry.duplicate_names().next() {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!(
+                    "Module {} binds runtime function {} more than once",
+                    module.manifest.module_id, duplicate
+                ),
+            ));
+        }
+
+        let mut declared_names = HashSet::new();
+        if let Some(duplicate) = declared_functions
+            .iter()
+            .find(|declaration| !declared_names.insert(declaration.name.as_str()))
+        {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!(
+                    "Module {} declares runtime function {} more than once",
+                    module.manifest.module_id, duplicate.name
+                ),
+            ));
+        }
+
+        for function in module_registry.all() {
+            let Some(declaration) = declared_functions
+                .iter()
+                .find(|declaration| declaration.name == function.name)
+            else {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} binds undeclared runtime function {}",
+                        module.manifest.module_id, function.name
+                    ),
+                ));
+            };
+
+            if declaration.version != function.version || declaration.queue != function.queue {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} runtime binding for {} does not match its manifest version and queue",
+                        module.manifest.module_id, function.name
+                    ),
+                ));
+            }
+
+            if registry.get(&function.name).is_some() {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Runtime function {} is bound by more than one loaded module",
+                        function.name
+                    ),
+                ));
+            }
+
+            let mut admitted = function.clone();
+            if let Some(policy) = &declaration.retry_policy {
+                admitted.retry_policy = platform_runtime::RetryPolicy::fixed(
+                    policy.max_attempts,
+                    std::time::Duration::from_millis(policy.initial_delay_ms),
+                );
+            }
+            registry.register(admitted);
+        }
+
+        for declaration in declared_functions {
+            if module_registry.get(&declaration.name).is_none() {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} declares runtime function {} without a binding",
+                        module.manifest.module_id, declaration.name
+                    ),
+                ));
+            }
+        }
     }
-    registry
+
+    Ok(registry)
 }
 
 /// Validate and enqueue every startup activation job declared by loaded modules.
@@ -1380,38 +1485,124 @@ pub fn scheduled_functions(
     Ok(schedules)
 }
 
-/// Build an [`EventHandlerRegistry`] from every module's binding.
-#[must_use]
-pub fn event_handlers(modules: &[Module]) -> EventHandlerRegistry {
-    event_handlers_with_context(modules, &EventHandlerRegistrationContext::empty())
+/// Build a validated [`EventHandlerRegistry`] from every Module binding.
+///
+/// Registration fails closed when executable behavior is missing from the
+/// owning manifest or when a stable handler or consumed Event name drifts from
+/// its declaration. Handler names must also remain unique across Modules.
+pub fn try_event_handlers(modules: &[Module]) -> platform_core::AppResult<EventHandlerRegistry> {
+    try_event_handlers_with_context(modules, &EventHandlerRegistrationContext::empty())
 }
 
-/// Build an [`EventHandlerRegistry`] with host runtime actions enabled for
-/// provider event-handler result actions.
-#[must_use]
-pub fn event_handlers_with_runtime_actions(
+/// Build a validated registry with host runtime actions enabled for provider
+/// Event-handler result actions.
+pub fn try_event_handlers_with_runtime_actions(
     ctx: &AppContext,
     modules: &[Module],
     function_registry: Arc<FunctionRegistry>,
-) -> EventHandlerRegistry {
+) -> platform_core::AppResult<EventHandlerRegistry> {
     let context = EventHandlerRegistrationContext::with_runtime(
         RuntimeClient::new(ctx.db.clone()).with_service_name(ctx.config.service.name.clone()),
         function_registry,
     );
-    event_handlers_with_context(modules, &context)
+    try_event_handlers_with_context(modules, &context)
 }
 
-fn event_handlers_with_context(
+fn try_event_handlers_with_context(
     modules: &[Module],
     context: &EventHandlerRegistrationContext,
-) -> EventHandlerRegistry {
+) -> platform_core::AppResult<EventHandlerRegistry> {
     let mut registry = EventHandlerRegistry::new();
+    let mut registered_names = HashSet::new();
+
     for module in modules {
+        let declared_handlers = module
+            .manifest
+            .events
+            .as_ref()
+            .map(|events| events.handlers.as_slice())
+            .unwrap_or_default();
+        let mut module_registry = EventHandlerRegistry::new();
         module
             .binding
-            .register_event_handlers(&mut registry, context);
+            .register_event_handlers(&mut module_registry, context);
+
+        let mut declared_names = HashSet::new();
+        if let Some(duplicate) = declared_handlers
+            .iter()
+            .find(|declaration| !declared_names.insert(declaration.name.as_str()))
+        {
+            return Err(AppError::new(
+                ErrorCode::Validation,
+                format!(
+                    "Module {} declares Event handler {} more than once",
+                    module.manifest.module_id, duplicate.name
+                ),
+            ));
+        }
+
+        let mut bound_names = HashSet::new();
+        for handler in module_registry.registrations() {
+            let handler_name = handler.handler_name();
+            if !bound_names.insert(handler_name) {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} binds Event handler {} more than once",
+                        module.manifest.module_id, handler_name
+                    ),
+                ));
+            }
+
+            let Some(declaration) = declared_handlers
+                .iter()
+                .find(|declaration| declaration.name == handler_name)
+            else {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} binds undeclared Event handler {}",
+                        module.manifest.module_id, handler_name
+                    ),
+                ));
+            };
+
+            if declaration.event_name != handler.event_name() {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} Event binding for {} consumes {} but its manifest declares {}",
+                        module.manifest.module_id,
+                        handler_name,
+                        handler.event_name(),
+                        declaration.event_name
+                    ),
+                ));
+            }
+
+            if !registered_names.insert(handler_name.to_owned()) {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!("Event handler {handler_name} is bound by more than one loaded Module"),
+                ));
+            }
+            registry.register(Arc::clone(handler));
+        }
+
+        for declaration in declared_handlers {
+            if !bound_names.contains(declaration.name.as_str()) {
+                return Err(AppError::new(
+                    ErrorCode::Validation,
+                    format!(
+                        "Module {} declares Event handler {} without a binding",
+                        module.manifest.module_id, declaration.name
+                    ),
+                ));
+            }
+        }
     }
-    registry
+
+    Ok(registry)
 }
 
 /// Merge every linked module's HTTP routes (and their `OpenAPI` docs) onto `base`.
@@ -1604,15 +1795,12 @@ pub fn runtime_config_descriptors_with_composition(
             restart_only: true,
             description: "Whether this host linked module is loaded on service startup.",
         });
+    let host_modules = load_host_linked_modules_for_config(ctx, composition, profile)?;
     let module_descriptors = linked_module_entries(profile)
         .iter()
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
         .map(|entry| (entry.load)(ctx))
-        .chain(
-            host_linked_modules_for_config(&ctx.config, composition, profile)
-                .into_iter()
-                .map(|entry| load_host_linked_module(ctx, entry)),
-        )
+        .chain(host_modules)
         .flat_map(|module| module.runtime_config.iter().cloned())
         .collect::<Vec<_>>();
     // Platform-owned descriptors (e.g. worker knobs) plus every module's; keys
@@ -1638,15 +1826,12 @@ pub fn runtime_config_group_descriptors_with_composition(
     composition: &HostComposition,
 ) -> platform_core::AppResult<Vec<RuntimeConfigGroupDescriptor>> {
     let profile = CompositionProfile::from_config(&ctx.config)?;
+    let host_modules = load_host_linked_modules_for_config(ctx, composition, profile)?;
     let module_groups = linked_module_entries(profile)
         .iter()
         .filter(|entry| linked_module_enabled_from_config(&ctx.config, entry.module_name))
         .map(|entry| (entry.load)(ctx))
-        .chain(
-            host_linked_modules_for_config(&ctx.config, composition, profile)
-                .into_iter()
-                .map(|entry| load_host_linked_module(ctx, entry)),
-        )
+        .chain(host_modules)
         .flat_map(|module| module.runtime_config_groups.iter().cloned())
         .collect::<Vec<_>>();
 
@@ -1669,16 +1854,19 @@ mod tests {
         AuthHostExtension, AuthSessionPolicy, SessionCreateDecision, SessionCreateInput,
     };
     use platform_core::{
-        AppConfig, AuthConfig, DatabaseConfig, ErrorCode, ExecutionContext, HttpConfig,
-        LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig, PLATFORM_MIGRATIONS, RedisConfig,
-        RuntimeConfigProvider, RuntimeConfigRegistry, RuntimeConfigSnapshot, ServiceConfig,
-        TelemetryConfig, apply_migrations,
+        AppConfig, AuthConfig, ClaimedOutboxEvent, DatabaseConfig, ErrorCode, EventHandler,
+        ExecutionContext, HttpConfig, LoggingEventPublisher, ModuleConfig, ModuleSourcesConfig,
+        PLATFORM_MIGRATIONS, RedisConfig, RuntimeConfigProvider, RuntimeConfigRegistry,
+        RuntimeConfigSnapshot, ServiceConfig, TelemetryConfig, apply_migrations,
     };
     use platform_module::{
-        LifecycleActivationJobDeclaration, LifecycleStartupCheckDeclaration, LifecycleSurface,
-        RuntimeFunctionDeclaration, RuntimeSurface,
+        EventHandlerDeclaration, EventSurface, LifecycleActivationJobDeclaration,
+        LifecycleStartupCheckDeclaration, LifecycleSurface, RuntimeFunctionDeclaration,
+        RuntimeSurface,
     };
-    use platform_runtime::{FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy};
+    use platform_runtime::{
+        FunctionDefinition, FunctionHandler, RUNTIME_MIGRATIONS, RetryPolicy, RuntimeDescriptor,
+    };
     use platform_testing::{SequentialIdGenerator, TestDatabase};
     use serde_json::{Value, json};
     use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -1694,6 +1882,60 @@ mod tests {
     impl RuntimeConfigProvider for TestRuntimeConfigProvider {
         fn snapshot(&self) -> Arc<RuntimeConfigSnapshot> {
             Arc::clone(&self.snapshot)
+        }
+    }
+
+    #[derive(Debug)]
+    struct NamedTestEventHandler {
+        handler_name: &'static str,
+        event_name: &'static str,
+    }
+
+    #[async_trait]
+    impl EventHandler for NamedTestEventHandler {
+        fn handler_name(&self) -> &str {
+            self.handler_name
+        }
+
+        fn event_name(&self) -> &str {
+            self.event_name
+        }
+
+        async fn handle(&self, _event: &ClaimedOutboxEvent) -> platform_core::AppResult<()> {
+            Ok(())
+        }
+    }
+
+    fn test_event_handler(
+        handler_name: &'static str,
+        event_name: &'static str,
+    ) -> Arc<dyn EventHandler> {
+        Arc::new(NamedTestEventHandler {
+            handler_name,
+            event_name,
+        })
+    }
+
+    fn test_event_module(
+        module_id: &str,
+        declarations: Vec<EventHandlerDeclaration>,
+        handlers: Vec<Arc<dyn EventHandler>>,
+    ) -> Module {
+        Module::linked(
+            ModuleManifest::builder(module_id)
+                .events(EventSurface {
+                    handlers: declarations,
+                })
+                .build(),
+            LinkedBinding::builder().event_handlers(handlers).build(),
+        )
+    }
+
+    fn test_event_declaration(name: &str, event_name: &str) -> EventHandlerDeclaration {
+        EventHandlerDeclaration {
+            name: name.to_owned(),
+            event_name: event_name.to_owned(),
+            operation: None,
         }
     }
 
@@ -1720,6 +1962,93 @@ mod tests {
         assert!(
             names.is_empty(),
             "framework core must not implicitly install Console-owned modules"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_an_undeclared_binding() {
+        let module = test_event_module(
+            "example/notifications",
+            Vec::new(),
+            vec![test_event_handler(
+                "notifications.deliver.v1",
+                "notification.requested.v1",
+            )],
+        );
+
+        let error = try_event_handlers(&[module])
+            .expect_err("an executable handler without a declaration must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Module example/notifications binds undeclared Event handler notifications.deliver.v1"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_a_declaration_without_a_binding() {
+        let module = test_event_module(
+            "example/notifications",
+            vec![test_event_declaration(
+                "notifications.deliver.v1",
+                "notification.requested.v1",
+            )],
+            Vec::new(),
+        );
+
+        let error = try_event_handlers(&[module])
+            .expect_err("a declared handler without executable behavior must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Module example/notifications declares Event handler notifications.deliver.v1 without a binding"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_event_name_drift() {
+        let module = test_event_module(
+            "example/notifications",
+            vec![test_event_declaration(
+                "notifications.deliver.v1",
+                "notification.requested.v1",
+            )],
+            vec![test_event_handler(
+                "notifications.deliver.v1",
+                "notification.retried.v1",
+            )],
+        );
+
+        let error = try_event_handlers(&[module])
+            .expect_err("a binding that consumes a different Event must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Module example/notifications Event binding for notifications.deliver.v1 consumes notification.retried.v1 but its manifest declares notification.requested.v1"
+        );
+    }
+
+    #[test]
+    fn event_handler_registration_rejects_duplicate_handler_identity_across_modules() {
+        let declaration =
+            || test_event_declaration("notifications.deliver.v1", "notification.requested.v1");
+        let handler =
+            || test_event_handler("notifications.deliver.v1", "notification.requested.v1");
+        let modules = vec![
+            test_event_module("example/email", vec![declaration()], vec![handler()]),
+            test_event_module("example/sms", vec![declaration()], vec![handler()]),
+        ];
+
+        let error = try_event_handlers(&modules)
+            .expect_err("handler identity must be unique across loaded Modules");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Event handler notifications.deliver.v1 is bound by more than one loaded Module"
         );
     }
 
@@ -3023,6 +3352,170 @@ mod tests {
         }
     }
 
+    fn runtime_contract_module(
+        module_id: &'static str,
+        declaration: Option<(&str, u16, &str)>,
+        binding: Option<(&str, u16, &str)>,
+    ) -> Module {
+        let manifest = ModuleManifest::builder(module_id)
+            .runtime(RuntimeSurface {
+                functions: declaration
+                    .map(|(name, version, queue)| RuntimeFunctionDeclaration {
+                        name: name.to_owned(),
+                        version,
+                        queue: queue.to_owned(),
+                        input_schema: None,
+                        retry_policy: None,
+                        operation: None,
+                    })
+                    .into_iter()
+                    .collect(),
+                schedules: Vec::new(),
+                workflows: Vec::new(),
+            })
+            .build();
+        let runtime = RuntimeDescriptor {
+            module: module_id,
+            functions: binding
+                .map(|(name, version, queue)| FunctionDefinition {
+                    name: name.to_owned(),
+                    version,
+                    queue: queue.to_owned(),
+                    retry_policy: RetryPolicy::none(),
+                    handler: Arc::new(NoopFunctionHandler),
+                })
+                .into_iter()
+                .collect(),
+            ..RuntimeDescriptor::default()
+        };
+
+        Module::linked(manifest, LinkedBinding::builder().runtime(runtime).build())
+    }
+
+    #[test]
+    fn runtime_registry_accepts_manifest_declared_binding() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+        );
+
+        let registry = try_function_registry(&[module]).expect("matching binding should register");
+
+        assert!(registry.get("fixture.reconcile.v1").is_some());
+    }
+
+    #[test]
+    fn runtime_registry_rejects_undeclared_binding() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            None,
+            Some(("fixture.hidden.v1", 1, "fixture")),
+        );
+
+        let error = try_function_registry(&[module]).expect_err("hidden binding must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("binds undeclared"));
+    }
+
+    #[test]
+    fn runtime_registry_rejects_manifest_binding_drift() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            Some(("fixture.reconcile.v1", 2, "other")),
+        );
+
+        let error = try_function_registry(&[module]).expect_err("metadata drift must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("does not match"));
+    }
+
+    #[test]
+    fn runtime_registry_applies_manifest_retry_policy() {
+        let mut module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+        );
+        module
+            .manifest
+            .runtime
+            .as_mut()
+            .expect("runtime surface should exist")
+            .functions[0]
+            .retry_policy = Some(platform_module::RuntimeRetryPolicyDeclaration {
+            max_attempts: 4,
+            initial_delay_ms: 60_000,
+        });
+
+        let registry = try_function_registry(&[module])
+            .expect("Host should resolve the manifest-requested retry policy");
+        let admitted = registry
+            .get("fixture.reconcile.v1")
+            .expect("runtime function should be admitted");
+
+        assert_eq!(admitted.retry_policy.max_attempts, 4);
+        assert_eq!(admitted.retry_policy.initial_delay, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn runtime_registry_rejects_unbound_declaration() {
+        let module = runtime_contract_module(
+            "fixture/runtime-contract",
+            Some(("fixture.reconcile.v1", 1, "fixture")),
+            None,
+        );
+
+        let error = try_function_registry(&[module]).expect_err("missing binding must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("without a binding"));
+    }
+
+    #[test]
+    fn runtime_registry_rejects_duplicate_binding_names() {
+        let manifest = ModuleManifest::builder("fixture/runtime-contract")
+            .runtime(RuntimeSurface {
+                functions: vec![RuntimeFunctionDeclaration {
+                    name: "fixture.reconcile.v1".to_owned(),
+                    version: 1,
+                    queue: "fixture".to_owned(),
+                    input_schema: None,
+                    retry_policy: None,
+                    operation: None,
+                }],
+                schedules: Vec::new(),
+                workflows: Vec::new(),
+            })
+            .build();
+        let definition = || FunctionDefinition {
+            name: "fixture.reconcile.v1".to_owned(),
+            version: 1,
+            queue: "fixture".to_owned(),
+            retry_policy: RetryPolicy::none(),
+            handler: Arc::new(NoopFunctionHandler),
+        };
+        let module = Module::linked(
+            manifest,
+            LinkedBinding::builder()
+                .runtime(RuntimeDescriptor {
+                    module: "fixture/runtime-contract",
+                    functions: vec![definition(), definition()],
+                    ..RuntimeDescriptor::default()
+                })
+                .build(),
+        );
+
+        let error = try_function_registry(&[module]).expect_err("duplicates must fail closed");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert!(error.public_message.contains("binds runtime function"));
+        assert!(error.public_message.contains("more than once"));
+    }
+
     fn lifecycle_activation_job(required: bool, input: Value) -> LifecycleActivationJobDeclaration {
         LifecycleActivationJobDeclaration {
             name: "warm cache".to_owned(),
@@ -3118,6 +3611,59 @@ mod tests {
 
     fn test_host_linked_module() -> HostLinkedModule {
         HostLinkedModule::manifest_only("billing", test_host_manifest, TEST_HOST_MIGRATIONS)
+    }
+
+    fn failing_host_linked_module_loader(_ctx: &AppContext) -> platform_core::AppResult<Module> {
+        Err(AppError::validation(
+            "Content Vault storage configuration is invalid",
+            vec![platform_core::error::ErrorDetail {
+                field: Some("content_vault.s3.bucket".to_owned()),
+                reason: "a non-empty bucket is required".to_owned(),
+            }],
+        ))
+    }
+
+    #[tokio::test]
+    async fn host_module_collection_propagates_fallible_loader_errors() {
+        let db = platform_core::DbPool::connect_lazy("postgres://localhost/lenso_test")
+            .expect("lazy pool should build");
+        let mut config = test_config_with_database_url("postgres://localhost/lenso_test");
+        config.module_sources.linked_profile = "core".to_owned();
+        let ctx = AppContext::new(config, db, Arc::new(LoggingEventPublisher));
+        let composition = HostComposition::new().with_linked_module(HostLinkedModule::try_linked(
+            "content-vault",
+            test_host_manifest,
+            failing_host_linked_module_loader,
+            TEST_HOST_MIGRATIONS,
+        ));
+
+        let error = modules_for_config_with_composition(&ctx, &composition)
+            .expect_err("fallible linked Module loader must fail Host collection");
+
+        assert_eq!(error.code, ErrorCode::Validation);
+        assert_eq!(
+            error.public_message,
+            "Content Vault storage configuration is invalid"
+        );
+        assert_eq!(
+            error.details,
+            vec![platform_core::error::ErrorDetail {
+                field: Some("content_vault.s3.bucket".to_owned()),
+                reason: "a non-empty bucket is required".to_owned(),
+            }]
+        );
+        assert_eq!(
+            runtime_config_descriptors_with_composition(&ctx, &composition)
+                .expect_err("runtime config discovery must propagate the loader error")
+                .code,
+            ErrorCode::Validation
+        );
+        assert_eq!(
+            runtime_config_group_descriptors_with_composition(&ctx, &composition)
+                .expect_err("runtime config group discovery must propagate the loader error")
+                .code,
+            ErrorCode::Validation
+        );
     }
 
     fn test_config(db: &TestDatabase) -> AppConfig {

@@ -7,6 +7,7 @@ description = "Public facade for authoring and hosting Lenso backend modules."
 repository = "https://github.com/LioRael/lenso"
 homepage = "https://github.com/LioRael/lenso"
 readme = "README.md"
+exclude = ["tests/fixtures/linked-runtime-consumer"]
 rust-version.workspace = true
 categories = ["web-programming", "development-tools"]
 keywords = ["backend", "framework", "modules", "runtime"]
@@ -23,11 +24,13 @@ lenso-worker = { workspace = true, optional = true }
 platform-core = { workspace = true, optional = true }
 platform-http = { workspace = true, optional = true }
 platform-module = { workspace = true, optional = true }
+platform-runtime = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+platform-testing.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
@@ -45,6 +48,7 @@ host = [
     "dep:lenso-worker",
     "dep:platform-http",
     "dep:platform-module",
+    "dep:platform-runtime",
     "dep:tokio",
 ]
 host-transactions = ["dep:platform-core"]
@@ -57,6 +61,14 @@ required-features = ["host-transactions"]
 [[test]]
 name = "public_facade"
 required-features = ["service"]
+
+[[test]]
+name = "linked_runtime_authoring"
+required-features = ["host"]
+
+[[test]]
+name = "linked_runtime_worker_acceptance"
+required-features = ["host"]
 
 [lints]
 workspace = true

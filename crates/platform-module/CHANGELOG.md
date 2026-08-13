@@ -1,3 +1,10 @@
+## Unreleased
+
+### Features
+
+Add a fallible linked Module loader that preserves structured startup errors for
+deployment-owned configuration and external dependency setup.
+
 ## lenso-platform-module@0.1.20
 
 ### Maintenance

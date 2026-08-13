@@ -24,5 +24,8 @@ serde_json.workspace = true
 async-trait.workspace = true
 utoipa.workspace = true
 
+[dev-dependencies]
+tokio.workspace = true
+
 [lints]
 workspace = true

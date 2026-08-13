@@ -1,3 +1,10 @@
+## Unreleased
+
+### Features
+
+Give Event handlers a stable manifest-declared identity and expose registry
+registrations so the Host can validate executable bindings before startup.
+
 ## lenso-platform-core@0.1.20
 
 ### Maintenance

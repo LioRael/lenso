@@ -52,7 +52,10 @@ pub async fn run_from_env_with_composition(
     )
     .await
     .context("failed to load modules")?;
-    let registry = Arc::new(lenso_bootstrap::function_registry(&modules));
+    let registry = Arc::new(
+        lenso_bootstrap::try_function_registry(&modules)
+            .context("invalid module runtime binding")?,
+    );
     let activation_run_ids =
         lenso_bootstrap::enqueue_lifecycle_activation_jobs(&ctx, &modules, &registry)
             .await
@@ -60,7 +63,8 @@ pub async fn run_from_env_with_composition(
     let schedules = lenso_bootstrap::scheduled_functions(&modules, registry.as_ref())
         .context("failed to collect scheduled runtime functions")?;
     let event_handlers =
-        lenso_bootstrap::event_handlers_with_runtime_actions(&ctx, &modules, registry.clone());
+        lenso_bootstrap::try_event_handlers_with_runtime_actions(&ctx, &modules, registry.clone())
+            .context("invalid module Event handler binding")?;
 
     info!(
         functions = registry.all().count(),

@@ -12,5 +12,5 @@
 //! status mutation API.
 
 pub use platform_core::{
-    AppError, AppResult, ClaimedOutboxEvent, ErrorCode, EventDispatcher, OutboxRelay,
+    AppError, AppResult, ClaimedOutboxEvent, ErrorCode, EventDispatcher, EventHandler, OutboxRelay,
 };

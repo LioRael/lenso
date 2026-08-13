@@ -165,6 +165,9 @@ jobs:
           cargo check --locked --workspace --all-targets
           cargo test --locked --workspace
           cargo test --locked -p lenso --features host-transactions --test host_outbox_relay
+          cargo test --locked -p lenso --features host --test linked_runtime_authoring
+          cargo test --locked -p lenso --features host --test linked_runtime_worker_acceptance
+          bash crates/lenso/tests/check_linked_runtime_consumer.sh
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           mkdir -p "$tmp/contracts"
