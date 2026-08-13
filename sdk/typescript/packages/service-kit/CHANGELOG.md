@@ -1,5 +1,11 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.6.1
+
+### Patch Changes
+
+- b510af8: Serialize generated Module Manifests with the same canonical optional and runtime fields as the Rust contract.
+
 ## 0.6.0
 
 ### Minor Changes
