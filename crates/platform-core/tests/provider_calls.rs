@@ -1,6 +1,7 @@
 use platform_core::{
-    CorrelationId, ProviderHttpBodyEvidence, ProviderHttpCallRecord, RequestContext, RequestId,
-    TraceContext, apply_migrations, insert_provider_http_call, provider_call_story_event_id,
+    CorrelationId, ProviderHttpBodyEvidence, ProviderHttpCallBodyEvidence, ProviderHttpCallRecord,
+    RequestContext, RequestId, TraceContext, apply_migrations,
+    insert_provider_http_call_with_body_evidence, provider_call_story_event_id,
     story_events::http_request_story_event_id,
 };
 use serde_json::json;
@@ -44,8 +45,10 @@ async fn provider_call_records_request_and_trace_context() {
         retryable: false,
         path_params: json!({ "id": "contact_1" }),
         error_details: json!({ "ignored": true }),
-        request_body: ProviderHttpBodyEvidence::not_applicable("method_without_body"),
-        response_body: ProviderHttpBodyEvidence::captured(
+    };
+    let body_evidence = ProviderHttpCallBodyEvidence {
+        request: ProviderHttpBodyEvidence::not_applicable("method_without_body"),
+        response: ProviderHttpBodyEvidence::captured(
             json!({
                 "contact": {
                     "email": "[redacted]",
@@ -56,11 +59,12 @@ async fn provider_call_records_request_and_trace_context() {
         ),
     };
 
-    let id = insert_provider_http_call(
+    let id = insert_provider_http_call_with_body_evidence(
         &db.pool,
         &SequentialIdGenerator::default(),
         &request_ctx,
         record,
+        body_evidence,
     )
     .await
     .expect("remote proxy call should insert");

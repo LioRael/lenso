@@ -1,4 +1,4 @@
-use crate::body_evidence::{ProviderHttpCallBodyEvidence, capture_json_body};
+use crate::body_evidence::capture_json_body;
 use crate::invocation::{self, InvocationContext};
 use crate::protocol::{
     ProviderHttpProxyInvokeRequest, ProviderHttpProxyInvokeResponse, ProviderInvocationMode,
@@ -11,7 +11,8 @@ use axum::body::{Body, Bytes, to_bytes};
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, Request};
 use platform_core::{
-    AppContext, AppError, ErrorCode, ProviderHttpCallRecord, insert_provider_http_call,
+    AppContext, AppError, ErrorCode, ProviderHttpCallBodyEvidence, ProviderHttpCallRecord,
+    insert_provider_http_call_with_body_evidence,
 };
 use platform_http::{
     AdminActor, ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext,
@@ -619,12 +620,16 @@ async fn record_proxy_call(
         error_details: error
             .map(|error| json!(error.details))
             .unwrap_or_else(|| Value::Array(Vec::new())),
-        request_body: body_evidence.request,
-        response_body: body_evidence.response,
     };
 
-    if let Err(error) =
-        insert_provider_http_call(&ctx.db, ctx.ids.as_ref(), request_ctx, record).await
+    if let Err(error) = insert_provider_http_call_with_body_evidence(
+        &ctx.db,
+        ctx.ids.as_ref(),
+        request_ctx,
+        record,
+        body_evidence,
+    )
+    .await
     {
         tracing::warn!(
             error = ?error,

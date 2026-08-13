@@ -3,11 +3,6 @@ use serde_json::Value;
 
 pub(crate) const MAX_PROVIDER_HTTP_BODY_EVIDENCE_BYTES: usize = 64 * 1024;
 
-pub(crate) struct ProviderHttpCallBodyEvidence {
-    pub request: ProviderHttpBodyEvidence,
-    pub response: ProviderHttpBodyEvidence,
-}
-
 pub(crate) fn capture_json_body(
     body: Option<&Value>,
     absent_reason: &'static str,
