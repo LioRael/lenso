@@ -48,6 +48,7 @@ export interface ProviderModuleManifest {
   http_routes: readonly ModuleHttpRoute[];
   runtime: {
     functions: readonly ModuleRuntimeFunctionDeclaration[];
+    schedules?: readonly unknown[];
   };
   events?: ModuleEventSurface;
   lifecycle?: ModuleLifecycleSurface;
@@ -649,6 +650,7 @@ export interface ServiceModuleManifest {
   http_routes: readonly ModuleHttpRoute[];
   runtime: {
     functions: readonly ModuleRuntimeFunctionDeclaration[];
+    schedules: readonly unknown[];
   };
   events?: ModuleEventSurface;
   lifecycle?: ModuleLifecycleSurface;
@@ -3514,13 +3516,17 @@ export const defineModule = (
     ...(module.lifecycle ? { lifecycle: module.lifecycle } : {}),
     module_id: module.name,
     protocol: "lenso.module-manifest.v1",
-    requires: module.dependencies.map((moduleId) => ({
-      capabilities: [],
-      module_id: moduleId,
-      optional: false,
-      version_requirement: "*",
-    })),
-    runtime: module.runtime,
+    ...(module.dependencies.length > 0
+      ? {
+          requires: module.dependencies.map((moduleId) => ({
+            capabilities: [],
+            module_id: moduleId,
+            optional: false,
+            version_requirement: "*",
+          })),
+        }
+      : {}),
+    runtime: { ...module.runtime, schedules: [] },
     story_display: module.story_display,
   };
   Object.defineProperties(manifest, {
@@ -3871,7 +3877,9 @@ const providerManifestForServiceModule = (
   capabilities: module.capabilities,
   ...(service.compatibility ? { compatibility: service.compatibility } : {}),
   console: [],
-  dependencies: module.requires.map((requirement) => requirement.module_id),
+  dependencies: (module.requires ?? []).map(
+    (requirement) => requirement.module_id
+  ),
   ...(module.events ? { events: module.events } : {}),
   http_routes: module.http_routes,
   ...(module.lifecycle ? { lifecycle: module.lifecycle } : {}),

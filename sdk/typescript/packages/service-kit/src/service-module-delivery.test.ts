@@ -452,6 +452,15 @@ describe("@lenso/service-kit internal delivery adapter", () => {
     expect(JSON.parse(JSON.stringify(supportTicket))).not.toHaveProperty(
       "version"
     );
+    expect(JSON.parse(JSON.stringify(supportTicket)).runtime).toEqual({
+      functions: [],
+      schedules: [],
+    });
+
+    const moduleWithoutRequirements = defineModule({ name: "acme/standalone" });
+    expect(JSON.parse(JSON.stringify(moduleWithoutRequirements))).not.toHaveProperty(
+      "requires"
+    );
 
     expect(
       defineService({
