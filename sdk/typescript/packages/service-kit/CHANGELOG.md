@@ -1,5 +1,11 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.5.1
+
+### Patch Changes
+
+- d0431aa: Emit canonical `lenso.module-manifest.v1` fields from `defineModule` and keep legacy authoring aliases out of serialized Service manifests.
+
 ## 0.5.0
 
 ### Minor Changes
