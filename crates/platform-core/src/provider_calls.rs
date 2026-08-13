@@ -4,6 +4,84 @@ use crate::error::{AppError, AppResult, ErrorCode};
 use chrono::{DateTime, Duration, Utc};
 use serde_json::Value;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderHttpBodyCaptureStatus {
+    Captured,
+    NotApplicable,
+    NotCaptured,
+}
+
+impl ProviderHttpBodyCaptureStatus {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Captured => "captured",
+            Self::NotApplicable => "not_applicable",
+            Self::NotCaptured => "not_captured",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderHttpBodyEvidence {
+    body: Option<Value>,
+    capture_status: ProviderHttpBodyCaptureStatus,
+    capture_reason: Option<String>,
+    observed_bytes: Option<i64>,
+}
+
+impl ProviderHttpBodyEvidence {
+    #[must_use]
+    pub fn captured(body: Value, observed_bytes: usize) -> Self {
+        Self {
+            body: Some(body),
+            capture_status: ProviderHttpBodyCaptureStatus::Captured,
+            capture_reason: None,
+            observed_bytes: Some(i64::try_from(observed_bytes).unwrap_or(i64::MAX)),
+        }
+    }
+
+    #[must_use]
+    pub fn not_applicable(reason: impl Into<String>) -> Self {
+        Self {
+            body: None,
+            capture_status: ProviderHttpBodyCaptureStatus::NotApplicable,
+            capture_reason: Some(reason.into()),
+            observed_bytes: None,
+        }
+    }
+
+    #[must_use]
+    pub fn not_captured(reason: impl Into<String>, observed_bytes: Option<usize>) -> Self {
+        Self {
+            body: None,
+            capture_status: ProviderHttpBodyCaptureStatus::NotCaptured,
+            capture_reason: Some(reason.into()),
+            observed_bytes: observed_bytes.map(|bytes| i64::try_from(bytes).unwrap_or(i64::MAX)),
+        }
+    }
+
+    #[must_use]
+    pub const fn body(&self) -> Option<&Value> {
+        self.body.as_ref()
+    }
+
+    #[must_use]
+    pub const fn capture_status(&self) -> ProviderHttpBodyCaptureStatus {
+        self.capture_status
+    }
+
+    #[must_use]
+    pub fn capture_reason(&self) -> Option<&str> {
+        self.capture_reason.as_deref()
+    }
+
+    #[must_use]
+    pub const fn observed_bytes(&self) -> Option<i64> {
+        self.observed_bytes
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ProviderHttpCallRecord {
     pub module_name: String,
@@ -20,6 +98,8 @@ pub struct ProviderHttpCallRecord {
     pub retryable: bool,
     pub path_params: Value,
     pub error_details: Value,
+    pub request_body: ProviderHttpBodyEvidence,
+    pub response_body: ProviderHttpBodyEvidence,
 }
 
 pub async fn insert_provider_http_call(
@@ -50,9 +130,20 @@ pub async fn insert_provider_http_call(
             trace_id,
             span_id,
             path_params,
-            error_details
+            error_details,
+            request_body,
+            request_body_capture_status,
+            request_body_capture_reason,
+            request_body_observed_bytes,
+            response_body,
+            response_body_capture_status,
+            response_body_capture_reason,
+            response_body_observed_bytes
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        values (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
+        )
         returning occurred_at
         "#,
     )
@@ -73,6 +164,14 @@ pub async fn insert_provider_http_call(
     .bind(&request_ctx.trace.span_id)
     .bind(&path_params)
     .bind(&error_details)
+    .bind(&record.request_body.body)
+    .bind(record.request_body.capture_status.as_str())
+    .bind(&record.request_body.capture_reason)
+    .bind(record.request_body.observed_bytes)
+    .bind(&record.response_body.body)
+    .bind(record.response_body.capture_status.as_str())
+    .bind(&record.response_body.capture_reason)
+    .bind(record.response_body.observed_bytes)
     .fetch_one(pool)
     .await
     .map_err(map_provider_call_error)?;
@@ -233,5 +332,11 @@ fn provider_call_story_event_metadata(
         "retryable": record.retryable,
         "path_params": path_params,
         "error_details": &record.error_details,
+        "request_body_capture_status": record.request_body.capture_status.as_str(),
+        "request_body_capture_reason": &record.request_body.capture_reason,
+        "request_body_observed_bytes": record.request_body.observed_bytes,
+        "response_body_capture_status": record.response_body.capture_status.as_str(),
+        "response_body_capture_reason": &record.response_body.capture_reason,
+        "response_body_observed_bytes": record.response_body.observed_bytes,
     })
 }

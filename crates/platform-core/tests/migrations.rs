@@ -174,7 +174,15 @@ async fn platform_migrations_create_provider_http_calls_table() {
                 'success',
                 'error_code',
                 'request_id',
-                'correlation_id'
+                'correlation_id',
+                'request_body',
+                'request_body_capture_status',
+                'request_body_capture_reason',
+                'request_body_observed_bytes',
+                'response_body',
+                'response_body_capture_status',
+                'response_body_capture_reason',
+                'response_body_observed_bytes'
             )
         order by column_name
         "#,
@@ -193,7 +201,15 @@ async fn platform_migrations_create_provider_http_calls_table() {
             "module_name",
             "provider_path",
             "provider_status",
+            "request_body",
+            "request_body_capture_reason",
+            "request_body_capture_status",
+            "request_body_observed_bytes",
             "request_id",
+            "response_body",
+            "response_body_capture_reason",
+            "response_body_capture_status",
+            "response_body_observed_bytes",
             "success"
         ]
     );

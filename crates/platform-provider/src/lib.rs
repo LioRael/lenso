@@ -6,6 +6,7 @@
 mod admin_action;
 mod admin_data;
 mod binding;
+mod body_evidence;
 mod config;
 mod effects;
 mod event;

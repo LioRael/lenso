@@ -61,6 +61,10 @@ pub const PLATFORM_MIGRATIONS: &[Migration] = &[
         name: "platform/0013_create_provider_host_effect_commits",
         sql: include_str!("../migrations/0013_create_provider_host_effect_commits.sql"),
     },
+    Migration {
+        name: "platform/0014_capture_provider_http_body_evidence",
+        sql: include_str!("../migrations/0014_capture_provider_http_body_evidence.sql"),
+    },
 ];
 
 pub async fn apply_migrations(pool: &PgPool, migrations: &[Migration]) -> AppResult<()> {

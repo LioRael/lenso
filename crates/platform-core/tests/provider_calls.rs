@@ -1,6 +1,6 @@
 use platform_core::{
-    CorrelationId, ProviderHttpCallRecord, RequestContext, RequestId, TraceContext,
-    apply_migrations, insert_provider_http_call, provider_call_story_event_id,
+    CorrelationId, ProviderHttpBodyEvidence, ProviderHttpCallRecord, RequestContext, RequestId,
+    TraceContext, apply_migrations, insert_provider_http_call, provider_call_story_event_id,
     story_events::http_request_story_event_id,
 };
 use serde_json::json;
@@ -44,6 +44,16 @@ async fn provider_call_records_request_and_trace_context() {
         retryable: false,
         path_params: json!({ "id": "contact_1" }),
         error_details: json!({ "ignored": true }),
+        request_body: ProviderHttpBodyEvidence::not_applicable("method_without_body"),
+        response_body: ProviderHttpBodyEvidence::captured(
+            json!({
+                "contact": {
+                    "email": "[redacted]",
+                    "display_name": "Alex"
+                }
+            }),
+            73,
+        ),
     };
 
     let id = insert_provider_http_call(
@@ -64,7 +74,15 @@ async fn provider_call_records_request_and_trace_context() {
             trace_id,
             span_id,
             path_params,
-            error_details
+            error_details,
+            request_body,
+            request_body_capture_status,
+            request_body_capture_reason,
+            request_body_observed_bytes,
+            response_body,
+            response_body_capture_status,
+            response_body_capture_reason,
+            response_body_observed_bytes
         from platform.provider_http_calls
         where id = $1
         "#,
@@ -105,6 +123,52 @@ async fn provider_call_records_request_and_trace_context() {
         row.try_get::<serde_json::Value, _>("error_details")
             .expect("error_details"),
         json!([])
+    );
+    assert_eq!(
+        row.try_get::<Option<serde_json::Value>, _>("request_body")
+            .expect("request_body"),
+        None
+    );
+    assert_eq!(
+        row.try_get::<String, _>("request_body_capture_status")
+            .expect("request_body_capture_status"),
+        "not_applicable"
+    );
+    assert_eq!(
+        row.try_get::<Option<String>, _>("request_body_capture_reason")
+            .expect("request_body_capture_reason")
+            .as_deref(),
+        Some("method_without_body")
+    );
+    assert_eq!(
+        row.try_get::<Option<i64>, _>("request_body_observed_bytes")
+            .expect("request_body_observed_bytes"),
+        None
+    );
+    assert_eq!(
+        row.try_get::<Option<serde_json::Value>, _>("response_body")
+            .expect("response_body"),
+        Some(json!({
+            "contact": {
+                "email": "[redacted]",
+                "display_name": "Alex"
+            }
+        }))
+    );
+    assert_eq!(
+        row.try_get::<String, _>("response_body_capture_status")
+            .expect("response_body_capture_status"),
+        "captured"
+    );
+    assert_eq!(
+        row.try_get::<Option<String>, _>("response_body_capture_reason")
+            .expect("response_body_capture_reason"),
+        None
+    );
+    assert_eq!(
+        row.try_get::<Option<i64>, _>("response_body_observed_bytes")
+            .expect("response_body_observed_bytes"),
+        Some(73)
     );
 
     let story_row = sqlx::query(
@@ -223,6 +287,15 @@ async fn provider_call_records_request_and_trace_context() {
     assert_eq!(metadata["trace_id"], "00000000000000000000000000000011");
     assert_eq!(metadata["span_id"], "0000000000000011");
     assert_eq!(metadata["path_params"]["id"], "contact_1");
+    assert_eq!(metadata["request_body_capture_status"], "not_applicable");
+    assert_eq!(
+        metadata["request_body_capture_reason"],
+        "method_without_body"
+    );
+    assert_eq!(metadata["response_body_capture_status"], "captured");
+    assert_eq!(metadata["response_body_observed_bytes"], 73);
+    assert!(metadata.get("request_body").is_none());
+    assert!(metadata.get("response_body").is_none());
 
     let http_story_count = sqlx::query_scalar::<_, i64>(
         r#"

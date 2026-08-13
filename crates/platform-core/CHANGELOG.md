@@ -8,6 +8,9 @@ registrations so the Host can validate executable bindings before startup.
 Preserve bounded Provider retry-after and trace-reference metadata through Host
 runtime and outbox error handling.
 
+Persist typed Provider HTTP body evidence coverage and bounded, pre-sanitized
+request and response JSON copies without duplicating bodies into Story metadata.
+
 ## lenso-platform-core@0.1.20
 
 ### Maintenance

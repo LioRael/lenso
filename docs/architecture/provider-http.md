@@ -227,8 +227,26 @@ Current GET, POST, PUT, PATCH, and DELETE proxy calls emit structured host-side
 tracing events for completed and failed forwards with module name, declared
 path, provider path, method, provider status, duration, request/correlation ids, and
 error code/retryability when present. Calls are also persisted to
-`platform.provider_http_proxy_calls` with module, route, status, duration,
+`platform.provider_http_calls` with module, route, status, duration,
 request/correlation, trace/span, path parameter, and error detail fields.
+
+The Host also persists a bounded evidence copy of Provider route request and
+response JSON bodies. This evidence copy has a separate 64 KiB per-body limit;
+the existing 1 MiB request and 4 MiB response transport limits remain unchanged.
+Before the storage Interface receives a body, the Provider adapter recursively
+replaces values whose keys contain authorization, cookie, password, secret,
+token, API key, access key, credential, or email markers with `[redacted]`.
+Caller and Provider headers are never part of the body evidence record.
+
+Every side records `captured`, `not_applicable`, or `not_captured` together with
+an explicit reason and the observed serialized size when available. Bodies over
+the evidence limit are not partially copied; the record keeps only
+`not_captured`, `evidence_limit_exceeded`, and the observed size. Existing rows
+are migrated as `not_captured` with `legacy_record`, while methods without a
+request body and empty successful responses use `not_applicable` reasons. Raw
+bodies must never be written to Story event metadata; that compact metadata may
+contain only the capture status, reason, and size needed to explain evidence
+coverage.
 
 Console exposes persisted proxy calls through three surfaces:
 
