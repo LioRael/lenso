@@ -649,6 +649,7 @@ export interface ServiceModuleManifest {
   http_routes: readonly ModuleHttpRoute[];
   runtime: {
     functions: readonly ModuleRuntimeFunctionDeclaration[];
+    schedules: readonly unknown[];
   };
   events?: ModuleEventSurface;
   lifecycle?: ModuleLifecycleSurface;
@@ -3480,8 +3481,14 @@ export const defineModule = (
   definition: ServiceModuleDefinition
 ): ServiceModuleManifest => {
   const module = defineProviderModule(definition);
+  const requires = module.dependencies.map((moduleId) => ({
+    capabilities: [],
+    module_id: moduleId,
+    optional: false,
+    version_requirement: "*",
+  }));
   const manifest = {
-    admin: module.admin,
+    ...(module.admin === null ? {} : { admin: module.admin }),
     capabilities: module.capabilities,
     console: (module.console ?? []).map((surface) => ({
       ...(surface.icon ? { icon: surface.icon } : {}),
@@ -3514,18 +3521,18 @@ export const defineModule = (
     ...(module.lifecycle ? { lifecycle: module.lifecycle } : {}),
     module_id: module.name,
     protocol: "lenso.module-manifest.v1",
-    requires: module.dependencies.map((moduleId) => ({
-      capabilities: [],
-      module_id: moduleId,
-      optional: false,
-      version_requirement: "*",
-    })),
-    runtime: module.runtime,
+    ...(requires.length === 0 ? {} : { requires }),
+    runtime: {
+      functions: module.runtime.functions,
+      schedules: [],
+    },
     story_display: module.story_display,
   };
   Object.defineProperties(manifest, {
+    ...(module.admin === null ? { admin: { value: module.admin } } : {}),
     dependencies: { value: module.dependencies },
     name: { value: module.name },
+    ...(requires.length === 0 ? { requires: { value: requires } } : {}),
     version: { value: module.version },
   });
   return manifest as unknown as ServiceModuleManifest;
