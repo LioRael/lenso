@@ -1,5 +1,11 @@
 ## @lenso/service-kit@0.1.5
 
+## 0.6.0
+
+### Minor Changes
+
+- fbd7aa2: Add durable Provider invocation stores, typed outcomes, retry-safe invocation identities, and reusable store conformance checks.
+
 ## 0.5.1
 
 ### Patch Changes
