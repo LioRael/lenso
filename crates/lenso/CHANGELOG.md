@@ -2,6 +2,10 @@
 
 ### Features
 
+Add a lightweight `linked-module` feature for authoring Module HTTP, Event,
+Runtime, migration, and loader contributions without pulling the API, worker,
+migration runner, bootstrap composition, or Tokio host boot graph.
+
 Expose narrow public `lenso::host::runtime` and `lenso::host::outbox` authoring
 facades for manifest-declared linked Module functions, schedules, and Event
 handlers, with package-consumer verification.

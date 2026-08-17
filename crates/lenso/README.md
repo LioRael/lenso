@@ -19,7 +19,16 @@ The default facade exposes serializable module manifest declarations:
 - Console surface declarations;
 - story display metadata.
 
-Enable the `host` feature for the narrow host boot facade:
+Enable `linked-module` in a reusable Module crate. It exposes HTTP, Event,
+Runtime, migration, and loader authoring without the API, worker, migration
+runner, bootstrap composition, or Tokio host boot graph:
+
+```sh
+cargo add lenso --features linked-module
+cargo add async-trait serde_json
+```
+
+The application that runs those Modules enables the complete `host` feature:
 
 ```sh
 cargo add lenso --features host
@@ -35,11 +44,11 @@ Manifest-declared behavior for a host-owned linked Module is authored through
 descriptor, retry, execution context, and standard error types needed to return
 a behavior-bearing `HostLinkedModule`; external Modules do not import a
 `lenso-platform-*` crate. The same public facade exposes Event handlers through
-`lenso::host::outbox`.
+`lenso::host::events`; relay control remains under `lenso::host::outbox`.
 
 ```rust
 use async_trait::async_trait;
-use lenso::host::outbox::{ClaimedOutboxEvent, EventHandler};
+use lenso::host::events::{ClaimedOutboxEvent, EventHandler};
 use lenso::host::runtime::{
     AppContext, AppResult, ExecutionContext, FunctionDefinition, FunctionHandler,
     LinkedBinding, Module, RetryPolicy, RuntimeDescriptor,

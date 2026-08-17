@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use lenso::host::outbox::{ClaimedOutboxEvent, EventHandler};
+use lenso::host::events::{ClaimedOutboxEvent, EventHandler};
 use lenso::host::runtime::{
     ActorContext, AppContext, AppResult, CorrelationId, ExecutionContext, ExecutionId,
     FunctionDefinition, FunctionHandler, LinkedBinding, Module, RetryPolicy, RuntimeDescriptor,
     TenantId, TraceContext,
 };
-use lenso::host::{HostBuilder, HostLinkedModule, Migration};
+use lenso::host::{HostLinkedModule, Migration};
 use lenso::{
     EventHandlerDeclaration, EventSurface, ModuleManifest, RuntimeFunctionDeclaration,
     RuntimeRetryPolicyDeclaration, RuntimeSurface, ScheduledFunctionDeclaration,
@@ -111,11 +111,6 @@ fn linked_module() -> HostLinkedModule {
     HostLinkedModule::try_linked("runtime-consumer", manifest, load, MIGRATIONS)
 }
 
-#[tokio::main]
-async fn main() {
-    HostBuilder::new()
-        .linked_module(linked_module())
-        .run_worker_from_env()
-        .await
-        .expect("run Lenso worker");
+fn main() {
+    let _module_release = linked_module();
 }

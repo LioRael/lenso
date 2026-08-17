@@ -2,9 +2,9 @@
 //!
 //! Enable the `host` feature to use these helpers.
 
-pub use crate::ModuleManifest;
-pub use lenso_bootstrap::{HostComposition, HostLinkedModule, HostWiring};
-pub use platform_core::Migration;
+use super::HostLinkedModule;
+
+pub use lenso_bootstrap::{HostComposition, HostWiring};
 
 /// First-party linked modules that a host can opt into explicitly.
 pub mod builtins {
@@ -16,43 +16,12 @@ pub mod builtins {
     };
 }
 
-/// HTTP authoring helpers for host-owned linked modules.
-pub mod http {
-    pub use axum::Json;
-    pub use axum::extract::{Path, State};
-    pub use axum::routing::{delete, get, patch, post, put};
-    pub use platform_core::{AppContext, AppError, ErrorCode, RequestContext};
-    pub use platform_http::responses::json;
-    pub use platform_http::{
-        ApiErrorResponse, ApiOpenApiRouter, ErrorResponse, HttpRequestContext, JsonBody,
-        OpenApiRouter, UserActor, routes,
-    };
-    pub use platform_module::{
-        LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
-    };
-}
-
-/// Runtime behavior authoring for host-owned linked modules.
-///
-/// This is the narrow public seam for registering a manifest-declared runtime
-/// function without importing Lenso's internal `platform-*` crates.
-pub mod runtime {
-    pub use platform_core::{
-        ActorContext, AppContext, AppError, AppResult, CorrelationId, ErrorCode, ExecutionContext,
-        ExecutionId, TenantId, TraceContext,
-    };
-    pub use platform_module::{LinkedBinding, Module};
-    pub use platform_runtime::{
-        FunctionDefinition, FunctionHandler, RetryPolicy, RuntimeDescriptor,
-    };
-}
-
 /// Common host-authoring imports for starter applications.
 pub mod prelude {
+    pub use crate::host::events::{ClaimedOutboxEvent, EventHandler};
     pub use crate::host::http::{
         LinkedBinding, LinkedHttpContribution, ModuleHttpMethod, ModuleHttpRoute,
     };
-    pub use crate::host::outbox::{ClaimedOutboxEvent, EventHandler};
     pub use crate::host::runtime::{
         AppResult, ExecutionContext, FunctionDefinition, FunctionHandler, Module, RetryPolicy,
         RuntimeDescriptor,

@@ -17,32 +17,19 @@ package_root() {
   dirname "$manifest_path"
 }
 
-# The public facade change and the Host validation behind it ship as one
-# coordinated release closure. Build local archives for every internal package
-# needed by the Host facade so this pre-release consumer never falls back to an
-# older registry implementation while still authoring against `lenso` alone.
+# The lightweight linked-module facade and its internal dependencies ship as
+# one coordinated release closure. Build local archives so this pre-release
+# consumer never falls back to an older registry implementation while still
+# authoring against `lenso` alone.
 closure_packages=(
   lenso-platform-core
-  lenso-platform-http
   lenso-platform-runtime
   lenso-platform-module
-  lenso-platform-provider
-  lenso-platform-testing
-  lenso-platform-system-plane
-  lenso-platform-module-management
-  lenso-platform-runtime-observability
-  lenso-platform-runtime-operations
-  lenso-bootstrap
-  lenso-worker
-  lenso-api
-  lenso-migrate
 )
 
 # `cargo package` normalizes path dependencies back to registry dependencies.
-# A release PR intentionally names versions that do not exist in crates.io yet,
-# so resolve that exact coordinated closure from the workspace while creating
-# the archives. The extracted consumer below still sees only normalized package
-# manifests and the explicitly supplied local release closure.
+# Resolve the exact coordinated closure from the workspace while creating the
+# archives so the extracted consumer sees the changed local packages.
 package_patch_arguments=()
 for package_name in "${closure_packages[@]}"; do
   package_patch_arguments+=(
@@ -54,7 +41,7 @@ for package_name in "${closure_packages[@]}"; do
   cargo package --locked --allow-dirty --no-verify -p "$package_name" \
     "${package_patch_arguments[@]}"
 done
-cargo package --locked --allow-dirty --no-verify -p lenso --features host \
+cargo package --locked --allow-dirty --no-verify -p lenso --features linked-module \
   "${package_patch_arguments[@]}"
 
 fixture_root="$repository_root/crates/lenso/tests/fixtures/linked-runtime-consumer"
@@ -89,23 +76,4 @@ cp "$function_contract" \
 } >> "$consumer_root/Cargo.toml"
 
 cargo generate-lockfile --manifest-path "$consumer_root/Cargo.toml"
-pinned_packages=(
-  lenso-api
-  lenso-migrate
-  lenso-worker
-  lenso-bootstrap
-  lenso-platform-module-management
-  lenso-platform-runtime-observability
-  lenso-platform-runtime-operations
-  lenso-platform-system-plane
-  lenso-platform-provider
-  lenso-platform-module
-  lenso-platform-http
-  lenso-platform-runtime
-  lenso-platform-core
-)
-for package_name in "${pinned_packages[@]}"; do
-  cargo update --manifest-path "$consumer_root/Cargo.toml" \
-    -p "$package_name" --precise "$(package_version "$package_name")"
-done
 cargo check --locked --manifest-path "$consumer_root/Cargo.toml"

@@ -62,6 +62,11 @@ Host application assembly is exposed through the narrow `lenso::host` facade.
 Keep that surface small: boot the API, worker, and migration runner, compose
 linked modules, and expose linked HTTP authoring helpers.
 
+Reusable Module crates enable the lightweight `linked-module` feature. It
+exposes HTTP, Event, Runtime, migration, and loader authoring while excluding
+the API, worker, migration runner, bootstrap composition, and Tokio host boot
+graph. Runnable applications use `host`, which includes `linked-module`.
+
 The current host-facing surface is intentionally narrow:
 
 - `HostBuilder`, `HostComposition`, and `HostLinkedModule` for composing
@@ -86,6 +91,8 @@ The current host-facing surface is intentionally narrow:
   manifest. Modules may declare UTC cron schedules that reference those
   functions; queue persistence, retry enforcement, and schedule execution
   remain Host-owned;
+- `lenso::host::events` re-exports the Event handler authoring seam without
+  exposing relay status mutation;
 - `lenso::host::outbox` re-exports for manifest-declared linked Event handlers
   and Host-owned relay behavior. Event delivery is at least once, and the
   stable `ClaimedOutboxEvent::id` is the Module's idempotency key across retries
