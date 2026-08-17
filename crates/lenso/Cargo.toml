@@ -38,20 +38,23 @@ tokio.workspace = true
 [features]
 default = []
 host = [
-    "host-transactions",
+    "linked-module",
     "dep:anyhow",
-    "dep:axum",
     "dep:lenso-api",
     "dep:lenso-bootstrap",
     "dep:lenso-migrate",
     "service",
     "dep:lenso-worker",
-    "dep:platform-http",
-    "dep:platform-module",
-    "dep:platform-runtime",
     "dep:tokio",
 ]
 host-transactions = ["dep:platform-core"]
+linked-module = [
+    "host-transactions",
+    "dep:axum",
+    "dep:platform-http",
+    "dep:platform-module",
+    "dep:platform-runtime",
+]
 service = ["dep:lenso-service"]
 
 [[test]]
@@ -69,6 +72,10 @@ required-features = ["host"]
 [[test]]
 name = "linked_runtime_worker_acceptance"
 required-features = ["host"]
+
+[[test]]
+name = "linked_module_feature"
+required-features = ["linked-module"]
 
 [lints]
 workspace = true

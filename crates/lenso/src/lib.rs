@@ -1,6 +1,10 @@
 //! Public facade for the Lenso backend framework.
 
-#[cfg(any(feature = "host", feature = "host-transactions"))]
+#[cfg(any(
+    feature = "host",
+    feature = "host-transactions",
+    feature = "linked-module"
+))]
 pub mod host;
 
 /// Console UI and contribution declarations used by Module authors.
