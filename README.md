@@ -4,11 +4,12 @@
 
 Agent-ready Rust business systems.
 
-Lenso is a Rust-first modular app framework for composing real product shapes,
-verifying every change, and evolving stable boundaries into services. Start
-with a runnable host, services, modules, local processes, contracts, migrations,
-and Console already connected instead of assembling the surrounding
-system one library at a time.
+Lenso is a modular application and microservice framework for building Rust
+business systems, from linked Modules to Autonomous Services.
+Compose real product shapes, verify every change, and evolve stable boundaries
+without assembling the surrounding system one library at a time. Start with a
+runnable Host, Services, Modules, local processes, contracts, migrations, and
+Console already connected.
 
 Humans and coding agents work from the same explicit model: one exact App
 Composition, Module and Service manifests, generated contracts, checks, and
