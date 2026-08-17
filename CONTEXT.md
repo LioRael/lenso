@@ -2,6 +2,96 @@
 
 Lenso models business systems that can begin as one modular application and evolve selected boundaries into independently operated services.
 
+## Product Positioning
+
+**Agent-Ready Business System Framework**:
+The Lenso product category for small product teams that need coding agents and humans to build, inspect, and evolve long-lived Rust business systems through the same explicit contracts.
+_Avoid_: AI runtime, code generator, SaaS backend template
+
+**Business Slice**:
+The smallest useful end-to-end business capability that is runnable through its applicable business behavior and user or operator surface.
+_Avoid_: CRUD scaffold, compiling skeleton, demo-only fixture
+
+**App Composition**:
+The sole `lenso.app.json` declaration of the exact Module releases, `linked` or Service Reference implementation bindings, and resolved dependency selections that form one Lenso application. It carries its own revision and content digests, resolves owner-local contracts into a System Topology, and contains no deployment state.
+_Avoid_: Deployment manifest, environment profile, generated file inventory
+
+**Composition Authority**:
+The authoring, build, and System connection scope within which an App Composition is authoritative. It never becomes production Workload desired state.
+_Avoid_: Deployment authority, runtime reconciler, orchestrator input
+
+**Product Blueprint**:
+An initial authoring recipe that creates an App Composition for a recognizable product shape and ceases to be authoritative after materialization.
+_Avoid_: Application desired state, runtime overlay, repair baseline
+
+**Capability Recipe**:
+A reusable authoring input that adds a coherent set of Module and Service references to an App Composition, then remains only as informational provenance.
+_Avoid_: Runtime package, inherited overlay, install authority
+
+**Composition Impact Summary**:
+The concise preview of Module selections, implementation bindings, and dependency changes produced before one direct App Composition update.
+_Avoid_: App Change Plan, approval workflow, deployment plan
+
+**Composition Provenance**:
+Informational metadata such as the Product Blueprint or Capability Recipe from which entries were materialized. It never participates in resolution or overwrites later application changes.
+_Avoid_: Overlay, update channel, desired state
+
+**App Diagnostic**:
+An on-demand explanation of invalid references, incompatible contracts, or unavailable connections for an App Composition.
+_Avoid_: Product workspace, App Proof, permanent Console section
+
+**Composition Divergence**:
+An object-level difference between the App Composition and connected runtime facts, reported as unavailable, incompatible, or unmanaged without automatic creation, upgrade, adoption, or deletion.
+_Avoid_: Deployment drift, reconciliation request, System failure
+
+**Local App Realization**:
+The replaceable Local Control Adapter behavior through which `lenso system dev` creates and starts local Workloads referenced by an App Composition without making local process creation part of Composition semantics.
+_Avoid_: Console process manager, production deployment, App Composition apply
+
+**Module Product Contract**:
+The minimal declaration through which a Module contributes at least one business capability to an App Composition. It identifies the Module's version and owner while APIs, events, permissions, jobs, and Console Surfaces remain optional contributions.
+_Avoid_: Generic Data contract, generic Action contract, Proof bundle, implementation inventory
+
+**Automatic Surface Composition**:
+The rule that a compatible, authorized Module Console Surface becomes available from its accepted Module Product Contract without a second manual enablement state.
+_Avoid_: Runtime discovery, manual route registration, implicit trust
+
+**Surface API Grant**:
+The digest-bound subset of operations from a Module-owned business API Contract that one exact Console Surface artifact may invoke for its selected Module and Service context, further limited by operation audience and capability.
+_Avoid_: Generic Admin Data API, direct Service access, ambient browser authority
+
+**Surface API Client**:
+A generated client for the exact Module-owned business API Contract that uses Console's injected, same-origin Surface transport while preserving delegated actor, tenant, deadline, idempotency, and Story context.
+_Avoid_: Handwritten fetch wrapper, generic query command, database client
+
+**Console Surface Gateway**:
+The contract- and grant-bound same-origin transport through which a Console Surface reaches its selected Module's real business API. It routes and attenuates authority without defining business operations or carrying them through the System Plane.
+_Avoid_: Generic Admin API, System Plane capability, arbitrary reverse proxy
+
+**Surface Operation Request**:
+The Gateway request that binds one exact API Contract digest and operation identifier to typed input and request context, leaving method and path resolution to the admitted Contract.
+_Avoid_: Raw URL request, arbitrary headers, generic action
+
+**Surface Operation Authorization**:
+The intersection of the Surface API Grant, the Console Actor's current authority, and the target Module's final business authorization. No layer may expand authority granted by another.
+_Avoid_: Proxy-trusted authorization, Surface-only capability check
+
+**Surface Contribution**:
+An optional, typed extension from one Module into a declared slot of another Module's Console Surface, referencing an allowed Module API operation rather than executable UI or a generic Admin Action.
+_Avoid_: Admin Actions page, arbitrary plugin, cross-Module import
+
+**Lenso Microservice Framework**:
+The Service contracts, communication, ownership, resilience, workflow, identity, evidence, and local-system capabilities through which independently operated Autonomous Services participate in one Lenso System.
+_Avoid_: Deployment platform, service mesh, microservices-by-default
+
+**Hero Workflow**:
+The product path from a business prompt to a runnable Business Slice, through agent-assisted change and Console inspection, and onward to independent Service ownership when a Module boundary becomes ready.
+_Avoid_: Feature catalog, scaffold command, deployment pipeline
+
+**Service Capability Tier**:
+An explicit statement of which Lenso Service contracts and runtime responsibilities one language kit implements, without implying parity with another kit.
+_Avoid_: Language preference, roadmap promise, best-effort compatibility
+
 ## Language
 
 **Module**:
@@ -243,6 +333,120 @@ _Avoid_: Mock, chaos experiment
 **Environment Verification**:
 Evidence that a System behavior proven in a System Sandbox also works through the selected real transports, identity providers, stores, gateways, and orchestrator.
 _Avoid_: Unit test, local smoke
+
+## System Lifecycle
+
+**System Lifecycle**:
+The internal, command-scoped process that connects and reports a Console-managed Lenso System without owning deployment or release state.
+_Avoid_: Deployment controller, Runtime Observation
+
+**System Connect**:
+The user-facing operation that connects an existing Lenso System to Console by establishing its Management Binding, enrollment, trust, and Module Surfaces. Its internal execution may be planned and resumed without exposing deployment-style Plan and Apply concepts.
+_Avoid_: Deployment, environment onboarding, production apply
+
+**Management Binding**:
+The Console-owned record that binds one Lenso System identity and topology digest to enrolled Service identities, Control Adapter identities, permitted operations, and authority policy.
+_Avoid_: System Profile, environment, deployment desired state
+
+**System Lifecycle Coordinator**:
+The external authority that conducts one System Lifecycle across independently owned Service boundaries without becoming the owner of Service state.
+_Avoid_: Console Reconciler, deployment controller
+
+**System Lifecycle Run Journal**:
+The durable cross-boundary record of a System Lifecycle run's planned, completed, and awaiting effects and evidence. It supports resumption but is not authoritative for Service-owned state.
+_Avoid_: System source of truth, Console audit log, secret store
+
+**Partial System Run**:
+A System Lifecycle outcome in which some effects are complete while others failed or await authority or evidence. Completed effects remain recorded and the run may resume without implying global rollback.
+_Avoid_: Rolled-back System, ready System
+
+**Active System Run**:
+The single mutating System Lifecycle run permitted for one Lenso System while read-only planning and status remain concurrent.
+_Avoid_: Parallel apply, global process lock
+
+**Awaiting Evidence**:
+A System Lifecycle state in which an effect was dispatched but its owning Service has not yet supplied enough evidence to prove success or failure.
+_Avoid_: Timeout failure, automatic retry
+
+**System Status**:
+The read-only summary of topology and authority binding, object Connection Status, Workload Operational State, and recent Workload Control Operations. Any observed Deployment or Service Release version remains an externally owned fact.
+_Avoid_: System proof, deployment controller, observability platform
+
+**Connection Status**:
+The current `connected`, `unavailable`, `incompatible`, or `unmanaged` result for one Service, Module Surface, or Control Adapter, accompanied by a direct reason when it is not connected.
+_Avoid_: System readiness score, degradation model, Proof
+
+**Local Enrollment Authority**:
+Development-only authority that may accept bilateral enrollment for an explicitly declared, locally owned Service reachable through a loopback endpoint.
+_Avoid_: Automatic discovery, unsigned registry seed
+
+**Enrollment Handoff**:
+The owner-local exchange in which a Service owner accepts a signed Enrollment Offer and returns the corresponding signed Enrollment Receipt, whether transported online or offline. It never exposes remote System Plane enrollment activation.
+_Avoid_: Registry write, implicit enrollment
+
+**Unmanaged Enrollment**:
+An active System Registry enrollment that is absent from the current Management Binding. It is reported as drift and is not automatically adopted or revoked.
+_Avoid_: Discovered service, orphan to delete
+
+**Workload Control Operation**:
+A typed operational action that suspends, resumes, restarts, or scales an already deployed Workload without selecting, publishing, or replacing its Service Release. Local adapters may realize suspension and resumption as process stop and start.
+_Avoid_: Deployment, release, arbitrary infrastructure command
+
+**Workload Suspension**:
+A reversible operation that asks the deployment authority to make an already deployed Workload inactive while preserving its Deployment and Service Release identity for later resumption.
+_Avoid_: Undeploy, scale to zero, process kill
+
+**Workload Control Adapter**:
+The least-privileged component through which Console submits authenticated, typed Workload Control Operations to a Workload's deployment authority. Deployment credentials remain with that authority and are addressed through secret references rather than stored by Console.
+_Avoid_: Managed deployment system, deployment adapter, remote shell, credential store
+
+**Workload Control Capability**:
+A typed operation that a Workload Control Adapter explicitly declares it can perform for a particular Workload under current authority policy.
+_Avoid_: Assumed platform feature, best-effort command
+
+**Workload Reference**:
+The stable identity of a controllable Workload declared by a Service and resolved by a Workload Control Adapter independently of ephemeral Pods, processes, or instances.
+_Avoid_: Pod name, process ID, Service-wide wildcard
+
+**Target Capacity**:
+The provider-neutral desired capacity requested by a Scale operation when the Workload Control Adapter declares that it can safely reconcile that request with deployment controls such as autoscaling.
+_Avoid_: Kubernetes patch, provider-specific scaling payload
+
+**Operation Record**:
+The concise audit record of a Workload Control Operation, including actor, target, requested action, policy outcome, execution result, time, and associated log reference.
+_Avoid_: Deployment record, release evidence bundle, secret-bearing log
+
+**Operational Hold**:
+A durable, reversible instruction owned by a deployment authority that keeps an already deployed Workload suspended without changing its selected Service Release. It remains until explicitly resumed, subject to any policy-required expiry.
+_Avoid_: Replica patch, undeploy, Console process state
+
+**Active Workload Operation**:
+The single mutating Workload Control Operation permitted for one Workload at a time, bound to an idempotency key and observed revision so retries are safe and conflicting actions are rejected.
+_Avoid_: Request queue, best-effort retry
+
+**Workload Operational State**:
+The deployment-authority evidence of whether a Workload is active, suspended, transitioning, or unavailable. While active, it is complemented rather than replaced by Service-owned health evidence from the System Plane.
+_Avoid_: Last requested action, Service health
+
+**Local Control Adapter**:
+A host-local Workload Control Adapter that remains available after a development System Lifecycle Coordinator exits and controls only explicitly owned local Workloads.
+_Avoid_: CLI coordinator, Console child-process manager
+
+**Workload Operation Handle**:
+The stable identifier returned when a Workload Control Adapter accepts an asynchronous Workload Control Operation and used to observe its progress and terminal result.
+_Avoid_: Synchronous command result, proof of success
+
+**Control Adapter Identity**:
+The pre-registered authority-bound identity through which Console mutually authenticates a Workload Control Adapter referenced by a Management Binding.
+_Avoid_: Discovered endpoint, bearer token URL
+
+**Unknown Operational State**:
+The explicit state reported when current deployment-authority evidence cannot be obtained. It neither inherits the last requested action nor authorizes Console to bypass the Workload Control Adapter.
+_Avoid_: Suspended, failed Workload, cached state
+
+**Kubernetes Integration**:
+An optional realization of Lenso Service and Workload contracts under Kubernetes authority. A Lenso System does not require it and Console does not make it the production deployment authority.
+_Avoid_: Required Lenso runtime, Console deployment controller
 
 ## Delivery
 
