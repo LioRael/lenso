@@ -2223,6 +2223,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-capability-greeting"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-kernel",
+ "serde_json",
+]
+
+[[package]]
 name = "lenso-contracts"
 version = "0.4.0"
 dependencies = [
@@ -2243,6 +2252,9 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "lenso-app-plan",
+ "lenso-capability-greeting",
+ "lenso-native-adapter",
+ "lenso-native-greeter",
 ]
 
 [[package]]
@@ -2435,6 +2447,24 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "thiserror",
+]
+
+[[package]]
+name = "lenso-native-adapter"
+version = "0.1.0"
+dependencies = [
+ "lenso-app-plan",
+ "lenso-kernel",
+]
+
+[[package]]
+name = "lenso-native-greeter"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-capability-greeting",
+ "lenso-kernel",
+ "lenso-native-adapter",
 ]
 
 [[package]]

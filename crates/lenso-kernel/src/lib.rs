@@ -1,7 +1,9 @@
 //! Portable Lenso vNext Kernel and Runtime Driver seam.
 
 use std::{
+    any::Any,
     cell::{Cell, RefCell},
+    collections::BTreeMap,
     future::Future,
     pin::Pin,
     rc::Rc,
@@ -16,6 +18,122 @@ use futures::{
     task::{LocalSpawnExt, SpawnError},
 };
 use lenso_app_plan::{PLAN_SCHEMA_VERSION, ResolvedAppPlan};
+
+type ErasedValue = Box<dyn Any>;
+type ErasedDomainResult = Result<ErasedValue, ErasedValue>;
+
+/// Static identity and Rust value types generated for one request Capability.
+pub trait RequestCapability: 'static {
+    /// Typed request value.
+    type Request: 'static;
+    /// Typed success value.
+    type Response: 'static;
+    /// Typed Capability-defined error value.
+    type DomainError: 'static;
+    /// Stable Capability series identity.
+    const ID: &'static str;
+    /// Exact generated Descriptor version.
+    const DESCRIPTOR_VERSION: &'static str;
+}
+
+/// Runtime-owned failure, kept separate from Capability-defined Domain Errors.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeFailure {
+    /// The consumer has no resolved binding for this Capability.
+    Unavailable { capability: &'static str },
+    /// The bound provider does not declare the requested Operation.
+    UnknownOperation {
+        capability: &'static str,
+        operation: String,
+    },
+    /// Generated native types disagreed with the prepared endpoint.
+    ProtocolViolation { capability: &'static str },
+    /// A package selected by the Plan was not linked into the native App.
+    MissingModuleFactory {
+        instance: String,
+        package_id: String,
+    },
+    /// The Resolved Plan or prepared endpoint set is internally inconsistent.
+    InvalidResolvedPlan { detail: String },
+}
+
+/// Type-erased native endpoint used only while Kernel constructs and dispatches the graph.
+pub trait NativeRequestEndpoint: std::fmt::Debug {
+    /// Stable Capability series identity.
+    fn capability_id(&self) -> &'static str;
+    /// Exact Descriptor version implemented by this endpoint.
+    fn descriptor_version(&self) -> &'static str;
+    /// Exact stable Operation names implemented by this endpoint.
+    fn operations(&self) -> &'static [&'static str];
+    /// Dispatches one operation without serializing its typed Rust payload.
+    fn invoke(
+        &self,
+        operation: &str,
+        request: ErasedValue,
+    ) -> LocalBoxFuture<'static, Result<ErasedDomainResult, RuntimeFailure>>;
+}
+
+/// Prepared native bindings returned by an Execution Adapter to Kernel.
+#[derive(Debug)]
+pub struct PreparedNativeApp {
+    bindings: BTreeMap<(String, &'static str), Rc<dyn NativeRequestEndpoint>>,
+}
+
+impl PreparedNativeApp {
+    /// Completes Adapter preparation with an exact consumer binding table.
+    pub fn new(bindings: BTreeMap<(String, &'static str), Rc<dyn NativeRequestEndpoint>>) -> Self {
+        Self { bindings }
+    }
+}
+
+/// Host-specific seam that instantiates native Module generations and prepares endpoints.
+pub trait NativeExecutionAdapter: std::fmt::Debug {
+    /// Instantiates the exact Plan and confirms its endpoint and binding tables.
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
+}
+
+/// A started native App whose generated clients can invoke resolved bindings.
+#[derive(Debug)]
+pub struct NativeApp {
+    bindings: BTreeMap<(String, &'static str), Rc<dyn NativeRequestEndpoint>>,
+}
+
+impl NativeApp {
+    /// Confirms that a generated client has one resolved binding before use.
+    pub fn ensure_binding<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Result<(), RuntimeFailure> {
+        self.bindings
+            .contains_key(&(caller_instance.to_owned(), C::ID))
+            .then_some(())
+            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })
+    }
+
+    /// Invokes a generated request Operation through the caller's resolved binding.
+    pub async fn invoke<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+        operation: &str,
+        request: C::Request,
+    ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+        let endpoint = self
+            .bindings
+            .get(&(caller_instance.to_owned(), C::ID))
+            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
+        let outcome = endpoint.invoke(operation, Box::new(request)).await?;
+        match outcome {
+            Ok(value) => value
+                .downcast::<C::Response>()
+                .map(|value| Ok(*value))
+                .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
+            Err(value) => value
+                .downcast::<C::DomainError>()
+                .map(|value| Err(*value))
+                .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
+        }
+    }
+}
 
 /// A task owned by a Runtime Driver's single-threaded local lane.
 pub type LocalTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
@@ -97,6 +215,27 @@ pub enum PlanValidationError {
 pub struct Kernel;
 
 impl Kernel {
+    /// Starts statically linked native Modules selected by a resolved Plan.
+    pub async fn start_native<D: RuntimeDriver, A: NativeExecutionAdapter>(
+        plan: ResolvedAppPlan,
+        driver: D,
+        adapter: A,
+    ) -> Result<NativeApp, RuntimeFailure> {
+        if plan.schema_version() != PLAN_SCHEMA_VERSION {
+            return Err(RuntimeFailure::InvalidResolvedPlan {
+                detail: format!(
+                    "unsupported Plan schema version {}; expected {PLAN_SCHEMA_VERSION}",
+                    plan.schema_version()
+                ),
+            });
+        }
+        let prepared = adapter.prepare(&plan)?;
+        driver.yield_now().await;
+        Ok(NativeApp {
+            bindings: prepared.bindings,
+        })
+    }
+
     /// Validates and boots one already resolved Plan.
     pub async fn boot<D: RuntimeDriver>(
         plan: ResolvedAppPlan,

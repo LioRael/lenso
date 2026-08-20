@@ -2,8 +2,11 @@
 resolver = "2"
 members = [
     "crates/lenso-app-plan",
+    "crates/lenso-capability-greeting",
     "crates/lenso-kernel",
+    "crates/lenso-native-adapter",
     "crates/lenso-runner",
+    "fixtures/vnext-native-greeter",
     "fixtures/provider",
     "crates/lenso-contracts",
     "crates/lenso-module-management",
