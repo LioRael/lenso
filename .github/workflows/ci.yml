@@ -28,5 +28,7 @@ jobs:
         run: |
           cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-unknown-unknown
           cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-wasip2
+          cargo check --locked -p lenso-browser-driver --all-targets --target wasm32-unknown-unknown
+          cargo check --locked -p lenso-wasip2-driver --all-targets --target wasm32-wasip2
       - name: Run the native skeleton
         run: cargo run --locked -p lenso-runner
