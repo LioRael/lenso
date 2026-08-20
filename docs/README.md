@@ -1,50 +1,28 @@
-# Lenso documentation map
+# Lenso vNext documentation
 
-This repository intentionally carries two documentation scopes during the
-vNext transition. Document status is determined by this map and the canonical
-context, not by a file's age or directory name.
+This directory contains the design evidence for the `next` branch.
 
-## Normative vNext documentation
+## Normative
 
-- [`../CONTEXT.md`](../CONTEXT.md) defines canonical vocabulary, invariants,
-  routing, and delivery branches.
+- [`CONTEXT.md`](../CONTEXT.md) defines vocabulary, ownership, and invariants.
 - [`architecture/lenso-vnext.md`](architecture/lenso-vnext.md) describes the
-  agreed runtime shape.
-- [`adr/README.md`](adr/README.md) identifies the authoritative ADR range. ADRs
-  0030 onward are normative for vNext.
+  runtime shape.
+- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0057 and the
+  historical ADRs 0001–0029.
 - [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md)
-  defines implementation evidence and sequencing.
+  defines the implementation evidence sequence.
 - [`architecture/future-directions/distributed-module-runtime.md`](architecture/future-directions/distributed-module-runtime.md)
-  records deferred distribution and microservice motivation without expanding
-  the v1 Kernel.
+  records deferred distribution decisions.
 
-Research under `research/lenso-vnext-*` supports decisions but is not itself a
-normative contract.
+## Research
 
-## Maintained legacy documentation
+[`research/`](research/) contains dated research and architecture reviews that
+support vNext decisions. Research is evidence, not an executable contract.
 
-The current workspace and `main` branch still implement the v0.3.x
-Service-oriented framework. Its architecture, getting-started, package,
-release, operations, security, contract, and runbook documents remain in their
-existing paths so maintenance links and current release procedures keep
-working. Direct legacy architecture pages and ADRs carry an explicit status
-banner.
+## Governance
 
-Use legacy documents only to maintain v0.3.x, understand migration inputs, or
-build a deliberately bounded compatibility Adapter. Do not infer vNext Kernel
-or Module requirements from them.
+[`agents/`](agents/) contains issue-tracker and agent wayfinding
+conventions. Root governance lives in [`AGENTS.md`](../AGENTS.md).
 
-## Retirement policy
-
-Legacy documentation is removed only after all of the following are true:
-
-1. issue #603 assigns the behavior a vNext owner, compatibility boundary, or
-   retirement decision;
-2. no maintained v0.3.x workflow or supported release depends on the document;
-3. code, documentation, CI, package, and external-link references are updated;
-4. historical ADR evidence remains available; and
-5. the deletion is reviewed separately from the implementation that replaces
-   the behavior.
-
-ADRs are historical records and are not deleted merely because they are
-superseded.
+The previous v0.3.x implementation documentation is not maintained on `next`.
+Its source and release history remain available on `main` and in Git history.

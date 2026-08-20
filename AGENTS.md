@@ -1,192 +1,57 @@
 # AGENTS.md
 
-Guidance for coding agents working in this repository.
+This repository's `next` branch contains only Lenso vNext. `main` is the
+separate v0.3.x maintenance and release line.
 
-## Architecture and branch scope
+## Start safely
 
-`next` is the canonical integration branch for Lenso vNext. For issue #577 and
-its child tickets, create work from the latest `origin/next`, target `next` in
-pull requests, and read [`CONTEXT.md`](CONTEXT.md),
-[`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md), and the
-relevant ADR from 0030 onward before planning implementation.
+- Read [`CONTEXT.md`](CONTEXT.md), [`docs/adr/README.md`](docs/adr/README.md),
+  [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md), and
+  the relevant ADR 0030–0057 before changing architecture.
+- Create vNext worktrees from the latest `origin/next` with
+  `wt switch --create`; do not edit the primary worktree when an isolated
+  worktree is available.
+- Preserve unrelated dirty work. Inspect `git status` and diffs before
+  touching an overlapping file.
+- Run Rust commands through
+  `/Users/leosouthey/Projects/framework/.lenso-tools/bin/lenso-cargo` when
+  available so sibling worktrees share the configured target cache.
 
-`main` remains the maintained v0.3.x Service-oriented release line. The current
-workspace still implements that legacy architecture, so legacy source and
-documentation remain useful migration evidence, but their Host, Service,
-Provider, System Plane, Module Release, Console Surface, mandatory Story, and
-PostgreSQL assumptions are not vNext requirements.
+## Architecture rules
 
-For vNext work:
+- Keep the portable Kernel independent of Tokio, OS APIs, network, filesystem,
+  database, process, product, and release concerns.
+- Keep authoring data in `lenso-app-plan`; keep host scheduling in a Runtime
+  Driver; keep host-specific Module execution in an Execution Adapter.
+- A Resolved App Plan is immutable and complete before boot. No runtime
+  discovery, installation, graph mutation, dynamic rebinding, or fallback
+  provider behavior.
+- Use the canonical terms App, Module, Module Instance, Capability, Operation,
+  App Composition, Resolved App Plan, Kernel, Runtime Driver, and Execution
+  Adapter.
+- Do not reintroduce Service, Provider, System Plane, Console, Story, Auth,
+  PostgreSQL, migration, Outbox, Workflow, release, digest, or compatibility
+  crates into the Kernel workspace.
 
-- build new portable contract and Kernel packages beside the legacy runtime;
-- keep Tokio, operating-system facilities, and product behavior outside the
-  portable Kernel behind Runtime Drivers, Execution Adapters, and Modules;
-- use App, Module, Module Instance, Capability, Operation, App Composition,
-  Resolved App Plan, Kernel, Runtime Driver, and Execution Adapter as the
-  canonical vocabulary;
-- do not mechanically preserve or rename legacy abstractions when a ticket
-  requires a new vNext seam; and
-- treat release automation as `main`-only until an explicit cutover decision.
+## Validation
 
-Before planning, changing, or executing a framework release, read
-`docs/release-process.md` and the accepted
-[`0025-release-repositories-independently`](docs/adr/0025-release-repositories-independently.md)
-decision. This repository owns its Cargo and npm release workflows; do not
-reintroduce a central coordinator, shadow registry, or repository-wide release
-plan. Work merged only to `next` must not publish v0.3.x packages.
+Use the narrowest meaningful check, then run the full workspace gate for
+cross-cutting runtime or workspace changes:
 
-## Legacy v0.3.x Project Shape
-
-Lenso is a Rust-first modular monolith backend. Console source lives in the sibling `../lenso-console` repository.
-
-- `crates/lenso-api`: Axum HTTP API.
-- `crates/lenso-worker`: background worker and outbox relay.
-- `crates/lenso-migrate`: deterministic migration runner.
-- `crates/platform-*`: shared platform primitives for config, HTTP, runtime, module contracts, admin backends, testing, migrations, outbox, errors, health, and telemetry.
-- `crates/lenso`: public Rust facade crate for serializable module-authoring declarations: `ModuleManifest`, admin surfaces, HTTP route metadata, runtime/event/lifecycle declarations, console surfaces, story display metadata, and manifest lints.
-- `crates/platform-module`: internal module behavior seams plus compatibility re-exports: `ModuleBinding`, `LinkedBinding` for compile-time modules, `AdminDataSource` for schema-admin reads, and `AdminActionSource` for executable admin actions.
-- `crates/platform-admin`: Console observability backend mounted under `/admin/runtime/*`; it observes runtime/outbox/story tables and must not depend on concrete modules.
-- `crates/platform-admin-data`: schema-admin backend mounted under `/admin/data/*`; it serves generic module data through `AdminSurface::Schema` and `AdminDataSource`, with no concrete-module dependencies.
-- `crates/lenso-bootstrap`: composition root that enumerates concrete modules for the API and worker.
-- `crates/lenso-api-contracts`: owner-local contract generator and architecture integration tests.
-- `modules/*`: product or fixture capabilities packaged as modules. Modules should stay vertical and avoid cross-module imports.
-- `contracts/*`: committed OpenAPI, JSON Schema, event, error, and runtime contracts.
-- Contract generation and architecture checks live in the `lenso-api-contracts`
-  owner crate.
-- `infrastructure/local`: local Postgres and optional OpenTelemetry collector.
-
-Read `docs/architecture/overview.md` and `docs/architecture/rules.md` only when
-maintaining or migrating the legacy implementation. They are not normative for
-vNext.
-
-## Do Not Disturb Unrelated Work
-
-The worktree may contain user changes. Do not revert, reformat, stage, or commit unrelated files. If a task requires touching a file that already has changes, inspect the diff first and preserve the user's work.
-
-## Common Commands
-
-Use the owning Cargo package, integration test, or Docker Compose file directly.
-There is no root task runner; commands belong to the crate, package, or workflow
-that owns them.
-
-- `cargo fmt --all -- --check`: check Rust formatting.
-- `cargo check --locked --workspace --all-targets`: compile the workspace.
-- `cargo test --locked --workspace`: run workspace tests.
-- `cargo run --locked -p lenso-api-contracts --bin generate-contracts`: regenerate committed contracts.
-- `cargo test --locked -p lenso-api-contracts --test architecture`: run architecture rules.
-- `cargo test --locked -p lenso-api-contracts --test generated_artifacts`: verify committed contract bytes.
-- `cargo test --locked -p lenso-api --test first_user`: run the first-user host integration test.
-- `docker compose -f infrastructure/local/docker-compose.yml up -d postgres`: start local Postgres.
-- `cargo run --locked -p lenso-migrate`: apply migrations.
-- `cargo run --locked -p lenso-api`: start the API.
-- `cargo run --locked -p lenso-worker`: start the worker.
-
-## Validation Strategy
-
-Default to narrow validation during feature work. Run the full explicit quality
-gate locally only for high-risk changes such as contracts, migrations, runtime or Service
-protocol core paths, package/release gates, or when explicitly requested. For
-normal feature slices, use focused local gates that match the changed surface
-and rely on GitHub Actions for full workspace coverage.
-
-For local services, use `infrastructure/local/docker-compose.yml` directly and
-run the API, worker, and migration packages with Cargo.
-
-## Generated Artifacts
-
-Generated files are committed but must not be edited by hand.
-
-- Update Rust/OpenAPI/event sources first.
-- Run `cargo run --locked -p lenso-api-contracts --bin generate-contracts`.
-- Compare the generated output with the committed artifacts before finishing.
-- Contract artifacts live under `contracts`.
-
-If generated files change, include the source change and generated output together.
-
-## Rust Guidelines
-
-- Keep the workspace locked with `cargo ... --locked` for checks and tests.
-- Prefer existing platform crates over new shared abstractions.
-- Keep modules vertical and capability-oriented.
-- Do not introduce DDD/Clean Architecture folder names inside modules: `api`, `application`, `domain`, or `infrastructure`.
-- Do not add cross-module imports inside module source code.
-- Register module wiring only in `crates/lenso-bootstrap`; platform crates must expose seams and stay free of concrete-module dependencies.
-- Keep module data and behavior split: serializable declarations belong in `ModuleManifest`; source-specific behavior belongs behind narrow traits such as `ModuleBinding` and `AdminDataSource`.
-- Prefer explicit SQL and existing migration patterns.
-- Keep error responses aligned with the platform error model and committed schemas.
-
-## Legacy Architecture Memory
-
-Claude Code project memory was imported into Codex on 2026-06-03. Keep these design decisions current:
-
-- Lenso is moving from a fixed modular monolith toward an installable module framework. The current declaration source of truth is the public `lenso` facade crate plus `platform-module` behavior seams, not the older `platform-domain`/`DomainDescriptor` model.
-- Step 1 is done: `DomainDescriptor` was split into owned, serializable `ModuleManifest` data plus narrow `ModuleBinding` behavior. `ModuleManifest` and pure declarations now live in `crates/lenso`; `platform-module` re-exports them for workspace compatibility and owns behavior seams. `LinkedBinding` is the only current Module source. Independently running code is a Service, never a Remote Module. A future Wasm source must be introduced as its own reviewed Module source without restoring the retired remote-process category or collapsing the manifest/behavior split.
-- Step 2 schema-admin is done as a read-only vertical slice. `AdminSurface::Schema(AdminSchema)` is manifest data; `AdminDataSource` is the behavior seam returning `serde_json::Value`; auth provides the current User schema/list/detail implementation.
-- Do not re-add `#[non_exhaustive]` to producer-constructed structs `AdminSchema`, `EntitySchema`, `FieldSchema`, or `AdminPage`; it blocks struct literal construction from other crates. Keep it on consumer-matched enums such as `FieldType` and `AdminSurface`.
-- `platform-admin` is runtime observability, not business CRUD. `platform-admin-data` is schema-admin business data. Both are platform crates and must not depend on concrete modules; `lenso-bootstrap` injects the module/data registries.
-- OpenAPI is single-source through `utoipa-axum`: put `#[utoipa::path]` on real handlers and register routes with `OpenApiRouter::routes(routes!(handler))`. `crates/lenso-api/src/openapi.rs::openapi_document()` must stay pure and context-free because generators, arch checks, and sync tests call it outside a runtime.
-- Durable Workflow compensation persists completed effects and deterministic compensation order in the owning Service Store. Compensation request publication is atomic with local dispatch state, remote reversal remains inside the remote Service Inbox transaction, and the Workflow reaches `compensated` only after a declared completion Event confirms the stable effect and compensation identities. Rejected compensation uses the distinct `compensation_failed` state with intervention evidence; no distributed transaction is introduced.
-
-## Legacy Console Guidelines
-
-The Console is developed in the sibling `../lenso-console`
-repository. This framework repository owns managed-Service System Plane and
-compatibility admin APIs plus their generated contracts. The Console repository
-owns Console Service APIs and Console Modules such as `lenso/platform-story`,
-including their backend, migrations, and `ModuleManifest.console` declarations.
-
-- Keep backend `ModuleManifest.console` data aligned with the frontend package surface contracts.
-- Validate substantial frontend changes inside `../lenso-console`.
-
-## CI Expectations
-
-GitHub Actions runs the explicit quality commands on pull requests and pushes to
-`main` and `next`; there is no root task-runner shim. Release workflows remain
-scoped to `main`.
-
-Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run the explicit quality gate from `.github/workflows/ci.yml`. For changes that affect Console behavior, also run the relevant checks in `../lenso-console`.
-
-If a command fails because network access is blocked while installing dependencies, rerun the same command with the required approval rather than changing project files to work around the sandbox.
-
-## Commit Guidance
-
-Only stage files that belong to the requested change. Use targeted `git add` paths, inspect `git diff --cached --name-only`, and leave unrelated modified or untracked files alone.
-
-Use concise Conventional Commits for new commits:
-
-```text
-<type>[optional scope]: <imperative summary>
+```sh
+cargo fmt --all -- --check
+cargo check --locked --workspace --all-targets
+cargo test --locked --workspace
 ```
 
-Recommended types:
+The CI workflow is the source of truth for the portable WebAssembly checks.
 
-- `feat`: user-facing feature or capability.
-- `fix`: bug fix or behavioral correction.
-- `chore`: tooling, CI, dependencies, generated maintenance, or repository housekeeping.
-- `docs`: documentation-only changes.
-- `refactor`: code restructuring without intentional behavior changes.
-- `test`: tests or test utilities.
-- `perf`: performance improvement.
+## Changes and commits
 
-Keep the subject under 72 characters when practical, use lowercase type names, and do not end the subject with a period. Use a body only when the reason, migration note, or verification detail is not obvious from the diff.
+Use `apply_patch` for focused edits and stage only requested files. Use
+Conventional Commits with a concise imperative subject under 72 characters.
+Do not hand-edit generated lockfiles when Cargo can regenerate them.
 
-Examples:
-
-- `feat(console): add trace layout tests`
-- `fix(api): preserve request correlation ids`
-- `chore: align project workflows`
-- `docs: add agent contributor guide`
-
-## Agent skills
-
-### Issue tracker
-
-Issues and PRDs are tracked in this repository's GitHub Issues. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Triage uses the five default canonical labels. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Domain documentation uses a single-context layout. See `docs/agents/domain.md`.
+Do not add compatibility shims or a `legacy/` directory to make removed
+v0.3.x code compile. If a retained behavior needs a vNext home, first state its
+Interface and owner, then add the smallest deep Module or Adapter seam.

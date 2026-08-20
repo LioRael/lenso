@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   pull_request:
@@ -7,8 +7,10 @@ on:
       - main
       - next
 
+permissions: {}
+
 jobs:
-  portable-kernel:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -16,185 +18,15 @@ jobs:
         with:
           targets: wasm32-unknown-unknown,wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check the workspace
+        run: cargo check --locked --workspace --all-targets
+      - name: Test the workspace
+        run: cargo test --locked --workspace
       - name: Compile the portable Kernel for WebAssembly hosts
         run: |
           cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-unknown-unknown
           cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-wasip2
-
-  typescript-service-kit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.7.0
-          run_install: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24.18.0
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --dir sdk/typescript check
-
-  quality:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18-alpine
-        env:
-          POSTGRES_DB: lenso
-          POSTGRES_PASSWORD: lenso
-          POSTGRES_USER: lenso
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U lenso -d lenso"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-      DATABASE_URL: postgres://lenso:lenso@localhost:5432/lenso
-      NATS_URL: nats://127.0.0.1:4222
-      LENSO_NATS_TEST_INFRASTRUCTURE_APPROVED: true
-      LENSO_SPIFFE_TEST_INFRASTRUCTURE_APPROVED: true
-    steps:
-      - uses: actions/checkout@v6
-      - name: Checkout the coordinated Auth contract
-        uses: actions/checkout@v6
-        with:
-          repository: LioRael/lenso-auth-module
-          ref: 6f689d6aa38aa74a490d9877287fa6f0aa2aacc1
-          path: .ci/lenso-auth-module
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Bind the coordinated Auth packages
-        run: |
-          mkdir -p .cargo
-          cat > .cargo/config.toml <<'EOF'
-          [patch.crates-io]
-          lenso-module-auth = { path = ".ci/lenso-auth-module/crates/auth" }
-          lenso-module-auth-anonymous = { path = ".ci/lenso-auth-module/crates/auth-anonymous" }
-          lenso-module-auth-github = { path = ".ci/lenso-auth-module/crates/auth-github" }
-          lenso-module-auth-google = { path = ".ci/lenso-auth-module/crates/auth-google" }
-          lenso-module-auth-oauth = { path = ".ci/lenso-auth-module/crates/auth-oauth" }
-          lenso-module-auth-oidc = { path = ".ci/lenso-auth-module/crates/auth-oidc" }
-          lenso-module-auth-password = { path = ".ci/lenso-auth-module/crates/auth-password" }
-          lenso-module-auth-phone = { path = ".ci/lenso-auth-module/crates/auth-phone" }
-          EOF
-          for package in \
-            lenso-module-auth \
-            lenso-module-auth-anonymous \
-            lenso-module-auth-github \
-            lenso-module-auth-google \
-            lenso-module-auth-oauth \
-            lenso-module-auth-oidc \
-            lenso-module-auth-password \
-            lenso-module-auth-phone; do
-            cargo update --package "$package"
-          done
-      - uses: Swatinem/rust-cache@v2
-        with:
-          env-vars: CARGO_PROFILE_DEV_DEBUG CARGO_PROFILE_TEST_DEBUG
-      - name: Start ephemeral NATS JetStream verification infrastructure
-        run: |
-          docker run --detach --rm --name lenso-nats --publish 4222:4222 nats:2.14-alpine -js
-          for attempt in {1..50}; do
-            if (echo > /dev/tcp/127.0.0.1/4222) 2>/dev/null; then exit 0; fi
-            sleep 0.1
-          done
-          docker logs lenso-nats
-          exit 1
-      - name: Start ephemeral SPIRE Workload Identity infrastructure
-        run: |
-          test "$LENSO_SPIFFE_TEST_INFRASTRUCTURE_APPROVED" = true
-          SPIRE_ROOT="$RUNNER_TEMP/lenso-spire"
-          mkdir -p "$SPIRE_ROOT/server" "$SPIRE_ROOT/agent"
-          sudo chown 1000:1000 "$SPIRE_ROOT/server"
-          cp crates/lenso-service/tests/support/spire/server.conf "$SPIRE_ROOT/server.conf"
-          cp crates/lenso-service/tests/support/spire/agent.conf "$SPIRE_ROOT/agent.conf"
-          docker network create lenso-spire
-          docker run --detach \
-            --name lenso-spire-server \
-            --network lenso-spire \
-            --env LENSO_SPIRE_SERVER_DIR=/run/spire/server \
-            --volume "$SPIRE_ROOT/server.conf:/opt/spire/conf/server/server.conf:ro" \
-            --volume "$SPIRE_ROOT/server:/run/spire/server" \
-            ghcr.io/spiffe/spire-server:1.13.3 \
-            -config /opt/spire/conf/server/server.conf -expandEnv
-          for attempt in {1..100}; do
-            if docker exec lenso-spire-server /opt/spire/bin/spire-server healthcheck \
-              -socketPath /run/spire/server/private/api.sock >/dev/null 2>&1; then
-              break
-            fi
-            if [ "$attempt" = 100 ]; then
-              docker logs lenso-spire-server
-              exit 1
-            fi
-            sleep 0.1
-          done
-          docker exec lenso-spire-server /opt/spire/bin/spire-server bundle show \
-            -socketPath /run/spire/server/private/api.sock -format pem > "$SPIRE_ROOT/agent/bootstrap.crt"
-          JOIN_TOKEN="$(docker exec lenso-spire-server /opt/spire/bin/spire-server token generate \
-            -socketPath /run/spire/server/private/api.sock \
-            -output json | jq -r .value)"
-          docker run --detach \
-            --name lenso-spire-agent \
-            --network lenso-spire \
-            --pid host \
-            --env LENSO_SPIRE_AGENT_DIR=/run/spire/agent \
-            --env LENSO_SPIRE_SERVER_ADDRESS=lenso-spire-server \
-            --volume "$SPIRE_ROOT/agent.conf:/opt/spire/conf/agent/agent.conf:ro" \
-            --volume "$SPIRE_ROOT/agent:/run/spire/agent" \
-            ghcr.io/spiffe/spire-agent:1.13.3 \
-            -config /opt/spire/conf/agent/agent.conf -expandEnv -joinToken "$JOIN_TOKEN"
-          for attempt in {1..100}; do
-            if docker exec lenso-spire-agent /opt/spire/bin/spire-agent healthcheck \
-              -socketPath /run/spire/agent/api.sock >/dev/null 2>&1; then
-              break
-            fi
-            if [ "$attempt" = 100 ]; then
-              docker logs lenso-spire-agent
-              exit 1
-            fi
-            sleep 0.1
-          done
-          AGENT_PARENT_ID="$(docker exec lenso-spire-server /opt/spire/bin/spire-server agent list \
-            -socketPath /run/spire/server/private/api.sock -output json | \
-            jq -r '.agents[0].id | "spiffe://\(.trust_domain)\(.path)"')"
-          for service in ticketing support; do
-            docker exec lenso-spire-server /opt/spire/bin/spire-server entry create \
-              -socketPath /run/spire/server/private/api.sock \
-              -parentID "$AGENT_PARENT_ID" \
-              -spiffeID "spiffe://lenso.test/service/$service" \
-              -selector "unix:uid:$(id -u)" \
-              -x509SVIDTTL 10 \
-              -jwtSVIDTTL 60
-          done
-      - name: Run quality gates
-        env:
-          SPIFFE_ENDPOINT_SOCKET: unix://${{ runner.temp }}/lenso-spire/agent/api.sock
-        run: |
-          cargo fmt --all -- --check
-          cargo check --locked --workspace --all-targets
-          cargo test --locked --workspace
-          cargo test --locked -p lenso --features host-transactions --test host_outbox_relay
-          cargo test --locked -p lenso --features host --test linked_runtime_authoring
-          cargo test --locked -p lenso --features host --test linked_runtime_worker_acceptance
-          bash crates/lenso/tests/check_linked_runtime_consumer.sh
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
-          mkdir -p "$tmp/contracts"
-          cp -R contracts/. "$tmp/contracts/"
-          cargo run --locked -p lenso-api-contracts --bin generate-contracts
-          diff -ru "$tmp/contracts" contracts
-          cargo test --locked -p lenso-api-contracts --test architecture
-          cargo test --locked -p lenso-api-contracts --test generated_artifacts
-      - name: Stop ephemeral SPIRE Workload Identity infrastructure
-        if: always()
-        run: |
-          docker rm --force lenso-spire-agent lenso-spire-server || true
-          docker network rm lenso-spire || true
-      - name: Stop ephemeral NATS JetStream verification infrastructure
-        if: always()
-        run: docker rm --force lenso-nats || true
+      - name: Run the native skeleton
+        run: cargo run --locked -p lenso-runner
