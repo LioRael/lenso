@@ -57,6 +57,183 @@ struct Operation {
     domain_error_schema: Value,
 }
 
+/// The language-neutral view consumed by every binding backend.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ContractIr {
+    capability_id: String,
+    version: String,
+    portable: bool,
+    operations: Vec<OperationIr>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct OperationIr {
+    name: String,
+    interaction: String,
+    request: TypeIr,
+    response: TypeIr,
+    domain_errors: Vec<ErrorVariantIr>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TypeIr {
+    Any,
+    String,
+    Int64,
+    Uint64,
+    Bytes,
+    Timestamp,
+    Duration,
+    Integer,
+    Number,
+    Boolean,
+    Null,
+    Enum(Vec<String>),
+    Array(Box<Self>),
+    Object {
+        fields: Vec<FieldIr>,
+        additional: ObjectAdditionalIr,
+    },
+    Nullable(Box<Self>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FieldIr {
+    name: String,
+    required: bool,
+    ty: TypeIr,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum ObjectAdditionalIr {
+    Closed,
+    Any,
+    Typed(Box<TypeIr>),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ErrorVariantIr {
+    code: String,
+    name: String,
+    structured: bool,
+    payload: Option<TypeIr>,
+    payload_required: bool,
+}
+
+impl TypeIr {
+    fn is_nullable(&self) -> bool {
+        matches!(self, Self::Nullable(_))
+    }
+
+    fn non_null(&self) -> &Self {
+        match self {
+            Self::Nullable(inner) => inner,
+            _ => self,
+        }
+    }
+}
+
+fn contract_ir(descriptor: &Descriptor) -> ContractIr {
+    ContractIr {
+        capability_id: descriptor.capability_id.clone(),
+        version: descriptor.version.clone(),
+        portable: descriptor.portable,
+        operations: descriptor
+            .operations
+            .iter()
+            .map(|operation| OperationIr {
+                name: operation.name.clone(),
+                interaction: operation.interaction.clone(),
+                request: type_ir_from_schema(&operation.request_schema),
+                response: type_ir_from_schema(&operation.response_schema),
+                domain_errors: error_variant_ir_definitions(&operation.domain_error_schema),
+            })
+            .collect(),
+    }
+}
+
+fn type_ir_from_schema(schema: &Value) -> TypeIr {
+    if let Some(types) = schema.get("type").and_then(Value::as_array) {
+        let non_null_types = types
+            .iter()
+            .filter(|schema_type| *schema_type != "null")
+            .cloned()
+            .collect::<Vec<_>>();
+        if non_null_types.is_empty() {
+            return TypeIr::Null;
+        }
+        if non_null_types.len() == 1 {
+            let mut narrowed = schema.as_object().cloned().unwrap_or_default();
+            narrowed.insert("type".to_owned(), non_null_types[0].clone());
+            let base = type_ir_non_null(&Value::Object(narrowed));
+            return if non_null_types.len() == types.len() {
+                base
+            } else {
+                TypeIr::Nullable(Box::new(base))
+            };
+        }
+    }
+    type_ir_non_null(schema)
+}
+
+fn type_ir_non_null(schema: &Value) -> TypeIr {
+    let Some(object) = schema.as_object() else {
+        return TypeIr::Any;
+    };
+    if let Some(schema_type) = object.get("type").and_then(Value::as_str) {
+        return match schema_type {
+            "object" => {
+                let required = required_fields(schema);
+                let fields = object
+                    .get("properties")
+                    .and_then(Value::as_object)
+                    .into_iter()
+                    .flatten()
+                    .map(|(name, schema)| FieldIr {
+                        name: name.clone(),
+                        required: required.contains(name),
+                        ty: type_ir_from_schema(schema),
+                    })
+                    .collect();
+                let additional = match object.get("additionalProperties") {
+                    Some(Value::Bool(false)) => ObjectAdditionalIr::Closed,
+                    Some(Value::Bool(true)) | None => ObjectAdditionalIr::Any,
+                    Some(schema) => {
+                        ObjectAdditionalIr::Typed(Box::new(type_ir_from_schema(schema)))
+                    }
+                };
+                TypeIr::Object { fields, additional }
+            }
+            "array" => object.get("items").map_or(TypeIr::Any, |items| {
+                TypeIr::Array(Box::new(type_ir_from_schema(items)))
+            }),
+            "string" => match object.get("format").and_then(Value::as_str) {
+                Some("int64") => TypeIr::Int64,
+                Some("uint64") => TypeIr::Uint64,
+                Some("byte") => TypeIr::Bytes,
+                Some("date-time") => TypeIr::Timestamp,
+                Some("duration") => TypeIr::Duration,
+                _ => TypeIr::String,
+            },
+            "integer" => TypeIr::Integer,
+            "number" => TypeIr::Number,
+            "boolean" => TypeIr::Boolean,
+            "null" => TypeIr::Null,
+            _ => TypeIr::Any,
+        };
+    }
+    if let Some(values) = object.get("enum").and_then(Value::as_array) {
+        return TypeIr::Enum(
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect(),
+        );
+    }
+    TypeIr::Any
+}
+
 /// A validated, self-contained portable Capability Descriptor.
 #[derive(Clone, Debug)]
 pub struct Descriptor {
@@ -924,6 +1101,7 @@ pub fn generate(path: &Path) -> Result<GeneratedArtifacts, CodegenError> {
             interaction: operation.interaction.clone(),
         });
     }
+    let contract = contract_ir(&descriptor);
     let metadata = GeneratedMetadata {
         capability_id: descriptor.capability_id.clone(),
         descriptor_version: descriptor.version.clone(),
@@ -931,8 +1109,8 @@ pub fn generate(path: &Path) -> Result<GeneratedArtifacts, CodegenError> {
     };
     Ok(GeneratedArtifacts {
         metadata,
-        rust: generate_rust(&descriptor),
-        typescript: generate_typescript(&descriptor),
+        rust: generate_rust(&contract),
+        typescript: generate_typescript(&contract),
     })
 }
 
@@ -1829,16 +2007,7 @@ fn compare_error_schema(old: &Value, new: &Value, location: &str, changes: &mut 
     }
 }
 
-#[derive(Clone, Debug)]
-struct ErrorVariant {
-    code: String,
-    name: String,
-    structured: bool,
-    payload_schema: Option<Value>,
-    payload_required: bool,
-}
-
-fn error_variant_definitions(schema: &Value) -> Vec<ErrorVariant> {
+fn error_variant_ir_definitions(schema: &Value) -> Vec<ErrorVariantIr> {
     let mut variants = schema
         .get("oneOf")
         .and_then(Value::as_array)
@@ -1846,11 +2015,11 @@ fn error_variant_definitions(schema: &Value) -> Vec<ErrorVariant> {
         .flatten()
         .filter_map(|variant| {
             if let Some(code) = variant.get("const").and_then(Value::as_str) {
-                return Some(ErrorVariant {
+                return Some(ErrorVariantIr {
                     code: code.to_owned(),
                     name: pascal_case(code),
                     structured: false,
-                    payload_schema: None,
+                    payload: None,
                     payload_required: false,
                 });
             }
@@ -1861,15 +2030,15 @@ fn error_variant_definitions(schema: &Value) -> Vec<ErrorVariant> {
                 .and_then(|properties| properties.get("code"))
                 .and_then(|code| code.get("const"))
                 .and_then(Value::as_str)?;
-            Some(ErrorVariant {
+            Some(ErrorVariantIr {
                 code: code.to_owned(),
                 name: pascal_case(code),
                 structured: true,
-                payload_schema: object
+                payload: object
                     .get("properties")
                     .and_then(Value::as_object)
                     .and_then(|properties| properties.get("payload"))
-                    .cloned(),
+                    .map(type_ir_from_schema),
                 payload_required: required_fields(variant).contains("payload"),
             })
         })
@@ -2142,134 +2311,112 @@ impl RustTypes {
         }
     }
 
-    fn object(&mut self, name: &str, schema: &Value) -> String {
+    fn object(&mut self, name: &str, fields: &[FieldIr]) -> String {
         if !self.declared.insert(name.to_owned()) {
             return name.to_owned();
         }
         let placeholder = self.declarations.len();
         self.declarations.push(String::new());
-        let required = required_fields(schema);
-        let mut fields = Vec::new();
-        if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
-            for (field_name, field_schema) in properties {
-                let type_name = self.type_for_non_null(
-                    &non_null_schema(field_schema),
-                    &format!("{name}{}", pascal_case(field_name)),
-                );
-                let field_type = if required.contains(field_name) {
-                    if is_nullable(field_schema) {
-                        format!("Option<{type_name}>")
-                    } else {
-                        type_name
-                    }
-                } else if is_nullable(field_schema) {
-                    format!("OptionalValue<{type_name}>")
-                } else {
+        let mut rendered_fields = Vec::new();
+        for field in fields {
+            let type_name = self.type_for_non_null(
+                field.ty.non_null(),
+                &format!("{name}{}", pascal_case(&field.name)),
+            );
+            let field_type = if field.required {
+                if field.ty.is_nullable() {
                     format!("Option<{type_name}>")
-                };
-                let mut attributes = vec![format!(
-                    "    #[serde(rename = {})]",
-                    quote_string(field_name)
-                )];
-                if !required.contains(field_name) {
-                    if is_nullable(field_schema) {
-                        attributes.push("    #[serde(default)]".to_owned());
-                        attributes.push(
-                            "    #[serde(skip_serializing_if = \"Option::is_none\")]".to_owned(),
-                        );
-                        attributes.push(
-                            "    #[serde(deserialize_with = \"deserialize_optional_value\")]"
-                                .to_owned(),
-                        );
-                    } else {
-                        attributes.push(
-                            "    #[serde(skip_serializing_if = \"Option::is_none\")]".to_owned(),
-                        );
-                    }
+                } else {
+                    type_name
                 }
-                if required.contains(field_name) {
+            } else if field.ty.is_nullable() {
+                format!("OptionalValue<{type_name}>")
+            } else {
+                format!("Option<{type_name}>")
+            };
+            let mut attributes = vec![format!(
+                "    #[serde(rename = {})]",
+                quote_string(&field.name)
+            )];
+            if !field.required {
+                if field.ty.is_nullable() {
+                    attributes.push("    #[serde(default)]".to_owned());
+                    attributes
+                        .push("    #[serde(skip_serializing_if = \"Option::is_none\")]".to_owned());
                     attributes.push(
-                        "    #[serde(deserialize_with = \"deserialize_required\")]".to_owned(),
+                        "    #[serde(deserialize_with = \"deserialize_optional_value\")]"
+                            .to_owned(),
                     );
+                } else {
+                    attributes
+                        .push("    #[serde(skip_serializing_if = \"Option::is_none\")]".to_owned());
                 }
-                fields.push(format!(
-                    "{}\n    pub {}: {field_type},",
-                    attributes.join("\n"),
-                    rust_field_name(field_name)
-                ));
             }
+            if field.required {
+                attributes
+                    .push("    #[serde(deserialize_with = \"deserialize_required\")]".to_owned());
+            }
+            rendered_fields.push(format!(
+                "{}\n    pub {}: {field_type},",
+                attributes.join("\n"),
+                rust_field_name(&field.name)
+            ));
         }
         self.declarations[placeholder] = format!(
             "#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct {name} {{\n{}\n}}\n",
-            fields.join("\n")
+            rendered_fields.join("\n")
         );
         name.to_owned()
     }
 
-    fn type_for(&mut self, schema: &Value, nested_name: &str) -> String {
-        let nullable = is_nullable(schema);
-        let schema = non_null_schema(schema);
-        let base = self.type_for_non_null(&schema, nested_name);
-        if nullable {
+    fn type_for(&mut self, ty: &TypeIr, nested_name: &str) -> String {
+        let base = self.type_for_non_null(ty.non_null(), nested_name);
+        if ty.is_nullable() {
             format!("Option<{base}>")
         } else {
             base
         }
     }
 
-    fn type_for_non_null(&mut self, schema: &Value, nested_name: &str) -> String {
-        if let Some(object) = schema.as_object()
-            && let Some(schema_type) = object.get("type").and_then(Value::as_str)
-        {
-            return match schema_type {
-                "object" => {
-                    let has_properties = object
-                        .get("properties")
-                        .and_then(Value::as_object)
-                        .is_some_and(|properties| !properties.is_empty());
-                    if has_properties {
-                        self.object(nested_name, schema)
-                    } else {
-                        match object.get("additionalProperties") {
-                            Some(additional) if !additional.is_boolean() => format!(
-                                "std::collections::BTreeMap<String, {}>",
-                                self.type_for(additional, &format!("{nested_name}Value"))
-                            ),
-                            Some(Value::Bool(true)) | None => {
-                                "std::collections::BTreeMap<String, serde_json::Value>".to_owned()
-                            }
-                            _ => self.object(nested_name, schema),
+    fn type_for_non_null(&mut self, ty: &TypeIr, nested_name: &str) -> String {
+        match ty {
+            TypeIr::Any => "serde_json::Value".to_owned(),
+            TypeIr::String | TypeIr::Enum(_) => "String".to_owned(),
+            TypeIr::Int64 => "Int64".to_owned(),
+            TypeIr::Uint64 => "Uint64".to_owned(),
+            TypeIr::Bytes => "Bytes".to_owned(),
+            TypeIr::Timestamp => "Timestamp".to_owned(),
+            TypeIr::Duration => "Duration".to_owned(),
+            TypeIr::Integer => "i64".to_owned(),
+            TypeIr::Number => "f64".to_owned(),
+            TypeIr::Boolean => "bool".to_owned(),
+            TypeIr::Null => "()".to_owned(),
+            TypeIr::Array(items) => {
+                format!(
+                    "Vec<{}>",
+                    self.type_for(items, &format!("{nested_name}Item"))
+                )
+            }
+            TypeIr::Object { fields, additional } => {
+                if fields.is_empty() {
+                    match additional {
+                        ObjectAdditionalIr::Closed => self.object(nested_name, fields),
+                        ObjectAdditionalIr::Any => {
+                            "std::collections::BTreeMap<String, serde_json::Value>".to_owned()
                         }
+                        ObjectAdditionalIr::Typed(values) => format!(
+                            "std::collections::BTreeMap<String, {}>",
+                            self.type_for(values, &format!("{nested_name}Value"))
+                        ),
                     }
+                } else {
+                    self.object(nested_name, fields)
                 }
-                "array" => object.get("items").map_or_else(
-                    || "Vec<serde_json::Value>".to_owned(),
-                    |items| {
-                        format!(
-                            "Vec<{}>",
-                            self.type_for(items, &format!("{nested_name}Item"))
-                        )
-                    },
-                ),
-                "string" => match object.get("format").and_then(Value::as_str) {
-                    Some("int64") => "Int64".to_owned(),
-                    Some("uint64") => "Uint64".to_owned(),
-                    Some("byte") => "Bytes".to_owned(),
-                    Some("date-time") => "Timestamp".to_owned(),
-                    Some("duration") => "Duration".to_owned(),
-                    _ => "String".to_owned(),
-                },
-                "integer" => "i64".to_owned(),
-                "number" => "f64".to_owned(),
-                "boolean" => "bool".to_owned(),
-                "null" => "()".to_owned(),
-                other => format!("serde_json::Value /* unsupported `{other}` */"),
-            };
+            }
+            TypeIr::Nullable(inner) => {
+                format!("Option<{}>", self.type_for_non_null(inner, nested_name))
+            }
         }
-        if schema.get("enum").is_some() {
-            return "String".to_owned();
-        }
-        "serde_json::Value".to_owned()
     }
 }
 
@@ -2286,134 +2433,93 @@ impl TypeScriptTypes {
         }
     }
 
-    fn object(&mut self, name: &str, schema: &Value) -> String {
+    fn object(&mut self, name: &str, fields: &[FieldIr]) -> String {
         if !self.declared.insert(name.to_owned()) {
             return name.to_owned();
         }
         let placeholder = self.declarations.len();
         self.declarations.push(String::new());
-        let required = required_fields(schema);
-        let mut fields = Vec::new();
-        if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
-            for (field_name, field_schema) in properties {
-                let type_name = self.type_for_non_null(
-                    &non_null_schema(field_schema),
-                    &format!("{name}{}", pascal_case(field_name)),
-                );
-                let optional = if required.contains(field_name) {
-                    ""
-                } else {
-                    "?"
-                };
-                let field_type = if is_nullable(field_schema) {
-                    format!("{type_name} | null")
-                } else {
-                    type_name
-                };
-                fields.push(format!(
-                    "  {}{optional}: {field_type};",
-                    typescript_property_name(field_name)
-                ));
-            }
+        let mut rendered_fields = Vec::new();
+        for field in fields {
+            let type_name = self.type_for_non_null(
+                field.ty.non_null(),
+                &format!("{name}{}", pascal_case(&field.name)),
+            );
+            let optional = if field.required { "" } else { "?" };
+            let field_type = if field.ty.is_nullable() {
+                format!("{type_name} | null")
+            } else {
+                type_name
+            };
+            rendered_fields.push(format!(
+                "  {}{optional}: {field_type};",
+                typescript_property_name(&field.name)
+            ));
         }
-        self.declarations[placeholder] =
-            format!("export interface {name} {{\n{}\n}}\n", fields.join("\n"));
+        self.declarations[placeholder] = format!(
+            "export interface {name} {{\n{}\n}}\n",
+            rendered_fields.join("\n")
+        );
         name.to_owned()
     }
 
-    fn type_for(&mut self, schema: &Value, nested_name: &str) -> String {
-        let nullable = is_nullable(schema);
-        let schema = non_null_schema(schema);
-        let base = self.type_for_non_null(&schema, nested_name);
-        if nullable {
+    fn type_for(&mut self, ty: &TypeIr, nested_name: &str) -> String {
+        let base = self.type_for_non_null(ty.non_null(), nested_name);
+        if ty.is_nullable() {
             format!("{base} | null")
         } else {
             base
         }
     }
 
-    fn type_for_non_null(&mut self, schema: &Value, nested_name: &str) -> String {
-        if let Some(object) = schema.as_object()
-            && let Some(schema_type) = object.get("type").and_then(Value::as_str)
-        {
-            return match schema_type {
-                "object" => {
-                    let has_properties = object
-                        .get("properties")
-                        .and_then(Value::as_object)
-                        .is_some_and(|properties| !properties.is_empty());
-                    if has_properties {
-                        self.object(nested_name, schema)
-                    } else {
-                        match object.get("additionalProperties") {
-                            Some(additional) if !additional.is_boolean() => format!(
-                                "Record<string, {}>",
-                                self.type_for(additional, &format!("{nested_name}Value"))
-                            ),
-                            Some(Value::Bool(true)) | None => "Record<string, unknown>".to_owned(),
-                            _ => self.object(nested_name, schema),
-                        }
-                    }
-                }
-                "array" => object.get("items").map_or_else(
-                    || "Array<unknown>".to_owned(),
-                    |items| {
-                        format!(
-                            "Array<{}>",
-                            self.type_for(items, &format!("{nested_name}Item"))
-                        )
-                    },
-                ),
-                "string" => match object.get("format").and_then(Value::as_str) {
-                    Some("int64") => "Int64".to_owned(),
-                    Some("uint64") => "Uint64".to_owned(),
-                    Some("byte") => "Bytes".to_owned(),
-                    Some("date-time") => "Timestamp".to_owned(),
-                    Some("duration") => "Duration".to_owned(),
-                    _ => "string".to_owned(),
-                },
-                "integer" | "number" => "number".to_owned(),
-                "boolean" => "boolean".to_owned(),
-                "null" => "null".to_owned(),
-                _ => "unknown".to_owned(),
-            };
-        }
-        if let Some(values) = schema.get("enum").and_then(Value::as_array) {
-            let values = values
+    fn type_for_non_null(&mut self, ty: &TypeIr, nested_name: &str) -> String {
+        match ty {
+            TypeIr::Any => "unknown".to_owned(),
+            TypeIr::String => "string".to_owned(),
+            TypeIr::Int64 => "Int64".to_owned(),
+            TypeIr::Uint64 => "Uint64".to_owned(),
+            TypeIr::Bytes => "Bytes".to_owned(),
+            TypeIr::Timestamp => "Timestamp".to_owned(),
+            TypeIr::Duration => "Duration".to_owned(),
+            TypeIr::Integer | TypeIr::Number => "number".to_owned(),
+            TypeIr::Boolean => "boolean".to_owned(),
+            TypeIr::Null => "null".to_owned(),
+            TypeIr::Enum(values) => values
                 .iter()
-                .filter_map(Value::as_str)
-                .map(quote_string)
-                .collect::<Vec<_>>();
-            return if values.is_empty() {
-                "unknown".to_owned()
-            } else {
-                values.join(" | ")
-            };
+                .map(|value| quote_string(value))
+                .collect::<Vec<_>>()
+                .join(" | "),
+            TypeIr::Array(items) => {
+                format!(
+                    "Array<{}>",
+                    self.type_for(items, &format!("{nested_name}Item"))
+                )
+            }
+            TypeIr::Object { fields, additional } => {
+                if fields.is_empty() {
+                    match additional {
+                        ObjectAdditionalIr::Closed => self.object(nested_name, fields),
+                        ObjectAdditionalIr::Any => "Record<string, unknown>".to_owned(),
+                        ObjectAdditionalIr::Typed(values) => format!(
+                            "Record<string, {}>",
+                            self.type_for(values, &format!("{nested_name}Value"))
+                        ),
+                    }
+                } else {
+                    self.object(nested_name, fields)
+                }
+            }
+            TypeIr::Nullable(inner) => {
+                format!("{} | null", self.type_for_non_null(inner, nested_name))
+            }
         }
-        "unknown".to_owned()
     }
-}
-
-fn non_null_schema(schema: &Value) -> Value {
-    if let Some(types) = schema.get("type").and_then(Value::as_array) {
-        let non_null = types
-            .iter()
-            .filter(|value| *value != "null")
-            .cloned()
-            .collect::<Vec<_>>();
-        if non_null.len() == 1 {
-            let mut object = schema.as_object().cloned().unwrap_or_default();
-            object.insert("type".to_owned(), non_null.into_iter().next().unwrap());
-            return Value::Object(object);
-        }
-    }
-    schema.clone()
 }
 
 #[allow(clippy::too_many_lines)]
-fn generate_rust(descriptor: &Descriptor) -> String {
+fn generate_rust(contract: &ContractIr) -> String {
     let capability_name = pascal_case(
-        descriptor
+        contract
             .capability_id
             .split('@')
             .next()
@@ -2433,19 +2539,19 @@ fn generate_rust(descriptor: &Descriptor) -> String {
     let mut error_codecs = Vec::new();
     let mut wire_codecs = Vec::new();
 
-    for operation in &descriptor.operations {
+    for operation in &contract.operations {
         let operation_name = pascal_case(&operation.name);
         let request_name = format!("{operation_name}Request");
         let response_name = format!("{operation_name}Response");
         let error_name = format!("{operation_name}Error");
-        let marker_name = if descriptor.operations.len() == 1 {
+        let marker_name = if contract.operations.len() == 1 {
             capability_name.clone()
         } else {
             format!("{capability_name}{operation_name}")
         };
-        let request_type = types.type_for(&operation.request_schema, &request_name);
-        let response_type = types.type_for(&operation.response_schema, &response_name);
-        let known_errors = error_variant_definitions(&operation.domain_error_schema);
+        let request_type = types.type_for(&operation.request, &request_name);
+        let response_type = types.type_for(&operation.response, &response_name);
+        let known_errors = &operation.domain_errors;
         let error_definition = if known_errors.is_empty() {
             format!(
                 "#[derive(Clone, Debug, PartialEq)]\npub enum {error_name} {{\n    Unknown(UnknownDomainError),\n}}\n"
@@ -2454,17 +2560,17 @@ fn generate_rust(descriptor: &Descriptor) -> String {
             let variants = known_errors
                 .iter()
                 .map(|variant| {
-                    if let Some(payload_schema) = &variant.payload_schema {
+                    if let Some(payload) = &variant.payload {
                         let payload_name = format!("{error_name}{}Payload", variant.name);
-                        let payload_type = types
-                            .type_for_non_null(&non_null_schema(payload_schema), &payload_name);
+                        let payload_type =
+                            types.type_for_non_null(payload.non_null(), &payload_name);
                         let payload_type = if variant.payload_required {
-                            if is_nullable(payload_schema) {
+                            if payload.is_nullable() {
                                 format!("Option<{payload_type}>")
                             } else {
                                 payload_type
                             }
-                        } else if is_nullable(payload_schema) {
+                        } else if payload.is_nullable() {
                             format!("OptionalValue<{payload_type}>")
                         } else {
                             format!("Option<{payload_type}>")
@@ -2484,7 +2590,7 @@ fn generate_rust(descriptor: &Descriptor) -> String {
             )
         };
         types.declarations.push(error_definition);
-        error_codecs.push(generate_rust_error_codec(&error_name, &known_errors));
+        error_codecs.push(generate_rust_error_codec(&error_name, known_errors));
         wire_codecs.push(generate_rust_wire_codecs(
             &operation.name,
             &request_type,
@@ -2509,7 +2615,7 @@ fn generate_rust(descriptor: &Descriptor) -> String {
         ));
         if operation.interaction == "request" {
             let field = rust_field_name(&operation.name);
-            let invocation_error_name = if descriptor.operations.len() == 1 {
+            let invocation_error_name = if contract.operations.len() == 1 {
                 format!("{capability_name}InvocationError")
             } else {
                 format!("{capability_name}{operation_name}InvocationError")
@@ -2535,21 +2641,17 @@ fn generate_rust(descriptor: &Descriptor) -> String {
     writeln!(
         output,
         "pub const CAPABILITY_ID: &str = {};",
-        quote_string(&descriptor.capability_id)
+        quote_string(&contract.capability_id)
     )
     .expect("writing to a String cannot fail");
     writeln!(
         output,
         "pub const DESCRIPTOR_VERSION: &str = {};",
-        quote_string(&descriptor.version)
+        quote_string(&contract.version)
     )
     .expect("writing to a String cannot fail");
-    writeln!(
-        output,
-        "pub const PORTABLE: bool = {};",
-        descriptor.portable
-    )
-    .expect("writing to a String cannot fail");
+    writeln!(output, "pub const PORTABLE: bool = {};", contract.portable)
+        .expect("writing to a String cannot fail");
     writeln!(
         output,
         "pub const {capability_const}_CAPABILITY_ID: &str = CAPABILITY_ID;"
@@ -2560,7 +2662,7 @@ fn generate_rust(descriptor: &Descriptor) -> String {
         "pub const {capability_const}_DESCRIPTOR_VERSION: &str = DESCRIPTOR_VERSION;\n\n"
     )
     .expect("writing to a String cannot fail");
-    for operation in &descriptor.operations {
+    for operation in &contract.operations {
         let operation_const = format!("{}_OPERATION", screaming_snake_case(&operation.name));
         writeln!(
             output,
@@ -2605,8 +2707,8 @@ fn generate_rust(descriptor: &Descriptor) -> String {
         endpoint_arms.join(",\n")
     )
     .expect("writing to a String cannot fail");
-    let new_method = if descriptor.operations.len() == 1 {
-        let field = rust_field_name(&descriptor.operations[0].name);
+    let new_method = if contract.operations.len() == 1 {
+        let field = rust_field_name(&contract.operations[0].name);
         let marker = &capability_name;
         format!(
             "    pub fn new(handle: NativeRequestHandle<{marker}>) -> Self {{\n        Self {{ {field}: handle }}\n    }}\n\n"
@@ -2630,7 +2732,7 @@ fn generate_rust(descriptor: &Descriptor) -> String {
 }
 
 #[allow(clippy::too_many_lines)]
-fn generate_rust_error_codec(error_name: &str, variants: &[ErrorVariant]) -> String {
+fn generate_rust_error_codec(error_name: &str, variants: &[ErrorVariantIr]) -> String {
     let mut output = String::new();
     writeln!(output, "impl serde::Serialize for {error_name} {{").expect("String cannot fail");
     output.push_str(
@@ -2640,7 +2742,7 @@ fn generate_rust_error_codec(error_name: &str, variants: &[ErrorVariant]) -> Str
     output.push_str("        match self {\n");
     for variant in variants {
         if variant.structured {
-            if variant.payload_schema.is_some() {
+            if variant.payload.is_some() {
                 if variant.payload_required {
                     writeln!(
                         output,
@@ -2701,7 +2803,7 @@ fn generate_rust_error_codec(error_name: &str, variants: &[ErrorVariant]) -> Str
     if variants.iter().any(|variant| variant.structured) {
         output.push_str("                match code.as_str() {\n");
         for variant in variants.iter().filter(|variant| variant.structured) {
-            if variant.payload_schema.is_some() {
+            if variant.payload.is_some() {
                 if variant.payload_required {
                     writeln!(
                         output,
@@ -2760,7 +2862,7 @@ fn generate_typescript_codecs(
     request_type: &str,
     response_type: &str,
     error_type: &str,
-    variants: &[ErrorVariant],
+    variants: &[ErrorVariantIr],
 ) -> String {
     let stem = pascal_case(operation);
     let mut known_strings = String::new();
@@ -2778,9 +2880,9 @@ fn generate_typescript_codecs(
 }
 
 #[allow(clippy::too_many_lines)]
-fn generate_typescript(descriptor: &Descriptor) -> String {
+fn generate_typescript(contract: &ContractIr) -> String {
     let capability_name = pascal_case(
-        descriptor
+        contract
             .capability_id
             .split('@')
             .next()
@@ -2792,27 +2894,25 @@ fn generate_typescript(descriptor: &Descriptor) -> String {
     let mut providers = Vec::new();
     let mut errors = Vec::new();
     let mut codecs = Vec::new();
-    for operation in &descriptor.operations {
+    for operation in &contract.operations {
         let operation_name = pascal_case(&operation.name);
         let request_name = format!("{operation_name}Request");
         let response_name = format!("{operation_name}Response");
         let error_name = format!("{operation_name}Error");
-        let request_type = types.type_for(&operation.request_schema, &request_name);
-        let response_type = types.type_for(&operation.response_schema, &response_name);
-        let variants = error_variant_definitions(&operation.domain_error_schema);
+        let request_type = types.type_for(&operation.request, &request_name);
+        let response_type = types.type_for(&operation.response, &response_name);
+        let variants = &operation.domain_errors;
         let error_type = if variants.is_empty() {
             "UnknownDomainError".to_owned()
         } else {
             let mut values = variants
                 .iter()
                 .map(|variant| {
-                    if let Some(payload_schema) = &variant.payload_schema {
+                    if let Some(payload) = &variant.payload {
                         let payload_name = format!("{error_name}{}Payload", variant.name);
-                        let payload_type = types.type_for_non_null(
-                            &non_null_schema(payload_schema),
-                            &payload_name,
-                        );
-                        let payload_type = if is_nullable(payload_schema) {
+                        let payload_type =
+                            types.type_for_non_null(payload.non_null(), &payload_name);
+                        let payload_type = if payload.is_nullable() {
                             format!("{payload_type} | null")
                         } else {
                             payload_type
@@ -2842,7 +2942,7 @@ fn generate_typescript(descriptor: &Descriptor) -> String {
             &request_type,
             &response_type,
             &error_name,
-            &variants,
+            variants,
         ));
         clients.push(format!(
             "  {}(request: {request_type}, context?: InvocationContext): Promise<{result_name}>;",
@@ -2858,21 +2958,17 @@ fn generate_typescript(descriptor: &Descriptor) -> String {
     writeln!(
         output,
         "export const CAPABILITY_ID = {};",
-        quote_string(&descriptor.capability_id)
+        quote_string(&contract.capability_id)
     )
     .expect("writing to a String cannot fail");
     writeln!(
         output,
         "export const DESCRIPTOR_VERSION = {};",
-        quote_string(&descriptor.version)
+        quote_string(&contract.version)
     )
     .expect("writing to a String cannot fail");
-    write!(
-        output,
-        "export const PORTABLE = {};\n\n",
-        descriptor.portable
-    )
-    .expect("writing to a String cannot fail");
+    write!(output, "export const PORTABLE = {};\n\n", contract.portable)
+        .expect("writing to a String cannot fail");
     output.push_str("export type Int64 = string & { readonly __lensoInt64: unique symbol };\nexport type Uint64 = string & { readonly __lensoUint64: unique symbol };\nexport type Bytes = string & { readonly __lensoBytes: unique symbol };\nexport type Timestamp = string & { readonly __lensoTimestamp: unique symbol };\nexport type Duration = string & { readonly __lensoDuration: unique symbol };\nexport type OptionalValue<T> = T | null | undefined;\n\nexport interface InvocationContext {\n  readonly requestId: Uint64;\n  readonly deadline?: Duration;\n  readonly cancelled: boolean;\n  readonly callerInstance?: string;\n  readonly extensions?: Record<string, unknown>;\n}\n\nexport type RuntimeFailure = { readonly kind: \"unavailable\" | \"unknown_operation\" | \"ambiguous_binding\" | \"protocol_violation\" | \"missing_module_factory\" | \"unavailable_execution_class\" | \"invalid_resolved_plan\" | \"admission_closed\" | \"resource_exhausted\" | \"deadline_exceeded\" | \"cancelled\" | \"internal\" | \"module_failure\" | \"module_restart_exhausted\"; readonly detail?: unknown; readonly [key: string]: unknown };\nexport type UnknownDomainError = { readonly code: string; readonly payload?: unknown };\n\n");
     for declaration in types.declarations {
         output.push_str(&declaration);

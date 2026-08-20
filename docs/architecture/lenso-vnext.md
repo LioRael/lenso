@@ -107,6 +107,14 @@ Generated Rust values include serde wire codecs and generated TypeScript values
 include JSON codecs; both preserve optional-versus-null fields and open unknown
 Domain Error code/payload pairs. Unsupported unions and object shapes that
 would discard wire data fail generation before artifacts are written.
+Bindings belong to the Capability contract package rather than to every Module
+implementation package. A Rust consumer and provider reuse one generated
+crate for a selected Descriptor so their Rust types remain identical; a Bun
+consumer or provider installs the corresponding generated TypeScript package.
+Generation is an authoring/build step, and the initial Rust-plus-TypeScript
+proof does not imply that every contract must publish bindings for every
+language. Future targets are selected by the real Execution Adapters and
+consumers that support them.
 The first binding surface covers request Operations; stream and event transport
 semantics remain owned by the later Runtime Adapter and transport work.
 
