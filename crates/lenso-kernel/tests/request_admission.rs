@@ -1,7 +1,7 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     rc::Rc,
     time::Duration,
 };
@@ -13,8 +13,8 @@ use lenso_app_plan::{
 };
 use lenso_kernel::{
     CancellationToken, DeterministicDriver, InvocationContext, Kernel, NativeExecutionAdapter,
-    NativeRequestEndpoint, PreparedBinding, PreparedNativeApp, RequestCapability, RuntimeDriver,
-    RuntimeFailure,
+    NativeRequestEndpoint, NoopModuleLifecycle, PreparedBinding, PreparedNativeApp,
+    PreparedNativeModule, RequestCapability, RuntimeDriver, RuntimeFailure,
 };
 
 const CAPABILITY_ID: &str = "test.echo";
@@ -137,11 +137,24 @@ struct EchoAdapter {
 
 impl NativeExecutionAdapter for EchoAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-        Ok(PreparedNativeApp::new(vec![PreparedBinding::new(
-            "consumer",
-            "provider",
-            self.endpoint.clone(),
-        )]))
+        let endpoint: Rc<dyn NativeRequestEndpoint> = self.endpoint.clone();
+        Ok(PreparedNativeApp::new(
+            vec![PreparedBinding::new(
+                "consumer",
+                "provider",
+                endpoint.clone(),
+            )],
+            BTreeMap::from([
+                (
+                    "consumer".to_owned(),
+                    PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+                ),
+                (
+                    "provider".to_owned(),
+                    PreparedNativeModule::new(vec![endpoint], NoopModuleLifecycle),
+                ),
+            ]),
+        ))
     }
 }
 
@@ -411,4 +424,32 @@ fn queued_cancellation_does_not_invoke_or_consume_the_next_capacity_slot() {
         }))
         .expect("the deterministic Driver should accept the recovery task");
     assert_eq!(driver.run(recovered).unwrap().unwrap(), "recovered");
+}
+
+#[test]
+fn provider_completion_wins_when_completion_and_cancellation_are_ready_together() {
+    let driver = DeterministicDriver::new();
+    let probe = Rc::new(Probe::default());
+    let app = app(&driver, probe.clone(), RequestAdmissionPlan::new(0, 1));
+    let handle = app
+        .handle::<Echo>("consumer")
+        .expect("the test binding should resolve");
+    let cancellation = CancellationToken::new();
+    let context = app.invocation_context(None, cancellation.clone());
+    let control_driver = driver.clone();
+    let release = probe.clone();
+    driver
+        .spawn_local(Box::pin(async move {
+            control_driver.yield_now().await;
+            release.release_one();
+            cancellation.cancel();
+        }))
+        .expect("the deterministic Driver should accept the race task");
+
+    let outcome =
+        driver.run(handle.invoke_with_context(OPERATION, context, "completed".to_owned()));
+
+    assert_eq!(outcome.unwrap().unwrap(), "completed");
+    assert_eq!(probe.started.get(), 1);
+    assert_eq!(probe.active.get(), 0);
 }

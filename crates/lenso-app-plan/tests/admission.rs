@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, ModuleCriticality, ModuleInstancePlan, RequestAdmissionPlan,
-    RestartMode, RestartPolicy,
+    CapabilityRequirementPlan, ModuleCriticality, ModuleInstancePlan, PlanResolutionError,
+    RequestAdmissionPlan, RestartMode, RestartPolicy,
 };
 
 #[test]
@@ -189,4 +189,37 @@ fn an_on_failure_policy_requires_a_positive_attempt_window() {
             ..
         }) if instance_key == "provider"
     ));
+}
+
+#[test]
+fn empty_entrypoints_and_duplicate_operations_are_rejected_before_boot() {
+    let empty_entrypoint = AppComposition::new(
+        vec![ModuleInstancePlan::new("module", "package").with_entrypoint("  ")],
+        vec![],
+    )
+    .resolve();
+    assert_eq!(
+        empty_entrypoint,
+        Err(PlanResolutionError::InvalidModuleEntrypoint {
+            instance_key: "module".to_owned(),
+        })
+    );
+
+    let duplicate_operation = AppComposition::new(
+        vec![
+            ModuleInstancePlan::new("provider", "package").with_capability(
+                CapabilityEndpointPlan::new("test.echo", "1.0.0", ["echo", "echo"]),
+            ),
+        ],
+        vec![],
+    )
+    .resolve();
+    assert_eq!(
+        duplicate_operation,
+        Err(PlanResolutionError::DuplicateOperation {
+            provider_instance: "provider".to_owned(),
+            capability_id: "test.echo".to_owned(),
+            operation: "echo".to_owned(),
+        })
+    );
 }
