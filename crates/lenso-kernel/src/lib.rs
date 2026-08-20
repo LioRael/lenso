@@ -15,7 +15,7 @@ use std::{
 use futures::{
     channel::oneshot,
     executor::{LocalPool, LocalSpawner},
-    future::{AbortHandle, Abortable, LocalBoxFuture},
+    future::{AbortHandle, Abortable, Either, FutureExt, LocalBoxFuture, select},
     task::{LocalSpawnExt, SpawnError},
 };
 use lenso_app_plan::{PlanResolutionError, ResolvedAppPlan};
@@ -61,6 +61,8 @@ pub enum RuntimeFailure {
     },
     /// The Resolved Plan or prepared endpoint set is internally inconsistent.
     InvalidResolvedPlan { detail: String },
+    /// New request admission was closed because the App is shutting down.
+    AdmissionClosed,
 }
 
 /// The lifecycle phase represented by a Module context.
@@ -224,26 +226,292 @@ impl Default for AppReadyGate {
     }
 }
 
+/// App-wide admission for externally triggered work.
+#[derive(Clone, Debug)]
+pub struct AppAdmission {
+    state: Rc<AppAdmissionState>,
+}
+
+#[derive(Debug)]
+struct AppAdmissionState {
+    open: Cell<bool>,
+}
+
+impl AppAdmission {
+    fn new() -> Self {
+        Self {
+            state: Rc::new(AppAdmissionState {
+                open: Cell::new(false),
+            }),
+        }
+    }
+
+    /// Returns whether new externally triggered work may be admitted.
+    pub fn is_open(&self) -> bool {
+        self.state.open.get()
+    }
+
+    /// Returns whether new externally triggered work is rejected.
+    pub fn is_closed(&self) -> bool {
+        !self.is_open()
+    }
+
+    fn open(&self) {
+        self.state.open.set(true);
+    }
+
+    fn close(&self) {
+        self.state.open.set(false);
+    }
+}
+
+/// Cooperative cancellation shared by one Module Instance generation.
+#[derive(Clone, Debug)]
+pub struct CancellationToken {
+    state: Rc<CancellationState>,
+}
+
+#[derive(Debug)]
+struct CancellationState {
+    cancelled: Cell<bool>,
+    waiters: RefCell<Vec<oneshot::Sender<()>>>,
+}
+
+impl CancellationToken {
+    /// Creates a token that has not been cancelled.
+    pub fn new() -> Self {
+        Self {
+            state: Rc::new(CancellationState {
+                cancelled: Cell::new(false),
+                waiters: RefCell::new(Vec::new()),
+            }),
+        }
+    }
+
+    /// Returns whether cancellation has been requested.
+    pub fn is_cancelled(&self) -> bool {
+        self.state.cancelled.get()
+    }
+
+    /// Waits until cancellation is requested.
+    pub fn cancelled(&self) -> LocalBoxFuture<'static, ()> {
+        if self.is_cancelled() {
+            return Box::pin(futures::future::ready(()));
+        }
+        let (wakeup, waiter) = oneshot::channel();
+        self.state.waiters.borrow_mut().push(wakeup);
+        Box::pin(async move {
+            let _ = waiter.await;
+        })
+    }
+
+    fn cancel(&self) {
+        if self.state.cancelled.replace(true) {
+            return;
+        }
+        for waiter in self.state.waiters.borrow_mut().drain(..) {
+            let _ = waiter.send(());
+        }
+    }
+}
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A future used to release one Driver-backed managed resource.
+pub type ResourceFuture = LocalBoxFuture<'static, Result<(), RuntimeFailure>>;
+
+/// A resource whose release is owned by one Module Instance generation.
+pub trait ManagedResource: std::fmt::Debug + 'static {
+    /// Releases the resource exactly once when its generation is cleaned up.
+    fn release(&self) -> ResourceFuture;
+}
+
+/// Error returned when a resource cannot be registered in a closed scope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResourceRegistrationError {
+    /// The Module generation has begun shutdown or rollback cleanup.
+    ScopeClosed,
+}
+
+#[derive(Debug)]
+struct ManagedResourceEntry {
+    resource: Rc<dyn ManagedResource>,
+    released: Cell<bool>,
+}
+
+/// A handle that releases one managed resource at most once.
+#[derive(Clone, Debug)]
+pub struct ManagedResourceHandle {
+    entry: Rc<ManagedResourceEntry>,
+}
+
+impl ManagedResourceHandle {
+    /// Returns whether this resource has already had its release attempted.
+    pub fn is_released(&self) -> bool {
+        self.entry.released.get()
+    }
+
+    fn begin_release(&self) -> Option<ResourceFuture> {
+        (!self.entry.released.replace(true)).then(|| self.entry.resource.release())
+    }
+
+    /// Releases this resource once; repeated calls are successful no-ops.
+    pub async fn release(&self) -> Result<(), RuntimeFailure> {
+        match self.begin_release() {
+            Some(release) => release.await,
+            None => Ok(()),
+        }
+    }
+}
+
+/// A Module-generation resource scope backed by Driver-polled cleanup futures.
+#[derive(Clone)]
+pub struct ManagedResourceScope {
+    state: Rc<ManagedResourceScopeState>,
+}
+
+#[derive(Debug, Default)]
+struct ManagedResourceScopeState {
+    resources: RefCell<Vec<ManagedResourceHandle>>,
+    closed: Cell<bool>,
+}
+
+impl std::fmt::Debug for ManagedResourceScope {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ManagedResourceScope")
+            .field("resource_count", &self.resource_count())
+            .finish()
+    }
+}
+
+impl ManagedResourceScope {
+    fn new() -> Self {
+        Self {
+            state: Rc::new(ManagedResourceScopeState::default()),
+        }
+    }
+
+    /// Registers a resource owned by this Module Instance generation.
+    pub fn register(
+        &self,
+        resource: impl ManagedResource,
+    ) -> Result<ManagedResourceHandle, ResourceRegistrationError> {
+        if self.state.closed.get() {
+            return Err(ResourceRegistrationError::ScopeClosed);
+        }
+        let handle = ManagedResourceHandle {
+            entry: Rc::new(ManagedResourceEntry {
+                resource: Rc::new(resource),
+                released: Cell::new(false),
+            }),
+        };
+        self.state.resources.borrow_mut().push(handle.clone());
+        Ok(handle)
+    }
+
+    /// Returns the number of resources that still need cleanup.
+    pub fn resource_count(&self) -> usize {
+        self.state
+            .resources
+            .borrow()
+            .iter()
+            .filter(|resource| !resource.is_released())
+            .count()
+    }
+
+    fn close(&self) {
+        self.state.closed.set(true);
+    }
+
+    async fn release_all(&self) -> Option<RuntimeFailure> {
+        let resources = std::mem::take(&mut *self.state.resources.borrow_mut());
+        let mut first_error = None;
+        for resource in resources {
+            if let Some(release) = resource.begin_release()
+                && let Err(error) = release.await
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
+        }
+        first_error
+    }
+
+    fn release_unawaited(&self) {
+        let resources = std::mem::take(&mut *self.state.resources.borrow_mut());
+        for resource in resources {
+            let _ = resource.begin_release();
+        }
+    }
+
+    async fn release_all_until(
+        &self,
+        driver: &DriverControl,
+        deadline: Duration,
+    ) -> Result<Option<RuntimeFailure>, ()> {
+        let resources = std::mem::take(&mut *self.state.resources.borrow_mut());
+        let mut first_error = None;
+        for (index, resource) in resources.iter().enumerate() {
+            let Some(release) = resource.begin_release() else {
+                continue;
+            };
+            match wait_until(driver, deadline, release).await {
+                Some(Ok(())) => {}
+                Some(Err(error)) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+                None => {
+                    for pending in resources.iter().skip(index + 1) {
+                        let _ = pending.begin_release();
+                    }
+                    return Err(());
+                }
+            }
+        }
+        Ok(first_error)
+    }
+}
+
 /// A Kernel-owned task handle that is cleaned up with its Module generation.
 #[derive(Clone, Debug)]
 pub struct ManagedTask {
     task: Rc<RefCell<Option<DriverTask>>>,
+    abort: AbortHandle,
 }
 
 impl ManagedTask {
     /// Requests cancellation of the underlying task.
     pub fn cancel(&self) {
-        if let Some(task) = self.task.borrow().as_ref() {
-            task.cancel();
-        }
+        self.abort.abort();
     }
 
-    async fn cancel_and_join(self) {
+    async fn join(&self) {
         let task = self.task.borrow_mut().take();
         if let Some(task) = task {
-            task.cancel();
             let _ = task.await;
         }
+    }
+}
+
+/// Error returned when a managed task cannot be admitted to its scope.
+#[derive(Debug)]
+pub enum ManagedTaskError {
+    /// The Module generation has begun shutdown or rollback cleanup.
+    ScopeClosed,
+    /// The Runtime Driver rejected the local task.
+    Driver(SpawnError),
+}
+
+impl From<SpawnError> for ManagedTaskError {
+    fn from(error: SpawnError) -> Self {
+        Self::Driver(error)
     }
 }
 
@@ -257,6 +525,8 @@ pub struct ManagedTaskScope {
 #[derive(Debug, Default)]
 struct ManagedTaskScopeState {
     tasks: RefCell<Vec<ManagedTask>>,
+    closed: Cell<bool>,
+    cancellation: CancellationToken,
 }
 
 impl std::fmt::Debug for ManagedTaskScope {
@@ -278,9 +548,14 @@ impl ManagedTaskScope {
     }
 
     /// Spawns work owned by this Module Instance generation.
-    pub fn spawn_local(&self, task: LocalTask) -> Result<ManagedTask, SpawnError> {
+    pub fn spawn_local(&self, task: LocalTask) -> Result<ManagedTask, ManagedTaskError> {
+        if self.state.closed.get() {
+            return Err(ManagedTaskError::ScopeClosed);
+        }
+        let driver_task = (self.spawn)(task)?;
         let handle = ManagedTask {
-            task: Rc::new(RefCell::new(Some((self.spawn)(task)?))),
+            abort: driver_task.abort_handle(),
+            task: Rc::new(RefCell::new(Some(driver_task))),
         };
         self.state.tasks.borrow_mut().push(handle.clone());
         Ok(handle)
@@ -291,11 +566,47 @@ impl ManagedTaskScope {
         self.state.tasks.borrow().len()
     }
 
+    /// Returns the cooperative cancellation token for this generation.
+    pub fn cancellation(&self) -> CancellationToken {
+        self.state.cancellation.clone()
+    }
+
+    fn close(&self) {
+        self.state.closed.set(true);
+        self.state.cancellation.cancel();
+    }
+
+    fn cancel(&self) {
+        self.state.cancellation.cancel();
+    }
+
+    fn abort_all(&self) {
+        for task in self.state.tasks.borrow().iter() {
+            task.cancel();
+        }
+    }
+
     async fn cancel_all(&self) {
+        self.close();
         let tasks = std::mem::take(&mut *self.state.tasks.borrow_mut());
         for task in tasks {
-            task.cancel_and_join().await;
+            task.cancel();
+            task.join().await;
         }
+    }
+
+    async fn drain_until(&self, driver: &DriverControl, deadline: Duration) -> bool {
+        self.cancel();
+        let tasks = std::mem::take(&mut *self.state.tasks.borrow_mut());
+        for (index, task) in tasks.iter().enumerate() {
+            if wait_until(driver, deadline, task.join()).await.is_none() {
+                for pending in tasks.iter().skip(index) {
+                    pending.cancel();
+                }
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -304,6 +615,9 @@ impl ManagedTaskScope {
 pub struct PrepareContext {
     instance_key: String,
     dependencies: ModuleDependencies,
+    resources: ManagedResourceScope,
+    cancellation: CancellationToken,
+    admission: AppAdmission,
 }
 
 impl PrepareContext {
@@ -321,6 +635,21 @@ impl PrepareContext {
     pub fn dependencies(&self) -> &ModuleDependencies {
         &self.dependencies
     }
+
+    /// Returns the generation-owned resource scope.
+    pub fn resources(&self) -> &ManagedResourceScope {
+        &self.resources
+    }
+
+    /// Returns the generation-owned cooperative cancellation token.
+    pub fn cancellation(&self) -> CancellationToken {
+        self.cancellation.clone()
+    }
+
+    /// Returns the App admission state, which remains closed until readiness.
+    pub fn admission(&self) -> AppAdmission {
+        self.admission.clone()
+    }
 }
 
 /// Context supplied while a Module initializes against prepared dependencies.
@@ -330,6 +659,9 @@ pub struct ActivateContext {
     dependencies: ModuleDependencies,
     ready_gate: AppReadyGate,
     tasks: ManagedTaskScope,
+    resources: ManagedResourceScope,
+    cancellation: CancellationToken,
+    admission: AppAdmission,
 }
 
 impl ActivateContext {
@@ -360,12 +692,30 @@ impl ActivateContext {
             dependencies: self.dependencies.clone(),
             ready_gate: self.ready_gate.clone(),
             tasks: self.tasks.clone(),
+            resources: self.resources.clone(),
+            cancellation: self.cancellation.clone(),
+            admission: self.admission.clone(),
         }
     }
 
     /// Returns the generation-owned task scope.
     pub fn tasks(&self) -> &ManagedTaskScope {
         &self.tasks
+    }
+
+    /// Returns the generation-owned resource scope.
+    pub fn resources(&self) -> &ManagedResourceScope {
+        &self.resources
+    }
+
+    /// Returns the generation-owned cooperative cancellation token.
+    pub fn cancellation(&self) -> CancellationToken {
+        self.cancellation.clone()
+    }
+
+    /// Returns the App admission state, which remains closed until readiness.
+    pub fn admission(&self) -> AppAdmission {
+        self.admission.clone()
     }
 }
 
@@ -376,6 +726,9 @@ pub struct ReadinessContext {
     dependencies: ModuleDependencies,
     ready_gate: AppReadyGate,
     tasks: ManagedTaskScope,
+    resources: ManagedResourceScope,
+    cancellation: CancellationToken,
+    admission: AppAdmission,
 }
 
 impl ReadinessContext {
@@ -413,6 +766,26 @@ impl ReadinessContext {
     pub fn tasks(&self) -> &ManagedTaskScope {
         &self.tasks
     }
+
+    /// Returns the generation-owned resource scope.
+    pub fn resources(&self) -> &ManagedResourceScope {
+        &self.resources
+    }
+
+    /// Returns the generation-owned cooperative cancellation token.
+    pub fn cancellation(&self) -> CancellationToken {
+        self.cancellation.clone()
+    }
+
+    /// Returns whether new externally triggered work may be admitted.
+    pub fn is_accepting(&self) -> bool {
+        self.admission.is_open()
+    }
+
+    /// Returns the App admission state.
+    pub fn admission(&self) -> AppAdmission {
+        self.admission.clone()
+    }
 }
 
 /// The reason a Module generation is being deactivated.
@@ -431,6 +804,9 @@ pub struct DeactivateContext {
     dependencies: ModuleDependencies,
     reason: DeactivationReason,
     tasks: ManagedTaskScope,
+    resources: ManagedResourceScope,
+    cancellation: CancellationToken,
+    admission: AppAdmission,
 }
 
 impl DeactivateContext {
@@ -457,6 +833,21 @@ impl DeactivateContext {
     /// Returns the generation-owned task scope.
     pub fn tasks(&self) -> &ManagedTaskScope {
         &self.tasks
+    }
+
+    /// Returns the generation-owned resource scope.
+    pub fn resources(&self) -> &ManagedResourceScope {
+        &self.resources
+    }
+
+    /// Returns the generation-owned cooperative cancellation token.
+    pub fn cancellation(&self) -> CancellationToken {
+        self.cancellation.clone()
+    }
+
+    /// Returns the App admission state, which is closed during deactivation.
+    pub fn admission(&self) -> AppAdmission {
+        self.admission.clone()
     }
 }
 
@@ -551,14 +942,43 @@ pub trait NativeExecutionAdapter: std::fmt::Debug {
 struct NativeModuleRuntime {
     lifecycle: Rc<dyn ModuleLifecycle>,
     tasks: ManagedTaskScope,
+    resources: ManagedResourceScope,
 }
 
-#[derive(Debug)]
 struct NativeAppRuntime {
-    _modules: BTreeMap<String, NativeModuleRuntime>,
-    _dependencies: BTreeMap<String, ModuleDependencies>,
-    _activation_order: Vec<String>,
+    modules: BTreeMap<String, NativeModuleRuntime>,
+    dependencies: BTreeMap<String, ModuleDependencies>,
+    activation_order: Vec<String>,
     ready_gate: AppReadyGate,
+    admission: AppAdmission,
+    driver: DriverControl,
+    shutdown_started: Cell<bool>,
+    shutdown_result: RefCell<Option<ShutdownOutcome>>,
+}
+
+impl std::fmt::Debug for NativeAppRuntime {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NativeAppRuntime")
+            .field("module_count", &self.modules.len())
+            .field("ready", &self.ready_gate.is_open())
+            .field("accepting", &self.admission.is_open())
+            .field("shutdown_started", &self.shutdown_started.get())
+            .finish_non_exhaustive()
+    }
+}
+
+impl NativeAppRuntime {
+    fn begin_shutdown(&self) {
+        if self.shutdown_started.replace(true) {
+            return;
+        }
+        self.admission.close();
+        for module in self.modules.values() {
+            module.tasks.close();
+            module.resources.close();
+        }
+    }
 }
 
 /// A started native App whose generated clients can invoke resolved bindings.
@@ -574,6 +994,9 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<(), RuntimeFailure> {
+        if self.runtime.admission.is_closed() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
         self.endpoints::<C>(caller_instance)
             .is_some_and(|endpoints| !endpoints.is_empty())
             .then_some(())
@@ -585,11 +1008,17 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
+        if self.runtime.admission.is_closed() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
         let endpoints = self
             .endpoints::<C>(caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
             .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
-        Ok(NativeRequestHandle::from_endpoints(endpoints))
+        Ok(NativeRequestHandle::from_endpoints(
+            endpoints,
+            self.runtime.admission.clone(),
+        ))
     }
 
     /// Materializes an optional typed handle; an absent binding remains `None`.
@@ -599,7 +1028,9 @@ impl NativeApp {
     ) -> Option<NativeRequestHandle<C>> {
         self.endpoints::<C>(caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
-            .map(NativeRequestHandle::from_endpoints)
+            .map(|endpoints| {
+                NativeRequestHandle::from_endpoints(endpoints, self.runtime.admission.clone())
+            })
     }
 
     /// Materializes a typed handle whose endpoints may be empty for a `many` requirement.
@@ -607,8 +1038,14 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
+        if self.runtime.admission.is_closed() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
         let endpoints = self.endpoints::<C>(caller_instance).unwrap_or(&[]);
-        Ok(NativeRequestHandle::from_endpoints(endpoints))
+        Ok(NativeRequestHandle::from_endpoints(
+            endpoints,
+            self.runtime.admission.clone(),
+        ))
     }
 
     /// Returns the number of immutable provider endpoints bound to one requirement.
@@ -624,6 +1061,32 @@ impl NativeApp {
     /// Returns the App-wide readiness signal observed by Module tasks.
     pub fn ready_gate(&self) -> AppReadyGate {
         self.runtime.ready_gate.clone()
+    }
+
+    /// Returns whether new externally triggered work may be admitted.
+    pub fn is_accepting(&self) -> bool {
+        self.runtime.admission.is_open()
+    }
+
+    /// Returns the App-wide admission state.
+    pub fn admission(&self) -> AppAdmission {
+        self.runtime.admission.clone()
+    }
+
+    /// Starts shutdown admission closure and cooperative cancellation.
+    pub fn request_shutdown(&self) {
+        self.runtime.begin_shutdown();
+    }
+
+    /// Performs bounded graceful shutdown using one global deadline.
+    pub async fn shutdown(&self, timeout: Duration) -> ShutdownOutcome {
+        if let Some(outcome) = self.runtime.shutdown_result.borrow().clone() {
+            return outcome;
+        }
+        self.runtime.begin_shutdown();
+        let outcome = shutdown_native_modules(&self.runtime, timeout).await;
+        self.runtime.shutdown_result.replace(Some(outcome.clone()));
+        outcome
     }
 
     /// Invokes a generated request Operation through the caller's resolved binding.
@@ -652,13 +1115,18 @@ impl NativeApp {
 #[derive(Debug)]
 pub struct NativeRequestHandle<C: RequestCapability> {
     endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+    admission: AppAdmission,
     capability: PhantomData<fn() -> C>,
 }
 
 impl<C: RequestCapability> NativeRequestHandle<C> {
-    fn from_endpoints(endpoints: &[Rc<dyn NativeRequestEndpoint>]) -> Self {
+    fn from_endpoints(
+        endpoints: &[Rc<dyn NativeRequestEndpoint>],
+        admission: AppAdmission,
+    ) -> Self {
         Self {
             endpoints: endpoints.to_vec(),
+            admission,
             capability: PhantomData,
         }
     }
@@ -674,6 +1142,9 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         operation: &str,
         request: C::Request,
     ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+        if self.admission.is_closed() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
         let endpoint = match self.endpoints.as_slice() {
             [] => return Err(RuntimeFailure::Unavailable { capability: C::ID }),
             [endpoint] => endpoint,
@@ -696,6 +1167,9 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     where
         C::Request: Clone,
     {
+        if self.admission.is_closed() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
         if self.endpoints.is_empty() {
             return Ok(Vec::new());
         }
@@ -755,6 +1229,10 @@ impl DriverTask {
     pub fn cancel(&self) {
         self.abort.abort();
     }
+
+    fn abort_handle(&self) -> AbortHandle {
+        self.abort.clone()
+    }
 }
 
 impl Future for DriverTask {
@@ -785,13 +1263,74 @@ pub trait RuntimeDriver: Clone + 'static {
     fn shutdown_requested(&self) -> bool;
 }
 
+#[derive(Clone)]
+struct DriverControl {
+    now: Rc<dyn Fn() -> Duration>,
+    sleep_until: Rc<dyn Fn(Duration) -> LocalBoxFuture<'static, ()>>,
+    yield_now: Rc<dyn Fn() -> LocalBoxFuture<'static, ()>>,
+}
+
+impl std::fmt::Debug for DriverControl {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DriverControl")
+            .finish_non_exhaustive()
+    }
+}
+
+impl DriverControl {
+    fn new<D: RuntimeDriver>(driver: &D) -> Self {
+        let now_driver = driver.clone();
+        let sleep_driver = driver.clone();
+        let yield_driver = driver.clone();
+        Self {
+            now: Rc::new(move || now_driver.now()),
+            sleep_until: Rc::new(move |deadline| sleep_driver.sleep_until(deadline)),
+            yield_now: Rc::new(move || yield_driver.yield_now()),
+        }
+    }
+}
+
+async fn wait_until<F: Future>(
+    driver: &DriverControl,
+    deadline: Duration,
+    future: F,
+) -> Option<F::Output> {
+    let work = future.fuse();
+    let timer = (driver.sleep_until)(deadline).fuse();
+    futures::pin_mut!(work, timer);
+    match select(work, timer).await {
+        Either::Left((output, _)) => Some(output),
+        Either::Right(((), _)) => None,
+    }
+}
+
+/// The result of bounded cleanup after a graceful shutdown request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ShutdownOutcome {
+    /// Every managed task, resource, and Module generation was cleaned up.
+    Clean,
+    /// Cleanup completed but a Module or resource reported a Runtime Failure.
+    RuntimeFailure { error: RuntimeFailure },
+    /// The global shutdown deadline expired; remaining work was terminated.
+    Timeout,
+}
+
 /// A successful terminal result returned to the embedding Runner.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TerminalOutcome {
     /// The App ran to completion.
     Completed,
     /// The embedding Runner requested cooperative shutdown.
     ShutdownRequested,
+    /// The App completed a bounded clean shutdown.
+    CleanShutdown,
+    /// The App could not start because a Module reported a startup failure.
+    StartupFailure { error: RuntimeFailure },
+    /// The running App reported a Runtime Failure during terminal cleanup.
+    RuntimeFailure { error: RuntimeFailure },
+    /// The App exceeded its one global shutdown deadline.
+    ShutdownTimeout,
 }
 
 /// A reason the Kernel rejected a Resolved App Plan before boot.
@@ -822,15 +1361,23 @@ impl Kernel {
             .map_err(|error| runtime_plan_error(&error))?;
         let PreparedNativeApp { bindings, modules } = adapter.prepare(&plan)?;
         let dependencies = module_dependencies(&plan, &bindings);
+        let driver_control = DriverControl::new(&driver);
+        let admission = AppAdmission::new();
         let module_runtimes = native_module_runtimes(&plan, &driver, modules)?;
         let ready_gate = AppReadyGate::new();
-        let prepared_instances =
-            prepare_native_modules(&module_runtimes, &dependencies, &activation_order).await?;
+        let prepared_instances = prepare_native_modules(
+            &module_runtimes,
+            &dependencies,
+            &activation_order,
+            &admission,
+        )
+        .await?;
         if let Err(error) = activate_native_modules(
             &module_runtimes,
             &dependencies,
             &activation_order,
             &ready_gate,
+            &admission,
         )
         .await
         {
@@ -839,18 +1386,23 @@ impl Kernel {
                 &dependencies,
                 &prepared_instances,
                 DeactivationReason::StartupRollback,
+                &admission,
             )
             .await;
             return Err(error);
         }
-        open_native_readiness(&driver, &ready_gate).await;
+        open_native_readiness(&driver, &ready_gate, &admission).await;
         Ok(NativeApp {
             bindings,
             runtime: NativeAppRuntime {
-                _modules: module_runtimes,
-                _dependencies: dependencies,
-                _activation_order: activation_order,
+                modules: module_runtimes,
+                dependencies,
+                activation_order,
                 ready_gate,
+                admission,
+                driver: driver_control,
+                shutdown_started: Cell::new(false),
+                shutdown_result: RefCell::new(None),
             },
         })
     }
@@ -914,6 +1466,7 @@ fn native_module_runtimes<D: RuntimeDriver>(
             NativeModuleRuntime {
                 lifecycle,
                 tasks: ManagedTaskScope::new(driver),
+                resources: ManagedResourceScope::new(),
             },
         );
     }
@@ -924,6 +1477,7 @@ async fn prepare_native_modules(
     modules: &BTreeMap<String, NativeModuleRuntime>,
     dependencies: &BTreeMap<String, ModuleDependencies>,
     activation_order: &[String],
+    admission: &AppAdmission,
 ) -> Result<Vec<String>, RuntimeFailure> {
     let mut prepared_instances = Vec::with_capacity(activation_order.len());
     for instance_key in activation_order {
@@ -934,6 +1488,9 @@ async fn prepare_native_modules(
         let context = PrepareContext {
             instance_key: instance_key.clone(),
             dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
+            resources: module.resources.clone(),
+            cancellation: module.tasks.cancellation(),
+            admission: admission.clone(),
         };
         if let Err(error) = module.lifecycle.prepare(context).await {
             let _ = deactivate_in_reverse(
@@ -941,6 +1498,7 @@ async fn prepare_native_modules(
                 dependencies,
                 &prepared_instances,
                 DeactivationReason::StartupRollback,
+                admission,
             )
             .await;
             return Err(error);
@@ -954,6 +1512,7 @@ async fn activate_native_modules(
     dependencies: &BTreeMap<String, ModuleDependencies>,
     activation_order: &[String],
     ready_gate: &AppReadyGate,
+    admission: &AppAdmission,
 ) -> Result<(), RuntimeFailure> {
     for instance_key in activation_order {
         let module = modules
@@ -964,14 +1523,22 @@ async fn activate_native_modules(
             dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
             ready_gate: ready_gate.clone(),
             tasks: module.tasks.clone(),
+            resources: module.resources.clone(),
+            cancellation: module.tasks.cancellation(),
+            admission: admission.clone(),
         };
         module.lifecycle.activate(context).await?;
     }
     Ok(())
 }
 
-async fn open_native_readiness<D: RuntimeDriver>(driver: &D, ready_gate: &AppReadyGate) {
+async fn open_native_readiness<D: RuntimeDriver>(
+    driver: &D,
+    ready_gate: &AppReadyGate,
+    admission: &AppAdmission,
+) {
     ready_gate.open();
+    admission.open();
     driver.yield_now().await;
 }
 
@@ -1017,12 +1584,15 @@ async fn deactivate_in_reverse(
     dependencies: &BTreeMap<String, ModuleDependencies>,
     activation_order: &[String],
     reason: DeactivationReason,
+    admission: &AppAdmission,
 ) -> Option<RuntimeFailure> {
     let mut first_error = None;
     for instance_key in activation_order.iter().rev() {
         let module = modules
             .get(instance_key)
             .expect("deactivation order only contains planned Module Instances");
+        module.tasks.close();
+        module.resources.close();
         if let Err(error) = module
             .lifecycle
             .deactivate(DeactivateContext {
@@ -1030,6 +1600,9 @@ async fn deactivate_in_reverse(
                 dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
                 reason,
                 tasks: module.tasks.clone(),
+                resources: module.resources.clone(),
+                cancellation: module.tasks.cancellation(),
+                admission: admission.clone(),
             })
             .await
             && first_error.is_none()
@@ -1037,8 +1610,91 @@ async fn deactivate_in_reverse(
             first_error = Some(error);
         }
         module.tasks.cancel_all().await;
+        if let Some(error) = module.resources.release_all().await
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
     }
     first_error
+}
+
+async fn shutdown_native_modules(runtime: &NativeAppRuntime, timeout: Duration) -> ShutdownOutcome {
+    let deadline = (runtime.driver.now)().saturating_add(timeout);
+    (runtime.driver.yield_now)().await;
+
+    for module in runtime.modules.values() {
+        if !module.tasks.drain_until(&runtime.driver, deadline).await {
+            terminate_remaining_cleanup(runtime);
+            return ShutdownOutcome::Timeout;
+        }
+    }
+
+    let mut first_error = None;
+    for instance_key in runtime.activation_order.iter().rev() {
+        let module = runtime
+            .modules
+            .get(instance_key)
+            .expect("deactivation order only contains planned Module Instances");
+        let result = wait_until(
+            &runtime.driver,
+            deadline,
+            module.lifecycle.deactivate(DeactivateContext {
+                instance_key: instance_key.clone(),
+                dependencies: runtime
+                    .dependencies
+                    .get(instance_key)
+                    .cloned()
+                    .unwrap_or_default(),
+                reason: DeactivationReason::Shutdown,
+                tasks: module.tasks.clone(),
+                resources: module.resources.clone(),
+                cancellation: module.tasks.cancellation(),
+                admission: runtime.admission.clone(),
+            }),
+        )
+        .await;
+        match result {
+            Some(Ok(())) => {}
+            Some(Err(error)) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+            None => {
+                terminate_remaining_cleanup(runtime);
+                return ShutdownOutcome::Timeout;
+            }
+        }
+
+        match module
+            .resources
+            .release_all_until(&runtime.driver, deadline)
+            .await
+        {
+            Ok(Some(error)) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+            Ok(None) => {}
+            Err(()) => {
+                terminate_remaining_cleanup(runtime);
+                return ShutdownOutcome::Timeout;
+            }
+        }
+    }
+
+    first_error.map_or(ShutdownOutcome::Clean, |error| {
+        ShutdownOutcome::RuntimeFailure { error }
+    })
+}
+
+fn terminate_remaining_cleanup(runtime: &NativeAppRuntime) {
+    for module in runtime.modules.values() {
+        module.tasks.abort_all();
+        module.resources.release_unawaited();
+    }
 }
 
 #[derive(Debug)]
