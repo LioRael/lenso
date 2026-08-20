@@ -3,7 +3,7 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::BTreeMap,
+    collections::{BTreeMap, VecDeque},
     future::Future,
     marker::PhantomData,
     pin::Pin,
@@ -15,10 +15,10 @@ use std::{
 use futures::{
     channel::oneshot,
     executor::{LocalPool, LocalSpawner},
-    future::{AbortHandle, Abortable, Either, FutureExt, LocalBoxFuture, select},
+    future::{AbortHandle, Abortable, Either, FutureExt, LocalBoxFuture, pending, select},
     task::{LocalSpawnExt, SpawnError},
 };
-use lenso_app_plan::{PlanResolutionError, ResolvedAppPlan};
+use lenso_app_plan::{PlanResolutionError, RequestAdmissionPlan, ResolvedAppPlan};
 
 type ErasedValue = Box<dyn Any>;
 type ErasedDomainResult = Result<ErasedValue, ErasedValue>;
@@ -36,6 +36,9 @@ pub trait RequestCapability: 'static {
     /// Exact generated Descriptor version.
     const DESCRIPTOR_VERSION: &'static str;
 }
+
+/// Kernel-generated identity for one logical request invocation.
+pub type RequestId = u64;
 
 /// Runtime-owned failure, kept separate from Capability-defined Domain Errors.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,6 +66,17 @@ pub enum RuntimeFailure {
     InvalidResolvedPlan { detail: String },
     /// New request admission was closed because the App is shutting down.
     AdmissionClosed,
+    /// The request could not enter a full bounded admission queue.
+    ResourceExhausted {
+        capability: &'static str,
+        operation: String,
+    },
+    /// The invocation deadline expired before the request completed.
+    DeadlineExceeded { request_id: RequestId },
+    /// The caller cancelled the invocation before it completed.
+    Cancelled { request_id: RequestId },
+    /// The Runtime Driver or Adapter reported an internal execution failure.
+    Internal { detail: String },
 }
 
 /// The lifecycle phase represented by a Module context.
@@ -274,7 +288,8 @@ pub struct CancellationToken {
 #[derive(Debug)]
 struct CancellationState {
     cancelled: Cell<bool>,
-    waiters: RefCell<Vec<oneshot::Sender<()>>>,
+    next_waiter_id: Cell<usize>,
+    waiters: RefCell<Vec<(usize, oneshot::Sender<()>)>>,
 }
 
 impl CancellationToken {
@@ -283,6 +298,7 @@ impl CancellationToken {
         Self {
             state: Rc::new(CancellationState {
                 cancelled: Cell::new(false),
+                next_waiter_id: Cell::new(0),
                 waiters: RefCell::new(Vec::new()),
             }),
         }
@@ -299,25 +315,127 @@ impl CancellationToken {
             return Box::pin(futures::future::ready(()));
         }
         let (wakeup, waiter) = oneshot::channel();
-        self.state.waiters.borrow_mut().push(wakeup);
-        Box::pin(async move {
-            let _ = waiter.await;
+        let waiter_id = self.state.next_waiter_id.get();
+        self.state.next_waiter_id.set(waiter_id.saturating_add(1));
+        self.state.waiters.borrow_mut().push((waiter_id, wakeup));
+        Box::pin(CancellationWaiter {
+            state: self.state.clone(),
+            waiter_id,
+            receiver: waiter,
+            registered: true,
         })
     }
 
-    fn cancel(&self) {
+    /// Requests cooperative cancellation and wakes every current waiter.
+    pub fn cancel(&self) {
         if self.state.cancelled.replace(true) {
             return;
         }
-        for waiter in self.state.waiters.borrow_mut().drain(..) {
+        for (_, waiter) in self.state.waiters.borrow_mut().drain(..) {
             let _ = waiter.send(());
         }
+    }
+}
+
+#[derive(Debug)]
+struct CancellationWaiter {
+    state: Rc<CancellationState>,
+    waiter_id: usize,
+    receiver: oneshot::Receiver<()>,
+    registered: bool,
+}
+
+impl Future for CancellationWaiter {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+        match Pin::new(&mut self.receiver).poll(context) {
+            Poll::Ready(_) => {
+                self.registered = false;
+                Poll::Ready(())
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl Drop for CancellationWaiter {
+    fn drop(&mut self) {
+        if !self.registered {
+            return;
+        }
+        self.state
+            .waiters
+            .borrow_mut()
+            .retain(|(waiter_id, _)| *waiter_id != self.waiter_id);
     }
 }
 
 impl Default for CancellationToken {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Kernel-owned context propagated across one native request invocation.
+#[derive(Clone, Debug)]
+pub struct InvocationContext {
+    caller_instance: Option<String>,
+    request_id: RequestId,
+    deadline: Option<Duration>,
+    cancellation: CancellationToken,
+}
+
+impl InvocationContext {
+    /// Creates an invocation context with an absolute Driver-monotonic deadline.
+    pub fn new(
+        request_id: RequestId,
+        deadline: Option<Duration>,
+        cancellation: CancellationToken,
+    ) -> Self {
+        Self {
+            caller_instance: None,
+            request_id,
+            deadline,
+            cancellation,
+        }
+    }
+
+    /// Attaches the resolved Caller Module Instance to this context.
+    #[must_use]
+    pub fn with_caller_instance(mut self, caller_instance: impl Into<String>) -> Self {
+        self.caller_instance = Some(caller_instance.into());
+        self
+    }
+
+    /// Returns the Caller Module Instance, when the App attached one.
+    pub fn caller_instance(&self) -> Option<&str> {
+        self.caller_instance.as_deref()
+    }
+
+    /// Returns the Kernel Request ID used for correlation and cancellation.
+    pub const fn request_id(&self) -> RequestId {
+        self.request_id
+    }
+
+    /// Returns the absolute Driver-monotonic deadline, when one was supplied.
+    pub const fn deadline(&self) -> Option<Duration> {
+        self.deadline
+    }
+
+    /// Returns the caller-owned cooperative cancellation signal.
+    pub fn cancellation(&self) -> CancellationToken {
+        self.cancellation.clone()
+    }
+
+    /// Returns whether the caller has already cancelled this invocation.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation.is_cancelled()
+    }
+
+    /// Returns whether the context deadline has passed at a Driver instant.
+    pub fn is_expired(&self, now: Duration) -> bool {
+        self.deadline.is_some_and(|deadline| deadline <= now)
     }
 }
 
@@ -891,6 +1009,7 @@ pub trait NativeRequestEndpoint: std::fmt::Debug {
         &self,
         operation: &str,
         request: ErasedValue,
+        context: InvocationContext,
     ) -> LocalBoxFuture<'static, Result<ErasedDomainResult, RuntimeFailure>>;
 }
 
@@ -938,6 +1057,18 @@ pub trait NativeExecutionAdapter: std::fmt::Debug {
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
 }
 
+#[derive(Clone, Debug)]
+struct NativeEndpointBinding {
+    endpoint: Rc<dyn NativeRequestEndpoint>,
+    admissions: BTreeMap<String, RequestAdmission>,
+}
+
+impl NativeEndpointBinding {
+    fn admission(&self, operation: &str) -> Option<&RequestAdmission> {
+        self.admissions.get(operation)
+    }
+}
+
 #[derive(Debug)]
 struct NativeModuleRuntime {
     lifecycle: Rc<dyn ModuleLifecycle>,
@@ -952,6 +1083,7 @@ struct NativeAppRuntime {
     ready_gate: AppReadyGate,
     admission: AppAdmission,
     driver: DriverControl,
+    request_ids: Rc<Cell<RequestId>>,
     shutdown_started: Cell<bool>,
     shutdown_result: RefCell<Option<ShutdownOutcome>>,
 }
@@ -963,6 +1095,7 @@ impl std::fmt::Debug for NativeAppRuntime {
             .field("module_count", &self.modules.len())
             .field("ready", &self.ready_gate.is_open())
             .field("accepting", &self.admission.is_open())
+            .field("next_request_id", &self.request_ids.get())
             .field("shutdown_started", &self.shutdown_started.get())
             .finish_non_exhaustive()
     }
@@ -984,7 +1117,7 @@ impl NativeAppRuntime {
 /// A started native App whose generated clients can invoke resolved bindings.
 #[derive(Debug)]
 pub struct NativeApp {
-    bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+    bindings: BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>,
     runtime: NativeAppRuntime,
 }
 
@@ -1018,6 +1151,9 @@ impl NativeApp {
         Ok(NativeRequestHandle::from_endpoints(
             endpoints,
             self.runtime.admission.clone(),
+            self.runtime.driver.clone(),
+            self.runtime.request_ids.clone(),
+            caller_instance,
         ))
     }
 
@@ -1026,10 +1162,17 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Option<NativeRequestHandle<C>> {
-        self.endpoints::<C>(caller_instance)
+        let caller_instance = caller_instance.to_owned();
+        self.endpoints::<C>(&caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
             .map(|endpoints| {
-                NativeRequestHandle::from_endpoints(endpoints, self.runtime.admission.clone())
+                NativeRequestHandle::from_endpoints(
+                    endpoints,
+                    self.runtime.admission.clone(),
+                    self.runtime.driver.clone(),
+                    self.runtime.request_ids.clone(),
+                    &caller_instance,
+                )
             })
     }
 
@@ -1045,6 +1188,9 @@ impl NativeApp {
         Ok(NativeRequestHandle::from_endpoints(
             endpoints,
             self.runtime.admission.clone(),
+            self.runtime.driver.clone(),
+            self.runtime.request_ids.clone(),
+            caller_instance,
         ))
     }
 
@@ -1101,10 +1247,53 @@ impl NativeApp {
             .await
     }
 
+    /// Creates a request context with a fresh Kernel Request ID.
+    ///
+    /// `deadline` is an absolute instant returned by the selected
+    /// [`RuntimeDriver`]'s monotonic clock.
+    pub fn invocation_context(
+        &self,
+        deadline: Option<Duration>,
+        cancellation: CancellationToken,
+    ) -> InvocationContext {
+        InvocationContext::new(self.next_request_id(), deadline, cancellation)
+    }
+
+    /// Creates a request context whose deadline is relative to the Driver's clock.
+    pub fn invocation_context_after(
+        &self,
+        timeout: Duration,
+        cancellation: CancellationToken,
+    ) -> InvocationContext {
+        self.invocation_context(
+            Some((self.runtime.driver.now)().saturating_add(timeout)),
+            cancellation,
+        )
+    }
+
+    /// Invokes a request with an explicit propagated Invocation Context.
+    pub async fn invoke_with_context<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+        operation: &str,
+        context: InvocationContext,
+        request: C::Request,
+    ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+        self.handle::<C>(caller_instance)?
+            .invoke_with_context(operation, context, request)
+            .await
+    }
+
+    fn next_request_id(&self) -> RequestId {
+        let request_id = self.runtime.request_ids.get();
+        self.runtime.request_ids.set(request_id.saturating_add(1));
+        request_id
+    }
+
     fn endpoints<C: RequestCapability>(
         &self,
         caller_instance: &str,
-    ) -> Option<&[Rc<dyn NativeRequestEndpoint>]> {
+    ) -> Option<&[NativeEndpointBinding]> {
         self.bindings
             .get(&(caller_instance.to_owned(), C::ID))
             .map(Vec::as_slice)
@@ -1114,19 +1303,28 @@ impl NativeApp {
 /// Typed, immutable native Capability endpoints materialized before App boot completes.
 #[derive(Debug)]
 pub struct NativeRequestHandle<C: RequestCapability> {
-    endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+    endpoints: Vec<NativeEndpointBinding>,
     admission: AppAdmission,
+    driver: DriverControl,
+    request_ids: Rc<Cell<RequestId>>,
+    caller_instance: String,
     capability: PhantomData<fn() -> C>,
 }
 
 impl<C: RequestCapability> NativeRequestHandle<C> {
     fn from_endpoints(
-        endpoints: &[Rc<dyn NativeRequestEndpoint>],
+        endpoints: &[NativeEndpointBinding],
         admission: AppAdmission,
+        driver: DriverControl,
+        request_ids: Rc<Cell<RequestId>>,
+        caller_instance: &str,
     ) -> Self {
         Self {
             endpoints: endpoints.to_vec(),
             admission,
+            driver,
+            request_ids,
+            caller_instance: caller_instance.to_owned(),
             capability: PhantomData,
         }
     }
@@ -1142,6 +1340,18 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         operation: &str,
         request: C::Request,
     ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+        let context = self.next_context();
+        self.invoke_with_context(operation, context, request).await
+    }
+
+    /// Invokes a singular binding with an explicit Invocation Context.
+    pub async fn invoke_with_context(
+        &self,
+        operation: &str,
+        context: InvocationContext,
+        request: C::Request,
+    ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+        let context = context.with_caller_instance(self.caller_instance.clone());
         if self.admission.is_closed() {
             return Err(RuntimeFailure::AdmissionClosed);
         }
@@ -1155,7 +1365,26 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 });
             }
         };
-        decode_outcome::<C>(endpoint.invoke(operation, Box::new(request)).await?)
+        let admission =
+            endpoint
+                .admission(operation)
+                .ok_or_else(|| RuntimeFailure::UnknownOperation {
+                    capability: C::ID,
+                    operation: operation.to_owned(),
+                })?;
+        let _permit = admission
+            .acquire(C::ID, operation, context.clone(), self.driver.clone())
+            .await?;
+        ensure_context_active(&self.driver, &context)?;
+        let outcome = await_with_context(
+            &self.driver,
+            &context,
+            endpoint
+                .endpoint
+                .invoke(operation, Box::new(request), context.clone()),
+        )
+        .await??;
+        decode_outcome::<C>(outcome)
     }
 
     /// Invokes every provider in the resolved many order with the same typed request.
@@ -1167,6 +1396,22 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     where
         C::Request: Clone,
     {
+        let context = self.next_context();
+        self.invoke_many_with_context(operation, context, request)
+            .await
+    }
+
+    /// Invokes every provider with one shared explicit Invocation Context.
+    pub async fn invoke_many_with_context(
+        &self,
+        operation: &str,
+        context: InvocationContext,
+        request: C::Request,
+    ) -> Result<Vec<Result<C::Response, C::DomainError>>, RuntimeFailure>
+    where
+        C::Request: Clone,
+    {
+        let context = context.with_caller_instance(self.caller_instance.clone());
         if self.admission.is_closed() {
             return Err(RuntimeFailure::AdmissionClosed);
         }
@@ -1175,13 +1420,48 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         }
         let mut outcomes = Vec::with_capacity(self.endpoints.len());
         for endpoint in &self.endpoints {
-            outcomes.push(decode_outcome::<C>(
+            let admission =
                 endpoint
-                    .invoke(operation, Box::new(request.clone()))
-                    .await?,
-            )?);
+                    .admission(operation)
+                    .ok_or_else(|| RuntimeFailure::UnknownOperation {
+                        capability: C::ID,
+                        operation: operation.to_owned(),
+                    })?;
+            let _permit = admission
+                .acquire(C::ID, operation, context.clone(), self.driver.clone())
+                .await?;
+            ensure_context_active(&self.driver, &context)?;
+            let outcome = await_with_context(
+                &self.driver,
+                &context,
+                endpoint
+                    .endpoint
+                    .invoke(operation, Box::new(request.clone()), context.clone()),
+            )
+            .await??;
+            outcomes.push(decode_outcome::<C>(outcome)?);
         }
         Ok(outcomes)
+    }
+
+    /// Creates a fresh context for a request started through this handle.
+    pub fn invocation_context(
+        &self,
+        deadline: Option<Duration>,
+        cancellation: CancellationToken,
+    ) -> InvocationContext {
+        InvocationContext::new(self.next_request_id(), deadline, cancellation)
+    }
+
+    fn next_context(&self) -> InvocationContext {
+        self.invocation_context(None, CancellationToken::new())
+            .with_caller_instance(self.caller_instance.clone())
+    }
+
+    fn next_request_id(&self) -> RequestId {
+        let request_id = self.request_ids.get();
+        self.request_ids.set(request_id.saturating_add(1));
+        request_id
     }
 }
 
@@ -1305,6 +1585,227 @@ async fn wait_until<F: Future>(
     }
 }
 
+/// A bounded, per-binding Operation admission state.
+#[derive(Clone, Debug)]
+struct RequestAdmission {
+    limits: RequestAdmissionPlan,
+    state: Rc<RequestAdmissionState>,
+}
+
+#[derive(Debug, Default)]
+struct RequestAdmissionState {
+    active: Cell<usize>,
+    queued: Cell<usize>,
+    waiters: RefCell<VecDeque<Rc<QueueWaiter>>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum QueueWaiterStatus {
+    Waiting,
+    Woken,
+    Acquired,
+    Cancelled,
+}
+
+#[derive(Debug)]
+struct QueueWaiter {
+    status: Cell<QueueWaiterStatus>,
+    wakeup: RefCell<Option<oneshot::Sender<()>>>,
+}
+
+impl RequestAdmission {
+    fn new(limits: RequestAdmissionPlan) -> Self {
+        Self {
+            limits,
+            state: Rc::new(RequestAdmissionState::default()),
+        }
+    }
+
+    fn acquire(
+        &self,
+        capability: &'static str,
+        operation: &str,
+        context: InvocationContext,
+        driver: DriverControl,
+    ) -> LocalBoxFuture<'static, Result<RequestPermit, RuntimeFailure>> {
+        if let Err(error) = ensure_context_active(&driver, &context) {
+            return Box::pin(futures::future::ready(Err(error)));
+        }
+
+        if self.state.active.get() < self.limits.max_concurrency() {
+            self.state.active.set(self.state.active.get() + 1);
+            return Box::pin(futures::future::ready(Ok(RequestPermit {
+                state: self.state.clone(),
+            })));
+        }
+
+        if self.state.queued.get() >= self.limits.queue_capacity() {
+            return Box::pin(futures::future::ready(Err(
+                RuntimeFailure::ResourceExhausted {
+                    capability,
+                    operation: operation.to_owned(),
+                },
+            )));
+        }
+
+        let (wakeup, waiter) = oneshot::channel();
+        let waiter_state = Rc::new(QueueWaiter {
+            status: Cell::new(QueueWaiterStatus::Waiting),
+            wakeup: RefCell::new(Some(wakeup)),
+        });
+        self.state.queued.set(self.state.queued.get() + 1);
+        self.state
+            .waiters
+            .borrow_mut()
+            .push_back(waiter_state.clone());
+        let queued = QueuedAdmission {
+            state: self.state.clone(),
+            waiter_state,
+            waiter,
+        };
+        Box::pin(async move { queued.wait(&driver, &context).await })
+    }
+}
+
+#[derive(Debug)]
+struct QueuedAdmission {
+    state: Rc<RequestAdmissionState>,
+    waiter_state: Rc<QueueWaiter>,
+    waiter: oneshot::Receiver<()>,
+}
+
+impl QueuedAdmission {
+    async fn wait(
+        mut self,
+        driver: &DriverControl,
+        context: &InvocationContext,
+    ) -> Result<RequestPermit, RuntimeFailure> {
+        let result = await_with_context(driver, context, &mut self.waiter).await;
+        match result {
+            Ok(Ok(())) => {
+                if self.waiter_state.status.get() == QueueWaiterStatus::Woken {
+                    self.waiter_state.status.set(QueueWaiterStatus::Acquired);
+                    self.state.queued.set(self.state.queued.get() - 1);
+                    Ok(RequestPermit {
+                        state: self.state.clone(),
+                    })
+                } else {
+                    Err(RuntimeFailure::Cancelled {
+                        request_id: context.request_id(),
+                    })
+                }
+            }
+            Ok(Err(_)) => Err(RuntimeFailure::Cancelled {
+                request_id: context.request_id(),
+            }),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+impl Drop for QueuedAdmission {
+    fn drop(&mut self) {
+        let previous = self
+            .waiter_state
+            .status
+            .replace(QueueWaiterStatus::Cancelled);
+        match previous {
+            QueueWaiterStatus::Waiting => {
+                self.state.queued.set(self.state.queued.get() - 1);
+            }
+            QueueWaiterStatus::Woken => {
+                self.state.queued.set(self.state.queued.get() - 1);
+                self.state.active.set(self.state.active.get() - 1);
+                wake_next(&self.state);
+            }
+            QueueWaiterStatus::Acquired | QueueWaiterStatus::Cancelled => {}
+        }
+        self.state
+            .waiters
+            .borrow_mut()
+            .retain(|waiter| !Rc::ptr_eq(waiter, &self.waiter_state));
+    }
+}
+
+#[derive(Debug)]
+struct RequestPermit {
+    state: Rc<RequestAdmissionState>,
+}
+
+impl Drop for RequestPermit {
+    fn drop(&mut self) {
+        self.state.active.set(self.state.active.get() - 1);
+        wake_next(&self.state);
+    }
+}
+
+fn wake_next(state: &Rc<RequestAdmissionState>) {
+    loop {
+        let Some(waiter) = state.waiters.borrow_mut().pop_front() else {
+            return;
+        };
+        if waiter.status.replace(QueueWaiterStatus::Woken) != QueueWaiterStatus::Waiting {
+            continue;
+        }
+        state.active.set(state.active.get() + 1);
+        let sent = waiter
+            .wakeup
+            .borrow_mut()
+            .take()
+            .is_some_and(|wakeup| wakeup.send(()).is_ok());
+        if sent {
+            return;
+        }
+        waiter.status.set(QueueWaiterStatus::Cancelled);
+        state.active.set(state.active.get() - 1);
+        state.queued.set(state.queued.get() - 1);
+    }
+}
+
+async fn await_with_context<F: Future>(
+    driver: &DriverControl,
+    context: &InvocationContext,
+    future: F,
+) -> Result<F::Output, RuntimeFailure> {
+    ensure_context_active(driver, context)?;
+
+    let work = future.fuse();
+    let cancellation = context.cancellation.cancelled().fuse();
+    let deadline: LocalBoxFuture<'static, ()> = context.deadline().map_or_else(
+        || Box::pin(pending::<()>()) as LocalBoxFuture<'static, ()>,
+        |deadline| (driver.sleep_until)(deadline),
+    );
+    let deadline = deadline.fuse();
+    futures::pin_mut!(work, cancellation, deadline);
+
+    match select(select(work, cancellation), deadline).await {
+        Either::Left((Either::Left((output, _)), _)) => Ok(output),
+        Either::Left((Either::Right(((), _)), _)) => Err(RuntimeFailure::Cancelled {
+            request_id: context.request_id(),
+        }),
+        Either::Right(((), _)) => Err(RuntimeFailure::DeadlineExceeded {
+            request_id: context.request_id(),
+        }),
+    }
+}
+
+fn ensure_context_active(
+    driver: &DriverControl,
+    context: &InvocationContext,
+) -> Result<(), RuntimeFailure> {
+    if context.is_cancelled() {
+        return Err(RuntimeFailure::Cancelled {
+            request_id: context.request_id(),
+        });
+    }
+    if context.is_expired((driver.now)()) {
+        return Err(RuntimeFailure::DeadlineExceeded {
+            request_id: context.request_id(),
+        });
+    }
+    Ok(())
+}
+
 /// The result of bounded cleanup after a graceful shutdown request.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShutdownOutcome {
@@ -1359,7 +1860,11 @@ impl Kernel {
         let activation_order = plan
             .activation_order()
             .map_err(|error| runtime_plan_error(&error))?;
-        let PreparedNativeApp { bindings, modules } = adapter.prepare(&plan)?;
+        let PreparedNativeApp {
+            bindings: prepared_bindings,
+            modules,
+        } = adapter.prepare(&plan)?;
+        let bindings = native_bindings(&plan, &prepared_bindings);
         let dependencies = module_dependencies(&plan, &bindings);
         let driver_control = DriverControl::new(&driver);
         let admission = AppAdmission::new();
@@ -1401,6 +1906,7 @@ impl Kernel {
                 ready_gate,
                 admission,
                 driver: driver_control,
+                request_ids: Rc::new(Cell::new(1)),
                 shutdown_started: Cell::new(false),
                 shutdown_result: RefCell::new(None),
             },
@@ -1542,9 +2048,51 @@ async fn open_native_readiness<D: RuntimeDriver>(
     driver.yield_now().await;
 }
 
+fn native_bindings(
+    plan: &ResolvedAppPlan,
+    prepared: &BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+) -> BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>> {
+    let mut bindings = BTreeMap::new();
+    for binding in plan.capability_bindings() {
+        let Some(endpoints) = prepared
+            .iter()
+            .find_map(|((consumer, capability), endpoints)| {
+                (consumer == binding.consumer_instance() && *capability == binding.capability_id())
+                    .then_some(endpoints)
+            })
+        else {
+            continue;
+        };
+        let Some(endpoint) = endpoints.get(binding.provider_order()) else {
+            continue;
+        };
+        let admissions = endpoint
+            .operations()
+            .iter()
+            .map(|operation| {
+                (
+                    (*operation).to_owned(),
+                    RequestAdmission::new(plan.request_admission_for(binding, operation)),
+                )
+            })
+            .collect();
+        bindings
+            .entry((
+                binding.consumer_instance().to_owned(),
+                endpoint.capability_id(),
+            ))
+            .or_insert_with(Vec::new)
+            .push(NativeEndpointBinding {
+                endpoint: endpoint.clone(),
+                admissions,
+            });
+    }
+    bindings
+}
+
 fn module_dependencies(
     plan: &ResolvedAppPlan,
-    endpoints: &BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+    endpoints: &BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>,
 ) -> BTreeMap<String, ModuleDependencies> {
     let mut dependencies: BTreeMap<String, ModuleDependencies> = plan
         .module_instances()
@@ -1573,7 +2121,9 @@ fn module_dependencies(
                     })
                     .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
                     .cloned()
-                    .map(|endpoint| ModuleDependencyHandle { endpoint }),
+                    .map(|endpoint| ModuleDependencyHandle {
+                        endpoint: endpoint.endpoint,
+                    }),
             ));
     }
     dependencies
