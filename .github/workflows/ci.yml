@@ -20,10 +20,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Check generated portable bindings
+        run: |
+          cargo run --locked -p lenso-contract-codegen -- check \
+            crates/lenso-capability-greeting/capability.json \
+            crates/lenso-capability-greeting/src/generated.rs \
+            crates/lenso-capability-greeting/generated/bindings.ts
+          cargo run --locked -p lenso-contract-codegen -- check \
+            crates/lenso-contract-codegen/tests/fixtures/profile/capability.json \
+            fixtures/portable-contract/generated/profile.rs \
+            fixtures/portable-contract/generated/profile.ts
       - name: Check the workspace
         run: cargo check --locked --workspace --all-targets
       - name: Test the workspace
         run: cargo test --locked --workspace
+      - name: Install Bun for portable contract conformance
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
+      - name: Run TypeScript portable contract conformance
+        run: bun test fixtures/portable-contract/conformance.test.ts
       - name: Compile the portable Kernel for WebAssembly hosts
         run: |
           cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-unknown-unknown

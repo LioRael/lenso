@@ -1,0 +1,13 @@
+{
+  "id": "example.profile@1",
+  "version": "1.0.0",
+  "portable": true,
+  "module_package_version": "9.4.2",
+  "operations": [{
+    "name": "round_trip",
+    "interaction": "request",
+    "request_schema": "schemas/round-trip-request.schema.json",
+    "response_schema": "schemas/round-trip-response.schema.json",
+    "domain_error_schema": "schemas/round-trip-error.schema.json"
+  }]
+}

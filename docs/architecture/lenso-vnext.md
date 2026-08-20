@@ -97,6 +97,19 @@ kinds. Portable contracts use JSON Schema 2020-12 plus a minimal value profile
 and generate Rust and TypeScript clients and providers. Native Rust dispatch can
 remain typed and direct; cross-runtime Adapters validate their wire boundary.
 
+The `lenso-contract-codegen` authoring tool treats the Descriptor and resolved
+package-local Schemas as one source. It emits deterministic Rust and TypeScript
+artifacts, checks the decimal-string/base64/time/missing-value profile, lints
+additive minor evolution, and fails when checked-in generated artifacts drift.
+Generated metadata carries the Capability `namespace.name@major` identity and
+exact Descriptor SemVer; Module package versions are not part of that identity.
+Generated Rust values include serde wire codecs and generated TypeScript values
+include JSON codecs; both preserve optional-versus-null fields and open unknown
+Domain Error code/payload pairs. Unsupported unions and object shapes that
+would discard wire data fail generation before artifacts are written.
+The first binding surface covers request Operations; stream and event transport
+semantics remain owned by the later Runtime Adapter and transport work.
+
 Request has one terminal result. Stream is bidirectional with independent
 half-close, bounded flow, cancellation, and an explicit terminal outcome. Event
 fan-out performs independent bounded admission and reports partial outcomes; it
