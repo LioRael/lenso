@@ -11,8 +11,12 @@ The initial vNext workspace is intentionally small:
 - `crates/lenso-app-plan` — immutable, language-independent execution input.
 - `crates/lenso-kernel` — portable Kernel state machine and Runtime Driver
   interface, with a deterministic Driver for conformance tests.
+- `crates/lenso-browser-driver` — browser/JavaScript Driver using the host
+  monotonic clock, timers, and local event loop.
 - `crates/lenso-runner` — native Tokio Runtime Driver and the smallest host
   Runner.
+- `crates/lenso-wasip2-driver` — WASI Preview 2 Driver with a host-pumped
+  local scheduler and monotonic clock.
 
 The Kernel has no Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, Outbox, Workflow, migration, release, or discovery implementation.
@@ -29,8 +33,11 @@ cargo test --locked --workspace
 cargo run --locked -p lenso-runner
 ```
 
-The portable Kernel is also compile-checked for `wasm32-unknown-unknown` and
-`wasm32-wasip2` in CI.
+The portable Kernel and its host Drivers are compile-checked for
+`wasm32-unknown-unknown` and `wasm32-wasip2` in CI. Browser and WASIp2 host
+capabilities admit statically linked Rust Modules only; a Bun child-process
+execution class is rejected during Plan validation unless both the selected
+Driver and Execution Adapter explicitly provide it.
 
 ## Architecture
 

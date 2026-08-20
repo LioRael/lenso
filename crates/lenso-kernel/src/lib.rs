@@ -19,8 +19,8 @@ use futures::{
     task::{LocalSpawnExt, SpawnError},
 };
 use lenso_app_plan::{
-    ModuleCriticality, PlanResolutionError, RequestAdmissionPlan, ResolvedAppPlan, RestartMode,
-    RestartPolicy,
+    ExecutionClassSet, ModuleCriticality, PlanResolutionError, RequestAdmissionPlan,
+    ResolvedAppPlan, RestartMode, RestartPolicy,
 };
 
 type ErasedValue = Box<dyn Any>;
@@ -1143,6 +1143,11 @@ pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
     /// Instantiates the exact Plan and confirms its endpoint and binding tables.
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
 
+    /// Returns the execution classes this Adapter can instantiate on this host.
+    fn supported_execution_classes(&self) -> ExecutionClassSet {
+        ExecutionClassSet::native_rust()
+    }
+
     /// Creates a fresh generation for one selected Module Instance.
     ///
     /// Adapters that cannot truthfully recreate a generation retain the default
@@ -1851,6 +1856,11 @@ pub trait RuntimeDriver: Clone + 'static {
 
     /// Reports whether the embedding Runner requested shutdown.
     fn shutdown_requested(&self) -> bool;
+
+    /// Returns the execution classes that this host Driver can schedule.
+    fn supported_execution_classes(&self) -> ExecutionClassSet {
+        ExecutionClassSet::native_rust()
+    }
 }
 
 #[derive(Clone)]
@@ -2245,13 +2255,16 @@ impl Kernel {
         driver: D,
         adapter: A,
     ) -> Result<NativeApp, RuntimeFailure> {
-        plan.validate()
+        let adapter = Rc::new(adapter) as Rc<dyn NativeExecutionAdapter>;
+        let supported_execution_classes = driver
+            .supported_execution_classes()
+            .intersection(adapter.supported_execution_classes());
+        plan.validate_for(supported_execution_classes)
             .map_err(|error| runtime_plan_error(&error))?;
 
         let activation_order = plan
             .activation_order()
             .map_err(|error| runtime_plan_error(&error))?;
-        let adapter = Rc::new(adapter) as Rc<dyn NativeExecutionAdapter>;
         let PreparedNativeApp {
             bindings: prepared_bindings,
             modules,

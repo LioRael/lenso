@@ -195,6 +195,71 @@ impl ModuleCriticality {
     }
 }
 
+/// The host execution mechanism selected for one Module Instance.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionClass {
+    /// A statically linked Rust Module compiled into the selected host artifact.
+    NativeRust,
+    /// A trusted Bun Module hosted in a child process.
+    BunChildProcess,
+}
+
+impl ExecutionClass {
+    /// Returns the stable human-readable execution class name.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::NativeRust => "native-rust",
+            Self::BunChildProcess => "bun-child-process",
+        }
+    }
+
+    const fn bit(self) -> u8 {
+        match self {
+            Self::NativeRust => 1 << 0,
+            Self::BunChildProcess => 1 << 1,
+        }
+    }
+}
+
+impl fmt::Display for ExecutionClass {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.name())
+    }
+}
+
+/// The execution classes a selected host Driver and Adapter can provide.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecutionClassSet(u8);
+
+impl ExecutionClassSet {
+    /// Creates a host capability set with no execution classes.
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    /// Creates the minimum set for a host containing statically linked Rust Modules.
+    pub const fn native_rust() -> Self {
+        Self(ExecutionClass::NativeRust.bit())
+    }
+
+    /// Adds one execution class to this host capability set.
+    #[must_use]
+    pub const fn with(self, execution_class: ExecutionClass) -> Self {
+        Self(self.0 | execution_class.bit())
+    }
+
+    /// Returns whether this host capability set contains an execution class.
+    pub const fn contains(self, execution_class: ExecutionClass) -> bool {
+        self.0 & execution_class.bit() != 0
+    }
+
+    /// Returns the classes shared by two host capability sets.
+    #[must_use]
+    pub const fn intersection(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+}
+
 /// One Capability required by a Module Instance.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapabilityRequirementPlan {
@@ -369,6 +434,7 @@ pub struct ModuleInstancePlan {
     package_id: String,
     provided_capabilities: Vec<CapabilityEndpointPlan>,
     required_capabilities: Vec<CapabilityRequirementPlan>,
+    execution_class: ExecutionClass,
     restart_policy: RestartPolicy,
     criticality: ModuleCriticality,
 }
@@ -381,6 +447,7 @@ impl ModuleInstancePlan {
             package_id: package_id.into(),
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
+            execution_class: ExecutionClass::NativeRust,
             restart_policy: RestartPolicy::default(),
             criticality: ModuleCriticality::default(),
         }
@@ -404,6 +471,13 @@ impl ModuleInstancePlan {
     #[must_use]
     pub fn with_required_capability(self, requirement: CapabilityRequirementPlan) -> Self {
         self.with_requirement(requirement)
+    }
+
+    /// Selects the host execution class for this Module Instance.
+    #[must_use]
+    pub fn with_execution_class(mut self, execution_class: ExecutionClass) -> Self {
+        self.execution_class = execution_class;
+        self
     }
 
     /// Selects the finite supervision policy for this Module Instance.
@@ -438,6 +512,11 @@ impl ModuleInstancePlan {
     /// Returns the exact Capability requirements this Instance receives.
     pub fn required_capabilities(&self) -> &[CapabilityRequirementPlan] {
         &self.required_capabilities
+    }
+
+    /// Returns the host execution class selected for this Instance.
+    pub const fn execution_class(&self) -> ExecutionClass {
+        self.execution_class
     }
 
     /// Returns the supervision policy selected for this Instance.
@@ -583,6 +662,11 @@ impl AppComposition {
 pub enum PlanResolutionError {
     /// The Plan schema cannot be executed by this Kernel version.
     UnsupportedSchemaVersion { expected: u32, actual: u32 },
+    /// A selected host cannot provide one Module Instance's execution class.
+    UnsupportedExecutionClass {
+        instance_key: String,
+        execution_class: ExecutionClass,
+    },
     /// Two Module Instances use the same App-local key.
     DuplicateModuleInstance { instance_key: String },
     /// A Module declares the same provided Capability more than once.
@@ -671,6 +755,13 @@ impl fmt::Display for PlanResolutionError {
             Self::UnsupportedSchemaVersion { expected, actual } => write!(
                 formatter,
                 "unsupported Plan schema version {actual}; expected {expected}"
+            ),
+            Self::UnsupportedExecutionClass {
+                instance_key,
+                execution_class,
+            } => write!(
+                formatter,
+                "Module Instance `{instance_key}` requires unsupported execution class `{execution_class}`"
             ),
             Self::DuplicateModuleInstance { instance_key } => {
                 write!(formatter, "duplicate Module Instance `{instance_key}`")
@@ -839,6 +930,23 @@ impl ResolvedAppPlan {
             });
         }
         resolve_parts(&self.module_instances, &self.capability_bindings).map(|_| ())
+    }
+
+    /// Validates the Plan against the execution classes supplied by its host.
+    pub fn validate_for(
+        &self,
+        supported_execution_classes: ExecutionClassSet,
+    ) -> Result<(), PlanResolutionError> {
+        self.validate()?;
+        self.module_instances
+            .iter()
+            .find(|instance| !supported_execution_classes.contains(instance.execution_class()))
+            .map_or(Ok(()), |instance| {
+                Err(PlanResolutionError::UnsupportedExecutionClass {
+                    instance_key: instance.instance_key().to_owned(),
+                    execution_class: instance.execution_class(),
+                })
+            })
     }
 
     /// Returns the deterministic provider-before-consumer lifecycle order.
