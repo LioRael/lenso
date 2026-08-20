@@ -1,5 +1,9 @@
 # Adapt to service discovery infrastructure
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will define logical Service References, Endpoint Resolver behavior, endpoint caching, and discovery evidence while integrating with static configuration, DNS, orchestrators, cloud discovery, or external registries through adapters. It will not operate its own distributed service registry, and established Data Plane traffic will resolve endpoints locally without a synchronous System Plane lookup.
 
 ## Consequences

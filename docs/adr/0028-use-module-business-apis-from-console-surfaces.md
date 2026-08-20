@@ -1,5 +1,9 @@
 # Use Module business APIs from Console Surfaces
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Console Surfaces will manage business data through generated clients for the exact Module-owned OpenAPI or HTTP Contract. Console Service may provide a same-origin Console Surface Gateway that routes only operations admitted by the Surface artifact's digest-bound grant, but it does not define a parallel management API and does not carry business requests through the System Plane. The target Module remains authoritative for business authorization and behavior.
 
 ## Consequences

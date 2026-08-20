@@ -3,6 +3,11 @@
 This roadmap proves the architecture with tracer bullets. It is not a release
 calendar and does not authorize compatibility work in the legacy Kernel.
 
+Implementation is tracked by issue
+[#577](https://github.com/LioRael/lenso/issues/577) and child tickets #578 through
+#603. Those tickets branch from and merge into `next`. The `main` branch remains
+the v0.3.x maintenance and release line until an explicit vNext cutover.
+
 ## 1. Portable Kernel skeleton
 
 Build new contract and Kernel packages beside the legacy implementation. Use a

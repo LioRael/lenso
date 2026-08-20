@@ -1,5 +1,10 @@
 # Lenso microservice framework status — 2026-08-10
 
+> **Historical research snapshot:** This audit predates the vNext reset and is
+> retained as migration evidence only. It is not normative for vNext; read
+> [`../architecture/lenso-vnext.md`](../architecture/lenso-vnext.md) for the
+> accepted architecture.
+
 ## Scope and provenance
 
 This audit uses only executable code, tests, migrations, manifests, and repository ADRs in the current local checkouts. “Implemented” means executable code exists in the checkout; it does not by itself mean the capability is packaged, wired into the default product path, published, or present on `origin/main`.

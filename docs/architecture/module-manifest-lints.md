@@ -1,5 +1,9 @@
 # Module Manifest Lints
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 `platform-module` owns module manifest lint rules. Backends expose the resulting
 `manifest_lints` through module metadata endpoints, and the Console only
 filters, groups, and renders those results.

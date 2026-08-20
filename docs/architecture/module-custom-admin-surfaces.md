@@ -1,5 +1,9 @@
 # Module Custom Admin Surfaces
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 This note specifies the admin-surface direction for the module framework.
 `AdminSurface::Schema` is the generic data-admin surface. `EmbeddedCustom`
 currently has a first Console iframe renderer with origin checks,

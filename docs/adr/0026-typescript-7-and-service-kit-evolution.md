@@ -4,6 +4,10 @@ status: accepted
 
 # Upgrade active TypeScript dependencies and prepare Service Kit extraction
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Active repositories that use TypeScript dependencies will pin direct TypeScript
 dependencies to `7.0.2`. A TypeScript 7 incompatibility is a migration blocker:
 the repository must upgrade the surrounding toolchain or replace the incompatible

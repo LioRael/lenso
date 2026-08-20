@@ -1,5 +1,9 @@
 # Internal Service Provider gRPC Transport
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 This note documents the legacy internal transport implementation used when a
 Provider-mode Service exports Modules over gRPC. `Provider` names below are wire
 and crate compatibility details, not a public Module delivery kind. The Host

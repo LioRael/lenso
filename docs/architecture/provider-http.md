@@ -1,5 +1,9 @@
 # Provider Service HTTP Boundary
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 This note specifies the protocol boundary for exposing Service-delivered Module HTTP
 routes through the host API. The current implementation preserves
 `ModuleManifest::http_routes` as metadata and forwards matched GET, POST, PUT,

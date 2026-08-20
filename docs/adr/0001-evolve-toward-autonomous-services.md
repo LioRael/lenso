@@ -1,5 +1,9 @@
 # Evolve toward autonomous services
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will keep its current Host-managed Provider mode as the low-friction path for extracting linked Modules, while treating Autonomous Services coordinated through a federated System Plane as the long-term microservice direction. A Service is an independently delivered logical boundary rather than one process; API, worker, and migration processes are Workloads of that Service. This preserves the modular-first adoption path without making the current Host the permanent owner of every service's runtime, persistence, lifecycle, and release cadence.
 
 ## Considered Options

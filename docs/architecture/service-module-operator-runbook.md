@@ -1,5 +1,9 @@
 # Service Operator Runbook
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Use this runbook when a Lenso service is installed but its runtime state is
 unclear. A Provider-mode Service exposes its protocol endpoint and Modules while
 the Host owns auth, proxy policy, runtime queues, Runtime Story, Remote Calls,

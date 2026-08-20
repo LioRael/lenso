@@ -2,6 +2,23 @@
 
 [![CI](https://github.com/LioRael/lenso/actions/workflows/ci.yml/badge.svg)](https://github.com/LioRael/lenso/actions/workflows/ci.yml)
 
+> **vNext integration branch:** `next` is the canonical integration line for
+> the portable, language-independent Lenso runtime specified by
+> [`CONTEXT.md`](CONTEXT.md) and
+> [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md).
+> The existing workspace and the product documentation below still describe
+> the maintained v0.3.x Service-oriented implementation; they are retained for
+> migration and must not be treated as vNext architecture.
+
+Lenso vNext is a local-first modular application runtime. A portable Rust
+Kernel executes an immutable Resolved App Plan, while native Rust, Bun, UI,
+protocol, persistence, observability, Console, agent, and game behavior are
+provided through explicit Modules, Capabilities, Runtime Drivers, and Execution
+Adapters. Start with the [vNext documentation map](docs/README.md) and the
+[validation roadmap](docs/roadmaps/lenso-vnext-validation.md).
+
+## Maintained v0.3.x implementation
+
 Agent-ready Rust business systems.
 
 Lenso is a modular application and microservice framework for building Rust

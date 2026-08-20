@@ -1,5 +1,9 @@
 # Auth Module
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 The `auth` module is Lenso's host-owned authentication anchor. It owns the
 minimum tables and HTTP routes needed to turn credentials into an
 `ActorContext::User`; it does not own product user profiles.

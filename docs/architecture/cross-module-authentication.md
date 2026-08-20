@@ -1,5 +1,9 @@
 # Cross-Module Authentication
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Modules in Lenso never import the `auth` module directly. Authentication and
 authorization are platform-level concerns delivered through middleware and Axum
 extractors. This document shows how to use them.

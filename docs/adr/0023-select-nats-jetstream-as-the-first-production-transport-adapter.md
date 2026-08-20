@@ -1,5 +1,9 @@
 # Select NATS JetStream as the first production Transport Adapter
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso selects NATS JetStream as its first production Transport Adapter. The
 selection is deliberately adapter-specific: Event Contracts, Event Envelopes,
 Module behavior, Inbox idempotency, Outbox publication, and Service-owned

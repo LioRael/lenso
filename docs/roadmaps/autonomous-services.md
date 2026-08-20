@@ -1,6 +1,10 @@
 # Autonomous Services Roadmap
 
-Status: proposed
+> **Status: superseded for vNext.** This roadmap describes the v0.3.x
+> Service-oriented direction. The vNext implementation sequence lives in
+> [`lenso-vnext-validation.md`](lenso-vnext-validation.md), while deferred
+> distribution motivation lives in
+> [`../architecture/future-directions/distributed-module-runtime.md`](../architecture/future-directions/distributed-module-runtime.md).
 
 This roadmap turns Lenso's existing service-ready Provider model into a gradual
 path toward Autonomous Services. It records sequencing and acceptance gates; it

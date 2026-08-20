@@ -1,5 +1,9 @@
 # Require Service Reliability Contracts
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Every Autonomous Service Release will include a Reliability Contract covering availability and latency targets, dependency criticality, startup/readiness/liveness meaning, Degraded Modes, queue and workflow backlog limits, error budget, failure-domain expectations, canary success, and rollback triggers. Reusable Reliability Profiles keep the requirement practical for small teams, while Policy Packs and Runtime Console evaluate the same declared expectations.
 
 ## Consequences

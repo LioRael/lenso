@@ -1,5 +1,9 @@
 # Require clusterless System development
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will make multi-Service development and distributed-behavior verification possible in a local System Sandbox without Kubernetes or an external message broker. The sandbox supplies local Transport, Endpoint Resolver, Workload Identity, isolated Service Stores, controlled time, Failure Scenarios, contract checks, and Story replay, while separate Environment Verification proves the same behavior against real production-class infrastructure.
 
 ## Consequences

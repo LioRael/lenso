@@ -1,5 +1,9 @@
 # Own event semantics, not the broker
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will define transport-independent event contracts, envelopes, compatibility rules, delivery state, idempotent consumption, retry, dead-letter, replay, and operational evidence while treating message brokers as replaceable Transport Adapters. This extends the existing transactional Outbox model across Service boundaries without binding Modules to a broker product or turning Lenso into message infrastructure.
 
 ## Consequences

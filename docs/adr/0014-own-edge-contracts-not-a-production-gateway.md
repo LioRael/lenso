@@ -1,5 +1,9 @@
 # Own Edge Contracts, not a production Gateway
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will define and verify Edge Contracts and generate environment-specific Gateway configuration, but it will not implement the production traffic proxy, TLS termination, WAF, or global routing data plane. Provider traffic may continue through the current Host proxy, while Autonomous Service traffic uses mature local, orchestrator, self-hosted, or cloud Gateway implementations through adapters.
 
 ## Consequences

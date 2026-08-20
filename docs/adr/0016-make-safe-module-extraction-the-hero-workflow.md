@@ -1,5 +1,9 @@
 # Make safe Module extraction the hero workflow
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso's primary microservice workflow will move a boundary-hardened linked Module into an Autonomous Service through a reviewable Extraction Plan rather than treating greenfield Service scaffolding as the main product story. The plan detects boundary and data ownership violations, freezes contracts, prepares Workloads and Service Clients, updates the System graph, defines compatibility and behavior evidence, and stages reversible Cutover without automatically executing irreversible data movement.
 
 ## Consequences

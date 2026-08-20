@@ -1,5 +1,10 @@
 # Package Readiness
 
+> **Legacy v0.3.x maintenance guide:** This page applies to the maintained
+> Service-oriented release line on `main`. It does not define vNext
+> architecture or authorize publication from `next`. See the
+> [documentation map](README.md).
+
 Package readiness is checked by the owning ecosystem workflow. The root
 workspace contains public Cargo crates and the TypeScript `@lenso/service-kit`
 package; tools and fixtures remain non-publishable.

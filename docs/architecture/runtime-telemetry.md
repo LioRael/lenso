@@ -1,5 +1,9 @@
 # Runtime Telemetry Architecture
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Console uses the business runtime model as the source of truth.
 
 ## Source Of Truth

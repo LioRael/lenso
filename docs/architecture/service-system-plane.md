@@ -1,5 +1,9 @@
 # Service System Plane
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 V18 adds a system-level manifest for teams that have moved past one provider
 or one module, but still want Lenso to stay Kubernetes-optional.
 

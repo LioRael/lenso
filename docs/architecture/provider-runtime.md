@@ -1,5 +1,9 @@
 # Provider Runtime
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Provider Runtime is the Host-side transport for Modules delivered by a Service.
 It is not a Module source or public delivery kind: Module Ecosystem V1 exposes
 only `linked` and `service` delivery.

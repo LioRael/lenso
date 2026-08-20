@@ -13,6 +13,21 @@ Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all op
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+## vNext delivery lane
+
+Issue #577 is the vNext implementation specification and its GitHub sub-issues
+#578 through #603 are the dependency-ordered implementation tickets.
+
+- Create vNext ticket branches and Worktrunk worktrees from the latest
+  `origin/next`, not from `main`.
+- Target `next` in every vNext pull request and require each textual and native
+  blocker to be reachable from `next` before implementation begins.
+- Keep `main` as the v0.3.x maintenance and release base. A legacy maintenance
+  issue that is not part of #577 continues to target `main` unless the issue
+  explicitly says otherwise.
+- Do not close, rewrite, or repurpose #577 while publishing or implementing its
+  children. Update child issue state through normal PR and acceptance evidence.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

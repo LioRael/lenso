@@ -1,5 +1,9 @@
 # Make resilience an explicit Service Contract
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Every cross-Service operation will carry an explicit Call Policy rather than inheriting hidden global retry behavior. Policies define the end-to-end Deadline, retry eligibility, idempotency, circuit breaking, concurrency isolation, overload handling, and any business fallback; undeclared write operations are not retried automatically, and receiving or calling Services enforce policies locally without synchronous System Plane decisions.
 
 ## Consequences

@@ -1,5 +1,9 @@
 # Keep the System Plane out of business traffic
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 The System Plane will coordinate topology, contracts, releases, policy, configuration, and aggregated operational evidence, but it will not proxy business requests or participate synchronously in Service execution. Existing Services continue operating from their last valid state when the System Plane or Runtime Console is unavailable, so control-plane failure can pause coordination without becoming a Data Plane outage.
 
 ## Consequences

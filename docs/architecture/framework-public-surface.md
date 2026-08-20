@@ -1,5 +1,9 @@
 # Framework Public Surface
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Lenso should be packaged as a framework for people building backend systems and
 modules, not as an application repository that users clone and edit directly.
 The public surface is the set of packages, imports, commands, and templates a

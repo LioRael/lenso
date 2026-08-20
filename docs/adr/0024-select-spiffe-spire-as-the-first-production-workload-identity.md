@@ -1,5 +1,9 @@
 # Select SPIFFE/SPIRE as the First Production Workload Identity
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso selects SPIFFE X.509-SVIDs plus JWT-SVIDs, supplied through the SPIFFE
 Workload API by SPIRE or another conforming implementation, as its first
 production Workload Identity integration. X.509-SVID mutual TLS authenticates

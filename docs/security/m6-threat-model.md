@@ -1,5 +1,9 @@
 # M6 Security Threat Model
 
+> **Legacy v0.3.x security guide:** This page applies to the maintained
+> Service-oriented release line on `main` and is retained for support and
+> migration evidence. See the [documentation map](../README.md).
+
 This versioned model is the human-readable companion to
 `lenso.security-review-evidence.v1`. The executable evidence must bind every
 review and finding to the exact GA Support Manifest and immutable release

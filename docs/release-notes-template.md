@@ -1,5 +1,10 @@
 # Lenso <version>
 
+> **Legacy v0.3.x maintenance guide:** This page applies to the maintained
+> Service-oriented release line on `main`. It does not define vNext
+> architecture or authorize publication from `next`. See the
+> [documentation map](README.md).
+
 ## Summary
 
 <One short paragraph describing why this release matters.>
