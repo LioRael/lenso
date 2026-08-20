@@ -6,9 +6,13 @@ import {
   portableValueProfile,
 } from "../../crates/lenso-capability-greeting/generated/bindings.ts";
 import {
+  decodeCorpusRoundTripRequest,
+  decodeCorpusRoundTripResponse,
   decodeRoundTripError,
   decodeRoundTripRequest,
   decodeRoundTripResponse,
+  encodeCorpusRoundTripRequest,
+  encodeCorpusRoundTripResponse,
   encodeRoundTripError,
   encodeRoundTripRequest,
   encodeRoundTripResponse,
@@ -26,6 +30,14 @@ test("generated TypeScript profile round-trips the shared corpus", () => {
   expect(portableValueProfile.missingAndNull).toBe("distinct");
 
   for (const fixture of corpus) {
+    const corpusValue = fixture.wire as Record<string, unknown>;
+    expect(
+      decodeCorpusRoundTripRequest(encodeCorpusRoundTripRequest(corpusValue)),
+    ).toEqual(corpusValue);
+    expect(
+      decodeCorpusRoundTripResponse(encodeCorpusRoundTripResponse(corpusValue)),
+    ).toEqual(corpusValue);
+
     const opaqueError = {
       code: `future_${fixture.name}`,
       payload: fixture.wire,

@@ -180,6 +180,15 @@ fn type_ir_non_null(schema: &Value) -> TypeIr {
     let Some(object) = schema.as_object() else {
         return TypeIr::Any;
     };
+    if let Some(values) = object.get("enum").and_then(Value::as_array) {
+        return TypeIr::Enum(
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect(),
+        );
+    }
     if let Some(schema_type) = object.get("type").and_then(Value::as_str) {
         return match schema_type {
             "object" => {
@@ -221,15 +230,6 @@ fn type_ir_non_null(schema: &Value) -> TypeIr {
             "null" => TypeIr::Null,
             _ => TypeIr::Any,
         };
-    }
-    if let Some(values) = object.get("enum").and_then(Value::as_array) {
-        return TypeIr::Enum(
-            values
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned)
-                .collect(),
-        );
     }
     TypeIr::Any
 }
@@ -438,6 +438,8 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
     let mut operation_names = BTreeSet::new();
     let mut generated_operation_names = BTreeSet::new();
     let mut generated_type_names = BTreeSet::new();
+    let mut generated_client_method_names =
+        BTreeSet::from(["new".to_owned(), "from_dependencies".to_owned()]);
     for operation_value in operation_values {
         let operation =
             operation_value
@@ -488,6 +490,21 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
             return Err(CodegenError::InvalidDescriptor {
                 detail: format!("Operation `{name}` has unsupported interaction `{interaction}`"),
             });
+        }
+        if interaction == "request" {
+            let client_method_name = rust_field_name(&name);
+            for generated_name in [
+                client_method_name.clone(),
+                format!("{client_method_name}_with_context"),
+            ] {
+                if !generated_client_method_names.insert(generated_name.clone()) {
+                    return Err(CodegenError::InvalidDescriptor {
+                        detail: format!(
+                            "Operation name `{name}` collides with the generated Client API as `{generated_name}`"
+                        ),
+                    });
+                }
+            }
         }
         let request_schema_path =
             schema_path(&descriptor_path, operation, "request_schema", &name)?;
@@ -942,13 +959,24 @@ fn validate_value_generation_schema(
         narrowed.insert("type".to_owned(), schema_type.clone());
         return validate_value_generation_schema(&Value::Object(narrowed), source_path);
     }
-    if let Some(values) = object.get("enum").and_then(Value::as_array)
-        && !values.iter().all(Value::is_string)
-    {
-        return Err(CodegenError::UnsupportedSchema {
-            path: source_path.to_path_buf(),
-            detail: "generated enum values must be strings".to_owned(),
-        });
+    if let Some(values) = object.get("enum").and_then(Value::as_array) {
+        if values.is_empty() || !values.iter().all(Value::is_string) {
+            return Err(CodegenError::UnsupportedSchema {
+                path: source_path.to_path_buf(),
+                detail: "generated enum values must be non-empty strings".to_owned(),
+            });
+        }
+        let mut enum_names = BTreeSet::new();
+        for value in values.iter().filter_map(Value::as_str) {
+            let name = pascal_case(value);
+            if !is_generated_enum_variant(&name) || !enum_names.insert(name) {
+                return Err(CodegenError::UnsupportedSchema {
+                    path: source_path.to_path_buf(),
+                    detail: "generated enum values collide after Rust variant generation"
+                        .to_owned(),
+                });
+            }
+        }
     }
     let Some(schema_type) = object.get("type").and_then(Value::as_str) else {
         if object.contains_key("enum") {
@@ -2418,6 +2446,27 @@ impl RustTypes {
         name.to_owned()
     }
 
+    fn enum_type(&mut self, name: &str, values: &[String]) -> String {
+        if !self.declared.insert(name.to_owned()) {
+            return name.to_owned();
+        }
+        let variants = values
+            .iter()
+            .map(|value| {
+                format!(
+                    "    #[serde(rename = {})]\n    {},",
+                    quote_string(value),
+                    pascal_case(value)
+                )
+            })
+            .collect::<Vec<_>>();
+        self.declarations.push(format!(
+            "#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]\npub enum {name} {{\n{}\n}}\n",
+            variants.join("\n")
+        ));
+        name.to_owned()
+    }
+
     fn type_for(&mut self, ty: &TypeIr, nested_name: &str) -> String {
         let base = self.type_for_non_null(ty.non_null(), nested_name);
         if ty.is_nullable() {
@@ -2430,7 +2479,8 @@ impl RustTypes {
     fn type_for_non_null(&mut self, ty: &TypeIr, nested_name: &str) -> String {
         match ty {
             TypeIr::Any => "serde_json::Value".to_owned(),
-            TypeIr::String | TypeIr::Enum(_) => "String".to_owned(),
+            TypeIr::String => "String".to_owned(),
+            TypeIr::Enum(values) => self.enum_type(nested_name, values),
             TypeIr::Int64 => "Int64".to_owned(),
             TypeIr::Uint64 => "Uint64".to_owned(),
             TypeIr::Bytes => "Bytes".to_owned(),

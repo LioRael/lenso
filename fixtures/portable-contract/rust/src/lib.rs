@@ -10,6 +10,7 @@ mod tests {
     fn generated_profile_round_trips_portable_values_and_preserves_presence() {
         let request = RoundTripRequest {
             duration: "PT1.5S".to_owned(),
+            kind: None,
             local_note: None,
             name: "Ada".to_owned(),
             nullable_map: Some(BTreeMap::from([
@@ -67,6 +68,23 @@ mod tests {
             let name = fixture["name"]
                 .as_str()
                 .expect("fixture should have a name");
+            let corpus_value: BTreeMap<String, serde_json::Value> =
+                serde_json::from_value(fixture["wire"].clone())
+                    .expect("corpus values should be object maps");
+            let request_wire = encode_corpus_round_trip_request(&corpus_value)
+                .expect("corpus request should encode");
+            assert_eq!(
+                decode_corpus_round_trip_request(&request_wire)
+                    .expect("corpus request should decode"),
+                corpus_value
+            );
+            let response_wire = encode_corpus_round_trip_response(&corpus_value)
+                .expect("corpus response should encode");
+            assert_eq!(
+                decode_corpus_round_trip_response(&response_wire)
+                    .expect("corpus response should decode"),
+                corpus_value
+            );
             let error = RoundTripError::Unknown(UnknownDomainError {
                 code: format!("future_{name}"),
                 payload: Some(fixture["wire"].clone()),

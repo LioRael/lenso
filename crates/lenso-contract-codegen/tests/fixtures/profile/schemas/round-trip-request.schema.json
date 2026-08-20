@@ -7,6 +7,7 @@
   "required": ["name", "signed", "unsigned", "payload", "timestamp", "duration", "values"],
   "properties": {
     "name": {"$ref": "common-name.schema.json"},
+    "kind": {"type": "string", "enum": ["alpha", "beta"]},
     "signed": {"type": "string", "format": "int64"},
     "unsigned": {"type": "string", "format": "uint64"},
     "payload": {"type": "string", "format": "byte"},

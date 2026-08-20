@@ -9,6 +9,7 @@ pub const PORTABLE: bool = true;
 pub const PROFILE_CAPABILITY_ID: &str = CAPABILITY_ID;
 pub const PROFILE_DESCRIPTOR_VERSION: &str = DESCRIPTOR_VERSION;
 
+pub const CORPUS_ROUND_TRIP_OPERATION: &str = "corpus_round_trip";
 pub const ROUND_TRIP_OPERATION: &str = "round_trip";
 
 pub type Int64 = String;
@@ -77,10 +78,28 @@ pub struct UnknownDomainError {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CorpusRoundTripErrorRateLimitedPayload {
+    #[serde(rename = "retry_after_ms")]
+    #[serde(deserialize_with = "deserialize_required")]
+    pub retry_after_ms: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CorpusRoundTripError {
+    OptionalData { payload: OptionalValue<String> },
+    RateLimited { payload: CorpusRoundTripErrorRateLimitedPayload },
+    Rejected,
+    Unknown(UnknownDomainError),
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RoundTripRequest {
     #[serde(rename = "duration")]
     #[serde(deserialize_with = "deserialize_required")]
     pub duration: Duration,
+    #[serde(rename = "kind")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<RoundTripRequestKind>,
     #[serde(rename = "local_note")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_note: Option<String>,
@@ -116,6 +135,14 @@ pub struct RoundTripRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum RoundTripRequestKind {
+    #[serde(rename = "alpha")]
+    Alpha,
+    #[serde(rename = "beta")]
+    Beta,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RoundTripResponse {
     #[serde(rename = "accepted")]
     #[serde(deserialize_with = "deserialize_required")]
@@ -143,13 +170,100 @@ pub enum RoundTripError {
 }
 
 #[derive(Debug)]
-pub struct Profile;
-impl RequestCapability for Profile {
+pub struct ProfileCorpusRoundTrip;
+impl RequestCapability for ProfileCorpusRoundTrip {
+    type Request = std::collections::BTreeMap<String, serde_json::Value>;
+    type Response = std::collections::BTreeMap<String, serde_json::Value>;
+    type DomainError = CorpusRoundTripError;
+    const ID: &'static str = CAPABILITY_ID;
+    const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;
+}
+
+#[derive(Debug)]
+pub struct ProfileRoundTrip;
+impl RequestCapability for ProfileRoundTrip {
     type Request = RoundTripRequest;
     type Response = RoundTripResponse;
     type DomainError = RoundTripError;
     const ID: &'static str = CAPABILITY_ID;
     const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;
+}
+
+impl serde::Serialize for CorpusRoundTripError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeMap;
+        match self {
+            Self::OptionalData { payload } => {
+                let mut map = serializer.serialize_map(Some(if payload.is_some() { 2 } else { 1 }))?;
+                map.serialize_entry("code", "optional_data")?;
+                if let Some(payload) = payload {
+                    map.serialize_entry("payload", payload)?;
+                }
+                map.end()
+            },
+            Self::RateLimited { payload } => {
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("code", "rate_limited")?;
+                map.serialize_entry("payload", payload)?;
+                map.end()
+            },
+            Self::Rejected => serializer.serialize_str("rejected"),
+            Self::Unknown(value) => {
+                let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;
+                map.serialize_entry("code", &value.code)?;
+                if let Some(payload) = &value.payload {
+                    map.serialize_entry("payload", payload)?;
+                }
+                for (key, extra) in &value.extra {
+                    map.serialize_entry(key, extra)?;
+                }
+                map.end()
+            },
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for CorpusRoundTripError {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
+        match value {
+            serde_json::Value::String(code) => match code.as_str() {
+                "rejected" => Ok(Self::Rejected),
+                _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),
+            },
+            serde_json::Value::Object(mut object) => {
+                let Some(code) = object.remove("code").and_then(|value| value.as_str().map(ToOwned::to_owned)) else {
+                    return Err(serde::de::Error::custom("Domain Error object is missing a string code"));
+                };
+                match code.as_str() {
+                    "optional_data" => {
+                        let payload = match object.remove("payload") {
+                            Some(payload) => Some(serde_json::from_value(payload).map_err(serde::de::Error::custom)?),
+                            None => None,
+                        };
+                        Ok(Self::OptionalData { payload })
+                    },
+                    "rate_limited" => {
+                        let payload = object.remove("payload").ok_or_else(|| serde::de::Error::custom("structured Domain Error is missing a payload"))?;
+                        let payload = serde_json::from_value(payload).map_err(serde::de::Error::custom)?;
+                        Ok(Self::RateLimited { payload })
+                    },
+                    _ => {
+                        let payload = object.remove("payload");
+                        let extra = object.into_iter().collect::<std::collections::BTreeMap<_, _>>();
+                        Ok(Self::Unknown(UnknownDomainError { code, payload, extra }))
+                    }
+                }
+            }
+            other => Err(serde::de::Error::custom(format!("Domain Error must be a string or object, got {other}"))),
+        }
+    }
 }
 
 impl serde::Serialize for RoundTripError {
@@ -229,6 +343,13 @@ impl<'de> serde::Deserialize<'de> for RoundTripError {
     }
 }
 
+pub fn encode_corpus_round_trip_request(value: &std::collections::BTreeMap<String, serde_json::Value>) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_corpus_round_trip_request(wire: &str) -> Result<std::collections::BTreeMap<String, serde_json::Value>, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+pub fn encode_corpus_round_trip_response(value: &std::collections::BTreeMap<String, serde_json::Value>) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_corpus_round_trip_response(wire: &str) -> Result<std::collections::BTreeMap<String, serde_json::Value>, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+pub fn encode_corpus_round_trip_error(value: &CorpusRoundTripError) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_corpus_round_trip_error(wire: &str) -> Result<CorpusRoundTripError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+
 pub fn encode_round_trip_request(value: &RoundTripRequest) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
 pub fn decode_round_trip_request(wire: &str) -> Result<RoundTripRequest, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 pub fn encode_round_trip_response(value: &RoundTripResponse) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
@@ -237,6 +358,7 @@ pub fn encode_round_trip_error(value: &RoundTripError) -> Result<String, serde_j
 pub fn decode_round_trip_error(wire: &str) -> Result<RoundTripError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 
 pub trait ProfileProvider: fmt::Debug + 'static {
+    fn corpus_round_trip(&self, context: InvocationContext, request: std::collections::BTreeMap<String, serde_json::Value>) -> LocalBoxFuture<'static, Result<std::collections::BTreeMap<String, serde_json::Value>, CorpusRoundTripError>>;
     fn round_trip(&self, context: InvocationContext, request: RoundTripRequest) -> LocalBoxFuture<'static, Result<RoundTripResponse, RoundTripError>>;
 }
 
@@ -250,10 +372,22 @@ impl<P: ProfileProvider> NativeRequestEndpoint for ProfileEndpoint<P> {
     fn capability_id(&self) -> &'static str { CAPABILITY_ID }
     fn descriptor_version(&self) -> &'static str { DESCRIPTOR_VERSION }
     fn operations(&self) -> &'static [&'static str] { &[
+        CORPUS_ROUND_TRIP_OPERATION,
         ROUND_TRIP_OPERATION,
     ] }
     fn invoke(&self, operation: &str, request: Box<dyn std::any::Any>, context: InvocationContext) -> LocalBoxFuture<'static, Result<Result<Box<dyn std::any::Any>, Box<dyn std::any::Any>>, RuntimeFailure>> {
         match operation {
+            CORPUS_ROUND_TRIP_OPERATION => {
+                let Ok(request) = request.downcast::<std::collections::BTreeMap<String, serde_json::Value>>() else {
+                    return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation { capability: CAPABILITY_ID })));
+                };
+                let provider = Rc::clone(&self.provider);
+                Box::pin(async move {
+                    Ok(provider.corpus_round_trip(context, *request).await
+                        .map(|value| Box::new(value) as Box<dyn std::any::Any>)
+                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))
+                })
+            },
             ROUND_TRIP_OPERATION => {
                 let Ok(request) = request.downcast::<RoundTripRequest>() else {
                     return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation { capability: CAPABILITY_ID })));
@@ -272,34 +406,49 @@ impl<P: ProfileProvider> NativeRequestEndpoint for ProfileEndpoint<P> {
 
 #[derive(Debug)]
 pub struct ProfileClient {
-    round_trip: NativeRequestHandle<Profile>,
+    corpus_round_trip: NativeRequestHandle<ProfileCorpusRoundTrip>,
+    round_trip: NativeRequestHandle<ProfileRoundTrip>,
 }
 impl ProfileClient {
-    pub fn new(handle: NativeRequestHandle<Profile>) -> Self {
-        Self { round_trip: handle }
-    }
-
     pub fn from_dependencies(dependencies: &ModuleDependencies) -> Result<Self, RuntimeFailure> {
         Ok(Self {
-            round_trip: dependencies.one::<Profile>()?,
+            corpus_round_trip: dependencies.one::<ProfileCorpusRoundTrip>()?,
+            round_trip: dependencies.one::<ProfileRoundTrip>()?,
         })
     }
 
-    pub async fn round_trip(&self, request: RoundTripRequest) -> Result<RoundTripResponse, ProfileInvocationError> {
-        self.round_trip.invoke(ROUND_TRIP_OPERATION, request).await
-            .map_err(ProfileInvocationError::Runtime)?
-            .map_err(ProfileInvocationError::Domain)
+    pub async fn corpus_round_trip(&self, request: std::collections::BTreeMap<String, serde_json::Value>) -> Result<std::collections::BTreeMap<String, serde_json::Value>, ProfileCorpusRoundTripInvocationError> {
+        self.corpus_round_trip.invoke(CORPUS_ROUND_TRIP_OPERATION, request).await
+            .map_err(ProfileCorpusRoundTripInvocationError::Runtime)?
+            .map_err(ProfileCorpusRoundTripInvocationError::Domain)
     }
 
-    pub async fn round_trip_with_context(&self, context: InvocationContext, request: RoundTripRequest) -> Result<RoundTripResponse, ProfileInvocationError> {
+    pub async fn corpus_round_trip_with_context(&self, context: InvocationContext, request: std::collections::BTreeMap<String, serde_json::Value>) -> Result<std::collections::BTreeMap<String, serde_json::Value>, ProfileCorpusRoundTripInvocationError> {
+        self.corpus_round_trip.invoke_with_context(CORPUS_ROUND_TRIP_OPERATION, context, request).await
+            .map_err(ProfileCorpusRoundTripInvocationError::Runtime)?
+            .map_err(ProfileCorpusRoundTripInvocationError::Domain)
+    }
+
+    pub async fn round_trip(&self, request: RoundTripRequest) -> Result<RoundTripResponse, ProfileRoundTripInvocationError> {
+        self.round_trip.invoke(ROUND_TRIP_OPERATION, request).await
+            .map_err(ProfileRoundTripInvocationError::Runtime)?
+            .map_err(ProfileRoundTripInvocationError::Domain)
+    }
+
+    pub async fn round_trip_with_context(&self, context: InvocationContext, request: RoundTripRequest) -> Result<RoundTripResponse, ProfileRoundTripInvocationError> {
         self.round_trip.invoke_with_context(ROUND_TRIP_OPERATION, context, request).await
-            .map_err(ProfileInvocationError::Runtime)?
-            .map_err(ProfileInvocationError::Domain)
+            .map_err(ProfileRoundTripInvocationError::Runtime)?
+            .map_err(ProfileRoundTripInvocationError::Domain)
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ProfileInvocationError {
+pub enum ProfileCorpusRoundTripInvocationError {
+    Domain(CorpusRoundTripError),
+    Runtime(RuntimeFailure),
+}
+#[derive(Clone, Debug, PartialEq)]
+pub enum ProfileRoundTripInvocationError {
     Domain(RoundTripError),
     Runtime(RuntimeFailure),
 }

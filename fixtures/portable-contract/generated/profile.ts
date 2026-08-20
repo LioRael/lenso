@@ -21,8 +21,13 @@ export interface InvocationContext {
 export type RuntimeFailure = { readonly kind: "unavailable" | "unknown_operation" | "ambiguous_binding" | "protocol_violation" | "missing_module_factory" | "unavailable_execution_class" | "invalid_resolved_plan" | "admission_closed" | "resource_exhausted" | "deadline_exceeded" | "cancelled" | "internal" | "module_failure" | "module_restart_exhausted"; readonly detail?: unknown; readonly [key: string]: unknown };
 export type UnknownDomainError = { readonly code: string; readonly payload?: unknown; readonly [key: string]: unknown };
 
+export interface CorpusRoundTripErrorRateLimitedPayload {
+  retry_after_ms: number;
+}
+
 export interface RoundTripRequest {
   duration: Duration;
+  kind?: "alpha" | "beta";
   local_note?: string;
   name: string;
   nullable_map?: Record<string, number | null>;
@@ -44,6 +49,9 @@ export interface RoundTripErrorRateLimitedPayload {
   retry_after_ms: number;
 }
 
+export type CorpusRoundTripError = { readonly code: "optional_data"; readonly payload?: string | null } | { readonly code: "rate_limited"; readonly payload: CorpusRoundTripErrorRateLimitedPayload } | "rejected" | UnknownDomainError;
+export type CorpusRoundTripInvocationError = { readonly kind: "domain"; readonly error: CorpusRoundTripError } | { readonly kind: "runtime"; readonly error: RuntimeFailure };
+export type CorpusRoundTripResult = { readonly ok: true; readonly value: Record<string, unknown> } | { readonly ok: false; readonly error: CorpusRoundTripInvocationError };
 export type RoundTripError = { readonly code: "optional_data"; readonly payload?: string | null } | { readonly code: "rate_limited"; readonly payload: RoundTripErrorRateLimitedPayload } | "rejected" | UnknownDomainError;
 export type RoundTripInvocationError = { readonly kind: "domain"; readonly error: RoundTripError } | { readonly kind: "runtime"; readonly error: RuntimeFailure };
 export type RoundTripResult = { readonly ok: true; readonly value: RoundTripResponse } | { readonly ok: false; readonly error: RoundTripInvocationError };
@@ -65,6 +73,22 @@ function validatePortableJson(value: unknown): void {
   }
 }
 
+export function encodeCorpusRoundTripRequest(value: Record<string, unknown>): string { validatePortableJson(value); const wire = JSON.stringify(value); if (wire === undefined) throw new Error("request cannot be encoded"); return wire; }
+export function decodeCorpusRoundTripRequest(wire: string): Record<string, unknown> { const value: unknown = JSON.parse(wire); validatePortableJson(value); return value as Record<string, unknown>; }
+export function encodeCorpusRoundTripResponse(value: Record<string, unknown>): string { validatePortableJson(value); const wire = JSON.stringify(value); if (wire === undefined) throw new Error("response cannot be encoded"); return wire; }
+export function decodeCorpusRoundTripResponse(wire: string): Record<string, unknown> { const value: unknown = JSON.parse(wire); validatePortableJson(value); return value as Record<string, unknown>; }
+export function encodeCorpusRoundTripError(value: CorpusRoundTripError): string { validatePortableJson(value); const wire = JSON.stringify(value); if (wire === undefined) throw new Error("Domain Error cannot be encoded"); return wire; }
+export function decodeCorpusRoundTripError(wire: string): CorpusRoundTripError {
+  const value: unknown = JSON.parse(wire);
+  validatePortableJson(value);
+  if (typeof value === "string") {
+    if (value === "rejected") return value as CorpusRoundTripError;
+    return { code: value } as CorpusRoundTripError;
+  }
+  if (isRecord(value) && typeof value.code === "string") return value as CorpusRoundTripError;
+  throw new Error("Domain Error must be a string or object");
+}
+
 export function encodeRoundTripRequest(value: RoundTripRequest): string { validatePortableJson(value); const wire = JSON.stringify(value); if (wire === undefined) throw new Error("request cannot be encoded"); return wire; }
 export function decodeRoundTripRequest(wire: string): RoundTripRequest { const value: unknown = JSON.parse(wire); validatePortableJson(value); return value as RoundTripRequest; }
 export function encodeRoundTripResponse(value: RoundTripResponse): string { validatePortableJson(value); const wire = JSON.stringify(value); if (wire === undefined) throw new Error("response cannot be encoded"); return wire; }
@@ -83,10 +107,12 @@ export function decodeRoundTripError(wire: string): RoundTripError {
 
 
 export interface ProfileClient {
+  corpus_round_trip(request: Record<string, unknown>, context?: InvocationContext): Promise<CorpusRoundTripResult>;
   round_trip(request: RoundTripRequest, context?: InvocationContext): Promise<RoundTripResult>;
 }
 
 export interface ProfileProvider {
+  corpus_round_trip(context: InvocationContext, request: Record<string, unknown>): Promise<{ readonly ok: true; readonly value: Record<string, unknown> } | { readonly ok: false; readonly error: CorpusRoundTripError }>;
   round_trip(context: InvocationContext, request: RoundTripRequest): Promise<{ readonly ok: true; readonly value: RoundTripResponse } | { readonly ok: false; readonly error: RoundTripError }>;
 }
 
