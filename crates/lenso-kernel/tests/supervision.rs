@@ -144,6 +144,7 @@ struct RecordingLifecycle {
     generation: u64,
     events: Rc<RefCell<Vec<Event>>>,
     fail_release: bool,
+    panic_task: bool,
 }
 
 impl ModuleLifecycle for RecordingLifecycle {
@@ -171,11 +172,17 @@ impl ModuleLifecycle for RecordingLifecycle {
         let generation = self.generation;
         let events = self.events.clone();
         let cancellation = context.cancellation();
+        let task = if self.panic_task {
+            Box::pin(configured_managed_task_failure())
+                as futures::future::LocalBoxFuture<'static, ()>
+        } else {
+            Box::pin(async move {
+                cancellation.cancelled().await;
+            })
+        };
         context
             .tasks()
-            .spawn_local(Box::pin(async move {
-                cancellation.cancelled().await;
-            }))
+            .spawn_local(task)
             .expect("the generation should accept its managed task");
         Box::pin(async move {
             events.borrow_mut().push(Event::Activate(generation));
@@ -201,6 +208,11 @@ impl ModuleLifecycle for RecordingLifecycle {
     }
 }
 
+async fn configured_managed_task_failure() {
+    futures::future::ready(()).await;
+    panic!("configured managed task failure");
+}
+
 #[derive(Debug)]
 struct SupervisionAdapter {
     events: Rc<RefCell<Vec<Event>>>,
@@ -209,6 +221,7 @@ struct SupervisionAdapter {
     recreate_failures: Cell<usize>,
     fail_initial_generation: bool,
     fail_initial_release: bool,
+    panic_initial_task: bool,
 }
 
 impl SupervisionAdapter {
@@ -225,11 +238,17 @@ impl SupervisionAdapter {
             recreate_failures: Cell::new(recreate_failures),
             fail_initial_generation,
             fail_initial_release: false,
+            panic_initial_task: false,
         }
     }
 
     fn with_initial_release_failure(mut self) -> Self {
         self.fail_initial_release = true;
+        self
+    }
+
+    fn with_initial_task_panic(mut self) -> Self {
+        self.panic_initial_task = true;
         self
     }
 
@@ -246,6 +265,7 @@ impl SupervisionAdapter {
             generation,
             events: self.events.clone(),
             fail_release,
+            panic_task: self.panic_initial_task && generation == 1,
         })
     }
 }
@@ -253,18 +273,25 @@ impl SupervisionAdapter {
 impl NativeExecutionAdapter for SupervisionAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         let endpoint = self.endpoint(1, self.fail_initial_generation);
-        let bindings = vec![PreparedBinding::new("consumer", "provider", endpoint)];
-        let modules = BTreeMap::from([
+        let bindings = vec![PreparedBinding::new(
+            "consumer",
+            "provider",
+            endpoint.clone(),
+        )];
+        let generations = BTreeMap::from([
             (
                 "consumer".to_owned(),
-                Rc::new(NoopModuleLifecycle) as Rc<dyn ModuleLifecycle>,
+                PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
             ),
             (
                 "provider".to_owned(),
-                self.lifecycle(1, self.fail_initial_release),
+                PreparedNativeModule::with_lifecycle(
+                    vec![endpoint],
+                    self.lifecycle(1, self.fail_initial_release),
+                ),
             ),
         ]);
-        Ok(PreparedNativeApp::with_modules(bindings, modules))
+        Ok(PreparedNativeApp::new(bindings, generations))
     }
 
     fn recreate(
@@ -500,6 +527,48 @@ fn provider_failure_does_not_replay_the_in_flight_request() {
 }
 
 #[test]
+fn shutdown_joins_an_in_flight_supervision_episode_before_reporting_clean() {
+    let (app, driver, events, _) = start_app(
+        RestartPolicy::on_failure(
+            2,
+            Duration::from_secs(30),
+            Duration::from_secs(1),
+            Duration::ZERO,
+            Duration::from_secs(1),
+        ),
+        Some(CapabilityCardinality::One),
+        true,
+        0,
+        true,
+    );
+    let handle = app
+        .handle::<SupervisedCapability>("consumer")
+        .expect("the initial binding should resolve");
+    assert!(matches!(
+        driver.run(handle.invoke(OPERATION, "trigger".to_owned())),
+        Err(RuntimeFailure::ModuleFailure { .. })
+    ));
+
+    let outcome = driver.run(app.shutdown(Duration::from_secs(2)));
+
+    assert_eq!(outcome, lenso_kernel::ShutdownOutcome::Clean);
+    assert_eq!(
+        events
+            .borrow()
+            .iter()
+            .filter(|event| matches!(event, Event::Release(1)))
+            .count(),
+        1
+    );
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, Event::Prepare(2)))
+    );
+}
+
+#[test]
 fn a_ready_stability_period_resets_the_finite_attempt_budget() {
     let stability = Duration::from_millis(5);
     let (app, driver, _, _) = start_app(
@@ -665,4 +734,36 @@ fn required_path_or_explicit_criticality_turns_exhaustion_into_a_terminal_app_fa
             attempts: 1,
         })
     );
+}
+
+#[test]
+fn managed_task_panic_is_reported_to_module_supervision() {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let invocations = Rc::new(Cell::new(0));
+    let adapter = SupervisionAdapter::new(events, invocations, 0, false).with_initial_task_panic();
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(Kernel::start_native(
+            plan(
+                RestartPolicy::never(),
+                Some(CapabilityCardinality::One),
+                true,
+            ),
+            driver.clone(),
+            adapter,
+        ))
+        .expect("the App should publish before the managed task runs");
+
+    for _ in 0..8 {
+        if app.is_failed() {
+            break;
+        }
+        drive_turn(&driver);
+    }
+
+    assert!(matches!(
+        app.terminal_failure(),
+        Some(RuntimeFailure::ModuleRestartExhausted { instance, attempts: 0 })
+            if instance == "provider"
+    ));
 }

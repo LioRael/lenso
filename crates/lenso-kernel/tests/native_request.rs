@@ -1,12 +1,15 @@
+use std::time::Duration;
+
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
     CapabilityRequirementPlan, ModuleInstancePlan, PlanResolutionError, ResolvedAppPlan,
+    RestartPolicy,
 };
 use lenso_capability_greeting::{
-    GREETING_CAPABILITY_ID, GREETING_DESCRIPTOR_VERSION, GreetError, GreetRequest, GreetingClient,
-    GreetingInvocationError,
+    GREETING_CAPABILITY_ID, GREETING_DESCRIPTOR_VERSION, GreetError, GreetRequest, Greeting,
+    GreetingClient, GreetingInvocationError,
 };
-use lenso_kernel::{DeterministicDriver, Kernel, RuntimeFailure};
+use lenso_kernel::{DeterministicDriver, Kernel, RuntimeDriver, RuntimeFailure};
 use lenso_native_adapter::NativeModuleRegistry;
 use lenso_native_greeter::{
     ALTERNATE_GREETER_PACKAGE_ID, AlternateGreeterFactory, CONSUMER_PACKAGE_ID, ConsumerFactory,
@@ -65,7 +68,10 @@ fn greeting_app(provider_package_id: &str) -> (lenso_kernel::NativeApp, Determin
 #[test]
 fn generated_client_invokes_a_statically_linked_provider() {
     let (app, driver) = greeting_app(GREETER_PACKAGE_ID);
-    let client = GreetingClient::new(&app, "consumer").expect("binding should resolve");
+    let client = GreetingClient::new(
+        app.handle::<Greeting>("consumer")
+            .expect("binding should resolve"),
+    );
 
     let response = driver.run(client.greet(GreetRequest {
         name: "Ada".to_owned(),
@@ -77,7 +83,10 @@ fn generated_client_invokes_a_statically_linked_provider() {
 #[test]
 fn generated_client_preserves_domain_errors() {
     let (app, driver) = greeting_app(GREETER_PACKAGE_ID);
-    let client = GreetingClient::new(&app, "consumer").expect("binding should resolve");
+    let client = GreetingClient::new(
+        app.handle::<Greeting>("consumer")
+            .expect("binding should resolve"),
+    );
 
     let outcome = driver.run(client.greet(GreetRequest {
         name: String::new(),
@@ -121,7 +130,7 @@ fn generated_client_reports_a_missing_binding_as_a_runtime_failure() {
         ))
         .expect("an App without providers can start");
 
-    let error = GreetingClient::new(&app, "consumer").unwrap_err();
+    let error = app.handle::<Greeting>("consumer").unwrap_err();
 
     assert_eq!(
         error,
@@ -426,7 +435,10 @@ fn a_singular_client_does_not_fallback_to_the_first_many_provider() {
         app.binding_count::<lenso_capability_greeting::Greeting>("consumer"),
         2
     );
-    let client = GreetingClient::new(&app, "consumer").expect("many binding should be present");
+    let client = GreetingClient::new(
+        app.handle::<Greeting>("consumer")
+            .expect("many binding should be present"),
+    );
 
     let outcome = driver.run(client.greet(GreetRequest {
         name: "Ada".to_owned(),
@@ -639,18 +651,24 @@ fn replacing_the_provider_changes_composition_and_plan_but_not_the_consumer_bind
         .expect("the replacement provider should start");
 
     let first_response = first_driver.run(
-        GreetingClient::new(&first_app, "consumer")
-            .expect("first binding should resolve")
-            .greet(GreetRequest {
-                name: "Ada".to_owned(),
-            }),
+        GreetingClient::new(
+            first_app
+                .handle::<Greeting>("consumer")
+                .expect("first binding should resolve"),
+        )
+        .greet(GreetRequest {
+            name: "Ada".to_owned(),
+        }),
     );
     let second_response = second_driver.run(
-        GreetingClient::new(&second_app, "consumer")
-            .expect("replacement binding should resolve")
-            .greet(GreetRequest {
-                name: "Ada".to_owned(),
-            }),
+        GreetingClient::new(
+            second_app
+                .handle::<Greeting>("consumer")
+                .expect("replacement binding should resolve"),
+        )
+        .greet(GreetRequest {
+            name: "Ada".to_owned(),
+        }),
     );
 
     assert_eq!(first_response.unwrap().message, "Hello, Ada!");
@@ -674,7 +692,10 @@ fn replacing_the_provider_changes_composition_and_plan_but_not_the_consumer_bind
 
 fn assert_provider_uses_the_generated_contract(package_id: &str, expected_message: &str) {
     let (app, driver) = greeting_app(package_id);
-    let client = GreetingClient::new(&app, "consumer").expect("binding should resolve");
+    let client = GreetingClient::new(
+        app.handle::<Greeting>("consumer")
+            .expect("binding should resolve"),
+    );
 
     let response = driver.run(client.greet(GreetRequest {
         name: "Ada".to_owned(),
@@ -688,5 +709,68 @@ fn assert_provider_uses_the_generated_contract(package_id: &str, expected_messag
     assert_eq!(
         domain_error,
         Err(GreetingInvocationError::Domain(GreetError::EmptyName))
+    );
+}
+
+#[test]
+fn native_registry_recreates_a_generation_through_the_supervision_seam() {
+    let plan = AppComposition::new(
+        vec![
+            ModuleInstancePlan::new("consumer", CONSUMER_PACKAGE_ID).with_requirement(
+                CapabilityRequirementPlan::one(GREETING_CAPABILITY_ID, GREETING_DESCRIPTOR_VERSION),
+            ),
+            ModuleInstancePlan::new("greeter", GREETER_PACKAGE_ID)
+                .with_restart_policy(RestartPolicy::on_failure(
+                    1,
+                    Duration::from_secs(30),
+                    Duration::ZERO,
+                    Duration::ZERO,
+                    Duration::from_secs(1),
+                ))
+                .with_capability(CapabilityEndpointPlan::new(
+                    GREETING_CAPABILITY_ID,
+                    GREETING_DESCRIPTOR_VERSION,
+                    ["greet"],
+                )),
+        ],
+        vec![CapabilityBinding::new(
+            "consumer",
+            GREETING_CAPABILITY_ID,
+            GREETING_DESCRIPTOR_VERSION,
+            "greeter",
+        )],
+    )
+    .resolve()
+    .expect("the supervised native plan should resolve");
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(Kernel::start_native(
+            plan,
+            driver.clone(),
+            greeting_registry(),
+        ))
+        .expect("the native registry App should start");
+    let client = GreetingClient::new(
+        app.handle::<Greeting>("consumer")
+            .expect("the stable handle should resolve"),
+    );
+
+    app.report_module_failure("greeter")
+        .expect("the production registry should schedule recreation");
+    driver.run(async {
+        for _ in 0..6 {
+            driver.yield_now().await;
+        }
+    });
+
+    assert_eq!(app.module_generation("greeter"), Some(2));
+    assert_eq!(
+        driver
+            .run(client.greet(GreetRequest {
+                name: "Registry".to_owned(),
+            }))
+            .expect("the stable generated client should use the replacement generation")
+            .message,
+        "Hello, Registry!"
     );
 }

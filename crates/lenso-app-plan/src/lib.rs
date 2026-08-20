@@ -402,6 +402,8 @@ impl CapabilityEndpointPlan {
 pub struct ModuleInstancePlan {
     instance_key: String,
     package_id: String,
+    entrypoint: String,
+    configuration: String,
     provided_capabilities: Vec<CapabilityEndpointPlan>,
     required_capabilities: Vec<CapabilityRequirementPlan>,
     execution_class: ExecutionClassId,
@@ -415,12 +417,28 @@ impl ModuleInstancePlan {
         Self {
             instance_key: instance_key.into(),
             package_id: package_id.into(),
+            entrypoint: "default".to_owned(),
+            configuration: "{}".to_owned(),
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
             execution_class: ExecutionClassId::native_rust(),
             restart_policy: RestartPolicy::default(),
             criticality: ModuleCriticality::default(),
         }
+    }
+
+    /// Selects the exact package entrypoint executed for this Instance.
+    #[must_use]
+    pub fn with_entrypoint(mut self, entrypoint: impl Into<String>) -> Self {
+        self.entrypoint = entrypoint.into();
+        self
+    }
+
+    /// Supplies opaque, non-secret configuration owned and decoded by the Module.
+    #[must_use]
+    pub fn with_configuration(mut self, configuration: impl Into<String>) -> Self {
+        self.configuration = configuration.into();
+        self
     }
 
     /// Declares one exact endpoint this Instance must prepare.
@@ -472,6 +490,16 @@ impl ModuleInstancePlan {
     /// Returns the selected package identity.
     pub fn package_id(&self) -> &str {
         &self.package_id
+    }
+
+    /// Returns the exact package entrypoint selected before boot.
+    pub fn entrypoint(&self) -> &str {
+        &self.entrypoint
+    }
+
+    /// Returns the Module-owned opaque configuration selected before boot.
+    pub fn configuration(&self) -> &str {
+        &self.configuration
     }
 
     /// Returns the exact endpoint set this Instance must prepare.
@@ -634,10 +662,18 @@ pub enum PlanResolutionError {
     UnsupportedSchemaVersion { expected: u32, actual: u32 },
     /// Two Module Instances use the same App-local key.
     DuplicateModuleInstance { instance_key: String },
+    /// A Module Instance has no executable entrypoint identity.
+    InvalidModuleEntrypoint { instance_key: String },
     /// A Module declares the same provided Capability more than once.
     DuplicateProvidedCapability {
         provider_instance: String,
         capability_id: String,
+    },
+    /// One endpoint declares an Operation more than once.
+    DuplicateOperation {
+        provider_instance: String,
+        capability_id: String,
+        operation: String,
     },
     /// A Module declares the same required Capability more than once.
     DuplicateRequiredCapability {
@@ -724,12 +760,24 @@ impl fmt::Display for PlanResolutionError {
             Self::DuplicateModuleInstance { instance_key } => {
                 write!(formatter, "duplicate Module Instance `{instance_key}`")
             }
+            Self::InvalidModuleEntrypoint { instance_key } => write!(
+                formatter,
+                "Module Instance `{instance_key}` has an empty entrypoint"
+            ),
             Self::DuplicateProvidedCapability {
                 provider_instance,
                 capability_id,
             } => write!(
                 formatter,
                 "Module Instance `{provider_instance}` provides Capability `{capability_id}` more than once"
+            ),
+            Self::DuplicateOperation {
+                provider_instance,
+                capability_id,
+                operation,
+            } => write!(
+                formatter,
+                "Module Instance `{provider_instance}` Capability `{capability_id}` declares Operation `{operation}` more than once"
             ),
             Self::DuplicateRequiredCapability {
                 consumer_instance,
@@ -1269,6 +1317,11 @@ fn activation_order_for(
 fn validate_instance_declarations(
     instance: &ModuleInstancePlan,
 ) -> Result<(), PlanResolutionError> {
+    if instance.entrypoint.trim().is_empty() {
+        return Err(PlanResolutionError::InvalidModuleEntrypoint {
+            instance_key: instance.instance_key.clone(),
+        });
+    }
     let mut provided = BTreeSet::new();
     for endpoint in &instance.provided_capabilities {
         if !provided.insert(endpoint.capability_id.as_str()) {
@@ -1276,6 +1329,16 @@ fn validate_instance_declarations(
                 provider_instance: instance.instance_key.clone(),
                 capability_id: endpoint.capability_id.clone(),
             });
+        }
+        let mut operations = BTreeSet::new();
+        for operation in &endpoint.operations {
+            if !operations.insert(operation.as_str()) {
+                return Err(PlanResolutionError::DuplicateOperation {
+                    provider_instance: instance.instance_key.clone(),
+                    capability_id: endpoint.capability_id.clone(),
+                    operation: operation.clone(),
+                });
+            }
         }
     }
 
