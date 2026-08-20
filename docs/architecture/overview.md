@@ -1,5 +1,9 @@
 # Architecture Overview
 
+> **Legacy implementation context:** this document describes the current
+> Service-oriented codebase. It is not normative for vNext. Read
+> [`lenso-vnext.md`](lenso-vnext.md) before making vNext architecture decisions.
+
 Lenso is a Rust-first backend framework and service-ready modular monolith with
 an embedded runtime, an Axum HTTP API, a background worker, a migration runner,
 committed contracts, and a sibling Console. The platform gives future
