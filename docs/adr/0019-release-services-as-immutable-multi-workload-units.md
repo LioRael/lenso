@@ -1,5 +1,9 @@
 # Release Services as immutable multi-Workload units
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 An Autonomous Service will be released as one immutable, environment-independent Service Release that binds all API, worker, migration, and other Workload artifacts to the Service and Module versions, Contract Versions, Config Contract, migration and workflow compatibility, verification evidence, artifact digests, SBOM, provenance, signatures, rollout gates, and rollback metadata. Deployment adapters realize that release in an environment, and Promotion reuses the same digests rather than rebuilding.
 
 ## Consequences

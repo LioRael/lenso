@@ -4,6 +4,11 @@ status: accepted
 
 # Release repositories independently
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext. The repository-local release
+> ownership rule remains applicable to the maintained `main` release line.
+
 Lenso repositories publish their own changed packages from a reviewed release PR, using only repository-local dependency relationships to select additional packages. We will retire `lenso-release` as a central authorization and coordination layer because organizational or ecosystem relationships do not justify coupling otherwise independent release cadences; cross-repository compatibility belongs in SemVer and machine-readable contracts, consumer dependency-update pull requests, and integration verification instead.
 
 Cargo workspaces use Release-plz. npm packages use an npm-oriented release PR tool, and OCI artifacts are built and published by their owning repository after its release is approved. A repository may group artifacts only when they form one genuine release unit, such as a native CLI and its npm wrapper. Ordinary releases retain CI, exact-commit publication, Trusted Publishing/OIDC, registry verification, and provenance, while shadow publication, central nonces, receipts, system candidates, and global `stable` or `next` channels are not default release gates. Framework crates, CLI, Console, Modules, Starters, and examples keep independent versions; a tested combination recorded by a lockfile is compatibility evidence rather than a synchronized System Release.

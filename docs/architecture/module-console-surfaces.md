@@ -1,5 +1,9 @@
 # Module Console Surfaces
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Status: current after the Console ESM and typed Module Operations contract.
 
 A Module may declare Shell-rendered declarative surfaces or executable ESM

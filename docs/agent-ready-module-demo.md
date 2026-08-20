@@ -1,5 +1,10 @@
 # Agent-Ready Support Desk Acceptance
 
+> **Legacy v0.3.x acceptance:** This scenario validates the maintained
+> Service-oriented product on `main`. It remains migration evidence but is not
+> a vNext acceptance contract. See
+> [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md).
+
 The Support Desk acceptance is the highest public product seam for Lenso's
 agent-ready application workflow:
 

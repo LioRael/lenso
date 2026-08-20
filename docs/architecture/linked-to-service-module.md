@@ -1,5 +1,9 @@
 # Linked To Service Module Extraction
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Use this guide when a linked Rust module has a stable boundary and should move
 behind an independently running service. This is a manual extraction path,
 not an automatic migration tool.

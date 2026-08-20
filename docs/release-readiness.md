@@ -1,5 +1,10 @@
 # Release Readiness
 
+> **Legacy v0.3.x maintenance guide:** This page applies to the maintained
+> Service-oriented release line on `main`. It does not define vNext
+> architecture or authorize publication from `next`. See the
+> [documentation map](README.md).
+
 Release readiness is repository-local. Run the explicit quality gate and the
 package check for the ecosystem that changed; do not wait for a
 cross-repository plan.

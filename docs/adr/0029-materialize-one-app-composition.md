@@ -1,5 +1,9 @@
 # Materialize one App Composition
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will keep one App Composition as the sole application-level declaration of selected Modules, implementation bindings, and dependency selections. Product Blueprints, Addons, and Capability Packs are authoring recipes that materialize exact composition entries and then cease to participate in resolution; their origin may remain as informational provenance. Module and Service contracts remain owner-local, while deployment and environment state remain outside the App Composition.
 
 ## Consequences

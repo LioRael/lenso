@@ -1,5 +1,9 @@
 # Service Capability Tiers
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Lenso has two explicit Service capability tiers. The protocol names describe
 different ownership boundaries; they are not interchangeable version upgrades.
 

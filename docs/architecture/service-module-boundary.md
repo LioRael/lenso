@@ -1,5 +1,9 @@
 # Service Boundary
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 This note names the microservice-facing boundary that already exists in Lenso.
 It is intentionally smaller than a general microservice platform.
 

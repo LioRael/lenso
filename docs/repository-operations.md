@@ -1,5 +1,10 @@
 # Repository Operations
 
+> **Legacy v0.3.x maintenance guide:** This page applies to the maintained
+> Service-oriented release line on `main`. It does not define vNext
+> architecture or authorize publication from `next`. See the
+> [documentation map](README.md).
+
 This repository is the backend half of the Lenso repo pair. It owns the Rust
 services, platform crates, modules, migrations, contracts, and admin APIs
 consumed by the Console.

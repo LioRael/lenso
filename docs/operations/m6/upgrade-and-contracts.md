@@ -1,5 +1,9 @@
 # M6 Upgrade, Rollback, and Contract Runbook
 
+> **Legacy v0.3.x operations guide:** This page applies to the maintained
+> Service-oriented release line on `main` and is retained for support and
+> migration evidence. See the [documentation map](../../README.md).
+
 Version: `m6.v1`. Authority: the exact
 `contracts/ga/lenso.ga-support-manifest.v1.json` shipped with the selected
 release. Unknown combinations are unsupported.

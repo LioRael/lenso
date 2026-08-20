@@ -1,5 +1,9 @@
 # M6 Failure, Backup, Restore, and Disaster Runbook
 
+> **Legacy v0.3.x operations guide:** This page applies to the maintained
+> Service-oriented release line on `main` and is retained for support and
+> migration evidence. See the [documentation map](../../README.md).
+
 Version: `m6.v1`. Observed RPO, RTO, and performance values apply only to the
 pinned evidence environment.
 

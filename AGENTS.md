@@ -2,14 +2,40 @@
 
 Guidance for coding agents working in this repository.
 
+## Architecture and branch scope
+
+`next` is the canonical integration branch for Lenso vNext. For issue #577 and
+its child tickets, create work from the latest `origin/next`, target `next` in
+pull requests, and read [`CONTEXT.md`](CONTEXT.md),
+[`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md), and the
+relevant ADR from 0030 onward before planning implementation.
+
+`main` remains the maintained v0.3.x Service-oriented release line. The current
+workspace still implements that legacy architecture, so legacy source and
+documentation remain useful migration evidence, but their Host, Service,
+Provider, System Plane, Module Release, Console Surface, mandatory Story, and
+PostgreSQL assumptions are not vNext requirements.
+
+For vNext work:
+
+- build new portable contract and Kernel packages beside the legacy runtime;
+- keep Tokio, operating-system facilities, and product behavior outside the
+  portable Kernel behind Runtime Drivers, Execution Adapters, and Modules;
+- use App, Module, Module Instance, Capability, Operation, App Composition,
+  Resolved App Plan, Kernel, Runtime Driver, and Execution Adapter as the
+  canonical vocabulary;
+- do not mechanically preserve or rename legacy abstractions when a ticket
+  requires a new vNext seam; and
+- treat release automation as `main`-only until an explicit cutover decision.
+
 Before planning, changing, or executing a framework release, read
 `docs/release-process.md` and the accepted
 [`0025-release-repositories-independently`](docs/adr/0025-release-repositories-independently.md)
 decision. This repository owns its Cargo and npm release workflows; do not
 reintroduce a central coordinator, shadow registry, or repository-wide release
-plan.
+plan. Work merged only to `next` must not publish v0.3.x packages.
 
-## Project Shape
+## Legacy v0.3.x Project Shape
 
 Lenso is a Rust-first modular monolith backend. Console source lives in the sibling `../lenso-console` repository.
 
@@ -29,7 +55,9 @@ Lenso is a Rust-first modular monolith backend. Console source lives in the sibl
   owner crate.
 - `infrastructure/local`: local Postgres and optional OpenTelemetry collector.
 
-Read `docs/architecture/overview.md` and `docs/architecture/rules.md` before making architecture-level changes.
+Read `docs/architecture/overview.md` and `docs/architecture/rules.md` only when
+maintaining or migrating the legacy implementation. They are not normative for
+vNext.
 
 ## Do Not Disturb Unrelated Work
 
@@ -87,7 +115,7 @@ If generated files change, include the source change and generated output togeth
 - Prefer explicit SQL and existing migration patterns.
 - Keep error responses aligned with the platform error model and committed schemas.
 
-## Project Architecture Memory
+## Legacy Architecture Memory
 
 Claude Code project memory was imported into Codex on 2026-06-03. Keep these design decisions current:
 
@@ -99,7 +127,7 @@ Claude Code project memory was imported into Codex on 2026-06-03. Keep these des
 - OpenAPI is single-source through `utoipa-axum`: put `#[utoipa::path]` on real handlers and register routes with `OpenApiRouter::routes(routes!(handler))`. `crates/lenso-api/src/openapi.rs::openapi_document()` must stay pure and context-free because generators, arch checks, and sync tests call it outside a runtime.
 - Durable Workflow compensation persists completed effects and deterministic compensation order in the owning Service Store. Compensation request publication is atomic with local dispatch state, remote reversal remains inside the remote Service Inbox transaction, and the Workflow reaches `compensated` only after a declared completion Event confirms the stable effect and compensation identities. Rejected compensation uses the distinct `compensation_failed` state with intervention evidence; no distributed transaction is introduced.
 
-## Console Guidelines
+## Legacy Console Guidelines
 
 The Console is developed in the sibling `../lenso-console`
 repository. This framework repository owns managed-Service System Plane and
@@ -113,7 +141,8 @@ including their backend, migrations, and `ModuleManifest.console` declarations.
 ## CI Expectations
 
 GitHub Actions runs the explicit quality commands on pull requests and pushes to
-`main`; there is no root task-runner shim.
+`main` and `next`; there is no root task-runner shim. Release workflows remain
+scoped to `main`.
 
 Before claiming work is complete, run the narrowest meaningful verification for the change. For cross-cutting backend changes to Rust, contracts, or CI, run the explicit quality gate from `.github/workflows/ci.yml`. For changes that affect Console behavior, also run the relevant checks in `../lenso-console`.
 

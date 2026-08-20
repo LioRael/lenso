@@ -1,5 +1,9 @@
 # Third-Party Modules and Services
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 This document defines the supported third-party boundary. Read it together with
 `service-module-boundary.md`, `module-console-surfaces.md`, and
 `provider-runtime.md`.

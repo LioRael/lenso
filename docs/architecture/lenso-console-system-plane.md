@@ -1,5 +1,9 @@
 # Lenso Console System Plane Architecture
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 Status: Approved on 2026-07-30
 
 ## Product position

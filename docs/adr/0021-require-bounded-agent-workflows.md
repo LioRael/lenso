@@ -1,5 +1,9 @@
 # Require bounded agent workflows
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Every new microservice capability will support bounded agent collaboration through stable structured inputs and outputs, plan/diff/apply separation, dry runs, idempotency, recoverable state, explainable evidence, and concrete next actions. Agents may design, generate, verify, diagnose, and prepare operations, while data Cutover, Contract Retirement, production Promotion, irreversible migrations, trust or Tenant Isolation changes, and policy bypasses remain explicit Approval Boundaries.
 
 ## Consequences

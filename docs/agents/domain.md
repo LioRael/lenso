@@ -6,7 +6,9 @@ How the engineering skills should consume this repo's domain documentation when 
 
 - **`CONTEXT.md`** at the repo root.
 - **`CONTEXT-MAP.md`** at the repo root if it exists — it points at one `CONTEXT.md` per context.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in.
+- **`docs/adr/README.md`** — select the correct ADR scope before reading area
+  decisions. ADRs 0030 onward are normative for vNext; ADRs 0001-0029 are
+  retained for v0.3.x maintenance and migration evidence.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence or suggest creating them upfront. The `/domain-modeling` skill creates them lazily when terms or decisions are resolved.
 

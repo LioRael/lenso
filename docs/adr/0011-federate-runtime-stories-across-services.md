@@ -1,5 +1,9 @@
 # Federate Runtime Stories across Services
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will preserve Runtime Story as durable business-operation evidence across Autonomous Services rather than reducing observability to technical distributed traces. Each Service records Story Segments under a propagated Story Context, and the System Plane or Runtime Console assembles a Federated Runtime Story enriched by correlated OpenTelemetry traces, metrics, and logs without becoming responsible for Service-local evidence capture.
 
 ## Consequences

@@ -1,5 +1,9 @@
 # M6 Incident Map
 
+> **Legacy v0.3.x operations guide:** This page applies to the maintained
+> Service-oriented release line on `main` and is retained for support and
+> migration evidence. See the [documentation map](../../README.md).
+
 Version: `m6.v1`. Use the stable issue code from structured evidence; do not
 infer recovery from a log substring.
 

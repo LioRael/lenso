@@ -108,6 +108,21 @@ third executable type.
 - Control Plane, remote Module placement, discovery, replicas, and dynamic
   composition are deferred until a real distributed use case requires them.
 
+## Delivery branches
+
+- `next` is the canonical integration branch for vNext design and
+  implementation. Work for issue [#577](https://github.com/LioRael/lenso/issues/577)
+  and its child tickets branches from the latest `origin/next` and targets
+  `next` in pull requests.
+- `main` remains the maintained v0.3.x release line until vNext reaches an
+  explicit cutover milestone. Legacy fixes begin on `main` and are merged or
+  replayed into `next` when they still apply.
+- Release automation remains scoped to `main`. A merge to `next` is validation
+  evidence, not publication authorization.
+- Do not rebase or rewrite shared `next` history. Keep ticket branches short
+  lived and make their dependency commits reachable from `next` before work
+  begins.
+
 ## Context routes
 
 - Read [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md)

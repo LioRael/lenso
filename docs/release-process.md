@@ -1,5 +1,10 @@
 # Release Process
 
+> **Legacy v0.3.x maintenance guide:** This page applies to the maintained
+> Service-oriented release line on `main`. It does not define vNext
+> architecture or authorize publication from `next`. See the
+> [documentation map](README.md).
+
 This repository releases its own packages. Cargo and npm have separate
 version streams; there is no repository-wide release plan, shadow registry, or
 central publisher.

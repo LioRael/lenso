@@ -1,5 +1,9 @@
 # Manage Config Revisions, not Secret values
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Lenso will own Service Config Contracts, immutable Config Revisions, validation, impact analysis, staged activation, rollback, and drift evidence while storing only Secret References. Each Service resolves sensitive values locally through environment-specific Secret Providers and retains its last valid configuration so System Plane unavailability does not interrupt established Data Plane execution.
 
 ## Consequences

@@ -1,5 +1,9 @@
 # Autonomous Service contract artifacts
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read
+> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+
 `lenso.service.v2` lets an Autonomous Service declare the versioned contracts it owns without
 adding runtime behavior. Every contract keeps the owning Module identity stable so a Module can
 move from linked to Provider to Autonomous Service form without renaming its business contract.

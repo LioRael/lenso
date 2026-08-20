@@ -1,5 +1,9 @@
 # Require Workload Identity for Autonomous Services
 
+> **Status: superseded for vNext.** Retained as historical and v0.3.x
+> maintenance context. [ADR 0030](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
+> and ADRs 0031 onward are normative for vNext.
+
 Every Autonomous Service will authenticate callers through stable Service Principals proven by short-lived Workload Identity credentials, while user-initiated operations cross Service boundaries through bounded Delegated Actor Context rather than forwarded browser credentials. Each receiving Service authorizes locally from verifiable context, so identity enforcement does not depend on a synchronous System Plane lookup.
 
 ## Consequences
