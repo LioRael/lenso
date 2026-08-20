@@ -482,7 +482,7 @@ pub fn contract_retirement_receipt_integrity_is_valid(receipt: &ContractRetireme
 #[must_use]
 pub fn render_ga_support_manifest(manifest: &GaSupportManifest) -> String {
     let mut output = format!(
-        "# Lenso GA Support Manifest\n\n- Protocol: `{}`\n- Manifest ID: `{}`\n- Manifest digest: `{}`\n- Status: `{:?}`\n- Documentation: `{}` (`{}`)\n\n## Components\n\n",
+        "# Lenso GA Support Manifest\n\n> **Legacy v0.3.x operations guide:** This page applies to the maintained\n> Service-oriented release line on `main` and is retained as a migration\n> reference. See the [documentation map](../README.md).\n\n- Protocol: `{}`\n- Manifest ID: `{}`\n- Manifest digest: `{}`\n- Status: `{:?}`\n- Documentation: `{}` (`{}`)\n\n## Components\n\n",
         manifest.protocol,
         manifest.manifest_id,
         manifest.manifest_digest,

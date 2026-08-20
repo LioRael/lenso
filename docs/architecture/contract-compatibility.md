@@ -1,8 +1,9 @@
 # Contract compatibility
 
 > **Legacy v0.3.x architecture:** This page describes the maintained
-> Service-oriented implementation and is not normative for vNext. Read
-> [lenso-vnext.md](lenso-vnext.md) for vNext decisions.
+> Service-oriented implementation and is not normative for vNext. Read the
+> [vNext architecture overview](https://github.com/LioRael/lenso/blob/next/docs/architecture/lenso-vnext.md)
+> for current decisions.
 
 The public compatibility categories are `safe`, `needs_attention`, `breaking`, and `blocked`.
 Every result identifies its contract kind, changed version, affected references, stable reason

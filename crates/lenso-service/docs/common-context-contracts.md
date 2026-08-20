@@ -1,5 +1,10 @@
 # Common Context Contracts
 
+> **Legacy v0.3.x architecture:** This page describes the maintained
+> Service-oriented implementation and is not normative for vNext. Read the
+> [vNext architecture overview](https://github.com/LioRael/lenso/blob/next/docs/architecture/lenso-vnext.md)
+> for current decisions.
+
 `lenso.context.v1` is the contract-only envelope for context that crosses an
 Autonomous Service boundary. Its Rust types, valid fixture, packaged JSON
 Schema, and committed generated schema live in `lenso-service` and
