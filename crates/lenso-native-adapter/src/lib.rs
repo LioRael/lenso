@@ -4,19 +4,43 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use lenso_app_plan::ResolvedAppPlan;
 use lenso_kernel::{
-    NativeExecutionAdapter, NativeRequestEndpoint, PreparedNativeApp, RuntimeFailure,
+    ModuleLifecycle, NativeExecutionAdapter, NativeRequestEndpoint, NoopModuleLifecycle,
+    PreparedNativeApp, RuntimeFailure,
 };
 
 /// Endpoints created for one statically linked Module Instance generation.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NativeModuleInstance {
     endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+    lifecycle: Rc<dyn ModuleLifecycle>,
 }
 
 impl NativeModuleInstance {
     /// Creates a generation from its exact declared endpoint set.
     pub fn new(endpoints: Vec<Rc<dyn NativeRequestEndpoint>>) -> Self {
-        Self { endpoints }
+        Self::with_lifecycle(endpoints, NoopModuleLifecycle)
+    }
+
+    /// Creates a generation with its exact endpoints and lifecycle Interface.
+    pub fn with_lifecycle(
+        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+        lifecycle: impl ModuleLifecycle,
+    ) -> Self {
+        Self {
+            endpoints,
+            lifecycle: Rc::new(lifecycle),
+        }
+    }
+
+    /// Returns the lifecycle Interface for this generation.
+    pub fn lifecycle(&self) -> Rc<dyn ModuleLifecycle> {
+        self.lifecycle.clone()
+    }
+}
+
+impl Default for NativeModuleInstance {
+    fn default() -> Self {
+        Self::new(Vec::new())
     }
 }
 
@@ -55,6 +79,7 @@ impl NativeExecutionAdapter for NativeModuleRegistry {
             })?;
 
         let mut instances = BTreeMap::new();
+        let mut modules = BTreeMap::new();
         for expected in plan.module_instances() {
             let matching_factories: Vec<_> = self
                 .factories
@@ -82,6 +107,7 @@ impl NativeExecutionAdapter for NativeModuleRegistry {
                 expected.provided_capabilities(),
                 &generation.endpoints,
             )?;
+            let lifecycle = generation.lifecycle();
             if instances
                 .insert(expected.instance_key().to_owned(), generation)
                 .is_some()
@@ -91,6 +117,7 @@ impl NativeExecutionAdapter for NativeModuleRegistry {
                     expected.instance_key()
                 ));
             }
+            modules.insert(expected.instance_key().to_owned(), lifecycle);
         }
 
         let mut bindings = BTreeMap::new();
@@ -127,7 +154,7 @@ impl NativeExecutionAdapter for NativeModuleRegistry {
                 .or_insert_with(Vec::new)
                 .push(endpoint);
         }
-        Ok(PreparedNativeApp::from_many(bindings))
+        Ok(PreparedNativeApp::with_modules(bindings, modules))
     }
 }
 

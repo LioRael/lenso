@@ -63,6 +63,430 @@ pub enum RuntimeFailure {
     InvalidResolvedPlan { detail: String },
 }
 
+/// The lifecycle phase represented by a Module context.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModuleLifecyclePhase {
+    /// The Module may validate configuration and reserve reversible resources.
+    Prepare,
+    /// The Module may initialize against already prepared dependencies.
+    Activate,
+    /// The App Ready Gate has opened and externally triggered work may begin.
+    Ready,
+    /// The Module must release work and resources owned by this generation.
+    Deactivate,
+}
+
+/// A deterministic dependency visible to one Module Instance.
+#[derive(Clone, Debug)]
+pub struct ModuleDependency {
+    capability_id: String,
+    provider_instance: String,
+    provider_order: usize,
+    handle: Option<ModuleDependencyHandle>,
+}
+
+impl ModuleDependency {
+    fn new(
+        capability_id: impl Into<String>,
+        provider_instance: impl Into<String>,
+        provider_order: usize,
+        handle: Option<ModuleDependencyHandle>,
+    ) -> Self {
+        Self {
+            capability_id: capability_id.into(),
+            provider_instance: provider_instance.into(),
+            provider_order,
+            handle,
+        }
+    }
+
+    /// Returns the Capability required by this dependency.
+    pub fn capability_id(&self) -> &str {
+        &self.capability_id
+    }
+
+    /// Returns the App-local provider Instance key.
+    pub fn provider_instance(&self) -> &str {
+        &self.provider_instance
+    }
+
+    /// Returns the deterministic provider order for a `many` binding.
+    pub const fn provider_order(&self) -> usize {
+        self.provider_order
+    }
+
+    /// Returns the resolved native endpoint handle when the Adapter supplied one.
+    pub fn handle(&self) -> Option<ModuleDependencyHandle> {
+        self.handle.clone()
+    }
+}
+
+/// An opaque, Adapter-resolved Capability endpoint passed to lifecycle code.
+#[derive(Clone, Debug)]
+pub struct ModuleDependencyHandle {
+    endpoint: Rc<dyn NativeRequestEndpoint>,
+}
+
+impl ModuleDependencyHandle {
+    /// Returns the Capability implemented by this handle.
+    pub fn capability_id(&self) -> &'static str {
+        self.endpoint.capability_id()
+    }
+
+    /// Returns the exact Descriptor version implemented by this handle.
+    pub fn descriptor_version(&self) -> &'static str {
+        self.endpoint.descriptor_version()
+    }
+
+    /// Returns the exact Operation table implemented by this handle.
+    pub fn operations(&self) -> &'static [&'static str] {
+        self.endpoint.operations()
+    }
+}
+
+/// The explicit Capability dependencies available during Module lifecycle.
+#[derive(Clone, Debug, Default)]
+pub struct ModuleDependencies {
+    bindings: Vec<ModuleDependency>,
+}
+
+impl ModuleDependencies {
+    /// Returns dependencies in the order materialized by the Resolved App Plan.
+    pub fn bindings(&self) -> &[ModuleDependency] {
+        &self.bindings
+    }
+
+    /// Returns the number of explicit dependencies.
+    pub fn len(&self) -> usize {
+        self.bindings.len()
+    }
+
+    /// Returns whether this Module has no explicit dependencies.
+    pub fn is_empty(&self) -> bool {
+        self.bindings.is_empty()
+    }
+}
+
+/// A shared App-wide signal that opens exactly once after every Module activates.
+#[derive(Clone, Debug)]
+pub struct AppReadyGate {
+    state: Rc<AppReadyState>,
+}
+
+#[derive(Debug)]
+struct AppReadyState {
+    open: Cell<bool>,
+    waiters: RefCell<Vec<oneshot::Sender<()>>>,
+}
+
+impl AppReadyGate {
+    /// Creates a closed App Ready Gate.
+    pub fn new() -> Self {
+        Self {
+            state: Rc::new(AppReadyState {
+                open: Cell::new(false),
+                waiters: RefCell::new(Vec::new()),
+            }),
+        }
+    }
+
+    /// Returns whether the App Ready Gate has opened.
+    pub fn is_open(&self) -> bool {
+        self.state.open.get()
+    }
+
+    /// Waits until the whole App has completed activation.
+    pub fn wait(&self) -> LocalBoxFuture<'static, ()> {
+        if self.is_open() {
+            return Box::pin(futures::future::ready(()));
+        }
+
+        let (wakeup, waiter) = oneshot::channel();
+        self.state.waiters.borrow_mut().push(wakeup);
+        Box::pin(async move {
+            let _ = waiter.await;
+        })
+    }
+
+    fn open(&self) {
+        if self.state.open.replace(true) {
+            return;
+        }
+        for waiter in self.state.waiters.borrow_mut().drain(..) {
+            let _ = waiter.send(());
+        }
+    }
+}
+
+impl Default for AppReadyGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A Kernel-owned task handle that is cleaned up with its Module generation.
+#[derive(Clone, Debug)]
+pub struct ManagedTask {
+    task: Rc<RefCell<Option<DriverTask>>>,
+}
+
+impl ManagedTask {
+    /// Requests cancellation of the underlying task.
+    pub fn cancel(&self) {
+        if let Some(task) = self.task.borrow().as_ref() {
+            task.cancel();
+        }
+    }
+
+    async fn cancel_and_join(self) {
+        let task = self.task.borrow_mut().take();
+        if let Some(task) = task {
+            task.cancel();
+            let _ = task.await;
+        }
+    }
+}
+
+/// A Module-generation task scope backed by the selected Runtime Driver.
+#[derive(Clone)]
+pub struct ManagedTaskScope {
+    spawn: Rc<dyn Fn(LocalTask) -> Result<DriverTask, SpawnError>>,
+    state: Rc<ManagedTaskScopeState>,
+}
+
+#[derive(Debug, Default)]
+struct ManagedTaskScopeState {
+    tasks: RefCell<Vec<ManagedTask>>,
+}
+
+impl std::fmt::Debug for ManagedTaskScope {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ManagedTaskScope")
+            .field("task_count", &self.task_count())
+            .finish()
+    }
+}
+
+impl ManagedTaskScope {
+    fn new<D: RuntimeDriver>(driver: &D) -> Self {
+        let spawner = driver.clone();
+        Self {
+            spawn: Rc::new(move |task| spawner.spawn_local(task)),
+            state: Rc::new(ManagedTaskScopeState::default()),
+        }
+    }
+
+    /// Spawns work owned by this Module Instance generation.
+    pub fn spawn_local(&self, task: LocalTask) -> Result<ManagedTask, SpawnError> {
+        let handle = ManagedTask {
+            task: Rc::new(RefCell::new(Some((self.spawn)(task)?))),
+        };
+        self.state.tasks.borrow_mut().push(handle.clone());
+        Ok(handle)
+    }
+
+    /// Returns the number of tasks still tracked by this scope.
+    pub fn task_count(&self) -> usize {
+        self.state.tasks.borrow().len()
+    }
+
+    async fn cancel_all(&self) {
+        let tasks = std::mem::take(&mut *self.state.tasks.borrow_mut());
+        for task in tasks {
+            task.cancel_and_join().await;
+        }
+    }
+}
+
+/// Context supplied while a Module reserves reversible resources.
+#[derive(Clone, Debug)]
+pub struct PrepareContext {
+    instance_key: String,
+    dependencies: ModuleDependencies,
+}
+
+impl PrepareContext {
+    /// Returns the App-local Module Instance key.
+    pub fn instance_key(&self) -> &str {
+        &self.instance_key
+    }
+
+    /// Returns the phase represented by this context.
+    pub const fn phase(&self) -> ModuleLifecyclePhase {
+        ModuleLifecyclePhase::Prepare
+    }
+
+    /// Returns the explicit dependencies selected for this Instance.
+    pub fn dependencies(&self) -> &ModuleDependencies {
+        &self.dependencies
+    }
+}
+
+/// Context supplied while a Module initializes against prepared dependencies.
+#[derive(Clone, Debug)]
+pub struct ActivateContext {
+    instance_key: String,
+    dependencies: ModuleDependencies,
+    ready_gate: AppReadyGate,
+    tasks: ManagedTaskScope,
+}
+
+impl ActivateContext {
+    /// Returns the App-local Module Instance key.
+    pub fn instance_key(&self) -> &str {
+        &self.instance_key
+    }
+
+    /// Returns the phase represented by this context.
+    pub const fn phase(&self) -> ModuleLifecyclePhase {
+        ModuleLifecyclePhase::Activate
+    }
+
+    /// Returns the explicit dependencies selected for this Instance.
+    pub fn dependencies(&self) -> &ModuleDependencies {
+        &self.dependencies
+    }
+
+    /// Returns the closed-until-fully-active App Ready Gate.
+    pub fn ready_gate(&self) -> AppReadyGate {
+        self.ready_gate.clone()
+    }
+
+    /// Returns the readiness context a Module may pass to managed work.
+    pub fn readiness(&self) -> ReadinessContext {
+        ReadinessContext {
+            instance_key: self.instance_key.clone(),
+            dependencies: self.dependencies.clone(),
+            ready_gate: self.ready_gate.clone(),
+            tasks: self.tasks.clone(),
+        }
+    }
+
+    /// Returns the generation-owned task scope.
+    pub fn tasks(&self) -> &ManagedTaskScope {
+        &self.tasks
+    }
+}
+
+/// Context supplied after the App Ready Gate has opened.
+#[derive(Clone, Debug)]
+pub struct ReadinessContext {
+    instance_key: String,
+    dependencies: ModuleDependencies,
+    ready_gate: AppReadyGate,
+    tasks: ManagedTaskScope,
+}
+
+impl ReadinessContext {
+    /// Returns the App-local Module Instance key.
+    pub fn instance_key(&self) -> &str {
+        &self.instance_key
+    }
+
+    /// Returns the phase represented by this context.
+    pub const fn phase(&self) -> ModuleLifecyclePhase {
+        ModuleLifecyclePhase::Ready
+    }
+
+    /// Returns the explicit dependencies selected for this Instance.
+    pub fn dependencies(&self) -> &ModuleDependencies {
+        &self.dependencies
+    }
+
+    /// Returns the opened App Ready Gate.
+    pub fn ready_gate(&self) -> AppReadyGate {
+        self.ready_gate.clone()
+    }
+
+    /// Waits for the App Ready Gate to open.
+    pub fn wait(&self) -> LocalBoxFuture<'static, ()> {
+        self.ready_gate.wait()
+    }
+
+    /// Returns whether the App Ready Gate has opened.
+    pub fn is_open(&self) -> bool {
+        self.ready_gate.is_open()
+    }
+
+    /// Returns the generation-owned task scope.
+    pub fn tasks(&self) -> &ManagedTaskScope {
+        &self.tasks
+    }
+}
+
+/// The reason a Module generation is being deactivated.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DeactivationReason {
+    /// Startup failed and prepared work is being rolled back.
+    StartupRollback,
+    /// The embedding App requested a graceful stop.
+    Shutdown,
+}
+
+/// Context supplied while a Module releases one generation.
+#[derive(Clone, Debug)]
+pub struct DeactivateContext {
+    instance_key: String,
+    dependencies: ModuleDependencies,
+    reason: DeactivationReason,
+    tasks: ManagedTaskScope,
+}
+
+impl DeactivateContext {
+    /// Returns the App-local Module Instance key.
+    pub fn instance_key(&self) -> &str {
+        &self.instance_key
+    }
+
+    /// Returns the phase represented by this context.
+    pub const fn phase(&self) -> ModuleLifecyclePhase {
+        ModuleLifecyclePhase::Deactivate
+    }
+
+    /// Returns the explicit dependencies selected for this Instance.
+    pub fn dependencies(&self) -> &ModuleDependencies {
+        &self.dependencies
+    }
+
+    /// Returns why this generation is being deactivated.
+    pub const fn reason(&self) -> DeactivationReason {
+        self.reason
+    }
+
+    /// Returns the generation-owned task scope.
+    pub fn tasks(&self) -> &ManagedTaskScope {
+        &self.tasks
+    }
+}
+
+/// The result type returned by prepare, activate, and deactivate hooks.
+pub type ModuleFuture = LocalBoxFuture<'static, Result<(), RuntimeFailure>>;
+
+/// Adapter-facing lifecycle Interface for one Module Instance generation.
+pub trait ModuleLifecycle: std::fmt::Debug + 'static {
+    /// Reserves reversible resources without exposing external work.
+    fn prepare(&self, _context: PrepareContext) -> ModuleFuture {
+        Box::pin(futures::future::ready(Ok(())))
+    }
+
+    /// Initializes the generation against already prepared dependencies.
+    fn activate(&self, _context: ActivateContext) -> ModuleFuture {
+        Box::pin(futures::future::ready(Ok(())))
+    }
+
+    /// Releases resources and work owned by this generation.
+    fn deactivate(&self, _context: DeactivateContext) -> ModuleFuture {
+        Box::pin(futures::future::ready(Ok(())))
+    }
+}
+
+/// Default no-op lifecycle used by endpoint-only native fixtures.
+#[derive(Debug, Default)]
+pub struct NoopModuleLifecycle;
+
+impl ModuleLifecycle for NoopModuleLifecycle {}
+
 /// Type-erased native endpoint used only while Kernel constructs and dispatches the graph.
 pub trait NativeRequestEndpoint: std::fmt::Debug {
     /// Stable Capability series identity.
@@ -83,6 +507,7 @@ pub trait NativeRequestEndpoint: std::fmt::Debug {
 #[derive(Debug)]
 pub struct PreparedNativeApp {
     bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+    modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
 }
 
 impl PreparedNativeApp {
@@ -93,6 +518,7 @@ impl PreparedNativeApp {
                 .into_iter()
                 .map(|(key, endpoint)| (key, vec![endpoint]))
                 .collect(),
+            modules: BTreeMap::new(),
         }
     }
 
@@ -100,7 +526,18 @@ impl PreparedNativeApp {
     pub fn from_many(
         bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
     ) -> Self {
-        Self { bindings }
+        Self {
+            bindings,
+            modules: BTreeMap::new(),
+        }
+    }
+
+    /// Completes Adapter preparation with Module lifecycle implementations.
+    pub fn with_modules(
+        bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+        modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
+    ) -> Self {
+        Self { bindings, modules }
     }
 }
 
@@ -110,10 +547,25 @@ pub trait NativeExecutionAdapter: std::fmt::Debug {
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
 }
 
+#[derive(Debug)]
+struct NativeModuleRuntime {
+    lifecycle: Rc<dyn ModuleLifecycle>,
+    tasks: ManagedTaskScope,
+}
+
+#[derive(Debug)]
+struct NativeAppRuntime {
+    _modules: BTreeMap<String, NativeModuleRuntime>,
+    _dependencies: BTreeMap<String, ModuleDependencies>,
+    _activation_order: Vec<String>,
+    ready_gate: AppReadyGate,
+}
+
 /// A started native App whose generated clients can invoke resolved bindings.
 #[derive(Debug)]
 pub struct NativeApp {
     bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+    runtime: NativeAppRuntime,
 }
 
 impl NativeApp {
@@ -162,6 +614,16 @@ impl NativeApp {
     /// Returns the number of immutable provider endpoints bound to one requirement.
     pub fn binding_count<C: RequestCapability>(&self, caller_instance: &str) -> usize {
         self.endpoints::<C>(caller_instance).map_or(0, <[_]>::len)
+    }
+
+    /// Returns whether every declared Module has completed activation.
+    pub fn is_ready(&self) -> bool {
+        self.runtime.ready_gate.is_open()
+    }
+
+    /// Returns the App-wide readiness signal observed by Module tasks.
+    pub fn ready_gate(&self) -> AppReadyGate {
+        self.runtime.ready_gate.clone()
     }
 
     /// Invokes a generated request Operation through the caller's resolved binding.
@@ -354,10 +816,42 @@ impl Kernel {
     ) -> Result<NativeApp, RuntimeFailure> {
         plan.validate()
             .map_err(|error| runtime_plan_error(&error))?;
-        let prepared = adapter.prepare(&plan)?;
-        driver.yield_now().await;
+
+        let activation_order = plan
+            .activation_order()
+            .map_err(|error| runtime_plan_error(&error))?;
+        let PreparedNativeApp { bindings, modules } = adapter.prepare(&plan)?;
+        let dependencies = module_dependencies(&plan, &bindings);
+        let module_runtimes = native_module_runtimes(&plan, &driver, modules)?;
+        let ready_gate = AppReadyGate::new();
+        let prepared_instances =
+            prepare_native_modules(&module_runtimes, &dependencies, &activation_order).await?;
+        if let Err(error) = activate_native_modules(
+            &module_runtimes,
+            &dependencies,
+            &activation_order,
+            &ready_gate,
+        )
+        .await
+        {
+            let _ = deactivate_in_reverse(
+                &module_runtimes,
+                &dependencies,
+                &prepared_instances,
+                DeactivationReason::StartupRollback,
+            )
+            .await;
+            return Err(error);
+        }
+        open_native_readiness(&driver, &ready_gate).await;
         Ok(NativeApp {
-            bindings: prepared.bindings,
+            bindings,
+            runtime: NativeAppRuntime {
+                _modules: module_runtimes,
+                _dependencies: dependencies,
+                _activation_order: activation_order,
+                ready_gate,
+            },
         })
     }
 
@@ -392,6 +886,159 @@ fn runtime_plan_error(error: &PlanResolutionError) -> RuntimeFailure {
     RuntimeFailure::InvalidResolvedPlan {
         detail: error.to_string(),
     }
+}
+
+fn native_module_runtimes<D: RuntimeDriver>(
+    plan: &ResolvedAppPlan,
+    driver: &D,
+    mut modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
+) -> Result<BTreeMap<String, NativeModuleRuntime>, RuntimeFailure> {
+    if let Some(instance_key) = modules.keys().find(|instance_key| {
+        !plan
+            .module_instances()
+            .iter()
+            .any(|instance| instance.instance_key() == instance_key.as_str())
+    }) {
+        return Err(RuntimeFailure::InvalidResolvedPlan {
+            detail: format!("Adapter prepared unknown Module Instance `{instance_key}`"),
+        });
+    }
+
+    let mut runtimes = BTreeMap::new();
+    for instance in plan.module_instances() {
+        let lifecycle = modules
+            .remove(instance.instance_key())
+            .unwrap_or_else(|| Rc::new(NoopModuleLifecycle));
+        runtimes.insert(
+            instance.instance_key().to_owned(),
+            NativeModuleRuntime {
+                lifecycle,
+                tasks: ManagedTaskScope::new(driver),
+            },
+        );
+    }
+    Ok(runtimes)
+}
+
+async fn prepare_native_modules(
+    modules: &BTreeMap<String, NativeModuleRuntime>,
+    dependencies: &BTreeMap<String, ModuleDependencies>,
+    activation_order: &[String],
+) -> Result<Vec<String>, RuntimeFailure> {
+    let mut prepared_instances = Vec::with_capacity(activation_order.len());
+    for instance_key in activation_order {
+        let module = modules
+            .get(instance_key)
+            .expect("activation order only contains planned Module Instances");
+        prepared_instances.push(instance_key.clone());
+        let context = PrepareContext {
+            instance_key: instance_key.clone(),
+            dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
+        };
+        if let Err(error) = module.lifecycle.prepare(context).await {
+            let _ = deactivate_in_reverse(
+                modules,
+                dependencies,
+                &prepared_instances,
+                DeactivationReason::StartupRollback,
+            )
+            .await;
+            return Err(error);
+        }
+    }
+    Ok(prepared_instances)
+}
+
+async fn activate_native_modules(
+    modules: &BTreeMap<String, NativeModuleRuntime>,
+    dependencies: &BTreeMap<String, ModuleDependencies>,
+    activation_order: &[String],
+    ready_gate: &AppReadyGate,
+) -> Result<(), RuntimeFailure> {
+    for instance_key in activation_order {
+        let module = modules
+            .get(instance_key)
+            .expect("activation order only contains planned Module Instances");
+        let context = ActivateContext {
+            instance_key: instance_key.clone(),
+            dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
+            ready_gate: ready_gate.clone(),
+            tasks: module.tasks.clone(),
+        };
+        module.lifecycle.activate(context).await?;
+    }
+    Ok(())
+}
+
+async fn open_native_readiness<D: RuntimeDriver>(driver: &D, ready_gate: &AppReadyGate) {
+    ready_gate.open();
+    driver.yield_now().await;
+}
+
+fn module_dependencies(
+    plan: &ResolvedAppPlan,
+    endpoints: &BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+) -> BTreeMap<String, ModuleDependencies> {
+    let mut dependencies: BTreeMap<String, ModuleDependencies> = plan
+        .module_instances()
+        .iter()
+        .map(|instance| {
+            (
+                instance.instance_key().to_owned(),
+                ModuleDependencies::default(),
+            )
+        })
+        .collect();
+    for binding in plan.capability_bindings() {
+        dependencies
+            .entry(binding.consumer_instance().to_owned())
+            .or_default()
+            .bindings
+            .push(ModuleDependency::new(
+                binding.capability_id(),
+                binding.provider_instance(),
+                binding.provider_order(),
+                endpoints
+                    .iter()
+                    .find(|((consumer, capability), _)| {
+                        consumer == binding.consumer_instance()
+                            && *capability == binding.capability_id()
+                    })
+                    .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
+                    .cloned()
+                    .map(|endpoint| ModuleDependencyHandle { endpoint }),
+            ));
+    }
+    dependencies
+}
+
+async fn deactivate_in_reverse(
+    modules: &BTreeMap<String, NativeModuleRuntime>,
+    dependencies: &BTreeMap<String, ModuleDependencies>,
+    activation_order: &[String],
+    reason: DeactivationReason,
+) -> Option<RuntimeFailure> {
+    let mut first_error = None;
+    for instance_key in activation_order.iter().rev() {
+        let module = modules
+            .get(instance_key)
+            .expect("deactivation order only contains planned Module Instances");
+        if let Err(error) = module
+            .lifecycle
+            .deactivate(DeactivateContext {
+                instance_key: instance_key.clone(),
+                dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
+                reason,
+                tasks: module.tasks.clone(),
+            })
+            .await
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+        module.tasks.cancel_all().await;
+    }
+    first_error
 }
 
 #[derive(Debug)]

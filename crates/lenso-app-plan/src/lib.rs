@@ -349,7 +349,7 @@ pub enum PlanResolutionError {
         capability_id: String,
         provider_instance: String,
     },
-    /// Required one-provider activation dependencies contain a cycle.
+    /// Explicit Capability activation dependencies contain a cycle.
     ActivationCycle { instances: Vec<String> },
 }
 
@@ -505,6 +505,23 @@ impl ResolvedAppPlan {
         resolve_parts(&self.module_instances, &self.capability_bindings).map(|_| ())
     }
 
+    /// Returns the deterministic provider-before-consumer lifecycle order.
+    ///
+    /// Every explicit binding is an activation dependency, including an
+    /// optional or many binding when one is present in the resolved Plan.
+    pub fn activation_order(&self) -> Result<Vec<String>, PlanResolutionError> {
+        if self.schema_version != PLAN_SCHEMA_VERSION {
+            return Err(PlanResolutionError::UnsupportedSchemaVersion {
+                expected: PLAN_SCHEMA_VERSION,
+                actual: self.schema_version,
+            });
+        }
+        let (instances, bindings) =
+            resolve_parts(&self.module_instances, &self.capability_bindings)?;
+        activation_order_for(&instances, &bindings)
+            .map_err(|instances| PlanResolutionError::ActivationCycle { instances })
+    }
+
     /// Returns the Plan schema version.
     pub const fn schema_version(&self) -> u32 {
         self.schema_version
@@ -528,7 +545,7 @@ fn resolve_parts(
     let (instances, instance_indices) = normalize_instances(module_instances)?;
     let grouped_bindings = group_bindings(&instances, &instance_indices, capability_bindings)?;
     validate_requirement_cardinality(&instances, &grouped_bindings)?;
-    validate_required_cycles(&instances, &grouped_bindings)?;
+    validate_activation_cycles(&instances, &grouped_bindings)?;
     Ok((instances, order_bindings(grouped_bindings)))
 }
 
@@ -703,46 +720,41 @@ fn order_bindings(
     ordered_bindings
 }
 
-fn validate_required_cycles(
+fn validate_activation_cycles(
     instances: &[ModuleInstancePlan],
     grouped_bindings: &BTreeMap<(String, String), Vec<CapabilityBinding>>,
 ) -> Result<(), PlanResolutionError> {
-    let mut dependencies: BTreeMap<String, BTreeSet<String>> = instances
+    let bindings = grouped_bindings
+        .values()
+        .flat_map(|bindings| bindings.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    activation_order_for(instances, &bindings)
+        .map(|_| ())
+        .map_err(|instances| PlanResolutionError::ActivationCycle { instances })
+}
+
+fn activation_order_for(
+    instances: &[ModuleInstancePlan],
+    bindings: &[CapabilityBinding],
+) -> Result<Vec<String>, Vec<String>> {
+    let mut indegrees: BTreeMap<String, usize> = instances
+        .iter()
+        .map(|instance| (instance.instance_key.clone(), 0))
+        .collect();
+    let mut dependents: BTreeMap<String, BTreeSet<String>> = instances
         .iter()
         .map(|instance| (instance.instance_key.clone(), BTreeSet::new()))
         .collect();
 
-    for instance in instances {
-        for requirement in &instance.required_capabilities {
-            if requirement.cardinality != CapabilityCardinality::One {
-                continue;
-            }
-            let key = (
-                instance.instance_key.clone(),
-                requirement.capability_id.clone(),
-            );
-            if let Some(binding) = grouped_bindings
-                .get(&key)
-                .and_then(|bindings| bindings.first())
-            {
-                dependencies
-                    .entry(instance.instance_key.clone())
-                    .or_default()
-                    .insert(binding.provider_instance.clone());
-            }
-        }
-    }
-
-    let mut indegrees: BTreeMap<String, usize> = dependencies
-        .keys()
-        .cloned()
-        .map(|instance| (instance, 0))
-        .collect();
-    for providers in dependencies.values() {
-        for provider in providers {
+    for binding in bindings {
+        let consumers = dependents
+            .get_mut(&binding.provider_instance)
+            .expect("provider Instance was indexed before dependency validation");
+        if consumers.insert(binding.consumer_instance.clone()) {
             *indegrees
-                .get_mut(provider)
-                .expect("provider Instance was indexed before dependency validation") += 1;
+                .get_mut(&binding.consumer_instance)
+                .expect("consumer Instance was indexed before dependency validation") += 1;
         }
     }
 
@@ -751,32 +763,31 @@ fn validate_required_cycles(
         .filter(|(_, indegree)| **indegree == 0)
         .map(|(instance, _)| instance.clone())
         .collect();
-    let mut processed = 0;
+    let mut order = Vec::with_capacity(instances.len());
     while let Some(instance) = ready.pop_first() {
-        processed += 1;
-        if let Some(providers) = dependencies.get(&instance) {
-            for provider in providers {
+        order.push(instance.clone());
+        if let Some(consumers) = dependents.get(&instance) {
+            for consumer in consumers {
                 let indegree = indegrees
-                    .get_mut(provider)
-                    .expect("provider Instance was indexed before dependency validation");
+                    .get_mut(consumer)
+                    .expect("consumer Instance was indexed before dependency validation");
                 *indegree -= 1;
                 if *indegree == 0 {
-                    ready.insert(provider.clone());
+                    ready.insert(consumer.clone());
                 }
             }
         }
     }
 
-    if processed != instances.len() {
-        return Err(PlanResolutionError::ActivationCycle {
-            instances: indegrees
-                .into_iter()
-                .filter(|(_, indegree)| *indegree > 0)
-                .map(|(instance, _)| instance)
-                .collect(),
-        });
+    if order.len() == instances.len() {
+        Ok(order)
+    } else {
+        Err(indegrees
+            .into_iter()
+            .filter(|(_, indegree)| *indegree > 0)
+            .map(|(instance, _)| instance)
+            .collect())
     }
-    Ok(())
 }
 
 fn validate_instance_declarations(
