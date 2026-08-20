@@ -18,10 +18,15 @@ use futures::{
     future::{AbortHandle, Abortable, Either, FutureExt, LocalBoxFuture, pending, select},
     task::{LocalSpawnExt, SpawnError},
 };
-use lenso_app_plan::{PlanResolutionError, RequestAdmissionPlan, ResolvedAppPlan};
+use lenso_app_plan::{
+    ModuleCriticality, PlanResolutionError, RequestAdmissionPlan, ResolvedAppPlan, RestartMode,
+    RestartPolicy,
+};
 
 type ErasedValue = Box<dyn Any>;
 type ErasedDomainResult = Result<ErasedValue, ErasedValue>;
+type NativeBindingTable = BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>;
+type NativeEndpointStateTable = BTreeMap<(String, String), Rc<NativeEndpointState>>;
 
 /// Static identity and Rust value types generated for one request Capability.
 pub trait RequestCapability: 'static {
@@ -77,6 +82,10 @@ pub enum RuntimeFailure {
     Cancelled { request_id: RequestId },
     /// The Runtime Driver or Adapter reported an internal execution failure.
     Internal { detail: String },
+    /// A Module generation reported a failure that should trigger supervision.
+    ModuleFailure { detail: String },
+    /// A Module Instance exhausted its finite restart budget.
+    ModuleRestartExhausted { instance: String, attempts: usize },
 }
 
 /// The lifecycle phase represented by a Module context.
@@ -140,23 +149,23 @@ impl ModuleDependency {
 /// An opaque, Adapter-resolved Capability endpoint passed to lifecycle code.
 #[derive(Clone, Debug)]
 pub struct ModuleDependencyHandle {
-    endpoint: Rc<dyn NativeRequestEndpoint>,
+    endpoint: Rc<NativeEndpointState>,
 }
 
 impl ModuleDependencyHandle {
     /// Returns the Capability implemented by this handle.
     pub fn capability_id(&self) -> &'static str {
-        self.endpoint.capability_id()
+        self.endpoint.capability_id
     }
 
     /// Returns the exact Descriptor version implemented by this handle.
     pub fn descriptor_version(&self) -> &'static str {
-        self.endpoint.descriptor_version()
+        self.endpoint.descriptor_version
     }
 
     /// Returns the exact Operation table implemented by this handle.
     pub fn operations(&self) -> &'static [&'static str] {
-        self.endpoint.operations()
+        self.endpoint.operations
     }
 }
 
@@ -665,6 +674,14 @@ impl ManagedTaskScope {
         }
     }
 
+    fn new_from_driver_control(driver: &DriverControl) -> Self {
+        let spawn = driver.spawn_local.clone();
+        Self {
+            spawn,
+            state: Rc::new(ManagedTaskScopeState::default()),
+        }
+    }
+
     /// Spawns work owned by this Module Instance generation.
     pub fn spawn_local(&self, task: LocalTask) -> Result<ManagedTask, ManagedTaskError> {
         if self.state.closed.get() {
@@ -913,6 +930,8 @@ pub enum DeactivationReason {
     StartupRollback,
     /// The embedding App requested a graceful stop.
     Shutdown,
+    /// Supervision is releasing a failed generation before recreation.
+    SupervisionRestart,
 }
 
 /// Context supplied while a Module releases one generation.
@@ -1013,11 +1032,57 @@ pub trait NativeRequestEndpoint: std::fmt::Debug {
     ) -> LocalBoxFuture<'static, Result<ErasedDomainResult, RuntimeFailure>>;
 }
 
+/// One freshly prepared Module Instance generation returned by an Execution Adapter.
+#[derive(Debug)]
+pub struct PreparedNativeModule {
+    endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+    lifecycle: Rc<dyn ModuleLifecycle>,
+}
+
+impl PreparedNativeModule {
+    /// Creates one generation from its exact endpoint set and lifecycle Interface.
+    pub fn new(
+        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+        lifecycle: impl ModuleLifecycle,
+    ) -> Self {
+        Self {
+            endpoints,
+            lifecycle: Rc::new(lifecycle),
+        }
+    }
+
+    /// Creates one generation from an already shared lifecycle implementation.
+    pub fn with_lifecycle(
+        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+        lifecycle: Rc<dyn ModuleLifecycle>,
+    ) -> Self {
+        Self {
+            endpoints,
+            lifecycle,
+        }
+    }
+
+    /// Returns the exact endpoints prepared for this generation.
+    pub fn endpoints(&self) -> &[Rc<dyn NativeRequestEndpoint>] {
+        &self.endpoints
+    }
+
+    /// Returns the lifecycle Interface prepared for this generation.
+    pub fn lifecycle(&self) -> Rc<dyn ModuleLifecycle> {
+        self.lifecycle.clone()
+    }
+
+    fn into_parts(self) -> (Vec<Rc<dyn NativeRequestEndpoint>>, Rc<dyn ModuleLifecycle>) {
+        (self.endpoints, self.lifecycle)
+    }
+}
+
 /// Prepared native bindings returned by an Execution Adapter to Kernel.
 #[derive(Debug)]
 pub struct PreparedNativeApp {
     bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
     modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
+    generations: BTreeMap<String, PreparedNativeModule>,
 }
 
 impl PreparedNativeApp {
@@ -1029,6 +1094,7 @@ impl PreparedNativeApp {
                 .map(|(key, endpoint)| (key, vec![endpoint]))
                 .collect(),
             modules: BTreeMap::new(),
+            generations: BTreeMap::new(),
         }
     }
 
@@ -1039,6 +1105,7 @@ impl PreparedNativeApp {
         Self {
             bindings,
             modules: BTreeMap::new(),
+            generations: BTreeMap::new(),
         }
     }
 
@@ -1047,19 +1114,111 @@ impl PreparedNativeApp {
         bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
         modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
     ) -> Self {
-        Self { bindings, modules }
+        Self {
+            bindings,
+            modules,
+            generations: BTreeMap::new(),
+        }
+    }
+
+    /// Completes Adapter preparation with fresh generations for every Module Instance.
+    pub fn with_generations(
+        bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+        generations: BTreeMap<String, PreparedNativeModule>,
+    ) -> Self {
+        let modules = generations
+            .iter()
+            .map(|(instance_key, generation)| (instance_key.clone(), generation.lifecycle()))
+            .collect();
+        Self {
+            bindings,
+            modules,
+            generations,
+        }
     }
 }
 
 /// Host-specific seam that instantiates native Module generations and prepares endpoints.
-pub trait NativeExecutionAdapter: std::fmt::Debug {
+pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
     /// Instantiates the exact Plan and confirms its endpoint and binding tables.
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
+
+    /// Creates a fresh generation for one selected Module Instance.
+    ///
+    /// Adapters that cannot truthfully recreate a generation retain the default
+    /// failure, which lets Kernel apply the selected finite policy without
+    /// pretending that an in-process fault boundary is recoverable.
+    fn recreate(
+        &self,
+        _plan: &ResolvedAppPlan,
+        instance_key: &str,
+    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+        Err(RuntimeFailure::Internal {
+            detail: format!("Execution Adapter cannot recreate Module Instance `{instance_key}`"),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct NativeEndpointSnapshot {
+    endpoint: Rc<dyn NativeRequestEndpoint>,
+    generation: u64,
+    cancellation: CancellationToken,
+}
+
+#[derive(Debug)]
+struct NativeEndpointState {
+    capability_id: &'static str,
+    descriptor_version: &'static str,
+    operations: &'static [&'static str],
+    endpoint: RefCell<Option<Rc<dyn NativeRequestEndpoint>>>,
+    generation: Cell<u64>,
+    cancellation: RefCell<CancellationToken>,
+}
+
+impl NativeEndpointState {
+    fn new(endpoint: Rc<dyn NativeRequestEndpoint>, generation: u64) -> Self {
+        Self {
+            capability_id: endpoint.capability_id(),
+            descriptor_version: endpoint.descriptor_version(),
+            operations: endpoint.operations(),
+            endpoint: RefCell::new(Some(endpoint)),
+            generation: Cell::new(generation),
+            cancellation: RefCell::new(CancellationToken::new()),
+        }
+    }
+
+    fn snapshot(&self) -> Option<NativeEndpointSnapshot> {
+        self.endpoint
+            .borrow()
+            .clone()
+            .map(|endpoint| NativeEndpointSnapshot {
+                endpoint,
+                generation: self.generation.get(),
+                cancellation: self.cancellation.borrow().clone(),
+            })
+    }
+
+    fn mark_unavailable(&self) {
+        self.cancellation.borrow().cancel();
+        self.endpoint.borrow_mut().take();
+    }
+
+    fn install(&self, endpoint: Rc<dyn NativeRequestEndpoint>, generation: u64) {
+        self.generation.set(generation);
+        self.cancellation.replace(CancellationToken::new());
+        self.endpoint.replace(Some(endpoint));
+    }
+
+    fn is_current(&self, generation: u64) -> bool {
+        self.generation.get() == generation && self.endpoint.borrow().is_some()
+    }
 }
 
 #[derive(Clone, Debug)]
 struct NativeEndpointBinding {
-    endpoint: Rc<dyn NativeRequestEndpoint>,
+    module_instance: String,
+    state: Rc<NativeEndpointState>,
     admissions: BTreeMap<String, RequestAdmission>,
 }
 
@@ -1070,22 +1229,76 @@ impl NativeEndpointBinding {
 }
 
 #[derive(Debug)]
-struct NativeModuleRuntime {
+struct NativeModuleGeneration {
     lifecycle: Rc<dyn ModuleLifecycle>,
     tasks: ManagedTaskScope,
     resources: ManagedResourceScope,
 }
 
+enum GenerationPreparationFailure {
+    Lifecycle,
+    Cleanup(RuntimeFailure),
+}
+
+#[derive(Debug)]
+struct NativeModuleRuntime {
+    generation: RefCell<Option<NativeModuleGeneration>>,
+}
+
+impl NativeModuleRuntime {
+    fn take_generation(&self) -> Option<NativeModuleGeneration> {
+        self.generation.borrow_mut().take()
+    }
+
+    fn install_generation(&self, generation: NativeModuleGeneration) {
+        debug_assert!(self.generation.borrow().is_none());
+        self.generation.replace(Some(generation));
+    }
+
+    fn generation_parts(
+        &self,
+    ) -> Option<(
+        Rc<dyn ModuleLifecycle>,
+        ManagedTaskScope,
+        ManagedResourceScope,
+    )> {
+        self.generation.borrow().as_ref().map(|generation| {
+            (
+                generation.lifecycle.clone(),
+                generation.tasks.clone(),
+                generation.resources.clone(),
+            )
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ModuleSupervision {
+    policy: RestartPolicy,
+    criticality: ModuleCriticality,
+    required_path: bool,
+    generation: u64,
+    attempts: Vec<Duration>,
+    stable_since: Option<Duration>,
+    restarting: bool,
+}
+
 struct NativeAppRuntime {
+    plan: ResolvedAppPlan,
+    adapter: Rc<dyn NativeExecutionAdapter>,
     modules: BTreeMap<String, NativeModuleRuntime>,
     dependencies: BTreeMap<String, ModuleDependencies>,
+    endpoint_states: BTreeMap<(String, String), Rc<NativeEndpointState>>,
+    supervision: RefCell<BTreeMap<String, ModuleSupervision>>,
     activation_order: Vec<String>,
     ready_gate: AppReadyGate,
     admission: AppAdmission,
     driver: DriverControl,
     request_ids: Rc<Cell<RequestId>>,
+    supervision_cancellation: CancellationToken,
     shutdown_started: Cell<bool>,
     shutdown_result: RefCell<Option<ShutdownOutcome>>,
+    terminal_failure: RefCell<Option<RuntimeFailure>>,
 }
 
 impl std::fmt::Debug for NativeAppRuntime {
@@ -1093,10 +1306,15 @@ impl std::fmt::Debug for NativeAppRuntime {
         formatter
             .debug_struct("NativeAppRuntime")
             .field("module_count", &self.modules.len())
+            .field("endpoint_count", &self.endpoint_states.len())
             .field("ready", &self.ready_gate.is_open())
             .field("accepting", &self.admission.is_open())
             .field("next_request_id", &self.request_ids.get())
             .field("shutdown_started", &self.shutdown_started.get())
+            .field(
+                "terminal_failure",
+                &self.terminal_failure.borrow().is_some(),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -1107,18 +1325,24 @@ impl NativeAppRuntime {
             return;
         }
         self.admission.close();
+        self.supervision_cancellation.cancel();
+        for endpoint in self.endpoint_states.values() {
+            endpoint.mark_unavailable();
+        }
         for module in self.modules.values() {
-            module.tasks.close();
-            module.resources.close();
+            if let Some((_, tasks, resources)) = module.generation_parts() {
+                tasks.close();
+                resources.close();
+            }
         }
     }
 }
 
 /// A started native App whose generated clients can invoke resolved bindings.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NativeApp {
     bindings: BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>,
-    runtime: NativeAppRuntime,
+    runtime: Rc<NativeAppRuntime>,
 }
 
 impl NativeApp {
@@ -1150,9 +1374,7 @@ impl NativeApp {
             .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
         Ok(NativeRequestHandle::from_endpoints(
             endpoints,
-            self.runtime.admission.clone(),
-            self.runtime.driver.clone(),
-            self.runtime.request_ids.clone(),
+            self.runtime.clone(),
             caller_instance,
         ))
     }
@@ -1168,9 +1390,7 @@ impl NativeApp {
             .map(|endpoints| {
                 NativeRequestHandle::from_endpoints(
                     endpoints,
-                    self.runtime.admission.clone(),
-                    self.runtime.driver.clone(),
-                    self.runtime.request_ids.clone(),
+                    self.runtime.clone(),
                     &caller_instance,
                 )
             })
@@ -1187,9 +1407,7 @@ impl NativeApp {
         let endpoints = self.endpoints::<C>(caller_instance).unwrap_or(&[]);
         Ok(NativeRequestHandle::from_endpoints(
             endpoints,
-            self.runtime.admission.clone(),
-            self.runtime.driver.clone(),
-            self.runtime.request_ids.clone(),
+            self.runtime.clone(),
             caller_instance,
         ))
     }
@@ -1217,6 +1435,43 @@ impl NativeApp {
     /// Returns the App-wide admission state.
     pub fn admission(&self) -> AppAdmission {
         self.runtime.admission.clone()
+    }
+
+    /// Returns the terminal supervision failure, when a critical App path exhausted its budget.
+    pub fn terminal_failure(&self) -> Option<RuntimeFailure> {
+        self.runtime.terminal_failure.borrow().clone()
+    }
+
+    /// Returns whether supervision has produced a terminal App failure.
+    pub fn is_failed(&self) -> bool {
+        self.runtime.terminal_failure.borrow().is_some()
+    }
+
+    /// Returns the current ready generation for one Module Instance, when it is available.
+    pub fn module_generation(&self, instance_key: &str) -> Option<u64> {
+        self.runtime
+            .supervision
+            .borrow()
+            .get(instance_key)
+            .and_then(|state| {
+                self.runtime
+                    .endpoint_states
+                    .iter()
+                    .find(|((module, _), endpoint)| {
+                        module == instance_key && endpoint.is_current(state.generation)
+                    })
+                    .map(|_| state.generation)
+            })
+    }
+
+    /// Reports a Module Instance failure and schedules its finite supervision policy.
+    pub fn report_module_failure(&self, instance_key: &str) -> Result<(), RuntimeFailure> {
+        if !begin_module_supervision(&self.runtime, instance_key)? {
+            return Ok(());
+        }
+        schedule_module_supervision(&self.runtime, instance_key).map_err(|error| {
+            handle_supervision_schedule_failure(&self.runtime, instance_key, error)
+        })
     }
 
     /// Starts shutdown admission closure and cooperative cancellation.
@@ -1304,9 +1559,7 @@ impl NativeApp {
 #[derive(Debug)]
 pub struct NativeRequestHandle<C: RequestCapability> {
     endpoints: Vec<NativeEndpointBinding>,
-    admission: AppAdmission,
-    driver: DriverControl,
-    request_ids: Rc<Cell<RequestId>>,
+    runtime: Rc<NativeAppRuntime>,
     caller_instance: String,
     capability: PhantomData<fn() -> C>,
 }
@@ -1314,16 +1567,12 @@ pub struct NativeRequestHandle<C: RequestCapability> {
 impl<C: RequestCapability> NativeRequestHandle<C> {
     fn from_endpoints(
         endpoints: &[NativeEndpointBinding],
-        admission: AppAdmission,
-        driver: DriverControl,
-        request_ids: Rc<Cell<RequestId>>,
+        runtime: Rc<NativeAppRuntime>,
         caller_instance: &str,
     ) -> Self {
         Self {
             endpoints: endpoints.to_vec(),
-            admission,
-            driver,
-            request_ids,
+            runtime,
             caller_instance: caller_instance.to_owned(),
             capability: PhantomData,
         }
@@ -1352,7 +1601,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         request: C::Request,
     ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
         let context = context.with_caller_instance(self.caller_instance.clone());
-        if self.admission.is_closed() {
+        if self.runtime.admission.is_closed() {
             return Err(RuntimeFailure::AdmissionClosed);
         }
         let endpoint = match self.endpoints.as_slice() {
@@ -1365,6 +1614,10 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 });
             }
         };
+        let snapshot = endpoint
+            .state
+            .snapshot()
+            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
         let admission =
             endpoint
                 .admission(operation)
@@ -1373,17 +1626,41 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     operation: operation.to_owned(),
                 })?;
         let _permit = admission
-            .acquire(C::ID, operation, context.clone(), self.driver.clone())
+            .acquire(
+                C::ID,
+                operation,
+                context.clone(),
+                self.runtime.driver.clone(),
+            )
             .await?;
-        ensure_context_active(&self.driver, &context)?;
-        let outcome = await_with_context(
-            &self.driver,
+        if !endpoint.state.is_current(snapshot.generation) {
+            return Err(RuntimeFailure::Unavailable { capability: C::ID });
+        }
+        ensure_context_active(&self.runtime.driver, &context)?;
+        let outcome = await_with_generation_context(
+            &self.runtime.driver,
             &context,
-            endpoint
+            snapshot.cancellation,
+            C::ID,
+            snapshot
                 .endpoint
                 .invoke(operation, Box::new(request), context.clone()),
         )
-        .await??;
+        .await
+        .map_err(|error| {
+            schedule_module_supervision_after_failure(
+                &self.runtime,
+                &endpoint.module_instance,
+                error,
+            )
+        })?
+        .map_err(|error| {
+            schedule_module_supervision_after_failure(
+                &self.runtime,
+                &endpoint.module_instance,
+                error,
+            )
+        })?;
         decode_outcome::<C>(outcome)
     }
 
@@ -1412,7 +1689,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         C::Request: Clone,
     {
         let context = context.with_caller_instance(self.caller_instance.clone());
-        if self.admission.is_closed() {
+        if self.runtime.admission.is_closed() {
             return Err(RuntimeFailure::AdmissionClosed);
         }
         if self.endpoints.is_empty() {
@@ -1420,6 +1697,10 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         }
         let mut outcomes = Vec::with_capacity(self.endpoints.len());
         for endpoint in &self.endpoints {
+            let snapshot = endpoint
+                .state
+                .snapshot()
+                .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
             let admission =
                 endpoint
                     .admission(operation)
@@ -1428,17 +1709,41 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                         operation: operation.to_owned(),
                     })?;
             let _permit = admission
-                .acquire(C::ID, operation, context.clone(), self.driver.clone())
+                .acquire(
+                    C::ID,
+                    operation,
+                    context.clone(),
+                    self.runtime.driver.clone(),
+                )
                 .await?;
-            ensure_context_active(&self.driver, &context)?;
-            let outcome = await_with_context(
-                &self.driver,
+            if !endpoint.state.is_current(snapshot.generation) {
+                return Err(RuntimeFailure::Unavailable { capability: C::ID });
+            }
+            ensure_context_active(&self.runtime.driver, &context)?;
+            let outcome = await_with_generation_context(
+                &self.runtime.driver,
                 &context,
-                endpoint
+                snapshot.cancellation,
+                C::ID,
+                snapshot
                     .endpoint
                     .invoke(operation, Box::new(request.clone()), context.clone()),
             )
-            .await??;
+            .await
+            .map_err(|error| {
+                schedule_module_supervision_after_failure(
+                    &self.runtime,
+                    &endpoint.module_instance,
+                    error,
+                )
+            })?
+            .map_err(|error| {
+                schedule_module_supervision_after_failure(
+                    &self.runtime,
+                    &endpoint.module_instance,
+                    error,
+                )
+            })?;
             outcomes.push(decode_outcome::<C>(outcome)?);
         }
         Ok(outcomes)
@@ -1459,8 +1764,8 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     }
 
     fn next_request_id(&self) -> RequestId {
-        let request_id = self.request_ids.get();
-        self.request_ids.set(request_id.saturating_add(1));
+        let request_id = self.runtime.request_ids.get();
+        self.runtime.request_ids.set(request_id.saturating_add(1));
         request_id
     }
 }
@@ -1536,6 +1841,11 @@ pub trait RuntimeDriver: Clone + 'static {
     /// Cooperatively yields to other work on the local task lane.
     fn yield_now(&self) -> LocalBoxFuture<'static, ()>;
 
+    /// Supplies deterministic or entropy-backed jitter bounded by the policy value.
+    fn jitter(&self, _maximum: Duration) -> Duration {
+        Duration::ZERO
+    }
+
     /// Schedules Kernel-owned work on the local task lane.
     fn spawn_local(&self, task: LocalTask) -> Result<DriverTask, SpawnError>;
 
@@ -1548,6 +1858,8 @@ struct DriverControl {
     now: Rc<dyn Fn() -> Duration>,
     sleep_until: Rc<dyn Fn(Duration) -> LocalBoxFuture<'static, ()>>,
     yield_now: Rc<dyn Fn() -> LocalBoxFuture<'static, ()>>,
+    jitter: Rc<dyn Fn(Duration) -> Duration>,
+    spawn_local: Rc<dyn Fn(LocalTask) -> Result<DriverTask, SpawnError>>,
 }
 
 impl std::fmt::Debug for DriverControl {
@@ -1563,10 +1875,14 @@ impl DriverControl {
         let now_driver = driver.clone();
         let sleep_driver = driver.clone();
         let yield_driver = driver.clone();
+        let jitter_driver = driver.clone();
+        let spawn_driver = driver.clone();
         Self {
             now: Rc::new(move || now_driver.now()),
             sleep_until: Rc::new(move |deadline| sleep_driver.sleep_until(deadline)),
             yield_now: Rc::new(move || yield_driver.yield_now()),
+            jitter: Rc::new(move |maximum| jitter_driver.jitter(maximum)),
+            spawn_local: Rc::new(move |task| spawn_driver.spawn_local(task)),
         }
     }
 }
@@ -1789,6 +2105,81 @@ async fn await_with_context<F: Future>(
     }
 }
 
+async fn await_with_generation_context<F: Future>(
+    driver: &DriverControl,
+    context: &InvocationContext,
+    generation_cancellation: CancellationToken,
+    capability: &'static str,
+    future: F,
+) -> Result<F::Output, RuntimeFailure> {
+    ensure_context_active(driver, context)?;
+
+    let work = future.fuse();
+    let cancellation = context.cancellation.cancelled().fuse();
+    let generation_cancellation = generation_cancellation.cancelled().fuse();
+    let deadline: LocalBoxFuture<'static, ()> = context.deadline().map_or_else(
+        || Box::pin(pending::<()>()) as LocalBoxFuture<'static, ()>,
+        |deadline| (driver.sleep_until)(deadline),
+    );
+    let deadline = deadline.fuse();
+    futures::pin_mut!(work, cancellation, generation_cancellation, deadline);
+
+    match select(
+        select(select(work, cancellation), generation_cancellation),
+        deadline,
+    )
+    .await
+    {
+        Either::Left((Either::Left((Either::Left((output, _)), _)), _)) => Ok(output),
+        Either::Left((Either::Left((Either::Right(((), _)), _)), _)) => {
+            Err(RuntimeFailure::Cancelled {
+                request_id: context.request_id(),
+            })
+        }
+        Either::Left((Either::Right(((), _)), _)) => {
+            Err(RuntimeFailure::Unavailable { capability })
+        }
+        Either::Right(((), _)) => Err(RuntimeFailure::DeadlineExceeded {
+            request_id: context.request_id(),
+        }),
+    }
+}
+
+fn is_module_failure(error: &RuntimeFailure) -> bool {
+    matches!(error, RuntimeFailure::ModuleFailure { .. })
+}
+
+fn schedule_module_supervision_after_failure(
+    runtime: &Rc<NativeAppRuntime>,
+    instance_key: &str,
+    error: RuntimeFailure,
+) -> RuntimeFailure {
+    if is_module_failure(&error)
+        && begin_module_supervision(runtime, instance_key).unwrap_or(false)
+        && let Err(schedule_error) = schedule_module_supervision(runtime, instance_key)
+    {
+        return handle_supervision_schedule_failure(runtime, instance_key, schedule_error);
+    }
+    error
+}
+
+fn handle_supervision_schedule_failure(
+    runtime: &Rc<NativeAppRuntime>,
+    instance_key: &str,
+    error: RuntimeFailure,
+) -> RuntimeFailure {
+    let must_fail = runtime
+        .supervision
+        .borrow()
+        .get(instance_key)
+        .is_some_and(|state| state.criticality.is_critical() || state.required_path);
+    if must_fail {
+        runtime.terminal_failure.replace(Some(error.clone()));
+        runtime.begin_shutdown();
+    }
+    error
+}
+
 fn ensure_context_active(
     driver: &DriverControl,
     context: &InvocationContext,
@@ -1860,15 +2251,17 @@ impl Kernel {
         let activation_order = plan
             .activation_order()
             .map_err(|error| runtime_plan_error(&error))?;
+        let adapter = Rc::new(adapter) as Rc<dyn NativeExecutionAdapter>;
         let PreparedNativeApp {
             bindings: prepared_bindings,
             modules,
+            generations,
         } = adapter.prepare(&plan)?;
-        let bindings = native_bindings(&plan, &prepared_bindings);
+        let (bindings, endpoint_states) = native_bindings(&plan, &prepared_bindings);
         let dependencies = module_dependencies(&plan, &bindings);
         let driver_control = DriverControl::new(&driver);
         let admission = AppAdmission::new();
-        let module_runtimes = native_module_runtimes(&plan, &driver, modules)?;
+        let module_runtimes = native_module_runtimes(&plan, &driver, modules, generations)?;
         let ready_gate = AppReadyGate::new();
         let prepared_instances = prepare_native_modules(
             &module_runtimes,
@@ -1897,20 +2290,24 @@ impl Kernel {
             return Err(error);
         }
         open_native_readiness(&driver, &ready_gate, &admission).await;
-        Ok(NativeApp {
-            bindings,
-            runtime: NativeAppRuntime {
-                modules: module_runtimes,
-                dependencies,
-                activation_order,
-                ready_gate,
-                admission,
-                driver: driver_control,
-                request_ids: Rc::new(Cell::new(1)),
-                shutdown_started: Cell::new(false),
-                shutdown_result: RefCell::new(None),
-            },
-        })
+        let runtime = Rc::new(NativeAppRuntime {
+            plan: plan.clone(),
+            adapter,
+            modules: module_runtimes,
+            dependencies,
+            endpoint_states,
+            supervision: RefCell::new(module_supervision(&plan)),
+            activation_order,
+            ready_gate,
+            admission,
+            driver: driver_control,
+            request_ids: Rc::new(Cell::new(1)),
+            supervision_cancellation: CancellationToken::new(),
+            shutdown_started: Cell::new(false),
+            shutdown_result: RefCell::new(None),
+            terminal_failure: RefCell::new(None),
+        });
+        Ok(NativeApp { bindings, runtime })
     }
 
     /// Validates and boots one already resolved Plan.
@@ -1950,6 +2347,7 @@ fn native_module_runtimes<D: RuntimeDriver>(
     plan: &ResolvedAppPlan,
     driver: &D,
     mut modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
+    mut generations: BTreeMap<String, PreparedNativeModule>,
 ) -> Result<BTreeMap<String, NativeModuleRuntime>, RuntimeFailure> {
     if let Some(instance_key) = modules.keys().find(|instance_key| {
         !plan
@@ -1961,18 +2359,32 @@ fn native_module_runtimes<D: RuntimeDriver>(
             detail: format!("Adapter prepared unknown Module Instance `{instance_key}`"),
         });
     }
+    if let Some(instance_key) = generations.keys().find(|instance_key| {
+        !plan
+            .module_instances()
+            .iter()
+            .any(|instance| instance.instance_key() == instance_key.as_str())
+    }) {
+        return Err(RuntimeFailure::InvalidResolvedPlan {
+            detail: format!("Adapter prepared unknown Module Instance generation `{instance_key}`"),
+        });
+    }
 
     let mut runtimes = BTreeMap::new();
     for instance in plan.module_instances() {
-        let lifecycle = modules
+        let lifecycle = generations
             .remove(instance.instance_key())
+            .map(|generation| generation.lifecycle())
+            .or_else(|| modules.remove(instance.instance_key()))
             .unwrap_or_else(|| Rc::new(NoopModuleLifecycle));
         runtimes.insert(
             instance.instance_key().to_owned(),
             NativeModuleRuntime {
-                lifecycle,
-                tasks: ManagedTaskScope::new(driver),
-                resources: ManagedResourceScope::new(),
+                generation: RefCell::new(Some(NativeModuleGeneration {
+                    lifecycle,
+                    tasks: ManagedTaskScope::new(driver),
+                    resources: ManagedResourceScope::new(),
+                })),
             },
         );
     }
@@ -1990,15 +2402,19 @@ async fn prepare_native_modules(
         let module = modules
             .get(instance_key)
             .expect("activation order only contains planned Module Instances");
+        let (lifecycle, tasks, resources) = module
+            .generation_parts()
+            .expect("every startup Module Instance has a generation");
+        let cancellation = tasks.cancellation();
         prepared_instances.push(instance_key.clone());
         let context = PrepareContext {
             instance_key: instance_key.clone(),
             dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
-            resources: module.resources.clone(),
-            cancellation: module.tasks.cancellation(),
+            resources,
+            cancellation,
             admission: admission.clone(),
         };
-        if let Err(error) = module.lifecycle.prepare(context).await {
+        if let Err(error) = lifecycle.prepare(context).await {
             let _ = deactivate_in_reverse(
                 modules,
                 dependencies,
@@ -2024,16 +2440,20 @@ async fn activate_native_modules(
         let module = modules
             .get(instance_key)
             .expect("activation order only contains planned Module Instances");
+        let (lifecycle, tasks, resources) = module
+            .generation_parts()
+            .expect("every startup Module Instance has a generation");
+        let cancellation = tasks.cancellation();
         let context = ActivateContext {
             instance_key: instance_key.clone(),
             dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
             ready_gate: ready_gate.clone(),
-            tasks: module.tasks.clone(),
-            resources: module.resources.clone(),
-            cancellation: module.tasks.cancellation(),
+            tasks,
+            resources,
+            cancellation,
             admission: admission.clone(),
         };
-        module.lifecycle.activate(context).await?;
+        lifecycle.activate(context).await?;
     }
     Ok(())
 }
@@ -2051,8 +2471,9 @@ async fn open_native_readiness<D: RuntimeDriver>(
 fn native_bindings(
     plan: &ResolvedAppPlan,
     prepared: &BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
-) -> BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>> {
+) -> (NativeBindingTable, NativeEndpointStateTable) {
     let mut bindings = BTreeMap::new();
+    let mut endpoint_states = BTreeMap::new();
     for binding in plan.capability_bindings() {
         let Some(endpoints) = prepared
             .iter()
@@ -2066,6 +2487,13 @@ fn native_bindings(
         let Some(endpoint) = endpoints.get(binding.provider_order()) else {
             continue;
         };
+        let state = endpoint_states
+            .entry((
+                binding.provider_instance().to_owned(),
+                endpoint.capability_id().to_owned(),
+            ))
+            .or_insert_with(|| Rc::new(NativeEndpointState::new(endpoint.clone(), 1)))
+            .clone();
         let admissions = endpoint
             .operations()
             .iter()
@@ -2083,11 +2511,12 @@ fn native_bindings(
             ))
             .or_insert_with(Vec::new)
             .push(NativeEndpointBinding {
-                endpoint: endpoint.clone(),
+                module_instance: binding.provider_instance().to_owned(),
+                state,
                 admissions,
             });
     }
-    bindings
+    (bindings, endpoint_states)
 }
 
 fn module_dependencies(
@@ -2120,9 +2549,8 @@ fn module_dependencies(
                             && *capability == binding.capability_id()
                     })
                     .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
-                    .cloned()
                     .map(|endpoint| ModuleDependencyHandle {
-                        endpoint: endpoint.endpoint,
+                        endpoint: endpoint.state.clone(),
                     }),
             ));
     }
@@ -2141,26 +2569,30 @@ async fn deactivate_in_reverse(
         let module = modules
             .get(instance_key)
             .expect("deactivation order only contains planned Module Instances");
-        module.tasks.close();
-        module.resources.close();
-        if let Err(error) = module
+        let Some(generation) = module.take_generation() else {
+            continue;
+        };
+        generation.tasks.close();
+        generation.resources.close();
+        let result = generation
             .lifecycle
             .deactivate(DeactivateContext {
                 instance_key: instance_key.clone(),
                 dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
                 reason,
-                tasks: module.tasks.clone(),
-                resources: module.resources.clone(),
-                cancellation: module.tasks.cancellation(),
+                tasks: generation.tasks.clone(),
+                resources: generation.resources.clone(),
+                cancellation: generation.tasks.cancellation(),
                 admission: admission.clone(),
             })
-            .await
+            .await;
+        if let Err(error) = result
             && first_error.is_none()
         {
             first_error = Some(error);
         }
-        module.tasks.cancel_all().await;
-        if let Some(error) = module.resources.release_all().await
+        generation.tasks.cancel_all().await;
+        if let Some(error) = generation.resources.release_all().await
             && first_error.is_none()
         {
             first_error = Some(error);
@@ -2174,7 +2606,10 @@ async fn shutdown_native_modules(runtime: &NativeAppRuntime, timeout: Duration) 
     (runtime.driver.yield_now)().await;
 
     for module in runtime.modules.values() {
-        if !module.tasks.drain_until(&runtime.driver, deadline).await {
+        let Some((_, tasks, _)) = module.generation_parts() else {
+            continue;
+        };
+        if !tasks.drain_until(&runtime.driver, deadline).await {
             terminate_remaining_cleanup(runtime);
             return ShutdownOutcome::Timeout;
         }
@@ -2186,10 +2621,14 @@ async fn shutdown_native_modules(runtime: &NativeAppRuntime, timeout: Duration) 
             .modules
             .get(instance_key)
             .expect("deactivation order only contains planned Module Instances");
+        let Some((lifecycle, tasks, resources)) = module.generation_parts() else {
+            continue;
+        };
+        let cancellation = tasks.cancellation();
         let result = wait_until(
             &runtime.driver,
             deadline,
-            module.lifecycle.deactivate(DeactivateContext {
+            lifecycle.deactivate(DeactivateContext {
                 instance_key: instance_key.clone(),
                 dependencies: runtime
                     .dependencies
@@ -2197,9 +2636,9 @@ async fn shutdown_native_modules(runtime: &NativeAppRuntime, timeout: Duration) 
                     .cloned()
                     .unwrap_or_default(),
                 reason: DeactivationReason::Shutdown,
-                tasks: module.tasks.clone(),
-                resources: module.resources.clone(),
-                cancellation: module.tasks.cancellation(),
+                tasks,
+                resources: resources.clone(),
+                cancellation,
                 admission: runtime.admission.clone(),
             }),
         )
@@ -2217,11 +2656,7 @@ async fn shutdown_native_modules(runtime: &NativeAppRuntime, timeout: Duration) 
             }
         }
 
-        match module
-            .resources
-            .release_all_until(&runtime.driver, deadline)
-            .await
-        {
+        match resources.release_all_until(&runtime.driver, deadline).await {
             Ok(Some(error)) => {
                 if first_error.is_none() {
                     first_error = Some(error);
@@ -2242,15 +2677,455 @@ async fn shutdown_native_modules(runtime: &NativeAppRuntime, timeout: Duration) 
 
 fn terminate_remaining_cleanup(runtime: &NativeAppRuntime) {
     for module in runtime.modules.values() {
-        module.tasks.abort_all();
-        module.resources.release_unawaited();
+        if let Some((_, tasks, resources)) = module.generation_parts() {
+            tasks.abort_all();
+            resources.release_unawaited();
+        }
     }
+}
+
+fn module_supervision(plan: &ResolvedAppPlan) -> BTreeMap<String, ModuleSupervision> {
+    plan.module_instances()
+        .iter()
+        .map(|instance| {
+            (
+                instance.instance_key().to_owned(),
+                ModuleSupervision {
+                    policy: instance.restart_policy(),
+                    criticality: instance.criticality(),
+                    required_path: plan.module_instance_is_required(instance.instance_key()),
+                    generation: 1,
+                    attempts: Vec::new(),
+                    stable_since: Some(Duration::ZERO),
+                    restarting: false,
+                },
+            )
+        })
+        .collect()
+}
+
+fn begin_module_supervision(
+    runtime: &Rc<NativeAppRuntime>,
+    instance_key: &str,
+) -> Result<bool, RuntimeFailure> {
+    if runtime.shutdown_started.get() || runtime.terminal_failure.borrow().is_some() {
+        return Err(RuntimeFailure::AdmissionClosed);
+    }
+    if !runtime.modules.contains_key(instance_key) {
+        return Err(RuntimeFailure::InvalidResolvedPlan {
+            detail: format!("unknown Module Instance `{instance_key}`"),
+        });
+    }
+    let mut supervision = runtime.supervision.borrow_mut();
+    let state = supervision
+        .get_mut(instance_key)
+        .expect("every planned Module Instance has supervision state");
+    if state.restarting {
+        return Ok(false);
+    }
+    let now = (runtime.driver.now)();
+    if state.stable_since.is_some_and(|stable_since| {
+        !state.policy.stability().is_zero()
+            && now.saturating_sub(stable_since) >= state.policy.stability()
+    }) {
+        state.attempts.clear();
+    } else {
+        state
+            .attempts
+            .retain(|attempted_at| now.saturating_sub(*attempted_at) < state.policy.window());
+    }
+    state.stable_since = None;
+    state.restarting = true;
+    drop(supervision);
+    for ((provider, _), endpoint) in &runtime.endpoint_states {
+        if provider == instance_key {
+            endpoint.mark_unavailable();
+        }
+    }
+    Ok(true)
+}
+
+fn schedule_module_supervision(
+    runtime: &Rc<NativeAppRuntime>,
+    instance_key: &str,
+) -> Result<(), RuntimeFailure> {
+    let task_runtime = runtime.clone();
+    let task_instance_key = instance_key.to_owned();
+    (runtime.driver.spawn_local)(Box::pin(async move {
+        let _ = supervise_module_instance(task_runtime, task_instance_key).await;
+    }))
+    .map(|_| ())
+    .map_err(|error| {
+        if let Some(state) = runtime.supervision.borrow_mut().get_mut(instance_key) {
+            state.restarting = false;
+        }
+        RuntimeFailure::Internal {
+            detail: format!("failed to schedule Module supervision: {error:?}"),
+        }
+    })
+}
+
+async fn supervise_module_instance(
+    runtime: Rc<NativeAppRuntime>,
+    instance_key: String,
+) -> Result<(), RuntimeFailure> {
+    if runtime.shutdown_started.get() {
+        return Err(RuntimeFailure::AdmissionClosed);
+    }
+    let generation = runtime
+        .modules
+        .get(&instance_key)
+        .and_then(NativeModuleRuntime::take_generation);
+    if let Some(generation) = generation
+        && let Some(error) = cleanup_native_generation(
+            &runtime,
+            &instance_key,
+            generation,
+            DeactivationReason::SupervisionRestart,
+        )
+        .await
+    {
+        return finish_module_cleanup_failure(&runtime, &instance_key, error);
+    }
+
+    loop {
+        let Some((_attempt, delay)) = next_restart_attempt(&runtime, &instance_key) else {
+            return finish_module_exhaustion(&runtime, &instance_key);
+        };
+        if !wait_for_supervision_delay(&runtime, delay).await {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
+        if runtime.shutdown_started.get() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
+
+        let Ok(prepared) = runtime.adapter.recreate(&runtime.plan, &instance_key) else {
+            continue;
+        };
+        let Some(instance) = runtime
+            .plan
+            .module_instances()
+            .iter()
+            .find(|instance| instance.instance_key() == instance_key)
+        else {
+            return Err(RuntimeFailure::InvalidResolvedPlan {
+                detail: format!("unknown Module Instance `{instance_key}`"),
+            });
+        };
+        let (endpoints, lifecycle) = prepared.into_parts();
+        if validate_native_endpoint_set(&instance_key, instance, &endpoints).is_err() {
+            continue;
+        }
+        let generation_number = runtime
+            .supervision
+            .borrow()
+            .get(&instance_key)
+            .map_or(1, |state| state.generation.saturating_add(1));
+        let generation =
+            match prepare_and_activate_generation(&runtime, &instance_key, lifecycle).await {
+                Ok(generation) => generation,
+                Err(GenerationPreparationFailure::Lifecycle) => continue,
+                Err(GenerationPreparationFailure::Cleanup(error)) => {
+                    return finish_module_cleanup_failure(&runtime, &instance_key, error);
+                }
+            };
+
+        if runtime.shutdown_started.get() {
+            let _ = cleanup_native_generation(
+                &runtime,
+                &instance_key,
+                generation,
+                DeactivationReason::SupervisionRestart,
+            )
+            .await;
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
+
+        if let Some(module) = runtime.modules.get(&instance_key) {
+            module.install_generation(generation);
+        }
+        install_module_endpoints(&runtime, &instance_key, endpoints, generation_number);
+        if let Some(state) = runtime.supervision.borrow_mut().get_mut(&instance_key) {
+            state.generation = generation_number;
+            state.stable_since = Some((runtime.driver.now)());
+            state.restarting = false;
+        }
+        return Ok(());
+    }
+}
+
+async fn wait_for_supervision_delay(runtime: &NativeAppRuntime, delay: Duration) -> bool {
+    if delay.is_zero() {
+        return true;
+    }
+    let deadline = (runtime.driver.now)().saturating_add(delay);
+    let timer = (runtime.driver.sleep_until)(deadline).fuse();
+    let cancellation = runtime.supervision_cancellation.cancelled().fuse();
+    futures::pin_mut!(timer, cancellation);
+    matches!(select(timer, cancellation).await, Either::Left(((), _)))
+}
+
+fn next_restart_attempt(
+    runtime: &NativeAppRuntime,
+    instance_key: &str,
+) -> Option<(usize, Duration)> {
+    let now = (runtime.driver.now)();
+    let mut supervision = runtime.supervision.borrow_mut();
+    let state = supervision
+        .get_mut(instance_key)
+        .expect("every planned Module Instance has supervision state");
+    if state.policy.mode() != RestartMode::OnFailure {
+        return None;
+    }
+    // Keep all attempts from this supervision episode together. Pruning here
+    // would turn a backoff longer than the rolling window into an unbounded
+    // restart loop.
+    if state.attempts.len() >= state.policy.max_attempts() {
+        return None;
+    }
+    let attempt = state.attempts.len().saturating_add(1);
+    state.attempts.push(now);
+    let exponent = u32::try_from(attempt.saturating_sub(1).min(31)).unwrap_or(31);
+    let backoff = state.policy.backoff().saturating_mul(1_u32 << exponent);
+    let jitter = (runtime.driver.jitter)(state.policy.jitter()).min(state.policy.jitter());
+    Some((attempt, backoff.saturating_add(jitter)))
+}
+
+fn finish_module_exhaustion(
+    runtime: &Rc<NativeAppRuntime>,
+    instance_key: &str,
+) -> Result<(), RuntimeFailure> {
+    let (attempts, must_fail) = {
+        let mut supervision = runtime.supervision.borrow_mut();
+        let state = supervision
+            .get_mut(instance_key)
+            .expect("every planned Module Instance has supervision state");
+        state.restarting = false;
+        (
+            state.attempts.len(),
+            state.criticality.is_critical() || state.required_path,
+        )
+    };
+    if !must_fail {
+        return Ok(());
+    }
+    let error = RuntimeFailure::ModuleRestartExhausted {
+        instance: instance_key.to_owned(),
+        attempts,
+    };
+    runtime.terminal_failure.replace(Some(error.clone()));
+    runtime.begin_shutdown();
+    Err(error)
+}
+
+fn finish_module_cleanup_failure(
+    runtime: &Rc<NativeAppRuntime>,
+    instance_key: &str,
+    error: RuntimeFailure,
+) -> Result<(), RuntimeFailure> {
+    let must_fail = {
+        let mut supervision = runtime.supervision.borrow_mut();
+        let state = supervision
+            .get_mut(instance_key)
+            .expect("every planned Module Instance has supervision state");
+        state.restarting = false;
+        state.criticality.is_critical() || state.required_path
+    };
+    if must_fail {
+        runtime.terminal_failure.replace(Some(error.clone()));
+        runtime.begin_shutdown();
+    }
+    Err(error)
+}
+
+async fn prepare_and_activate_generation(
+    runtime: &NativeAppRuntime,
+    instance_key: &str,
+    lifecycle: Rc<dyn ModuleLifecycle>,
+) -> Result<NativeModuleGeneration, GenerationPreparationFailure> {
+    let tasks = ManagedTaskScope::new_from_driver_control(&runtime.driver);
+    let resources = ManagedResourceScope::new();
+    let prepared = NativeModuleGeneration {
+        lifecycle: lifecycle.clone(),
+        tasks: tasks.clone(),
+        resources: resources.clone(),
+    };
+    let dependencies = runtime
+        .dependencies
+        .get(instance_key)
+        .cloned()
+        .unwrap_or_default();
+    if lifecycle
+        .prepare(PrepareContext {
+            instance_key: instance_key.to_owned(),
+            dependencies: dependencies.clone(),
+            resources: resources.clone(),
+            cancellation: tasks.cancellation(),
+            admission: runtime.admission.clone(),
+        })
+        .await
+        .is_err()
+    {
+        let failure = if let Some(cleanup_error) = cleanup_native_generation(
+            runtime,
+            instance_key,
+            prepared,
+            DeactivationReason::SupervisionRestart,
+        )
+        .await
+        {
+            GenerationPreparationFailure::Cleanup(cleanup_error)
+        } else {
+            GenerationPreparationFailure::Lifecycle
+        };
+        return Err(failure);
+    }
+    if lifecycle
+        .activate(ActivateContext {
+            instance_key: instance_key.to_owned(),
+            dependencies,
+            ready_gate: runtime.ready_gate.clone(),
+            tasks: tasks.clone(),
+            resources: resources.clone(),
+            cancellation: tasks.cancellation(),
+            admission: runtime.admission.clone(),
+        })
+        .await
+        .is_err()
+    {
+        let failure = if let Some(cleanup_error) = cleanup_native_generation(
+            runtime,
+            instance_key,
+            prepared,
+            DeactivationReason::SupervisionRestart,
+        )
+        .await
+        {
+            GenerationPreparationFailure::Cleanup(cleanup_error)
+        } else {
+            GenerationPreparationFailure::Lifecycle
+        };
+        return Err(failure);
+    }
+    Ok(prepared)
+}
+
+async fn cleanup_native_generation(
+    runtime: &NativeAppRuntime,
+    instance_key: &str,
+    generation: NativeModuleGeneration,
+    reason: DeactivationReason,
+) -> Option<RuntimeFailure> {
+    generation.tasks.close();
+    generation.resources.close();
+    generation.tasks.cancel_all().await;
+    let dependencies = runtime
+        .dependencies
+        .get(instance_key)
+        .cloned()
+        .unwrap_or_default();
+    let mut first_error = None;
+    if let Err(error) = generation
+        .lifecycle
+        .deactivate(DeactivateContext {
+            instance_key: instance_key.to_owned(),
+            dependencies,
+            reason,
+            tasks: generation.tasks.clone(),
+            resources: generation.resources.clone(),
+            cancellation: generation.tasks.cancellation(),
+            admission: runtime.admission.clone(),
+        })
+        .await
+    {
+        first_error = Some(error);
+    }
+    if let Some(error) = generation.resources.release_all().await
+        && first_error.is_none()
+    {
+        first_error = Some(error);
+    }
+    first_error
+}
+
+fn install_module_endpoints(
+    runtime: &NativeAppRuntime,
+    instance_key: &str,
+    endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+    generation: u64,
+) {
+    for endpoint in endpoints {
+        if let Some(state) = runtime
+            .endpoint_states
+            .get(&(instance_key.to_owned(), endpoint.capability_id().to_owned()))
+        {
+            state.install(endpoint, generation);
+        }
+    }
+}
+
+fn validate_native_endpoint_set(
+    instance_key: &str,
+    expected: &lenso_app_plan::ModuleInstancePlan,
+    actual: &[Rc<dyn NativeRequestEndpoint>],
+) -> Result<(), RuntimeFailure> {
+    if expected.provided_capabilities().len() != actual.len() {
+        return Err(RuntimeFailure::InvalidResolvedPlan {
+            detail: format!(
+                "Module Instance `{instance_key}` prepared {} endpoints; expected {}",
+                actual.len(),
+                expected.provided_capabilities().len()
+            ),
+        });
+    }
+    for descriptor in expected.provided_capabilities() {
+        let matching: Vec<_> = actual
+            .iter()
+            .filter(|endpoint| endpoint.capability_id() == descriptor.capability_id())
+            .collect();
+        if matching.len() != 1 {
+            return Err(RuntimeFailure::InvalidResolvedPlan {
+                detail: format!(
+                    "Module Instance `{instance_key}` prepared {} endpoints for Capability `{}`",
+                    matching.len(),
+                    descriptor.capability_id()
+                ),
+            });
+        }
+        let endpoint = matching[0];
+        let actual_operations = endpoint.operations();
+        let expected_operations: Vec<_> =
+            descriptor.operations().iter().map(String::as_str).collect();
+        if endpoint.descriptor_version() != descriptor.descriptor_version()
+            || actual_operations != expected_operations.as_slice()
+        {
+            return Err(RuntimeFailure::InvalidResolvedPlan {
+                detail: format!(
+                    "Module Instance `{instance_key}` endpoint `{}` differs from its resolved Descriptor",
+                    descriptor.capability_id()
+                ),
+            });
+        }
+        let mut unique = actual_operations.to_vec();
+        unique.sort_unstable();
+        unique.dedup();
+        if unique.len() != actual_operations.len() {
+            return Err(RuntimeFailure::InvalidResolvedPlan {
+                detail: format!(
+                    "Module Instance `{instance_key}` endpoint `{}` has duplicate Operations",
+                    descriptor.capability_id()
+                ),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
 struct DeterministicState {
     now: Cell<Duration>,
     shutdown_requested: Cell<bool>,
+    jitter: Cell<Duration>,
     pool: RefCell<Option<LocalPool>>,
     spawner: LocalSpawner,
     timers: RefCell<Vec<(Duration, oneshot::Sender<()>)>>,
@@ -2271,6 +3146,7 @@ impl DeterministicDriver {
             state: Rc::new(DeterministicState {
                 now: Cell::new(Duration::ZERO),
                 shutdown_requested: Cell::new(false),
+                jitter: Cell::new(Duration::ZERO),
                 pool: RefCell::new(Some(pool)),
                 spawner,
                 timers: RefCell::new(Vec::new()),
@@ -2316,6 +3192,18 @@ impl DeterministicDriver {
     pub fn now(&self) -> Duration {
         self.state.now.get()
     }
+
+    /// Sets the deterministic jitter returned to supervision callers, capped by each policy.
+    pub fn set_jitter(&self, jitter: Duration) {
+        self.state.jitter.set(jitter);
+    }
+
+    /// Configures deterministic jitter while retaining builder-style Driver setup.
+    #[must_use]
+    pub fn with_jitter(self, jitter: Duration) -> Self {
+        self.set_jitter(jitter);
+        self
+    }
 }
 
 impl Default for DeterministicDriver {
@@ -2351,6 +3239,10 @@ impl RuntimeDriver for DeterministicDriver {
                 Poll::Pending
             }
         }))
+    }
+
+    fn jitter(&self, maximum: Duration) -> Duration {
+        self.state.jitter.get().min(maximum)
     }
 
     fn spawn_local(&self, task: LocalTask) -> Result<DriverTask, SpawnError> {
