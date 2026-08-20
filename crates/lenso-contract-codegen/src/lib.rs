@@ -443,8 +443,7 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
     let capability_name = identity
         .rsplit('.')
         .next()
-        .map(pascal_case)
-        .unwrap_or_else(|| "Capability".to_owned());
+        .map_or_else(|| "Capability".to_owned(), pascal_case);
     for operation_value in operation_values {
         let operation =
             operation_value
