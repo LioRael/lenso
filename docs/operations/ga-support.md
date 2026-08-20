@@ -1,14 +1,14 @@
 # Lenso GA Support Manifest
 
 > **Legacy v0.3.x operations guide:** This page applies to the maintained
-> Service-oriented release line on `main` and is retained for support and
-> migration evidence. See the [documentation map](../README.md).
+> Service-oriented release line on `main` and is retained as a migration
+> reference. See the [documentation map](../README.md).
 
 - Protocol: `lenso.ga-support-manifest.v1`
-- Manifest ID: `ga-support:1480d4651007679e`
-- Manifest digest: `sha256:1480d4651007679e5f8dc1ec9f2b783ddc8d68bd480455c6f47b500e3cdbddcf`
+- Manifest ID: `ga-support:948dc60f7dc6bf25`
+- Manifest digest: `sha256:948dc60f7dc6bf252b385b3ee74d1ffe8e39effe33d24bc635a9309ecff536d7`
 - Status: `GeneralAvailability`
-- Documentation: `m6-ga` (`sha256:1ac4260db5f0f33ab205baf09a12d5a9215fa41f7d61bfc5683d5148b0c18bf6`)
+- Documentation: `m6-ga` (`sha256:f372c19d69f5cb951dd2a795303073ad1113f767ceed1623c4ab181d2d284c6b`)
 
 ## Components
 
