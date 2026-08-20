@@ -8,6 +8,19 @@ on:
       - next
 
 jobs:
+  portable-kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown,wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - name: Compile the portable Kernel for WebAssembly hosts
+        run: |
+          cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-unknown-unknown
+          cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-wasip2
+
   typescript-service-kit:
     runs-on: ubuntu-latest
     steps:
