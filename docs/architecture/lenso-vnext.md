@@ -2,10 +2,13 @@
 
 ## Status
 
-This document describes the agreed target architecture. It is not a claim that
-the current `lenso` workspace implements vNext. ADRs 0030 onward are the
-authoritative decisions; this overview routes readers through them without
-repeating every detailed invariant.
+This document describes the vNext target and the initial implementation
+boundary of the minimal `next` workspace. The current code is the App Plan,
+portable Kernel, native Runtime Driver, and deterministic test Driver skeleton;
+the remaining graph, lifecycle, and adapter slices are introduced by later
+vNext work. ADRs 0030 onward are the authoritative decisions; this overview
+routes readers through them without repeating every detailed invariant. The
+maintained v0.3.x implementation is owned by `main`.
 
 ## Shape
 
