@@ -1,5 +1,10 @@
 # Getting Started
 
+> **Legacy implementation guide:** these commands and artifacts describe the
+> current Service-oriented release. The vNext architecture is specified in
+> [`architecture/lenso-vnext.md`](architecture/lenso-vnext.md) and is not yet an
+> implemented CLI workflow.
+
 This guide follows the public application lifecycle for a local Lenso System.
 It begins with one exact App Composition and uses the same public entrypoints as
 the integrated Support Desk acceptance.
