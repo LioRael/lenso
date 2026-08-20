@@ -15,10 +15,7 @@ mod native_fallback {
 
     impl NativeExecutionAdapter for EmptyAdapter {
         fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-            Ok(PreparedNativeApp::with_modules(
-                BTreeMap::new(),
-                BTreeMap::new(),
-            ))
+            Ok(PreparedNativeApp::with_modules(Vec::new(), BTreeMap::new()))
         }
     }
 
@@ -106,10 +103,7 @@ mod wasip2_host {
 
     impl NativeExecutionAdapter for EmptyAdapter {
         fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-            Ok(PreparedNativeApp::with_modules(
-                BTreeMap::new(),
-                BTreeMap::new(),
-            ))
+            Ok(PreparedNativeApp::with_modules(Vec::new(), BTreeMap::new()))
         }
     }
 

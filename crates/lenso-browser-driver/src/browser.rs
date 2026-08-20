@@ -12,7 +12,6 @@ use futures::{
     future::{AbortHandle, Abortable, LocalBoxFuture},
     task::SpawnError,
 };
-use lenso_app_plan::ExecutionClassSet;
 use lenso_kernel::{DriverTask, LocalTask, RuntimeDriver, TaskOutcome};
 use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::spawn_local;
@@ -222,10 +221,6 @@ impl RuntimeDriver for BrowserDriver {
 
     fn shutdown_requested(&self) -> bool {
         self.state.shutdown_requested.get()
-    }
-
-    fn supported_execution_classes(&self) -> ExecutionClassSet {
-        ExecutionClassSet::native_rust()
     }
 }
 

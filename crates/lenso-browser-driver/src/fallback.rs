@@ -1,7 +1,6 @@
 use std::{future::Future, time::Duration};
 
 use futures::{future::LocalBoxFuture, task::SpawnError};
-use lenso_app_plan::ExecutionClassSet;
 use lenso_kernel::{DeterministicDriver, DriverTask, LocalTask, RuntimeDriver, TaskOutcome};
 
 /// Native test fallback for the browser Driver.
@@ -83,9 +82,5 @@ impl RuntimeDriver for BrowserDriver {
 
     fn shutdown_requested(&self) -> bool {
         self.inner.shutdown_requested()
-    }
-
-    fn supported_execution_classes(&self) -> ExecutionClassSet {
-        ExecutionClassSet::native_rust()
     }
 }

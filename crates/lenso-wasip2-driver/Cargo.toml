@@ -7,8 +7,10 @@ publish = false
 
 [dependencies]
 futures.workspace = true
-lenso-app-plan = { path = "../lenso-app-plan" }
 lenso-kernel = { path = "../lenso-kernel" }
+
+[dev-dependencies]
+lenso-app-plan = { path = "../lenso-app-plan" }
 
 [lints]
 workspace = true

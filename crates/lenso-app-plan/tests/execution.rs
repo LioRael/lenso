@@ -1,42 +1,39 @@
-use lenso_app_plan::{
-    AppComposition, ExecutionClass, ExecutionClassSet, ModuleInstancePlan, PlanResolutionError,
-};
+use lenso_app_plan::{AppComposition, ExecutionClassId, ModuleInstancePlan};
 
 #[test]
-fn host_validation_rejects_a_child_process_module_without_host_support() {
+fn resolved_plan_preserves_an_open_execution_class_id() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("bun", "package.bun")
-                .with_execution_class(ExecutionClass::BunChildProcess),
+            ModuleInstancePlan::new("python", "package.python")
+                .with_execution_class(ExecutionClassId::new("community.python-process@1")),
         ],
         vec![],
     )
     .resolve()
-    .expect("the execution class is valid authoring data");
+    .expect("the execution class ID is valid authoring data");
 
-    assert!(matches!(
-        plan.validate_for(ExecutionClassSet::native_rust()),
-        Err(PlanResolutionError::UnsupportedExecutionClass {
-            instance_key,
-            execution_class: ExecutionClass::BunChildProcess,
-        }) if instance_key == "bun"
-    ));
+    assert_eq!(
+        plan.module_instance("python")
+            .expect("the instance is materialized")
+            .execution_class()
+            .as_str(),
+        "community.python-process@1"
+    );
 }
 
 #[test]
-fn host_validation_accepts_each_class_explicitly_admitted_by_the_host() {
+fn native_rust_is_the_default_execution_class() {
     let plan = AppComposition::new(
-        vec![
-            ModuleInstancePlan::new("native", "package.native"),
-            ModuleInstancePlan::new("bun", "package.bun")
-                .with_execution_class(ExecutionClass::BunChildProcess),
-        ],
+        vec![ModuleInstancePlan::new("native", "package.native")],
         vec![],
     )
     .resolve()
-    .expect("the execution classes are valid authoring data");
+    .expect("the default execution class is valid authoring data");
 
-    let host = ExecutionClassSet::native_rust().with(ExecutionClass::BunChildProcess);
-    plan.validate_for(host)
-        .expect("the host explicitly provides both execution classes");
+    assert_eq!(
+        plan.module_instance("native")
+            .expect("the instance is materialized")
+            .execution_class(),
+        &ExecutionClassId::native_rust()
+    );
 }

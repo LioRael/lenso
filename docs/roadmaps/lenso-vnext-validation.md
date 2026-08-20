@@ -30,8 +30,8 @@ Complete when the same Kernel engine passes native tests and compile-checks for
 `wasm32-unknown-unknown` and `wasm32-wasip2` without target-specific branches
 in the core state machine, while Browser/JavaScript and WASIp2 Drivers pass
 local scheduler, monotonic timer, cancellation, readiness, and shutdown smoke
-tests. Host validation rejects an execution class absent from the Driver and
-Execution Adapter capability intersection.
+tests. Host validation rejects an execution class absent from the immutable
+Execution Adapter catalog assembled by the selected Runner.
 
 ## 2. Native Rust vertical slice
 

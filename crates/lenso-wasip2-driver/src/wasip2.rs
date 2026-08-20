@@ -13,7 +13,6 @@ use futures::{
     future::{AbortHandle, Abortable, LocalBoxFuture},
     task::{LocalSpawnExt, SpawnError},
 };
-use lenso_app_plan::ExecutionClassSet;
 use lenso_kernel::{DriverTask, LocalTask, RuntimeDriver, TaskOutcome};
 
 #[derive(Debug)]
@@ -254,9 +253,5 @@ impl RuntimeDriver for WasiDriver {
 
     fn shutdown_requested(&self) -> bool {
         self.state.shutdown_requested.get()
-    }
-
-    fn supported_execution_classes(&self) -> ExecutionClassSet {
-        ExecutionClassSet::native_rust()
     }
 }

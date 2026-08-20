@@ -34,10 +34,10 @@ cargo run --locked -p lenso-runner
 ```
 
 The portable Kernel and its host Drivers are compile-checked for
-`wasm32-unknown-unknown` and `wasm32-wasip2` in CI. Browser and WASIp2 host
-capabilities admit statically linked Rust Modules only; a Bun child-process
-execution class is rejected during Plan validation unless both the selected
-Driver and Execution Adapter explicitly provide it.
+`wasm32-unknown-unknown` and `wasm32-wasip2` in CI. Browser and WASIp2 Runners
+can install only Adapter packages their hosts can execute; Kernel rejects a
+Plan before preparation when its immutable Runner-assembled Adapter catalog
+does not provide a selected open execution-class identity.
 
 ## Architecture
 

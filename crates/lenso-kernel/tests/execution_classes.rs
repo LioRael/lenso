@@ -1,164 +1,233 @@
-use std::{cell::Cell, collections::BTreeMap, rc::Rc};
+use std::{any::Any, cell::Cell, collections::BTreeMap, rc::Rc};
 
-use futures::future::LocalBoxFuture;
-use lenso_app_plan::{AppComposition, ExecutionClass, ModuleInstancePlan, ResolvedAppPlan};
-use lenso_kernel::{
-    DeterministicDriver, DriverTask, Kernel, LocalTask, NativeExecutionAdapter, PreparedNativeApp,
-    RuntimeDriver, RuntimeFailure,
+use futures::FutureExt;
+use lenso_app_plan::{
+    AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
+    CapabilityRequirementPlan, ExecutionClassId, ModuleInstancePlan, ResolvedAppPlan,
 };
+use lenso_kernel::{
+    DeterministicDriver, ExecutionAdapter, ExecutionAdapterCatalog, ExecutionAdapterCatalogError,
+    InvocationContext, Kernel, NativeRequestEndpoint, PreparedBinding, PreparedNativeApp,
+    RuntimeFailure,
+};
+
+const CAPABILITY_ID: &str = "test.echo";
+const DESCRIPTOR_VERSION: &str = "1.0.0";
+
+#[derive(Debug)]
+struct EchoEndpoint;
+
+impl NativeRequestEndpoint for EchoEndpoint {
+    fn capability_id(&self) -> &'static str {
+        CAPABILITY_ID
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        DESCRIPTOR_VERSION
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        &["echo"]
+    }
+
+    fn invoke(
+        &self,
+        _operation: &str,
+        _request: Box<dyn Any>,
+        _context: InvocationContext,
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<Result<Box<dyn Any>, Box<dyn Any>>, RuntimeFailure>,
+    > {
+        futures::future::ready(Ok(Ok(Box::new(()) as Box<dyn Any>))).boxed_local()
+    }
+}
 
 #[derive(Debug)]
 struct RecordingAdapter {
+    execution_class: ExecutionClassId,
     prepared: Rc<Cell<bool>>,
+    bindings: Vec<PreparedBinding>,
 }
 
-impl NativeExecutionAdapter for RecordingAdapter {
+impl ExecutionAdapter for RecordingAdapter {
+    fn execution_class(&self) -> ExecutionClassId {
+        self.execution_class.clone()
+    }
+
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         self.prepared.set(true);
         Ok(PreparedNativeApp::with_modules(
-            BTreeMap::new(),
+            self.bindings.clone(),
             BTreeMap::new(),
         ))
     }
 }
 
-#[derive(Clone, Debug)]
-struct BunCapableDriver {
-    inner: DeterministicDriver,
-}
-
-impl BunCapableDriver {
-    fn new() -> Self {
-        Self {
-            inner: DeterministicDriver::new(),
-        }
-    }
-
-    fn run<F: std::future::Future>(&self, future: F) -> F::Output {
-        self.inner.run(future)
-    }
-}
-
-impl RuntimeDriver for BunCapableDriver {
-    fn now(&self) -> std::time::Duration {
-        self.inner.now()
-    }
-
-    fn sleep_until(&self, deadline: std::time::Duration) -> LocalBoxFuture<'static, ()> {
-        self.inner.sleep_until(deadline)
-    }
-
-    fn yield_now(&self) -> LocalBoxFuture<'static, ()> {
-        self.inner.yield_now()
-    }
-
-    fn spawn_local(&self, task: LocalTask) -> Result<DriverTask, futures::task::SpawnError> {
-        self.inner.spawn_local(task)
-    }
-
-    fn shutdown_requested(&self) -> bool {
-        self.inner.shutdown_requested()
-    }
-
-    fn supported_execution_classes(&self) -> lenso_app_plan::ExecutionClassSet {
-        lenso_app_plan::ExecutionClassSet::native_rust().with(ExecutionClass::BunChildProcess)
-    }
-}
-
-#[derive(Debug)]
-struct BunCapableAdapter {
-    prepared: Rc<Cell<bool>>,
-}
-
-impl NativeExecutionAdapter for BunCapableAdapter {
-    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-        self.prepared.set(true);
-        Ok(PreparedNativeApp::with_modules(
-            BTreeMap::new(),
-            BTreeMap::new(),
-        ))
-    }
-
-    fn supported_execution_classes(&self) -> lenso_app_plan::ExecutionClassSet {
-        lenso_app_plan::ExecutionClassSet::native_rust().with(ExecutionClass::BunChildProcess)
-    }
-}
-
-#[test]
-fn kernel_rejects_an_execution_class_before_the_adapter_prepares_any_module() {
-    let plan = AppComposition::new(
-        vec![
-            ModuleInstancePlan::new("bun", "package.bun")
-                .with_execution_class(ExecutionClass::BunChildProcess),
-        ],
+fn plan_with_classes(classes: &[&str]) -> ResolvedAppPlan {
+    AppComposition::new(
+        classes
+            .iter()
+            .enumerate()
+            .map(|(index, execution_class)| {
+                ModuleInstancePlan::new(format!("module-{index}"), format!("package-{index}"))
+                    .with_execution_class(ExecutionClassId::new(*execution_class))
+            })
+            .collect(),
         vec![],
     )
     .resolve()
-    .expect("the execution class is valid authoring data");
-    let prepared = Rc::new(Cell::new(false));
+    .expect("open execution class IDs are valid authoring data")
+}
+
+#[test]
+fn kernel_rejects_a_missing_execution_class_before_any_adapter_prepares() {
+    let plan = plan_with_classes(&["community.python-process@1"]);
+    let native_prepared = Rc::new(Cell::new(false));
+    let adapters = ExecutionAdapterCatalog::new()
+        .with_adapter(RecordingAdapter {
+            execution_class: ExecutionClassId::native_rust(),
+            prepared: native_prepared.clone(),
+            bindings: Vec::new(),
+        })
+        .expect("the native execution class is unique");
     let driver = DeterministicDriver::new();
 
-    let result = driver.run(Kernel::start_native(
-        plan,
-        driver.clone(),
-        RecordingAdapter {
-            prepared: prepared.clone(),
-        },
-    ));
+    let result = driver.run(Kernel::start(plan, driver.clone(), adapters));
 
     assert!(matches!(
         result,
-        Err(RuntimeFailure::InvalidResolvedPlan { detail })
-            if detail.contains("unsupported execution class `bun-child-process`")
+        Err(RuntimeFailure::UnavailableExecutionClass {
+            instance_key,
+            execution_class,
+        }) if instance_key == "module-0" && execution_class == "community.python-process@1"
     ));
-    assert!(!prepared.get());
+    assert!(!native_prepared.get());
 }
 
 #[test]
-fn kernel_requires_both_the_driver_and_adapter_to_provide_an_execution_class() {
+fn runner_catalog_composes_independent_execution_adapter_plugins() {
+    let plan = plan_with_classes(&["lenso.native-rust@1", "lenso.bun-process@1"]);
+    let native_prepared = Rc::new(Cell::new(false));
+    let bun_prepared = Rc::new(Cell::new(false));
+    let adapters = ExecutionAdapterCatalog::new()
+        .with_adapter(RecordingAdapter {
+            execution_class: ExecutionClassId::native_rust(),
+            prepared: native_prepared.clone(),
+            bindings: Vec::new(),
+        })
+        .expect("the native execution class is unique")
+        .with_shared_adapter(Rc::new(RecordingAdapter {
+            execution_class: ExecutionClassId::bun_child_process(),
+            prepared: bun_prepared.clone(),
+            bindings: Vec::new(),
+        }))
+        .expect("the Bun execution class is unique");
+    let classes = adapters.execution_classes();
+
+    assert!(classes.contains(&ExecutionClassId::native_rust()));
+    assert!(classes.contains(&ExecutionClassId::bun_child_process()));
+
+    let driver = DeterministicDriver::new();
+    let result = driver.run(Kernel::start(plan, driver.clone(), adapters));
+
+    assert!(result.is_ok());
+    assert!(native_prepared.get());
+    assert!(bun_prepared.get());
+}
+
+#[test]
+fn runner_catalog_rejects_duplicate_execution_class_plugins() {
+    let first_prepared = Rc::new(Cell::new(false));
+    let second_prepared = Rc::new(Cell::new(false));
+    let catalog = ExecutionAdapterCatalog::new()
+        .with_adapter(RecordingAdapter {
+            execution_class: ExecutionClassId::bun_child_process(),
+            prepared: first_prepared,
+            bindings: Vec::new(),
+        })
+        .expect("the first Bun Adapter owns the class");
+
+    let result = catalog.with_adapter(RecordingAdapter {
+        execution_class: ExecutionClassId::bun_child_process(),
+        prepared: second_prepared,
+        bindings: Vec::new(),
+    });
+
+    assert!(matches!(
+        result,
+        Err(ExecutionAdapterCatalogError::DuplicateExecutionClass { execution_class })
+            if execution_class == "lenso.bun-process@1"
+    ));
+}
+
+#[test]
+fn catalog_composes_many_bindings_prepared_by_different_execution_classes() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("bun", "package.bun")
-                .with_execution_class(ExecutionClass::BunChildProcess),
+            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+                CapabilityRequirementPlan::new(
+                    CAPABILITY_ID,
+                    DESCRIPTOR_VERSION,
+                    CapabilityCardinality::Many,
+                ),
+            ),
+            ModuleInstancePlan::new("native-provider", "package.native").with_capability(
+                CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, ["echo"]),
+            ),
+            ModuleInstancePlan::new("bun-provider", "package.bun")
+                .with_execution_class(ExecutionClassId::bun_child_process())
+                .with_capability(CapabilityEndpointPlan::new(
+                    CAPABILITY_ID,
+                    DESCRIPTOR_VERSION,
+                    ["echo"],
+                )),
         ],
-        vec![],
+        vec![
+            CapabilityBinding::new(
+                "consumer",
+                CAPABILITY_ID,
+                DESCRIPTOR_VERSION,
+                "native-provider",
+            ),
+            CapabilityBinding::new(
+                "consumer",
+                CAPABILITY_ID,
+                DESCRIPTOR_VERSION,
+                "bun-provider",
+            ),
+        ],
     )
     .resolve()
-    .expect("the execution class is valid authoring data");
-
-    let adapter_prepared = Rc::new(Cell::new(false));
+    .expect("the cross-class many binding should resolve");
+    let native_prepared = Rc::new(Cell::new(false));
+    let bun_prepared = Rc::new(Cell::new(false));
+    let adapters = ExecutionAdapterCatalog::new()
+        .with_adapter(RecordingAdapter {
+            execution_class: ExecutionClassId::native_rust(),
+            prepared: native_prepared.clone(),
+            bindings: vec![PreparedBinding::new(
+                "consumer",
+                "native-provider",
+                Rc::new(EchoEndpoint),
+            )],
+        })
+        .expect("the native execution class is unique")
+        .with_adapter(RecordingAdapter {
+            execution_class: ExecutionClassId::bun_child_process(),
+            prepared: bun_prepared.clone(),
+            bindings: vec![PreparedBinding::new(
+                "consumer",
+                "bun-provider",
+                Rc::new(EchoEndpoint),
+            )],
+        })
+        .expect("the Bun execution class is unique");
     let driver = DeterministicDriver::new();
-    let result = driver.run(Kernel::start_native(
-        plan.clone(),
-        driver.clone(),
-        BunCapableAdapter {
-            prepared: adapter_prepared.clone(),
-        },
-    ));
-    assert!(result.is_err());
-    assert!(!adapter_prepared.get());
 
-    let driver = BunCapableDriver::new();
-    let adapter_prepared = Rc::new(Cell::new(false));
-    let result = driver.run(Kernel::start_native(
-        plan.clone(),
-        driver.clone(),
-        RecordingAdapter {
-            prepared: adapter_prepared.clone(),
-        },
-    ));
-    assert!(result.is_err());
-    assert!(!adapter_prepared.get());
+    let result = driver.run(Kernel::start(plan, driver.clone(), adapters));
 
-    let driver = BunCapableDriver::new();
-    let adapter_prepared = Rc::new(Cell::new(false));
-    let result = driver.run(Kernel::start_native(
-        plan,
-        driver.clone(),
-        BunCapableAdapter {
-            prepared: adapter_prepared.clone(),
-        },
-    ));
     assert!(result.is_ok());
-    assert!(adapter_prepared.get());
+    assert!(native_prepared.get());
+    assert!(bun_prepared.get());
 }
