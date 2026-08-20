@@ -8,6 +8,12 @@ use std::{
 /// The Resolved App Plan schema understood by this Kernel version.
 pub const PLAN_SCHEMA_VERSION: u32 = 1;
 
+/// Default maximum number of requests waiting for one Operation.
+pub const DEFAULT_REQUEST_QUEUE_CAPACITY: usize = 16;
+
+/// Default maximum concurrent executions for one Operation.
+pub const DEFAULT_REQUEST_MAX_CONCURRENCY: usize = 1;
+
 /// The cardinality of one Module's Capability requirement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CapabilityCardinality {
@@ -17,6 +23,58 @@ pub enum CapabilityCardinality {
     Optional,
     /// Zero or more providers may be bound in deterministic order.
     Many,
+}
+
+/// The bounded admission policy materialized for one request Operation.
+///
+/// `queue_capacity` counts requests waiting for one of the
+/// `max_concurrency` execution slots. A zero queue capacity is valid and
+/// makes admission fail immediately while all execution slots are occupied.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RequestAdmissionPlan {
+    queue_capacity: usize,
+    max_concurrency: usize,
+}
+
+impl RequestAdmissionPlan {
+    /// Creates a bounded request admission policy.
+    pub const fn new(queue_capacity: usize, max_concurrency: usize) -> Self {
+        Self {
+            queue_capacity,
+            max_concurrency,
+        }
+    }
+
+    /// Returns the maximum number of requests waiting for an execution slot.
+    pub const fn queue_capacity(self) -> usize {
+        self.queue_capacity
+    }
+
+    /// Returns the maximum number of requests executing concurrently.
+    pub const fn max_concurrency(self) -> usize {
+        self.max_concurrency
+    }
+
+    fn validate(self, capability_id: &str, operation: &str) -> Result<(), PlanResolutionError> {
+        if self.max_concurrency == 0 {
+            return Err(PlanResolutionError::InvalidRequestAdmission {
+                capability_id: capability_id.to_owned(),
+                operation: operation.to_owned(),
+                queue_capacity: self.queue_capacity,
+                max_concurrency: self.max_concurrency,
+            });
+        }
+        Ok(())
+    }
+}
+
+impl Default for RequestAdmissionPlan {
+    fn default() -> Self {
+        Self::new(
+            DEFAULT_REQUEST_QUEUE_CAPACITY,
+            DEFAULT_REQUEST_MAX_CONCURRENCY,
+        )
+    }
 }
 
 /// One Capability required by a Module Instance.
@@ -93,6 +151,8 @@ pub struct CapabilityEndpointPlan {
     capability_id: String,
     descriptor_version: String,
     operations: Vec<String>,
+    default_admission: Option<RequestAdmissionPlan>,
+    operation_admissions: BTreeMap<String, RequestAdmissionPlan>,
 }
 
 impl CapabilityEndpointPlan {
@@ -106,7 +166,48 @@ impl CapabilityEndpointPlan {
             capability_id: capability_id.into(),
             descriptor_version: descriptor_version.into(),
             operations: operations.into_iter().map(Into::into).collect(),
+            default_admission: None,
+            operation_admissions: BTreeMap::new(),
         }
+    }
+
+    /// Applies one bounded admission policy to every Operation on this endpoint.
+    #[must_use]
+    pub fn with_admission(mut self, admission: RequestAdmissionPlan) -> Self {
+        self.default_admission = Some(admission);
+        self
+    }
+
+    /// Applies queue and concurrency limits to every Operation on this endpoint.
+    #[must_use]
+    pub fn with_limits(self, queue_capacity: usize, max_concurrency: usize) -> Self {
+        self.with_admission(RequestAdmissionPlan::new(queue_capacity, max_concurrency))
+    }
+
+    /// Applies one bounded admission policy to a named Operation.
+    #[must_use]
+    pub fn with_operation_admission(
+        mut self,
+        operation: impl Into<String>,
+        admission: RequestAdmissionPlan,
+    ) -> Self {
+        self.operation_admissions
+            .insert(operation.into(), admission);
+        self
+    }
+
+    /// Applies queue and concurrency limits to a named Operation.
+    #[must_use]
+    pub fn with_operation_limits(
+        self,
+        operation: impl Into<String>,
+        queue_capacity: usize,
+        max_concurrency: usize,
+    ) -> Self {
+        self.with_operation_admission(
+            operation,
+            RequestAdmissionPlan::new(queue_capacity, max_concurrency),
+        )
     }
 
     /// Returns the Capability series identity.
@@ -122,6 +223,24 @@ impl CapabilityEndpointPlan {
     /// Returns the exact stable Operation table.
     pub fn operations(&self) -> &[String] {
         &self.operations
+    }
+
+    /// Returns the endpoint-wide admission policy, when one was authored.
+    pub fn default_admission(&self) -> Option<RequestAdmissionPlan> {
+        self.default_admission
+    }
+
+    /// Returns the Operation-specific admission policies.
+    pub fn operation_admissions(&self) -> &BTreeMap<String, RequestAdmissionPlan> {
+        &self.operation_admissions
+    }
+
+    /// Returns the effective policy for one Operation, if one was authored.
+    pub fn operation_admission(&self, operation: &str) -> Option<RequestAdmissionPlan> {
+        self.operation_admissions
+            .get(operation)
+            .copied()
+            .or(self.default_admission)
     }
 }
 
@@ -194,6 +313,8 @@ pub struct CapabilityBinding {
     descriptor_version: String,
     provider_instance: String,
     provider_order: usize,
+    admission: RequestAdmissionPlan,
+    admission_explicit: bool,
 }
 
 impl CapabilityBinding {
@@ -210,7 +331,23 @@ impl CapabilityBinding {
             descriptor_version: descriptor_version.into(),
             provider_instance: provider_instance.into(),
             provider_order: 0,
+            admission: RequestAdmissionPlan::default(),
+            admission_explicit: false,
         }
+    }
+
+    /// Overrides the provider Operation admission policy for this binding.
+    #[must_use]
+    pub fn with_admission(mut self, admission: RequestAdmissionPlan) -> Self {
+        self.admission = admission;
+        self.admission_explicit = true;
+        self
+    }
+
+    /// Overrides queue and concurrency limits for this binding.
+    #[must_use]
+    pub fn with_limits(self, queue_capacity: usize, max_concurrency: usize) -> Self {
+        self.with_admission(RequestAdmissionPlan::new(queue_capacity, max_concurrency))
     }
 
     fn with_provider_order(mut self, provider_order: usize) -> Self {
@@ -241,6 +378,16 @@ impl CapabilityBinding {
     /// Returns the deterministic zero-based order within a `many` requirement.
     pub const fn provider_order(&self) -> usize {
         self.provider_order
+    }
+
+    /// Returns the binding's effective fallback admission policy.
+    pub const fn admission(&self) -> RequestAdmissionPlan {
+        self.admission
+    }
+
+    /// Returns whether this binding explicitly overrides the provider policy.
+    pub const fn has_explicit_admission(&self) -> bool {
+        self.admission_explicit
     }
 }
 
@@ -349,6 +496,18 @@ pub enum PlanResolutionError {
         capability_id: String,
         provider_instance: String,
     },
+    /// A request Operation has an invalid bounded admission policy.
+    InvalidRequestAdmission {
+        capability_id: String,
+        operation: String,
+        queue_capacity: usize,
+        max_concurrency: usize,
+    },
+    /// Admission was configured for an Operation absent from the endpoint.
+    UnknownAdmissionOperation {
+        capability_id: String,
+        operation: String,
+    },
     /// Explicit Capability activation dependencies contain a cycle.
     ActivationCycle { instances: Vec<String> },
 }
@@ -439,6 +598,22 @@ impl fmt::Display for PlanResolutionError {
             } => write!(
                 formatter,
                 "consumer `{consumer_instance}` binds Capability `{capability_id}` to provider `{provider_instance}` more than once"
+            ),
+            Self::InvalidRequestAdmission {
+                capability_id,
+                operation,
+                queue_capacity,
+                max_concurrency,
+            } => write!(
+                formatter,
+                "Capability `{capability_id}` Operation `{operation}` has invalid request admission (queue capacity {queue_capacity}, concurrency {max_concurrency})"
+            ),
+            Self::UnknownAdmissionOperation {
+                capability_id,
+                operation,
+            } => write!(
+                formatter,
+                "Capability `{capability_id}` configures request admission for unknown Operation `{operation}`"
             ),
             Self::ActivationCycle { instances } => write!(
                 formatter,
@@ -535,6 +710,29 @@ impl ResolvedAppPlan {
     /// Returns the exact Capability bindings in deterministic Plan order.
     pub fn capability_bindings(&self) -> &[CapabilityBinding] {
         &self.capability_bindings
+    }
+
+    /// Returns the bounded admission policy materialized for one binding Operation.
+    pub fn request_admission_for(
+        &self,
+        binding: &CapabilityBinding,
+        operation: &str,
+    ) -> RequestAdmissionPlan {
+        if binding.has_explicit_admission() {
+            return binding.admission();
+        }
+
+        self.module_instances
+            .iter()
+            .find(|instance| instance.instance_key() == binding.provider_instance())
+            .and_then(|provider| {
+                provider
+                    .provided_capabilities()
+                    .iter()
+                    .find(|endpoint| endpoint.capability_id() == binding.capability_id())
+            })
+            .and_then(|endpoint| endpoint.operation_admission(operation))
+            .unwrap_or_else(|| binding.admission())
     }
 }
 
@@ -650,6 +848,13 @@ fn validate_binding(
             provider_instance: binding.provider_instance.clone(),
         });
     }
+    if binding.has_explicit_admission() {
+        for operation in &endpoint.operations {
+            binding
+                .admission()
+                .validate(&endpoint.capability_id, operation)?;
+        }
+    }
     Ok(())
 }
 
@@ -658,6 +863,9 @@ fn validate_requirement_cardinality(
     grouped_bindings: &BTreeMap<(String, String), Vec<CapabilityBinding>>,
 ) -> Result<(), PlanResolutionError> {
     for instance in instances {
+        for endpoint in &instance.provided_capabilities {
+            validate_endpoint_admission(endpoint)?;
+        }
         for requirement in &instance.required_capabilities {
             let key = (
                 instance.instance_key.clone(),
@@ -698,6 +906,29 @@ fn validate_requirement_cardinality(
                     });
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_endpoint_admission(
+    endpoint: &CapabilityEndpointPlan,
+) -> Result<(), PlanResolutionError> {
+    for operation in &endpoint.operations {
+        if let Some(admission) = endpoint.operation_admission(operation) {
+            admission.validate(&endpoint.capability_id, operation)?;
+        }
+    }
+    for operation in endpoint.operation_admissions.keys() {
+        if !endpoint
+            .operations
+            .iter()
+            .any(|declared| declared == operation)
+        {
+            return Err(PlanResolutionError::UnknownAdmissionOperation {
+                capability_id: endpoint.capability_id.clone(),
+                operation: operation.clone(),
+            });
         }
     }
     Ok(())
