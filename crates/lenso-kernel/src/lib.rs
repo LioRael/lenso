@@ -3,7 +3,7 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     future::Future,
     marker::PhantomData,
     pin::Pin,
@@ -19,8 +19,8 @@ use futures::{
     task::{LocalSpawnExt, SpawnError},
 };
 use lenso_app_plan::{
-    ModuleCriticality, PlanResolutionError, RequestAdmissionPlan, ResolvedAppPlan, RestartMode,
-    RestartPolicy,
+    ExecutionClassId, ModuleCriticality, PlanResolutionError, RequestAdmissionPlan,
+    ResolvedAppPlan, RestartMode, RestartPolicy,
 };
 
 type ErasedValue = Box<dyn Any>;
@@ -66,6 +66,11 @@ pub enum RuntimeFailure {
     MissingModuleFactory {
         instance: String,
         package_id: String,
+    },
+    /// No installed Execution Adapter provides the class selected by one Instance.
+    UnavailableExecutionClass {
+        instance_key: String,
+        execution_class: String,
     },
     /// The Resolved Plan or prepared endpoint set is internally inconsistent.
     InvalidResolvedPlan { detail: String },
@@ -1077,31 +1082,46 @@ impl PreparedNativeModule {
     }
 }
 
+/// One provider-specific binding prepared by an Execution Adapter.
+#[derive(Clone, Debug)]
+pub struct PreparedBinding {
+    consumer_instance: String,
+    provider_instance: String,
+    endpoint: Rc<dyn NativeRequestEndpoint>,
+}
+
+impl PreparedBinding {
+    /// Binds one consumer to the endpoint prepared for one exact provider Instance.
+    pub fn new(
+        consumer_instance: impl Into<String>,
+        provider_instance: impl Into<String>,
+        endpoint: Rc<dyn NativeRequestEndpoint>,
+    ) -> Self {
+        Self {
+            consumer_instance: consumer_instance.into(),
+            provider_instance: provider_instance.into(),
+            endpoint,
+        }
+    }
+
+    fn same_identity(&self, other: &Self) -> bool {
+        self.consumer_instance == other.consumer_instance
+            && self.provider_instance == other.provider_instance
+            && self.endpoint.capability_id() == other.endpoint.capability_id()
+    }
+}
+
 /// Prepared native bindings returned by an Execution Adapter to Kernel.
 #[derive(Debug)]
 pub struct PreparedNativeApp {
-    bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+    bindings: Vec<PreparedBinding>,
     modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
     generations: BTreeMap<String, PreparedNativeModule>,
 }
 
 impl PreparedNativeApp {
-    /// Completes Adapter preparation with one endpoint per consumer binding.
-    pub fn new(bindings: BTreeMap<(String, &'static str), Rc<dyn NativeRequestEndpoint>>) -> Self {
-        Self {
-            bindings: bindings
-                .into_iter()
-                .map(|(key, endpoint)| (key, vec![endpoint]))
-                .collect(),
-            modules: BTreeMap::new(),
-            generations: BTreeMap::new(),
-        }
-    }
-
-    /// Completes Adapter preparation with deterministic one, optional, and many bindings.
-    pub fn from_many(
-        bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
-    ) -> Self {
+    /// Completes Adapter preparation with provider-specific bindings.
+    pub fn new(bindings: Vec<PreparedBinding>) -> Self {
         Self {
             bindings,
             modules: BTreeMap::new(),
@@ -1111,7 +1131,7 @@ impl PreparedNativeApp {
 
     /// Completes Adapter preparation with Module lifecycle implementations.
     pub fn with_modules(
-        bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+        bindings: Vec<PreparedBinding>,
         modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
     ) -> Self {
         Self {
@@ -1123,7 +1143,7 @@ impl PreparedNativeApp {
 
     /// Completes Adapter preparation with fresh generations for every Module Instance.
     pub fn with_generations(
-        bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+        bindings: Vec<PreparedBinding>,
         generations: BTreeMap<String, PreparedNativeModule>,
     ) -> Self {
         let modules = generations
@@ -1136,10 +1156,60 @@ impl PreparedNativeApp {
             generations,
         }
     }
+
+    fn merge(&mut self, other: Self) -> Result<(), RuntimeFailure> {
+        for binding in other.bindings {
+            if self
+                .bindings
+                .iter()
+                .any(|existing| existing.same_identity(&binding))
+            {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "multiple Execution Adapters prepared binding `{}:{}:{}`",
+                        binding.consumer_instance,
+                        binding.endpoint.capability_id(),
+                        binding.provider_instance
+                    ),
+                });
+            }
+            self.bindings.push(binding);
+        }
+        for (instance_key, lifecycle) in other.modules {
+            if self
+                .modules
+                .insert(instance_key.clone(), lifecycle)
+                .is_some()
+            {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "multiple Execution Adapters prepared Module Instance `{instance_key}`"
+                    ),
+                });
+            }
+        }
+        for (instance_key, generation) in other.generations {
+            if self
+                .generations
+                .insert(instance_key.clone(), generation)
+                .is_some()
+            {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "multiple Execution Adapters prepared Module Instance generation `{instance_key}`"
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Host-specific seam that instantiates native Module generations and prepares endpoints.
-pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
+/// Host-specific seam that instantiates Module generations and prepares endpoints.
+pub trait ExecutionAdapter: std::fmt::Debug + 'static {
+    /// Returns the open execution class implemented by this Adapter package.
+    fn execution_class(&self) -> ExecutionClassId;
+
     /// Instantiates the exact Plan and confirms its endpoint and binding tables.
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
 
@@ -1156,6 +1226,155 @@ pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
         Err(RuntimeFailure::Internal {
             detail: format!("Execution Adapter cannot recreate Module Instance `{instance_key}`"),
         })
+    }
+}
+
+/// Native Rust Adapter Interface for statically linked Module packages.
+///
+/// The blanket implementation below contributes every native Adapter to the
+/// open catalog under the official native execution-class identity.
+pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
+    /// Instantiates the exact Plan and confirms its endpoint and binding tables.
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
+
+    /// Creates a fresh generation for one selected native Module Instance.
+    fn recreate(
+        &self,
+        _plan: &ResolvedAppPlan,
+        instance_key: &str,
+    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+        Err(RuntimeFailure::Internal {
+            detail: format!("Execution Adapter cannot recreate Module Instance `{instance_key}`"),
+        })
+    }
+}
+
+impl<T: NativeExecutionAdapter> ExecutionAdapter for T {
+    fn execution_class(&self) -> ExecutionClassId {
+        ExecutionClassId::native_rust()
+    }
+
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        NativeExecutionAdapter::prepare(self, plan)
+    }
+
+    fn recreate(
+        &self,
+        plan: &ResolvedAppPlan,
+        instance_key: &str,
+    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+        NativeExecutionAdapter::recreate(self, plan, instance_key)
+    }
+}
+
+/// The execution classes contributed by installed Adapter packages.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ExecutionClassSet(BTreeSet<ExecutionClassId>);
+
+impl ExecutionClassSet {
+    /// Returns whether an installed Adapter provides this execution class.
+    pub fn contains(&self, execution_class: &ExecutionClassId) -> bool {
+        self.0.contains(execution_class)
+    }
+
+    /// Iterates the execution classes in deterministic identity order.
+    pub fn iter(&self) -> impl Iterator<Item = &ExecutionClassId> {
+        self.0.iter()
+    }
+}
+
+/// A Runner could not assemble one unambiguous Adapter catalog.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExecutionAdapterCatalogError {
+    /// More than one installed Adapter claimed the same execution class.
+    DuplicateExecutionClass { execution_class: String },
+}
+
+impl std::fmt::Display for ExecutionAdapterCatalogError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DuplicateExecutionClass { execution_class } => write!(
+                formatter,
+                "multiple Execution Adapters provide class `{execution_class}`"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ExecutionAdapterCatalogError {}
+
+/// Immutable Adapter catalog assembled by a Runner before Kernel boot.
+#[derive(Debug, Default)]
+pub struct ExecutionAdapterCatalog {
+    adapters: BTreeMap<ExecutionClassId, Rc<dyn ExecutionAdapter>>,
+}
+
+impl ExecutionAdapterCatalog {
+    /// Creates an empty catalog for an App with no Module Instances.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Creates a catalog containing one Adapter package.
+    pub fn single(adapter: impl ExecutionAdapter) -> Self {
+        Self::new()
+            .with_adapter(adapter)
+            .expect("a new catalog cannot contain a duplicate execution class")
+    }
+
+    /// Installs one Adapter package under its open execution-class identity.
+    pub fn with_adapter(
+        self,
+        adapter: impl ExecutionAdapter,
+    ) -> Result<Self, ExecutionAdapterCatalogError> {
+        self.with_shared_adapter(Rc::new(adapter))
+    }
+
+    /// Installs an Adapter package discovered as a runtime trait object.
+    pub fn with_shared_adapter(
+        mut self,
+        adapter: Rc<dyn ExecutionAdapter>,
+    ) -> Result<Self, ExecutionAdapterCatalogError> {
+        let execution_class = adapter.execution_class();
+        if self.adapters.contains_key(&execution_class) {
+            return Err(ExecutionAdapterCatalogError::DuplicateExecutionClass {
+                execution_class: execution_class.to_string(),
+            });
+        }
+        self.adapters.insert(execution_class, adapter);
+        Ok(self)
+    }
+
+    /// Returns the effective execution classes contributed by installed packages.
+    pub fn execution_classes(&self) -> ExecutionClassSet {
+        ExecutionClassSet(self.adapters.keys().cloned().collect())
+    }
+
+    fn adapter(&self, execution_class: &ExecutionClassId) -> Option<Rc<dyn ExecutionAdapter>> {
+        self.adapters.get(execution_class).cloned()
+    }
+
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        let mut required_classes = BTreeSet::new();
+        for instance in plan.module_instances() {
+            if !self.adapters.contains_key(instance.execution_class()) {
+                return Err(RuntimeFailure::UnavailableExecutionClass {
+                    instance_key: instance.instance_key().to_owned(),
+                    execution_class: instance.execution_class().to_string(),
+                });
+            }
+            required_classes.insert(instance.execution_class().clone());
+        }
+
+        let mut prepared = PreparedNativeApp::with_modules(Vec::new(), BTreeMap::new());
+        for execution_class in required_classes {
+            let adapter = self
+                .adapters
+                .get(&execution_class)
+                .expect("required execution classes were validated");
+            prepared.merge(adapter.prepare(plan)?)?;
+        }
+        Ok(prepared)
     }
 }
 
@@ -1285,7 +1504,7 @@ struct ModuleSupervision {
 
 struct NativeAppRuntime {
     plan: ResolvedAppPlan,
-    adapter: Rc<dyn NativeExecutionAdapter>,
+    adapters: Rc<ExecutionAdapterCatalog>,
     modules: BTreeMap<String, NativeModuleRuntime>,
     dependencies: BTreeMap<String, ModuleDependencies>,
     endpoint_states: BTreeMap<(String, String), Rc<NativeEndpointState>>,
@@ -2239,11 +2458,20 @@ pub enum PlanValidationError {
 pub struct Kernel;
 
 impl Kernel {
-    /// Starts statically linked native Modules selected by a resolved Plan.
+    /// Starts one App backed by a single statically linked native Adapter package.
     pub async fn start_native<D: RuntimeDriver, A: NativeExecutionAdapter>(
         plan: ResolvedAppPlan,
         driver: D,
         adapter: A,
+    ) -> Result<NativeApp, RuntimeFailure> {
+        Self::start(plan, driver, ExecutionAdapterCatalog::single(adapter)).await
+    }
+
+    /// Starts Module Instances through the Adapter catalog assembled by the Runner.
+    pub async fn start<D: RuntimeDriver>(
+        plan: ResolvedAppPlan,
+        driver: D,
+        adapters: ExecutionAdapterCatalog,
     ) -> Result<NativeApp, RuntimeFailure> {
         plan.validate()
             .map_err(|error| runtime_plan_error(&error))?;
@@ -2251,12 +2479,12 @@ impl Kernel {
         let activation_order = plan
             .activation_order()
             .map_err(|error| runtime_plan_error(&error))?;
-        let adapter = Rc::new(adapter) as Rc<dyn NativeExecutionAdapter>;
+        let adapters = Rc::new(adapters);
         let PreparedNativeApp {
             bindings: prepared_bindings,
             modules,
             generations,
-        } = adapter.prepare(&plan)?;
+        } = adapters.prepare(&plan)?;
         let (bindings, endpoint_states) = native_bindings(&plan, &prepared_bindings);
         let dependencies = module_dependencies(&plan, &bindings);
         let driver_control = DriverControl::new(&driver);
@@ -2292,7 +2520,7 @@ impl Kernel {
         open_native_readiness(&driver, &ready_gate, &admission).await;
         let runtime = Rc::new(NativeAppRuntime {
             plan: plan.clone(),
-            adapter,
+            adapters,
             modules: module_runtimes,
             dependencies,
             endpoint_states,
@@ -2470,21 +2698,17 @@ async fn open_native_readiness<D: RuntimeDriver>(
 
 fn native_bindings(
     plan: &ResolvedAppPlan,
-    prepared: &BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+    prepared: &[PreparedBinding],
 ) -> (NativeBindingTable, NativeEndpointStateTable) {
     let mut bindings = BTreeMap::new();
     let mut endpoint_states = BTreeMap::new();
     for binding in plan.capability_bindings() {
-        let Some(endpoints) = prepared
-            .iter()
-            .find_map(|((consumer, capability), endpoints)| {
-                (consumer == binding.consumer_instance() && *capability == binding.capability_id())
-                    .then_some(endpoints)
-            })
-        else {
-            continue;
-        };
-        let Some(endpoint) = endpoints.get(binding.provider_order()) else {
+        let Some(endpoint) = prepared.iter().find_map(|prepared| {
+            (prepared.consumer_instance == binding.consumer_instance()
+                && prepared.provider_instance == binding.provider_instance()
+                && prepared.endpoint.capability_id() == binding.capability_id())
+            .then_some(&prepared.endpoint)
+        }) else {
             continue;
         };
         let state = endpoint_states
@@ -2799,9 +3023,6 @@ async fn supervise_module_instance(
             return Err(RuntimeFailure::AdmissionClosed);
         }
 
-        let Ok(prepared) = runtime.adapter.recreate(&runtime.plan, &instance_key) else {
-            continue;
-        };
         let Some(instance) = runtime
             .plan
             .module_instances()
@@ -2811,6 +3032,15 @@ async fn supervise_module_instance(
             return Err(RuntimeFailure::InvalidResolvedPlan {
                 detail: format!("unknown Module Instance `{instance_key}`"),
             });
+        };
+        let Some(adapter) = runtime.adapters.adapter(instance.execution_class()) else {
+            return Err(RuntimeFailure::UnavailableExecutionClass {
+                instance_key: instance_key.clone(),
+                execution_class: instance.execution_class().to_string(),
+            });
+        };
+        let Ok(prepared) = adapter.recreate(&runtime.plan, &instance_key) else {
+            continue;
         };
         let (endpoints, lifecycle) = prepared.into_parts();
         if validate_native_endpoint_set(&instance_key, instance, &endpoints).is_err() {

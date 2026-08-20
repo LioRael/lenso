@@ -14,7 +14,7 @@ use lenso_app_plan::{
 use lenso_kernel::{
     DeactivateContext, DeactivationReason, DeterministicDriver, Kernel, ManagedResource,
     ModuleFuture, ModuleLifecycle, NativeExecutionAdapter, NativeRequestEndpoint,
-    NoopModuleLifecycle, PrepareContext, PreparedNativeApp, PreparedNativeModule,
+    NoopModuleLifecycle, PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativeModule,
     RequestCapability, ResourceFuture, RuntimeDriver, RuntimeFailure,
 };
 
@@ -253,7 +253,7 @@ impl SupervisionAdapter {
 impl NativeExecutionAdapter for SupervisionAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         let endpoint = self.endpoint(1, self.fail_initial_generation);
-        let bindings = BTreeMap::from([(("consumer".to_owned(), CAPABILITY_ID), vec![endpoint])]);
+        let bindings = vec![PreparedBinding::new("consumer", "provider", endpoint)];
         let modules = BTreeMap::from([
             (
                 "consumer".to_owned(),

@@ -1,7 +1,7 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::{BTreeMap, VecDeque},
+    collections::VecDeque,
     rc::Rc,
     time::Duration,
 };
@@ -13,7 +13,8 @@ use lenso_app_plan::{
 };
 use lenso_kernel::{
     CancellationToken, DeterministicDriver, InvocationContext, Kernel, NativeExecutionAdapter,
-    NativeRequestEndpoint, PreparedNativeApp, RequestCapability, RuntimeDriver, RuntimeFailure,
+    NativeRequestEndpoint, PreparedBinding, PreparedNativeApp, RequestCapability, RuntimeDriver,
+    RuntimeFailure,
 };
 
 const CAPABILITY_ID: &str = "test.echo";
@@ -136,10 +137,11 @@ struct EchoAdapter {
 
 impl NativeExecutionAdapter for EchoAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-        Ok(PreparedNativeApp::new(BTreeMap::from([(
-            ("consumer".to_owned(), CAPABILITY_ID),
-            self.endpoint.clone() as Rc<dyn NativeRequestEndpoint>,
-        )])))
+        Ok(PreparedNativeApp::new(vec![PreparedBinding::new(
+            "consumer",
+            "provider",
+            self.endpoint.clone(),
+        )]))
     }
 }
 

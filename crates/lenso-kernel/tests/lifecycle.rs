@@ -130,7 +130,7 @@ struct RecordingAdapter {
 impl NativeExecutionAdapter for RecordingAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         Ok(PreparedNativeApp::with_modules(
-            BTreeMap::new(),
+            Vec::new(),
             self.modules.clone(),
         ))
     }
