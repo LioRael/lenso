@@ -1,19 +1,51 @@
 use std::{
+    any::Any,
     cell::{Cell, RefCell},
     collections::BTreeMap,
     rc::Rc,
     time::Duration,
 };
 
+use futures::FutureExt;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
     ModuleInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
-    ActivateContext, DeactivateContext, DeterministicDriver, Kernel, ManagedResource,
-    ModuleLifecycle, NativeExecutionAdapter, PrepareContext, PreparedNativeApp, ResourceFuture,
+    ActivateContext, DeactivateContext, DeterministicDriver, InvocationContext, Kernel,
+    ManagedResource, ModuleLifecycle, NativeExecutionAdapter, NativeRequestEndpoint,
+    PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativeModule, ResourceFuture,
     RuntimeDriver, RuntimeFailure, ShutdownOutcome,
 };
+
+#[derive(Debug)]
+struct ShutdownEndpoint;
+
+impl NativeRequestEndpoint for ShutdownEndpoint {
+    fn capability_id(&self) -> &'static str {
+        "capability.shutdown"
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        &["shutdown.call"]
+    }
+
+    fn invoke(
+        &self,
+        _operation: &str,
+        _request: Box<dyn Any>,
+        _context: InvocationContext,
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<Result<Box<dyn Any>, Box<dyn Any>>, RuntimeFailure>,
+    > {
+        futures::future::ready(Ok(Ok(Box::new(()) as Box<dyn Any>))).boxed_local()
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Event {
@@ -146,9 +178,25 @@ struct RecordingAdapter {
 
 impl NativeExecutionAdapter for RecordingAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-        Ok(PreparedNativeApp::with_modules(
-            Vec::new(),
-            self.modules.clone(),
+        let endpoint: Rc<dyn NativeRequestEndpoint> = Rc::new(ShutdownEndpoint);
+        let generations = self
+            .modules
+            .iter()
+            .map(|(instance_key, lifecycle)| {
+                let endpoints = if instance_key == "provider" {
+                    vec![endpoint.clone()]
+                } else {
+                    Vec::new()
+                };
+                (
+                    instance_key.clone(),
+                    PreparedNativeModule::with_lifecycle(endpoints, lifecycle.clone()),
+                )
+            })
+            .collect();
+        Ok(PreparedNativeApp::new(
+            vec![PreparedBinding::new("consumer", "provider", endpoint)],
+            generations,
         ))
     }
 }
@@ -259,6 +307,48 @@ fn shutdown_cancels_managed_work_releases_resources_once_and_deactivates_in_reve
 }
 
 #[test]
+fn concurrent_and_dropped_shutdown_callers_share_one_cleanup_run() {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let resources_released = Rc::new(Cell::new(0));
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(Kernel::start_native(
+            plan(),
+            driver.clone(),
+            adapter(
+                &events,
+                &resources_released,
+                DeactivationMode::Clean,
+                false,
+                false,
+            ),
+        ))
+        .expect("the App should start");
+
+    let mut abandoned = Box::pin(app.shutdown(Duration::from_secs(1)));
+    assert!(abandoned.as_mut().now_or_never().is_none());
+    drop(abandoned);
+
+    let first = app.clone();
+    let (first, second) = driver.run(futures::future::join(
+        first.shutdown(Duration::from_secs(1)),
+        app.shutdown(Duration::from_secs(1)),
+    ));
+
+    assert_eq!(first, ShutdownOutcome::Clean);
+    assert_eq!(second, ShutdownOutcome::Clean);
+    assert_eq!(resources_released.get(), 2);
+    assert_eq!(
+        events
+            .borrow()
+            .iter()
+            .filter(|event| matches!(event, Event::Deactivate(_)))
+            .count(),
+        2
+    );
+}
+
+#[test]
 fn shutdown_reports_cleanup_failure_after_deactivating_and_releasing_every_instance() {
     let events = Rc::new(RefCell::new(Vec::new()));
     let resources_released = Rc::new(Cell::new(0));
@@ -356,14 +446,10 @@ fn shutdown_timeout_terminates_blocked_deactivation_at_the_global_deadline() {
 
     assert_eq!(outcome, ShutdownOutcome::Timeout);
     assert_eq!(driver.now(), Duration::from_millis(10));
-    assert_eq!(
-        events
-            .borrow()
-            .iter()
-            .filter(|event| matches!(event, Event::ResourceReleaseStarted(_)))
-            .count(),
-        2
-    );
+    assert!(events.borrow().iter().all(|event| !matches!(
+        event,
+        Event::ResourceReleaseStarted(_) | Event::ResourceReleased(_)
+    )));
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use std::{any::Any, cell::Cell, collections::BTreeMap, rc::Rc};
+use std::{any::Any, cell::Cell, rc::Rc};
 
 use futures::FutureExt;
 use lenso_app_plan::{
@@ -7,8 +7,8 @@ use lenso_app_plan::{
 };
 use lenso_kernel::{
     DeterministicDriver, ExecutionAdapter, ExecutionAdapterCatalog, ExecutionAdapterCatalogError,
-    InvocationContext, Kernel, NativeRequestEndpoint, PreparedBinding, PreparedNativeApp,
-    RuntimeFailure,
+    InvocationContext, Kernel, NativeRequestEndpoint, NoopModuleLifecycle, PreparedBinding,
+    PreparedNativeApp, PreparedNativeModule, RuntimeFailure,
 };
 
 const CAPABILITY_ID: &str = "test.echo";
@@ -50,17 +50,72 @@ struct RecordingAdapter {
     bindings: Vec<PreparedBinding>,
 }
 
+#[derive(Debug)]
+struct IncompleteAdapter;
+
+impl ExecutionAdapter for IncompleteAdapter {
+    fn execution_class(&self) -> ExecutionClassId {
+        ExecutionClassId::native_rust()
+    }
+
+    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        Ok(PreparedNativeApp::empty())
+    }
+}
+
+#[derive(Debug)]
+struct MissingBindingAdapter;
+
+impl ExecutionAdapter for MissingBindingAdapter {
+    fn execution_class(&self) -> ExecutionClassId {
+        ExecutionClassId::native_rust()
+    }
+
+    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        let endpoint: Rc<dyn NativeRequestEndpoint> = Rc::new(EchoEndpoint);
+        Ok(PreparedNativeApp::new(
+            Vec::new(),
+            [
+                (
+                    "consumer".to_owned(),
+                    PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+                ),
+                (
+                    "provider".to_owned(),
+                    PreparedNativeModule::new(vec![endpoint], NoopModuleLifecycle),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ))
+    }
+}
+
 impl ExecutionAdapter for RecordingAdapter {
     fn execution_class(&self) -> ExecutionClassId {
         self.execution_class.clone()
     }
 
-    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         self.prepared.set(true);
-        Ok(PreparedNativeApp::with_modules(
-            self.bindings.clone(),
-            BTreeMap::new(),
-        ))
+        let generations = plan
+            .module_instances()
+            .iter()
+            .filter(|instance| instance.execution_class() == &self.execution_class)
+            .map(|instance| {
+                let endpoints = self
+                    .bindings
+                    .iter()
+                    .filter(|binding| binding.provider_instance() == instance.instance_key())
+                    .map(PreparedBinding::endpoint)
+                    .collect();
+                (
+                    instance.instance_key().to_owned(),
+                    PreparedNativeModule::new(endpoints, NoopModuleLifecycle),
+                )
+            })
+            .collect();
+        Ok(PreparedNativeApp::new(self.bindings.clone(), generations))
     }
 }
 
@@ -103,6 +158,59 @@ fn kernel_rejects_a_missing_execution_class_before_any_adapter_prepares() {
         }) if instance_key == "module-0" && execution_class == "community.python-process@1"
     ));
     assert!(!native_prepared.get());
+}
+
+#[test]
+fn kernel_rejects_an_incomplete_adapter_result_before_lifecycle() {
+    let plan = plan_with_classes(&["lenso.native-rust@1"]);
+    let driver = DeterministicDriver::new();
+
+    let result = driver.run(Kernel::start(
+        plan,
+        driver.clone(),
+        ExecutionAdapterCatalog::single(IncompleteAdapter),
+    ));
+
+    assert!(matches!(
+        result,
+        Err(RuntimeFailure::InvalidResolvedPlan { detail })
+            if detail.contains("prepared 0 Module generations; expected 1")
+    ));
+}
+
+#[test]
+fn kernel_rejects_a_missing_prepared_binding_before_lifecycle() {
+    let plan = AppComposition::new(
+        vec![
+            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+                CapabilityRequirementPlan::one(CAPABILITY_ID, DESCRIPTOR_VERSION),
+            ),
+            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+                CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, ["echo"]),
+            ),
+        ],
+        vec![CapabilityBinding::new(
+            "consumer",
+            CAPABILITY_ID,
+            DESCRIPTOR_VERSION,
+            "provider",
+        )],
+    )
+    .resolve()
+    .expect("the binding plan should resolve");
+    let driver = DeterministicDriver::new();
+
+    let result = driver.run(Kernel::start(
+        plan,
+        driver.clone(),
+        ExecutionAdapterCatalog::single(MissingBindingAdapter),
+    ));
+
+    assert!(matches!(
+        result,
+        Err(RuntimeFailure::InvalidResolvedPlan { detail })
+            if detail.contains("prepared 0 bindings; expected 1")
+    ));
 }
 
 #[test]

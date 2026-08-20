@@ -1,14 +1,47 @@
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
 
+use futures::FutureExt;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
     ModuleInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
-    ActivateContext, DeactivateContext, DeactivationReason, DeterministicDriver, Kernel,
-    ModuleLifecycle, ModuleLifecyclePhase, NativeExecutionAdapter, PrepareContext,
-    PreparedNativeApp, RuntimeFailure,
+    ActivateContext, DeactivateContext, DeactivationReason, DeterministicDriver, InvocationContext,
+    Kernel, ModuleLifecycle, ModuleLifecyclePhase, NativeExecutionAdapter, NativeRequestEndpoint,
+    PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativeModule, RuntimeFailure,
 };
+
+#[derive(Debug)]
+struct LifecycleEndpoint {
+    capability: &'static str,
+    operation: &'static [&'static str],
+}
+
+impl NativeRequestEndpoint for LifecycleEndpoint {
+    fn capability_id(&self) -> &'static str {
+        self.capability
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        self.operation
+    }
+
+    fn invoke(
+        &self,
+        _operation: &str,
+        _request: Box<dyn Any>,
+        _context: InvocationContext,
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<Result<Box<dyn Any>, Box<dyn Any>>, RuntimeFailure>,
+    > {
+        futures::future::ready(Ok(Ok(Box::new(()) as Box<dyn Any>))).boxed_local()
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Event {
@@ -41,6 +74,11 @@ impl ModuleLifecycle for RecordingLifecycle {
     fn prepare(&self, context: PrepareContext) -> lenso_kernel::ModuleFuture {
         assert_eq!(context.instance_key(), self.instance_key);
         assert_eq!(context.phase(), ModuleLifecyclePhase::Prepare);
+        assert_eq!(context.entrypoint(), format!("{}.entry", self.instance_key));
+        assert_eq!(
+            context.configuration(),
+            format!("config:{}", self.instance_key)
+        );
         let events = self.events.clone();
         let instance_key = self.instance_key.clone();
         let fail = self.fail_prepare;
@@ -110,6 +148,11 @@ impl ModuleLifecycle for RecordingLifecycle {
     fn deactivate(&self, context: DeactivateContext) -> lenso_kernel::ModuleFuture {
         assert_eq!(context.instance_key(), self.instance_key);
         assert_eq!(context.phase(), ModuleLifecyclePhase::Deactivate);
+        assert_eq!(
+            context.tasks().task_count(),
+            0,
+            "startup rollback must terminate generation tasks before deactivation"
+        );
         let events = self.events.clone();
         let instance_key = self.instance_key.clone();
         let reason = context.reason();
@@ -129,9 +172,35 @@ struct RecordingAdapter {
 
 impl NativeExecutionAdapter for RecordingAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-        Ok(PreparedNativeApp::with_modules(
-            Vec::new(),
-            self.modules.clone(),
+        let alpha: Rc<dyn NativeRequestEndpoint> = Rc::new(LifecycleEndpoint {
+            capability: "capability.alpha",
+            operation: &["alpha.call"],
+        });
+        let beta: Rc<dyn NativeRequestEndpoint> = Rc::new(LifecycleEndpoint {
+            capability: "capability.beta",
+            operation: &["beta.call"],
+        });
+        let generations = self
+            .modules
+            .iter()
+            .map(|(instance_key, lifecycle)| {
+                let endpoints = match instance_key.as_str() {
+                    "z-provider" => vec![alpha.clone()],
+                    "m-provider" => vec![beta.clone()],
+                    _ => Vec::new(),
+                };
+                (
+                    instance_key.clone(),
+                    PreparedNativeModule::with_lifecycle(endpoints, lifecycle.clone()),
+                )
+            })
+            .collect();
+        Ok(PreparedNativeApp::new(
+            vec![
+                PreparedBinding::new("m-provider", "z-provider", alpha),
+                PreparedBinding::new("a-consumer", "m-provider", beta),
+            ],
+            generations,
         ))
     }
 }
@@ -139,10 +208,17 @@ impl NativeExecutionAdapter for RecordingAdapter {
 fn lifecycle_plan() -> ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("z-provider", "package.z").with_capability(
-                CapabilityEndpointPlan::new("capability.alpha", "1.0.0", ["alpha.call"]),
-            ),
+            ModuleInstancePlan::new("z-provider", "package.z")
+                .with_entrypoint("z-provider.entry")
+                .with_configuration("config:z-provider")
+                .with_capability(CapabilityEndpointPlan::new(
+                    "capability.alpha",
+                    "1.0.0",
+                    ["alpha.call"],
+                )),
             ModuleInstancePlan::new("m-provider", "package.m")
+                .with_entrypoint("m-provider.entry")
+                .with_configuration("config:m-provider")
                 .with_capability(CapabilityEndpointPlan::new(
                     "capability.beta",
                     "1.0.0",
@@ -150,6 +226,8 @@ fn lifecycle_plan() -> ResolvedAppPlan {
                 ))
                 .with_requirement(CapabilityRequirementPlan::one("capability.alpha", "1.0.0")),
             ModuleInstancePlan::new("a-consumer", "package.a")
+                .with_entrypoint("a-consumer.entry")
+                .with_configuration("config:a-consumer")
                 .with_requirement(CapabilityRequirementPlan::one("capability.beta", "1.0.0")),
         ],
         vec![
