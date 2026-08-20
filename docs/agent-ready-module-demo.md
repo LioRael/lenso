@@ -1,7 +1,7 @@
 # Agent-Ready Support Desk Acceptance
 
 > **Legacy v0.3.x acceptance:** This scenario validates the maintained
-> Service-oriented product on `main`. It remains migration evidence but is not
+> Service-oriented product on `main`. It remains a migration reference but is not
 > a vNext acceptance contract. See
 > [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md).
 
