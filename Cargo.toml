@@ -2,8 +2,11 @@
 resolver = "2"
 members = [
     "crates/lenso-app-plan",
+    "crates/lenso-capability-greeting",
     "crates/lenso-kernel",
+    "crates/lenso-native-adapter",
     "crates/lenso-runner",
+    "fixtures/vnext-native-greeter",
 ]
 
 [workspace.package]
@@ -14,6 +17,7 @@ rust-version = "1.94"
 
 [workspace.dependencies]
 futures = "0.3"
+serde_json = "1.0"
 tokio = { version = "1.52", features = ["macros", "rt", "time"] }
 
 [workspace.lints.rust]

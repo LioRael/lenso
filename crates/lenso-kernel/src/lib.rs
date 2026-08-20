@@ -1,8 +1,11 @@
 //! Portable Lenso vNext Kernel and Runtime Driver seam.
 
 use std::{
+    any::Any,
     cell::{Cell, RefCell},
+    collections::BTreeMap,
     future::Future,
+    marker::PhantomData,
     pin::Pin,
     rc::Rc,
     task::{Context, Poll},
@@ -15,7 +18,251 @@ use futures::{
     future::{AbortHandle, Abortable, LocalBoxFuture},
     task::{LocalSpawnExt, SpawnError},
 };
-use lenso_app_plan::{PLAN_SCHEMA_VERSION, ResolvedAppPlan};
+use lenso_app_plan::{PlanResolutionError, ResolvedAppPlan};
+
+type ErasedValue = Box<dyn Any>;
+type ErasedDomainResult = Result<ErasedValue, ErasedValue>;
+
+/// Static identity and Rust value types generated for one request Capability.
+pub trait RequestCapability: 'static {
+    /// Typed request value.
+    type Request: 'static;
+    /// Typed success value.
+    type Response: 'static;
+    /// Typed Capability-defined error value.
+    type DomainError: 'static;
+    /// Stable Capability series identity.
+    const ID: &'static str;
+    /// Exact generated Descriptor version.
+    const DESCRIPTOR_VERSION: &'static str;
+}
+
+/// Runtime-owned failure, kept separate from Capability-defined Domain Errors.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RuntimeFailure {
+    /// The consumer has no resolved binding for this Capability.
+    Unavailable { capability: &'static str },
+    /// The bound provider does not declare the requested Operation.
+    UnknownOperation {
+        capability: &'static str,
+        operation: String,
+    },
+    /// A singular generated client was used for a requirement with many providers.
+    AmbiguousBinding {
+        capability: &'static str,
+        providers: usize,
+    },
+    /// Generated native types disagreed with the prepared endpoint.
+    ProtocolViolation { capability: &'static str },
+    /// A package selected by the Plan was not linked into the native App.
+    MissingModuleFactory {
+        instance: String,
+        package_id: String,
+    },
+    /// The Resolved Plan or prepared endpoint set is internally inconsistent.
+    InvalidResolvedPlan { detail: String },
+}
+
+/// Type-erased native endpoint used only while Kernel constructs and dispatches the graph.
+pub trait NativeRequestEndpoint: std::fmt::Debug {
+    /// Stable Capability series identity.
+    fn capability_id(&self) -> &'static str;
+    /// Exact Descriptor version implemented by this endpoint.
+    fn descriptor_version(&self) -> &'static str;
+    /// Exact stable Operation names implemented by this endpoint.
+    fn operations(&self) -> &'static [&'static str];
+    /// Dispatches one operation without serializing its typed Rust payload.
+    fn invoke(
+        &self,
+        operation: &str,
+        request: ErasedValue,
+    ) -> LocalBoxFuture<'static, Result<ErasedDomainResult, RuntimeFailure>>;
+}
+
+/// Prepared native bindings returned by an Execution Adapter to Kernel.
+#[derive(Debug)]
+pub struct PreparedNativeApp {
+    bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+}
+
+impl PreparedNativeApp {
+    /// Completes Adapter preparation with one endpoint per consumer binding.
+    pub fn new(bindings: BTreeMap<(String, &'static str), Rc<dyn NativeRequestEndpoint>>) -> Self {
+        Self {
+            bindings: bindings
+                .into_iter()
+                .map(|(key, endpoint)| (key, vec![endpoint]))
+                .collect(),
+        }
+    }
+
+    /// Completes Adapter preparation with deterministic one, optional, and many bindings.
+    pub fn from_many(
+        bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+    ) -> Self {
+        Self { bindings }
+    }
+}
+
+/// Host-specific seam that instantiates native Module generations and prepares endpoints.
+pub trait NativeExecutionAdapter: std::fmt::Debug {
+    /// Instantiates the exact Plan and confirms its endpoint and binding tables.
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
+}
+
+/// A started native App whose generated clients can invoke resolved bindings.
+#[derive(Debug)]
+pub struct NativeApp {
+    bindings: BTreeMap<(String, &'static str), Vec<Rc<dyn NativeRequestEndpoint>>>,
+}
+
+impl NativeApp {
+    /// Confirms that a generated client has one resolved binding before use.
+    pub fn ensure_binding<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Result<(), RuntimeFailure> {
+        self.endpoints::<C>(caller_instance)
+            .is_some_and(|endpoints| !endpoints.is_empty())
+            .then_some(())
+            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })
+    }
+
+    /// Materializes one typed handle from the immutable binding selected by the Plan.
+    pub fn handle<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
+        let endpoints = self
+            .endpoints::<C>(caller_instance)
+            .filter(|endpoints| !endpoints.is_empty())
+            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
+        Ok(NativeRequestHandle::from_endpoints(endpoints))
+    }
+
+    /// Materializes an optional typed handle; an absent binding remains `None`.
+    pub fn optional_handle<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Option<NativeRequestHandle<C>> {
+        self.endpoints::<C>(caller_instance)
+            .filter(|endpoints| !endpoints.is_empty())
+            .map(NativeRequestHandle::from_endpoints)
+    }
+
+    /// Materializes a typed handle whose endpoints may be empty for a `many` requirement.
+    pub fn many_handle<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
+        let endpoints = self.endpoints::<C>(caller_instance).unwrap_or(&[]);
+        Ok(NativeRequestHandle::from_endpoints(endpoints))
+    }
+
+    /// Returns the number of immutable provider endpoints bound to one requirement.
+    pub fn binding_count<C: RequestCapability>(&self, caller_instance: &str) -> usize {
+        self.endpoints::<C>(caller_instance).map_or(0, <[_]>::len)
+    }
+
+    /// Invokes a generated request Operation through the caller's resolved binding.
+    pub async fn invoke<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+        operation: &str,
+        request: C::Request,
+    ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+        self.handle::<C>(caller_instance)?
+            .invoke(operation, request)
+            .await
+    }
+
+    fn endpoints<C: RequestCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Option<&[Rc<dyn NativeRequestEndpoint>]> {
+        self.bindings
+            .get(&(caller_instance.to_owned(), C::ID))
+            .map(Vec::as_slice)
+    }
+}
+
+/// Typed, immutable native Capability endpoints materialized before App boot completes.
+#[derive(Debug)]
+pub struct NativeRequestHandle<C: RequestCapability> {
+    endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+    capability: PhantomData<fn() -> C>,
+}
+
+impl<C: RequestCapability> NativeRequestHandle<C> {
+    fn from_endpoints(endpoints: &[Rc<dyn NativeRequestEndpoint>]) -> Self {
+        Self {
+            endpoints: endpoints.to_vec(),
+            capability: PhantomData,
+        }
+    }
+
+    /// Returns the number of provider endpoints captured by this handle.
+    pub fn binding_count(&self) -> usize {
+        self.endpoints.len()
+    }
+
+    /// Invokes a singular Capability binding without falling back across providers.
+    pub async fn invoke(
+        &self,
+        operation: &str,
+        request: C::Request,
+    ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+        let endpoint = match self.endpoints.as_slice() {
+            [] => return Err(RuntimeFailure::Unavailable { capability: C::ID }),
+            [endpoint] => endpoint,
+            endpoints => {
+                return Err(RuntimeFailure::AmbiguousBinding {
+                    capability: C::ID,
+                    providers: endpoints.len(),
+                });
+            }
+        };
+        decode_outcome::<C>(endpoint.invoke(operation, Box::new(request)).await?)
+    }
+
+    /// Invokes every provider in the resolved many order with the same typed request.
+    pub async fn invoke_many(
+        &self,
+        operation: &str,
+        request: C::Request,
+    ) -> Result<Vec<Result<C::Response, C::DomainError>>, RuntimeFailure>
+    where
+        C::Request: Clone,
+    {
+        if self.endpoints.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut outcomes = Vec::with_capacity(self.endpoints.len());
+        for endpoint in &self.endpoints {
+            outcomes.push(decode_outcome::<C>(
+                endpoint
+                    .invoke(operation, Box::new(request.clone()))
+                    .await?,
+            )?);
+        }
+        Ok(outcomes)
+    }
+}
+
+fn decode_outcome<C: RequestCapability>(
+    outcome: ErasedDomainResult,
+) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
+    match outcome {
+        Ok(value) => value
+            .downcast::<C::Response>()
+            .map(|value| Ok(*value))
+            .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
+        Err(value) => value
+            .downcast::<C::DomainError>()
+            .map(|value| Err(*value))
+            .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
+    }
+}
 
 /// A task owned by a Runtime Driver's single-threaded local lane.
 pub type LocalTask = Pin<Box<dyn Future<Output = ()> + 'static>>;
@@ -86,10 +333,12 @@ pub enum TerminalOutcome {
 }
 
 /// A reason the Kernel rejected a Resolved App Plan before boot.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PlanValidationError {
     /// The Plan schema cannot be executed by this Kernel version.
     UnsupportedSchemaVersion { expected: u32, actual: u32 },
+    /// The Plan graph is structurally invalid and cannot be booted.
+    InvalidResolvedPlan { detail: String },
 }
 
 /// The portable App execution engine.
@@ -97,15 +346,34 @@ pub enum PlanValidationError {
 pub struct Kernel;
 
 impl Kernel {
+    /// Starts statically linked native Modules selected by a resolved Plan.
+    pub async fn start_native<D: RuntimeDriver, A: NativeExecutionAdapter>(
+        plan: ResolvedAppPlan,
+        driver: D,
+        adapter: A,
+    ) -> Result<NativeApp, RuntimeFailure> {
+        plan.validate()
+            .map_err(|error| runtime_plan_error(&error))?;
+        let prepared = adapter.prepare(&plan)?;
+        driver.yield_now().await;
+        Ok(NativeApp {
+            bindings: prepared.bindings,
+        })
+    }
+
     /// Validates and boots one already resolved Plan.
     pub async fn boot<D: RuntimeDriver>(
         plan: ResolvedAppPlan,
         driver: D,
     ) -> Result<TerminalOutcome, PlanValidationError> {
-        if plan.schema_version() != PLAN_SCHEMA_VERSION {
-            return Err(PlanValidationError::UnsupportedSchemaVersion {
-                expected: PLAN_SCHEMA_VERSION,
-                actual: plan.schema_version(),
+        if let Err(error) = plan.validate() {
+            return Err(match error {
+                PlanResolutionError::UnsupportedSchemaVersion { expected, actual } => {
+                    PlanValidationError::UnsupportedSchemaVersion { expected, actual }
+                }
+                error => PlanValidationError::InvalidResolvedPlan {
+                    detail: error.to_string(),
+                },
             });
         }
 
@@ -117,6 +385,12 @@ impl Kernel {
         } else {
             TerminalOutcome::Completed
         })
+    }
+}
+
+fn runtime_plan_error(error: &PlanResolutionError) -> RuntimeFailure {
+    RuntimeFailure::InvalidResolvedPlan {
+        detail: error.to_string(),
     }
 }
 
