@@ -270,6 +270,16 @@ fn wire_values_are_checked_against_portable_formats_and_schema_shape() {
         )
         .is_err()
     );
+    assert!(
+        validate_wire_value(
+            error_schema,
+            &json!({
+                "code": "future_variant",
+                "payload": 9_007_199_254_740_992.5_f64
+            })
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -329,5 +339,72 @@ fn local_recursive_refs_fail_with_a_diagnostic() {
 
     let error = load_descriptor(&descriptor_path).expect_err("recursive refs must be rejected");
     assert!(error.to_string().contains("cyclic"));
+    std::fs::remove_dir_all(root).expect("the temporary contract directory should be removable");
+}
+
+#[test]
+fn generated_value_schemas_reject_all_of_instead_of_dropping_constraints() {
+    let root = std::env::temp_dir().join(format!(
+        "lenso-contract-codegen-all-of-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("the temporary contract directory should exist");
+    std::fs::write(
+        root.join("request.schema.json"),
+        r#"{"type":"object","allOf":[{"type":"object","properties":{"ignored":{"type":"string"}}}],"additionalProperties":false}"#,
+    )
+    .expect("the allOf Schema should be writable");
+    std::fs::write(
+        root.join("response.schema.json"),
+        r#"{"type":"object","additionalProperties":false}"#,
+    )
+    .expect("the response Schema should be writable");
+    std::fs::write(
+        root.join("error.schema.json"),
+        r#"{"oneOf":[{"const":"failed"}]}"#,
+    )
+    .expect("the Domain Error Schema should be writable");
+    let descriptor_path = root.join("capability.json");
+    std::fs::write(
+        &descriptor_path,
+        r#"{"id":"example.all-of@1","version":"1.0.0","portable":true,"operations":[{"name":"read","interaction":"request","request_schema":"request.schema.json","response_schema":"response.schema.json","domain_error_schema":"error.schema.json"}]}"#,
+    )
+    .expect("the Descriptor should be writable");
+
+    let error = load_descriptor(&descriptor_path).expect_err("allOf must not be dropped");
+    assert!(error.to_string().contains("allOf"));
+    std::fs::remove_dir_all(root).expect("the temporary contract directory should be removable");
+}
+
+#[test]
+fn operation_generated_names_cannot_shadow_prelude_types() {
+    let root = std::env::temp_dir().join(format!(
+        "lenso-contract-codegen-operation-name-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("the temporary contract directory should exist");
+    for (name, schema) in [
+        (
+            "request.schema.json",
+            r#"{"type":"object","additionalProperties":false}"#,
+        ),
+        (
+            "response.schema.json",
+            r#"{"type":"object","additionalProperties":false}"#,
+        ),
+        ("error.schema.json", r#"{"oneOf":[{"const":"failed"}]}"#),
+    ] {
+        std::fs::write(root.join(name), schema).expect("the Schema should be writable");
+    }
+    let descriptor_path = root.join("capability.json");
+    std::fs::write(
+        &descriptor_path,
+        r#"{"id":"example.shadow@1","version":"1.0.0","portable":true,"operations":[{"name":"unknown_domain","interaction":"request","request_schema":"request.schema.json","response_schema":"response.schema.json","domain_error_schema":"error.schema.json"}]}"#,
+    )
+    .expect("the Descriptor should be writable");
+
+    let error =
+        load_descriptor(&descriptor_path).expect_err("generated prelude names must be reserved");
+    assert!(error.to_string().contains("UnknownDomainError"));
     std::fs::remove_dir_all(root).expect("the temporary contract directory should be removable");
 }

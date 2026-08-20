@@ -42,7 +42,7 @@ fn validate_portable_json_value(value: &serde_json::Value) -> Result<(), String>
         serde_json::Value::Number(number) => {
             let safe = number.as_i64().is_some_and(|value| (-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value))
                 || number.as_u64().is_some_and(|value| value <= 9_007_199_254_740_991)
-                || (number.is_f64() && number.as_f64().is_some_and(f64::is_finite));
+                || (number.is_f64() && number.as_f64().is_some_and(|value| value.is_finite() && (value.abs() <= 9_007_199_254_740_991.0 || value.fract() != 0.0)));
             if !safe {
                 return Err("wire JSON contains an unsafe number".to_owned());
             }
@@ -72,6 +72,8 @@ pub struct UnknownDomainError {
     pub code: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<serde_json::Value>,
+    #[serde(default, flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -173,10 +175,13 @@ impl serde::Serialize for RoundTripError {
             },
             Self::Rejected => serializer.serialize_str("rejected"),
             Self::Unknown(value) => {
-                let mut map = serializer.serialize_map(Some(if value.payload.is_some() { 2 } else { 1 }))?;
+                let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;
                 map.serialize_entry("code", &value.code)?;
                 if let Some(payload) = &value.payload {
                     map.serialize_entry("payload", payload)?;
+                }
+                for (key, extra) in &value.extra {
+                    map.serialize_entry(key, extra)?;
                 }
                 map.end()
             },
@@ -193,7 +198,7 @@ impl<'de> serde::Deserialize<'de> for RoundTripError {
         match value {
             serde_json::Value::String(code) => match code.as_str() {
                 "rejected" => Ok(Self::Rejected),
-                _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None })),
+                _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),
             },
             serde_json::Value::Object(mut object) => {
                 let Some(code) = object.remove("code").and_then(|value| value.as_str().map(ToOwned::to_owned)) else {
@@ -213,12 +218,9 @@ impl<'de> serde::Deserialize<'de> for RoundTripError {
                         Ok(Self::RateLimited { payload })
                     },
                     _ => {
-                        let payload = match object.remove("payload") {
-                            Some(payload) => Some(payload),
-                            None if object.is_empty() => None,
-                            None => Some(serde_json::Value::Object(object)),
-                        };
-                        Ok(Self::Unknown(UnknownDomainError { code, payload }))
+                        let payload = object.remove("payload");
+                        let extra = object.into_iter().collect::<std::collections::BTreeMap<_, _>>();
+                        Ok(Self::Unknown(UnknownDomainError { code, payload, extra }))
                     }
                 }
             }

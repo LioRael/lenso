@@ -25,6 +25,7 @@ mod tests {
             GreetError::Unknown(UnknownDomainError {
                 code: "future_variant".to_owned(),
                 payload: Some(serde_json::json!({"retry_after_ms": 2500})),
+                extra: std::collections::BTreeMap::new(),
             })
         );
         assert_eq!(

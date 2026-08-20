@@ -437,6 +437,7 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
     let mut operations = Vec::with_capacity(operation_values.len());
     let mut operation_names = BTreeSet::new();
     let mut generated_operation_names = BTreeSet::new();
+    let mut generated_type_names = BTreeSet::new();
     for operation_value in operation_values {
         let operation =
             operation_value
@@ -462,6 +463,22 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
                 return Err(CodegenError::InvalidDescriptor {
                     detail: format!(
                         "Operation name `{name}` collides after code generation as `{generated_name}`"
+                    ),
+                });
+            }
+        }
+        let operation_name = pascal_case(&name);
+        for generated_name in [
+            format!("{operation_name}Request"),
+            format!("{operation_name}Response"),
+            format!("{operation_name}Error"),
+        ] {
+            if !is_generated_type_name(&generated_name)
+                || !generated_type_names.insert(generated_name.clone())
+            {
+                return Err(CodegenError::InvalidDescriptor {
+                    detail: format!(
+                        "Operation name `{name}` collides after type generation as `{generated_name}`"
                     ),
                 });
             }
@@ -895,6 +912,12 @@ fn validate_value_generation_schema(
             detail: "generated value Schemas do not support oneOf/anyOf unions".to_owned(),
         });
     }
+    if object.contains_key("allOf") {
+        return Err(CodegenError::UnsupportedSchema {
+            path: source_path.to_path_buf(),
+            detail: "generated value Schemas do not support allOf unions".to_owned(),
+        });
+    }
     if object.contains_key("const") {
         return Err(CodegenError::UnsupportedSchema {
             path: source_path.to_path_buf(),
@@ -1007,6 +1030,15 @@ fn validate_value_generation_schema(
 }
 
 fn validate_domain_error_schema(schema: &Value, source_path: &Path) -> Result<(), CodegenError> {
+    if schema
+        .as_object()
+        .is_some_and(|object| object.contains_key("allOf"))
+    {
+        return Err(CodegenError::UnsupportedSchema {
+            path: source_path.to_path_buf(),
+            detail: "Domain Error Schemas do not support allOf unions".to_owned(),
+        });
+    }
     let variants = schema
         .get("oneOf")
         .and_then(Value::as_array)
@@ -1018,6 +1050,15 @@ fn validate_domain_error_schema(schema: &Value, source_path: &Path) -> Result<()
     let mut codes = BTreeSet::new();
     let mut names = BTreeSet::from(["Unknown".to_owned()]);
     for variant in variants {
+        if variant
+            .as_object()
+            .is_some_and(|object| object.contains_key("allOf"))
+        {
+            return Err(CodegenError::UnsupportedSchema {
+                path: source_path.to_path_buf(),
+                detail: "Domain Error variants do not support allOf unions".to_owned(),
+            });
+        }
         if let Some(code) = variant.get("const").and_then(Value::as_str) {
             let name = pascal_case(code);
             if !codes.insert(code.to_owned())
@@ -1334,7 +1375,10 @@ fn validate_wire_type(
             validate_numeric_constraint(schema, value, path, source_path)
         }
         "number" => {
-            if value.as_f64().is_none_or(|value| !value.is_finite()) {
+            if value
+                .as_number()
+                .is_none_or(|number| !is_safe_json_number(number))
+            {
                 return invalid_wire_value(path, "expected a finite number", source_path);
             }
             validate_numeric_constraint(schema, value, path, source_path)
@@ -1366,6 +1410,18 @@ fn is_safe_json_integer(value: &Value) -> bool {
         || value
             .as_u64()
             .is_some_and(|value| value <= MAX_SAFE_INTEGER as u64)
+}
+
+fn is_safe_json_number(number: &serde_json::Number) -> bool {
+    number
+        .as_i64()
+        .is_some_and(|value| (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value))
+        || number
+            .as_u64()
+            .is_some_and(|value| value <= MAX_SAFE_INTEGER as u64)
+        || number.as_f64().is_some_and(|value| {
+            value.is_finite() && (value.abs() <= 9_007_199_254_740_991.0 || value.fract() != 0.0)
+        })
 }
 
 fn validate_wire_object(
@@ -1727,14 +1783,7 @@ fn is_iso8601_duration(value: &str) -> bool {
 fn validate_portable_value(value: &Value, path: String) -> Result<(), CodegenError> {
     match value {
         Value::Number(number) => {
-            let safe = if let Some(value) = number.as_i64() {
-                (-MAX_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&value)
-            } else if let Some(value) = number.as_u64() {
-                value <= MAX_SAFE_INTEGER as u64
-            } else {
-                number.as_f64().is_some_and(f64::is_finite)
-            };
-            if !safe {
+            if !is_safe_json_number(number) {
                 return Err(CodegenError::InvalidPortableValue {
                     path,
                     detail: "wide integers must use an explicit decimal-string format".to_owned(),
@@ -2672,7 +2721,7 @@ fn generate_rust(contract: &ContractIr) -> String {
         .expect("writing to a String cannot fail");
     }
     output.push_str("\npub type Int64 = String;\npub type Uint64 = String;\npub type Bytes = String;\npub type Timestamp = String;\npub type Duration = String;\npub type OptionalValue<T> = Option<Option<T>>;\n\n");
-    output.push_str("#[allow(dead_code)]\nfn deserialize_required<'de, D, T>(deserializer: D) -> Result<T, D::Error>\nwhere\n    D: serde::Deserializer<'de>,\n    T: serde::Deserialize<'de>,\n{\n    <T as serde::Deserialize>::deserialize(deserializer)\n}\n\n#[allow(dead_code, clippy::option_option)]\nfn deserialize_optional_value<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>\nwhere\n    D: serde::Deserializer<'de>,\n    T: serde::Deserialize<'de>,\n{\n    Ok(Some(<Option<T> as serde::Deserialize>::deserialize(deserializer)?))\n}\n\n#[allow(dead_code)]\nfn validate_portable_json_value(value: &serde_json::Value) -> Result<(), String> {\n    match value {\n        serde_json::Value::Number(number) => {\n            let safe = number.as_i64().is_some_and(|value| (-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value))\n                || number.as_u64().is_some_and(|value| value <= 9_007_199_254_740_991)\n                || (number.is_f64() && number.as_f64().is_some_and(f64::is_finite));\n            if !safe {\n                return Err(\"wire JSON contains an unsafe number\".to_owned());\n            }\n        }\n        serde_json::Value::Array(values) => {\n            for value in values {\n                validate_portable_json_value(value)?;\n            }\n        }\n        serde_json::Value::Object(values) => {\n            for value in values.values() {\n                validate_portable_json_value(value)?;\n            }\n        }\n        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::String(_) => {}\n    }\n    Ok(())\n}\n\n#[allow(dead_code)]\nfn portable_json_error(detail: String) -> serde_json::Error {\n    serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, detail))\n}\n\n#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct UnknownDomainError {\n    pub code: String,\n    #[serde(skip_serializing_if = \"Option::is_none\")]\n    pub payload: Option<serde_json::Value>,\n}\n\n");
+    output.push_str("#[allow(dead_code)]\nfn deserialize_required<'de, D, T>(deserializer: D) -> Result<T, D::Error>\nwhere\n    D: serde::Deserializer<'de>,\n    T: serde::Deserialize<'de>,\n{\n    <T as serde::Deserialize>::deserialize(deserializer)\n}\n\n#[allow(dead_code, clippy::option_option)]\nfn deserialize_optional_value<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>\nwhere\n    D: serde::Deserializer<'de>,\n    T: serde::Deserialize<'de>,\n{\n    Ok(Some(<Option<T> as serde::Deserialize>::deserialize(deserializer)?))\n}\n\n#[allow(dead_code)]\nfn validate_portable_json_value(value: &serde_json::Value) -> Result<(), String> {\n    match value {\n        serde_json::Value::Number(number) => {\n            let safe = number.as_i64().is_some_and(|value| (-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&value))\n                || number.as_u64().is_some_and(|value| value <= 9_007_199_254_740_991)\n                || (number.is_f64() && number.as_f64().is_some_and(|value| value.is_finite() && (value.abs() <= 9_007_199_254_740_991.0 || value.fract() != 0.0)));\n            if !safe {\n                return Err(\"wire JSON contains an unsafe number\".to_owned());\n            }\n        }\n        serde_json::Value::Array(values) => {\n            for value in values {\n                validate_portable_json_value(value)?;\n            }\n        }\n        serde_json::Value::Object(values) => {\n            for value in values.values() {\n                validate_portable_json_value(value)?;\n            }\n        }\n        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::String(_) => {}\n    }\n    Ok(())\n}\n\n#[allow(dead_code)]\nfn portable_json_error(detail: String) -> serde_json::Error {\n    serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, detail))\n}\n\n#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct UnknownDomainError {\n    pub code: String,\n    #[serde(skip_serializing_if = \"Option::is_none\")]\n    pub payload: Option<serde_json::Value>,\n    #[serde(default, flatten)]\n    pub extra: std::collections::BTreeMap<String, serde_json::Value>,\n}\n\n");
     for declaration in types.declarations {
         output.push_str(&declaration);
         output.push('\n');
@@ -2779,7 +2828,7 @@ fn generate_rust_error_codec(error_name: &str, variants: &[ErrorVariantIr]) -> S
             .expect("String cannot fail");
         }
     }
-    output.push_str("            Self::Unknown(value) => {\n                let mut map = serializer.serialize_map(Some(if value.payload.is_some() { 2 } else { 1 }))?;\n                map.serialize_entry(\"code\", &value.code)?;\n                if let Some(payload) = &value.payload {\n                    map.serialize_entry(\"payload\", payload)?;\n                }\n                map.end()\n            },\n        }\n    }\n}\n\n");
+    output.push_str("            Self::Unknown(value) => {\n                let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;\n                map.serialize_entry(\"code\", &value.code)?;\n                if let Some(payload) = &value.payload {\n                    map.serialize_entry(\"payload\", payload)?;\n                }\n                for (key, extra) in &value.extra {\n                    map.serialize_entry(key, extra)?;\n                }\n                map.end()\n            },\n        }\n    }\n}\n\n");
     writeln!(
         output,
         "impl<'de> serde::Deserialize<'de> for {error_name} {{"
@@ -2798,7 +2847,7 @@ fn generate_rust_error_codec(error_name: &str, variants: &[ErrorVariantIr]) -> S
         .expect("String cannot fail");
     }
     output.push_str(
-        "                _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None })),\n            },\n            serde_json::Value::Object(mut object) => {\n                let Some(code) = object.remove(\"code\").and_then(|value| value.as_str().map(ToOwned::to_owned)) else {\n                    return Err(serde::de::Error::custom(\"Domain Error object is missing a string code\"));\n                };\n",
+        "                _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),\n            },\n            serde_json::Value::Object(mut object) => {\n                let Some(code) = object.remove(\"code\").and_then(|value| value.as_str().map(ToOwned::to_owned)) else {\n                    return Err(serde::de::Error::custom(\"Domain Error object is missing a string code\"));\n                };\n",
     );
     if variants.iter().any(|variant| variant.structured) {
         output.push_str("                match code.as_str() {\n");
@@ -2832,11 +2881,11 @@ fn generate_rust_error_codec(error_name: &str, variants: &[ErrorVariantIr]) -> S
             }
         }
         output.push_str(
-            "                    _ => {\n                        let payload = match object.remove(\"payload\") {\n                            Some(payload) => Some(payload),\n                            None if object.is_empty() => None,\n                            None => Some(serde_json::Value::Object(object)),\n                        };\n                        Ok(Self::Unknown(UnknownDomainError { code, payload }))\n                    }\n                }\n            }\n",
+            "                    _ => {\n                        let payload = object.remove(\"payload\");\n                        let extra = object.into_iter().collect::<std::collections::BTreeMap<_, _>>();\n                        Ok(Self::Unknown(UnknownDomainError { code, payload, extra }))\n                    }\n                }\n            }\n",
         );
     } else {
         output.push_str(
-            "                let payload = match object.remove(\"payload\") {\n                    Some(payload) => Some(payload),\n                    None if object.is_empty() => None,\n                    None => Some(serde_json::Value::Object(object)),\n                };\n                Ok(Self::Unknown(UnknownDomainError { code, payload }))\n            }\n",
+            "                let payload = object.remove(\"payload\");\n                let extra = object.into_iter().collect::<std::collections::BTreeMap<_, _>>();\n                Ok(Self::Unknown(UnknownDomainError { code, payload, extra }))\n            }\n",
         );
     }
     output.push_str(
@@ -2969,7 +3018,7 @@ fn generate_typescript(contract: &ContractIr) -> String {
     .expect("writing to a String cannot fail");
     write!(output, "export const PORTABLE = {};\n\n", contract.portable)
         .expect("writing to a String cannot fail");
-    output.push_str("export type Int64 = string & { readonly __lensoInt64: unique symbol };\nexport type Uint64 = string & { readonly __lensoUint64: unique symbol };\nexport type Bytes = string & { readonly __lensoBytes: unique symbol };\nexport type Timestamp = string & { readonly __lensoTimestamp: unique symbol };\nexport type Duration = string & { readonly __lensoDuration: unique symbol };\nexport type OptionalValue<T> = T | null | undefined;\n\nexport interface InvocationContext {\n  readonly requestId: Uint64;\n  readonly deadline?: Duration;\n  readonly cancelled: boolean;\n  readonly callerInstance?: string;\n  readonly extensions?: Record<string, unknown>;\n}\n\nexport type RuntimeFailure = { readonly kind: \"unavailable\" | \"unknown_operation\" | \"ambiguous_binding\" | \"protocol_violation\" | \"missing_module_factory\" | \"unavailable_execution_class\" | \"invalid_resolved_plan\" | \"admission_closed\" | \"resource_exhausted\" | \"deadline_exceeded\" | \"cancelled\" | \"internal\" | \"module_failure\" | \"module_restart_exhausted\"; readonly detail?: unknown; readonly [key: string]: unknown };\nexport type UnknownDomainError = { readonly code: string; readonly payload?: unknown };\n\n");
+    output.push_str("export type Int64 = string & { readonly __lensoInt64: unique symbol };\nexport type Uint64 = string & { readonly __lensoUint64: unique symbol };\nexport type Bytes = string & { readonly __lensoBytes: unique symbol };\nexport type Timestamp = string & { readonly __lensoTimestamp: unique symbol };\nexport type Duration = string & { readonly __lensoDuration: unique symbol };\nexport type OptionalValue<T> = T | null | undefined;\n\nexport interface InvocationContext {\n  readonly requestId: Uint64;\n  readonly deadline?: Duration;\n  readonly cancelled: boolean;\n  readonly callerInstance?: string;\n  readonly extensions?: Record<string, unknown>;\n}\n\nexport type RuntimeFailure = { readonly kind: \"unavailable\" | \"unknown_operation\" | \"ambiguous_binding\" | \"protocol_violation\" | \"missing_module_factory\" | \"unavailable_execution_class\" | \"invalid_resolved_plan\" | \"admission_closed\" | \"resource_exhausted\" | \"deadline_exceeded\" | \"cancelled\" | \"internal\" | \"module_failure\" | \"module_restart_exhausted\"; readonly detail?: unknown; readonly [key: string]: unknown };\nexport type UnknownDomainError = { readonly code: string; readonly payload?: unknown; readonly [key: string]: unknown };\n\n");
     for declaration in types.declarations {
         output.push_str(&declaration);
         output.push('\n');

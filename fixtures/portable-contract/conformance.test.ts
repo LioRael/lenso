@@ -8,8 +8,10 @@ import {
 import {
   decodeRoundTripError,
   decodeRoundTripRequest,
+  decodeRoundTripResponse,
   encodeRoundTripError,
   encodeRoundTripRequest,
+  encodeRoundTripResponse,
 } from "./generated/profile.ts";
 import { expect, test } from "bun:test";
 
@@ -24,11 +26,6 @@ test("generated TypeScript profile round-trips the shared corpus", () => {
   expect(portableValueProfile.missingAndNull).toBe("distinct");
 
   for (const fixture of corpus) {
-    const encoded = JSON.stringify(fixture.wire);
-    const decoded = JSON.parse(encoded);
-    expect(decoded).toEqual(fixture.wire);
-    expect(JSON.stringify(decoded)).toBe(encoded);
-
     const opaqueError = {
       code: `future_${fixture.name}`,
       payload: fixture.wire,
@@ -37,6 +34,13 @@ test("generated TypeScript profile round-trips the shared corpus", () => {
       decodeRoundTripError(encodeRoundTripError(opaqueError)),
     ).toEqual(opaqueError);
   }
+
+  expect(
+    decodeRoundTripResponse(
+      encodeRoundTripResponse({ accepted: true, echo: null }),
+    ),
+  ).toEqual({ accepted: true, echo: null });
+  expect(decodeRoundTripError(encodeRoundTripError("rejected"))).toBe("rejected");
 
   expect(decodeGreetRequest(encodeGreetRequest({ name: "Ada" }))).toEqual({
     name: "Ada",
@@ -74,12 +78,28 @@ test("generated TypeScript profile round-trips the shared corpus", () => {
   expect(
     encodeRoundTripError({ code: "future", payload: null }),
   ).toBe('{"code":"future","payload":null}');
+  const unknownWithExtra = decodeRoundTripError(
+    '{"code":"future","payload":{"reason":"later"},"retry_after_ms":2500}',
+  );
+  expect(unknownWithExtra).toEqual({
+    code: "future",
+    payload: { reason: "later" },
+    retry_after_ms: 2500,
+  });
+  expect(encodeRoundTripError(unknownWithExtra)).toBe(
+    '{"code":"future","payload":{"reason":"later"},"retry_after_ms":2500}',
+  );
   expect(
     encodeRoundTripError(decodeRoundTripError('"future_without_payload"')),
   ).toBe('{"code":"future_without_payload"}');
   expect(() =>
     decodeRoundTripRequest(
       '{"duration":"PT1S","name":"Ada","payload":"AQI=","signed":"0","timestamp":"2026-08-21T00:00:00Z","unsigned":"0","values":[9007199254740992]}',
+    ),
+  ).toThrow("unsafe number");
+  expect(() =>
+    decodeRoundTripError(
+      '{"code":"future","payload":9007199254740992.5}',
     ),
   ).toThrow("unsafe number");
 });
