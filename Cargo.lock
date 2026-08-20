@@ -180,7 +180,17 @@ name = "lenso-capability-greeting"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "lenso-contract-codegen",
  "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-contract-codegen"
+version = "0.1.0"
+dependencies = [
+ "semver",
  "serde_json",
 ]
 
@@ -211,6 +221,17 @@ dependencies = [
  "lenso-capability-greeting",
  "lenso-kernel",
  "lenso-native-adapter",
+]
+
+[[package]]
+name = "lenso-portable-contract-fixture"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -323,6 +344,12 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "semver"
+version = "1.0.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"

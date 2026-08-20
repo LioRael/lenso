@@ -1,5 +1,5 @@
 [package]
-name = "lenso-capability-greeting"
+name = "lenso-portable-contract-fixture"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -8,12 +8,12 @@ build = "build.rs"
 
 [dependencies]
 futures.workspace = true
-lenso-kernel = { path = "../lenso-kernel" }
+lenso-kernel = { path = "../../../crates/lenso-kernel" }
 serde.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { path = "../../../crates/lenso-contract-codegen" }
 
 [lints]
 workspace = true
