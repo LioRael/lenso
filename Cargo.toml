@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/lenso-app-plan",
+    "crates/lenso-kernel",
+    "crates/lenso-runner",
     "fixtures/provider",
     "crates/lenso-contracts",
     "crates/lenso-module-management",
