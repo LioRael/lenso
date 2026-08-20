@@ -1,4 +1,11 @@
 {
   "type": "object",
-  "additionalProperties": true
+  "required": ["value"],
+  "properties": {
+    "value": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
 }

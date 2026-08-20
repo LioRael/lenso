@@ -31,12 +31,17 @@ test("generated TypeScript profile round-trips the shared corpus", () => {
 
   for (const fixture of corpus) {
     const corpusValue = fixture.wire as Record<string, unknown>;
+    const typedCorpusValue = { value: corpusValue };
     expect(
-      decodeCorpusRoundTripRequest(encodeCorpusRoundTripRequest(corpusValue)),
-    ).toEqual(corpusValue);
+      decodeCorpusRoundTripRequest(
+        encodeCorpusRoundTripRequest(typedCorpusValue),
+      ),
+    ).toEqual(typedCorpusValue);
     expect(
-      decodeCorpusRoundTripResponse(encodeCorpusRoundTripResponse(corpusValue)),
-    ).toEqual(corpusValue);
+      decodeCorpusRoundTripResponse(
+        encodeCorpusRoundTripResponse(typedCorpusValue),
+      ),
+    ).toEqual(typedCorpusValue);
 
     const opaqueError = {
       code: `future_${fixture.name}`,

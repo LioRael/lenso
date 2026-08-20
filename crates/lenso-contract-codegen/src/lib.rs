@@ -440,6 +440,11 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
     let mut generated_type_names = BTreeSet::new();
     let mut generated_client_method_names =
         BTreeSet::from(["new".to_owned(), "from_dependencies".to_owned()]);
+    let capability_name = identity
+        .rsplit('.')
+        .next()
+        .map(pascal_case)
+        .unwrap_or_else(|| "Capability".to_owned());
     for operation_value in operation_values {
         let operation =
             operation_value
@@ -470,11 +475,20 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
             }
         }
         let operation_name = pascal_case(&name);
-        for generated_name in [
+        let mut generated_names = vec![
             format!("{operation_name}Request"),
             format!("{operation_name}Response"),
             format!("{operation_name}Error"),
-        ] {
+            format!("{operation_name}InvocationError"),
+            format!("{operation_name}Result"),
+            format!("{capability_name}{operation_name}"),
+        ];
+        generated_names.push(if operation_values.len() == 1 {
+            format!("{capability_name}InvocationError")
+        } else {
+            format!("{capability_name}{operation_name}InvocationError")
+        });
+        for generated_name in generated_names {
             if !is_generated_type_name(&generated_name)
                 || !generated_type_names.insert(generated_name.clone())
             {

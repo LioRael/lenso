@@ -78,6 +78,20 @@ pub struct UnknownDomainError {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CorpusRoundTripRequest {
+    #[serde(rename = "value")]
+    #[serde(deserialize_with = "deserialize_required")]
+    pub value: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CorpusRoundTripResponse {
+    #[serde(rename = "value")]
+    #[serde(deserialize_with = "deserialize_required")]
+    pub value: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CorpusRoundTripErrorRateLimitedPayload {
     #[serde(rename = "retry_after_ms")]
     #[serde(deserialize_with = "deserialize_required")]
@@ -172,8 +186,8 @@ pub enum RoundTripError {
 #[derive(Debug)]
 pub struct ProfileCorpusRoundTrip;
 impl RequestCapability for ProfileCorpusRoundTrip {
-    type Request = std::collections::BTreeMap<String, serde_json::Value>;
-    type Response = std::collections::BTreeMap<String, serde_json::Value>;
+    type Request = CorpusRoundTripRequest;
+    type Response = CorpusRoundTripResponse;
     type DomainError = CorpusRoundTripError;
     const ID: &'static str = CAPABILITY_ID;
     const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;
@@ -343,10 +357,10 @@ impl<'de> serde::Deserialize<'de> for RoundTripError {
     }
 }
 
-pub fn encode_corpus_round_trip_request(value: &std::collections::BTreeMap<String, serde_json::Value>) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
-pub fn decode_corpus_round_trip_request(wire: &str) -> Result<std::collections::BTreeMap<String, serde_json::Value>, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
-pub fn encode_corpus_round_trip_response(value: &std::collections::BTreeMap<String, serde_json::Value>) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
-pub fn decode_corpus_round_trip_response(wire: &str) -> Result<std::collections::BTreeMap<String, serde_json::Value>, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+pub fn encode_corpus_round_trip_request(value: &CorpusRoundTripRequest) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_corpus_round_trip_request(wire: &str) -> Result<CorpusRoundTripRequest, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+pub fn encode_corpus_round_trip_response(value: &CorpusRoundTripResponse) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_corpus_round_trip_response(wire: &str) -> Result<CorpusRoundTripResponse, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 pub fn encode_corpus_round_trip_error(value: &CorpusRoundTripError) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
 pub fn decode_corpus_round_trip_error(wire: &str) -> Result<CorpusRoundTripError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 
@@ -358,7 +372,7 @@ pub fn encode_round_trip_error(value: &RoundTripError) -> Result<String, serde_j
 pub fn decode_round_trip_error(wire: &str) -> Result<RoundTripError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 
 pub trait ProfileProvider: fmt::Debug + 'static {
-    fn corpus_round_trip(&self, context: InvocationContext, request: std::collections::BTreeMap<String, serde_json::Value>) -> LocalBoxFuture<'static, Result<std::collections::BTreeMap<String, serde_json::Value>, CorpusRoundTripError>>;
+    fn corpus_round_trip(&self, context: InvocationContext, request: CorpusRoundTripRequest) -> LocalBoxFuture<'static, Result<CorpusRoundTripResponse, CorpusRoundTripError>>;
     fn round_trip(&self, context: InvocationContext, request: RoundTripRequest) -> LocalBoxFuture<'static, Result<RoundTripResponse, RoundTripError>>;
 }
 
@@ -378,7 +392,7 @@ impl<P: ProfileProvider> NativeRequestEndpoint for ProfileEndpoint<P> {
     fn invoke(&self, operation: &str, request: Box<dyn std::any::Any>, context: InvocationContext) -> LocalBoxFuture<'static, Result<Result<Box<dyn std::any::Any>, Box<dyn std::any::Any>>, RuntimeFailure>> {
         match operation {
             CORPUS_ROUND_TRIP_OPERATION => {
-                let Ok(request) = request.downcast::<std::collections::BTreeMap<String, serde_json::Value>>() else {
+                let Ok(request) = request.downcast::<CorpusRoundTripRequest>() else {
                     return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation { capability: CAPABILITY_ID })));
                 };
                 let provider = Rc::clone(&self.provider);
@@ -417,13 +431,13 @@ impl ProfileClient {
         })
     }
 
-    pub async fn corpus_round_trip(&self, request: std::collections::BTreeMap<String, serde_json::Value>) -> Result<std::collections::BTreeMap<String, serde_json::Value>, ProfileCorpusRoundTripInvocationError> {
+    pub async fn corpus_round_trip(&self, request: CorpusRoundTripRequest) -> Result<CorpusRoundTripResponse, ProfileCorpusRoundTripInvocationError> {
         self.corpus_round_trip.invoke(CORPUS_ROUND_TRIP_OPERATION, request).await
             .map_err(ProfileCorpusRoundTripInvocationError::Runtime)?
             .map_err(ProfileCorpusRoundTripInvocationError::Domain)
     }
 
-    pub async fn corpus_round_trip_with_context(&self, context: InvocationContext, request: std::collections::BTreeMap<String, serde_json::Value>) -> Result<std::collections::BTreeMap<String, serde_json::Value>, ProfileCorpusRoundTripInvocationError> {
+    pub async fn corpus_round_trip_with_context(&self, context: InvocationContext, request: CorpusRoundTripRequest) -> Result<CorpusRoundTripResponse, ProfileCorpusRoundTripInvocationError> {
         self.corpus_round_trip.invoke_with_context(CORPUS_ROUND_TRIP_OPERATION, context, request).await
             .map_err(ProfileCorpusRoundTripInvocationError::Runtime)?
             .map_err(ProfileCorpusRoundTripInvocationError::Domain)

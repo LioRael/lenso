@@ -442,3 +442,35 @@ fn operation_generated_names_cannot_shadow_client_methods() {
     assert!(error.to_string().contains("generated Client API"));
     std::fs::remove_dir_all(root).expect("the temporary contract directory should be removable");
 }
+
+#[test]
+fn operation_generated_names_cannot_shadow_types_from_other_operations() {
+    let root = std::env::temp_dir().join(format!(
+        "lenso-contract-codegen-operation-type-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("the temporary contract directory should exist");
+    for (name, schema) in [
+        (
+            "request.schema.json",
+            r#"{"type":"object","additionalProperties":false}"#,
+        ),
+        (
+            "response.schema.json",
+            r#"{"type":"object","additionalProperties":false}"#,
+        ),
+        ("error.schema.json", r#"{"oneOf":[{"const":"failed"}]}"#),
+    ] {
+        std::fs::write(root.join(name), schema).expect("the Schema should be writable");
+    }
+    let descriptor_path = root.join("capability.json");
+    std::fs::write(
+        &descriptor_path,
+        r#"{"id":"example.operation-type@1","version":"1.0.0","portable":true,"operations":[{"name":"foo","interaction":"request","request_schema":"request.schema.json","response_schema":"response.schema.json","domain_error_schema":"error.schema.json"},{"name":"foo_invocation","interaction":"request","request_schema":"request.schema.json","response_schema":"response.schema.json","domain_error_schema":"error.schema.json"}]}"#,
+    )
+    .expect("the Descriptor should be writable");
+
+    let error = load_descriptor(&descriptor_path).expect_err("generated type names must be unique");
+    assert!(error.to_string().contains("FooInvocationError"));
+    std::fs::remove_dir_all(root).expect("the temporary contract directory should be removable");
+}
