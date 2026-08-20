@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
+    time::Duration,
 };
 
 /// The Resolved App Plan schema understood by this Kernel version.
@@ -74,6 +75,123 @@ impl Default for RequestAdmissionPlan {
             DEFAULT_REQUEST_QUEUE_CAPACITY,
             DEFAULT_REQUEST_MAX_CONCURRENCY,
         )
+    }
+}
+
+/// The finite restart mode selected for one Module Instance.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RestartMode {
+    /// Do not recreate a failed generation.
+    Never,
+    /// Recreate failed generations within a bounded attempt window.
+    OnFailure,
+}
+
+/// Bounded supervision settings materialized in the Resolved App Plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RestartPolicy {
+    mode: RestartMode,
+    max_attempts: usize,
+    window: Duration,
+    backoff: Duration,
+    jitter: Duration,
+    stability: Duration,
+}
+
+impl RestartPolicy {
+    /// Creates a policy that never recreates a failed generation.
+    pub const fn never() -> Self {
+        Self {
+            mode: RestartMode::Never,
+            max_attempts: 0,
+            window: Duration::ZERO,
+            backoff: Duration::ZERO,
+            jitter: Duration::ZERO,
+            stability: Duration::ZERO,
+        }
+    }
+
+    /// Creates a finite on-failure policy.
+    pub const fn on_failure(
+        max_attempts: usize,
+        window: Duration,
+        backoff: Duration,
+        jitter: Duration,
+        stability: Duration,
+    ) -> Self {
+        Self {
+            mode: RestartMode::OnFailure,
+            max_attempts,
+            window,
+            backoff,
+            jitter,
+            stability,
+        }
+    }
+
+    /// Returns the selected restart mode.
+    pub const fn mode(self) -> RestartMode {
+        self.mode
+    }
+
+    /// Returns the maximum number of recreation attempts in one window.
+    pub const fn max_attempts(self) -> usize {
+        self.max_attempts
+    }
+
+    /// Returns the rolling attempt window.
+    pub const fn window(self) -> Duration {
+        self.window
+    }
+
+    /// Returns the initial exponential backoff duration.
+    pub const fn backoff(self) -> Duration {
+        self.backoff
+    }
+
+    /// Returns the maximum jitter requested from the Runtime Driver.
+    pub const fn jitter(self) -> Duration {
+        self.jitter
+    }
+
+    /// Returns the ready period after which the attempt budget becomes stable again.
+    pub const fn stability(self) -> Duration {
+        self.stability
+    }
+
+    fn validate(&self, instance_key: &str) -> Result<(), PlanResolutionError> {
+        if self.mode == RestartMode::OnFailure && (self.max_attempts == 0 || self.window.is_zero())
+        {
+            return Err(PlanResolutionError::InvalidRestartPolicy {
+                instance_key: instance_key.to_owned(),
+                max_attempts: self.max_attempts,
+                window: self.window,
+            });
+        }
+        Ok(())
+    }
+}
+
+impl Default for RestartPolicy {
+    fn default() -> Self {
+        Self::never()
+    }
+}
+
+/// Whether a failed Module Instance is allowed to remain unavailable.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ModuleCriticality {
+    /// Exhaustion leaves this Module unavailable when it is not required by a `one` binding.
+    #[default]
+    NonCritical,
+    /// Exhaustion fails the App even when no `one` binding reaches this Module.
+    Critical,
+}
+
+impl ModuleCriticality {
+    /// Returns whether this criticality requires a terminal App outcome on exhaustion.
+    pub const fn is_critical(self) -> bool {
+        matches!(self, Self::Critical)
     }
 }
 
@@ -251,6 +369,8 @@ pub struct ModuleInstancePlan {
     package_id: String,
     provided_capabilities: Vec<CapabilityEndpointPlan>,
     required_capabilities: Vec<CapabilityRequirementPlan>,
+    restart_policy: RestartPolicy,
+    criticality: ModuleCriticality,
 }
 
 impl ModuleInstancePlan {
@@ -261,6 +381,8 @@ impl ModuleInstancePlan {
             package_id: package_id.into(),
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
+            restart_policy: RestartPolicy::default(),
+            criticality: ModuleCriticality::default(),
         }
     }
 
@@ -284,6 +406,20 @@ impl ModuleInstancePlan {
         self.with_requirement(requirement)
     }
 
+    /// Selects the finite supervision policy for this Module Instance.
+    #[must_use]
+    pub fn with_restart_policy(mut self, restart_policy: RestartPolicy) -> Self {
+        self.restart_policy = restart_policy;
+        self
+    }
+
+    /// Marks this Module Instance critical for supervision exhaustion outcomes.
+    #[must_use]
+    pub fn with_criticality(mut self, criticality: ModuleCriticality) -> Self {
+        self.criticality = criticality;
+        self
+    }
+
     /// Returns the App-local Instance key.
     pub fn instance_key(&self) -> &str {
         &self.instance_key
@@ -302,6 +438,16 @@ impl ModuleInstancePlan {
     /// Returns the exact Capability requirements this Instance receives.
     pub fn required_capabilities(&self) -> &[CapabilityRequirementPlan] {
         &self.required_capabilities
+    }
+
+    /// Returns the supervision policy selected for this Instance.
+    pub const fn restart_policy(&self) -> RestartPolicy {
+        self.restart_policy
+    }
+
+    /// Returns the criticality selected for this Instance.
+    pub const fn criticality(&self) -> ModuleCriticality {
+        self.criticality
     }
 }
 
@@ -508,11 +654,18 @@ pub enum PlanResolutionError {
         capability_id: String,
         operation: String,
     },
+    /// A Module Instance selected an unusable finite restart policy.
+    InvalidRestartPolicy {
+        instance_key: String,
+        max_attempts: usize,
+        window: Duration,
+    },
     /// Explicit Capability activation dependencies contain a cycle.
     ActivationCycle { instances: Vec<String> },
 }
 
 impl fmt::Display for PlanResolutionError {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedSchemaVersion { expected, actual } => write!(
@@ -614,6 +767,14 @@ impl fmt::Display for PlanResolutionError {
             } => write!(
                 formatter,
                 "Capability `{capability_id}` configures request admission for unknown Operation `{operation}`"
+            ),
+            Self::InvalidRestartPolicy {
+                instance_key,
+                max_attempts,
+                window,
+            } => write!(
+                formatter,
+                "Module Instance `{instance_key}` has invalid restart policy (attempts {max_attempts}, window {window:?})"
             ),
             Self::ActivationCycle { instances } => write!(
                 formatter,
@@ -734,6 +895,40 @@ impl ResolvedAppPlan {
             .and_then(|endpoint| endpoint.operation_admission(operation))
             .unwrap_or_else(|| binding.admission())
     }
+
+    /// Returns the exact Module Instance selected by its App-local key.
+    pub fn module_instance(&self, instance_key: &str) -> Option<&ModuleInstancePlan> {
+        self.module_instances
+            .iter()
+            .find(|instance| instance.instance_key() == instance_key)
+    }
+
+    /// Returns the restart policy materialized for one Module Instance.
+    pub fn restart_policy_for(&self, instance_key: &str) -> Option<RestartPolicy> {
+        self.module_instance(instance_key)
+            .map(ModuleInstancePlan::restart_policy)
+    }
+
+    /// Returns the criticality materialized for one Module Instance.
+    pub fn criticality_for(&self, instance_key: &str) -> Option<ModuleCriticality> {
+        self.module_instance(instance_key)
+            .map(ModuleInstancePlan::criticality)
+    }
+
+    /// Returns whether a Module Instance is directly bound to a required `one` Capability path.
+    pub fn module_instance_is_required(&self, instance_key: &str) -> bool {
+        self.capability_bindings.iter().any(|binding| {
+            binding.provider_instance() == instance_key
+                && self
+                    .module_instance(binding.consumer_instance())
+                    .is_some_and(|consumer| {
+                        consumer.required_capabilities().iter().any(|requirement| {
+                            requirement.capability_id() == binding.capability_id()
+                                && requirement.cardinality() == CapabilityCardinality::One
+                        })
+                    })
+        })
+    }
 }
 
 fn resolve_parts(
@@ -764,6 +959,7 @@ fn normalize_instances(
             });
         }
         validate_instance_declarations(instance)?;
+        instance.restart_policy.validate(&instance.instance_key)?;
     }
     Ok((instances, instance_indices))
 }
