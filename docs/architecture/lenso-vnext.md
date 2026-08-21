@@ -115,8 +115,10 @@ Generation is an authoring/build step, and the initial Rust-plus-TypeScript
 proof does not imply that every contract must publish bindings for every
 language. Future targets are selected by the real Execution Adapters and
 consumers that support them.
-The first binding surface covers request Operations; stream and event transport
-semantics remain owned by the later Runtime Adapter and transport work.
+The binding surface covers request and stream Operations; Event transport
+semantics remain owned by later Runtime Adapter and transport work. Stream
+bindings preserve the same typed contract while the Kernel owns only the
+transport-neutral session seam and the selected Adapter owns framing.
 
 Request has one terminal result. Stream is bidirectional with independent
 half-close, bounded flow, cancellation, and an explicit terminal outcome. Event
@@ -127,8 +129,9 @@ See ADRs [0033](../adr/0033-use-request-stream-and-event-capability-interactions
 [0035](../adr/0035-allow-adapter-specific-capability-dispatch.md),
 [0049](../adr/0049-define-a-portable-json-value-contract.md),
 [0050](../adr/0050-generate-and-conformance-test-portable-bindings.md),
-[0051](../adr/0051-use-explicit-partial-admission-for-ephemeral-events.md), and
-[0052](../adr/0052-give-streams-explicit-flow-and-terminal-semantics.md).
+[0051](../adr/0051-use-explicit-partial-admission-for-ephemeral-events.md),
+[0052](../adr/0052-give-streams-explicit-flow-and-terminal-semantics.md), and
+[0059](../adr/0059-stream-bidirectionally-between-rust-and-bun.md).
 
 ## Identity and invocation authority
 
