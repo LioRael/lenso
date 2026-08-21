@@ -11,9 +11,9 @@ use std::{
 use futures::{FutureExt, future::LocalBoxFuture};
 
 use super::{
-    CancellationToken, EventAdmissionPlan, InvocationContext, NativeAppRuntime, RuntimeFailure,
-    await_with_generation_context, ensure_context_active,
-    schedule_module_supervision_after_failure,
+    CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticSource, EventAdmissionPlan,
+    InvocationContext, NativeAppRuntime, RuntimeFailure, await_with_generation_context,
+    ensure_context_active, schedule_module_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one ephemeral Event Capability.
@@ -353,21 +353,6 @@ impl<C: EventCapability> NativeEventHandle<C> {
         event: C::Event,
     ) -> Vec<EventPublishResult> {
         let context = context.with_caller_instance(self.caller_instance.clone());
-        if self.runtime.shutdown_started.get()
-            || (!self.allow_before_ready && self.runtime.admission.is_closed())
-        {
-            return self
-                .endpoints
-                .iter()
-                .map(|endpoint| {
-                    EventPublishResult::new(
-                        endpoint.module_instance.clone(),
-                        EventAdmission::Unavailable,
-                    )
-                })
-                .collect();
-        }
-
         futures::future::join_all(self.endpoints.iter().map(|endpoint| {
             self.publish_to_endpoint(endpoint, operation, context.clone(), event.clone())
         }))
@@ -381,9 +366,48 @@ impl<C: EventCapability> NativeEventHandle<C> {
         context: InvocationContext,
         event: C::Event,
     ) -> EventPublishResult {
+        let operation_name = diagnostic_operation(endpoint.state.operations, operation);
+        let was_closed = self.runtime.shutdown_started.get()
+            || (!self.allow_before_ready && self.runtime.admission.is_closed());
+        let result = self
+            .publish_to_endpoint_inner(endpoint, operation, context.clone(), event)
+            .await;
+        let outcome = match result.admission() {
+            EventAdmission::Accepted => DiagnosticAdmission::Accepted,
+            EventAdmission::Unavailable if was_closed => DiagnosticAdmission::Closed,
+            EventAdmission::Unavailable => DiagnosticAdmission::Unavailable,
+            EventAdmission::Exhausted => DiagnosticAdmission::Exhausted,
+        };
+        self.runtime.diagnostics.emit(
+            DiagnosticSource::Admission,
+            (self.runtime.driver.now)(),
+            |_| DiagnosticEvent::EventAdmission {
+                request_id: context.request_id(),
+                publisher_instance: self.caller_instance.clone(),
+                subscriber_instance: endpoint.module_instance.clone(),
+                capability: C::ID,
+                operation: operation_name,
+                outcome,
+            },
+        );
+        result
+    }
+
+    async fn publish_to_endpoint_inner(
+        &self,
+        endpoint: &NativeEventEndpointBinding,
+        operation: &str,
+        context: InvocationContext,
+        event: C::Event,
+    ) -> EventPublishResult {
         let subscriber = endpoint.module_instance.clone();
         let unavailable =
             || EventPublishResult::new(subscriber.clone(), EventAdmission::Unavailable);
+        if self.runtime.shutdown_started.get()
+            || (!self.allow_before_ready && self.runtime.admission.is_closed())
+        {
+            return unavailable();
+        }
         let Some(snapshot) = endpoint.state.snapshot() else {
             return unavailable();
         };
@@ -412,6 +436,11 @@ impl<C: EventCapability> NativeEventHandle<C> {
                         &self.runtime,
                         &endpoint.module_instance,
                         error,
+                    );
+                    self.runtime.diagnostics.emit_runtime_failure(
+                        (self.runtime.driver.now)(),
+                        Some(&endpoint.module_instance),
+                        &error,
                     );
                     let admission = if matches!(error, RuntimeFailure::ResourceExhausted { .. }) {
                         EventAdmission::Exhausted
@@ -467,6 +496,16 @@ impl<C: EventCapability> NativeEventHandle<C> {
     }
 }
 
+fn diagnostic_operation(
+    operations: &'static [&'static str],
+    operation: &str,
+) -> Option<&'static str> {
+    operations
+        .iter()
+        .copied()
+        .find(|candidate| *candidate == operation)
+}
+
 async fn drain_event_queue(
     queue: Rc<NativeEventQueue>,
     runtime: Rc<NativeAppRuntime>,
@@ -490,6 +529,11 @@ async fn drain_event_queue(
         match result {
             Ok(Ok(Ok(()))) => {}
             Ok(Ok(Err(error)) | Err(error)) => {
+                runtime.diagnostics.emit_runtime_failure(
+                    (runtime.driver.now)(),
+                    Some(&module_instance),
+                    &error,
+                );
                 let _ =
                     schedule_module_supervision_after_failure(&runtime, &module_instance, error);
             }
@@ -497,6 +541,11 @@ async fn drain_event_queue(
                 let error = RuntimeFailure::ModuleFailure {
                     detail: format!("native Event subscriber `{module_instance}` panicked"),
                 };
+                runtime.diagnostics.emit_runtime_failure(
+                    (runtime.driver.now)(),
+                    Some(&module_instance),
+                    &error,
+                );
                 let _ =
                     schedule_module_supervision_after_failure(&runtime, &module_instance, error);
             }

@@ -9,9 +9,9 @@ use super::{
     NativeStreamEndpointBinding, NativeStreamEndpointState, NativeStreamEndpointStateTable,
     PlanResolutionError, PrepareContext, PreparedBinding, PreparedEventBinding, PreparedNativeApp,
     PreparedNativeModule, PreparedStreamBinding, Rc, RefCell, RequestAdmission, ResolvedAppPlan,
-    RuntimeDriver, RuntimeFailure, ShutdownCoordinator, Weak, begin_module_supervision,
-    deactivate_in_reverse, event, handle_supervision_schedule_failure, module_supervision,
-    schedule_module_supervision, validate_native_endpoint_set,
+    RuntimeDiagnostics, RuntimeDriver, RuntimeFailure, ShutdownCoordinator, Weak,
+    begin_module_supervision, deactivate_in_reverse, event, handle_supervision_schedule_failure,
+    module_supervision, schedule_module_supervision, validate_native_endpoint_set,
 };
 
 /// A reason the Kernel rejected a Resolved App Plan before boot.
@@ -34,7 +34,23 @@ impl Kernel {
         driver: D,
         adapter: A,
     ) -> Result<NativeApp, RuntimeFailure> {
-        Self::start(plan, driver, ExecutionAdapterCatalog::single(adapter)).await
+        Self::start_native_with_diagnostics(plan, driver, adapter, RuntimeDiagnostics::new()).await
+    }
+
+    /// Starts one native Adapter package with an opt-in Runtime Diagnostics port.
+    pub async fn start_native_with_diagnostics<D: RuntimeDriver, A: NativeExecutionAdapter>(
+        plan: ResolvedAppPlan,
+        driver: D,
+        adapter: A,
+        diagnostics: RuntimeDiagnostics,
+    ) -> Result<NativeApp, RuntimeFailure> {
+        Self::start_with_diagnostics(
+            plan,
+            driver,
+            ExecutionAdapterCatalog::single(adapter),
+            diagnostics,
+        )
+        .await
     }
 
     /// Starts Module Instances through the Adapter catalog assembled by the Runner.
@@ -43,26 +59,53 @@ impl Kernel {
         driver: D,
         adapters: ExecutionAdapterCatalog,
     ) -> Result<NativeApp, RuntimeFailure> {
-        plan.validate()
-            .map_err(|error| runtime_plan_error(&error))?;
+        Self::start_with_diagnostics(plan, driver, adapters, RuntimeDiagnostics::new()).await
+    }
 
-        let activation_order = plan
-            .activation_order()
-            .map_err(|error| runtime_plan_error(&error))?;
+    /// Starts an App with an opt-in Runtime Diagnostics port.
+    pub async fn start_with_diagnostics<D: RuntimeDriver>(
+        plan: ResolvedAppPlan,
+        driver: D,
+        adapters: ExecutionAdapterCatalog,
+        diagnostics: RuntimeDiagnostics,
+    ) -> Result<NativeApp, RuntimeFailure> {
+        if let Err(error) = plan.validate() {
+            let error = runtime_plan_error(&error);
+            diagnostics.emit_runtime_failure(driver.now(), None, &error);
+            return Err(error);
+        }
+
+        let activation_order = match plan.activation_order() {
+            Ok(order) => order,
+            Err(error) => {
+                let error = runtime_plan_error(&error);
+                diagnostics.emit_runtime_failure(driver.now(), None, &error);
+                return Err(error);
+            }
+        };
         let adapters = Rc::new(adapters);
         let PreparedNativeApp {
             bindings: prepared_bindings,
             stream_bindings: prepared_stream_bindings,
             event_bindings: prepared_event_bindings,
             generations,
-        } = adapters.prepare(&plan)?;
-        validate_prepared_native_app(
+        } = match adapters.prepare(&plan) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                diagnostics.emit_runtime_failure(driver.now(), None, &error);
+                return Err(error);
+            }
+        };
+        if let Err(error) = validate_prepared_native_app(
             &plan,
             &prepared_bindings,
             &prepared_stream_bindings,
             &prepared_event_bindings,
             &generations,
-        )?;
+        ) {
+            diagnostics.emit_runtime_failure(driver.now(), None, &error);
+            return Err(error);
+        }
         let (bindings, endpoint_states) = native_bindings(&plan, &prepared_bindings);
         let (stream_bindings, stream_endpoint_states) =
             native_stream_bindings(&plan, &prepared_stream_bindings);
@@ -95,47 +138,48 @@ impl Kernel {
             ready_gate,
             admission,
             driver: driver_control,
+            diagnostics: diagnostics.clone(),
             request_ids: Rc::new(Cell::new(1)),
             supervision_cancellation: CancellationToken::new(),
             shutdown_started: Cell::new(false),
+            shutdown_diagnostic_started: Cell::new(false),
+            shutdown_diagnostic_completed: Cell::new(false),
             shutdown: ShutdownCoordinator::default(),
             shutdown_task: RefCell::new(None),
             terminal_failure: RefCell::new(None),
         });
         runtime_link.replace(Rc::downgrade(&runtime));
         attach_managed_task_failure_handlers(&runtime);
-        let prepared_instances = prepare_native_modules(
-            &runtime.plan,
-            &runtime.modules,
-            &runtime.dependencies,
-            &runtime.activation_order,
-            &runtime.admission,
-        )
-        .await?;
-        if let Err(error) = activate_native_modules(
-            &runtime.modules,
-            &runtime.dependencies,
-            &runtime.activation_order,
-            &runtime.ready_gate,
-            &runtime.admission,
-        )
-        .await
-        {
+        runtime.diagnostics.emit(
+            super::DiagnosticSource::Lifecycle,
+            (runtime.driver.now)(),
+            |_| super::DiagnosticEvent::AppStarted {
+                module_count: runtime.plan.module_instances().len(),
+            },
+        );
+        let prepared_instances = prepare_native_modules(&runtime).await?;
+        if let Err(error) = activate_native_modules(&runtime).await {
             let _ = deactivate_in_reverse(
                 &runtime.modules,
                 &runtime.dependencies,
                 &prepared_instances,
                 DeactivationReason::StartupRollback,
                 &runtime.admission,
+                &runtime.diagnostics,
+                &runtime.driver,
             )
             .await;
+            runtime
+                .diagnostics
+                .emit_runtime_failure((runtime.driver.now)(), None, &error);
             return Err(error);
         }
-        open_native_readiness(&driver, &runtime.ready_gate, &runtime.admission).await;
+        open_native_readiness(&runtime).await;
         Ok(NativeApp {
             bindings,
             stream_bindings,
             event_bindings,
+            diagnostics,
             runtime,
         })
     }
@@ -448,20 +492,18 @@ pub(super) fn native_module_runtimes<D: RuntimeDriver>(
 }
 
 pub(super) async fn prepare_native_modules(
-    plan: &ResolvedAppPlan,
-    modules: &BTreeMap<String, NativeModuleRuntime>,
-    dependencies: &BTreeMap<String, ModuleDependencies>,
-    activation_order: &[String],
-    admission: &AppAdmission,
+    runtime: &Rc<NativeAppRuntime>,
 ) -> Result<Vec<String>, RuntimeFailure> {
-    let mut prepared_instances = Vec::with_capacity(activation_order.len());
-    for instance_key in activation_order {
-        let instance = plan
+    let mut prepared_instances = Vec::with_capacity(runtime.activation_order.len());
+    for instance_key in &runtime.activation_order {
+        let instance = runtime
+            .plan
             .module_instances()
             .iter()
             .find(|instance| instance.instance_key() == instance_key)
             .expect("activation order only contains planned Module Instances");
-        let module = modules
+        let module = runtime
+            .modules
             .get(instance_key)
             .expect("activation order only contains planned Module Instances");
         let (lifecycle, tasks, resources) = module
@@ -469,24 +511,61 @@ pub(super) async fn prepare_native_modules(
             .expect("every startup Module Instance has a generation");
         let cancellation = tasks.cancellation();
         prepared_instances.push(instance_key.clone());
+        let started_at = (runtime.driver.now)();
+        runtime
+            .diagnostics
+            .emit(super::DiagnosticSource::Lifecycle, started_at, |_| {
+                super::DiagnosticEvent::LifecycleStarted {
+                    instance: instance_key.clone(),
+                    generation: 1,
+                    phase: super::ModuleLifecyclePhase::Prepare,
+                }
+            });
         let context = PrepareContext {
             instance_key: instance_key.clone(),
             entrypoint: instance.entrypoint().to_owned(),
             configuration: instance.configuration().to_owned(),
-            dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
+            dependencies: runtime
+                .dependencies
+                .get(instance_key)
+                .cloned()
+                .unwrap_or_default(),
             resources,
             cancellation,
-            admission: admission.clone(),
+            admission: runtime.admission.clone(),
         };
-        if let Err(error) = lifecycle.prepare(context).await {
+        let result = lifecycle.prepare(context).await;
+        let outcome = result.as_ref().map_or_else(
+            |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+            |()| super::DiagnosticOutcome::Succeeded,
+        );
+        runtime.diagnostics.emit(
+            super::DiagnosticSource::Lifecycle,
+            (runtime.driver.now)(),
+            |_| super::DiagnosticEvent::LifecycleCompleted {
+                instance: instance_key.clone(),
+                generation: 1,
+                phase: super::ModuleLifecyclePhase::Prepare,
+                outcome,
+                elapsed: (runtime.driver.now)().saturating_sub(started_at),
+            },
+        );
+        if let Err(error) = result {
             let _ = deactivate_in_reverse(
-                modules,
-                dependencies,
+                &runtime.modules,
+                &runtime.dependencies,
                 &prepared_instances,
                 DeactivationReason::StartupRollback,
-                admission,
+                &runtime.admission,
+                &runtime.diagnostics,
+                &runtime.driver,
             )
             .await;
+            runtime.diagnostics.emit_runtime_failure(
+                (runtime.driver.now)(),
+                Some(instance_key),
+                &error,
+            );
             return Err(error);
         }
     }
@@ -494,42 +573,77 @@ pub(super) async fn prepare_native_modules(
 }
 
 pub(super) async fn activate_native_modules(
-    modules: &BTreeMap<String, NativeModuleRuntime>,
-    dependencies: &BTreeMap<String, ModuleDependencies>,
-    activation_order: &[String],
-    ready_gate: &AppReadyGate,
-    admission: &AppAdmission,
+    runtime: &Rc<NativeAppRuntime>,
 ) -> Result<(), RuntimeFailure> {
-    for instance_key in activation_order {
-        let module = modules
+    for instance_key in &runtime.activation_order {
+        let module = runtime
+            .modules
             .get(instance_key)
             .expect("activation order only contains planned Module Instances");
         let (lifecycle, tasks, resources) = module
             .generation_parts()
             .expect("every startup Module Instance has a generation");
         let cancellation = tasks.cancellation();
+        let started_at = (runtime.driver.now)();
+        runtime
+            .diagnostics
+            .emit(super::DiagnosticSource::Lifecycle, started_at, |_| {
+                super::DiagnosticEvent::LifecycleStarted {
+                    instance: instance_key.clone(),
+                    generation: 1,
+                    phase: super::ModuleLifecyclePhase::Activate,
+                }
+            });
         let context = ActivateContext {
             instance_key: instance_key.clone(),
-            dependencies: dependencies.get(instance_key).cloned().unwrap_or_default(),
-            ready_gate: ready_gate.clone(),
+            dependencies: runtime
+                .dependencies
+                .get(instance_key)
+                .cloned()
+                .unwrap_or_default(),
+            ready_gate: runtime.ready_gate.clone(),
             tasks,
             resources,
             cancellation,
-            admission: admission.clone(),
+            admission: runtime.admission.clone(),
         };
-        lifecycle.activate(context).await?;
+        let result = lifecycle.activate(context).await;
+        let outcome = result.as_ref().map_or_else(
+            |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+            |()| super::DiagnosticOutcome::Succeeded,
+        );
+        runtime.diagnostics.emit(
+            super::DiagnosticSource::Lifecycle,
+            (runtime.driver.now)(),
+            |_| super::DiagnosticEvent::LifecycleCompleted {
+                instance: instance_key.clone(),
+                generation: 1,
+                phase: super::ModuleLifecyclePhase::Activate,
+                outcome,
+                elapsed: (runtime.driver.now)().saturating_sub(started_at),
+            },
+        );
+        if let Err(error) = result {
+            runtime.diagnostics.emit_runtime_failure(
+                (runtime.driver.now)(),
+                Some(instance_key),
+                &error,
+            );
+            return Err(error);
+        }
     }
     Ok(())
 }
 
-pub(super) async fn open_native_readiness<D: RuntimeDriver>(
-    driver: &D,
-    ready_gate: &AppReadyGate,
-    admission: &AppAdmission,
-) {
-    ready_gate.open();
-    admission.open();
-    driver.yield_now().await;
+pub(super) async fn open_native_readiness(runtime: &Rc<NativeAppRuntime>) {
+    runtime.ready_gate.open();
+    runtime.admission.open();
+    runtime.diagnostics.emit(
+        super::DiagnosticSource::Lifecycle,
+        (runtime.driver.now)(),
+        |_| super::DiagnosticEvent::AppReady,
+    );
+    (runtime.driver.yield_now)().await;
 }
 
 pub(super) fn native_bindings(
