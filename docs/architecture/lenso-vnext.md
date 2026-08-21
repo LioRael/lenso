@@ -236,3 +236,12 @@ does not define discovery, placement, replicas, rolling upgrades, dynamic graph
 mutation, or a Lenso Control Plane. Revisit them only from a concrete App that
 needs distribution; see
 [`future-directions/distributed-module-runtime.md`](future-directions/distributed-module-runtime.md).
+
+## Legacy cutover
+
+The repository-wide ownership inventory, retained black-box behaviors,
+compatibility boundaries, data and package transitions, rollback points, and
+deletion gates are recorded in
+[`legacy-migration-and-retirement.md`](legacy-migration-and-retirement.md).
+The plan is pinned to explicit `main` and `next` source baselines and does not
+turn the v0.3.x Service architecture into a vNext compatibility workspace.

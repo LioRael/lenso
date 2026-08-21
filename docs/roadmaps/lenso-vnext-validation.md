@@ -108,3 +108,9 @@ ordinary vNext Module, Execution Adapter, authoring tool, compatibility Adapter,
 or retirement. Do not mechanically port the old platform crates, Host, Service,
 Provider, Module Release, Surface, Story, migration, Outbox, or System Plane
 abstractions.
+
+The completed classification and staged cutover are maintained in
+[`../architecture/legacy-migration-and-retirement.md`](../architecture/legacy-migration-and-retirement.md).
+It maps the pinned v0.3.x public contracts and runtime responsibilities to one
+owner or retirement decision, identifies retained black-box behavior, bounds
+compatibility outside Kernel, and names rollback and deletion conditions.
