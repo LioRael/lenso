@@ -3,31 +3,27 @@ use std::{
     net::SocketAddr,
     rc::Rc,
     str::FromStr,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
-use lenso_auth_sdk::{AuthOutcome, CredentialEvidence, authenticate_request, decode_auth_response};
-use lenso_capability_auth::{AuthClient, AuthInvocationError, AuthenticateError};
-use lenso_capability_game_session::{
-    GameSessionClient, GameSessionInvocationError, PlayError, PlayRequest, PlayResponse,
-};
+use lenso_capability_auth::AuthClient;
+use lenso_capability_game_session::GameSessionClient;
 use lenso_kernel::{
-    ActivateContext, CancellationToken, ModuleDependencies, ModuleLifecycle, NativeStream,
-    RuntimeFailure, StreamEvent,
+    ActivateContext, CancellationToken, ModuleDependencies, ModuleLifecycle, RuntimeFailure,
 };
 use lenso_native_adapter::{NativeModuleFactory, NativeModuleFactoryContext, NativeModuleInstance};
 use serde::{Deserialize, Serialize};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 
 use crate::{
-    auth::GAME_CREDENTIAL_SCHEME,
-    frame::{
-        ClientFrame, FrameError, ServerFrame, TerminalFrame, read_client_frame, write_server_frame,
-    },
+    connection::{send_frame, serve_connection},
+    frame::ServerFrame,
 };
 
-/// Native package identity for the protocol Module.
+/// Native package identity for the primary protocol Module.
 pub const PROTOCOL_PACKAGE_ID: &str = "fixture.game.protocol";
+/// Alternate native package identity proving protocol replacement by Composition.
+pub const PROTOCOL_REPLACEMENT_PACKAGE_ID: &str = "fixture.game.protocol.replacement";
 
 const DEFAULT_MAX_FRAME_BYTES: usize = 16 * 1024;
 const DEFAULT_MAX_CONNECTIONS: usize = 8;
@@ -35,6 +31,25 @@ const DEFAULT_IDLE_TIMEOUT_MS: u64 = 2_000;
 const DEFAULT_SESSION_TIMEOUT_MS: u64 = 30_000;
 const MAX_FRAME_BYTES: usize = 64 * 1024;
 const MAX_CONNECTIONS: usize = 1_024;
+
+/// Protocol package selected by App Composition.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ProtocolVariant {
+    /// The primary fixture protocol package.
+    #[default]
+    Primary,
+    /// An alternate package with the same documented wire contract.
+    Replacement,
+}
+
+impl ProtocolVariant {
+    pub(crate) const fn package_id(self) -> &'static str {
+        match self {
+            Self::Primary => PROTOCOL_PACKAGE_ID,
+            Self::Replacement => PROTOCOL_REPLACEMENT_PACKAGE_ID,
+        }
+    }
+}
 
 /// Configuration owned by the protocol Module and selected by Composition.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -116,49 +131,50 @@ impl ProtocolConfig {
         self.max_connections
     }
 
-    fn idle_timeout(&self) -> Duration {
+    pub(crate) fn idle_timeout(&self) -> Duration {
         Duration::from_millis(self.idle_timeout_ms)
     }
 
-    fn session_timeout(&self) -> Duration {
+    pub(crate) fn session_timeout(&self) -> Duration {
         Duration::from_millis(self.session_timeout_ms)
     }
 }
 
-#[derive(Debug)]
-struct ProtocolState {
+#[derive(Debug, Default)]
+struct ProtocolObserver {
     local_addr: Cell<Option<SocketAddr>>,
+}
+
+#[derive(Debug, Default)]
+struct ProtocolGenerationState {
     listener: RefCell<Option<TcpListener>>,
     active_connections: Cell<usize>,
 }
 
-impl ProtocolState {
-    fn new() -> Self {
-        Self {
-            local_addr: Cell::new(None),
-            listener: RefCell::new(None),
-            active_connections: Cell::new(0),
-        }
-    }
-}
-
-/// Factory for the replaceable native protocol Module.
+/// Factory for a replaceable native protocol Module.
 #[derive(Clone, Debug)]
 pub struct GameProtocolFactory {
-    state: Rc<ProtocolState>,
+    variant: ProtocolVariant,
+    observer: Rc<ProtocolObserver>,
 }
 
 impl GameProtocolFactory {
-    /// Creates a protocol Module factory with inspectable bound-address state.
+    /// Creates the primary protocol Module factory.
     pub fn new() -> Self {
+        Self::with_variant(ProtocolVariant::Primary)
+    }
+
+    /// Creates the package selected by Composition.
+    pub fn with_variant(variant: ProtocolVariant) -> Self {
         Self {
-            state: Rc::new(ProtocolState::new()),
+            variant,
+            observer: Rc::new(ProtocolObserver::default()),
         }
     }
 
     /// Returns the concrete address after the Module has prepared its listener.
     pub fn local_addr(&self) -> Option<SocketAddr> {
-        self.state.local_addr.get()
+        self.observer.local_addr.get()
     }
 }
 
@@ -170,7 +186,7 @@ impl Default for GameProtocolFactory {
 
 impl NativeModuleFactory for GameProtocolFactory {
     fn package_id(&self) -> &'static str {
-        PROTOCOL_PACKAGE_ID
+        self.variant.package_id()
     }
 
     fn instantiate(
@@ -182,7 +198,8 @@ impl NativeModuleFactory for GameProtocolFactory {
             Vec::new(),
             ProtocolLifecycle {
                 config,
-                state: self.state.clone(),
+                observer: self.observer.clone(),
+                state: Rc::new(ProtocolGenerationState::default()),
             },
         ))
     }
@@ -191,12 +208,14 @@ impl NativeModuleFactory for GameProtocolFactory {
 #[derive(Debug)]
 struct ProtocolLifecycle {
     config: ProtocolConfig,
-    state: Rc<ProtocolState>,
+    observer: Rc<ProtocolObserver>,
+    state: Rc<ProtocolGenerationState>,
 }
 
 impl ModuleLifecycle for ProtocolLifecycle {
     fn prepare(&self, _context: lenso_kernel::PrepareContext) -> lenso_kernel::ModuleFuture {
         let config = self.config.clone();
+        let observer = self.observer.clone();
         let state = self.state.clone();
         Box::pin(async move {
             let address = config.validate()?;
@@ -211,7 +230,7 @@ impl ModuleLifecycle for ProtocolLifecycle {
                     .map_err(|error| RuntimeFailure::ModuleFailure {
                         detail: format!("protocol listener address failed: {error}"),
                     })?;
-            state.local_addr.set(Some(local_addr));
+            observer.local_addr.set(Some(local_addr));
             state.listener.borrow_mut().replace(listener);
             Ok(())
         })
@@ -260,21 +279,27 @@ impl ModuleLifecycle for ProtocolLifecycle {
             }))),
         }
     }
+
+    fn deactivate(&self, _context: lenso_kernel::DeactivateContext) -> lenso_kernel::ModuleFuture {
+        self.state.listener.borrow_mut().take();
+        self.observer.local_addr.set(None);
+        Box::pin(futures::future::ready(Ok(())))
+    }
 }
 
 #[derive(Clone, Debug)]
-struct ConnectionRuntime {
-    config: ProtocolConfig,
-    auth: Rc<AuthClient>,
-    game: Rc<GameSessionClient>,
-    dependencies: ModuleDependencies,
-    module_cancellation: CancellationToken,
+pub(crate) struct ConnectionRuntime {
+    pub(crate) config: ProtocolConfig,
+    pub(crate) auth: Rc<AuthClient>,
+    pub(crate) game: Rc<GameSessionClient>,
+    pub(crate) dependencies: ModuleDependencies,
+    pub(crate) module_cancellation: CancellationToken,
 }
 
 #[derive(Clone, Debug)]
 struct ProtocolRuntime {
     connection: ConnectionRuntime,
-    state: Rc<ProtocolState>,
+    state: Rc<ProtocolGenerationState>,
     tasks: lenso_kernel::ManagedTaskScope,
     cancellation: CancellationToken,
 }
@@ -292,6 +317,7 @@ async fn accept_connections(listener: TcpListener, runtime: ProtocolRuntime) {
             () = cancellation.cancelled() => break,
             accepted = listener.accept() => {
                 let Ok((stream, _peer)) = accepted else {
+                    tokio::task::yield_now().await;
                     continue;
                 };
                 if state.active_connections.get() >= config.max_connections() {
@@ -319,7 +345,7 @@ async fn accept_connections(listener: TcpListener, runtime: ProtocolRuntime) {
 
 #[derive(Debug)]
 struct ActiveConnectionGuard {
-    state: Rc<ProtocolState>,
+    state: Rc<ProtocolGenerationState>,
 }
 
 impl Drop for ActiveConnectionGuard {
@@ -327,445 +353,5 @@ impl Drop for ActiveConnectionGuard {
         self.state
             .active_connections
             .set(self.state.active_connections.get().saturating_sub(1));
-    }
-}
-
-async fn serve_connection(mut socket: TcpStream, connection: ConnectionRuntime) {
-    let Some((stream, session_deadline, room)) = establish_session(&mut socket, &connection).await
-    else {
-        return;
-    };
-    if send_frame(
-        &mut socket,
-        &connection.config,
-        &ServerFrame::Ready { room },
-    )
-    .await
-    .is_err()
-    {
-        stream.cancel();
-        return;
-    }
-    match forward_stream_event(&mut socket, &connection.config, &stream, &session_deadline).await {
-        Ok(ForwardOutcome::Continue) => {}
-        Ok(ForwardOutcome::Terminal) | Err(()) => {
-            stream.cancel();
-            return;
-        }
-    }
-    run_session_loop(
-        &mut socket,
-        &connection.config,
-        stream,
-        &session_deadline,
-        connection.module_cancellation,
-    )
-    .await;
-}
-
-async fn establish_session(
-    socket: &mut TcpStream,
-    connection: &ConnectionRuntime,
-) -> Option<(
-    NativeStream<lenso_capability_game_session::GameSession>,
-    Instant,
-    String,
-)> {
-    let config = &connection.config;
-    let session_deadline = Instant::now() + config.session_timeout();
-    let hello = match read_frame_with_deadline(
-        socket,
-        config.max_frame_bytes(),
-        config.idle_timeout(),
-        session_deadline,
-    )
-    .await
-    {
-        Ok(Some(frame)) => frame,
-        Ok(None) => return None,
-        Err(error) => {
-            let _ = send_read_error(socket, config, error).await;
-            return None;
-        }
-    };
-    let ClientFrame::Hello {
-        token,
-        room,
-        deadline_ms,
-    } = hello
-    else {
-        let _ = send_runtime(socket, config, "protocol_violation").await;
-        return None;
-    };
-    if room.trim().is_empty() {
-        let _ = send_rejected(socket, config, "invalid_room").await;
-        return None;
-    }
-
-    let requested_timeout =
-        deadline_ms.map_or_else(|| config.session_timeout(), Duration::from_millis);
-    let session_timeout = requested_timeout.min(config.session_timeout());
-    if session_timeout.is_zero() {
-        let _ = send_runtime(socket, config, "deadline_exceeded").await;
-        return None;
-    }
-    let session_deadline = Instant::now() + session_timeout;
-    let cancellation = CancellationToken::new();
-    let Ok(context) = connection
-        .dependencies
-        .invocation_context_after(session_timeout, cancellation.clone())
-    else {
-        let _ = send_runtime(socket, config, "admission_closed").await;
-        return None;
-    };
-    let context = context.with_caller_instance("protocol");
-    let evidence = token.map(|token| CredentialEvidence::new(GAME_CREDENTIAL_SCHEME, token));
-    let auth_response = match connection
-        .auth
-        .authenticate_with_context(context.clone(), authenticate_request(evidence))
-        .await
-    {
-        Ok(response) => response,
-        Err(AuthInvocationError::Domain(error)) => {
-            let _ = send_rejected(socket, config, auth_error_code(&error)).await;
-            return None;
-        }
-        Err(AuthInvocationError::Runtime(error)) => {
-            let _ = send_runtime(socket, config, &runtime_error_code(&error)).await;
-            return None;
-        }
-    };
-    let Ok(outcome) = decode_auth_response(auth_response) else {
-        let _ = send_runtime(socket, config, "protocol_violation").await;
-        return None;
-    };
-    let assertion = match outcome {
-        AuthOutcome::Absent => {
-            let _ = send_rejected(socket, config, "credential_required").await;
-            return None;
-        }
-        AuthOutcome::Authenticated(assertion) => assertion,
-    };
-    let Ok(context) = assertion.attach(context) else {
-        let _ = send_runtime(socket, config, "protocol_violation").await;
-        return None;
-    };
-    let stream = match connection
-        .game
-        .play_with_context(context, PlayRequest { room: room.clone() })
-        .await
-    {
-        Ok(stream) => stream,
-        Err(GameSessionInvocationError::Domain(error)) => {
-            let _ = send_rejected(socket, config, game_error_code(&error)).await;
-            return None;
-        }
-        Err(GameSessionInvocationError::Runtime(error)) => {
-            let _ = send_runtime(socket, config, &runtime_error_code(&error)).await;
-            return None;
-        }
-    };
-    Some((stream, session_deadline, room))
-}
-
-async fn run_session_loop(
-    socket: &mut TcpStream,
-    config: &ProtocolConfig,
-    stream: NativeStream<lenso_capability_game_session::GameSession>,
-    session_deadline: &Instant,
-    module_cancellation: CancellationToken,
-) {
-    loop {
-        let frame = tokio::select! {
-            () = module_cancellation.cancelled() => {
-                stream.cancel();
-                return;
-            }
-            result = read_frame_with_deadline(
-                socket,
-                config.max_frame_bytes(),
-                config.idle_timeout(),
-                *session_deadline,
-            ) => result,
-        };
-        let frame = match frame {
-            Ok(Some(frame)) => frame,
-            Ok(None) => {
-                stream.cancel();
-                return;
-            }
-            Err(error) => {
-                stream.cancel();
-                let _ = send_read_error(socket, config, error).await;
-                return;
-            }
-        };
-        match frame {
-            ClientFrame::Message { action } if !action.is_empty() => {
-                if let Err(error) = stream.send(PlayResponse { action }).await {
-                    let _ = send_runtime(socket, config, &runtime_error_code(&error)).await;
-                    return;
-                }
-                match forward_stream_event(socket, config, &stream, session_deadline).await {
-                    Ok(ForwardOutcome::Continue) => {}
-                    Ok(ForwardOutcome::Terminal) | Err(()) => {
-                        stream.cancel();
-                        return;
-                    }
-                }
-            }
-            ClientFrame::Message { .. } | ClientFrame::Hello { .. } => {
-                stream.cancel();
-                let _ = send_runtime(socket, config, "protocol_violation").await;
-                return;
-            }
-            ClientFrame::CloseSend => {
-                if let Err(error) = stream.close_send().await {
-                    let _ = send_runtime(socket, config, &runtime_error_code(&error)).await;
-                    return;
-                }
-                loop {
-                    match forward_stream_event(socket, config, &stream, session_deadline).await {
-                        Ok(ForwardOutcome::Continue) => {}
-                        Ok(ForwardOutcome::Terminal) => return,
-                        Err(()) => {
-                            stream.cancel();
-                            return;
-                        }
-                    }
-                }
-            }
-            ClientFrame::Cancel => {
-                stream.cancel();
-                let _ = send_runtime(socket, config, "cancelled").await;
-                return;
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ForwardOutcome {
-    Continue,
-    Terminal,
-}
-
-async fn forward_stream_event(
-    socket: &mut TcpStream,
-    config: &ProtocolConfig,
-    stream: &NativeStream<lenso_capability_game_session::GameSession>,
-    session_deadline: &Instant,
-) -> Result<ForwardOutcome, ()> {
-    let event = match receive_stream_event(stream, config, *session_deadline).await {
-        Ok(event) => event,
-        Err(StreamReceiveError::Runtime(error)) => {
-            let _ = send_runtime(socket, config, &runtime_error_code(&error)).await;
-            return Err(());
-        }
-        Err(StreamReceiveError::Timeout(code)) => {
-            let _ = send_runtime(socket, config, code).await;
-            return Err(());
-        }
-    };
-    match event {
-        StreamEvent::Message(message) => send_frame(
-            socket,
-            config,
-            &ServerFrame::Message {
-                action: message.action,
-            },
-        )
-        .await
-        .map(|()| ForwardOutcome::Continue)
-        .map_err(|_| ()),
-        StreamEvent::PeerHalfClosed => send_frame(socket, config, &ServerFrame::PeerHalfClosed)
-            .await
-            .map(|()| ForwardOutcome::Continue)
-            .map_err(|_| ()),
-        StreamEvent::Terminal(Ok(())) => send_frame(
-            socket,
-            config,
-            &ServerFrame::Terminal {
-                outcome: TerminalFrame::Success,
-            },
-        )
-        .await
-        .map(|()| ForwardOutcome::Terminal)
-        .map_err(|_| ()),
-        StreamEvent::Terminal(Err(error)) => send_frame(
-            socket,
-            config,
-            &ServerFrame::Terminal {
-                outcome: TerminalFrame::Domain {
-                    code: game_error_code(&error),
-                },
-            },
-        )
-        .await
-        .map(|()| ForwardOutcome::Terminal)
-        .map_err(|_| ()),
-    }
-}
-
-#[derive(Debug)]
-enum StreamReceiveError {
-    Runtime(RuntimeFailure),
-    Timeout(&'static str),
-}
-
-async fn receive_stream_event(
-    stream: &NativeStream<lenso_capability_game_session::GameSession>,
-    config: &ProtocolConfig,
-    session_deadline: Instant,
-) -> Result<StreamEvent<PlayResponse, PlayError>, StreamReceiveError> {
-    let remaining = session_deadline.saturating_duration_since(Instant::now());
-    if remaining.is_zero() {
-        stream.cancel();
-        return Err(StreamReceiveError::Timeout("deadline_exceeded"));
-    }
-    let Ok(result) =
-        tokio::time::timeout(config.idle_timeout().min(remaining), stream.receive()).await
-    else {
-        stream.cancel();
-        return if Instant::now() >= session_deadline {
-            Err(StreamReceiveError::Timeout("deadline_exceeded"))
-        } else {
-            Err(StreamReceiveError::Timeout("idle_timeout"))
-        };
-    };
-    result.map_err(StreamReceiveError::Runtime)
-}
-
-#[derive(Debug)]
-enum ReadFrameError {
-    Frame(FrameError),
-    Timeout(&'static str),
-}
-
-async fn read_frame_with_deadline(
-    stream: &mut TcpStream,
-    max_frame_bytes: usize,
-    idle_timeout: Duration,
-    deadline: Instant,
-) -> Result<Option<ClientFrame>, ReadFrameError> {
-    let remaining = deadline.saturating_duration_since(Instant::now());
-    if remaining.is_zero() {
-        return Err(ReadFrameError::Timeout("deadline_exceeded"));
-    }
-    match tokio::time::timeout(
-        idle_timeout.min(remaining),
-        read_client_frame(stream, max_frame_bytes),
-    )
-    .await
-    {
-        Ok(result) => result.map_err(ReadFrameError::Frame),
-        Err(_) => {
-            if Instant::now() >= deadline {
-                Err(ReadFrameError::Timeout("deadline_exceeded"))
-            } else {
-                Err(ReadFrameError::Timeout("idle_timeout"))
-            }
-        }
-    }
-}
-
-async fn send_read_error(
-    socket: &mut TcpStream,
-    config: &ProtocolConfig,
-    error: ReadFrameError,
-) -> Result<(), FrameError> {
-    match error {
-        ReadFrameError::Timeout(code) => send_runtime(socket, config, code).await,
-        ReadFrameError::Frame(FrameError::TooLarge) => {
-            send_runtime(socket, config, "frame_too_large").await
-        }
-        ReadFrameError::Frame(FrameError::Malformed | FrameError::Truncated) => {
-            send_runtime(socket, config, "protocol_violation").await
-        }
-        ReadFrameError::Frame(FrameError::Io(error)) => {
-            let _ = error.kind();
-            send_runtime(socket, config, "transport_error").await
-        }
-        ReadFrameError::Frame(FrameError::Timeout) => Ok(()),
-    }
-}
-
-async fn send_frame(
-    socket: &mut TcpStream,
-    config: &ProtocolConfig,
-    frame: &ServerFrame,
-) -> Result<(), FrameError> {
-    match tokio::time::timeout(
-        config.idle_timeout(),
-        write_server_frame(socket, frame, config.max_frame_bytes()),
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(_) => Err(FrameError::Timeout),
-    }
-}
-
-async fn send_runtime(
-    socket: &mut TcpStream,
-    config: &ProtocolConfig,
-    code: &str,
-) -> Result<(), FrameError> {
-    send_frame(
-        socket,
-        config,
-        &ServerFrame::Runtime {
-            code: code.to_owned(),
-        },
-    )
-    .await
-}
-
-async fn send_rejected(
-    socket: &mut TcpStream,
-    config: &ProtocolConfig,
-    code: impl Into<String>,
-) -> Result<(), FrameError> {
-    send_frame(socket, config, &ServerFrame::Rejected { code: code.into() }).await
-}
-
-fn auth_error_code(error: &AuthenticateError) -> String {
-    match error {
-        AuthenticateError::Expired => "expired".to_owned(),
-        AuthenticateError::Invalid => "invalid".to_owned(),
-        AuthenticateError::Revoked => "revoked".to_owned(),
-        AuthenticateError::Unsupported => "unsupported".to_owned(),
-        AuthenticateError::Unknown(error) => error.code.clone(),
-    }
-}
-
-fn game_error_code(error: &PlayError) -> String {
-    match error {
-        PlayError::ActorRequired => "actor_required".to_owned(),
-        PlayError::InvalidAction => "invalid_action".to_owned(),
-        PlayError::NotAllowed => "not_allowed".to_owned(),
-        PlayError::RoomClosed => "room_closed".to_owned(),
-        PlayError::Unknown(error) => error.code.clone(),
-    }
-}
-
-fn runtime_error_code(error: &RuntimeFailure) -> String {
-    match error {
-        RuntimeFailure::Unavailable { .. } => "unavailable".to_owned(),
-        RuntimeFailure::UnknownOperation { .. } => "unknown_operation".to_owned(),
-        RuntimeFailure::AmbiguousBinding { .. } => "ambiguous_binding".to_owned(),
-        RuntimeFailure::ProtocolViolation { .. } => "protocol_violation".to_owned(),
-        RuntimeFailure::MissingModuleFactory { .. } => "missing_module_factory".to_owned(),
-        RuntimeFailure::UnavailableExecutionClass { .. } => {
-            "unavailable_execution_class".to_owned()
-        }
-        RuntimeFailure::InvalidResolvedPlan { .. } => "invalid_resolved_plan".to_owned(),
-        RuntimeFailure::AdmissionClosed => "admission_closed".to_owned(),
-        RuntimeFailure::ResourceExhausted { .. } => "resource_exhausted".to_owned(),
-        RuntimeFailure::DeadlineExceeded { .. } => "deadline_exceeded".to_owned(),
-        RuntimeFailure::Cancelled { .. } => "cancelled".to_owned(),
-        RuntimeFailure::Internal { .. } => "internal".to_owned(),
-        RuntimeFailure::ModuleFailure { .. } => "module_failure".to_owned(),
-        RuntimeFailure::ModuleRestartExhausted { .. } => "module_restart_exhausted".to_owned(),
     }
 }

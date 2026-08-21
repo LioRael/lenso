@@ -1,6 +1,7 @@
 //! Native game-session tracer bullet: protocol, Auth, and game Modules.
 
 mod auth;
+mod connection;
 mod frame;
 mod game;
 mod protocol;
@@ -26,17 +27,29 @@ use lenso_native_adapter::NativeModuleRegistry;
 pub use auth::{AUTH_PACKAGE_ID, AuthModuleFactory};
 pub use frame::{ClientFrame, ServerFrame, TerminalFrame};
 pub use game::{GAME_PACKAGE_ID, GAME_REPLACEMENT_PACKAGE_ID, GameProviderFactory};
-pub use protocol::{GameProtocolFactory, PROTOCOL_PACKAGE_ID, ProtocolConfig};
+pub use protocol::{
+    GameProtocolFactory, PROTOCOL_PACKAGE_ID, PROTOCOL_REPLACEMENT_PACKAGE_ID, ProtocolConfig,
+    ProtocolVariant,
+};
 pub use session::SessionMode;
 
 /// Builds the explicit Composition used by the game-session example.
 pub fn composition(config: &ProtocolConfig) -> AppComposition {
-    composition_with_mode(config, SessionMode::Echo)
+    composition_with_variants(config, ProtocolVariant::Primary, SessionMode::Echo)
 }
 
 /// Builds the Composition with an explicitly selected game provider package.
 pub fn composition_with_mode(config: &ProtocolConfig, mode: SessionMode) -> AppComposition {
-    let protocol = ModuleInstancePlan::new("protocol", PROTOCOL_PACKAGE_ID)
+    composition_with_variants(config, ProtocolVariant::Primary, mode)
+}
+
+/// Builds the Composition with explicitly selected protocol and game packages.
+pub fn composition_with_variants(
+    config: &ProtocolConfig,
+    protocol_variant: ProtocolVariant,
+    mode: SessionMode,
+) -> AppComposition {
+    let protocol = ModuleInstancePlan::new("protocol", protocol_variant.package_id())
         .with_configuration(config.to_json())
         .with_requirement(CapabilityRequirementPlan::one(
             AUTH_CAPABILITY_ID,
@@ -105,13 +118,32 @@ pub fn resolved_plan_with_mode(
     composition_with_mode(config, mode).resolve()
 }
 
+/// Resolves the Composition with explicitly selected protocol and game packages.
+pub fn resolved_plan_with_variants(
+    config: &ProtocolConfig,
+    protocol_variant: ProtocolVariant,
+    mode: SessionMode,
+) -> Result<ResolvedAppPlan, PlanResolutionError> {
+    composition_with_variants(config, protocol_variant, mode).resolve()
+}
+
 /// Assembles the selected native Modules without adding protocol behavior to Kernel.
 pub fn native_registry(
     issuer: ActorAssertionIssuer,
     session_mode: SessionMode,
 ) -> NativeModuleRegistry {
+    native_registry_with_variants(issuer, ProtocolVariant::Primary, session_mode)
+}
+
+/// Assembles the exact protocol and game packages selected by Composition.
+pub fn native_registry_with_variants(
+    issuer: ActorAssertionIssuer,
+    protocol_variant: ProtocolVariant,
+    session_mode: SessionMode,
+) -> NativeModuleRegistry {
+    let verifier = issuer.verifier();
     NativeModuleRegistry::new()
-        .with_factory(AuthModuleFactory::new(issuer.clone()))
-        .with_factory(GameProviderFactory::new(issuer, session_mode))
-        .with_factory(GameProtocolFactory::new())
+        .with_factory(AuthModuleFactory::new(issuer))
+        .with_factory(GameProviderFactory::new(verifier, session_mode))
+        .with_factory(GameProtocolFactory::with_variant(protocol_variant))
 }

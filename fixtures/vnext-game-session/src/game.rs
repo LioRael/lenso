@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use futures::future::LocalBoxFuture;
-use lenso_auth_sdk::{ActorAssertionIssuer, AssertionClock};
+use lenso_auth_sdk::{ActorAssertionVerifier, AssertionClock};
 use lenso_capability_game_session::{
     ActorBoundGameSessionEndpoint, GameSessionHandler, GameSessionInvocationError, PlayError,
     PlayRequest, PlayerActor,
@@ -21,14 +21,14 @@ pub const GAME_REPLACEMENT_PACKAGE_ID: &str = "fixture.game.provider.replacement
 /// Creates the selected game provider Module.
 #[derive(Clone, Debug)]
 pub struct GameProviderFactory {
-    issuer: ActorAssertionIssuer,
+    verifier: ActorAssertionVerifier,
     mode: SessionMode,
 }
 
 impl GameProviderFactory {
     /// Creates a provider whose behavior can be swapped through Composition.
-    pub fn new(issuer: ActorAssertionIssuer, mode: SessionMode) -> Self {
-        Self { issuer, mode }
+    pub fn new(verifier: ActorAssertionVerifier, mode: SessionMode) -> Self {
+        Self { verifier, mode }
     }
 
     /// Returns the package identity selected for one provider implementation.
@@ -51,7 +51,7 @@ impl NativeModuleFactory for GameProviderFactory {
     ) -> Result<NativeModuleInstance, RuntimeFailure> {
         let endpoint = ActorBoundGameSessionEndpoint::new(
             GameHandler { mode: self.mode },
-            self.issuer.clone(),
+            self.verifier.clone(),
             WallClock,
         );
         Ok(NativeModuleInstance::with_stream_endpoints(

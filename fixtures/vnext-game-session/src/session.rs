@@ -13,6 +13,30 @@ pub enum SessionMode {
     Replacement,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SessionLabels {
+    welcome: &'static str,
+    acknowledgment: &'static str,
+    push: &'static str,
+}
+
+impl SessionMode {
+    const fn labels(self) -> SessionLabels {
+        match self {
+            Self::Echo => SessionLabels {
+                welcome: "welcome",
+                acknowledgment: "ack",
+                push: "push",
+            },
+            Self::Replacement => SessionLabels {
+                welcome: "replacement-welcome",
+                acknowledgment: "replacement-ack",
+                push: "replacement-push",
+            },
+        }
+    }
+}
+
 #[derive(Debug)]
 struct SessionState {
     events: VecDeque<NativeStreamItem>,
@@ -24,14 +48,10 @@ struct SessionState {
 }
 
 impl SessionState {
-    fn new(room: &str, subject: &str, mode: SessionMode, max_buffered: usize) -> Self {
-        let prefix = match mode {
-            SessionMode::Echo => "welcome",
-            SessionMode::Replacement => "replacement-welcome",
-        };
+    fn new(room: &str, subject: &str, labels: SessionLabels, max_buffered: usize) -> Self {
         let mut events = VecDeque::new();
         events.push_back(NativeStreamItem::Message(Box::new(PlayResponse {
-            action: format!("{prefix}:{room}:{subject}"),
+            action: format!("{}:{room}:{subject}", labels.welcome),
         })));
         Self {
             events,
@@ -50,25 +70,31 @@ impl SessionState {
             self.events.push_back(event);
         }
     }
+
+    fn has_capacity_for(&self, count: usize) -> bool {
+        let directly_delivered = usize::from(self.waiter.is_some());
+        self.events.len() + count.saturating_sub(directly_delivered) <= self.max_buffered
+    }
 }
 
 /// An in-process game provider session used behind the public stream seam.
 #[derive(Debug)]
 pub(crate) struct GameSession {
     state: Rc<RefCell<SessionState>>,
-    mode: SessionMode,
+    labels: SessionLabels,
 }
 
 impl GameSession {
     pub(crate) fn new(room: &str, subject: &str, mode: SessionMode, max_buffered: usize) -> Self {
+        let labels = mode.labels();
         Self {
             state: Rc::new(RefCell::new(SessionState::new(
                 room,
                 subject,
-                mode,
+                labels,
                 max_buffered,
             ))),
-            mode,
+            labels,
         }
     }
 }
@@ -76,7 +102,7 @@ impl GameSession {
 impl NativeStreamSession for GameSession {
     fn send(&self, message: Box<dyn Any>) -> LocalBoxFuture<'static, Result<(), RuntimeFailure>> {
         let state = self.state.clone();
-        let mode = self.mode;
+        let labels = self.labels;
         Box::pin(async move {
             let message = message.downcast::<PlayResponse>().map_err(|_| {
                 RuntimeFailure::ProtocolViolation {
@@ -102,7 +128,7 @@ impl NativeStreamSession for GameSession {
                 });
             }
             if message.action == "quit" {
-                if state.waiter.is_none() && state.events.len() >= state.max_buffered {
+                if !state.has_capacity_for(1) {
                     return Err(RuntimeFailure::ResourceExhausted {
                         capability: lenso_capability_game_session::CAPABILITY_ID,
                         operation: lenso_capability_game_session::PLAY_OPERATION.to_owned(),
@@ -113,19 +139,21 @@ impl NativeStreamSession for GameSession {
                     PlayError::RoomClosed,
                 ))));
             } else {
-                if state.waiter.is_none() && state.events.len() >= state.max_buffered {
+                let event_count = if message.action == "emit-two" { 2 } else { 1 };
+                if !state.has_capacity_for(event_count) {
                     return Err(RuntimeFailure::ResourceExhausted {
                         capability: lenso_capability_game_session::CAPABILITY_ID,
                         operation: lenso_capability_game_session::PLAY_OPERATION.to_owned(),
                     });
                 }
-                let prefix = match mode {
-                    SessionMode::Echo => "ack",
-                    SessionMode::Replacement => "replacement-ack",
-                };
                 state.deliver(NativeStreamItem::Message(Box::new(PlayResponse {
-                    action: format!("{prefix}:{}", message.action),
+                    action: format!("{}:{}", labels.acknowledgment, message.action),
                 })));
+                if message.action == "emit-two" {
+                    state.deliver(NativeStreamItem::Message(Box::new(PlayResponse {
+                        action: format!("{}:{}", labels.push, message.action),
+                    })));
+                }
             }
             Ok(())
         })

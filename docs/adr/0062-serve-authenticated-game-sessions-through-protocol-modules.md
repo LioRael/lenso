@@ -33,6 +33,10 @@ The example App composes three replaceable native Modules:
   fixture's alternate package identity selected in Composition without
   changing Kernel or the protocol Module.
 
+Both the protocol and game-session fixture Modules have alternate package
+identities selected only by App Composition. Target Modules receive an
+`ActorAssertionVerifier`, not the Auth Module's assertion-signing authority.
+
 The documented fixture wire is a four-byte unsigned big-endian payload length
 followed by one UTF-8 JSON object. Client frames are `hello`, `message`,
 `close_send`, and `cancel`. The first frame is `hello` with an optional
@@ -50,12 +54,15 @@ and final authorization.
 
 Every accepted connection is a managed generation task with bounded active
 connection admission. Read and receive waits are limited by the configured
-idle timeout and the session deadline. Stream cancellation is idempotent and
-does not replay frames. Provider Runtime Failure causes the Kernel's declared
-finite restart policy to take effect; existing sessions terminate with a
-bounded Runtime outcome while later connections resolve the new generation.
-App shutdown cancels the managed listener and connection tasks and closes
-active sockets without adding protocol behavior to Kernel.
+idle timeout and the session deadline. The connection bridge drives socket
+input and provider output concurrently, preserves pending work in either
+direction, and does not impose one-response-per-message ordering. Stream
+cancellation is idempotent and does not replay frames. Provider Runtime Failure
+causes the Kernel's declared finite restart policy to take effect; existing
+sessions terminate with a bounded Runtime outcome while later connections
+resolve the new generation. App shutdown cancels the managed listener and
+connection tasks and closes active sockets without adding protocol behavior to
+Kernel.
 
 ## Consequences
 

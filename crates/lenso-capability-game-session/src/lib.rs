@@ -3,7 +3,7 @@
 use std::{fmt, rc::Rc};
 
 use futures::future::LocalBoxFuture;
-use lenso_auth_sdk::{ActorAssertionIssuer, AssertionClock, TypedActor};
+use lenso_auth_sdk::{ActorAssertionVerifier, AssertionClock, TypedActor};
 use lenso_kernel::{InvocationContext, NativeStreamEndpoint, NativeStreamSession, RuntimeFailure};
 
 #[allow(dead_code)]
@@ -49,7 +49,7 @@ impl TypedActor for PlayerActor {
 
 /// Game behavior owned by a selected game-session Module.
 pub trait GameSessionHandler: fmt::Debug + 'static {
-    /// Opens one session after the target has projected and authorized a PlayerActor.
+    /// Opens one session after the target has projected and authorized a `PlayerActor`.
     fn play(
         &self,
         actor: PlayerActor,
@@ -60,7 +60,7 @@ pub trait GameSessionHandler: fmt::Debug + 'static {
 
 struct ActorBoundProvider<H> {
     handler: Rc<H>,
-    verifier: ActorAssertionIssuer,
+    verifier: ActorAssertionVerifier,
     clock: Rc<dyn AssertionClock>,
 }
 
@@ -111,10 +111,10 @@ impl<H: GameSessionHandler> fmt::Debug for ActorBoundGameSessionEndpoint<H> {
 }
 
 impl<H: GameSessionHandler> ActorBoundGameSessionEndpoint<H> {
-    /// Binds game behavior to the Auth issuer selected by App Composition.
+    /// Binds game behavior to verification authority selected by App Composition.
     pub fn new(
         handler: H,
-        verifier: ActorAssertionIssuer,
+        verifier: ActorAssertionVerifier,
         clock: impl AssertionClock + 'static,
     ) -> Self {
         Self {
@@ -198,6 +198,7 @@ mod tests {
             .attach(InvocationContext::new(1, None, CancellationToken::new()))
             .expect("assertion should attach");
         let actor = issuer
+            .verifier()
             .project_context::<PlayerActor>(
                 &context,
                 CAPABILITY_ID,

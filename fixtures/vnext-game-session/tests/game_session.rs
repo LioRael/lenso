@@ -12,7 +12,7 @@ use tokio::{
 };
 use vnext_game_session::{
     AuthModuleFactory, ClientFrame, GameProtocolFactory, GameProviderFactory, ProtocolConfig,
-    ServerFrame, SessionMode, TerminalFrame, resolved_plan_with_mode,
+    ProtocolVariant, ServerFrame, SessionMode, TerminalFrame, resolved_plan_with_variants,
 };
 
 const TEST_KEY: &[u8] = b"fixture-game-session-key";
@@ -28,13 +28,22 @@ fn config() -> ProtocolConfig {
 }
 
 async fn start_app(mode: SessionMode, config: ProtocolConfig) -> (NativeApp, GameProtocolFactory) {
+    start_app_with_variants(ProtocolVariant::Primary, mode, config).await
+}
+
+async fn start_app_with_variants(
+    protocol_variant: ProtocolVariant,
+    mode: SessionMode,
+    config: ProtocolConfig,
+) -> (NativeApp, GameProtocolFactory) {
     let issuer = ActorAssertionIssuer::new("fixture.auth", TEST_KEY);
-    let protocol = GameProtocolFactory::new();
+    let protocol = GameProtocolFactory::with_variant(protocol_variant);
     let registry = NativeModuleRegistry::new()
         .with_factory(AuthModuleFactory::new(issuer.clone()))
-        .with_factory(GameProviderFactory::new(issuer, mode))
+        .with_factory(GameProviderFactory::new(issuer.verifier(), mode))
         .with_factory(protocol.clone());
-    let plan = resolved_plan_with_mode(&config, mode).expect("fixture composition should resolve");
+    let plan = resolved_plan_with_variants(&config, protocol_variant, mode)
+        .expect("fixture composition should resolve");
     let app = Kernel::start_native(plan, TokioDriver::new(), registry)
         .await
         .expect("fixture app should start");
@@ -125,14 +134,23 @@ async fn authenticated_full_duplex_session_has_clean_terminal_teardown() {
             write_frame(
                 &mut stream,
                 &ClientFrame::Message {
-                    action: "move:left".to_owned(),
+                    action: "emit-two".to_owned(),
                 },
             )
             .await;
             assert_eq!(
                 next_frame(&mut stream).await.expect("ack frame"),
                 ServerFrame::Message {
-                    action: "ack:move:left".to_owned()
+                    action: "ack:emit-two".to_owned()
+                }
+            );
+            assert_eq!(
+                timeout(Duration::from_millis(200), next_frame(&mut stream))
+                    .await
+                    .expect("provider push should not wait for another client frame")
+                    .expect("provider push frame"),
+                ServerFrame::Message {
+                    action: "push:emit-two".to_owned()
                 }
             );
 
@@ -320,6 +338,56 @@ async fn active_connection_admission_is_bounded() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn client_disconnect_cancels_the_session_and_releases_admission() {
+    LocalSet::new()
+        .run_until(async {
+            let mut limited = config();
+            limited.max_connections = 1;
+            let (app, protocol) = start_app(SessionMode::Echo, limited).await;
+            let mut first = connect(&protocol).await;
+            establish(&mut first, Some("good-token"), "arena").await;
+            drop(first);
+
+            timeout(Duration::from_secs(1), async {
+                loop {
+                    let mut candidate = connect(&protocol).await;
+                    write_frame(
+                        &mut candidate,
+                        &ClientFrame::Hello {
+                            token: Some("good-token".to_owned()),
+                            room: "arena".to_owned(),
+                            deadline_ms: None,
+                        },
+                    )
+                    .await;
+                    match next_frame(&mut candidate)
+                        .await
+                        .expect("bounded disconnect outcome")
+                    {
+                        ServerFrame::Ready { .. } => {
+                            assert!(matches!(
+                                next_frame(&mut candidate)
+                                    .await
+                                    .expect("welcome after disconnect"),
+                                ServerFrame::Message { .. }
+                            ));
+                            break;
+                        }
+                        ServerFrame::Runtime { code } if code == "resource_exhausted" => {
+                            sleep(Duration::from_millis(10)).await;
+                        }
+                        frame => panic!("unexpected frame after disconnect: {frame:?}"),
+                    }
+                }
+            })
+            .await
+            .expect("disconnect should release its connection slot");
+            clean_shutdown(&app).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn provider_failure_restarts_and_composition_selects_a_replacement() {
     LocalSet::new()
         .run_until(async {
@@ -398,6 +466,31 @@ async fn provider_failure_restarts_and_composition_selects_a_replacement() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn composition_selects_a_replacement_protocol_package() {
+    LocalSet::new()
+        .run_until(async {
+            let (app, protocol) =
+                start_app_with_variants(ProtocolVariant::Replacement, SessionMode::Echo, config())
+                    .await;
+            let mut stream = connect(&protocol).await;
+            establish(&mut stream, Some("good-token"), "arena").await;
+            write_frame(&mut stream, &ClientFrame::CloseSend).await;
+            assert!(matches!(
+                next_frame(&mut stream)
+                    .await
+                    .expect("replacement half-close"),
+                ServerFrame::PeerHalfClosed
+            ));
+            assert!(matches!(
+                next_frame(&mut stream).await.expect("replacement terminal"),
+                ServerFrame::Terminal { .. }
+            ));
+            clean_shutdown(&app).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn managed_shutdown_closes_an_active_protocol_connection() {
     LocalSet::new()
         .run_until(async {
@@ -405,11 +498,15 @@ async fn managed_shutdown_closes_an_active_protocol_connection() {
             let mut stream = connect(&protocol).await;
             establish(&mut stream, Some("good-token"), "arena").await;
             clean_shutdown(&app).await;
-            let eof = timeout(Duration::from_secs(1), next_frame(&mut stream))
+            let outcome = timeout(Duration::from_secs(1), next_frame(&mut stream))
                 .await
                 .expect("shutdown should close the socket")
-                .expect_err("server should close active stream");
-            assert_eq!(eof.kind(), std::io::ErrorKind::UnexpectedEof);
+                .expect("shutdown should produce a bounded outcome");
+            assert!(matches!(
+                outcome,
+                ServerFrame::Runtime { code }
+                    if code == "cancelled" || code == "unavailable"
+            ));
         })
         .await;
 }

@@ -1,5 +1,4 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const MAX_DISCARD_BYTES: usize = 64 * 1024;
 
@@ -59,13 +58,15 @@ pub(crate) enum FrameError {
     Malformed,
     TooLarge,
     Truncated,
-    Timeout,
 }
 
-pub(crate) async fn read_client_frame(
-    stream: &mut TcpStream,
+pub(crate) async fn read_client_frame<R>(
+    stream: &mut R,
     max_frame_bytes: usize,
-) -> Result<Option<ClientFrame>, FrameError> {
+) -> Result<Option<ClientFrame>, FrameError>
+where
+    R: AsyncRead + Unpin,
+{
     let mut header = [0_u8; 4];
     let first = stream.read(&mut header).await.map_err(FrameError::Io)?;
     if first == 0 {
@@ -101,11 +102,14 @@ pub(crate) async fn read_client_frame(
     serde_json::from_slice(&payload).map_err(|_| FrameError::Malformed)
 }
 
-pub(crate) async fn write_server_frame(
-    stream: &mut TcpStream,
+pub(crate) async fn write_server_frame<W>(
+    stream: &mut W,
     frame: &ServerFrame,
     max_frame_bytes: usize,
-) -> Result<(), FrameError> {
+) -> Result<(), FrameError>
+where
+    W: AsyncWrite + Unpin,
+{
     let payload = serde_json::to_vec(frame).map_err(|_| FrameError::Malformed)?;
     if payload.is_empty() || payload.len() > max_frame_bytes || payload.len() > u32::MAX as usize {
         return Err(FrameError::TooLarge);
