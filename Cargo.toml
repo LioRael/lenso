@@ -5,6 +5,7 @@ members = [
     "crates/lenso-bun-adapter",
     "crates/lenso-contract-codegen",
     "crates/lenso-capability-greeting",
+    "crates/lenso-capability-auth",
     "crates/lenso-browser-driver",
     "crates/lenso-kernel",
     "crates/lenso-native-adapter",
@@ -26,6 +27,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = "1.0"
 tokio = { version = "1.52", features = ["macros", "rt", "time"] }
+base64 = "0.22"
+ring = "0.17"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

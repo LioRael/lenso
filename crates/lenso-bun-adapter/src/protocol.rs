@@ -3,15 +3,34 @@ use std::{
     time::Duration,
 };
 
-use lenso_kernel::RuntimeFailure;
+use lenso_kernel::{InvocationContext, RuntimeFailure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeSet;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const DEFAULT_MAX_FRAME_BYTES: usize = 64 * 1024;
 pub const DEFAULT_REQUEST_QUEUE_CAPACITY: usize = 32;
 pub const DEFAULT_STREAM_CREDIT: u32 = 16;
 pub const VALUE_PROFILE: &str = "lenso-json-value-v1";
+
+/// An opaque Invocation Context extension carried across the Bun Adapter.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BunInvocationExtension {
+    /// Stable domain extension key.
+    pub key: String,
+    /// Opaque serialized value bytes.
+    pub value: Vec<u8>,
+    /// Issuer provenance for sealed extensions.
+    #[serde(default)]
+    pub issuer: Option<String>,
+    /// Intended Capability/Operation audience for sealed extensions.
+    #[serde(default)]
+    pub audience: Vec<String>,
+    /// Whether the extension is protected against replacement.
+    #[serde(default)]
+    pub sealed: bool,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct EndpointDescriptor {
@@ -59,6 +78,8 @@ pub(crate) struct WireRequest {
     pub caller_instance: Option<String>,
     #[serde(default)]
     pub session: Option<String>,
+    #[serde(default)]
+    pub extensions: Vec<BunInvocationExtension>,
     pub payload: Value,
 }
 
@@ -71,6 +92,8 @@ pub(crate) struct WireEventPublish {
     pub caller_instance: Option<String>,
     #[serde(default)]
     pub session: Option<String>,
+    #[serde(default)]
+    pub extensions: Vec<BunInvocationExtension>,
     pub payload: Value,
 }
 
@@ -84,8 +107,123 @@ pub(crate) struct WireStreamOpen {
     pub caller_instance: Option<String>,
     #[serde(default)]
     pub session: Option<String>,
+    #[serde(default)]
+    pub extensions: Vec<BunInvocationExtension>,
     pub credit: u32,
     pub payload: Value,
+}
+
+pub(crate) fn wire_request(
+    context: &InvocationContext,
+    capability_id: String,
+    operation: String,
+    payload: Value,
+) -> WireRequest {
+    WireRequest {
+        request_id: context.request_id(),
+        capability_id,
+        operation,
+        deadline_nanos: deadline_nanos(context.deadline()),
+        caller_instance: context.caller_instance().map(ToOwned::to_owned),
+        session: None,
+        extensions: encode_invocation_extensions(context),
+        payload,
+    }
+}
+
+pub(crate) fn wire_event(
+    context: &InvocationContext,
+    capability_id: String,
+    operation: String,
+    payload: Value,
+) -> WireEventPublish {
+    WireEventPublish {
+        request_id: context.request_id(),
+        capability_id,
+        operation,
+        deadline_nanos: deadline_nanos(context.deadline()),
+        caller_instance: context.caller_instance().map(ToOwned::to_owned),
+        session: None,
+        extensions: encode_invocation_extensions(context),
+        payload,
+    }
+}
+
+pub(crate) fn wire_stream_open(
+    context: &InvocationContext,
+    capability_id: String,
+    operation: String,
+    payload: Value,
+) -> WireStreamOpen {
+    WireStreamOpen {
+        request_id: context.request_id(),
+        stream_id: context.request_id(),
+        capability_id,
+        operation,
+        deadline_nanos: deadline_nanos(context.deadline()),
+        caller_instance: context.caller_instance().map(ToOwned::to_owned),
+        session: None,
+        extensions: encode_invocation_extensions(context),
+        credit: DEFAULT_STREAM_CREDIT,
+        payload,
+    }
+}
+
+pub(crate) fn encode_invocation_extensions(
+    context: &InvocationContext,
+) -> Vec<BunInvocationExtension> {
+    context
+        .extensions()
+        .map(|extension| BunInvocationExtension {
+            key: extension.key().to_owned(),
+            value: extension.value().to_vec(),
+            issuer: None,
+            audience: Vec::new(),
+            sealed: false,
+        })
+        .chain(
+            context
+                .sealed_extensions()
+                .map(|extension| BunInvocationExtension {
+                    key: extension.key().to_owned(),
+                    value: extension.value().to_vec(),
+                    issuer: Some(extension.issuer().to_owned()),
+                    audience: extension.audience().to_vec(),
+                    sealed: true,
+                }),
+        )
+        .collect()
+}
+
+pub(crate) fn validate_invocation_extensions(
+    extensions: &[BunInvocationExtension],
+) -> Result<(), RuntimeFailure> {
+    let mut keys = BTreeSet::new();
+    for extension in extensions {
+        if extension.key.is_empty() || !keys.insert(extension.key.as_str()) {
+            return Err(RuntimeFailure::ProtocolViolation {
+                capability: "lenso.bun-process@1",
+            });
+        }
+        if extension.sealed {
+            if extension.issuer.as_deref().is_none_or(str::is_empty)
+                || extension.audience.is_empty()
+                || extension
+                    .audience
+                    .iter()
+                    .any(|audience| audience.is_empty())
+            {
+                return Err(RuntimeFailure::ProtocolViolation {
+                    capability: "lenso.bun-process@1",
+                });
+            }
+        } else if extension.issuer.is_some() || !extension.audience.is_empty() {
+            return Err(RuntimeFailure::ProtocolViolation {
+                capability: "lenso.bun-process@1",
+            });
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -489,6 +627,7 @@ mod tests {
             deadline_nanos: None,
             caller_instance: Some("consumer".to_owned()),
             session: Some("session".to_owned()),
+            extensions: Vec::new(),
             payload: serde_json::json!({"message": "hello", "sequence": 1}),
         }))
         .expect("event publish should encode");

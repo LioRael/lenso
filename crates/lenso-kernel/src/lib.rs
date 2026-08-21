@@ -27,6 +27,7 @@ mod deterministic;
 mod diagnostics;
 mod driver;
 mod event;
+mod invocation;
 mod kernel;
 mod lifecycle;
 mod prepared;
@@ -45,6 +46,7 @@ pub use event::{
     EventAdmission, EventCapability, EventPublishResult, EventPublishStatus,
     ModuleEventDependencyHandle, NativeEventEndpoint, NativeEventHandle,
 };
+pub use invocation::*;
 pub use stream::{
     NativeStream, NativeStreamEndpoint, NativeStreamHandle, NativeStreamItem, NativeStreamSession,
     StreamCapability, StreamEvent, StreamSession,
