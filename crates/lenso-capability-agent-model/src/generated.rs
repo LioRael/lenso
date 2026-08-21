@@ -100,7 +100,6 @@ pub struct CompleteResponse {
 pub enum CompleteError {
     ContextTooLarge,
     InvalidPrompt,
-    ModelUnavailable,
     Unknown(UnknownDomainError),
 }
 
@@ -124,7 +123,6 @@ impl serde::Serialize for CompleteError {
         match self {
             Self::ContextTooLarge => serializer.serialize_str("context_too_large"),
             Self::InvalidPrompt => serializer.serialize_str("invalid_prompt"),
-            Self::ModelUnavailable => serializer.serialize_str("model_unavailable"),
             Self::Unknown(value) => {
                 let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;
                 map.serialize_entry("code", &value.code)?;
@@ -150,7 +148,6 @@ impl<'de> serde::Deserialize<'de> for CompleteError {
             serde_json::Value::String(code) => match code.as_str() {
                 "context_too_large" => Ok(Self::ContextTooLarge),
                 "invalid_prompt" => Ok(Self::InvalidPrompt),
-                "model_unavailable" => Ok(Self::ModelUnavailable),
                 _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),
             },
             serde_json::Value::Object(mut object) => {

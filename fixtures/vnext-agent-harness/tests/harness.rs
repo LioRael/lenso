@@ -215,6 +215,35 @@ fn missing_memory_fails_startup_without_an_in_memory_fallback() {
 }
 
 #[test]
+fn oversized_memory_fails_with_resource_exhaustion() {
+    let storage = TestStorage::new();
+    setup_owned_memory(&storage.path).expect("memory setup should succeed");
+    std::fs::write(&storage.path, vec![b' '; 4 * 1024 * 1024 + 1])
+        .expect("oversized memory fixture should be written");
+    let driver = DeterministicDriver::new();
+
+    let result = driver.run(Kernel::start_native(
+        composition(
+            &storage.path,
+            ECHO_MODEL_PACKAGE_ID,
+            ECHO_TOOL_PACKAGE_ID,
+            false,
+        ),
+        driver.clone(),
+        registry(Rc::new(RefCell::new(Vec::new()))),
+    ));
+
+    assert!(matches!(
+        result,
+        Err(RuntimeFailure::ResourceExhausted {
+            capability,
+            operation,
+        }) if capability == lenso_capability_agent_memory::CAPABILITY_ID
+            && operation == "storage"
+    ));
+}
+
+#[test]
 fn domain_tool_failure_stays_distinct_from_runtime_failure() {
     let storage = TestStorage::new();
     setup_owned_memory(&storage.path).expect("memory setup should succeed");
@@ -315,5 +344,35 @@ fn deadline_cancellation_provider_unavailability_and_shutdown_are_runtime_outcom
             },
         )),
         Err(RuntimeFailure::AdmissionClosed)
+    ));
+}
+
+#[test]
+fn model_output_over_limit_cancels_stream_with_resource_exhaustion() {
+    let storage = TestStorage::new();
+    setup_owned_memory(&storage.path).expect("memory setup should succeed");
+    let (driver, app, _events) =
+        start(&storage, ECHO_MODEL_PACKAGE_ID, ECHO_TOOL_PACKAGE_ID, false);
+
+    let result = driver.run(app.invoke::<Agent>(
+        "caller",
+        RUN_OPERATION,
+        RunRequest {
+            prompt: "model-output-overflow".to_owned(),
+            run_id: "run-output-limit".to_owned(),
+        },
+    ));
+
+    assert!(matches!(
+        result,
+        Err(RuntimeFailure::ResourceExhausted {
+            capability,
+            operation,
+        }) if capability == lenso_capability_agent_model::CAPABILITY_ID
+            && operation == lenso_capability_agent_model::COMPLETE_OPERATION
+    ));
+    assert!(matches!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        ShutdownOutcome::Clean
     ));
 }

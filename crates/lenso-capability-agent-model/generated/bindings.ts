@@ -42,7 +42,7 @@ export interface CompleteResponse {
   delta: string;
 }
 
-export type CompleteError = "context_too_large" | "invalid_prompt" | "model_unavailable" | UnknownDomainError;
+export type CompleteError = "context_too_large" | "invalid_prompt" | UnknownDomainError;
 export type CompleteInvocationError = { readonly kind: "domain"; readonly error: CompleteError } | { readonly kind: "runtime"; readonly error: RuntimeFailure };
 export type CompleteResult = { readonly ok: true; readonly value: StreamSession<CompleteResponse, CompleteError> } | { readonly ok: false; readonly error: CompleteInvocationError };
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -74,7 +74,6 @@ export function decodeCompleteError(wire: string): CompleteError {
   if (typeof value === "string") {
     if (value === "context_too_large") return value as CompleteError;
     if (value === "invalid_prompt") return value as CompleteError;
-    if (value === "model_unavailable") return value as CompleteError;
     return { code: value } as CompleteError;
   }
   if (isRecord(value) && typeof value.code === "string") return value as CompleteError;

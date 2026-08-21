@@ -2,7 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
     { "const": "context_too_large" },
-    { "const": "invalid_prompt" },
-    { "const": "model_unavailable" }
+    { "const": "invalid_prompt" }
   ]
 }

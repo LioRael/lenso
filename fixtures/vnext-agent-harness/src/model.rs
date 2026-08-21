@@ -112,9 +112,7 @@ impl lenso_capability_agent_model::ModelProvider for ModelProvider {
         }
         if request.prompt == "model-domain-error" {
             return Box::pin(async {
-                Err(ModelInvocationError::Domain(
-                    CompleteError::ModelUnavailable,
-                ))
+                Err(ModelInvocationError::Domain(CompleteError::ContextTooLarge))
             });
         }
         if request.prompt == "model-runtime-failure" {
@@ -137,13 +135,17 @@ impl lenso_capability_agent_model::ModelProvider for ModelProvider {
         } else {
             format!("{} prior memories", request.memory.len())
         };
-        let messages = vec![
-            prefix,
-            format!(
-                "{} | tool result: {} | {}",
-                request.prompt, request.tool_output, memory
-            ),
-        ];
+        let messages = if request.prompt == "model-output-overflow" {
+            vec!["x".repeat(65 * 1024)]
+        } else {
+            vec![
+                prefix,
+                format!(
+                    "{} | tool result: {} | {}",
+                    request.prompt, request.tool_output, memory
+                ),
+            ]
+        };
         let request_id = context.request_id();
         Box::pin(async move {
             Ok(Box::new(ScriptedModelSession::new(messages, request_id))

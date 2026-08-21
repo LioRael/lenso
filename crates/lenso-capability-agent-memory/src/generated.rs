@@ -97,7 +97,6 @@ pub struct AppendResponse {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AppendError {
     InvalidKey,
-    StorageUnavailable,
     Unknown(UnknownDomainError),
 }
 
@@ -122,7 +121,6 @@ pub struct ReadResponse {
 pub enum ReadError {
     InvalidKey,
     MissingKey,
-    StorageUnavailable,
     Unknown(UnknownDomainError),
 }
 
@@ -154,7 +152,6 @@ impl serde::Serialize for AppendError {
         use serde::ser::SerializeMap;
         match self {
             Self::InvalidKey => serializer.serialize_str("invalid_key"),
-            Self::StorageUnavailable => serializer.serialize_str("storage_unavailable"),
             Self::Unknown(value) => {
                 let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;
                 map.serialize_entry("code", &value.code)?;
@@ -179,7 +176,6 @@ impl<'de> serde::Deserialize<'de> for AppendError {
         match value {
             serde_json::Value::String(code) => match code.as_str() {
                 "invalid_key" => Ok(Self::InvalidKey),
-                "storage_unavailable" => Ok(Self::StorageUnavailable),
                 _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),
             },
             serde_json::Value::Object(mut object) => {
@@ -204,7 +200,6 @@ impl serde::Serialize for ReadError {
         match self {
             Self::InvalidKey => serializer.serialize_str("invalid_key"),
             Self::MissingKey => serializer.serialize_str("missing_key"),
-            Self::StorageUnavailable => serializer.serialize_str("storage_unavailable"),
             Self::Unknown(value) => {
                 let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;
                 map.serialize_entry("code", &value.code)?;
@@ -230,7 +225,6 @@ impl<'de> serde::Deserialize<'de> for ReadError {
             serde_json::Value::String(code) => match code.as_str() {
                 "invalid_key" => Ok(Self::InvalidKey),
                 "missing_key" => Ok(Self::MissingKey),
-                "storage_unavailable" => Ok(Self::StorageUnavailable),
                 _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),
             },
             serde_json::Value::Object(mut object) => {

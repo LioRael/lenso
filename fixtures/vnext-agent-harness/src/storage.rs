@@ -4,11 +4,16 @@ use std::{
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
+    sync::mpsc::{self, SyncSender, TrySendError},
+    thread,
 };
 
+use futures::channel::oneshot;
 use serde::{Deserialize, Serialize};
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+const MAX_DOCUMENT_BYTES: u64 = 4 * 1024 * 1024;
+const WORKER_QUEUE_CAPACITY: usize = 16;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct MemoryDocument {
@@ -21,6 +26,119 @@ struct MemoryDocument {
 #[derive(Clone, Debug)]
 pub(crate) struct FileMemoryAdapter {
     path: PathBuf,
+}
+
+type MemoryReadResult = Result<Option<(Vec<String>, u64)>, MemoryStorageError>;
+
+enum MemoryCommand {
+    Verify {
+        reply: oneshot::Sender<Result<(), MemoryStorageError>>,
+    },
+    Read {
+        key: String,
+        reply: oneshot::Sender<MemoryReadResult>,
+    },
+    Append {
+        key: String,
+        entry: String,
+        reply: oneshot::Sender<Result<u64, MemoryStorageError>>,
+    },
+    Stop {
+        reply: oneshot::Sender<()>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MemoryWorker {
+    sender: SyncSender<MemoryCommand>,
+}
+
+impl MemoryWorker {
+    pub(crate) fn spawn(path: PathBuf) -> Result<Self, MemoryStorageError> {
+        let (sender, receiver) = mpsc::sync_channel(WORKER_QUEUE_CAPACITY);
+        thread::Builder::new()
+            .name("lenso-agent-memory".to_owned())
+            .spawn(move || {
+                let storage = FileMemoryAdapter::new(path);
+                while let Ok(command) = receiver.recv() {
+                    match command {
+                        MemoryCommand::Verify { reply } => {
+                            let _ = reply.send(storage.verify_ready());
+                        }
+                        MemoryCommand::Read { key, reply } => {
+                            let _ = reply.send(storage.read(&key));
+                        }
+                        MemoryCommand::Append { key, entry, reply } => {
+                            let _ = reply.send(storage.append(&key, &entry));
+                        }
+                        MemoryCommand::Stop { reply } => {
+                            let _ = reply.send(());
+                            break;
+                        }
+                    }
+                }
+            })
+            .map_err(|error| MemoryStorageError::Io {
+                path: PathBuf::from("lenso-agent-memory"),
+                operation: "start bounded memory worker".to_owned(),
+                detail: error.to_string(),
+            })?;
+        Ok(Self { sender })
+    }
+
+    pub(crate) async fn verify_ready(&self) -> Result<(), MemoryWorkerError> {
+        let (reply, response) = oneshot::channel();
+        self.send(MemoryCommand::Verify { reply })?;
+        response
+            .await
+            .map_err(|_| MemoryWorkerError::Stopped)?
+            .map_err(MemoryWorkerError::Storage)
+    }
+
+    pub(crate) async fn read(
+        &self,
+        key: String,
+    ) -> Result<Option<(Vec<String>, u64)>, MemoryWorkerError> {
+        let (reply, response) = oneshot::channel();
+        self.send(MemoryCommand::Read { key, reply })?;
+        response
+            .await
+            .map_err(|_| MemoryWorkerError::Stopped)?
+            .map_err(MemoryWorkerError::Storage)
+    }
+
+    pub(crate) async fn append(
+        &self,
+        key: String,
+        entry: String,
+    ) -> Result<u64, MemoryWorkerError> {
+        let (reply, response) = oneshot::channel();
+        self.send(MemoryCommand::Append { key, entry, reply })?;
+        response
+            .await
+            .map_err(|_| MemoryWorkerError::Stopped)?
+            .map_err(MemoryWorkerError::Storage)
+    }
+
+    pub(crate) async fn stop(&self) -> Result<(), MemoryWorkerError> {
+        let (reply, response) = oneshot::channel();
+        self.send(MemoryCommand::Stop { reply })?;
+        response.await.map_err(|_| MemoryWorkerError::Stopped)
+    }
+
+    fn send(&self, command: MemoryCommand) -> Result<(), MemoryWorkerError> {
+        self.sender.try_send(command).map_err(|error| match error {
+            TrySendError::Full(_) => MemoryWorkerError::Busy,
+            TrySendError::Disconnected(_) => MemoryWorkerError::Stopped,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum MemoryWorkerError {
+    Busy,
+    Stopped,
+    Storage(MemoryStorageError),
 }
 
 impl FileMemoryAdapter {
@@ -109,6 +227,17 @@ impl FileMemoryAdapter {
     }
 
     fn read_document(&self) -> Result<MemoryDocument, MemoryStorageError> {
+        let length = fs::metadata(&self.path)
+            .map_err(|error| MemoryStorageError::io(&self.path, "inspect memory", &error))?
+            .len();
+        if length > MAX_DOCUMENT_BYTES {
+            return Err(MemoryStorageError::ResourceLimit {
+                path: self.path.clone(),
+                detail: format!(
+                    "memory document is {length} bytes; limit is {MAX_DOCUMENT_BYTES} bytes"
+                ),
+            });
+        }
         let bytes = fs::read(&self.path).map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
                 MemoryStorageError::Missing {
@@ -142,6 +271,12 @@ impl FileMemoryAdapter {
                 detail: error.to_string(),
             }
         })?;
+        if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
+            return Err(MemoryStorageError::ResourceLimit {
+                path: self.path.clone(),
+                detail: format!("memory document would exceed the {MAX_DOCUMENT_BYTES}-byte limit"),
+            });
+        }
         fs::write(&temporary, bytes).map_err(|error| {
             MemoryStorageError::io(&temporary, "write memory transaction", &error)
         })?;
@@ -181,6 +316,10 @@ pub enum MemoryStorageError {
         path: PathBuf,
         detail: String,
     },
+    ResourceLimit {
+        path: PathBuf,
+        detail: String,
+    },
     IncompatibleSchema {
         path: PathBuf,
         expected: u32,
@@ -217,6 +356,11 @@ impl std::fmt::Display for MemoryStorageError {
             Self::InvalidDocument { path, detail } => write!(
                 formatter,
                 "memory document `{}` is invalid: {detail}",
+                path.display()
+            ),
+            Self::ResourceLimit { path, detail } => write!(
+                formatter,
+                "memory document `{}` exceeded its resource limit: {detail}",
                 path.display()
             ),
             Self::IncompatibleSchema {

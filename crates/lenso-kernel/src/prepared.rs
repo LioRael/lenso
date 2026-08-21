@@ -21,12 +21,48 @@ pub trait NativeRequestEndpoint: std::fmt::Debug {
     ) -> LocalBoxFuture<'static, Result<ErasedDomainResult, RuntimeFailure>>;
 }
 
+/// The complete native endpoint set owned by one Module generation.
+#[derive(Clone, Debug, Default)]
+pub struct NativeEndpointSet {
+    request: Vec<Rc<dyn NativeRequestEndpoint>>,
+    stream: Vec<Rc<dyn NativeStreamEndpoint>>,
+    event: Vec<Rc<dyn NativeEventEndpoint>>,
+}
+
+impl NativeEndpointSet {
+    /// Creates an endpoint set containing every native interaction kind.
+    pub fn new(
+        request: Vec<Rc<dyn NativeRequestEndpoint>>,
+        stream: Vec<Rc<dyn NativeStreamEndpoint>>,
+        event: Vec<Rc<dyn NativeEventEndpoint>>,
+    ) -> Self {
+        Self {
+            request,
+            stream,
+            event,
+        }
+    }
+
+    /// Returns the request endpoints in this generation.
+    pub fn request(&self) -> &[Rc<dyn NativeRequestEndpoint>] {
+        &self.request
+    }
+
+    /// Returns the stream endpoints in this generation.
+    pub fn stream(&self) -> &[Rc<dyn NativeStreamEndpoint>] {
+        &self.stream
+    }
+
+    /// Returns the Event endpoints in this generation.
+    pub fn event(&self) -> &[Rc<dyn NativeEventEndpoint>] {
+        &self.event
+    }
+}
+
 /// One freshly prepared Module Instance generation returned by an Execution Adapter.
 #[derive(Debug)]
 pub struct PreparedNativeModule {
-    pub(super) endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-    pub(super) stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
-    pub(super) event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
+    pub(super) endpoints: NativeEndpointSet,
     pub(super) lifecycle: Rc<dyn ModuleLifecycle>,
 }
 
@@ -37,9 +73,7 @@ impl PreparedNativeModule {
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
         Self {
-            endpoints,
-            stream_endpoints: Vec::new(),
-            event_endpoints: Vec::new(),
+            endpoints: NativeEndpointSet::new(endpoints, Vec::new(), Vec::new()),
             lifecycle: Rc::new(lifecycle),
         }
     }
@@ -50,9 +84,7 @@ impl PreparedNativeModule {
         lifecycle: Rc<dyn ModuleLifecycle>,
     ) -> Self {
         Self {
-            endpoints,
-            stream_endpoints: Vec::new(),
-            event_endpoints: Vec::new(),
+            endpoints: NativeEndpointSet::new(endpoints, Vec::new(), Vec::new()),
             lifecycle,
         }
     }
@@ -64,38 +96,18 @@ impl PreparedNativeModule {
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
         Self {
-            endpoints,
-            stream_endpoints,
-            event_endpoints: Vec::new(),
+            endpoints: NativeEndpointSet::new(endpoints, stream_endpoints, Vec::new()),
             lifecycle: Rc::new(lifecycle),
         }
     }
 
-    /// Creates one generation with shared lifecycle and request/stream endpoints.
-    pub fn with_endpoints_lifecycle(
-        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-        stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
+    /// Creates a generation from one complete endpoint set and shared lifecycle.
+    pub fn with_endpoint_set_lifecycle(
+        endpoints: NativeEndpointSet,
         lifecycle: Rc<dyn ModuleLifecycle>,
     ) -> Self {
         Self {
             endpoints,
-            stream_endpoints,
-            event_endpoints: Vec::new(),
-            lifecycle,
-        }
-    }
-
-    /// Creates a generation with shared lifecycle and all native endpoint kinds.
-    pub fn with_all_endpoints_lifecycle(
-        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-        stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
-        event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
-        lifecycle: Rc<dyn ModuleLifecycle>,
-    ) -> Self {
-        Self {
-            endpoints,
-            stream_endpoints,
-            event_endpoints,
             lifecycle,
         }
     }
@@ -124,26 +136,24 @@ impl PreparedNativeModule {
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
         Self {
-            endpoints,
-            stream_endpoints,
-            event_endpoints,
+            endpoints: NativeEndpointSet::new(endpoints, stream_endpoints, event_endpoints),
             lifecycle: Rc::new(lifecycle),
         }
     }
 
     /// Returns the exact endpoints prepared for this generation.
     pub fn endpoints(&self) -> &[Rc<dyn NativeRequestEndpoint>] {
-        &self.endpoints
+        self.endpoints.request()
     }
 
     /// Returns the exact stream endpoints prepared for this generation.
     pub fn stream_endpoints(&self) -> &[Rc<dyn NativeStreamEndpoint>] {
-        &self.stream_endpoints
+        self.endpoints.stream()
     }
 
     /// Returns the exact Event endpoints prepared for this generation.
     pub fn event_endpoints(&self) -> &[Rc<dyn NativeEventEndpoint>] {
-        &self.event_endpoints
+        self.endpoints.event()
     }
 
     /// Returns the lifecycle Interface prepared for this generation.
@@ -151,20 +161,8 @@ impl PreparedNativeModule {
         self.lifecycle.clone()
     }
 
-    pub(super) fn into_parts(
-        self,
-    ) -> (
-        Vec<Rc<dyn NativeRequestEndpoint>>,
-        Vec<Rc<dyn NativeStreamEndpoint>>,
-        Vec<Rc<dyn NativeEventEndpoint>>,
-        Rc<dyn ModuleLifecycle>,
-    ) {
-        (
-            self.endpoints,
-            self.stream_endpoints,
-            self.event_endpoints,
-            self.lifecycle,
-        )
+    pub(super) fn into_parts(self) -> (NativeEndpointSet, Rc<dyn ModuleLifecycle>) {
+        (self.endpoints, self.lifecycle)
     }
 }
 

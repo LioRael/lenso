@@ -40,6 +40,7 @@ pub const UPPERCASE_TOOL_PACKAGE_ID: &str = "example.agent-tool-uppercase";
 const CALLER_PACKAGE_ID: &str = "example.agent-caller";
 const MEMORY_KEY: &str = "agent.conversation";
 const TOOL_NAME: &str = "lookup";
+const MAX_MODEL_OUTPUT_BYTES: usize = 64 * 1024;
 
 #[derive(Debug)]
 struct CallerFactory;
@@ -58,6 +59,10 @@ impl NativeModuleFactory for CallerFactory {
 }
 
 /// Builds the exact App Composition used by the harness fixture.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the declarative fixture keeps its complete resolved graph visible in one place"
+)]
 pub fn composition(
     memory_path: impl AsRef<Path>,
     model_package_id: &'static str,
@@ -68,6 +73,7 @@ pub fn composition(
         .with_configuration(
             serde_json::json!({
                 "memory_key": MEMORY_KEY,
+                "max_model_output_bytes": MAX_MODEL_OUTPUT_BYTES,
                 "tool_name": TOOL_NAME,
             })
             .to_string(),

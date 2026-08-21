@@ -13,7 +13,7 @@ use crate::{MEMORY_PACKAGE_ID, storage};
 
 #[derive(Debug)]
 struct MemoryProvider {
-    storage: Rc<storage::FileMemoryAdapter>,
+    storage: Rc<storage::MemoryWorker>,
 }
 
 impl lenso_capability_agent_memory::MemoryProvider for MemoryProvider {
@@ -31,7 +31,8 @@ impl lenso_capability_agent_memory::MemoryProvider for MemoryProvider {
                 return Err(MemoryAppendInvocationError::Domain(AppendError::InvalidKey));
             }
             let revision = storage
-                .append(&request.key, &request.entry)
+                .append(request.key, request.entry)
+                .await
                 .map_err(|error| {
                     MemoryAppendInvocationError::Runtime(memory_runtime_failure(error))
                 })?;
@@ -61,7 +62,7 @@ impl lenso_capability_agent_memory::MemoryProvider for MemoryProvider {
                     ),
                 );
             }
-            let Some((entries, revision)) = storage.read(&request.key).map_err(|error| {
+            let Some((entries, revision)) = storage.read(request.key).await.map_err(|error| {
                 lenso_capability_agent_memory::MemoryReadInvocationError::Runtime(
                     memory_runtime_failure(error),
                 )
@@ -83,13 +84,13 @@ impl lenso_capability_agent_memory::MemoryProvider for MemoryProvider {
 
 #[derive(Debug)]
 struct MemoryLifecycle {
-    storage: Rc<storage::FileMemoryAdapter>,
+    storage: Rc<storage::MemoryWorker>,
 }
 
 impl ModuleLifecycle for MemoryLifecycle {
     fn prepare(&self, _context: lenso_kernel::PrepareContext) -> ModuleFuture {
         let storage = self.storage.clone();
-        Box::pin(async move { storage.verify_ready().map_err(memory_runtime_failure) })
+        Box::pin(async move { storage.verify_ready().await.map_err(memory_runtime_failure) })
     }
 
     fn activate(&self, _context: ActivateContext) -> ModuleFuture {
@@ -97,7 +98,8 @@ impl ModuleLifecycle for MemoryLifecycle {
     }
 
     fn deactivate(&self, _context: DeactivateContext) -> ModuleFuture {
-        Box::pin(async { Ok(()) })
+        let storage = self.storage.clone();
+        Box::pin(async move { storage.stop().await.map_err(memory_runtime_failure) })
     }
 }
 
@@ -127,7 +129,13 @@ impl NativeModuleFactory for MemoryFactory {
                 detail: "agent memory requires storage_path".to_owned(),
             });
         }
-        let storage = Rc::new(storage::FileMemoryAdapter::new(configuration.storage_path));
+        let storage = Rc::new(
+            storage::MemoryWorker::spawn(configuration.storage_path).map_err(|error| {
+                RuntimeFailure::Internal {
+                    detail: error.to_string(),
+                }
+            })?,
+        );
         Ok(NativeModuleInstance::with_lifecycle(
             vec![Rc::new(lenso_capability_agent_memory::MemoryEndpoint::new(
                 MemoryProvider {
@@ -139,8 +147,20 @@ impl NativeModuleFactory for MemoryFactory {
     }
 }
 
-fn memory_runtime_failure(error: storage::MemoryStorageError) -> RuntimeFailure {
-    RuntimeFailure::Internal {
-        detail: error.to_string(),
+fn memory_runtime_failure(error: storage::MemoryWorkerError) -> RuntimeFailure {
+    match error {
+        storage::MemoryWorkerError::Busy
+        | storage::MemoryWorkerError::Storage(storage::MemoryStorageError::ResourceLimit {
+            ..
+        }) => RuntimeFailure::ResourceExhausted {
+            capability: lenso_capability_agent_memory::CAPABILITY_ID,
+            operation: "storage".to_owned(),
+        },
+        storage::MemoryWorkerError::Stopped => RuntimeFailure::Unavailable {
+            capability: lenso_capability_agent_memory::CAPABILITY_ID,
+        },
+        storage::MemoryWorkerError::Storage(error) => RuntimeFailure::Internal {
+            detail: error.to_string(),
+        },
     }
 }

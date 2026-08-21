@@ -50,10 +50,10 @@ export interface ReadResponse {
   revision: Uint64;
 }
 
-export type AppendError = "invalid_key" | "storage_unavailable" | UnknownDomainError;
+export type AppendError = "invalid_key" | UnknownDomainError;
 export type AppendInvocationError = { readonly kind: "domain"; readonly error: AppendError } | { readonly kind: "runtime"; readonly error: RuntimeFailure };
 export type AppendResult = { readonly ok: true; readonly value: AppendResponse } | { readonly ok: false; readonly error: AppendInvocationError };
-export type ReadError = "invalid_key" | "missing_key" | "storage_unavailable" | UnknownDomainError;
+export type ReadError = "invalid_key" | "missing_key" | UnknownDomainError;
 export type ReadInvocationError = { readonly kind: "domain"; readonly error: ReadError } | { readonly kind: "runtime"; readonly error: RuntimeFailure };
 export type ReadResult = { readonly ok: true; readonly value: ReadResponse } | { readonly ok: false; readonly error: ReadInvocationError };
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -84,7 +84,6 @@ export function decodeAppendError(wire: string): AppendError {
   validatePortableJson(value);
   if (typeof value === "string") {
     if (value === "invalid_key") return value as AppendError;
-    if (value === "storage_unavailable") return value as AppendError;
     return { code: value } as AppendError;
   }
   if (isRecord(value) && typeof value.code === "string") return value as AppendError;
@@ -102,7 +101,6 @@ export function decodeReadError(wire: string): ReadError {
   if (typeof value === "string") {
     if (value === "invalid_key") return value as ReadError;
     if (value === "missing_key") return value as ReadError;
-    if (value === "storage_unavailable") return value as ReadError;
     return { code: value } as ReadError;
   }
   if (isRecord(value) && typeof value.code === "string") return value as ReadError;

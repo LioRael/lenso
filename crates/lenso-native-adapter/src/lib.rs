@@ -4,17 +4,16 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use lenso_app_plan::{ExecutionClassId, ResolvedAppPlan};
 use lenso_kernel::{
-    ModuleLifecycle, NativeEventEndpoint, NativeExecutionAdapter, NativeRequestEndpoint,
-    NativeStreamEndpoint, NoopModuleLifecycle, PreparedBinding, PreparedEventBinding,
-    PreparedNativeApp, PreparedNativeModule, PreparedStreamBinding, RuntimeFailure,
+    ModuleLifecycle, NativeEndpointSet, NativeEventEndpoint, NativeExecutionAdapter,
+    NativeRequestEndpoint, NativeStreamEndpoint, NoopModuleLifecycle, PreparedBinding,
+    PreparedEventBinding, PreparedNativeApp, PreparedNativeModule, PreparedStreamBinding,
+    RuntimeFailure,
 };
 
 /// Endpoints created for one statically linked Module Instance generation.
 #[derive(Debug)]
 pub struct NativeModuleInstance {
-    endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-    stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
-    event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
+    endpoints: NativeEndpointSet,
     lifecycle: Rc<dyn ModuleLifecycle>,
 }
 
@@ -30,9 +29,7 @@ impl NativeModuleInstance {
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
         Self {
-            endpoints,
-            stream_endpoints: Vec::new(),
-            event_endpoints: Vec::new(),
+            endpoints: NativeEndpointSet::new(endpoints, Vec::new(), Vec::new()),
             lifecycle: Rc::new(lifecycle),
         }
     }
@@ -44,9 +41,7 @@ impl NativeModuleInstance {
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
         Self {
-            endpoints,
-            stream_endpoints,
-            event_endpoints: Vec::new(),
+            endpoints: NativeEndpointSet::new(endpoints, stream_endpoints, Vec::new()),
             lifecycle: Rc::new(lifecycle),
         }
     }
@@ -65,9 +60,7 @@ impl NativeModuleInstance {
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
         Self {
-            endpoints: Vec::new(),
-            stream_endpoints: Vec::new(),
-            event_endpoints,
+            endpoints: NativeEndpointSet::new(Vec::new(), Vec::new(), event_endpoints),
             lifecycle: Rc::new(lifecycle),
         }
     }
@@ -80,9 +73,7 @@ impl NativeModuleInstance {
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
         Self {
-            endpoints,
-            stream_endpoints,
-            event_endpoints,
+            endpoints: NativeEndpointSet::new(endpoints, stream_endpoints, event_endpoints),
             lifecycle: Rc::new(lifecycle),
         }
     }
@@ -94,17 +85,17 @@ impl NativeModuleInstance {
 
     /// Returns the exact endpoint set created for this generation.
     pub fn endpoints(&self) -> &[Rc<dyn NativeRequestEndpoint>] {
-        &self.endpoints
+        self.endpoints.request()
     }
 
     /// Returns the exact bidirectional stream endpoint set created for this generation.
     pub fn stream_endpoints(&self) -> &[Rc<dyn NativeStreamEndpoint>] {
-        &self.stream_endpoints
+        self.endpoints.stream()
     }
 
     /// Returns the exact ephemeral Event endpoint set created for this Instance.
     pub fn event_endpoints(&self) -> &[Rc<dyn NativeEventEndpoint>] {
-        &self.event_endpoints
+        self.endpoints.event()
     }
 }
 
@@ -164,6 +155,14 @@ pub struct NativeModuleRegistry {
     factories: Vec<Rc<dyn NativeModuleFactory>>,
 }
 
+type NativeInstances = BTreeMap<String, NativeModuleInstance>;
+type PreparedGenerations = BTreeMap<String, PreparedNativeModule>;
+type NativeBindings = (
+    Vec<PreparedBinding>,
+    Vec<PreparedStreamBinding>,
+    Vec<PreparedEventBinding>,
+);
+
 impl NativeModuleRegistry {
     /// Creates an empty linked-factory registry.
     pub fn new() -> Self {
@@ -175,15 +174,11 @@ impl NativeModuleRegistry {
         self.factories.push(Rc::new(factory));
         self
     }
-}
 
-impl NativeExecutionAdapter for NativeModuleRegistry {
-    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
-        plan.validate()
-            .map_err(|error| RuntimeFailure::InvalidResolvedPlan {
-                detail: error.to_string(),
-            })?;
-
+    fn prepare_instances(
+        &self,
+        plan: &ResolvedAppPlan,
+    ) -> Result<(NativeInstances, PreparedGenerations), RuntimeFailure> {
         let mut instances = BTreeMap::new();
         let mut generations = BTreeMap::new();
         for expected in plan
@@ -213,14 +208,11 @@ impl NativeExecutionAdapter for NativeModuleRegistry {
             };
             let generation =
                 factory.instantiate(NativeModuleFactoryContext::from_plan(expected))?;
-            let lifecycle = generation.lifecycle();
             generations.insert(
                 expected.instance_key().to_owned(),
-                PreparedNativeModule::with_all_endpoints_lifecycle(
+                PreparedNativeModule::with_endpoint_set_lifecycle(
                     generation.endpoints.clone(),
-                    generation.stream_endpoints.clone(),
-                    generation.event_endpoints.clone(),
-                    lifecycle.clone(),
+                    generation.lifecycle(),
                 ),
             );
             if instances
@@ -233,95 +225,19 @@ impl NativeExecutionAdapter for NativeModuleRegistry {
                 ));
             }
         }
+        Ok((instances, generations))
+    }
+}
 
-        let mut bindings = Vec::new();
-        let mut stream_bindings = Vec::new();
-        let mut event_bindings = Vec::new();
-        for binding in plan.capability_bindings() {
-            if !instances.contains_key(binding.provider_instance()) {
-                continue;
-            }
-            let provider = plan
-                .module_instance(binding.provider_instance())
-                .expect("validated binding provider should exist");
-            let descriptor = provider
-                .provided_capabilities()
-                .iter()
-                .find(|descriptor| descriptor.capability_id() == binding.capability_id())
-                .expect("validated binding descriptor should exist");
-            if !descriptor.request_operations().is_empty() {
-                let endpoint = instances
-                    .get(binding.provider_instance())
-                    .and_then(|instance| {
-                        instance.endpoints.iter().find(|endpoint| {
-                            endpoint.capability_id() == binding.capability_id()
-                                && endpoint.descriptor_version() == binding.descriptor_version()
-                        })
-                    })
-                    .cloned()
-                    .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
-                        detail: format!(
-                            "Capability `{}` version `{}` has no request endpoint on provider `{}`",
-                            binding.capability_id(),
-                            binding.descriptor_version(),
-                            binding.provider_instance()
-                        ),
-                    })?;
-                bindings.push(PreparedBinding::new(
-                    binding.consumer_instance(),
-                    binding.provider_instance(),
-                    endpoint,
-                ));
-            }
-            if !descriptor.stream_operations().is_empty() {
-                let endpoint = instances
-                    .get(binding.provider_instance())
-                    .and_then(|instance| {
-                        instance.stream_endpoints.iter().find(|endpoint| {
-                            endpoint.capability_id() == binding.capability_id()
-                                && endpoint.descriptor_version() == binding.descriptor_version()
-                        })
-                    })
-                    .cloned()
-                    .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
-                        detail: format!(
-                            "Capability `{}` version `{}` has no stream endpoint on provider `{}`",
-                            binding.capability_id(),
-                            binding.descriptor_version(),
-                            binding.provider_instance()
-                        ),
-                    })?;
-                stream_bindings.push(PreparedStreamBinding::new(
-                    binding.consumer_instance(),
-                    binding.provider_instance(),
-                    endpoint,
-                ));
-            }
-            if !descriptor.event_operations().is_empty() {
-                let endpoint = instances
-                    .get(binding.provider_instance())
-                    .and_then(|instance| {
-                        instance.event_endpoints.iter().find(|endpoint| {
-                            endpoint.capability_id() == binding.capability_id()
-                                && endpoint.descriptor_version() == binding.descriptor_version()
-                        })
-                    })
-                    .cloned()
-                    .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
-                        detail: format!(
-                            "Capability `{}` version `{}` has no Event endpoint on provider `{}`",
-                            binding.capability_id(),
-                            binding.descriptor_version(),
-                            binding.provider_instance()
-                        ),
-                    })?;
-                event_bindings.push(PreparedEventBinding::new(
-                    binding.consumer_instance(),
-                    binding.provider_instance(),
-                    endpoint,
-                ));
-            }
-        }
+impl NativeExecutionAdapter for NativeModuleRegistry {
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        plan.validate()
+            .map_err(|error| RuntimeFailure::InvalidResolvedPlan {
+                detail: error.to_string(),
+            })?;
+
+        let (instances, generations) = self.prepare_instances(plan)?;
+        let (bindings, stream_bindings, event_bindings) = prepare_bindings(plan, &instances)?;
         Ok(PreparedNativeApp::new(bindings, generations)
             .with_stream_bindings(stream_bindings)
             .with_event_bindings(event_bindings))
@@ -360,13 +276,106 @@ impl NativeExecutionAdapter for NativeModuleRegistry {
             }
         };
         let generation = factory.instantiate(NativeModuleFactoryContext::from_plan(expected))?;
-        Ok(PreparedNativeModule::with_all_endpoints_lifecycle(
+        Ok(PreparedNativeModule::with_endpoint_set_lifecycle(
             generation.endpoints.clone(),
-            generation.stream_endpoints.clone(),
-            generation.event_endpoints.clone(),
             generation.lifecycle(),
         ))
     }
+}
+
+fn prepare_bindings(
+    plan: &ResolvedAppPlan,
+    instances: &NativeInstances,
+) -> Result<NativeBindings, RuntimeFailure> {
+    let mut bindings = Vec::new();
+    let mut stream_bindings = Vec::new();
+    let mut event_bindings = Vec::new();
+    for binding in plan.capability_bindings() {
+        if !instances.contains_key(binding.provider_instance()) {
+            continue;
+        }
+        let provider = plan
+            .module_instance(binding.provider_instance())
+            .expect("validated binding provider should exist");
+        let descriptor = provider
+            .provided_capabilities()
+            .iter()
+            .find(|descriptor| descriptor.capability_id() == binding.capability_id())
+            .expect("validated binding descriptor should exist");
+        if !descriptor.request_operations().is_empty() {
+            let endpoint = instances
+                .get(binding.provider_instance())
+                .and_then(|instance| {
+                    instance.endpoints.request().iter().find(|endpoint| {
+                        endpoint.capability_id() == binding.capability_id()
+                            && endpoint.descriptor_version() == binding.descriptor_version()
+                    })
+                })
+                .cloned()
+                .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "Capability `{}` version `{}` has no request endpoint on provider `{}`",
+                        binding.capability_id(),
+                        binding.descriptor_version(),
+                        binding.provider_instance()
+                    ),
+                })?;
+            bindings.push(PreparedBinding::new(
+                binding.consumer_instance(),
+                binding.provider_instance(),
+                endpoint,
+            ));
+        }
+        if !descriptor.stream_operations().is_empty() {
+            let endpoint = instances
+                .get(binding.provider_instance())
+                .and_then(|instance| {
+                    instance.endpoints.stream().iter().find(|endpoint| {
+                        endpoint.capability_id() == binding.capability_id()
+                            && endpoint.descriptor_version() == binding.descriptor_version()
+                    })
+                })
+                .cloned()
+                .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "Capability `{}` version `{}` has no stream endpoint on provider `{}`",
+                        binding.capability_id(),
+                        binding.descriptor_version(),
+                        binding.provider_instance()
+                    ),
+                })?;
+            stream_bindings.push(PreparedStreamBinding::new(
+                binding.consumer_instance(),
+                binding.provider_instance(),
+                endpoint,
+            ));
+        }
+        if !descriptor.event_operations().is_empty() {
+            let endpoint = instances
+                .get(binding.provider_instance())
+                .and_then(|instance| {
+                    instance.endpoints.event().iter().find(|endpoint| {
+                        endpoint.capability_id() == binding.capability_id()
+                            && endpoint.descriptor_version() == binding.descriptor_version()
+                    })
+                })
+                .cloned()
+                .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "Capability `{}` version `{}` has no Event endpoint on provider `{}`",
+                        binding.capability_id(),
+                        binding.descriptor_version(),
+                        binding.provider_instance()
+                    ),
+                })?;
+            event_bindings.push(PreparedEventBinding::new(
+                binding.consumer_instance(),
+                binding.provider_instance(),
+                endpoint,
+            ));
+        }
+    }
+    Ok((bindings, stream_bindings, event_bindings))
 }
 
 fn invalid<T>(detail: String) -> Result<T, RuntimeFailure> {

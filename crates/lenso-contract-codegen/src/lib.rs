@@ -2902,11 +2902,7 @@ fn generate_rust(contract: &ContractIr) -> String {
     for error in invocation_errors {
         output.push_str(&error);
     }
-    if contract.operations.len() == 1 && contract.operations[0].interaction.as_str() == "event" {
-        format!("{}\n", output.trim_end())
-    } else {
-        output
-    }
+    format!("{}\n", output.trim_end())
 }
 
 #[allow(clippy::too_many_lines)]

@@ -19,12 +19,28 @@ use serde::Deserialize;
 
 use crate::AGENT_PACKAGE_ID;
 
+#[derive(Clone, Debug)]
+struct AgentDependencies {
+    model: Rc<ModelClient>,
+    tool: Rc<lenso_capability_agent_tool::ToolClient>,
+    memory: Rc<MemoryClient>,
+    progress: Rc<ProgressClient>,
+}
+
 #[derive(Debug, Default)]
 struct AgentRuntime {
-    model: RefCell<Option<Rc<ModelClient>>>,
-    tool: RefCell<Option<Rc<lenso_capability_agent_tool::ToolClient>>>,
-    memory: RefCell<Option<Rc<MemoryClient>>>,
-    progress: RefCell<Option<Rc<ProgressClient>>>,
+    dependencies: RefCell<Option<AgentDependencies>>,
+}
+
+impl AgentRuntime {
+    fn dependencies(&self) -> Result<AgentDependencies, RuntimeFailure> {
+        self.dependencies
+            .borrow()
+            .clone()
+            .ok_or_else(|| RuntimeFailure::ModuleFailure {
+                detail: "agent harness dependencies are not active".to_owned(),
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -41,24 +57,15 @@ impl ModuleLifecycle for AgentLifecycle {
         let runtime = self.runtime.clone();
         let dependencies = context.dependencies().clone();
         Box::pin(async move {
-            runtime
-                .model
-                .replace(Some(Rc::new(ModelClient::from_dependencies(
+            let resolved = AgentDependencies {
+                model: Rc::new(ModelClient::from_dependencies(&dependencies)?),
+                tool: Rc::new(lenso_capability_agent_tool::ToolClient::from_dependencies(
                     &dependencies,
-                )?)));
-            runtime.tool.replace(Some(Rc::new(
-                lenso_capability_agent_tool::ToolClient::from_dependencies(&dependencies)?,
-            )));
-            runtime
-                .memory
-                .replace(Some(Rc::new(MemoryClient::from_dependencies(
-                    &dependencies,
-                )?)));
-            runtime
-                .progress
-                .replace(Some(Rc::new(ProgressClient::from_dependencies(
-                    &dependencies,
-                )?)));
+                )?),
+                memory: Rc::new(MemoryClient::from_dependencies(&dependencies)?),
+                progress: Rc::new(ProgressClient::from_dependencies(&dependencies)?),
+            };
+            runtime.dependencies.replace(Some(resolved));
             Ok(())
         })
     }
@@ -66,10 +73,7 @@ impl ModuleLifecycle for AgentLifecycle {
     fn deactivate(&self, _context: DeactivateContext) -> ModuleFuture {
         let runtime = self.runtime.clone();
         Box::pin(async move {
-            runtime.model.borrow_mut().take();
-            runtime.tool.borrow_mut().take();
-            runtime.memory.borrow_mut().take();
-            runtime.progress.borrow_mut().take();
+            runtime.dependencies.borrow_mut().take();
             Ok(())
         })
     }
@@ -78,6 +82,7 @@ impl ModuleLifecycle for AgentLifecycle {
 #[derive(Clone, Debug, Deserialize)]
 struct AgentConfiguration {
     memory_key: String,
+    max_model_output_bytes: usize,
     tool_name: String,
 }
 
@@ -99,6 +104,10 @@ impl AgentProvider for AgentProviderImpl {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the linear harness flow keeps stage ordering and failure propagation visible"
+)]
 async fn run_agent(
     runtime: Rc<AgentRuntime>,
     configuration: AgentConfiguration,
@@ -109,11 +118,10 @@ async fn run_agent(
         return Err(AgentInvocationError::Domain(RunError::InvalidPrompt));
     }
     let RunRequest { prompt, run_id } = request;
-    let progress = runtime.progress.borrow().clone().ok_or_else(|| {
-        AgentInvocationError::Runtime(RuntimeFailure::Unavailable {
-            capability: lenso_capability_agent_progress::CAPABILITY_ID,
-        })
-    })?;
+    let dependencies = runtime
+        .dependencies()
+        .map_err(AgentInvocationError::Runtime)?;
+    let progress = dependencies.progress;
     let progress_event = |stage: &str, detail: &str| UpdateRequest {
         detail: detail.to_owned(),
         run_id: run_id.clone(),
@@ -126,11 +134,7 @@ async fn run_agent(
         )
         .await;
 
-    let memory = runtime.memory.borrow().clone().ok_or_else(|| {
-        AgentInvocationError::Runtime(RuntimeFailure::Unavailable {
-            capability: lenso_capability_agent_memory::CAPABILITY_ID,
-        })
-    })?;
+    let memory = dependencies.memory;
     let memory_entries = match memory
         .read_with_context(
             context.clone(),
@@ -158,11 +162,7 @@ async fn run_agent(
         )
         .await;
 
-    let tool = runtime.tool.borrow().clone().ok_or_else(|| {
-        AgentInvocationError::Runtime(RuntimeFailure::Unavailable {
-            capability: lenso_capability_agent_tool::CAPABILITY_ID,
-        })
-    })?;
+    let tool = dependencies.tool;
     let tool_response = match tool
         .execute_with_context(
             context.clone(),
@@ -188,11 +188,7 @@ async fn run_agent(
         )
         .await;
 
-    let model = runtime.model.borrow().clone().ok_or_else(|| {
-        AgentInvocationError::Runtime(RuntimeFailure::Unavailable {
-            capability: lenso_capability_agent_model::CAPABILITY_ID,
-        })
-    })?;
+    let model = dependencies.model;
     let stream = match model
         .complete_with_context(
             context.clone(),
@@ -216,6 +212,19 @@ async fn run_agent(
     loop {
         match stream.receive().await {
             Ok(ModelEvent::Message(message)) => {
+                let within_limit = text
+                    .len()
+                    .checked_add(message.delta.len())
+                    .is_some_and(|length| length <= configuration.max_model_output_bytes);
+                if !within_limit {
+                    stream.cancel();
+                    return Err(AgentInvocationError::Runtime(
+                        RuntimeFailure::ResourceExhausted {
+                            capability: lenso_capability_agent_model::CAPABILITY_ID,
+                            operation: lenso_capability_agent_model::COMPLETE_OPERATION.to_owned(),
+                        },
+                    ));
+                }
                 text.push_str(&message.delta);
                 let _ = progress
                     .update_with_context(
@@ -244,7 +253,7 @@ async fn run_agent(
         .append_with_context(
             context.clone(),
             AppendRequest {
-                entry: format!("{} => {}", run_id, text),
+                entry: format!("{run_id} => {text}"),
                 key: configuration.memory_key,
             },
         )
@@ -283,9 +292,13 @@ impl NativeModuleFactory for AgentFactory {
             .map_err(|error| RuntimeFailure::InvalidResolvedPlan {
                 detail: format!("agent harness configuration is invalid: {error}"),
             })?;
-        if configuration.memory_key.is_empty() || configuration.tool_name.is_empty() {
+        if configuration.memory_key.is_empty()
+            || configuration.max_model_output_bytes == 0
+            || configuration.tool_name.is_empty()
+        {
             return Err(RuntimeFailure::InvalidResolvedPlan {
-                detail: "agent harness requires memory_key and tool_name".to_owned(),
+                detail: "agent harness requires memory_key, max_model_output_bytes, and tool_name"
+                    .to_owned(),
             });
         }
         let runtime = Rc::new(AgentRuntime::default());

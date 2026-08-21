@@ -1,7 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
-    { "const": "invalid_key" },
-    { "const": "storage_unavailable" }
+    { "const": "invalid_key" }
   ]
 }
