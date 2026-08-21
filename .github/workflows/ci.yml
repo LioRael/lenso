@@ -40,6 +40,8 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Run target-owned Web UI generated-client conformance
+        run: cargo test --locked -p lenso-vnext-web-ui --test web_ui generated_browser_client_invokes_the_allowlisted_app_capability -- --ignored --test-threads=1
       - name: Run TypeScript portable contract conformance
         run: bun test fixtures/portable-contract/conformance.test.ts
       - name: Run Rust and TypeScript trace-context conformance

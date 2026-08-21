@@ -16,8 +16,11 @@ use std::{
 
 use serde_json::{Map, Value};
 
+mod browser;
 mod ir;
 mod rust_debug;
+
+pub use browser::generate_browser_request_client;
 
 use ir::{ContractIr, ErrorVariantIr, FieldIr, ObjectAdditionalIr, OperationIr, TypeIr};
 

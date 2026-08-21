@@ -954,6 +954,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-capability-ui-contribution"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-capability-web-shell"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lenso-contract-codegen"
 version = "0.1.0"
 dependencies = [
@@ -1070,6 +1092,28 @@ dependencies = [
  "serde",
  "serde_json",
  "time",
+]
+
+[[package]]
+name = "lenso-vnext-web-ui"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-app-plan",
+ "lenso-auth-sdk",
+ "lenso-authoring",
+ "lenso-capability-auth",
+ "lenso-capability-secure-greeting",
+ "lenso-capability-ui-contribution",
+ "lenso-capability-web-shell",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "lenso-native-adapter",
+ "lenso-runner",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
 ]
 
 [[package]]
