@@ -11,6 +11,25 @@ const FIXTURE: &str = "tests/fixtures/profile/capability.json";
 const STREAM_FIXTURE: &str = "tests/fixtures/stream/capability.json";
 const EVENT_FIXTURE: &str = "tests/fixtures/event/capability.json";
 const AUTH_FIXTURE: &str = "../lenso-capability-auth/capability.json";
+const GREETING_FIXTURE: &str = "../lenso-capability-greeting/capability.json";
+
+#[test]
+fn descriptor_marks_generated_types_for_cross_lane_transfer() {
+    let artifacts =
+        generate(Path::new(GREETING_FIXTURE)).expect("Greeting Descriptor should generate");
+
+    assert!(artifacts.metadata.cross_lane_transfer);
+    assert!(
+        artifacts
+            .rust
+            .contains("pub const CROSS_LANE_TRANSFER: bool = true;")
+    );
+    assert!(
+        artifacts
+            .typescript
+            .contains("export const CROSS_LANE_TRANSFER = true;")
+    );
+}
 
 #[test]
 fn browser_request_clients_share_descriptor_identity_and_result_envelopes() {

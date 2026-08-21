@@ -159,6 +159,10 @@ impl RequestAdmission {
         }
     }
 
+    pub(super) fn queue_depth(&self) -> usize {
+        self.state.queued.get()
+    }
+
     pub(crate) fn try_acquire(
         &self,
         capability: &'static str,
