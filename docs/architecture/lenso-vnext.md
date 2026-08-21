@@ -162,6 +162,27 @@ See ADRs [0036](../adr/0036-expose-non-blocking-runtime-diagnostics.md),
 [0041](../adr/0041-keep-persistence-owned-by-stateful-modules.md), and
 [0042](../adr/0042-keep-migrations-and-distributed-consistency-out-of-the-kernel.md).
 
+### Optional OpenTelemetry Module
+
+The `lenso-otel-module` package subscribes to the externally supplied Runtime
+Diagnostics port and owns its bounded asynchronous exporter tasks. It converts
+structural diagnostics to OTel Logs and accepts explicitly authored OTel Span,
+Metric, and Log signals only when the App selects the Module and its declared
+Capability binding. Exporter failure, queue drops, and cancellation are
+best-effort telemetry outcomes and do not change App behavior.
+
+The package also owns W3C Trace Context propagation through the sealed
+`lenso.otel.trace-context` extension. Issuer provenance, exact target audience,
+and proof survive native and Bun Adapter hops; the receiver verifies them
+before interpretation. The payload remains free of request bodies, secrets,
+configuration, domain error bodies, arbitrary extensions, and ActorAssertions.
+
+Telemetry is operational observation, not durable business evidence. Audit and
+Story Modules remain the owners for compliance history, durable events, and
+replayable business narrative. Removing this package leaves Kernel diagnostics,
+Invocation Context, and Adapter contracts unchanged; see
+[ADR 0061](../adr/0061-export-opentelemetry-from-a-removable-module.md).
+
 ## Console and UI
 
 A target-owned App Web UI is an optional ordinary Module composition inside the
