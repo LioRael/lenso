@@ -23,6 +23,22 @@ pub enum PlanValidationError {
     InvalidResolvedPlan { detail: String },
 }
 
+impl std::fmt::Display for PlanValidationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedSchemaVersion { expected, actual } => write!(
+                formatter,
+                "unsupported Resolved App Plan schema {actual}; expected {expected}"
+            ),
+            Self::InvalidResolvedPlan { detail } => {
+                write!(formatter, "invalid Resolved App Plan: {detail}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PlanValidationError {}
+
 /// The portable App execution engine.
 #[derive(Debug)]
 pub struct Kernel;
