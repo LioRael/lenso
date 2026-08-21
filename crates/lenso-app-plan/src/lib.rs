@@ -26,6 +26,17 @@ pub enum CapabilityCardinality {
     Many,
 }
 
+/// The transport-independent interaction semantics of one Capability Operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CapabilityOperationKind {
+    /// One request produces one response or Domain Error.
+    Request,
+    /// One open establishes an ordered, bidirectional stream session.
+    Stream,
+    /// One publication is delivered to zero or more subscribers.
+    Event,
+}
+
 /// The bounded admission policy materialized for one request Operation.
 ///
 /// `queue_capacity` counts requests waiting for one of the
@@ -304,6 +315,7 @@ pub struct CapabilityEndpointPlan {
     capability_id: String,
     descriptor_version: String,
     operations: Vec<String>,
+    operation_kinds: BTreeMap<String, CapabilityOperationKind>,
     default_admission: Option<RequestAdmissionPlan>,
     operation_admissions: BTreeMap<String, RequestAdmissionPlan>,
 }
@@ -319,6 +331,7 @@ impl CapabilityEndpointPlan {
             capability_id: capability_id.into(),
             descriptor_version: descriptor_version.into(),
             operations: operations.into_iter().map(Into::into).collect(),
+            operation_kinds: BTreeMap::new(),
             default_admission: None,
             operation_admissions: BTreeMap::new(),
         }
@@ -335,6 +348,29 @@ impl CapabilityEndpointPlan {
     #[must_use]
     pub fn with_limits(self, queue_capacity: usize, max_concurrency: usize) -> Self {
         self.with_admission(RequestAdmissionPlan::new(queue_capacity, max_concurrency))
+    }
+
+    /// Marks one declared Operation with its transport-independent interaction kind.
+    #[must_use]
+    pub fn with_operation_kind(
+        mut self,
+        operation: impl Into<String>,
+        kind: CapabilityOperationKind,
+    ) -> Self {
+        self.operation_kinds.insert(operation.into(), kind);
+        self
+    }
+
+    /// Marks one declared Operation as a bidirectional stream.
+    #[must_use]
+    pub fn with_stream_operation(self, operation: impl Into<String>) -> Self {
+        self.with_operation_kind(operation, CapabilityOperationKind::Stream)
+    }
+
+    /// Marks one declared Operation as an ephemeral Event.
+    #[must_use]
+    pub fn with_event_operation(self, operation: impl Into<String>) -> Self {
+        self.with_operation_kind(operation, CapabilityOperationKind::Event)
     }
 
     /// Applies one bounded admission policy to a named Operation.
@@ -376,6 +412,41 @@ impl CapabilityEndpointPlan {
     /// Returns the exact stable Operation table.
     pub fn operations(&self) -> &[String] {
         &self.operations
+    }
+
+    /// Returns the interaction kind of one declared Operation.
+    pub fn operation_kind(&self, operation: &str) -> Option<CapabilityOperationKind> {
+        self.operations
+            .iter()
+            .any(|declared| declared == operation)
+            .then(|| {
+                self.operation_kinds
+                    .get(operation)
+                    .copied()
+                    .unwrap_or(CapabilityOperationKind::Request)
+            })
+    }
+
+    /// Returns the declared stream Operation names in Descriptor order.
+    pub fn stream_operations(&self) -> Vec<&str> {
+        self.operations
+            .iter()
+            .filter(|operation| {
+                self.operation_kind(operation) == Some(CapabilityOperationKind::Stream)
+            })
+            .map(String::as_str)
+            .collect()
+    }
+
+    /// Returns the declared request Operation names in Descriptor order.
+    pub fn request_operations(&self) -> Vec<&str> {
+        self.operations
+            .iter()
+            .filter(|operation| {
+                self.operation_kind(operation) == Some(CapabilityOperationKind::Request)
+            })
+            .map(String::as_str)
+            .collect()
     }
 
     /// Returns the endpoint-wide admission policy, when one was authored.
@@ -739,6 +810,11 @@ pub enum PlanResolutionError {
         capability_id: String,
         operation: String,
     },
+    /// Interaction metadata was configured for an absent Operation.
+    UnknownOperationInteraction {
+        capability_id: String,
+        operation: String,
+    },
     /// A Module Instance selected an unusable finite restart policy.
     InvalidRestartPolicy {
         instance_key: String,
@@ -864,6 +940,13 @@ impl fmt::Display for PlanResolutionError {
             } => write!(
                 formatter,
                 "Capability `{capability_id}` configures request admission for unknown Operation `{operation}`"
+            ),
+            Self::UnknownOperationInteraction {
+                capability_id,
+                operation,
+            } => write!(
+                formatter,
+                "Capability `{capability_id}` configures interaction metadata for unknown Operation `{operation}`"
             ),
             Self::InvalidRestartPolicy {
                 instance_key,
@@ -1219,6 +1302,18 @@ fn validate_endpoint_admission(
             .any(|declared| declared == operation)
         {
             return Err(PlanResolutionError::UnknownAdmissionOperation {
+                capability_id: endpoint.capability_id.clone(),
+                operation: operation.clone(),
+            });
+        }
+    }
+    for operation in endpoint.operation_kinds.keys() {
+        if !endpoint
+            .operations
+            .iter()
+            .any(|declared| declared == operation)
+        {
+            return Err(PlanResolutionError::UnknownOperationInteraction {
                 capability_id: endpoint.capability_id.clone(),
                 operation: operation.clone(),
             });
