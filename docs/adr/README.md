@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0061 are the accepted, normative architecture decisions for
+ADRs 0030 through 0062 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -21,6 +21,10 @@ independent cross-App Console.
 [`0061-export-opentelemetry-from-a-removable-module.md`](0061-export-opentelemetry-from-a-removable-module.md)
 keeps OpenTelemetry export, trace propagation, and application telemetry in an
 optional removable Module.
+
+[`0062-serve-authenticated-game-sessions-through-protocol-modules.md`](0062-serve-authenticated-game-sessions-through-protocol-modules.md)
+keeps non-HTTP framing and game-session authorization in replaceable Modules
+while the Kernel owns only the typed Stream and Auth seams.
 
 ## Legacy decisions
 
