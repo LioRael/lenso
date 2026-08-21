@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0060 are the accepted, normative architecture decisions for
+ADRs 0030 through 0061 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -17,6 +17,10 @@ records the transport-neutral stream seam and its Rust/Bun conformance evidence.
 [`0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md`](0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md)
 supersedes ADR 0044 by distinguishing a target-owned App Web UI from an
 independent cross-App Console.
+
+[`0061-export-opentelemetry-from-a-removable-module.md`](0061-export-opentelemetry-from-a-removable-module.md)
+keeps OpenTelemetry export, trace propagation, and application telemetry in an
+optional removable Module.
 
 ## Legacy decisions
 
