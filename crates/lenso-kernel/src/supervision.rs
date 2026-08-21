@@ -1,10 +1,11 @@
 use super::{
-    ActivateContext, AppAdmission, BTreeMap, DeactivateContext, DeactivationReason, Duration,
-    Either, FutureExt, GenerationPreparationFailure, ManagedResourceScope, ManagedTask,
-    ManagedTaskScope, ModuleDependencies, ModuleLifecycle, ModuleSupervision, NativeAppRuntime,
-    NativeEventEndpoint, NativeModuleGeneration, NativeModuleRuntime, NativeRequestEndpoint,
-    NativeStreamEndpoint, PrepareContext, Rc, ResolvedAppPlan, RestartMode, RuntimeFailure,
-    ShutdownOutcome, attach_managed_task_failure_handler, select, wait_until,
+    ActivateContext, AppAdmission, BTreeMap, DeactivateContext, DeactivationReason,
+    DiagnosticEvent, DiagnosticSource, Duration, Either, FutureExt, GenerationPreparationFailure,
+    ManagedResourceScope, ManagedTask, ManagedTaskScope, ModuleDependencies, ModuleLifecycle,
+    ModuleSupervision, NativeAppRuntime, NativeEventEndpoint, NativeModuleGeneration,
+    NativeModuleRuntime, NativeRequestEndpoint, NativeStreamEndpoint, PrepareContext, Rc,
+    ResolvedAppPlan, RestartMode, RuntimeDiagnostics, RuntimeFailure, ShutdownOutcome,
+    attach_managed_task_failure_handler, select, wait_until,
 };
 
 pub(super) async fn deactivate_in_reverse(
@@ -13,6 +14,8 @@ pub(super) async fn deactivate_in_reverse(
     activation_order: &[String],
     reason: DeactivationReason,
     admission: &AppAdmission,
+    diagnostics: &RuntimeDiagnostics,
+    driver: &super::DriverControl,
 ) -> Option<RuntimeFailure> {
     let mut first_error = None;
     for instance_key in activation_order.iter().rev() {
@@ -28,6 +31,9 @@ pub(super) async fn deactivate_in_reverse(
             dependencies.get(instance_key).cloned().unwrap_or_default(),
             reason,
             admission.clone(),
+            1,
+            diagnostics,
+            driver,
         )
         .await
             && first_error.is_none()
@@ -70,6 +76,21 @@ pub(super) async fn shutdown_native_modules(
             continue;
         };
         let cancellation = tasks.cancellation();
+        let generation = runtime
+            .supervision
+            .borrow()
+            .get(instance_key)
+            .map_or(1, |state| state.generation);
+        let started_at = (runtime.driver.now)();
+        runtime
+            .diagnostics
+            .emit(DiagnosticSource::Lifecycle, started_at, |_| {
+                DiagnosticEvent::LifecycleStarted {
+                    instance: instance_key.clone(),
+                    generation,
+                    phase: super::ModuleLifecyclePhase::Deactivate,
+                }
+            });
         let result = wait_until(
             &runtime.driver,
             deadline,
@@ -88,9 +109,32 @@ pub(super) async fn shutdown_native_modules(
             }),
         )
         .await;
+        let outcome = match &result {
+            Some(Ok(())) => super::DiagnosticOutcome::Succeeded,
+            Some(Err(error)) => super::DiagnosticOutcome::RuntimeFailure(error.into()),
+            None => super::DiagnosticOutcome::RuntimeFailure(
+                super::RuntimeFailureKind::DeadlineExceeded,
+            ),
+        };
+        runtime
+            .diagnostics
+            .emit(DiagnosticSource::Lifecycle, (runtime.driver.now)(), |_| {
+                DiagnosticEvent::LifecycleCompleted {
+                    instance: instance_key.clone(),
+                    generation,
+                    phase: super::ModuleLifecyclePhase::Deactivate,
+                    outcome,
+                    elapsed: (runtime.driver.now)().saturating_sub(started_at),
+                }
+            });
         match result {
             Some(Ok(())) => {}
             Some(Err(error)) => {
+                runtime.diagnostics.emit_runtime_failure(
+                    (runtime.driver.now)(),
+                    Some(instance_key),
+                    &error,
+                );
                 if first_error.is_none() {
                     first_error = Some(error);
                 }
@@ -103,6 +147,11 @@ pub(super) async fn shutdown_native_modules(
 
         match resources.release_all_until(&runtime.driver, deadline).await {
             Ok(Some(error)) => {
+                runtime.diagnostics.emit_runtime_failure(
+                    (runtime.driver.now)(),
+                    Some(instance_key),
+                    &error,
+                );
                 if first_error.is_none() {
                     first_error = Some(error);
                 }
@@ -202,6 +251,7 @@ pub(super) fn begin_module_supervision(
     }
     state.stable_since = None;
     state.restarting = true;
+    let generation = state.generation;
     drop(supervision);
     for ((provider, _), endpoint) in &runtime.endpoint_states {
         if provider == instance_key {
@@ -218,6 +268,14 @@ pub(super) fn begin_module_supervision(
             endpoint.mark_unavailable();
         }
     }
+    runtime.diagnostics.emit(
+        DiagnosticSource::Supervision,
+        (runtime.driver.now)(),
+        |_| DiagnosticEvent::GenerationUnavailable {
+            instance: instance_key.to_owned(),
+            generation,
+        },
+    );
     Ok(true)
 }
 
@@ -252,6 +310,11 @@ pub(super) async fn supervise_module_instance(
     if runtime.shutdown_started.get() {
         return Err(RuntimeFailure::AdmissionClosed);
     }
+    let current_generation = runtime
+        .supervision
+        .borrow()
+        .get(&instance_key)
+        .map_or(1, |state| state.generation);
     let generation = runtime
         .modules
         .get(&instance_key)
@@ -262,6 +325,7 @@ pub(super) async fn supervise_module_instance(
             &instance_key,
             generation,
             DeactivationReason::SupervisionRestart,
+            current_generation,
         )
         .await
     {
@@ -269,9 +333,18 @@ pub(super) async fn supervise_module_instance(
     }
 
     loop {
-        let Some((_attempt, delay)) = next_restart_attempt(&runtime, &instance_key) else {
+        let Some((attempt, delay)) = next_restart_attempt(&runtime, &instance_key) else {
             return finish_module_exhaustion(&runtime, &instance_key);
         };
+        runtime.diagnostics.emit(
+            DiagnosticSource::Supervision,
+            (runtime.driver.now)(),
+            |_| DiagnosticEvent::RestartScheduled {
+                instance: instance_key.clone(),
+                attempt,
+                delay,
+            },
+        );
         if !wait_for_supervision_delay(&runtime, delay).await {
             return Err(RuntimeFailure::AdmissionClosed);
         }
@@ -290,24 +363,41 @@ pub(super) async fn supervise_module_instance(
             });
         };
         let Some(adapter) = runtime.adapters.adapter(instance.execution_class()) else {
-            return Err(RuntimeFailure::UnavailableExecutionClass {
+            let error = RuntimeFailure::UnavailableExecutionClass {
                 instance_key: instance_key.clone(),
                 execution_class: instance.execution_class().to_string(),
-            });
+            };
+            runtime.diagnostics.emit_runtime_failure(
+                (runtime.driver.now)(),
+                Some(&instance_key),
+                &error,
+            );
+            return Err(error);
         };
-        let Ok(prepared) = adapter.recreate(&runtime.plan, &instance_key) else {
-            continue;
+        let prepared = match adapter.recreate(&runtime.plan, &instance_key) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                runtime.diagnostics.emit_runtime_failure(
+                    (runtime.driver.now)(),
+                    Some(&instance_key),
+                    &error,
+                );
+                continue;
+            }
         };
         let (endpoints, stream_endpoints, event_endpoints, lifecycle) = prepared.into_parts();
-        if validate_native_endpoint_set(
+        if let Err(error) = validate_native_endpoint_set(
             &instance_key,
             instance,
             &endpoints,
             &stream_endpoints,
             &event_endpoints,
-        )
-        .is_err()
-        {
+        ) {
+            runtime.diagnostics.emit_runtime_failure(
+                (runtime.driver.now)(),
+                Some(&instance_key),
+                &error,
+            );
             continue;
         }
         let generation_number = runtime
@@ -315,14 +405,20 @@ pub(super) async fn supervise_module_instance(
             .borrow()
             .get(&instance_key)
             .map_or(1, |state| state.generation.saturating_add(1));
-        let generation =
-            match prepare_and_activate_generation(&runtime, &instance_key, lifecycle).await {
-                Ok(generation) => generation,
-                Err(GenerationPreparationFailure::Lifecycle) => continue,
-                Err(GenerationPreparationFailure::Cleanup(error)) => {
-                    return finish_module_cleanup_failure(&runtime, &instance_key, error);
-                }
-            };
+        let generation = match prepare_and_activate_generation(
+            &runtime,
+            &instance_key,
+            lifecycle,
+            generation_number,
+        )
+        .await
+        {
+            Ok(generation) => generation,
+            Err(GenerationPreparationFailure::Lifecycle) => continue,
+            Err(GenerationPreparationFailure::Cleanup(error)) => {
+                return finish_module_cleanup_failure(&runtime, &instance_key, error);
+            }
+        };
 
         if runtime.shutdown_started.get() {
             let _ = cleanup_native_generation(
@@ -330,6 +426,7 @@ pub(super) async fn supervise_module_instance(
                 &instance_key,
                 generation,
                 DeactivationReason::SupervisionRestart,
+                generation_number,
             )
             .await;
             return Err(RuntimeFailure::AdmissionClosed);
@@ -351,6 +448,14 @@ pub(super) async fn supervise_module_instance(
             state.stable_since = Some((runtime.driver.now)());
             state.restarting = false;
         }
+        runtime.diagnostics.emit(
+            DiagnosticSource::Supervision,
+            (runtime.driver.now)(),
+            |_| DiagnosticEvent::GenerationReady {
+                instance: instance_key.clone(),
+                generation: generation_number,
+            },
+        );
         return Ok(());
     }
 }
@@ -411,6 +516,15 @@ pub(super) fn finish_module_exhaustion(
         )
     };
     if !must_fail {
+        runtime.diagnostics.emit(
+            DiagnosticSource::Supervision,
+            (runtime.driver.now)(),
+            |_| DiagnosticEvent::RestartExhausted {
+                instance: instance_key.to_owned(),
+                attempts,
+                terminal: false,
+            },
+        );
         return Ok(());
     }
     let error = RuntimeFailure::ModuleRestartExhausted {
@@ -419,6 +533,18 @@ pub(super) fn finish_module_exhaustion(
     };
     runtime.terminal_failure.replace(Some(error.clone()));
     runtime.begin_shutdown();
+    runtime.diagnostics.emit(
+        DiagnosticSource::Supervision,
+        (runtime.driver.now)(),
+        |_| DiagnosticEvent::RestartExhausted {
+            instance: instance_key.to_owned(),
+            attempts,
+            terminal: true,
+        },
+    );
+    runtime
+        .diagnostics
+        .emit_runtime_failure((runtime.driver.now)(), Some(instance_key), &error);
     Err(error)
 }
 
@@ -439,6 +565,9 @@ pub(super) fn finish_module_cleanup_failure(
         runtime.terminal_failure.replace(Some(error.clone()));
         runtime.begin_shutdown();
     }
+    runtime
+        .diagnostics
+        .emit_runtime_failure((runtime.driver.now)(), Some(instance_key), &error);
     Err(error)
 }
 
@@ -446,6 +575,7 @@ pub(super) async fn prepare_and_activate_generation(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
     lifecycle: Rc<dyn ModuleLifecycle>,
+    generation_number: u64,
 ) -> Result<NativeModuleGeneration, GenerationPreparationFailure> {
     let tasks = ManagedTaskScope::new_from_driver_control(&runtime.driver);
     attach_managed_task_failure_handler(runtime, instance_key, &tasks);
@@ -466,7 +596,17 @@ pub(super) async fn prepare_and_activate_generation(
         .iter()
         .find(|instance| instance.instance_key() == instance_key)
         .expect("supervision only recreates planned Module Instances");
-    if lifecycle
+    let prepare_started_at = (runtime.driver.now)();
+    runtime
+        .diagnostics
+        .emit(DiagnosticSource::Lifecycle, prepare_started_at, |_| {
+            DiagnosticEvent::LifecycleStarted {
+                instance: instance_key.to_owned(),
+                generation: generation_number,
+                phase: super::ModuleLifecyclePhase::Prepare,
+            }
+        });
+    let prepare_result = lifecycle
         .prepare(PrepareContext {
             instance_key: instance_key.to_owned(),
             entrypoint: instance.entrypoint().to_owned(),
@@ -476,14 +616,34 @@ pub(super) async fn prepare_and_activate_generation(
             cancellation: tasks.cancellation(),
             admission: runtime.admission.clone(),
         })
-        .await
-        .is_err()
-    {
+        .await;
+    let prepare_outcome = prepare_result.as_ref().map_or_else(
+        |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+        |()| super::DiagnosticOutcome::Succeeded,
+    );
+    runtime
+        .diagnostics
+        .emit(DiagnosticSource::Lifecycle, (runtime.driver.now)(), |_| {
+            DiagnosticEvent::LifecycleCompleted {
+                instance: instance_key.to_owned(),
+                generation: generation_number,
+                phase: super::ModuleLifecyclePhase::Prepare,
+                outcome: prepare_outcome,
+                elapsed: (runtime.driver.now)().saturating_sub(prepare_started_at),
+            }
+        });
+    if let Err(error) = prepare_result {
+        runtime.diagnostics.emit_runtime_failure(
+            (runtime.driver.now)(),
+            Some(instance_key),
+            &error,
+        );
         let failure = if let Some(cleanup_error) = cleanup_native_generation(
             runtime,
             instance_key,
             prepared,
             DeactivationReason::SupervisionRestart,
+            generation_number,
         )
         .await
         {
@@ -493,7 +653,17 @@ pub(super) async fn prepare_and_activate_generation(
         };
         return Err(failure);
     }
-    if lifecycle
+    let activate_started_at = (runtime.driver.now)();
+    runtime
+        .diagnostics
+        .emit(DiagnosticSource::Lifecycle, activate_started_at, |_| {
+            DiagnosticEvent::LifecycleStarted {
+                instance: instance_key.to_owned(),
+                generation: generation_number,
+                phase: super::ModuleLifecyclePhase::Activate,
+            }
+        });
+    let activate_result = lifecycle
         .activate(ActivateContext {
             instance_key: instance_key.to_owned(),
             dependencies,
@@ -503,14 +673,34 @@ pub(super) async fn prepare_and_activate_generation(
             cancellation: tasks.cancellation(),
             admission: runtime.admission.clone(),
         })
-        .await
-        .is_err()
-    {
+        .await;
+    let activate_outcome = activate_result.as_ref().map_or_else(
+        |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+        |()| super::DiagnosticOutcome::Succeeded,
+    );
+    runtime
+        .diagnostics
+        .emit(DiagnosticSource::Lifecycle, (runtime.driver.now)(), |_| {
+            DiagnosticEvent::LifecycleCompleted {
+                instance: instance_key.to_owned(),
+                generation: generation_number,
+                phase: super::ModuleLifecyclePhase::Activate,
+                outcome: activate_outcome,
+                elapsed: (runtime.driver.now)().saturating_sub(activate_started_at),
+            }
+        });
+    if let Err(error) = activate_result {
+        runtime.diagnostics.emit_runtime_failure(
+            (runtime.driver.now)(),
+            Some(instance_key),
+            &error,
+        );
         let failure = if let Some(cleanup_error) = cleanup_native_generation(
             runtime,
             instance_key,
             prepared,
             DeactivationReason::SupervisionRestart,
+            generation_number,
         )
         .await
         {
@@ -528,6 +718,7 @@ pub(super) async fn cleanup_native_generation(
     instance_key: &str,
     generation: NativeModuleGeneration,
     reason: DeactivationReason,
+    generation_number: u64,
 ) -> Option<RuntimeFailure> {
     let dependencies = runtime
         .dependencies
@@ -540,6 +731,9 @@ pub(super) async fn cleanup_native_generation(
         dependencies,
         reason,
         runtime.admission.clone(),
+        generation_number,
+        &runtime.diagnostics,
+        &runtime.driver,
     )
     .await
 }
@@ -550,29 +744,53 @@ pub(super) async fn cleanup_generation(
     dependencies: ModuleDependencies,
     reason: DeactivationReason,
     admission: AppAdmission,
+    generation_number: u64,
+    diagnostics: &RuntimeDiagnostics,
+    driver: &super::DriverControl,
 ) -> Option<RuntimeFailure> {
     generation.tasks.close();
     generation.resources.close();
     generation.tasks.cancel_all().await;
     let mut first_error = None;
-    if let Err(error) = generation
-        .lifecycle
-        .deactivate(DeactivateContext {
-            instance_key: instance_key.to_owned(),
-            dependencies,
-            reason,
-            tasks: generation.tasks.clone(),
-            resources: generation.resources.clone(),
-            cancellation: generation.tasks.cancellation(),
-            admission,
-        })
-        .await
-    {
+    let started_at = (driver.now)();
+    diagnostics.emit(super::DiagnosticSource::Lifecycle, started_at, |_| {
+        super::DiagnosticEvent::LifecycleStarted {
+            instance: instance_key.to_owned(),
+            generation: generation_number,
+            phase: super::ModuleLifecyclePhase::Deactivate,
+        }
+    });
+    let deactivate = generation.lifecycle.deactivate(DeactivateContext {
+        instance_key: instance_key.to_owned(),
+        dependencies,
+        reason,
+        tasks: generation.tasks.clone(),
+        resources: generation.resources.clone(),
+        cancellation: generation.tasks.cancellation(),
+        admission,
+    });
+    let result = deactivate.await;
+    let outcome = result.as_ref().map_or_else(
+        |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+        |()| super::DiagnosticOutcome::Succeeded,
+    );
+    diagnostics.emit(super::DiagnosticSource::Lifecycle, (driver.now)(), |_| {
+        super::DiagnosticEvent::LifecycleCompleted {
+            instance: instance_key.to_owned(),
+            generation: generation_number,
+            phase: super::ModuleLifecyclePhase::Deactivate,
+            outcome,
+            elapsed: (driver.now)().saturating_sub(started_at),
+        }
+    });
+    if let Err(error) = result {
+        diagnostics.emit_runtime_failure((driver.now)(), Some(instance_key), &error);
         first_error = Some(error);
     }
     if let Some(error) = generation.resources.release_all().await
         && first_error.is_none()
     {
+        diagnostics.emit_runtime_failure((driver.now)(), Some(instance_key), &error);
         first_error = Some(error);
     }
     first_error

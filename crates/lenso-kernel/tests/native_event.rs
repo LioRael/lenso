@@ -6,9 +6,9 @@ use lenso_app_plan::{
     EventAdmissionPlan, ModuleInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
-    DeterministicDriver, EventAdmission, EventCapability, InvocationContext, NativeEventEndpoint,
-    NativeExecutionAdapter, NoopModuleLifecycle, PreparedEventBinding, PreparedNativeApp,
-    PreparedNativeModule, RuntimeDriver, RuntimeFailure,
+    DeterministicDriver, DiagnosticEvent, EventAdmission, EventCapability, InvocationContext,
+    NativeEventEndpoint, NativeExecutionAdapter, NoopModuleLifecycle, PreparedEventBinding,
+    PreparedNativeApp, PreparedNativeModule, RuntimeDriver, RuntimeFailure,
 };
 
 const CAPABILITY_ID: &str = "example.notifications@1";
@@ -247,12 +247,39 @@ fn one_binding_shares_one_event_mailbox_across_operations() {
     let handle = app
         .many_event_handle::<Notifications>("consumer")
         .expect("the Event handle should materialize");
+    let observer = app
+        .diagnostics()
+        .subscribe_all(16)
+        .expect("the diagnostics observer should be bounded");
 
     let first = driver.run(handle.publish(OPERATION, Notification { sequence: 1 }));
     let second = driver.run(handle.publish(SECOND_OPERATION, Notification { sequence: 2 }));
 
     assert_eq!(first[0].admission(), EventAdmission::Accepted);
     assert_eq!(second[0].admission(), EventAdmission::Exhausted);
+    let records = std::iter::from_fn(|| observer.try_recv()).collect::<Vec<_>>();
+    assert!(records.iter().any(|record| {
+        matches!(
+            record.event,
+            DiagnosticEvent::EventAdmission {
+                ref publisher_instance,
+                ref subscriber_instance,
+                outcome: lenso_kernel::DiagnosticAdmission::Accepted,
+                ..
+            } if publisher_instance == "consumer" && subscriber_instance == "provider"
+        )
+    }));
+    assert!(records.iter().any(|record| {
+        matches!(
+            record.event,
+            DiagnosticEvent::EventAdmission {
+                ref publisher_instance,
+                ref subscriber_instance,
+                outcome: lenso_kernel::DiagnosticAdmission::Exhausted,
+                ..
+            } if publisher_instance == "consumer" && subscriber_instance == "provider"
+        )
+    }));
 }
 
 #[test]

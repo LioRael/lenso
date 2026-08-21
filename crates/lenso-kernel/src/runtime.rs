@@ -1,14 +1,14 @@
 use super::{
-    AppAdmission, AppReadyGate, BTreeMap, CancellationToken, Cell, DriverControl, DriverTask,
-    Duration, ErasedDomainResult, EventCapability, ExecutionAdapterCatalog, InvocationContext,
-    LocalBoxFuture, ManagedResourceScope, ManagedTask, ManagedTaskScope, ModuleCriticality,
-    ModuleDependencies, ModuleLifecycle, NativeEventBindingTable, NativeEventEndpointStateTable,
-    NativeEventHandle, NativeRequestEndpoint, NativeStreamBindingTable, NativeStreamEndpoint,
-    NativeStreamEndpointStateTable, NativeStreamHandle, PhantomData, Rc, RefCell, RequestAdmission,
-    RequestCapability, RequestId, ResolvedAppPlan, RestartPolicy, RuntimeFailure, ShutdownOutcome,
-    StreamCapability, await_with_generation_context, begin_module_supervision,
-    ensure_context_active, event, handle_supervision_schedule_failure, oneshot,
-    schedule_module_supervision, schedule_module_supervision_after_failure,
+    AppAdmission, AppReadyGate, BTreeMap, CancellationToken, Cell, DiagnosticEvent,
+    DiagnosticShutdownOutcome, DiagnosticSource, DriverControl, DriverTask, Duration,
+    EventCapability, ExecutionAdapterCatalog, InvocationContext, LocalBoxFuture,
+    ManagedResourceScope, ManagedTask, ManagedTaskScope, ModuleCriticality, ModuleDependencies,
+    ModuleLifecycle, NativeEventBindingTable, NativeEventEndpointStateTable, NativeEventHandle,
+    NativeRequestEndpoint, NativeRequestHandle, NativeStreamBindingTable, NativeStreamEndpoint,
+    NativeStreamEndpointStateTable, NativeStreamHandle, Rc, RefCell, RequestAdmission,
+    RequestCapability, RequestId, ResolvedAppPlan, RestartPolicy, RuntimeDiagnostics,
+    RuntimeFailure, ShutdownOutcome, StreamCapability, begin_module_supervision, event,
+    handle_supervision_schedule_failure, oneshot, schedule_module_supervision,
     shutdown_native_modules,
 };
 
@@ -208,19 +208,26 @@ pub(super) struct ModuleSupervision {
 #[derive(Debug, Default)]
 pub(super) struct ShutdownCoordinator {
     pub(super) started: Cell<bool>,
+    pub(super) cleanup_started_at: Cell<Option<Duration>>,
+    pub(super) completed: Cell<bool>,
     pub(super) outcome: RefCell<Option<ShutdownOutcome>>,
     pub(super) waiters: RefCell<Vec<oneshot::Sender<ShutdownOutcome>>>,
 }
 
 impl ShutdownCoordinator {
-    pub(super) fn start(&self) -> bool {
-        !self.started.replace(true)
+    pub(super) fn start(&self, started_at: Duration) -> bool {
+        if self.started.replace(true) {
+            return false;
+        }
+        self.cleanup_started_at.set(Some(started_at));
+        true
     }
 
-    pub(super) fn complete(&self, outcome: &ShutdownOutcome) {
-        if self.outcome.borrow().is_some() {
-            return;
-        }
+    pub(super) fn begin_completion(&self) -> bool {
+        !self.completed.replace(true)
+    }
+
+    pub(super) fn publish(&self, outcome: &ShutdownOutcome) {
         self.outcome.replace(Some(outcome.clone()));
         for waiter in self.waiters.borrow_mut().drain(..) {
             let _ = waiter.send(outcome.clone());
@@ -258,6 +265,7 @@ pub(super) struct NativeAppRuntime {
     pub(super) ready_gate: AppReadyGate,
     pub(super) admission: AppAdmission,
     pub(super) driver: DriverControl,
+    pub(super) diagnostics: RuntimeDiagnostics,
     pub(super) request_ids: Rc<Cell<RequestId>>,
     pub(super) supervision_cancellation: CancellationToken,
     pub(super) shutdown_started: Cell<bool>,
@@ -278,6 +286,8 @@ impl std::fmt::Debug for NativeAppRuntime {
             .field("accepting", &self.admission.is_open())
             .field("next_request_id", &self.request_ids.get())
             .field("shutdown_started", &self.shutdown_started.get())
+            .field("cleanup_started", &self.shutdown.started.get())
+            .field("cleanup_completed", &self.shutdown.completed.get())
             .field(
                 "terminal_failure",
                 &self.terminal_failure.borrow().is_some(),
@@ -288,6 +298,7 @@ impl std::fmt::Debug for NativeAppRuntime {
 
 impl NativeAppRuntime {
     pub(super) fn begin_shutdown(&self) {
+        let admission_closed_at = (self.driver.now)();
         if self.shutdown_started.replace(true) {
             return;
         }
@@ -308,6 +319,39 @@ impl NativeAppRuntime {
                 resources.close();
             }
         }
+        self.diagnostics
+            .emit(DiagnosticSource::Shutdown, admission_closed_at, |_| {
+                DiagnosticEvent::ShutdownAdmissionClosed
+            });
+    }
+
+    pub(super) fn complete_shutdown(&self, outcome: ShutdownOutcome) {
+        if !self.shutdown.begin_completion() {
+            return;
+        }
+        let completed_at = (self.driver.now)();
+        let started_at = self
+            .shutdown
+            .cleanup_started_at
+            .get()
+            .unwrap_or(completed_at);
+        let diagnostic_outcome = match &outcome {
+            ShutdownOutcome::Clean => DiagnosticShutdownOutcome::Clean,
+            ShutdownOutcome::RuntimeFailure { .. } => DiagnosticShutdownOutcome::RuntimeFailure,
+            ShutdownOutcome::Timeout => DiagnosticShutdownOutcome::Timeout,
+        };
+        self.diagnostics
+            .emit(DiagnosticSource::Shutdown, completed_at, |_| {
+                DiagnosticEvent::ShutdownCompleted {
+                    outcome: diagnostic_outcome,
+                    elapsed: completed_at.saturating_sub(started_at),
+                }
+            });
+        if let ShutdownOutcome::RuntimeFailure { error } = &outcome {
+            self.diagnostics
+                .emit_runtime_failure(completed_at, None, error);
+        }
+        self.shutdown.publish(&outcome);
     }
 }
 
@@ -317,22 +361,44 @@ pub struct NativeApp {
     pub(super) bindings: BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>,
     pub(super) stream_bindings: NativeStreamBindingTable,
     pub(super) event_bindings: NativeEventBindingTable,
+    pub(super) diagnostics: RuntimeDiagnostics,
     pub(super) runtime: Rc<NativeAppRuntime>,
 }
 
 impl NativeApp {
+    fn diagnostic_failure<T>(
+        &self,
+        instance_key: Option<&str>,
+        error: RuntimeFailure,
+    ) -> Result<T, RuntimeFailure> {
+        let instance_key = instance_key
+            .filter(|instance_key| self.runtime.plan.module_instance(instance_key).is_some());
+        self.runtime.diagnostics.emit_runtime_failure(
+            (self.runtime.driver.now)(),
+            instance_key,
+            &error,
+        );
+        Err(error)
+    }
+
     /// Confirms that a generated client has one resolved binding before use.
     pub fn ensure_binding<C: RequestCapability>(
         &self,
         caller_instance: &str,
     ) -> Result<(), RuntimeFailure> {
         if self.runtime.admission.is_closed() {
-            return Err(RuntimeFailure::AdmissionClosed);
+            return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
-        self.endpoints::<C>(caller_instance)
+        if self
+            .endpoints::<C>(caller_instance)
             .is_some_and(|endpoints| !endpoints.is_empty())
-            .then_some(())
-            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })
+        {
+            return Ok(());
+        }
+        self.diagnostic_failure(
+            Some(caller_instance),
+            RuntimeFailure::Unavailable { capability: C::ID },
+        )
     }
 
     /// Materializes one typed handle from the immutable binding selected by the Plan.
@@ -341,12 +407,17 @@ impl NativeApp {
         caller_instance: &str,
     ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
         if self.runtime.admission.is_closed() {
-            return Err(RuntimeFailure::AdmissionClosed);
+            return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
-        let endpoints = self
+        let Some(endpoints) = self
             .endpoints::<C>(caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
-            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
+        else {
+            return self.diagnostic_failure(
+                Some(caller_instance),
+                RuntimeFailure::Unavailable { capability: C::ID },
+            );
+        };
         Ok(NativeRequestHandle::from_endpoints(
             endpoints,
             self.runtime.clone(),
@@ -379,7 +450,7 @@ impl NativeApp {
         caller_instance: &str,
     ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
         if self.runtime.admission.is_closed() {
-            return Err(RuntimeFailure::AdmissionClosed);
+            return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
         let endpoints = self.endpoints::<C>(caller_instance).unwrap_or(&[]);
         Ok(NativeRequestHandle::from_endpoints(
@@ -413,6 +484,11 @@ impl NativeApp {
     /// Returns the App-wide admission state.
     pub fn admission(&self) -> AppAdmission {
         self.runtime.admission.clone()
+    }
+
+    /// Returns the opt-in Runtime Diagnostics port for this App.
+    pub fn diagnostics(&self) -> RuntimeDiagnostics {
+        self.diagnostics.clone()
     }
 
     /// Returns the terminal supervision failure, when a critical App path exhausted its budget.
@@ -475,17 +551,23 @@ impl NativeApp {
     /// Performs bounded graceful shutdown using one global deadline.
     pub async fn shutdown(&self, timeout: Duration) -> ShutdownOutcome {
         self.runtime.begin_shutdown();
-        if self.runtime.shutdown.start() {
+        let cleanup_started_at = (self.runtime.driver.now)();
+        if self.runtime.shutdown.start(cleanup_started_at) {
+            self.runtime
+                .diagnostics
+                .emit(DiagnosticSource::Shutdown, cleanup_started_at, |_| {
+                    DiagnosticEvent::ShutdownCleanupStarted { timeout }
+                });
             let runtime = self.runtime.clone();
             let worker_runtime = runtime.clone();
             match (runtime.driver.spawn_local)(Box::pin(async move {
                 let outcome = shutdown_native_modules(&worker_runtime, timeout).await;
-                worker_runtime.shutdown.complete(&outcome);
+                worker_runtime.complete_shutdown(outcome);
             })) {
                 Ok(task) => {
                     runtime.shutdown_task.replace(Some(task));
                 }
-                Err(error) => runtime.shutdown.complete(&ShutdownOutcome::RuntimeFailure {
+                Err(error) => runtime.complete_shutdown(ShutdownOutcome::RuntimeFailure {
                     error: RuntimeFailure::Internal {
                         detail: format!("failed to schedule App shutdown: {error:?}"),
                     },
@@ -550,12 +632,17 @@ impl NativeApp {
         caller_instance: &str,
     ) -> Result<NativeStreamHandle<C>, RuntimeFailure> {
         if self.runtime.admission.is_closed() {
-            return Err(RuntimeFailure::AdmissionClosed);
+            return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
-        let endpoints = self
+        let Some(endpoints) = self
             .stream_endpoints::<C>(caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
-            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
+        else {
+            return self.diagnostic_failure(
+                Some(caller_instance),
+                RuntimeFailure::Unavailable { capability: C::ID },
+            );
+        };
         Ok(NativeStreamHandle::from_endpoints(
             endpoints,
             self.runtime.clone(),
@@ -594,12 +681,17 @@ impl NativeApp {
         caller_instance: &str,
     ) -> Result<NativeEventHandle<C>, RuntimeFailure> {
         if self.runtime.admission.is_closed() {
-            return Err(RuntimeFailure::AdmissionClosed);
+            return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
-        let endpoints = self
+        let Some(endpoints) = self
             .event_endpoints::<C>(caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
-            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
+        else {
+            return self.diagnostic_failure(
+                Some(caller_instance),
+                RuntimeFailure::Unavailable { capability: C::ID },
+            );
+        };
         Ok(NativeEventHandle::from_endpoints(
             endpoints,
             self.runtime.clone(),
@@ -632,7 +724,7 @@ impl NativeApp {
         caller_instance: &str,
     ) -> Result<NativeEventHandle<C>, RuntimeFailure> {
         if self.runtime.admission.is_closed() {
-            return Err(RuntimeFailure::AdmissionClosed);
+            return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
         let endpoints = self.event_endpoints::<C>(caller_instance).unwrap_or(&[]);
         Ok(NativeEventHandle::from_endpoints(
@@ -680,242 +772,5 @@ impl NativeApp {
         self.event_bindings
             .get(&(caller_instance.to_owned(), C::ID))
             .map(Vec::as_slice)
-    }
-}
-
-/// Typed, immutable native Capability endpoints materialized before App boot completes.
-#[derive(Debug)]
-pub struct NativeRequestHandle<C: RequestCapability> {
-    pub(super) endpoints: Vec<NativeEndpointBinding>,
-    pub(super) runtime: Rc<NativeAppRuntime>,
-    pub(super) caller_instance: String,
-    pub(super) allow_before_ready: bool,
-    pub(super) capability: PhantomData<fn() -> C>,
-}
-
-impl<C: RequestCapability> NativeRequestHandle<C> {
-    pub(super) fn from_endpoints(
-        endpoints: &[NativeEndpointBinding],
-        runtime: Rc<NativeAppRuntime>,
-        caller_instance: &str,
-        allow_before_ready: bool,
-    ) -> Self {
-        Self {
-            endpoints: endpoints.to_vec(),
-            runtime,
-            caller_instance: caller_instance.to_owned(),
-            allow_before_ready,
-            capability: PhantomData,
-        }
-    }
-
-    /// Returns the number of provider endpoints captured by this handle.
-    pub fn binding_count(&self) -> usize {
-        self.endpoints.len()
-    }
-
-    /// Invokes a singular Capability binding without falling back across providers.
-    pub async fn invoke(
-        &self,
-        operation: &str,
-        request: C::Request,
-    ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
-        let context = self.next_context();
-        self.invoke_with_context(operation, context, request).await
-    }
-
-    /// Invokes a singular binding with an explicit Invocation Context.
-    pub async fn invoke_with_context(
-        &self,
-        operation: &str,
-        context: InvocationContext,
-        request: C::Request,
-    ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
-        let context = context.with_caller_instance(self.caller_instance.clone());
-        if self.runtime.shutdown_started.get()
-            || (!self.allow_before_ready && self.runtime.admission.is_closed())
-        {
-            return Err(RuntimeFailure::AdmissionClosed);
-        }
-        let endpoint = match self.endpoints.as_slice() {
-            [] => return Err(RuntimeFailure::Unavailable { capability: C::ID }),
-            [endpoint] => endpoint,
-            endpoints => {
-                return Err(RuntimeFailure::AmbiguousBinding {
-                    capability: C::ID,
-                    providers: endpoints.len(),
-                });
-            }
-        };
-        let snapshot = endpoint
-            .state
-            .snapshot()
-            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
-        let admission =
-            endpoint
-                .admission(operation)
-                .ok_or_else(|| RuntimeFailure::UnknownOperation {
-                    capability: C::ID,
-                    operation: operation.to_owned(),
-                })?;
-        let _permit = admission
-            .acquire(
-                C::ID,
-                operation,
-                context.clone(),
-                self.runtime.driver.clone(),
-            )
-            .await?;
-        if !endpoint.state.is_current(snapshot.generation) {
-            return Err(RuntimeFailure::Unavailable { capability: C::ID });
-        }
-        ensure_context_active(&self.runtime.driver, &context)?;
-        let outcome = await_with_generation_context(
-            &self.runtime.driver,
-            &context,
-            snapshot.cancellation,
-            C::ID,
-            snapshot
-                .endpoint
-                .invoke(operation, Box::new(request), context.clone()),
-        )
-        .await
-        .map_err(|error| {
-            schedule_module_supervision_after_failure(
-                &self.runtime,
-                &endpoint.module_instance,
-                error,
-            )
-        })?
-        .map_err(|error| {
-            schedule_module_supervision_after_failure(
-                &self.runtime,
-                &endpoint.module_instance,
-                error,
-            )
-        })?;
-        decode_outcome::<C>(outcome)
-    }
-
-    /// Invokes every provider in the resolved many order with the same typed request.
-    pub async fn invoke_many(
-        &self,
-        operation: &str,
-        request: C::Request,
-    ) -> Result<Vec<Result<C::Response, C::DomainError>>, RuntimeFailure>
-    where
-        C::Request: Clone,
-    {
-        let context = self.next_context();
-        self.invoke_many_with_context(operation, context, request)
-            .await
-    }
-
-    /// Invokes every provider with one shared explicit Invocation Context.
-    pub async fn invoke_many_with_context(
-        &self,
-        operation: &str,
-        context: InvocationContext,
-        request: C::Request,
-    ) -> Result<Vec<Result<C::Response, C::DomainError>>, RuntimeFailure>
-    where
-        C::Request: Clone,
-    {
-        let context = context.with_caller_instance(self.caller_instance.clone());
-        if self.runtime.shutdown_started.get()
-            || (!self.allow_before_ready && self.runtime.admission.is_closed())
-        {
-            return Err(RuntimeFailure::AdmissionClosed);
-        }
-        if self.endpoints.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut outcomes = Vec::with_capacity(self.endpoints.len());
-        for endpoint in &self.endpoints {
-            let snapshot = endpoint
-                .state
-                .snapshot()
-                .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
-            let admission =
-                endpoint
-                    .admission(operation)
-                    .ok_or_else(|| RuntimeFailure::UnknownOperation {
-                        capability: C::ID,
-                        operation: operation.to_owned(),
-                    })?;
-            let _permit = admission
-                .acquire(
-                    C::ID,
-                    operation,
-                    context.clone(),
-                    self.runtime.driver.clone(),
-                )
-                .await?;
-            if !endpoint.state.is_current(snapshot.generation) {
-                return Err(RuntimeFailure::Unavailable { capability: C::ID });
-            }
-            ensure_context_active(&self.runtime.driver, &context)?;
-            let outcome = await_with_generation_context(
-                &self.runtime.driver,
-                &context,
-                snapshot.cancellation,
-                C::ID,
-                snapshot
-                    .endpoint
-                    .invoke(operation, Box::new(request.clone()), context.clone()),
-            )
-            .await
-            .map_err(|error| {
-                schedule_module_supervision_after_failure(
-                    &self.runtime,
-                    &endpoint.module_instance,
-                    error,
-                )
-            })?
-            .map_err(|error| {
-                schedule_module_supervision_after_failure(
-                    &self.runtime,
-                    &endpoint.module_instance,
-                    error,
-                )
-            })?;
-            outcomes.push(decode_outcome::<C>(outcome)?);
-        }
-        Ok(outcomes)
-    }
-
-    /// Creates a fresh context for a request started through this handle.
-    pub fn invocation_context(
-        &self,
-        deadline: Option<Duration>,
-        cancellation: CancellationToken,
-    ) -> InvocationContext {
-        InvocationContext::new(self.next_request_id(), deadline, cancellation)
-    }
-
-    pub(super) fn next_context(&self) -> InvocationContext {
-        self.invocation_context(None, CancellationToken::new())
-            .with_caller_instance(self.caller_instance.clone())
-    }
-
-    pub(super) fn next_request_id(&self) -> RequestId {
-        let request_id = self.runtime.request_ids.get();
-        self.runtime.request_ids.set(request_id.saturating_add(1));
-        request_id
-    }
-}
-
-pub(super) fn decode_outcome<C: RequestCapability>(
-    outcome: ErasedDomainResult,
-) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
-    match outcome {
-        Ok(value) => value
-            .downcast::<C::Response>()
-            .map(|value| Ok(*value))
-            .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
-        Err(value) => value
-            .downcast::<C::DomainError>()
-            .map(|value| Err(*value))
-            .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
     }
 }
