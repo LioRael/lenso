@@ -44,6 +44,18 @@ cargo check --locked --workspace --all-targets
 cargo test --locked --workspace
 ```
 
+Keep hand-written Rust files navigable:
+
+- Target 300–600 lines for an ordinary module. Treat 600 lines as a prompt to
+  look for a named responsibility boundary, not as a reason to slice blindly.
+- Keep a cohesive core module at or below 1000 lines. Crossing that limit
+  requires an explicit architecture rationale and a committed split plan.
+- Split by ownership, invariants, and change cadence. Prefer a small module
+  interface over pass-through files or broad visibility.
+- Generated files are exempt; generator source, fixtures, and tests are not.
+- Run `scripts/check-rust-module-size.sh`. Listed legacy debt may not grow,
+  and new hand-written Rust files may not exceed 1000 lines.
+
 The CI workflow is the source of truth for the portable WebAssembly checks.
 
 ## Changes and commits

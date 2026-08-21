@@ -1,0 +1,8 @@
+# Existing hand-written Rust files above the 1000-line core-module limit.
+# Format: repository-relative-path maximum-line-count
+# Reduce or remove an entry when its file is split; never raise a limit casually.
+crates/lenso-app-plan/src/lib.rs 1572
+crates/lenso-bun-adapter/src/adapter.rs 1062
+crates/lenso-bun-adapter/src/server.rs 1827
+crates/lenso-bun-adapter/tests/bun_cross_runtime.rs 2005
+crates/lenso-contract-codegen/src/lib.rs 3278
