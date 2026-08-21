@@ -164,19 +164,30 @@ See ADRs [0036](../adr/0036-expose-non-blocking-runtime-diagnostics.md),
 
 ## Console and UI
 
-Production Console is an independent Lenso App composed from ordinary Modules.
-Target Apps opt into a thin Connector that exports an explicit portable
-Capability allowlist. An embedded direct-binding profile may serve local
-development. Console has an independent operator identity domain, while its
-PostgreSQL, Outbox, Story, Audit, and target catalog choices remain conditional.
+A target-owned App Web UI is an optional ordinary Module composition inside the
+target App. A Web Shell binds `many` UI Contribution providers, while a Browser
+Adapter projects generated clients only for portable Capability requirements
+declared by those contributions and resolved before boot. A Module package may
+ship explicit backend and UI entrypoints without introducing a Console or
+Plugin runtime type.
+
+A Console becomes an independent Lenso App when it is a cross-App operator
+product with remote or multiple targets, an independent operator trust domain,
+durable cross-target state, or an independent release lifecycle. Only that
+shape requires target Apps to opt into a thin Connector with an explicit
+portable Capability allowlist. PostgreSQL, Outbox, Story, Audit, and target
+catalog choices remain conditional Modules rather than Console or Kernel
+requirements.
 
 UI Contributions are Capabilities rather than Console-specific Surfaces. A
 user-selected local bundle, package, or remote ESM is trusted application code;
 generated Browser clients are a composition and ergonomics seam rather than a
-same-realm security sandbox.
+same-realm security sandbox. An independent Console does not automatically
+execute UI code advertised by a connected target; executable UI must be
+selected independently by the Console App Composition.
 
 See ADRs [0043](../adr/0043-represent-ui-contributions-as-capabilities.md) and
-[0044](../adr/0044-run-console-as-an-independent-lenso-app.md).
+[0060](../adr/0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md).
 
 ## Deferred distributed direction
 
