@@ -53,7 +53,7 @@ Keep hand-written Rust files navigable:
 - Split by ownership, invariants, and change cadence. Prefer a small module
   interface over pass-through files or broad visibility.
 - Generated files are exempt; generator source, fixtures, and tests are not.
-- Run `scripts/check-rust-module-size.sh`. Listed legacy debt may not grow,
+- Run `cargo xtask check-rust-module-size`. Listed legacy debt may not grow,
   and new hand-written Rust files may not exceed 1000 lines.
 
 The CI workflow is the source of truth for the portable WebAssembly checks.
