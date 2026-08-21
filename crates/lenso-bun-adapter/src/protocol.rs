@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     io::{Read, Write},
     time::Duration,
 };
@@ -15,7 +16,7 @@ pub const DEFAULT_STREAM_CREDIT: u32 = 16;
 pub const VALUE_PROFILE: &str = "lenso-json-value-v1";
 
 /// An opaque Invocation Context extension carried across the Bun Adapter.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct BunInvocationExtension {
     /// Stable domain extension key.
     pub key: String,
@@ -27,9 +28,26 @@ pub struct BunInvocationExtension {
     /// Intended Capability/Operation audience for sealed extensions.
     #[serde(default)]
     pub audience: Vec<String>,
+    /// Domain-signed proof for sealed extensions.
+    #[serde(default)]
+    pub proof: Option<String>,
     /// Whether the extension is protected against replacement.
     #[serde(default)]
     pub sealed: bool,
+}
+
+impl fmt::Debug for BunInvocationExtension {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BunInvocationExtension")
+            .field("key", &self.key)
+            .field("value", &"<redacted>")
+            .field("issuer", &self.issuer)
+            .field("audience", &self.audience)
+            .field("proof", &self.proof.as_ref().map(|_| "<redacted>"))
+            .field("sealed", &self.sealed)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -113,12 +131,25 @@ pub(crate) struct WireStreamOpen {
     pub payload: Value,
 }
 
+macro_rules! impl_extension_validation {
+    ($($wire:ty),+ $(,)?) => {
+        $(impl $wire {
+            pub(crate) fn validate_extensions(&self) -> Result<(), RuntimeFailure> {
+                validate_extensions(&self.extensions, &self.capability_id, &self.operation)
+            }
+        })+
+    };
+}
+
+impl_extension_validation!(WireRequest, WireEventPublish, WireStreamOpen);
+
 pub(crate) fn wire_request(
     context: &InvocationContext,
     capability_id: String,
     operation: String,
     payload: Value,
 ) -> WireRequest {
+    let extensions = encode_invocation_extensions(context, &capability_id, &operation);
     WireRequest {
         request_id: context.request_id(),
         capability_id,
@@ -126,7 +157,7 @@ pub(crate) fn wire_request(
         deadline_nanos: deadline_nanos(context.deadline()),
         caller_instance: context.caller_instance().map(ToOwned::to_owned),
         session: None,
-        extensions: encode_invocation_extensions(context),
+        extensions,
         payload,
     }
 }
@@ -137,6 +168,7 @@ pub(crate) fn wire_event(
     operation: String,
     payload: Value,
 ) -> WireEventPublish {
+    let extensions = encode_invocation_extensions(context, &capability_id, &operation);
     WireEventPublish {
         request_id: context.request_id(),
         capability_id,
@@ -144,7 +176,7 @@ pub(crate) fn wire_event(
         deadline_nanos: deadline_nanos(context.deadline()),
         caller_instance: context.caller_instance().map(ToOwned::to_owned),
         session: None,
-        extensions: encode_invocation_extensions(context),
+        extensions,
         payload,
     }
 }
@@ -155,6 +187,7 @@ pub(crate) fn wire_stream_open(
     operation: String,
     payload: Value,
 ) -> WireStreamOpen {
+    let extensions = encode_invocation_extensions(context, &capability_id, &operation);
     WireStreamOpen {
         request_id: context.request_id(),
         stream_id: context.request_id(),
@@ -163,7 +196,7 @@ pub(crate) fn wire_stream_open(
         deadline_nanos: deadline_nanos(context.deadline()),
         caller_instance: context.caller_instance().map(ToOwned::to_owned),
         session: None,
-        extensions: encode_invocation_extensions(context),
+        extensions,
         credit: DEFAULT_STREAM_CREDIT,
         payload,
     }
@@ -171,6 +204,8 @@ pub(crate) fn wire_stream_open(
 
 pub(crate) fn encode_invocation_extensions(
     context: &InvocationContext,
+    capability_id: &str,
+    operation: &str,
 ) -> Vec<BunInvocationExtension> {
     context
         .extensions()
@@ -179,25 +214,31 @@ pub(crate) fn encode_invocation_extensions(
             value: extension.value().to_vec(),
             issuer: None,
             audience: Vec::new(),
+            proof: None,
             sealed: false,
         })
         .chain(
             context
                 .sealed_extensions()
+                .filter(|extension| extension.covers(capability_id, operation))
                 .map(|extension| BunInvocationExtension {
                     key: extension.key().to_owned(),
                     value: extension.value().to_vec(),
                     issuer: Some(extension.issuer().to_owned()),
                     audience: extension.audience().to_vec(),
+                    proof: Some(extension.proof().to_owned()),
                     sealed: true,
                 }),
         )
         .collect()
 }
 
-pub(crate) fn validate_invocation_extensions(
+pub(crate) fn validate_extensions(
     extensions: &[BunInvocationExtension],
+    capability_id: &str,
+    operation: &str,
 ) -> Result<(), RuntimeFailure> {
+    let expected_audience = format!("{capability_id}:{operation}");
     let mut keys = BTreeSet::new();
     for extension in extensions {
         if extension.key.is_empty() || !keys.insert(extension.key.as_str()) {
@@ -208,6 +249,8 @@ pub(crate) fn validate_invocation_extensions(
         if extension.sealed {
             if extension.issuer.as_deref().is_none_or(str::is_empty)
                 || extension.audience.is_empty()
+                || extension.proof.as_deref().is_none_or(str::is_empty)
+                || !extension.audience.contains(&expected_audience)
                 || extension
                     .audience
                     .iter()
@@ -217,7 +260,10 @@ pub(crate) fn validate_invocation_extensions(
                     capability: "lenso.bun-process@1",
                 });
             }
-        } else if extension.issuer.is_some() || !extension.audience.is_empty() {
+        } else if extension.issuer.is_some()
+            || !extension.audience.is_empty()
+            || extension.proof.is_some()
+        {
             return Err(RuntimeFailure::ProtocolViolation {
                 capability: "lenso.bun-process@1",
             });

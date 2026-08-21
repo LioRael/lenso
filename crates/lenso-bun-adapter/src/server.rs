@@ -23,8 +23,7 @@ use serde_json::Value;
 use crate::protocol::{
     BunInvocationExtension, EndpointDescriptor, Handshake, HandshakeAck, WireEventPublish,
     WireFailure, WireOutcome, WireRequest, WireStreamCall, WireStreamEvent, WireStreamOpen,
-    WireStreamOutcome, WireStreamTerminal, handshake_for, to_wire_failure,
-    validate_invocation_extensions, verify_handshake,
+    WireStreamOutcome, WireStreamTerminal, handshake_for, to_wire_failure, verify_handshake,
 };
 
 const PROVIDER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -690,7 +689,7 @@ fn handle_request(request: WireRequest, state: &ProviderState) -> WireOutcome {
     if expected_session.as_deref() != request.session.as_deref() {
         return runtime_outcome(&protocol_failure(state));
     }
-    if let Err(error) = validate_invocation_extensions(&request.extensions) {
+    if let Err(error) = request.validate_extensions() {
         return runtime_outcome(&error);
     }
     let Some(endpoint) = state.expected.endpoints.first() else {
@@ -744,7 +743,7 @@ fn handle_event(event: WireEventPublish, state: &ProviderState) -> WireOutcome {
     if !valid_session(event.session.as_deref(), state) {
         return runtime_outcome(&protocol_failure(state));
     }
-    if let Err(error) = validate_invocation_extensions(&event.extensions) {
+    if let Err(error) = event.validate_extensions() {
         return runtime_outcome(&error);
     }
     let Some(endpoint) = state.expected.endpoints.first() else {
@@ -839,7 +838,7 @@ fn handle_stream_open(open: WireStreamOpen, state: &ProviderState) -> WireStream
     if !valid_session(open.session.as_deref(), state) {
         return stream_runtime_outcome(&protocol_failure(state));
     }
-    if let Err(error) = validate_invocation_extensions(&open.extensions) {
+    if let Err(error) = open.validate_extensions() {
         return stream_runtime_outcome(&error);
     }
     let Some(endpoint) = state.expected.endpoints.first() else {

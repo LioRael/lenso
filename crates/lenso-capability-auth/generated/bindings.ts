@@ -51,8 +51,8 @@ export interface AuthenticateResponseAssertion {
   assurance: string;
   audience: Array<string>;
   claims?: Record<string, unknown>;
-  expires_at_nanos: Uint64;
-  issued_at_nanos: Uint64;
+  expires_at: Timestamp;
+  issued_at: Timestamp;
   issuer: string;
   parent_provenance?: string;
   proof: string;

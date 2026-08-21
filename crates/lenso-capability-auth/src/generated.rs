@@ -83,7 +83,7 @@ pub struct AuthenticateRequest {
     pub credential: Option<AuthenticateRequestCredential>,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AuthenticateRequestCredential {
     #[serde(rename = "scheme")]
     #[serde(deserialize_with = "deserialize_required")]
@@ -91,6 +91,16 @@ pub struct AuthenticateRequestCredential {
     #[serde(rename = "value")]
     #[serde(deserialize_with = "deserialize_required")]
     pub value: String,
+}
+
+impl fmt::Debug for AuthenticateRequestCredential {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AuthenticateRequestCredential")
+            .field("scheme", &self.scheme)
+            .field("value", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -103,7 +113,7 @@ pub struct AuthenticateResponse {
     pub kind: AuthenticateResponseKind,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AuthenticateResponseAssertion {
     #[serde(rename = "actor_kind")]
     #[serde(deserialize_with = "deserialize_required")]
@@ -117,12 +127,12 @@ pub struct AuthenticateResponseAssertion {
     #[serde(rename = "claims")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claims: Option<std::collections::BTreeMap<String, serde_json::Value>>,
-    #[serde(rename = "expires_at_nanos")]
+    #[serde(rename = "expires_at")]
     #[serde(deserialize_with = "deserialize_required")]
-    pub expires_at_nanos: Uint64,
-    #[serde(rename = "issued_at_nanos")]
+    pub expires_at: Timestamp,
+    #[serde(rename = "issued_at")]
     #[serde(deserialize_with = "deserialize_required")]
-    pub issued_at_nanos: Uint64,
+    pub issued_at: Timestamp,
     #[serde(rename = "issuer")]
     #[serde(deserialize_with = "deserialize_required")]
     pub issuer: String,
@@ -135,6 +145,24 @@ pub struct AuthenticateResponseAssertion {
     #[serde(rename = "subject")]
     #[serde(deserialize_with = "deserialize_required")]
     pub subject: String,
+}
+
+impl fmt::Debug for AuthenticateResponseAssertion {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AuthenticateResponseAssertion")
+            .field("actor_kind", &self.actor_kind)
+            .field("assurance", &self.assurance)
+            .field("audience", &self.audience)
+            .field("claims", &self.claims)
+            .field("expires_at", &self.expires_at)
+            .field("issued_at", &self.issued_at)
+            .field("issuer", &self.issuer)
+            .field("parent_provenance", &self.parent_provenance)
+            .field("proof", &"<redacted>")
+            .field("subject", &self.subject)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

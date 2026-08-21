@@ -1,13 +1,23 @@
-use std::collections::BTreeMap;
 use std::time::Duration;
+use std::{collections::BTreeMap, fmt};
 
 use super::{RequestId, lifecycle::CancellationToken};
 
 /// An opaque extension supplied by a caller Module.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct InvocationExtension {
     key: String,
     value: Vec<u8>,
+}
+
+impl fmt::Debug for InvocationExtension {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("InvocationExtension")
+            .field("key", &self.key)
+            .field("value", &"<redacted>")
+            .finish()
+    }
 }
 
 impl InvocationExtension {
@@ -31,27 +41,33 @@ impl InvocationExtension {
 }
 
 /// An opaque extension whose issuer and audience must survive Adapter hops.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct SealedInvocationExtension {
     key: String,
     issuer: String,
     audience: Vec<String>,
     value: Vec<u8>,
+    proof: String,
 }
 
 impl SealedInvocationExtension {
-    /// Creates one sealed extension. Domain Modules own the value format.
-    pub fn new(
+    /// Carries one domain-signed extension without granting it validity.
+    ///
+    /// Domain provider bindings must validate `proof` before projecting the
+    /// payload. The Kernel preserves the signed fields and prevents replacement.
+    pub fn signed(
         key: impl Into<String>,
         issuer: impl Into<String>,
         audience: impl IntoIterator<Item = impl Into<String>>,
         value: Vec<u8>,
+        proof: impl Into<String>,
     ) -> Self {
         Self {
             key: key.into(),
             issuer: issuer.into(),
             audience: audience.into_iter().map(Into::into).collect(),
             value,
+            proof: proof.into(),
         }
     }
 
@@ -73,6 +89,30 @@ impl SealedInvocationExtension {
     /// Returns the opaque extension bytes.
     pub fn value(&self) -> &[u8] {
         &self.value
+    }
+
+    /// Returns the domain proof covering issuer, audience, and payload.
+    pub fn proof(&self) -> &str {
+        &self.proof
+    }
+
+    /// Returns whether the signed audience covers one exact target Operation.
+    pub fn covers(&self, capability_id: &str, operation: &str) -> bool {
+        let target = format!("{capability_id}:{operation}");
+        self.audience.iter().any(|audience| audience == &target)
+    }
+}
+
+impl fmt::Debug for SealedInvocationExtension {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SealedInvocationExtension")
+            .field("key", &self.key)
+            .field("issuer", &self.issuer)
+            .field("audience", &self.audience)
+            .field("value", &"<redacted>")
+            .field("proof", &"<redacted>")
+            .finish()
     }
 }
 
@@ -207,6 +247,7 @@ impl InvocationContext {
         }
         if extension.issuer().is_empty()
             || extension.audience().is_empty()
+            || extension.proof().is_empty()
             || extension
                 .audience()
                 .iter()
@@ -246,6 +287,17 @@ impl InvocationContext {
     /// Returns sealed extensions in deterministic key order.
     pub fn sealed_extensions(&self) -> impl Iterator<Item = &SealedInvocationExtension> {
         self.sealed_extensions.values()
+    }
+
+    /// Restricts sealed extensions to one exact Capability/Operation target.
+    ///
+    /// Ordinary baggage is preserved. A sealed extension whose audience does
+    /// not cover the target is not disclosed to that provider.
+    #[must_use]
+    pub fn for_target(mut self, capability_id: &str, operation: &str) -> Self {
+        self.sealed_extensions
+            .retain(|_, extension| extension.covers(capability_id, operation));
+        self
     }
 
     /// Returns whether the caller has already cancelled this invocation.

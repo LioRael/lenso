@@ -3,7 +3,15 @@ import {
   encodeGreetError,
   encodeGreetResponse,
 } from "../../crates/lenso-capability-greeting/generated/bindings.ts";
-import { createHmac } from "node:crypto";
+import {
+  decodeGreetRequest as decodeSecureGreetRequest,
+  encodeGreetError as encodeSecureGreetError,
+  encodeGreetResponse as encodeSecureGreetResponse,
+} from "../../crates/lenso-capability-secure-greeting/generated/bindings.ts";
+import {
+  bindActor,
+  type WireExtension,
+} from "../../crates/lenso-auth-sdk/typescript/actor.ts";
 
 type EndpointDescriptor = {
   capability_id: string;
@@ -31,14 +39,6 @@ type WireRequest = {
   payload: unknown;
 };
 
-type WireExtension = {
-  key: string;
-  value: number[];
-  issuer?: string;
-  audience?: string[];
-  sealed?: boolean;
-};
-
 type WireOutcome =
   | { kind: "success"; value: unknown }
   | { kind: "domain"; value: unknown }
@@ -56,6 +56,11 @@ const protocolVersion = 1;
 const valueProfile = "lenso-json-value-v1";
 const greetingEndpoint: EndpointDescriptor = {
   capability_id: "example.greeting@1",
+  descriptor_version: "1.0.0",
+  operations: ["greet"],
+};
+const secureGreetingEndpoint: EndpointDescriptor = {
+  capability_id: "example.secure-greeting@1",
   descriptor_version: "1.0.0",
   operations: ["greet"],
 };
@@ -96,77 +101,6 @@ function runtime(kind: string, detail?: string, requestId?: number): WireOutcome
     kind: "runtime",
     failure,
   };
-}
-
-function actorFromRequest(request: WireRequest): { subject: string } | undefined {
-  const extension = request.extensions?.find(
-    (candidate) => candidate.key === "lenso.auth.actor-assertion",
-  );
-  if (
-    !extension?.sealed ||
-    extension.issuer !== "auth.users" ||
-    !extension.audience?.includes("example.greeting@1:greet") ||
-    extension.value.length === 0
-  ) {
-    return undefined;
-  }
-  try {
-    const assertion = JSON.parse(
-      new TextDecoder().decode(new Uint8Array(extension.value)),
-    ) as {
-      actor_kind?: unknown;
-      assurance?: unknown;
-      audience?: unknown;
-      claims?: unknown;
-      expires_at_nanos?: unknown;
-      issued_at_nanos?: unknown;
-      issuer?: unknown;
-      parent_provenance?: unknown;
-      subject?: unknown;
-      proof?: unknown;
-    };
-    if (
-      assertion.actor_kind !== "user" ||
-      typeof assertion.assurance !== "string" ||
-      !Array.isArray(assertion.audience) ||
-      !assertion.audience.every((entry) => typeof entry === "string") ||
-      !assertion.audience.includes("example.greeting@1:greet") ||
-      (assertion.claims !== undefined &&
-        (typeof assertion.claims !== "object" || assertion.claims === null)) ||
-      assertion.issuer !== "auth.users" ||
-      typeof assertion.subject !== "string" ||
-      assertion.subject.length === 0 ||
-      typeof assertion.proof !== "string" ||
-      assertion.proof.length === 0 ||
-      typeof assertion.issued_at_nanos !== "string" ||
-      typeof assertion.expires_at_nanos !== "string"
-    ) {
-      return undefined;
-    }
-    const issuedAt = BigInt(assertion.issued_at_nanos);
-    const expiresAt = BigInt(assertion.expires_at_nanos);
-    if (issuedAt > expiresAt || expiresAt <= 0n) return undefined;
-    const nowNanos = BigInt(Date.now()) * 1_000_000n;
-    if (nowNanos < issuedAt || nowNanos >= expiresAt) return undefined;
-    const signingPayload = JSON.stringify({
-      actor_kind: assertion.actor_kind,
-      assurance: assertion.assurance,
-      audience: assertion.audience,
-      claims: assertion.claims ?? null,
-      expires_at_nanos: assertion.expires_at_nanos,
-      issued_at_nanos: assertion.issued_at_nanos,
-      issuer: assertion.issuer,
-      parent_provenance: assertion.parent_provenance ?? null,
-      subject: assertion.subject,
-    });
-    const expectedProof = createHmac("sha256", "shared-auth-key")
-      .update(signingPayload)
-      .digest("base64url");
-    if (assertion.proof !== expectedProof) return undefined;
-    return { subject: assertion.subject };
-  } catch {
-    return undefined;
-  }
 }
 
 function expectedHandshake(handshake: Handshake): boolean {
@@ -216,10 +150,56 @@ async function handleRequest(request: WireRequest): Promise<WireOutcome> {
   if (cancelled.has(request.request_id)) {
     return runtime("cancelled", undefined, request.request_id);
   }
-  if (
-    request.capability_id !== greetingEndpoint.capability_id ||
-    request.operation !== "greet"
-  ) {
+  if (request.operation !== "greet") {
+    return {
+      kind: "runtime",
+      failure: { kind: "unknown_operation", operation: request.operation },
+    };
+  }
+
+  if (request.capability_id === secureGreetingEndpoint.capability_id) {
+    let typedRequest: { name: string };
+    try {
+      typedRequest = decodeSecureGreetRequest(JSON.stringify(request.payload));
+    } catch (error) {
+      return runtime("protocol_violation", String(error));
+    }
+    let actor: { subject: string };
+    try {
+      actor = await bindActor(
+        request.extensions,
+        secureGreetingEndpoint.capability_id,
+        "greet",
+        "auth.users",
+        "shared-auth-key",
+        "user",
+      );
+    } catch {
+      return {
+        kind: "domain",
+        value: JSON.parse(encodeSecureGreetError("actor_required")),
+      };
+    }
+    if (actor.subject === "forbidden") {
+      return {
+        kind: "domain",
+        value: JSON.parse(encodeSecureGreetError("not_allowed")),
+      };
+    }
+    if (typedRequest.name.length === 0) {
+      return {
+        kind: "domain",
+        value: JSON.parse(encodeSecureGreetError("empty_name")),
+      };
+    }
+    return {
+      kind: "success",
+      value: JSON.parse(
+        encodeSecureGreetResponse({ message: `Hello from Bun, ${actor.subject}!` }),
+      ),
+    };
+  }
+  if (request.capability_id !== greetingEndpoint.capability_id) {
     return {
       kind: "runtime",
       failure: { kind: "unknown_operation", operation: request.operation },
@@ -279,27 +259,6 @@ async function handleRequest(request: WireRequest): Promise<WireOutcome> {
     return {
       kind: "domain",
       value: { code: "future_variant", payload: { retry_after_ms: 2500 } },
-    };
-  }
-  if (typedRequest.name === "__requires_actor__") {
-    const actor = actorFromRequest(request);
-    if (!actor) {
-      return {
-        kind: "domain",
-        value: { code: "actor_required" },
-      };
-    }
-    if (actor.subject === "forbidden") {
-      return {
-        kind: "domain",
-        value: { code: "not_allowed" },
-      };
-    }
-    return {
-      kind: "success",
-      value: JSON.parse(
-        encodeGreetResponse({ message: `Hello from Bun, ${actor.subject}!` }),
-      ),
     };
   }
   return {

@@ -60,6 +60,7 @@ fn provider_preserves_sealed_extensions_and_rejects_duplicate_keys() {
         value: br#"{"subject":"user-123"}"#.to_vec(),
         issuer: Some("auth.users".to_owned()),
         audience: vec!["example.secure-greeting@1:greet".to_owned()],
+        proof: Some("signed-proof".to_owned()),
         sealed: true,
     };
     let accepted_outcome: WireOutcome = runtime
