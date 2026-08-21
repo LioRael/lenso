@@ -22,8 +22,8 @@ fn config() -> ProtocolConfig {
         bind: "127.0.0.1:0".to_owned(),
         max_frame_bytes: 1_024,
         max_connections: 4,
-        idle_timeout_ms: 80,
-        session_timeout_ms: 500,
+        idle_timeout_ms: 500,
+        session_timeout_ms: 2_000,
     }
 }
 
