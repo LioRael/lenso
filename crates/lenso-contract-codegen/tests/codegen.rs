@@ -7,6 +7,21 @@ use lenso_contract_codegen::{
 use serde_json::json;
 
 const FIXTURE: &str = "tests/fixtures/profile/capability.json";
+const STREAM_FIXTURE: &str = "tests/fixtures/stream/capability.json";
+
+#[test]
+fn stream_descriptors_generate_bidirectional_rust_and_typescript_bindings() {
+    let artifacts = generate(Path::new(STREAM_FIXTURE)).expect("stream Descriptor should generate");
+
+    assert!(artifacts.rust.contains("impl StreamCapability"));
+    assert!(artifacts.rust.contains("NativeStreamEndpoint"));
+    assert!(artifacts.rust.contains("NativeStreamHandle"));
+    assert!(artifacts.rust.contains("StreamEvent"));
+    assert!(artifacts.rust.contains("fn chat("));
+    assert!(artifacts.typescript.contains("StreamEvent"));
+    assert!(artifacts.typescript.contains("send(message:"));
+    assert!(artifacts.typescript.contains("receive(): Promise"));
+}
 
 #[allow(clippy::too_many_lines)]
 #[test]
@@ -435,6 +450,38 @@ fn operation_generated_names_cannot_shadow_client_methods() {
     std::fs::write(
         &descriptor_path,
         r#"{"id":"example.client-method@1","version":"1.0.0","portable":true,"operations":[{"name":"new","interaction":"request","request_schema":"request.schema.json","response_schema":"response.schema.json","domain_error_schema":"error.schema.json"}]}"#,
+    )
+    .expect("the Descriptor should be writable");
+
+    let error = load_descriptor(&descriptor_path).expect_err("Client methods must be reserved");
+    assert!(error.to_string().contains("generated Client API"));
+    std::fs::remove_dir_all(root).expect("the temporary contract directory should be removable");
+}
+
+#[test]
+fn stream_operation_generated_names_cannot_shadow_client_methods() {
+    let root = std::env::temp_dir().join(format!(
+        "lenso-contract-codegen-stream-client-method-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).expect("the temporary contract directory should exist");
+    for (name, schema) in [
+        (
+            "request.schema.json",
+            r#"{"type":"object","additionalProperties":false}"#,
+        ),
+        (
+            "response.schema.json",
+            r#"{"type":"object","additionalProperties":false}"#,
+        ),
+        ("error.schema.json", r#"{"oneOf":[{"const":"failed"}]}"#),
+    ] {
+        std::fs::write(root.join(name), schema).expect("the Schema should be writable");
+    }
+    let descriptor_path = root.join("capability.json");
+    std::fs::write(
+        &descriptor_path,
+        r#"{"id":"example.stream-client-method@1","version":"1.0.0","portable":true,"operations":[{"name":"new","interaction":"stream","request_schema":"request.schema.json","response_schema":"response.schema.json","domain_error_schema":"error.schema.json"}]}"#,
     )
     .expect("the Descriptor should be writable");
 

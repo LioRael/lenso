@@ -22,6 +22,7 @@ use serde_json::Value;
 
 use crate::protocol::{
     EndpointDescriptor, Handshake, HandshakeAck, WireFailure, WireOutcome, WireRequest,
+    WireStreamCall, WireStreamEvent, WireStreamOpen, WireStreamOutcome, WireStreamTerminal,
     handshake_for, to_wire_failure, verify_handshake,
 };
 
@@ -39,6 +40,8 @@ pub struct BunProviderDescriptor {
     pub descriptor_version: String,
     /// Exact stable Operation table.
     pub operations: Vec<String>,
+    /// Exact stream Operation subset of the Capability.
+    pub stream_operations: Vec<String>,
 }
 
 /// One request received from a Bun consumer after the exact handshake.
@@ -77,6 +80,60 @@ pub enum BunResponse {
     Runtime(RuntimeFailure),
 }
 
+/// One event emitted by a Rust provider stream toward a Bun consumer.
+#[derive(Clone, Debug)]
+pub enum BunStreamEvent {
+    /// One generated portable JSON message.
+    Message(Value),
+    /// The Rust provider closed only its sending direction.
+    PeerHalfClosed,
+    /// The one terminal Domain outcome, with `Ok(())` representing success.
+    Terminal(Result<(), Value>),
+}
+
+/// The result of one provider-side stream action.
+#[derive(Clone, Debug)]
+pub enum BunStreamAction {
+    /// The action was admitted and completed.
+    Accepted,
+    /// A Runtime Failure prevented the action.
+    Runtime(RuntimeFailure),
+}
+
+/// The result of reading one provider-side stream event.
+#[derive(Clone, Debug)]
+pub enum BunStreamReceive {
+    /// One ordered event is ready for the Bun consumer.
+    Event(BunStreamEvent),
+    /// A Runtime Failure prevented delivery.
+    Runtime(RuntimeFailure),
+}
+
+/// A stream session retained by the Rust provider bridge.
+pub trait BunProviderStream: std::fmt::Debug + Send + Sync + 'static {
+    /// Delivers one Bun consumer message to the provider.
+    fn send(&self, payload: Value) -> BunStreamAction;
+    /// Reads one provider-to-consumer message, half-close, or terminal outcome.
+    fn receive(&self) -> BunStreamReceive;
+    /// Notifies the provider that the Bun consumer closed its sending direction.
+    fn peer_half_closed(&self) -> BunStreamAction {
+        BunStreamAction::Accepted
+    }
+    /// Cancels this provider-side session idempotently.
+    fn cancel(&self);
+}
+
+/// Result returned when a Rust provider opens a stream for a Bun consumer.
+#[derive(Clone, Debug)]
+pub enum BunStreamOpenResponse {
+    /// The stream session is ready.
+    Success(Arc<dyn BunProviderStream>),
+    /// A Capability-defined Domain Error rejected opening.
+    Domain(Value),
+    /// A Runtime Failure rejected opening.
+    Runtime(RuntimeFailure),
+}
+
 /// Host-side provider implementation used by the Bun consumer bridge.
 pub trait BunProviderHandler: std::fmt::Debug + Send + Sync + 'static {
     /// Handles one already-framed, already-handshake-validated request.
@@ -85,6 +142,14 @@ pub trait BunProviderHandler: std::fmt::Debug + Send + Sync + 'static {
     /// cooperative handlers should poll `BunRequest::is_cancelled` and return
     /// a terminal Runtime Failure instead of retaining the request forever.
     fn invoke(&self, request: BunRequest) -> BunResponse;
+
+    /// Opens one bidirectional stream after the exact handshake.
+    fn open_stream(&self, request: BunRequest) -> BunStreamOpenResponse {
+        BunStreamOpenResponse::Runtime(RuntimeFailure::UnknownOperation {
+            capability: "lenso.bun-process@1",
+            operation: request.operation,
+        })
+    }
 }
 
 /// Adapter-owned loopback JSON-RPC server for Bun consumer → Rust provider calls.
@@ -121,6 +186,23 @@ struct ProviderState {
     retired: RetiredRequestRegistry,
     admission: Admission,
     handler: Arc<dyn BunProviderHandler>,
+    streams: Mutex<BTreeMap<u64, Arc<ProviderStreamEntry>>>,
+    retired_streams: Mutex<BTreeSet<u64>>,
+}
+
+#[derive(Debug)]
+struct ProviderStreamEntry {
+    stream: Arc<dyn BunProviderStream>,
+    operation: String,
+    permit: Mutex<Option<AdmissionPermit>>,
+    inbound_credit: AtomicUsize,
+    next_inbound_sequence: AtomicU64,
+    next_outbound_sequence: AtomicU64,
+    receive_in_flight: AtomicBool,
+    peer_half_closed: AtomicBool,
+    local_half_closed: AtomicBool,
+    terminal_seen: AtomicBool,
+    cancelled: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -129,6 +211,7 @@ struct Admission {
     limit: usize,
 }
 
+#[derive(Debug)]
 struct AdmissionPermit {
     active: Arc<AtomicUsize>,
 }
@@ -197,6 +280,7 @@ impl BunProviderServer {
             capability_id,
             descriptor_version,
             operations,
+            stream_operations,
         } = descriptor;
         let max_frame_bytes = max_frame_bytes.max(1);
         let expected = handshake_for(
@@ -204,6 +288,7 @@ impl BunProviderServer {
                 capability_id: capability_id.to_owned(),
                 descriptor_version,
                 operations,
+                stream_operations,
             }],
             max_frame_bytes,
         );
@@ -215,6 +300,8 @@ impl BunProviderServer {
             retired: Arc::new(Mutex::new(BTreeSet::new())),
             admission: Admission::new(queue_capacity),
             handler: Arc::new(handler),
+            streams: Mutex::new(BTreeMap::new()),
+            retired_streams: Mutex::new(BTreeSet::new()),
         });
         let module = provider_module(state.clone())?;
         let (started_sender, started_receiver) = mpsc::sync_channel(1);
@@ -299,6 +386,7 @@ impl BunProviderServer {
         let handle = self.handle.lock().ok().and_then(|mut handle| handle.take());
         let Some(handle) = handle else { return };
         cancel_all(&self.state.cancellations);
+        cancel_all_streams(&self.state);
         let _ = handle.stop();
         if let Ok(mut worker) = self.worker.lock()
             && let Some(worker) = worker.take()
@@ -335,9 +423,40 @@ fn provider_module(
         })
         .map_err(register_failure)?;
     module
+        .register_blocking_method("lenso.stream.open", |params, state, _| {
+            let open = decode_params(params.parse::<Value>()?)?;
+            Ok::<_, ErrorObjectOwned>(handle_stream_open(open, &state))
+        })
+        .map_err(register_failure)?;
+    module
+        .register_blocking_method("lenso.stream.send", |params, state, _| {
+            let call = decode_params(params.parse::<Value>()?)?;
+            Ok::<_, ErrorObjectOwned>(handle_stream_call(call, &state))
+        })
+        .map_err(register_failure)?;
+    module
+        .register_blocking_method("lenso.stream.receive", |params, state, _| {
+            let call = decode_params(params.parse::<Value>()?)?;
+            Ok::<_, ErrorObjectOwned>(handle_stream_call(call, &state))
+        })
+        .map_err(register_failure)?;
+    module
+        .register_blocking_method("lenso.stream.close_send", |params, state, _| {
+            let call = decode_params(params.parse::<Value>()?)?;
+            Ok::<_, ErrorObjectOwned>(handle_stream_call(call, &state))
+        })
+        .map_err(register_failure)?;
+    module
         .register_method("lenso.cancel", |params, state, _| {
             let cancel = decode_params(params.parse::<Value>()?)?;
             handle_cancel(&cancel, state)?;
+            Ok::<_, ErrorObjectOwned>(true)
+        })
+        .map_err(register_failure)?;
+    module
+        .register_method("lenso.stream.cancel", |params, state, _| {
+            let cancel = decode_params(params.parse::<Value>()?)?;
+            handle_stream_cancel(&cancel, state)?;
             Ok::<_, ErrorObjectOwned>(true)
         })
         .map_err(register_failure)?;
@@ -375,6 +494,10 @@ fn handle_handshake(actual: &Handshake, state: &ProviderState) -> HandshakeAck {
         };
     }
 
+    cancel_all_streams(state);
+    if let Ok(mut retired_streams) = state.retired_streams.lock() {
+        retired_streams.clear();
+    }
     let session = format!(
         "lenso-bun-session-{}",
         NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed)
@@ -459,6 +582,322 @@ struct CancelRequest {
     session: String,
 }
 
+fn handle_stream_open(open: WireStreamOpen, state: &ProviderState) -> WireStreamOutcome {
+    if !valid_session(open.session.as_deref(), state) {
+        return stream_runtime_outcome(&protocol_failure(state));
+    }
+    let Some(endpoint) = state.expected.endpoints.first() else {
+        return stream_runtime_outcome(&protocol_failure(state));
+    };
+    if open.capability_id != endpoint.capability_id
+        || !endpoint.stream_operations.contains(&open.operation)
+        || open.credit == 0
+    {
+        return stream_runtime_outcome(&RuntimeFailure::UnknownOperation {
+            capability: state.capability,
+            operation: open.operation,
+        });
+    }
+    let retired = match state.retired_streams.lock() {
+        Ok(retired) => retired.contains(&open.stream_id),
+        Err(_) => {
+            return stream_runtime_outcome(&RuntimeFailure::Internal {
+                detail: "Bun provider retired stream lock poisoned".to_owned(),
+            });
+        }
+    };
+    let active = match state.streams.lock() {
+        Ok(streams) => streams.contains_key(&open.stream_id),
+        Err(_) => {
+            return stream_runtime_outcome(&RuntimeFailure::Internal {
+                detail: "Bun provider stream lock poisoned".to_owned(),
+            });
+        }
+    };
+    if retired || active {
+        return stream_runtime_outcome(&protocol_failure(state));
+    }
+    let Some(permit) = state.admission.try_acquire() else {
+        return WireStreamOutcome::Runtime {
+            failure: WireFailure::ResourceExhausted {
+                operation: open.operation,
+            },
+        };
+    };
+    let request_id = open.request_id;
+    let cancellation = match register_request(
+        &state.cancellations,
+        &state.retired,
+        request_id,
+        state.capability,
+    ) {
+        Ok(cancellation) => cancellation,
+        Err(error) => return stream_runtime_outcome(&error),
+    };
+    let response = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state.handler.open_stream(BunRequest {
+            request_id,
+            capability_id: open.capability_id,
+            operation: open.operation.clone(),
+            deadline_nanos: open.deadline_nanos,
+            caller_instance: open.caller_instance,
+            payload: open.payload,
+            cancellation,
+        })
+    }))
+    .unwrap_or_else(|_| {
+        BunStreamOpenResponse::Runtime(RuntimeFailure::ModuleFailure {
+            detail: "Bun provider stream handler panicked".to_owned(),
+        })
+    });
+    remove_request(&state.cancellations, &state.retired, request_id);
+    match response {
+        BunStreamOpenResponse::Success(stream) => {
+            let credit = usize::try_from(open.credit)
+                .unwrap_or(usize::MAX)
+                .min(crate::protocol::DEFAULT_STREAM_CREDIT as usize);
+            let entry = Arc::new(ProviderStreamEntry {
+                stream,
+                operation: open.operation,
+                permit: Mutex::new(Some(permit)),
+                inbound_credit: AtomicUsize::new(credit),
+                next_inbound_sequence: AtomicU64::new(0),
+                next_outbound_sequence: AtomicU64::new(0),
+                receive_in_flight: AtomicBool::new(false),
+                peer_half_closed: AtomicBool::new(false),
+                local_half_closed: AtomicBool::new(false),
+                terminal_seen: AtomicBool::new(false),
+                cancelled: AtomicBool::new(false),
+            });
+            let Ok(mut streams) = state.streams.lock() else {
+                entry.stream.cancel();
+                return stream_runtime_outcome(&RuntimeFailure::Internal {
+                    detail: "Bun provider stream lock poisoned".to_owned(),
+                });
+            };
+            streams.insert(open.stream_id, entry);
+            WireStreamOutcome::Opened {
+                stream_id: open.stream_id,
+                credit: u32::try_from(credit).unwrap_or(u32::MAX),
+            }
+        }
+        BunStreamOpenResponse::Domain(value) => WireStreamOutcome::Domain { value },
+        BunStreamOpenResponse::Runtime(error) => stream_runtime_outcome(&error),
+    }
+}
+
+fn handle_stream_call(call: WireStreamCall, state: &ProviderState) -> WireStreamOutcome {
+    let (request_id, stream_id, session) = match &call {
+        WireStreamCall::Send {
+            request_id,
+            stream_id,
+            session,
+            ..
+        }
+        | WireStreamCall::Receive {
+            request_id,
+            stream_id,
+            session,
+        }
+        | WireStreamCall::CloseSend {
+            request_id,
+            stream_id,
+            session,
+        } => (*request_id, *stream_id, session.as_str()),
+    };
+    if !valid_session(Some(session), state) {
+        return stream_runtime_outcome(&protocol_failure(state));
+    }
+    let entry = state
+        .streams
+        .lock()
+        .ok()
+        .and_then(|streams| streams.get(&stream_id).cloned());
+    let Some(entry) = entry else {
+        return stream_runtime_outcome(&protocol_failure(state));
+    };
+    if entry.cancelled.load(Ordering::Acquire) {
+        return stream_runtime_outcome(&RuntimeFailure::Cancelled { request_id });
+    }
+    match call {
+        WireStreamCall::Send {
+            sequence, payload, ..
+        } => {
+            if entry.peer_half_closed.load(Ordering::Acquire)
+                || entry.terminal_seen.load(Ordering::Acquire)
+                || sequence != entry.next_inbound_sequence.load(Ordering::Acquire)
+            {
+                return stream_runtime_outcome(&protocol_failure(state));
+            }
+            let mut credit = entry.inbound_credit.load(Ordering::Acquire);
+            loop {
+                if credit == 0 {
+                    return WireStreamOutcome::Runtime {
+                        failure: WireFailure::ResourceExhausted {
+                            operation: entry.operation.clone(),
+                        },
+                    };
+                }
+                match entry.inbound_credit.compare_exchange_weak(
+                    credit,
+                    credit - 1,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(current) => credit = current,
+                }
+            }
+            entry.next_inbound_sequence.fetch_add(1, Ordering::AcqRel);
+            match entry.stream.send(payload) {
+                BunStreamAction::Accepted => {
+                    let credit = entry.inbound_credit.fetch_add(1, Ordering::AcqRel) + 1;
+                    WireStreamOutcome::Accepted {
+                        credit: u32::try_from(credit).unwrap_or(u32::MAX),
+                    }
+                }
+                BunStreamAction::Runtime(error) => stream_runtime_outcome(&error),
+            }
+        }
+        WireStreamCall::Receive { .. } => {
+            if entry
+                .receive_in_flight
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                return WireStreamOutcome::Runtime {
+                    failure: WireFailure::ResourceExhausted {
+                        operation: format!("{}.receive", entry.operation),
+                    },
+                };
+            }
+            let result = match entry.stream.receive() {
+                BunStreamReceive::Runtime(error) => stream_runtime_outcome(&error),
+                BunStreamReceive::Event(BunStreamEvent::Message(payload)) => {
+                    if entry.local_half_closed.load(Ordering::Acquire)
+                        || entry.terminal_seen.load(Ordering::Acquire)
+                    {
+                        stream_runtime_outcome(&protocol_failure(state))
+                    } else {
+                        let sequence = entry.next_outbound_sequence.fetch_add(1, Ordering::AcqRel);
+                        WireStreamOutcome::Event {
+                            event: WireStreamEvent::Message { sequence, payload },
+                        }
+                    }
+                }
+                BunStreamReceive::Event(BunStreamEvent::PeerHalfClosed) => {
+                    if entry.local_half_closed.swap(true, Ordering::AcqRel) {
+                        stream_runtime_outcome(&protocol_failure(state))
+                    } else {
+                        WireStreamOutcome::Event {
+                            event: WireStreamEvent::PeerHalfClosed,
+                        }
+                    }
+                }
+                BunStreamReceive::Event(BunStreamEvent::Terminal(outcome)) => {
+                    if entry.terminal_seen.swap(true, Ordering::AcqRel) {
+                        stream_runtime_outcome(&protocol_failure(state))
+                    } else {
+                        let outcome = match outcome {
+                            Ok(()) => WireStreamTerminal::Success,
+                            Err(value) => WireStreamTerminal::Domain { value },
+                        };
+                        WireStreamOutcome::Event {
+                            event: WireStreamEvent::Terminal { outcome },
+                        }
+                    }
+                }
+            };
+            entry.receive_in_flight.store(false, Ordering::Release);
+            if matches!(
+                result,
+                WireStreamOutcome::Event {
+                    event: WireStreamEvent::Terminal { .. }
+                }
+            ) {
+                retire_stream(state, stream_id, &entry);
+            }
+            result
+        }
+        WireStreamCall::CloseSend { .. } => {
+            if entry.peer_half_closed.swap(true, Ordering::AcqRel)
+                || entry.terminal_seen.load(Ordering::Acquire)
+            {
+                return stream_runtime_outcome(&protocol_failure(state));
+            }
+            match entry.stream.peer_half_closed() {
+                BunStreamAction::Accepted => WireStreamOutcome::Accepted {
+                    credit: entry.inbound_credit.load(Ordering::Acquire) as u32,
+                },
+                BunStreamAction::Runtime(error) => {
+                    if matches!(&error, RuntimeFailure::ResourceExhausted { .. }) {
+                        entry.peer_half_closed.store(false, Ordering::Release);
+                    }
+                    stream_runtime_outcome(&error)
+                }
+            }
+        }
+    }
+}
+
+fn retire_stream(state: &ProviderState, stream_id: u64, entry: &ProviderStreamEntry) {
+    entry.cancelled.store(true, Ordering::Release);
+    if let Ok(mut streams) = state.streams.lock() {
+        streams.remove(&stream_id);
+    }
+    if let Ok(mut retired) = state.retired_streams.lock() {
+        remember_request_id(&mut retired, stream_id, MAX_RETIRED_REQUEST_IDS);
+    }
+    let _ = entry
+        .permit
+        .lock()
+        .ok()
+        .and_then(|mut permit| permit.take());
+}
+
+#[derive(Deserialize)]
+struct StreamCancelRequest {
+    stream_id: u64,
+    session: String,
+}
+
+fn handle_stream_cancel(
+    cancel: &StreamCancelRequest,
+    state: &ProviderState,
+) -> Result<(), ErrorObjectOwned> {
+    if !valid_session(Some(cancel.session.as_str()), state) {
+        return Err(invalid_session());
+    }
+    let entry = state
+        .streams
+        .lock()
+        .ok()
+        .and_then(|mut streams| streams.remove(&cancel.stream_id));
+    if let Some(entry) = entry {
+        entry.cancelled.store(true, Ordering::Release);
+        entry.stream.cancel();
+        if let Ok(mut retired) = state.retired_streams.lock() {
+            remember_request_id(&mut retired, cancel.stream_id, MAX_RETIRED_REQUEST_IDS);
+        }
+        let _ = entry
+            .permit
+            .lock()
+            .ok()
+            .and_then(|mut permit| permit.take());
+    }
+    Ok(())
+}
+
+fn valid_session(session: Option<&str>, state: &ProviderState) -> bool {
+    state
+        .session
+        .lock()
+        .ok()
+        .and_then(|current| current.clone())
+        .as_deref()
+        == session
+}
+
 fn handle_cancel(cancel: &CancelRequest, state: &ProviderState) -> Result<(), ErrorObjectOwned> {
     let expected_session = state
         .session
@@ -478,6 +917,12 @@ fn invalid_session() -> ErrorObjectOwned {
 
 fn runtime_outcome(error: &RuntimeFailure) -> WireOutcome {
     WireOutcome::Runtime {
+        failure: to_wire_failure(error),
+    }
+}
+
+fn stream_runtime_outcome(error: &RuntimeFailure) -> WireStreamOutcome {
+    WireStreamOutcome::Runtime {
         failure: to_wire_failure(error),
     }
 }
@@ -571,6 +1016,22 @@ fn cancel_all(registry: &CancellationRegistry) {
     }
 }
 
+fn cancel_all_streams(state: &ProviderState) {
+    let streams = state
+        .streams
+        .lock()
+        .ok()
+        .map(|mut streams| std::mem::take(&mut *streams))
+        .unwrap_or_default();
+    for (stream_id, entry) in streams {
+        entry.cancelled.store(true, Ordering::Release);
+        entry.stream.cancel();
+        if let Ok(mut retired) = state.retired_streams.lock() {
+            remember_request_id(&mut retired, stream_id, MAX_RETIRED_REQUEST_IDS);
+        }
+    }
+}
+
 fn remember_request_id(ids: &mut BTreeSet<u64>, request_id: u64, limit: usize) {
     while ids.len() >= limit {
         let Some(oldest) = ids.iter().next().copied() else {
@@ -608,6 +1069,7 @@ mod tests {
                 capability_id: "example.greeting@1",
                 descriptor_version: "1.0.0".to_owned(),
                 operations: vec!["greet".to_owned()],
+                stream_operations: Vec::new(),
             },
             4096,
             queue_capacity,
@@ -632,6 +1094,7 @@ mod tests {
                     capability_id: "example.greeting@1".to_owned(),
                     descriptor_version: "1.0.0".to_owned(),
                     operations: vec!["greet".to_owned()],
+                    stream_operations: Vec::new(),
                 }],
                 4096,
             ),
@@ -640,6 +1103,8 @@ mod tests {
             retired: Arc::new(Mutex::new(BTreeSet::new())),
             admission: Admission::new(1),
             handler: Arc::new(TestHandler),
+            streams: Mutex::new(BTreeMap::new()),
+            retired_streams: Mutex::new(BTreeSet::new()),
         };
         let accepted = handle_handshake(&state.expected, &state);
         let session = accepted
@@ -669,6 +1134,7 @@ mod tests {
                 capability_id: "example.greeting@1".to_owned(),
                 descriptor_version: "1.0.0".to_owned(),
                 operations: vec!["greet".to_owned()],
+                stream_operations: Vec::new(),
             }],
             4096,
         );
