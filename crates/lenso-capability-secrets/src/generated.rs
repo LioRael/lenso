@@ -3,13 +3,13 @@ use std::{fmt, rc::Rc};
 use futures::future::LocalBoxFuture;
 use lenso_kernel::{InvocationContext, ModuleDependencies, RuntimeFailure, NativeRequestEndpoint, NativeRequestHandle, RequestCapability};
 
-pub const CAPABILITY_ID: &str = "example.greeting@1";
+pub const CAPABILITY_ID: &str = "lenso.secrets@1";
 pub const DESCRIPTOR_VERSION: &str = "1.0.0";
-pub const PORTABLE: bool = true;
-pub const GREETING_CAPABILITY_ID: &str = CAPABILITY_ID;
-pub const GREETING_DESCRIPTOR_VERSION: &str = DESCRIPTOR_VERSION;
+pub const PORTABLE: bool = false;
+pub const SECRETS_CAPABILITY_ID: &str = CAPABILITY_ID;
+pub const SECRETS_DESCRIPTOR_VERSION: &str = DESCRIPTOR_VERSION;
 
-pub const GREET_OPERATION: &str = "greet";
+pub const RESOLVE_OPERATION: &str = "resolve";
 
 pub type Int64 = String;
 pub type Uint64 = String;
@@ -77,43 +77,54 @@ pub struct UnknownDomainError {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GreetRequest {
-    #[serde(rename = "name")]
+pub struct ResolveRequest {
+    #[serde(rename = "reference")]
     #[serde(deserialize_with = "deserialize_required")]
-    pub name: String,
+    pub reference: String,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GreetResponse {
-    #[serde(rename = "message")]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolveResponse {
+    #[serde(rename = "value")]
     #[serde(deserialize_with = "deserialize_required")]
-    pub message: String,
+    pub value: String,
+}
+
+impl fmt::Debug for ResolveResponse {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ResolveResponse")
+            .field("value", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum GreetError {
-    EmptyName,
+pub enum ResolveError {
+    InvalidReference,
+    UnknownReference,
     Unknown(UnknownDomainError),
 }
 
 #[derive(Debug)]
-pub struct Greeting;
-impl RequestCapability for Greeting {
-    type Request = GreetRequest;
-    type Response = GreetResponse;
-    type DomainError = GreetError;
+pub struct Secrets;
+impl RequestCapability for Secrets {
+    type Request = ResolveRequest;
+    type Response = ResolveResponse;
+    type DomainError = ResolveError;
     const ID: &'static str = CAPABILITY_ID;
     const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;
 }
 
-impl serde::Serialize for GreetError {
+impl serde::Serialize for ResolveError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         use serde::ser::SerializeMap;
         match self {
-            Self::EmptyName => serializer.serialize_str("empty_name"),
+            Self::InvalidReference => serializer.serialize_str("invalid_reference"),
+            Self::UnknownReference => serializer.serialize_str("unknown_reference"),
             Self::Unknown(value) => {
                 let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;
                 map.serialize_entry("code", &value.code)?;
@@ -129,7 +140,7 @@ impl serde::Serialize for GreetError {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for GreetError {
+impl<'de> serde::Deserialize<'de> for ResolveError {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -137,7 +148,8 @@ impl<'de> serde::Deserialize<'de> for GreetError {
         let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
         match value {
             serde_json::Value::String(code) => match code.as_str() {
-                "empty_name" => Ok(Self::EmptyName),
+                "invalid_reference" => Ok(Self::InvalidReference),
+                "unknown_reference" => Ok(Self::UnknownReference),
                 _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),
             },
             serde_json::Value::Object(mut object) => {
@@ -153,41 +165,41 @@ impl<'de> serde::Deserialize<'de> for GreetError {
     }
 }
 
-pub fn encode_greet_request(value: &GreetRequest) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
-pub fn decode_greet_request(wire: &str) -> Result<GreetRequest, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
-pub fn encode_greet_response(value: &GreetResponse) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
-pub fn decode_greet_response(wire: &str) -> Result<GreetResponse, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
-pub fn encode_greet_error(value: &GreetError) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
-pub fn decode_greet_error(wire: &str) -> Result<GreetError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+pub fn encode_resolve_request(value: &ResolveRequest) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_resolve_request(wire: &str) -> Result<ResolveRequest, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+pub fn encode_resolve_response(value: &ResolveResponse) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_resolve_response(wire: &str) -> Result<ResolveResponse, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
+pub fn encode_resolve_error(value: &ResolveError) -> Result<String, serde_json::Error> { let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }
+pub fn decode_resolve_error(wire: &str) -> Result<ResolveError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 
-pub trait GreetingProvider: fmt::Debug + 'static {
-    fn greet(&self, context: InvocationContext, request: GreetRequest) -> LocalBoxFuture<'static, Result<GreetResponse, GreetingInvocationError>>;
+pub trait SecretsProvider: fmt::Debug + 'static {
+    fn resolve(&self, context: InvocationContext, request: ResolveRequest) -> LocalBoxFuture<'static, Result<ResolveResponse, SecretsInvocationError>>;
 }
 
 #[derive(Debug)]
-pub struct GreetingEndpoint<P> { provider: Rc<P> }
-impl<P: GreetingProvider> GreetingEndpoint<P> {
+pub struct SecretsEndpoint<P> { provider: Rc<P> }
+impl<P: SecretsProvider> SecretsEndpoint<P> {
     pub fn new(provider: P) -> Self { Self { provider: Rc::new(provider) } }
 }
 
-impl<P: GreetingProvider> NativeRequestEndpoint for GreetingEndpoint<P> {
+impl<P: SecretsProvider> NativeRequestEndpoint for SecretsEndpoint<P> {
     fn capability_id(&self) -> &'static str { CAPABILITY_ID }
     fn descriptor_version(&self) -> &'static str { DESCRIPTOR_VERSION }
     fn operations(&self) -> &'static [&'static str] { &[
-        GREET_OPERATION,
+        RESOLVE_OPERATION,
     ] }
     fn invoke(&self, operation: &str, request: Box<dyn std::any::Any>, context: InvocationContext) -> LocalBoxFuture<'static, Result<Result<Box<dyn std::any::Any>, Box<dyn std::any::Any>>, RuntimeFailure>> {
         match operation {
-            GREET_OPERATION => {
-                let Ok(request) = request.downcast::<GreetRequest>() else {
+            RESOLVE_OPERATION => {
+                let Ok(request) = request.downcast::<ResolveRequest>() else {
                     return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation { capability: CAPABILITY_ID })));
                 };
                 let provider = Rc::clone(&self.provider);
                 Box::pin(async move {
-                    match provider.greet(context, *request).await {
+                    match provider.resolve(context, *request).await {
                         Ok(value) => Ok(Ok(Box::new(value) as Box<dyn std::any::Any>)),
-                        Err(GreetingInvocationError::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),
-                        Err(GreetingInvocationError::Runtime(error)) => Err(error),
+                        Err(SecretsInvocationError::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),
+                        Err(SecretsInvocationError::Runtime(error)) => Err(error),
                     }
                 })
             }
@@ -197,35 +209,35 @@ impl<P: GreetingProvider> NativeRequestEndpoint for GreetingEndpoint<P> {
 }
 
 #[derive(Debug)]
-pub struct GreetingClient {
-    greet: NativeRequestHandle<Greeting>,
+pub struct SecretsClient {
+    resolve: NativeRequestHandle<Secrets>,
 }
-impl GreetingClient {
-    pub fn new(handle: NativeRequestHandle<Greeting>) -> Self {
-        Self { greet: handle }
+impl SecretsClient {
+    pub fn new(handle: NativeRequestHandle<Secrets>) -> Self {
+        Self { resolve: handle }
     }
 
     pub fn from_dependencies(dependencies: &ModuleDependencies) -> Result<Self, RuntimeFailure> {
         Ok(Self {
-            greet: dependencies.one::<Greeting>()?,
+            resolve: dependencies.one::<Secrets>()?,
         })
     }
 
-    pub async fn greet(&self, request: GreetRequest) -> Result<GreetResponse, GreetingInvocationError> {
-        self.greet.invoke(GREET_OPERATION, request).await
-            .map_err(GreetingInvocationError::Runtime)?
-            .map_err(GreetingInvocationError::Domain)
+    pub async fn resolve(&self, request: ResolveRequest) -> Result<ResolveResponse, SecretsInvocationError> {
+        self.resolve.invoke(RESOLVE_OPERATION, request).await
+            .map_err(SecretsInvocationError::Runtime)?
+            .map_err(SecretsInvocationError::Domain)
     }
 
-    pub async fn greet_with_context(&self, context: InvocationContext, request: GreetRequest) -> Result<GreetResponse, GreetingInvocationError> {
-        self.greet.invoke_with_context(GREET_OPERATION, context, request).await
-            .map_err(GreetingInvocationError::Runtime)?
-            .map_err(GreetingInvocationError::Domain)
+    pub async fn resolve_with_context(&self, context: InvocationContext, request: ResolveRequest) -> Result<ResolveResponse, SecretsInvocationError> {
+        self.resolve.invoke_with_context(RESOLVE_OPERATION, context, request).await
+            .map_err(SecretsInvocationError::Runtime)?
+            .map_err(SecretsInvocationError::Domain)
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum GreetingInvocationError {
-    Domain(GreetError),
+pub enum SecretsInvocationError {
+    Domain(ResolveError),
     Runtime(RuntimeFailure),
 }

@@ -2669,21 +2669,21 @@ fn generate_rust(contract: &ContractIr) -> String {
             _ => unreachable!("Descriptor validation restricts interactions"),
         });
         if operation.interaction == "request" {
-            operation_rows.push(format!("        {operation_const}_OPERATION,\n"));
-            provider_methods.push(format!(
-                "    fn {}(&self, context: InvocationContext, request: {request_type}) -> LocalBoxFuture<'static, Result<{response_type}, {error_name}>>;",
-                rust_field_name(&operation.name)
-            ));
-            endpoint_arms.push(format!(
-                "            {operation_const}_OPERATION => {{\n                let Ok(request) = request.downcast::<{request_type}>() else {{\n                    return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation {{ capability: CAPABILITY_ID }})));\n                }};\n                let provider = Rc::clone(&self.provider);\n                Box::pin(async move {{\n                    Ok(provider.{}(context, *request).await\n                        .map(|value| Box::new(value) as Box<dyn std::any::Any>)\n                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))\n                }})\n            }}",
-                rust_field_name(&operation.name),
-            ));
-            let field = rust_field_name(&operation.name);
             let invocation_error_name = if contract.operations.len() == 1 {
                 format!("{capability_name}InvocationError")
             } else {
                 format!("{capability_name}{operation_name}InvocationError")
             };
+            operation_rows.push(format!("        {operation_const}_OPERATION,\n"));
+            provider_methods.push(format!(
+                "    fn {}(&self, context: InvocationContext, request: {request_type}) -> LocalBoxFuture<'static, Result<{response_type}, {invocation_error_name}>>;",
+                rust_field_name(&operation.name)
+            ));
+            endpoint_arms.push(format!(
+                "            {operation_const}_OPERATION => {{\n                let Ok(request) = request.downcast::<{request_type}>() else {{\n                    return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation {{ capability: CAPABILITY_ID }})));\n                }};\n                let provider = Rc::clone(&self.provider);\n                Box::pin(async move {{\n                    match provider.{}(context, *request).await {{\n                        Ok(value) => Ok(Ok(Box::new(value) as Box<dyn std::any::Any>)),\n                        Err({invocation_error_name}::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),\n                        Err({invocation_error_name}::Runtime(error)) => Err(error),\n                    }}\n                }})\n            }}",
+                rust_field_name(&operation.name),
+            ));
+            let field = rust_field_name(&operation.name);
             client_fields.push(format!("    {field}: NativeRequestHandle<{marker_name}>,"));
             client_initializers.push(format!(
                 "            {field}: dependencies.one::<{marker_name}>()?,"
@@ -2697,21 +2697,21 @@ fn generate_rust(contract: &ContractIr) -> String {
                 "#[derive(Clone, Debug, PartialEq)]\npub enum {invocation_error_name} {{\n    Domain({error_name}),\n    Runtime(RuntimeFailure),\n}}\n"
             ));
         } else if operation.interaction == "stream" {
-            stream_operation_rows.push(format!("        {operation_const}_OPERATION,\n"));
-            provider_methods.push(format!(
-                "    fn {}(&self, context: InvocationContext, request: {request_type}) -> LocalBoxFuture<'static, Result<Box<dyn NativeStreamSession>, {error_name}>>;",
-                rust_field_name(&operation.name)
-            ));
-            stream_endpoint_arms.push(format!(
-                "            {operation_const}_OPERATION => {{\n                let Ok(request) = request.downcast::<{request_type}>() else {{\n                    return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation {{ capability: CAPABILITY_ID }})));\n                }};\n                let provider = Rc::clone(&self.provider);\n                Box::pin(async move {{\n                    Ok(provider.{}(context, *request).await\n                        .map(|value| value as Box<dyn NativeStreamSession>)\n                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))\n                }})\n            }}",
-                rust_field_name(&operation.name),
-            ));
-            let field = rust_field_name(&operation.name);
             let invocation_error_name = if contract.operations.len() == 1 {
                 format!("{capability_name}InvocationError")
             } else {
                 format!("{capability_name}{operation_name}InvocationError")
             };
+            stream_operation_rows.push(format!("        {operation_const}_OPERATION,\n"));
+            provider_methods.push(format!(
+                "    fn {}(&self, context: InvocationContext, request: {request_type}) -> LocalBoxFuture<'static, Result<Box<dyn NativeStreamSession>, {invocation_error_name}>>;",
+                rust_field_name(&operation.name)
+            ));
+            stream_endpoint_arms.push(format!(
+                "            {operation_const}_OPERATION => {{\n                let Ok(request) = request.downcast::<{request_type}>() else {{\n                    return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation {{ capability: CAPABILITY_ID }})));\n                }};\n                let provider = Rc::clone(&self.provider);\n                Box::pin(async move {{\n                    match provider.{}(context, *request).await {{\n                        Ok(value) => Ok(Ok(value as Box<dyn NativeStreamSession>)),\n                        Err({invocation_error_name}::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),\n                        Err({invocation_error_name}::Runtime(error)) => Err(error),\n                    }}\n                }})\n            }}",
+                rust_field_name(&operation.name),
+            ));
+            let field = rust_field_name(&operation.name);
             client_fields.push(format!("    {field}: NativeStreamHandle<{marker_name}>,"));
             client_initializers.push(format!(
                 "            {field}: dependencies.one_stream::<{marker_name}>()?,"
@@ -3159,7 +3159,7 @@ fn generate_typescript(contract: &ContractIr) -> String {
                 typescript_property_name(&snake_case(&operation.name)),
             ));
             providers.push(format!(
-                "  {}(context: InvocationContext, request: {request_type}): Promise<{{ readonly ok: true; readonly value: {response_type} }} | {{ readonly ok: false; readonly error: {error_name} }}>;",
+                "  {}(context: InvocationContext, request: {request_type}): Promise<{result_name}>;",
                 typescript_property_name(&snake_case(&operation.name)),
             ));
         } else if operation.interaction == "stream" {
@@ -3168,7 +3168,7 @@ fn generate_typescript(contract: &ContractIr) -> String {
                 typescript_property_name(&snake_case(&operation.name)),
             ));
             providers.push(format!(
-                "  {}(context: InvocationContext, request: {request_type}): Promise<{{ readonly ok: true; readonly value: StreamSession<{response_type}, {error_name}> }} | {{ readonly ok: false; readonly error: {error_name} }}>;",
+                "  {}(context: InvocationContext, request: {request_type}): Promise<{result_name}>;",
                 typescript_property_name(&snake_case(&operation.name)),
             ));
         } else {

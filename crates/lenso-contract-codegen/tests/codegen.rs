@@ -50,9 +50,11 @@ fn stream_descriptors_generate_bidirectional_rust_and_typescript_bindings() {
     assert!(artifacts.typescript.contains("StreamEvent"));
     assert!(artifacts.typescript.contains("send(message:"));
     assert!(artifacts.typescript.contains("receive(): Promise"));
-    assert!(artifacts.typescript.contains(
-        "chat(context: InvocationContext, request: ChatRequest): Promise<{ readonly ok: true; readonly value: StreamSession<ChatResponse, ChatError> } | { readonly ok: false; readonly error: ChatError }>;"
-    ));
+    assert!(
+        artifacts.typescript.contains(
+            "chat(context: InvocationContext, request: ChatRequest): Promise<ChatResult>;"
+        )
+    );
 }
 
 #[test]
@@ -198,7 +200,7 @@ fn one_descriptor_generates_matching_rust_and_typescript_bindings() {
     assert!(
         artifacts
             .typescript
-            .contains("readonly ok: false; readonly error: RoundTripError")
+            .contains("readonly ok: false; readonly error: RoundTripInvocationError")
     );
     assert!(
         artifacts
