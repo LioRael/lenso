@@ -3,19 +3,21 @@ name = "lenso-runner"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
+publish = true
+repository.workspace = true
+description = "Native Tokio Runtime Driver and Runner for Lenso vNext."
 
 [dependencies]
 futures.workspace = true
-lenso-app-plan = { path = "../lenso-app-plan" }
-lenso-kernel = { path = "../lenso-kernel" }
+lenso-app-plan = { path = "../lenso-app-plan", version = "0.1.0" }
+lenso-kernel = { path = "../lenso-kernel", version = "0.1.0" }
 tokio = { workspace = true, features = ["sync"] }
 cpu-time = "1.0"
 
 [dev-dependencies]
-lenso-capability-greeting = { path = "../lenso-capability-greeting" }
-lenso-native-adapter = { path = "../lenso-native-adapter" }
-lenso-native-greeter = { path = "../../fixtures/vnext-native-greeter" }
+lenso-capability-greeting = { path = "../lenso-capability-greeting", version = "0.1.0" }
+lenso-native-adapter = { path = "../lenso-native-adapter", version = "0.1.0" }
+lenso-native-greeter = { path = "../../fixtures/vnext-native-greeter", version = "0.1.0" }
 
 [lints]
 workspace = true
