@@ -3,8 +3,9 @@ use std::{any::Any, cell::Cell, fmt, marker::PhantomData, rc::Rc};
 use futures::future::LocalBoxFuture;
 
 use super::{
-    InvocationContext, NativeAppRuntime, NativeStreamEndpointBinding, RequestPermit,
-    RuntimeFailure, await_with_generation_context, schedule_module_supervision_after_failure,
+    DiagnosticEvent, DiagnosticOutcome, DiagnosticSource, InvocationContext, NativeAppRuntime,
+    NativeStreamEndpointBinding, RequestPermit, RuntimeFailure, await_with_generation_context,
+    diagnostics::diagnostic_operation, schedule_module_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one stream Capability.
@@ -134,6 +135,68 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
         request: C::OpenRequest,
     ) -> Result<Result<NativeStream<C>, C::DomainError>, RuntimeFailure> {
         let context = context.with_caller_instance(self.caller_instance.clone());
+        let started_at = (self.runtime.driver.now)();
+        let operation_name = self
+            .endpoints
+            .first()
+            .and_then(|endpoint| diagnostic_operation(endpoint.state.operations, operation));
+        let request_id = context.request_id();
+        self.runtime
+            .diagnostics
+            .emit(DiagnosticSource::Invocation, started_at, |_| {
+                DiagnosticEvent::InvocationStarted {
+                    request_id,
+                    caller_instance: Some(self.caller_instance.clone()),
+                    provider_instance: self
+                        .endpoints
+                        .first()
+                        .map(|endpoint| endpoint.module_instance.clone()),
+                    capability: C::ID,
+                    operation: operation_name,
+                }
+            });
+        let result = self
+            .open_with_context_inner(operation, context, request)
+            .await;
+        let outcome = match &result {
+            Ok(Ok(_)) => DiagnosticOutcome::Succeeded,
+            Ok(Err(_)) => DiagnosticOutcome::DomainError,
+            Err(error) => DiagnosticOutcome::RuntimeFailure(error.into()),
+        };
+        self.runtime.diagnostics.emit(
+            DiagnosticSource::Invocation,
+            (self.runtime.driver.now)(),
+            |_| DiagnosticEvent::InvocationCompleted {
+                request_id,
+                caller_instance: Some(self.caller_instance.clone()),
+                provider_instance: self
+                    .endpoints
+                    .first()
+                    .map(|endpoint| endpoint.module_instance.clone()),
+                capability: C::ID,
+                operation: operation_name,
+                outcome,
+                elapsed: (self.runtime.driver.now)().saturating_sub(started_at),
+            },
+        );
+        if let Err(error) = &result {
+            self.runtime.diagnostics.emit_runtime_failure(
+                (self.runtime.driver.now)(),
+                self.endpoints
+                    .first()
+                    .map(|endpoint| endpoint.module_instance.as_str()),
+                error,
+            );
+        }
+        result
+    }
+
+    async fn open_with_context_inner(
+        &self,
+        operation: &str,
+        context: InvocationContext,
+        request: C::OpenRequest,
+    ) -> Result<Result<NativeStream<C>, C::DomainError>, RuntimeFailure> {
         if self.runtime.shutdown_started.get()
             || (!self.allow_before_ready && self.runtime.admission.is_closed())
         {
@@ -405,6 +468,11 @@ impl<C: StreamCapability> NativeStream<C> {
 
     fn finish_with_error(&self, error: RuntimeFailure) -> RuntimeFailure {
         let error = self.schedule_failure(error);
+        self.runtime.diagnostics.emit_runtime_failure(
+            (self.runtime.driver.now)(),
+            Some(&self.module_instance),
+            &error,
+        );
         if !matches!(error, RuntimeFailure::ResourceExhausted { .. }) {
             self.terminal_seen.set(true);
             if !self.cancelled.replace(true) {

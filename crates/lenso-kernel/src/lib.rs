@@ -5,7 +5,6 @@ use std::{
     cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet, VecDeque},
     future::Future,
-    marker::PhantomData,
     panic::AssertUnwindSafe,
     pin::Pin,
     rc::{Rc, Weak},
@@ -25,16 +24,23 @@ use lenso_app_plan::{
 };
 
 mod deterministic;
+mod diagnostics;
 mod driver;
 mod event;
 mod kernel;
 mod lifecycle;
 mod prepared;
 mod request;
+mod request_handle;
 mod runtime;
 mod stream;
 mod supervision;
 
+pub use diagnostics::{
+    DiagnosticAdmission, DiagnosticEvent, DiagnosticFilter, DiagnosticObserver, DiagnosticOutcome,
+    DiagnosticRecord, DiagnosticShutdownOutcome, DiagnosticSource, DiagnosticSubscribeError,
+    RuntimeDiagnostics, RuntimeFailureKind,
+};
 pub use event::{
     EventAdmission, EventCapability, EventPublishResult, EventPublishStatus,
     ModuleEventDependencyHandle, NativeEventEndpoint, NativeEventHandle,
@@ -62,6 +68,7 @@ pub use kernel::*;
 pub use lifecycle::*;
 pub use prepared::*;
 pub use request::*;
+pub use request_handle::*;
 pub use runtime::*;
 use supervision::{
     begin_module_supervision, deactivate_in_reverse, module_supervision,

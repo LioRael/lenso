@@ -12,8 +12,8 @@ use lenso_app_plan::{
     RestartPolicy,
 };
 use lenso_kernel::{
-    DeactivateContext, DeactivationReason, DeterministicDriver, Kernel, ManagedResource,
-    ModuleFuture, ModuleLifecycle, NativeExecutionAdapter, NativeRequestEndpoint,
+    DeactivateContext, DeactivationReason, DeterministicDriver, DiagnosticEvent, Kernel,
+    ManagedResource, ModuleFuture, ModuleLifecycle, NativeExecutionAdapter, NativeRequestEndpoint,
     NoopModuleLifecycle, PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativeModule,
     RequestCapability, ResourceFuture, RuntimeDriver, RuntimeFailure,
 };
@@ -484,6 +484,62 @@ fn stable_handle_is_unavailable_during_deterministic_restart_and_reuses_ready_ge
         .position(|event| *event == Event::Prepare(2))
         .expect("the replacement should prepare");
     assert!(deactivate < release && release < replacement_prepare);
+}
+
+#[test]
+fn supervision_diagnostics_report_generation_transitions_without_changing_restart_behavior() {
+    let (app, driver, _, _) = start_app(
+        RestartPolicy::on_failure(
+            1,
+            Duration::from_secs(60),
+            Duration::ZERO,
+            Duration::ZERO,
+            Duration::from_secs(60),
+        ),
+        Some(CapabilityCardinality::One),
+        false,
+        0,
+        false,
+    );
+    let observer = app
+        .diagnostics()
+        .subscribe_all(32)
+        .expect("the diagnostics observer should be bounded");
+
+    app.report_module_failure("provider")
+        .expect("the deterministic Driver should schedule supervision");
+    drive_turn(&driver);
+
+    assert_eq!(app.module_generation("provider"), Some(2));
+    let records = std::iter::from_fn(|| observer.try_recv()).collect::<Vec<_>>();
+    assert!(records.iter().any(|record| {
+        matches!(
+            record.event,
+            DiagnosticEvent::GenerationUnavailable {
+                ref instance,
+                generation: 1,
+            } if instance == "provider"
+        )
+    }));
+    assert!(records.iter().any(|record| {
+        matches!(
+            record.event,
+            DiagnosticEvent::RestartScheduled {
+                ref instance,
+                attempt: 1,
+                delay: Duration::ZERO,
+            } if instance == "provider"
+        )
+    }));
+    assert!(records.iter().any(|record| {
+        matches!(
+            record.event,
+            DiagnosticEvent::GenerationReady {
+                ref instance,
+                generation: 2,
+            } if instance == "provider"
+        )
+    }));
 }
 
 #[test]
