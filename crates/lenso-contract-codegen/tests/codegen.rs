@@ -9,6 +9,34 @@ use serde_json::json;
 const FIXTURE: &str = "tests/fixtures/profile/capability.json";
 const STREAM_FIXTURE: &str = "tests/fixtures/stream/capability.json";
 const EVENT_FIXTURE: &str = "tests/fixtures/event/capability.json";
+const AUTH_FIXTURE: &str = "../lenso-capability-auth/capability.json";
+
+#[test]
+fn sensitive_schema_fields_generate_redacted_rust_debug() {
+    let artifacts = generate(Path::new(AUTH_FIXTURE)).expect("Auth Descriptor should generate");
+
+    assert!(
+        artifacts
+            .rust
+            .contains("impl fmt::Debug for AuthenticateRequestCredential")
+    );
+    assert!(
+        artifacts
+            .rust
+            .contains(".field(\"value\", &\"<redacted>\")")
+    );
+    assert!(
+        artifacts
+            .rust
+            .contains("impl fmt::Debug for AuthenticateResponseAssertion")
+    );
+    assert!(
+        artifacts
+            .rust
+            .contains(".field(\"proof\", &\"<redacted>\")")
+    );
+    assert!(artifacts.typescript.contains("value: string"));
+}
 
 #[test]
 fn stream_descriptors_generate_bidirectional_rust_and_typescript_bindings() {

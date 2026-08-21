@@ -134,7 +134,9 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
         context: InvocationContext,
         request: C::OpenRequest,
     ) -> Result<Result<NativeStream<C>, C::DomainError>, RuntimeFailure> {
-        let context = context.with_caller_instance(self.caller_instance.clone());
+        let context = context
+            .with_caller_instance(self.caller_instance.clone())
+            .for_target(C::ID, operation);
         let started_at = (self.runtime.driver.now)();
         let operation_name = self
             .endpoints
