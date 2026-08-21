@@ -52,7 +52,7 @@ export interface TimelineResponseEntriesItem {
   subject_id: string;
 }
 
-export type TimelineError = "invalid_query" | "storage_unavailable" | "unauthorized" | UnknownDomainError;
+export type TimelineError = "invalid_query" | "unauthorized" | UnknownDomainError;
 export type TimelineInvocationError = { readonly kind: "domain"; readonly error: TimelineError } | { readonly kind: "runtime"; readonly error: RuntimeFailure };
 export type TimelineResult = { readonly ok: true; readonly value: TimelineResponse } | { readonly ok: false; readonly error: TimelineInvocationError };
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -83,7 +83,6 @@ export function decodeTimelineError(wire: string): TimelineError {
   validatePortableJson(value);
   if (typeof value === "string") {
     if (value === "invalid_query") return value as TimelineError;
-    if (value === "storage_unavailable") return value as TimelineError;
     if (value === "unauthorized") return value as TimelineError;
     return { code: value } as TimelineError;
   }

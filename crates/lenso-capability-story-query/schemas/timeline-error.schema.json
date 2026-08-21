@@ -1,7 +1,6 @@
 {
   "oneOf": [
     {"const": "unauthorized"},
-    {"const": "invalid_query"},
-    {"const": "storage_unavailable"}
+    {"const": "invalid_query"}
   ]
 }

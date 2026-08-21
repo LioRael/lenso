@@ -29,11 +29,11 @@ pub(super) struct EventIdentity {
     pub(super) facts: BTreeMap<String, serde_json::Value>,
 }
 
-impl From<&RecordRequest> for EventIdentity {
-    fn from(event: &RecordRequest) -> Self {
+impl EventIdentity {
+    pub(super) fn from_event(event: &RecordRequest, occurred_at: String) -> Self {
         Self {
             event_version: event.event_version,
-            occurred_at: event.occurred_at.clone(),
+            occurred_at,
             subject_id: event.subject_id.clone(),
             event_type: event.event_type.clone(),
             facts: event.facts.clone(),
@@ -48,6 +48,8 @@ pub(super) struct StoryDocument {
     pub(super) entries: Vec<StoredStoryEntry>,
     #[serde(default)]
     pub(super) event_ids: BTreeMap<String, EventIdentity>,
+    #[serde(default)]
+    pub(super) event_id_order: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,7 +67,7 @@ pub(super) struct LegacyStoryDocument {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum IngestOutcome {
-    Inserted { revision: u64 },
+    Inserted,
     Duplicate,
 }
 

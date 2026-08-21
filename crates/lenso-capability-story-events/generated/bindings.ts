@@ -32,12 +32,6 @@ export interface StreamSession<Message, DomainError> {
   cancel(): void;
 }
 
-export type EventAdmission = "accepted" | "unavailable" | "exhausted";
-export interface EventPublishResult {
-  readonly subscriberInstance: string;
-  readonly admission: EventAdmission;
-}
-
 export interface RecordRequest {
   event_id: string;
   event_type: string;
@@ -48,7 +42,8 @@ export interface RecordRequest {
 }
 
 export type RecordError = "conflicting_event_id" | "invalid_event" | UnknownDomainError;
-export type RecordResult = ReadonlyArray<EventPublishResult>;
+export type RecordInvocationError = { readonly kind: "domain"; readonly error: RecordError } | { readonly kind: "runtime"; readonly error: RuntimeFailure };
+export type RecordResult = { readonly ok: true; readonly value: null } | { readonly ok: false; readonly error: RecordInvocationError };
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -84,16 +79,13 @@ export function decodeRecordError(wire: string): RecordError {
   throw new Error("Domain Error must be a string or object");
 }
 
-export function encodeRecordEvent(value: RecordRequest): string { validatePortableJson(value); const wire = JSON.stringify(value); if (wire === undefined) throw new Error("event cannot be encoded"); return wire; }
-export function decodeRecordEvent(wire: string): RecordRequest { const value: unknown = JSON.parse(wire); validatePortableJson(value); return value as RecordRequest; }
-
 
 export interface EventsClient {
-  record(event: RecordRequest, context?: InvocationContext): Promise<RecordResult>;
+  record(request: RecordRequest, context?: InvocationContext): Promise<RecordResult>;
 }
 
 export interface EventsProvider {
-  record(context: InvocationContext, event: RecordRequest): void;
+  record(context: InvocationContext, request: RecordRequest): Promise<RecordResult>;
 }
 
 export const portableValueProfile = {

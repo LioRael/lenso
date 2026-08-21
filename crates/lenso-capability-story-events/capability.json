@@ -4,7 +4,7 @@
   "portable": true,
   "operations": [{
     "name": "record",
-    "interaction": "event",
+    "interaction": "request",
     "request_schema": "schemas/record-event.schema.json",
     "response_schema": "schemas/record-response.schema.json",
     "domain_error_schema": "schemas/record-error.schema.json"

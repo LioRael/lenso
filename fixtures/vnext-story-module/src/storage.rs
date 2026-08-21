@@ -1,6 +1,7 @@
 //! Private Story persistence, idempotency, retention, and recovery workflows.
 
 use std::{
+    cmp::Ordering as CmpOrdering,
     fs::{File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -61,9 +62,12 @@ impl FileStoryAdapter {
         let value = self.read_json_value(&self.path)?;
         let version = document_version(&self.path, &value)?;
         match version {
-            version if version == migration.version => Ok(StoryUpgradeOutcome::AlreadyCurrent {
-                schema_version: migration.version,
-            }),
+            version if version == migration.version => {
+                self.read_current_document()?;
+                Ok(StoryUpgradeOutcome::AlreadyCurrent {
+                    schema_version: migration.version,
+                })
+            }
             0 => {
                 let legacy: LegacyStoryDocument =
                     serde_json::from_value(value).map_err(|error| {
@@ -81,6 +85,11 @@ impl FileStoryAdapter {
                         ),
                     });
                 }
+                let event_id_order = legacy
+                    .entries
+                    .iter()
+                    .map(|entry| entry.event_id.clone())
+                    .collect();
                 let event_ids = legacy
                     .entries
                     .iter()
@@ -109,6 +118,7 @@ impl FileStoryAdapter {
                         revision,
                         entries: legacy.entries,
                         event_ids,
+                        event_id_order,
                     },
                     parent,
                 )?;
@@ -179,13 +189,14 @@ impl FileStoryAdapter {
         event: &RecordRequest,
         source_instance: &str,
         retention_limit: usize,
+        idempotency_limit: usize,
     ) -> Result<IngestOutcome, StoryStorageError> {
-        validate_event(event)?;
+        let occurred_at = canonical_occurred_at(event)?;
         let parent = self.parent()?;
         let _lock = self.acquire_lock(false)?;
         self.require_recovered()?;
         let mut document = self.read_current_document()?;
-        let identity = EventIdentity::from(event);
+        let identity = EventIdentity::from_event(event, occurred_at.clone());
         if let Some(previous) = document.event_ids.get(&event.event_id) {
             if previous == &identity {
                 return Ok(IngestOutcome::Duplicate);
@@ -203,10 +214,11 @@ impl FileStoryAdapter {
                     detail: "Story revision overflow".to_owned(),
                 })?;
         document.event_ids.insert(event.event_id.clone(), identity);
+        document.event_id_order.push(event.event_id.clone());
         document.entries.push(StoredStoryEntry {
             event_id: event.event_id.clone(),
             event_version: event.event_version,
-            occurred_at: event.occurred_at.clone(),
+            occurred_at,
             subject_id: event.subject_id.clone(),
             event_type: event.event_type.clone(),
             facts: event.facts.clone(),
@@ -214,8 +226,7 @@ impl FileStoryAdapter {
             revision: document.revision,
         });
         document.entries.sort_by(|left, right| {
-            left.occurred_at
-                .cmp(&right.occurred_at)
+            compare_occurred_at(&left.occurred_at, &right.occurred_at)
                 .then_with(|| left.event_id.cmp(&right.event_id))
                 .then_with(|| left.revision.cmp(&right.revision))
         });
@@ -223,10 +234,19 @@ impl FileStoryAdapter {
         if evicted > 0 {
             document.entries.drain(..evicted);
         }
+        let expired_identities = document
+            .event_id_order
+            .len()
+            .saturating_sub(idempotency_limit);
+        let expired_event_ids: Vec<_> = document
+            .event_id_order
+            .drain(..expired_identities)
+            .collect();
+        for event_id in expired_event_ids {
+            document.event_ids.remove(&event_id);
+        }
         self.write_document(&document, parent)?;
-        Ok(IngestOutcome::Inserted {
-            revision: document.revision,
-        })
+        Ok(IngestOutcome::Inserted)
     }
 
     /// Reads the retained timeline entries for one subject in deterministic order.
@@ -326,10 +346,13 @@ impl FileStoryAdapter {
                 actual,
             });
         }
-        serde_json::from_value(value).map_err(|error| StoryStorageError::InvalidDocument {
-            path: path.to_owned(),
-            detail: error.to_string(),
-        })
+        let document: StoryDocument =
+            serde_json::from_value(value).map_err(|error| StoryStorageError::InvalidDocument {
+                path: path.to_owned(),
+                detail: error.to_string(),
+            })?;
+        validate_document(path, &document)?;
+        Ok(document)
     }
 
     fn owned_migration() -> Result<OwnedMigration, StoryStorageError> {
@@ -441,7 +464,7 @@ impl FileStoryAdapter {
     }
 }
 
-fn validate_event(event: &RecordRequest) -> Result<(), StoryStorageError> {
+fn canonical_occurred_at(event: &RecordRequest) -> Result<String, StoryStorageError> {
     if event.event_id.is_empty()
         || event.event_version < 1
         || event.occurred_at.is_empty()
@@ -453,13 +476,54 @@ fn validate_event(event: &RecordRequest) -> Result<(), StoryStorageError> {
                 .to_owned(),
         });
     }
-    time::OffsetDateTime::parse(
+    let occurred_at = time::OffsetDateTime::parse(
         &event.occurred_at,
         &time::format_description::well_known::Rfc3339,
     )
     .map_err(|error| StoryStorageError::InvalidEvent {
         detail: format!("occurred_at is not RFC 3339: {error}"),
     })?;
+    occurred_at
+        .to_offset(time::UtcOffset::UTC)
+        .format(&time::format_description::well_known::Rfc3339)
+        .map_err(|error| StoryStorageError::InvalidEvent {
+            detail: format!("occurred_at cannot be normalized: {error}"),
+        })
+}
+
+fn compare_occurred_at(left: &str, right: &str) -> CmpOrdering {
+    let format = &time::format_description::well_known::Rfc3339;
+    let left = time::OffsetDateTime::parse(left, format)
+        .expect("stored Story timestamps are validated before sorting");
+    let right = time::OffsetDateTime::parse(right, format)
+        .expect("stored Story timestamps are validated before sorting");
+    left.cmp(&right)
+}
+
+fn validate_document(path: &Path, document: &StoryDocument) -> Result<(), StoryStorageError> {
+    let format = &time::format_description::well_known::Rfc3339;
+    if document.event_id_order.len() != document.event_ids.len()
+        || document
+            .event_id_order
+            .iter()
+            .any(|event_id| !document.event_ids.contains_key(event_id))
+    {
+        return Err(StoryStorageError::InvalidDocument {
+            path: path.to_owned(),
+            detail: "event idempotency order does not match its identity index".to_owned(),
+        });
+    }
+    for entry in &document.entries {
+        time::OffsetDateTime::parse(&entry.occurred_at, format).map_err(|error| {
+            StoryStorageError::InvalidDocument {
+                path: path.to_owned(),
+                detail: format!(
+                    "entry `{}` has an invalid occurred_at: {error}",
+                    entry.event_id
+                ),
+            }
+        })?;
+    }
     Ok(())
 }
 

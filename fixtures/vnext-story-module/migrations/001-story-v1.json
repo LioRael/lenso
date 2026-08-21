@@ -4,6 +4,7 @@
     "schema_version": 1,
     "revision": 0,
     "entries": [],
-    "event_ids": {}
+    "event_ids": {},
+    "event_id_order": []
   }
 }

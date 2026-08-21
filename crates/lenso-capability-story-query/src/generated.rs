@@ -124,7 +124,6 @@ pub struct TimelineResponseEntriesItem {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TimelineError {
     InvalidQuery,
-    StorageUnavailable,
     Unauthorized,
     Unknown(UnknownDomainError),
 }
@@ -147,7 +146,6 @@ impl serde::Serialize for TimelineError {
         use serde::ser::SerializeMap;
         match self {
             Self::InvalidQuery => serializer.serialize_str("invalid_query"),
-            Self::StorageUnavailable => serializer.serialize_str("storage_unavailable"),
             Self::Unauthorized => serializer.serialize_str("unauthorized"),
             Self::Unknown(value) => {
                 let mut map = serializer.serialize_map(Some(1 + usize::from(value.payload.is_some()) + value.extra.len()))?;
@@ -173,7 +171,6 @@ impl<'de> serde::Deserialize<'de> for TimelineError {
         match value {
             serde_json::Value::String(code) => match code.as_str() {
                 "invalid_query" => Ok(Self::InvalidQuery),
-                "storage_unavailable" => Ok(Self::StorageUnavailable),
                 "unauthorized" => Ok(Self::Unauthorized),
                 _ => Ok(Self::Unknown(UnknownDomainError { code, payload: None, extra: std::collections::BTreeMap::new() })),
             },

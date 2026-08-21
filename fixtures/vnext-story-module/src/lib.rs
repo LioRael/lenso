@@ -1,16 +1,18 @@
 //! A durable Story Module fixture sourced from explicit business Events.
 
-use std::{cell::RefCell, collections::BTreeSet, path::PathBuf, rc::Rc};
+use std::{collections::BTreeSet, path::PathBuf, rc::Rc};
 
 use futures::future::LocalBoxFuture;
-use lenso_capability_story_events::{EventsEndpoint, EventsProvider, RecordRequest};
+use lenso_capability_story_events::{
+    EventsEndpoint, EventsInvocationError, EventsProvider, RecordError, RecordRequest,
+};
 use lenso_capability_story_query::{
     QueryEndpoint, QueryInvocationError, QueryProvider, TimelineError, TimelineRequest,
     TimelineResponse, TimelineResponseEntriesItem,
 };
 use lenso_kernel::{
-    ActivateContext, DeactivateContext, InvocationContext, ModuleFuture, ModuleLifecycle,
-    NativeEventEndpoint, NativeRequestEndpoint, PrepareContext, RuntimeFailure,
+    InvocationContext, ModuleFuture, ModuleLifecycle, NativeRequestEndpoint, PrepareContext,
+    RuntimeFailure,
 };
 use lenso_native_adapter::{NativeModuleFactory, NativeModuleFactoryContext, NativeModuleInstance};
 use serde::Deserialize;
@@ -55,6 +57,7 @@ struct StoryConfiguration {
     storage_path: PathBuf,
     authorized_callers: Vec<String>,
     retention_limit: usize,
+    idempotency_limit: usize,
 }
 
 #[derive(Debug)]
@@ -62,7 +65,7 @@ struct StoryRuntime {
     storage: FileStoryAdapter,
     authorized_callers: BTreeSet<String>,
     retention_limit: usize,
-    last_ingest_failure: RefCell<Option<String>>,
+    idempotency_limit: usize,
 }
 
 #[derive(Debug)]
@@ -82,14 +85,6 @@ impl ModuleLifecycle for StoryLifecycle {
                 })
         })
     }
-
-    fn activate(&self, _context: ActivateContext) -> ModuleFuture {
-        Box::pin(async { Ok(()) })
-    }
-
-    fn deactivate(&self, _context: DeactivateContext) -> ModuleFuture {
-        Box::pin(async { Ok(()) })
-    }
 }
 
 #[derive(Debug)]
@@ -98,17 +93,35 @@ struct StoryEventsProvider {
 }
 
 impl EventsProvider for StoryEventsProvider {
-    fn record(&self, context: InvocationContext, event: RecordRequest) {
-        let source_instance = context.caller_instance().unwrap_or("unknown");
-        if let Err(error) =
-            self.runtime
+    fn record(
+        &self,
+        context: InvocationContext,
+        event: RecordRequest,
+    ) -> LocalBoxFuture<'static, Result<(), EventsInvocationError>> {
+        let runtime = Rc::clone(&self.runtime);
+        let source_instance = context.caller_instance().unwrap_or("unknown").to_owned();
+        Box::pin(async move {
+            runtime
                 .storage
-                .ingest(&event, source_instance, self.runtime.retention_limit)
-        {
-            self.runtime
-                .last_ingest_failure
-                .replace(Some(error.to_string()));
-        }
+                .ingest(
+                    &event,
+                    &source_instance,
+                    runtime.retention_limit,
+                    runtime.idempotency_limit,
+                )
+                .map(|_| ())
+                .map_err(|error| match error {
+                    StoryStorageError::InvalidEvent { .. } => {
+                        EventsInvocationError::Domain(RecordError::InvalidEvent)
+                    }
+                    StoryStorageError::ConflictingEventId { .. } => {
+                        EventsInvocationError::Domain(RecordError::ConflictingEventId)
+                    }
+                    error => EventsInvocationError::Runtime(RuntimeFailure::Internal {
+                        detail: error.to_string(),
+                    }),
+                })
+        })
     }
 }
 
@@ -131,11 +144,6 @@ impl QueryProvider for StoryQueryProvider {
             }
             if request.subject_id.is_empty() || !(1..=100).contains(&request.limit) {
                 return Err(QueryInvocationError::Domain(TimelineError::InvalidQuery));
-            }
-            if let Some(detail) = runtime.last_ingest_failure.borrow().clone() {
-                return Err(QueryInvocationError::Runtime(RuntimeFailure::Internal {
-                    detail: format!("durable Story ingestion failed: {detail}"),
-                }));
             }
             let entries = runtime
                 .storage
@@ -181,13 +189,14 @@ impl NativeModuleFactory for StoryFactory {
             })?;
         if configuration.storage_path.as_os_str().is_empty()
             || configuration.retention_limit == 0
+            || configuration.idempotency_limit < configuration.retention_limit
             || configuration
                 .authorized_callers
                 .iter()
                 .any(String::is_empty)
         {
             return Err(RuntimeFailure::InvalidResolvedPlan {
-                detail: "Story Module requires storage_path, retention_limit, and non-empty authorized_callers"
+                detail: "Story Module requires storage_path, positive retention_limit, idempotency_limit >= retention_limit, and non-empty authorized_callers"
                     .to_owned(),
             });
         }
@@ -195,20 +204,18 @@ impl NativeModuleFactory for StoryFactory {
             storage: FileStoryAdapter::new(configuration.storage_path),
             authorized_callers: configuration.authorized_callers.into_iter().collect(),
             retention_limit: configuration.retention_limit,
-            last_ingest_failure: RefCell::new(None),
+            idempotency_limit: configuration.idempotency_limit,
         });
         let query_endpoint: Rc<dyn NativeRequestEndpoint> =
             Rc::new(QueryEndpoint::new(StoryQueryProvider {
                 runtime: Rc::clone(&runtime),
             }));
-        let event_endpoint: Rc<dyn NativeEventEndpoint> =
+        let event_endpoint: Rc<dyn NativeRequestEndpoint> =
             Rc::new(EventsEndpoint::new(StoryEventsProvider {
                 runtime: Rc::clone(&runtime),
             }));
-        Ok(NativeModuleInstance::with_all_endpoints(
-            vec![query_endpoint],
-            Vec::new(),
-            vec![event_endpoint],
+        Ok(NativeModuleInstance::with_lifecycle(
+            vec![query_endpoint, event_endpoint],
             StoryLifecycle { runtime },
         ))
     }

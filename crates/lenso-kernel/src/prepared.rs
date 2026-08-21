@@ -77,20 +77,10 @@ impl PreparedNativeModule {
         stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
         lifecycle: Rc<dyn ModuleLifecycle>,
     ) -> Self {
-        Self::with_all_endpoints_lifecycle(endpoints, stream_endpoints, Vec::new(), lifecycle)
-    }
-
-    /// Creates one generation with shared lifecycle and every endpoint kind.
-    pub fn with_all_endpoints_lifecycle(
-        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-        stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
-        event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
-        lifecycle: Rc<dyn ModuleLifecycle>,
-    ) -> Self {
         Self {
             endpoints,
             stream_endpoints,
-            event_endpoints,
+            event_endpoints: Vec::new(),
             lifecycle,
         }
     }
