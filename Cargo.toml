@@ -15,6 +15,7 @@ members = [
     "crates/lenso-native-adapter",
     "crates/lenso-runner",
     "crates/lenso-wasip2-driver",
+    "crates/lenso-otel-module",
     "fixtures/portable-contract/rust",
     "fixtures/vnext-native-greeter",
     "fixtures/vnext-stateful-module",
