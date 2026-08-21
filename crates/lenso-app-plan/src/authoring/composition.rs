@@ -306,6 +306,8 @@ pub struct Module {
     configuration_schema: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     role: Option<ModuleRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution_lane: Option<String>,
 }
 
 /// Target-owned Web UI role selected by an authoring profile.
@@ -334,6 +336,7 @@ impl Module {
             execution_class: None,
             configuration_schema: None,
             role: None,
+            execution_lane: None,
         }
     }
     /// Selects an explicit package entrypoint.
@@ -362,6 +365,12 @@ impl Module {
     #[must_use]
     pub const fn with_role(mut self, role: ModuleRole) -> Self {
         self.role = Some(role);
+        self
+    }
+    /// Places this Module Instance on one declared Execution Lane.
+    #[must_use]
+    pub fn with_execution_lane(mut self, execution_lane: impl Into<String>) -> Self {
+        self.execution_lane = Some(execution_lane.into());
         self
     }
     /// Declares one provided Capability endpoint.
@@ -414,5 +423,9 @@ impl Module {
     }
     pub const fn role(&self) -> Option<ModuleRole> {
         self.role
+    }
+    /// Returns the authored Execution Lane, when one was selected explicitly.
+    pub fn execution_lane(&self) -> Option<&str> {
+        self.execution_lane.as_deref()
     }
 }
