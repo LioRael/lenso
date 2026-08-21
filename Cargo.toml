@@ -12,6 +12,11 @@ members = [
     "crates/lenso-capability-counter",
     "crates/lenso-capability-story-events",
     "crates/lenso-capability-story-query",
+    "crates/lenso-capability-agent-model",
+    "crates/lenso-capability-agent-tool",
+    "crates/lenso-capability-agent-memory",
+    "crates/lenso-capability-agent-progress",
+    "crates/lenso-capability-agent",
     "crates/lenso-auth-sdk",
     "crates/lenso-browser-driver",
     "crates/lenso-kernel",
@@ -24,6 +29,7 @@ members = [
     "fixtures/vnext-game-session",
     "fixtures/vnext-stateful-module",
     "fixtures/vnext-story-module",
+    "fixtures/vnext-agent-harness",
 ]
 
 [workspace.package]

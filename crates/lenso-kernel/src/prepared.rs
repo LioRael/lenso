@@ -85,6 +85,21 @@ impl PreparedNativeModule {
         }
     }
 
+    /// Creates a generation with shared lifecycle and all native endpoint kinds.
+    pub fn with_all_endpoints_lifecycle(
+        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+        stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
+        event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
+        lifecycle: Rc<dyn ModuleLifecycle>,
+    ) -> Self {
+        Self {
+            endpoints,
+            stream_endpoints,
+            event_endpoints,
+            lifecycle,
+        }
+    }
+
     /// Creates one generation containing only bidirectional stream endpoints.
     pub fn with_stream_endpoints(
         stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
