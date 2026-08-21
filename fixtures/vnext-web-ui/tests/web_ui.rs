@@ -248,19 +248,28 @@ async fn run_generated_client(address: SocketAddr) -> String {
     let script = r#"
 const origin = process.argv[1];
 const source = await fetch(`${origin}/assets/generated/secure-greeting.js`).then((response) => response.text());
-const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-const { createSecureGreetingClient } = await import(moduleUrl);
-let rejectedMalformedEnvelope = false;
+const { unlink } = await import("node:fs/promises");
+const { tmpdir } = await import("node:os");
+const { join } = await import("node:path");
+const { pathToFileURL } = await import("node:url");
+const modulePath = join(tmpdir(), `lenso-generated-client-${process.pid}.mjs`);
+await Bun.write(modulePath, source);
 try {
-  const malformedTransport = async () => ({ json: async () => ({ ok: true }) });
-  await createSecureGreetingClient(malformedTransport).greet({ name: "Ada" }, "good-token");
-} catch {
-  rejectedMalformedEnvelope = true;
+  const { createSecureGreetingClient } = await import(pathToFileURL(modulePath).href);
+  let rejectedMalformedEnvelope = false;
+  try {
+    const malformedTransport = async () => ({ json: async () => ({ ok: true }) });
+    await createSecureGreetingClient(malformedTransport).greet({ name: "Ada" }, "good-token");
+  } catch {
+    rejectedMalformedEnvelope = true;
+  }
+  if (!rejectedMalformedEnvelope) throw new Error("generated client accepted a malformed result envelope");
+  const transport = (path, init) => fetch(`${origin}${path}`, init);
+  const result = await createSecureGreetingClient(transport).greet({ name: "Ada" }, "good-token");
+  process.stdout.write(JSON.stringify(result));
+} finally {
+  await unlink(modulePath).catch(() => {});
 }
-if (!rejectedMalformedEnvelope) throw new Error("generated client accepted a malformed result envelope");
-const transport = (path, init) => fetch(`${origin}${path}`, init);
-const result = await createSecureGreetingClient(transport).greet({ name: "Ada" }, "good-token");
-process.stdout.write(JSON.stringify(result));
 "#;
     let output = Command::new("bun")
         .args(["--eval", script, &origin])
