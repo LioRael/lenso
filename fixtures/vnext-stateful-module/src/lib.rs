@@ -127,14 +127,17 @@ impl CounterProvider for CounterProviderImpl {
     {
         let runtime = Rc::clone(&self.runtime);
         Box::pin(async move {
-            ensure_secret_read(&runtime)?;
+            ensure_secret_ready(&runtime).map_err(CounterReadInvocationError::Runtime)?;
             if request.key.is_empty() {
                 return Err(CounterReadInvocationError::Domain(ReadError::InvalidKey));
             }
-            let Some((value, revision)) = runtime
-                .storage
-                .read_counter(&request.key)
-                .map_err(|error| storage_read_failure(&error))?
+            let Some((value, revision)) =
+                runtime
+                    .storage
+                    .read_counter(&request.key)
+                    .map_err(|error| {
+                        CounterReadInvocationError::Runtime(storage_runtime_failure(&error))
+                    })?
             else {
                 return Err(CounterReadInvocationError::Domain(ReadError::MissingKey));
             };
@@ -155,7 +158,7 @@ impl CounterProvider for CounterProviderImpl {
     > {
         let runtime = Rc::clone(&self.runtime);
         Box::pin(async move {
-            ensure_secret_increment(&runtime)?;
+            ensure_secret_ready(&runtime).map_err(CounterIncrementInvocationError::Runtime)?;
             if request.key.is_empty() {
                 return Err(CounterIncrementInvocationError::Domain(
                     IncrementError::InvalidKey,
@@ -164,7 +167,9 @@ impl CounterProvider for CounterProviderImpl {
             let (value, revision) = runtime
                 .storage
                 .increment_counter(&request.key, request.amount)
-                .map_err(|error| storage_increment_failure(&error))?;
+                .map_err(|error| {
+                    CounterIncrementInvocationError::Runtime(storage_runtime_failure(&error))
+                })?;
             Ok(IncrementResponse {
                 value,
                 revision: revision.to_string(),
@@ -173,40 +178,20 @@ impl CounterProvider for CounterProviderImpl {
     }
 }
 
-fn ensure_secret_read(runtime: &CounterRuntime) -> Result<(), CounterReadInvocationError> {
-    secret_is_ready(runtime).then_some(()).ok_or_else(|| {
-        CounterReadInvocationError::Runtime(RuntimeFailure::ModuleFailure {
+fn ensure_secret_ready(runtime: &CounterRuntime) -> Result<(), RuntimeFailure> {
+    runtime
+        .secret_ready
+        .get()
+        .then_some(())
+        .ok_or_else(|| RuntimeFailure::ModuleFailure {
             detail: "counter Module has no resolved Secrets Capability".to_owned(),
         })
-    })
 }
 
 fn storage_runtime_failure(error: &StateStorageError) -> RuntimeFailure {
     RuntimeFailure::Internal {
         detail: error.to_string(),
     }
-}
-
-fn secret_is_ready(runtime: &CounterRuntime) -> bool {
-    runtime.secret_ready.get()
-}
-
-fn ensure_secret_increment(
-    runtime: &CounterRuntime,
-) -> Result<(), CounterIncrementInvocationError> {
-    secret_is_ready(runtime).then_some(()).ok_or_else(|| {
-        CounterIncrementInvocationError::Runtime(RuntimeFailure::ModuleFailure {
-            detail: "counter Module has no resolved Secrets Capability".to_owned(),
-        })
-    })
-}
-
-fn storage_read_failure(error: &StateStorageError) -> CounterReadInvocationError {
-    CounterReadInvocationError::Runtime(storage_runtime_failure(error))
-}
-
-fn storage_increment_failure(error: &StateStorageError) -> CounterIncrementInvocationError {
-    CounterIncrementInvocationError::Runtime(storage_runtime_failure(error))
 }
 
 /// Statically linked factory for the owned counter Module.
