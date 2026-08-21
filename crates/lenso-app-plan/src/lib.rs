@@ -11,8 +11,13 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 mod execution;
+mod resolution;
 
-pub use execution::ExecutionClassId;
+pub use execution::{ExecutionClassId, ExecutionLaneId, ExecutionLanePlan};
+use resolution::{
+    activation_order_for, resolve_parts, sort_bindings, sort_module_instances,
+    sorted_execution_lanes, validate_execution_lanes,
+};
 
 /// The Resolved App Plan schema understood by this Kernel version.
 pub const PLAN_SCHEMA_VERSION: u32 = 1;
@@ -25,6 +30,10 @@ pub const DEFAULT_REQUEST_MAX_CONCURRENCY: usize = 1;
 
 /// Default maximum number of accepted Events retained by one explicit binding.
 pub const DEFAULT_EVENT_QUEUE_CAPACITY: usize = 16;
+
+fn default_execution_lanes() -> Vec<ExecutionLanePlan> {
+    vec![ExecutionLanePlan::new("main")]
+}
 
 /// The cardinality of one Module's Capability requirement.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -326,6 +335,8 @@ pub struct CapabilityEndpointPlan {
     default_admission: Option<RequestAdmissionPlan>,
     operation_admissions: BTreeMap<String, RequestAdmissionPlan>,
     event_admission: Option<EventAdmissionPlan>,
+    #[serde(default)]
+    cross_lane_transfer: bool,
 }
 
 impl CapabilityEndpointPlan {
@@ -343,6 +354,7 @@ impl CapabilityEndpointPlan {
             default_admission: None,
             operation_admissions: BTreeMap::new(),
             event_admission: None,
+            cross_lane_transfer: false,
         }
     }
 
@@ -393,6 +405,13 @@ impl CapabilityEndpointPlan {
     #[must_use]
     pub fn with_event_capacity(self, capacity: usize) -> Self {
         self.with_event_admission(EventAdmissionPlan::new(capacity))
+    }
+
+    /// Marks the generated Capability value types as safe for native cross-lane transfer.
+    #[must_use]
+    pub const fn with_cross_lane_transfer(mut self) -> Self {
+        self.cross_lane_transfer = true;
+        self
     }
 
     /// Applies one bounded admission policy to a named Operation.
@@ -487,6 +506,11 @@ impl CapabilityEndpointPlan {
         self.event_admission
     }
 
+    /// Returns whether generated values may cross native Execution Lanes without serialization.
+    pub const fn supports_cross_lane_transfer(&self) -> bool {
+        self.cross_lane_transfer
+    }
+
     /// Returns the endpoint-wide admission policy, when one was authored.
     pub fn default_admission(&self) -> Option<RequestAdmissionPlan> {
         self.default_admission
@@ -519,6 +543,8 @@ pub struct ModuleInstancePlan {
     package_revision: String,
     restart_policy: RestartPolicy,
     criticality: ModuleCriticality,
+    #[serde(default)]
+    execution_lane: ExecutionLaneId,
 }
 
 impl ModuleInstancePlan {
@@ -535,6 +561,7 @@ impl ModuleInstancePlan {
             package_revision: String::new(),
             restart_policy: RestartPolicy::default(),
             criticality: ModuleCriticality::default(),
+            execution_lane: ExecutionLaneId::default(),
         }
     }
 
@@ -576,6 +603,13 @@ impl ModuleInstancePlan {
     #[must_use]
     pub fn with_execution_class(mut self, execution_class: ExecutionClassId) -> Self {
         self.execution_class = execution_class;
+        self
+    }
+
+    /// Places this Module Instance on one Plan-declared Execution Lane.
+    #[must_use]
+    pub fn with_execution_lane(mut self, execution_lane: ExecutionLaneId) -> Self {
+        self.execution_lane = execution_lane;
         self
     }
 
@@ -633,6 +667,11 @@ impl ModuleInstancePlan {
     /// Returns the host execution class selected for this Instance.
     pub fn execution_class(&self) -> &ExecutionClassId {
         &self.execution_class
+    }
+
+    /// Returns the Plan-declared Execution Lane for this Instance.
+    pub const fn execution_lane(&self) -> &ExecutionLaneId {
+        &self.execution_lane
     }
 
     /// Returns the exact opaque package-manager lock selection.
@@ -770,6 +809,8 @@ impl CapabilityBinding {
 pub struct AppComposition {
     module_instances: Vec<ModuleInstancePlan>,
     capability_bindings: Vec<CapabilityBinding>,
+    #[serde(default = "default_execution_lanes")]
+    execution_lanes: Vec<ExecutionLanePlan>,
 }
 
 impl AppComposition {
@@ -781,16 +822,26 @@ impl AppComposition {
         Self {
             module_instances,
             capability_bindings,
+            execution_lanes: default_execution_lanes(),
         }
+    }
+
+    /// Replaces the declared Execution Lane set.
+    #[must_use]
+    pub fn with_execution_lanes(mut self, execution_lanes: Vec<ExecutionLanePlan>) -> Self {
+        self.execution_lanes = execution_lanes;
+        self
     }
 
     /// Materializes one deterministic, validated Resolved App Plan.
     pub fn resolve(&self) -> Result<ResolvedAppPlan, PlanResolutionError> {
+        validate_execution_lanes(&self.execution_lanes, &self.module_instances)?;
         resolve_parts(&self.module_instances, &self.capability_bindings).map(
             |(module_instances, capability_bindings)| ResolvedAppPlan {
                 schema_version: PLAN_SCHEMA_VERSION,
                 module_instances,
                 capability_bindings,
+                execution_lanes: sorted_execution_lanes(&self.execution_lanes),
             },
         )
     }
@@ -804,6 +855,11 @@ impl AppComposition {
     pub fn capability_bindings(&self) -> &[CapabilityBinding] {
         &self.capability_bindings
     }
+
+    /// Returns the authored Execution Lanes.
+    pub fn execution_lanes(&self) -> &[ExecutionLanePlan] {
+        &self.execution_lanes
+    }
 }
 
 /// A reason App Composition could not be materialized into a Plan.
@@ -813,6 +869,17 @@ pub enum PlanResolutionError {
     UnsupportedSchemaVersion { expected: u32, actual: u32 },
     /// Two Module Instances use the same App-local key.
     DuplicateModuleInstance { instance_key: String },
+    /// Every App must declare at least one Execution Lane.
+    MissingExecutionLane,
+    /// An Execution Lane identity is empty or whitespace-only.
+    InvalidExecutionLane { execution_lane: String },
+    /// Two Execution Lanes use the same App-local identity.
+    DuplicateExecutionLane { execution_lane: String },
+    /// A Module Instance names an Execution Lane absent from the Plan.
+    UndeclaredExecutionLane {
+        instance_key: String,
+        execution_lane: String,
+    },
     /// A Module Instance has no executable entrypoint identity.
     InvalidModuleEntrypoint { instance_key: String },
     /// A Module declares the same provided Capability more than once.
@@ -854,6 +921,18 @@ pub enum PlanResolutionError {
         required: String,
         provided: String,
         provider_instance: String,
+    },
+    /// A binding crosses Execution Lanes but its generated contract types are not transferable.
+    CrossLaneTransferUnsupported {
+        consumer_instance: String,
+        provider_instance: String,
+        capability_id: String,
+    },
+    /// This Plan version has no native cross-lane transfer for the selected interaction kind.
+    CrossLaneInteractionUnsupported {
+        capability_id: String,
+        operation: String,
+        interaction: CapabilityOperationKind,
     },
     /// A `one` requirement has no explicit provider.
     MissingOneBinding {
@@ -916,6 +995,22 @@ impl fmt::Display for PlanResolutionError {
             Self::DuplicateModuleInstance { instance_key } => {
                 write!(formatter, "duplicate Module Instance `{instance_key}`")
             }
+            Self::MissingExecutionLane => {
+                formatter.write_str("Resolved App Plan declares no Execution Lanes")
+            }
+            Self::InvalidExecutionLane { execution_lane } => {
+                write!(formatter, "invalid Execution Lane `{execution_lane}`")
+            }
+            Self::DuplicateExecutionLane { execution_lane } => {
+                write!(formatter, "duplicate Execution Lane `{execution_lane}`")
+            }
+            Self::UndeclaredExecutionLane {
+                instance_key,
+                execution_lane,
+            } => write!(
+                formatter,
+                "Module Instance `{instance_key}` is placed on undeclared Execution Lane `{execution_lane}`"
+            ),
             Self::InvalidModuleEntrypoint { instance_key } => write!(
                 formatter,
                 "Module Instance `{instance_key}` has an empty entrypoint"
@@ -973,6 +1068,22 @@ impl fmt::Display for PlanResolutionError {
             } => write!(
                 formatter,
                 "consumer `{consumer_instance}` requires Capability `{capability_id}` version `{required}`, but provider `{provider_instance}` provides `{provided}`"
+            ),
+            Self::CrossLaneTransferUnsupported {
+                consumer_instance,
+                provider_instance,
+                capability_id,
+            } => write!(
+                formatter,
+                "consumer `{consumer_instance}` binds Capability `{capability_id}` across Execution Lanes to provider `{provider_instance}`, but its contract types do not support cross-lane transfer"
+            ),
+            Self::CrossLaneInteractionUnsupported {
+                capability_id,
+                operation,
+                interaction,
+            } => write!(
+                formatter,
+                "Capability `{capability_id}` Operation `{operation}` uses {interaction:?}, which this Plan version cannot transfer across Execution Lanes"
             ),
             Self::MissingOneBinding {
                 consumer_instance,
@@ -1053,15 +1164,18 @@ pub struct ResolvedAppPlan {
     schema_version: u32,
     module_instances: Vec<ModuleInstancePlan>,
     capability_bindings: Vec<CapabilityBinding>,
+    #[serde(default = "default_execution_lanes")]
+    execution_lanes: Vec<ExecutionLanePlan>,
 }
 
 impl ResolvedAppPlan {
     /// Creates a valid Plan containing no Module Instances.
-    pub const fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             schema_version: PLAN_SCHEMA_VERSION,
             module_instances: Vec::new(),
             capability_bindings: Vec::new(),
+            execution_lanes: default_execution_lanes(),
         }
     }
 
@@ -1076,6 +1190,7 @@ impl ResolvedAppPlan {
             schema_version: PLAN_SCHEMA_VERSION,
             module_instances,
             capability_bindings,
+            execution_lanes: default_execution_lanes(),
         }
     }
 
@@ -1087,6 +1202,7 @@ impl ResolvedAppPlan {
             schema_version,
             module_instances: Vec::new(),
             capability_bindings: Vec::new(),
+            execution_lanes: Vec::new(),
         }
     }
 
@@ -1098,6 +1214,7 @@ impl ResolvedAppPlan {
                 actual: self.schema_version,
             });
         }
+        validate_execution_lanes(&self.execution_lanes, &self.module_instances)?;
         resolve_parts(&self.module_instances, &self.capability_bindings).map(|_| ())
     }
 
@@ -1112,6 +1229,7 @@ impl ResolvedAppPlan {
                 actual: self.schema_version,
             });
         }
+        validate_execution_lanes(&self.execution_lanes, &self.module_instances)?;
         let (instances, bindings) =
             resolve_parts(&self.module_instances, &self.capability_bindings)?;
         activation_order_for(&instances, &bindings)
@@ -1131,6 +1249,11 @@ impl ResolvedAppPlan {
     /// Returns the exact Capability bindings in deterministic Plan order.
     pub fn capability_bindings(&self) -> &[CapabilityBinding] {
         &self.capability_bindings
+    }
+
+    /// Returns the Plan-declared Execution Lanes in deterministic identity order.
+    pub fn execution_lanes(&self) -> &[ExecutionLanePlan] {
+        &self.execution_lanes
     }
 
     /// Returns the bounded admission policy materialized for one binding Operation.
@@ -1208,356 +1331,4 @@ impl ResolvedAppPlan {
                     })
         })
     }
-}
-
-fn resolve_parts(
-    module_instances: &[ModuleInstancePlan],
-    capability_bindings: &[CapabilityBinding],
-) -> Result<(Vec<ModuleInstancePlan>, Vec<CapabilityBinding>), PlanResolutionError> {
-    let (instances, instance_indices) = normalize_instances(module_instances)?;
-    let grouped_bindings = group_bindings(&instances, &instance_indices, capability_bindings)?;
-    validate_requirement_cardinality(&instances, &grouped_bindings)?;
-    validate_activation_cycles(&instances, &grouped_bindings)?;
-    Ok((instances, order_bindings(grouped_bindings)))
-}
-
-fn normalize_instances(
-    module_instances: &[ModuleInstancePlan],
-) -> Result<(Vec<ModuleInstancePlan>, BTreeMap<String, usize>), PlanResolutionError> {
-    let mut instances = module_instances.to_vec();
-    sort_module_instances(&mut instances);
-
-    let mut instance_indices = BTreeMap::new();
-    for (index, instance) in instances.iter().enumerate() {
-        if instance_indices
-            .insert(instance.instance_key.clone(), index)
-            .is_some()
-        {
-            return Err(PlanResolutionError::DuplicateModuleInstance {
-                instance_key: instance.instance_key.clone(),
-            });
-        }
-        validate_instance_declarations(instance)?;
-        instance.restart_policy.validate(&instance.instance_key)?;
-    }
-    Ok((instances, instance_indices))
-}
-
-fn group_bindings(
-    instances: &[ModuleInstancePlan],
-    instance_indices: &BTreeMap<String, usize>,
-    capability_bindings: &[CapabilityBinding],
-) -> Result<BTreeMap<(String, String), Vec<CapabilityBinding>>, PlanResolutionError> {
-    let mut grouped_bindings = BTreeMap::new();
-    for binding in capability_bindings {
-        validate_binding(instances, instance_indices, binding)?;
-        grouped_bindings
-            .entry((
-                binding.consumer_instance.clone(),
-                binding.capability_id.clone(),
-            ))
-            .or_insert_with(Vec::new)
-            .push(binding.clone());
-    }
-    Ok(grouped_bindings)
-}
-
-fn validate_binding(
-    instances: &[ModuleInstancePlan],
-    instance_indices: &BTreeMap<String, usize>,
-    binding: &CapabilityBinding,
-) -> Result<(), PlanResolutionError> {
-    let Some(&consumer_index) = instance_indices.get(&binding.consumer_instance) else {
-        return Err(PlanResolutionError::InvalidConsumerReference {
-            consumer_instance: binding.consumer_instance.clone(),
-            capability_id: binding.capability_id.clone(),
-        });
-    };
-    let consumer = &instances[consumer_index];
-    let Some(requirement) = consumer
-        .required_capabilities
-        .iter()
-        .find(|requirement| requirement.capability_id == binding.capability_id)
-    else {
-        return Err(PlanResolutionError::UndeclaredCapabilityRequirement {
-            consumer_instance: binding.consumer_instance.clone(),
-            capability_id: binding.capability_id.clone(),
-        });
-    };
-
-    let Some(&provider_index) = instance_indices.get(&binding.provider_instance) else {
-        return Err(PlanResolutionError::InvalidProviderReference {
-            consumer_instance: binding.consumer_instance.clone(),
-            capability_id: binding.capability_id.clone(),
-            provider_instance: binding.provider_instance.clone(),
-        });
-    };
-    let provider = &instances[provider_index];
-    let Some(endpoint) = provider
-        .provided_capabilities
-        .iter()
-        .find(|endpoint| endpoint.capability_id == binding.capability_id)
-    else {
-        return Err(PlanResolutionError::InvalidProviderReference {
-            consumer_instance: binding.consumer_instance.clone(),
-            capability_id: binding.capability_id.clone(),
-            provider_instance: binding.provider_instance.clone(),
-        });
-    };
-
-    if endpoint.descriptor_version != requirement.descriptor_version {
-        return Err(PlanResolutionError::IncompatibleCapabilityVersion {
-            consumer_instance: binding.consumer_instance.clone(),
-            capability_id: binding.capability_id.clone(),
-            required: requirement.descriptor_version.clone(),
-            provided: endpoint.descriptor_version.clone(),
-            provider_instance: binding.provider_instance.clone(),
-        });
-    }
-    if binding.descriptor_version != requirement.descriptor_version {
-        return Err(PlanResolutionError::IncompatibleCapabilityVersion {
-            consumer_instance: binding.consumer_instance.clone(),
-            capability_id: binding.capability_id.clone(),
-            required: requirement.descriptor_version.clone(),
-            provided: binding.descriptor_version.clone(),
-            provider_instance: binding.provider_instance.clone(),
-        });
-    }
-    if binding.has_explicit_admission() {
-        for operation in &endpoint.operations {
-            binding
-                .admission()
-                .validate(&endpoint.capability_id, operation)?;
-        }
-    }
-    Ok(())
-}
-
-fn validate_requirement_cardinality(
-    instances: &[ModuleInstancePlan],
-    grouped_bindings: &BTreeMap<(String, String), Vec<CapabilityBinding>>,
-) -> Result<(), PlanResolutionError> {
-    for instance in instances {
-        for endpoint in &instance.provided_capabilities {
-            validate_endpoint_admission(endpoint)?;
-        }
-        for requirement in &instance.required_capabilities {
-            let key = (
-                instance.instance_key.clone(),
-                requirement.capability_id.clone(),
-            );
-            let bindings = grouped_bindings.get(&key).map_or(&[][..], Vec::as_slice);
-            match (requirement.cardinality, bindings.len()) {
-                (CapabilityCardinality::One, 0) => {
-                    return Err(PlanResolutionError::MissingOneBinding {
-                        consumer_instance: instance.instance_key.clone(),
-                        capability_id: requirement.capability_id.clone(),
-                    });
-                }
-                (CapabilityCardinality::One, providers) if providers > 1 => {
-                    return Err(PlanResolutionError::AmbiguousOneBinding {
-                        consumer_instance: instance.instance_key.clone(),
-                        capability_id: requirement.capability_id.clone(),
-                        providers,
-                    });
-                }
-                (CapabilityCardinality::Optional, providers) if providers > 1 => {
-                    return Err(PlanResolutionError::AmbiguousOptionalBinding {
-                        consumer_instance: instance.instance_key.clone(),
-                        capability_id: requirement.capability_id.clone(),
-                        providers,
-                    });
-                }
-                _ => {}
-            }
-
-            let mut provider_keys = BTreeSet::new();
-            for binding in bindings {
-                if !provider_keys.insert(binding.provider_instance.as_str()) {
-                    return Err(PlanResolutionError::DuplicateBinding {
-                        consumer_instance: binding.consumer_instance.clone(),
-                        capability_id: binding.capability_id.clone(),
-                        provider_instance: binding.provider_instance.clone(),
-                    });
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_endpoint_admission(
-    endpoint: &CapabilityEndpointPlan,
-) -> Result<(), PlanResolutionError> {
-    for operation in &endpoint.operations {
-        if let Some(admission) = endpoint.operation_admission(operation) {
-            admission.validate(&endpoint.capability_id, operation)?;
-        }
-    }
-    for operation in endpoint.operation_admissions.keys() {
-        if !endpoint
-            .operations
-            .iter()
-            .any(|declared| declared == operation)
-        {
-            return Err(PlanResolutionError::UnknownAdmissionOperation {
-                capability_id: endpoint.capability_id.clone(),
-                operation: operation.clone(),
-            });
-        }
-    }
-    for operation in endpoint.operation_kinds.keys() {
-        if !endpoint
-            .operations
-            .iter()
-            .any(|declared| declared == operation)
-        {
-            return Err(PlanResolutionError::UnknownOperationInteraction {
-                capability_id: endpoint.capability_id.clone(),
-                operation: operation.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
-fn order_bindings(
-    grouped_bindings: BTreeMap<(String, String), Vec<CapabilityBinding>>,
-) -> Vec<CapabilityBinding> {
-    let mut ordered_bindings = Vec::new();
-    for (_, mut bindings) in grouped_bindings {
-        bindings.sort_by(|left, right| {
-            left.provider_instance
-                .cmp(&right.provider_instance)
-                .then_with(|| left.descriptor_version.cmp(&right.descriptor_version))
-        });
-        for (provider_order, binding) in bindings.into_iter().enumerate() {
-            ordered_bindings.push(binding.with_provider_order(provider_order));
-        }
-    }
-    ordered_bindings
-}
-
-fn validate_activation_cycles(
-    instances: &[ModuleInstancePlan],
-    grouped_bindings: &BTreeMap<(String, String), Vec<CapabilityBinding>>,
-) -> Result<(), PlanResolutionError> {
-    let bindings = grouped_bindings
-        .values()
-        .flat_map(|bindings| bindings.iter())
-        .cloned()
-        .collect::<Vec<_>>();
-    activation_order_for(instances, &bindings)
-        .map(|_| ())
-        .map_err(|instances| PlanResolutionError::ActivationCycle { instances })
-}
-
-fn activation_order_for(
-    instances: &[ModuleInstancePlan],
-    bindings: &[CapabilityBinding],
-) -> Result<Vec<String>, Vec<String>> {
-    let mut indegrees: BTreeMap<String, usize> = instances
-        .iter()
-        .map(|instance| (instance.instance_key.clone(), 0))
-        .collect();
-    let mut dependents: BTreeMap<String, BTreeSet<String>> = instances
-        .iter()
-        .map(|instance| (instance.instance_key.clone(), BTreeSet::new()))
-        .collect();
-
-    for binding in bindings {
-        let consumers = dependents
-            .get_mut(&binding.provider_instance)
-            .expect("provider Instance was indexed before dependency validation");
-        if consumers.insert(binding.consumer_instance.clone()) {
-            *indegrees
-                .get_mut(&binding.consumer_instance)
-                .expect("consumer Instance was indexed before dependency validation") += 1;
-        }
-    }
-
-    let mut ready: BTreeSet<String> = indegrees
-        .iter()
-        .filter(|(_, indegree)| **indegree == 0)
-        .map(|(instance, _)| instance.clone())
-        .collect();
-    let mut order = Vec::with_capacity(instances.len());
-    while let Some(instance) = ready.pop_first() {
-        order.push(instance.clone());
-        if let Some(consumers) = dependents.get(&instance) {
-            for consumer in consumers {
-                let indegree = indegrees
-                    .get_mut(consumer)
-                    .expect("consumer Instance was indexed before dependency validation");
-                *indegree -= 1;
-                if *indegree == 0 {
-                    ready.insert(consumer.clone());
-                }
-            }
-        }
-    }
-
-    if order.len() == instances.len() {
-        Ok(order)
-    } else {
-        Err(indegrees
-            .into_iter()
-            .filter(|(_, indegree)| *indegree > 0)
-            .map(|(instance, _)| instance)
-            .collect())
-    }
-}
-
-fn validate_instance_declarations(
-    instance: &ModuleInstancePlan,
-) -> Result<(), PlanResolutionError> {
-    if instance.entrypoint.trim().is_empty() {
-        return Err(PlanResolutionError::InvalidModuleEntrypoint {
-            instance_key: instance.instance_key.clone(),
-        });
-    }
-    let mut provided = BTreeSet::new();
-    for endpoint in &instance.provided_capabilities {
-        if !provided.insert(endpoint.capability_id.as_str()) {
-            return Err(PlanResolutionError::DuplicateProvidedCapability {
-                provider_instance: instance.instance_key.clone(),
-                capability_id: endpoint.capability_id.clone(),
-            });
-        }
-        let mut operations = BTreeSet::new();
-        for operation in &endpoint.operations {
-            if !operations.insert(operation.as_str()) {
-                return Err(PlanResolutionError::DuplicateOperation {
-                    provider_instance: instance.instance_key.clone(),
-                    capability_id: endpoint.capability_id.clone(),
-                    operation: operation.clone(),
-                });
-            }
-        }
-    }
-
-    let mut required = BTreeSet::new();
-    for requirement in &instance.required_capabilities {
-        if !required.insert(requirement.capability_id.as_str()) {
-            return Err(PlanResolutionError::DuplicateRequiredCapability {
-                consumer_instance: instance.instance_key.clone(),
-                capability_id: requirement.capability_id.clone(),
-            });
-        }
-    }
-    Ok(())
-}
-
-fn sort_module_instances(instances: &mut [ModuleInstancePlan]) {
-    instances.sort_by(|left, right| left.instance_key.cmp(&right.instance_key));
-}
-
-fn sort_bindings(bindings: &mut [CapabilityBinding]) {
-    bindings.sort_by(|left, right| {
-        left.consumer_instance
-            .cmp(&right.consumer_instance)
-            .then_with(|| left.capability_id.cmp(&right.capability_id))
-            .then_with(|| left.provider_instance.cmp(&right.provider_instance))
-            .then_with(|| left.provider_order.cmp(&right.provider_order))
-    });
 }

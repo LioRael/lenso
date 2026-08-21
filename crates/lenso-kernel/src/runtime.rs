@@ -491,6 +491,25 @@ impl NativeApp {
         self.diagnostics.clone()
     }
 
+    /// Returns current bounded request queue depths grouped by provider Instance.
+    ///
+    /// This structural snapshot contains no request payloads and is intended for
+    /// Runner-owned placement diagnostics.
+    pub fn instance_queue_depths(&self) -> BTreeMap<String, usize> {
+        let mut depths = BTreeMap::new();
+        for endpoints in self.bindings.values() {
+            for endpoint in endpoints {
+                let depth = endpoint
+                    .admissions
+                    .values()
+                    .map(RequestAdmission::queue_depth)
+                    .sum::<usize>();
+                *depths.entry(endpoint.module_instance.clone()).or_insert(0) += depth;
+            }
+        }
+        depths
+    }
+
     /// Returns the terminal supervision failure, when a critical App path exhausted its budget.
     pub fn terminal_failure(&self) -> Option<RuntimeFailure> {
         self.runtime.terminal_failure.borrow().clone()

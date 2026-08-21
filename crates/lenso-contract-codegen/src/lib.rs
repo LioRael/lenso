@@ -70,6 +70,7 @@ fn contract_ir(descriptor: &Descriptor) -> ContractIr {
         capability_id: descriptor.capability_id.clone(),
         version: descriptor.version.clone(),
         portable: descriptor.portable,
+        cross_lane_transfer: descriptor.cross_lane_transfer,
         operations: descriptor
             .operations
             .iter()
@@ -178,6 +179,7 @@ pub struct Descriptor {
     version: String,
     parsed_version: Version,
     portable: bool,
+    cross_lane_transfer: bool,
     operations: Vec<Operation>,
 }
 
@@ -206,6 +208,12 @@ impl Descriptor {
         self.portable
     }
 
+    /// Returns whether generated native values support transfer across Execution Lanes.
+    #[must_use]
+    pub const fn cross_lane_transfer(&self) -> bool {
+        self.cross_lane_transfer
+    }
+
     /// Returns the stable Operation names in deterministic lexical order.
     #[must_use]
     pub fn operation_names(&self) -> Vec<&str> {
@@ -225,6 +233,8 @@ pub struct GeneratedMetadata {
     pub descriptor_version: String,
     /// Whether the source Descriptor is portable.
     pub portable: bool,
+    /// Whether generated native values may transfer across Execution Lanes.
+    pub cross_lane_transfer: bool,
 }
 
 /// Deterministic artifacts generated from one Descriptor and Schema source.
@@ -356,6 +366,10 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
     let parsed_version = Version::parse(&version)?;
     let portable = object
         .get("portable")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let cross_lane_transfer = object
+        .get("cross_lane_transfer")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let operation_values = object
@@ -510,6 +524,7 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
         version,
         parsed_version,
         portable,
+        cross_lane_transfer,
         operations,
     })
 }
@@ -1114,6 +1129,7 @@ pub fn generate(path: &Path) -> Result<GeneratedArtifacts, CodegenError> {
         capability_id: descriptor.capability_id.clone(),
         descriptor_version: descriptor.version.clone(),
         portable: descriptor.portable,
+        cross_lane_transfer: descriptor.cross_lane_transfer,
     };
     Ok(GeneratedArtifacts {
         metadata,
@@ -1829,6 +1845,9 @@ pub fn lint_compatibility(old_path: &Path, new_path: &Path) -> Result<bool, Comp
     let mut changes = Vec::new();
     if old.portable != new.portable {
         changes.push("Descriptor portability changed".to_owned());
+    }
+    if old.cross_lane_transfer && !new.cross_lane_transfer {
+        changes.push("Descriptor cross-lane transfer support was removed".to_owned());
     }
     let old_operations: BTreeMap<_, _> = old
         .operations
@@ -2826,6 +2845,12 @@ fn generate_rust(contract: &ContractIr) -> String {
         .expect("writing to a String cannot fail");
     writeln!(
         output,
+        "pub const CROSS_LANE_TRANSFER: bool = {};",
+        contract.cross_lane_transfer
+    )
+    .expect("writing to a String cannot fail");
+    writeln!(
+        output,
         "pub const {capability_const}_CAPABILITY_ID: &str = CAPABILITY_ID;"
     )
     .expect("writing to a String cannot fail");
@@ -3199,8 +3224,14 @@ fn generate_typescript(contract: &ContractIr) -> String {
         quote_string(&contract.version)
     )
     .expect("writing to a String cannot fail");
-    write!(output, "export const PORTABLE = {};\n\n", contract.portable)
+    writeln!(output, "export const PORTABLE = {};", contract.portable)
         .expect("writing to a String cannot fail");
+    write!(
+        output,
+        "export const CROSS_LANE_TRANSFER = {};\n\n",
+        contract.cross_lane_transfer
+    )
+    .expect("writing to a String cannot fail");
     output.push_str("export type Int64 = string & { readonly __lensoInt64: unique symbol };\nexport type Uint64 = string & { readonly __lensoUint64: unique symbol };\nexport type Bytes = string & { readonly __lensoBytes: unique symbol };\nexport type Timestamp = string & { readonly __lensoTimestamp: unique symbol };\nexport type Duration = string & { readonly __lensoDuration: unique symbol };\nexport type OptionalValue<T> = T | null | undefined;\n\nexport interface InvocationContext {\n  readonly requestId: Uint64;\n  readonly deadline?: Duration;\n  readonly cancelled: boolean;\n  readonly callerInstance?: string;\n  readonly extensions?: Record<string, unknown>;\n}\n\nexport type RuntimeFailure = { readonly kind: \"unavailable\" | \"unknown_operation\" | \"ambiguous_binding\" | \"protocol_violation\" | \"missing_module_factory\" | \"unavailable_execution_class\" | \"invalid_resolved_plan\" | \"admission_closed\" | \"resource_exhausted\" | \"deadline_exceeded\" | \"cancelled\" | \"internal\" | \"module_failure\" | \"module_restart_exhausted\"; readonly detail?: unknown; readonly [key: string]: unknown };\nexport type UnknownDomainError = { readonly code: string; readonly payload?: unknown; readonly [key: string]: unknown };\n\nexport type StreamEvent<Message, DomainError> =\n  | { readonly kind: \"message\"; readonly message: Message }\n  | { readonly kind: \"peer_half_closed\" }\n  | { readonly kind: \"terminal\"; readonly outcome: { readonly ok: true } | { readonly ok: false; readonly error: DomainError } };\nexport interface StreamSession<Message, DomainError> {\n  send(message: Message): Promise<void>;\n  receive(): Promise<StreamEvent<Message, DomainError>>;\n  closeSend(): Promise<void>;\n  cancel(): void;\n}\n\n");
     if has_event_operations {
         output.push_str("export type EventAdmission = \"accepted\" | \"unavailable\" | \"exhausted\";\nexport interface EventPublishResult {\n  readonly subscriberInstance: string;\n  readonly admission: EventAdmission;\n}\n\n");

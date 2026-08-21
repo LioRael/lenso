@@ -4,6 +4,28 @@ use serde::{Deserialize, Serialize};
 
 use super::{Binding, Module, PackageInput};
 
+/// One App-local Execution Lane declared by App Composition.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ExecutionLane {
+    id: String,
+}
+
+impl ExecutionLane {
+    /// Declares one single-owner Kernel lane.
+    pub fn new(id: impl Into<String>) -> Self {
+        Self { id: id.into() }
+    }
+
+    /// Returns the App-local lane identity.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+fn default_execution_lanes() -> Vec<ExecutionLane> {
+    vec![ExecutionLane::new("main")]
+}
+
 /// Current version of the authoring project document.
 pub const PROJECT_SCHEMA_VERSION: u32 = 1;
 
@@ -108,12 +130,24 @@ impl ContractInput {
 }
 
 /// Declarative App Composition stored in a project document.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositionFile {
     #[serde(default)]
     modules: Vec<Module>,
     #[serde(default)]
     bindings: Vec<Binding>,
+    #[serde(default = "default_execution_lanes")]
+    execution_lanes: Vec<ExecutionLane>,
+}
+
+impl Default for CompositionFile {
+    fn default() -> Self {
+        Self {
+            modules: Vec::new(),
+            bindings: Vec::new(),
+            execution_lanes: default_execution_lanes(),
+        }
+    }
 }
 
 impl CompositionFile {
@@ -140,6 +174,17 @@ impl CompositionFile {
     /// Returns mutable bindings for editing tooling/tests.
     pub fn bindings_mut(&mut self) -> &mut Vec<Binding> {
         &mut self.bindings
+    }
+    /// Adds one App-local Execution Lane.
+    pub fn add_execution_lane(&mut self, lane: ExecutionLane) {
+        if self.execution_lanes.len() == 1 && self.execution_lanes[0].id() == "main" {
+            self.execution_lanes.clear();
+        }
+        self.execution_lanes.push(lane);
+    }
+    /// Returns authored Execution Lanes.
+    pub fn execution_lanes(&self) -> &[ExecutionLane] {
+        &self.execution_lanes
     }
 }
 
