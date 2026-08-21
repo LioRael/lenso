@@ -198,6 +198,7 @@ struct ProviderStreamEntry {
     inbound_credit: AtomicUsize,
     next_inbound_sequence: AtomicU64,
     next_outbound_sequence: AtomicU64,
+    send_in_flight: AtomicBool,
     receive_in_flight: AtomicBool,
     peer_half_closed: AtomicBool,
     local_half_closed: AtomicBool,
@@ -663,6 +664,7 @@ fn handle_stream_open(open: WireStreamOpen, state: &ProviderState) -> WireStream
                 inbound_credit: AtomicUsize::new(credit),
                 next_inbound_sequence: AtomicU64::new(0),
                 next_outbound_sequence: AtomicU64::new(0),
+                send_in_flight: AtomicBool::new(false),
                 receive_in_flight: AtomicBool::new(false),
                 peer_half_closed: AtomicBool::new(false),
                 local_half_closed: AtomicBool::new(false),
@@ -729,9 +731,21 @@ fn handle_stream_call(call: WireStreamCall, state: &ProviderState) -> WireStream
             {
                 return stream_runtime_outcome(&protocol_failure(state));
             }
+            if entry
+                .send_in_flight
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                return WireStreamOutcome::Runtime {
+                    failure: WireFailure::ResourceExhausted {
+                        operation: entry.operation.clone(),
+                    },
+                };
+            }
             let mut credit = entry.inbound_credit.load(Ordering::Acquire);
             loop {
                 if credit == 0 {
+                    entry.send_in_flight.store(false, Ordering::Release);
                     return WireStreamOutcome::Runtime {
                         failure: WireFailure::ResourceExhausted {
                             operation: entry.operation.clone(),
@@ -748,15 +762,25 @@ fn handle_stream_call(call: WireStreamCall, state: &ProviderState) -> WireStream
                     Err(current) => credit = current,
                 }
             }
-            entry.next_inbound_sequence.fetch_add(1, Ordering::AcqRel);
-            match entry.stream.send(payload) {
+            let action = entry.stream.send(payload);
+            entry.send_in_flight.store(false, Ordering::Release);
+            match action {
                 BunStreamAction::Accepted => {
+                    entry.next_inbound_sequence.fetch_add(1, Ordering::AcqRel);
                     let credit = entry.inbound_credit.fetch_add(1, Ordering::AcqRel) + 1;
                     WireStreamOutcome::Accepted {
                         credit: u32::try_from(credit).unwrap_or(u32::MAX),
                     }
                 }
-                BunStreamAction::Runtime(error) => stream_runtime_outcome(&error),
+                BunStreamAction::Runtime(error) => {
+                    if matches!(&error, RuntimeFailure::ResourceExhausted { .. }) {
+                        entry.inbound_credit.fetch_add(1, Ordering::AcqRel);
+                    } else {
+                        entry.stream.cancel();
+                        retire_stream(state, stream_id, &entry);
+                    }
+                    stream_runtime_outcome(&error)
+                }
             }
         }
         WireStreamCall::Receive { .. } => {
@@ -809,12 +833,21 @@ fn handle_stream_call(call: WireStreamCall, state: &ProviderState) -> WireStream
                 }
             };
             entry.receive_in_flight.store(false, Ordering::Release);
-            if matches!(
-                result,
+            let terminal = matches!(
+                &result,
                 WireStreamOutcome::Event {
                     event: WireStreamEvent::Terminal { .. }
                 }
-            ) {
+            );
+            let fatal_runtime = matches!(
+                &result,
+                WireStreamOutcome::Runtime { failure }
+                    if !matches!(failure, WireFailure::ResourceExhausted { .. })
+            );
+            if fatal_runtime {
+                entry.stream.cancel();
+            }
+            if terminal || fatal_runtime {
                 retire_stream(state, stream_id, &entry);
             }
             result
@@ -832,6 +865,9 @@ fn handle_stream_call(call: WireStreamCall, state: &ProviderState) -> WireStream
                 BunStreamAction::Runtime(error) => {
                     if matches!(&error, RuntimeFailure::ResourceExhausted { .. }) {
                         entry.peer_half_closed.store(false, Ordering::Release);
+                    } else {
+                        entry.stream.cancel();
+                        retire_stream(state, stream_id, &entry);
                     }
                     stream_runtime_outcome(&error)
                 }
@@ -1053,9 +1089,91 @@ mod tests {
     use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
 
     use super::*;
+    use crate::protocol::DEFAULT_STREAM_CREDIT;
 
     #[derive(Debug)]
     struct TestHandler;
+
+    #[derive(Debug)]
+    struct StreamTestHandler {
+        stream: Arc<dyn BunProviderStream>,
+    }
+
+    impl BunProviderHandler for StreamTestHandler {
+        fn invoke(&self, _request: BunRequest) -> BunResponse {
+            BunResponse::Runtime(RuntimeFailure::UnknownOperation {
+                capability: "example.chat@1",
+                operation: "request".to_owned(),
+            })
+        }
+
+        fn open_stream(&self, _request: BunRequest) -> BunStreamOpenResponse {
+            BunStreamOpenResponse::Success(self.stream.clone())
+        }
+    }
+
+    #[derive(Debug)]
+    struct RuntimeTerminalStream;
+
+    impl BunProviderStream for RuntimeTerminalStream {
+        fn send(&self, _payload: Value) -> BunStreamAction {
+            BunStreamAction::Accepted
+        }
+
+        fn receive(&self) -> BunStreamReceive {
+            BunStreamReceive::Runtime(RuntimeFailure::Internal {
+                detail: "terminal stream failure".to_owned(),
+            })
+        }
+
+        fn cancel(&self) {}
+    }
+
+    #[derive(Debug)]
+    struct RetryableSendStream {
+        reject_once: AtomicBool,
+    }
+
+    impl BunProviderStream for RetryableSendStream {
+        fn send(&self, _payload: Value) -> BunStreamAction {
+            if self.reject_once.swap(false, Ordering::AcqRel) {
+                BunStreamAction::Runtime(RuntimeFailure::ResourceExhausted {
+                    capability: "example.chat@1",
+                    operation: "chat".to_owned(),
+                })
+            } else {
+                BunStreamAction::Accepted
+            }
+        }
+
+        fn receive(&self) -> BunStreamReceive {
+            BunStreamReceive::Event(BunStreamEvent::Terminal(Ok(())))
+        }
+
+        fn cancel(&self) {}
+    }
+
+    #[derive(Debug)]
+    struct CancellationTrackingStream {
+        cancelled: Arc<AtomicBool>,
+    }
+
+    impl BunProviderStream for CancellationTrackingStream {
+        fn send(&self, _payload: Value) -> BunStreamAction {
+            BunStreamAction::Accepted
+        }
+
+        fn receive(&self) -> BunStreamReceive {
+            BunStreamReceive::Runtime(RuntimeFailure::ResourceExhausted {
+                capability: "example.chat@1",
+                operation: "chat.receive".to_owned(),
+            })
+        }
+
+        fn cancel(&self) {
+            self.cancelled.store(true, Ordering::Release);
+        }
+    }
 
     impl BunProviderHandler for TestHandler {
         fn invoke(&self, request: BunRequest) -> BunResponse {
@@ -1076,6 +1194,61 @@ mod tests {
             TestHandler,
         )
         .expect("server should start")
+    }
+
+    fn stream_server(queue_capacity: usize, stream: impl BunProviderStream) -> BunProviderServer {
+        BunProviderServer::json_rpc(
+            BunProviderDescriptor {
+                capability_id: "example.chat@1",
+                descriptor_version: "1.0.0".to_owned(),
+                operations: vec!["chat".to_owned()],
+                stream_operations: vec!["chat".to_owned()],
+            },
+            4096,
+            queue_capacity,
+            StreamTestHandler {
+                stream: Arc::new(stream),
+            },
+        )
+        .expect("stream server should start")
+    }
+
+    fn open_stream(
+        runtime: &tokio::runtime::Runtime,
+        client: &jsonrpsee::http_client::HttpClient,
+        stream_id: u64,
+    ) -> String {
+        let handshake = handshake_for(
+            [EndpointDescriptor {
+                capability_id: "example.chat@1".to_owned(),
+                descriptor_version: "1.0.0".to_owned(),
+                operations: vec!["chat".to_owned()],
+                stream_operations: vec!["chat".to_owned()],
+            }],
+            4096,
+        );
+        let accepted: HandshakeAck = runtime
+            .block_on(client.request("lenso.handshake", rpc_params![handshake]))
+            .expect("exact stream handshake should pass");
+        let session = accepted.session.expect("stream session should be assigned");
+        let opened: WireStreamOutcome = runtime
+            .block_on(client.request(
+                "lenso.stream.open",
+                rpc_params![WireStreamOpen {
+                    request_id: stream_id,
+                    stream_id,
+                    capability_id: "example.chat@1".to_owned(),
+                    operation: "chat".to_owned(),
+                    deadline_nanos: None,
+                    caller_instance: None,
+                    session: Some(session.clone()),
+                    credit: DEFAULT_STREAM_CREDIT,
+                    payload: serde_json::json!({ "room": "test" }),
+                }],
+            ))
+            .expect("stream should open");
+        assert!(matches!(opened, WireStreamOutcome::Opened { .. }));
+        session
     }
 
     #[test]
@@ -1163,5 +1336,155 @@ mod tests {
             .expect("the original session should remain active");
         assert!(matches!(outcome, WireOutcome::Success { .. }));
         server.shutdown();
+    }
+
+    #[test]
+    fn runtime_failure_retires_the_provider_stream() {
+        let server = stream_server(1, RuntimeTerminalStream);
+        let client = HttpClientBuilder::default()
+            .build(format!("http://{}", server.address()))
+            .expect("client should build");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let session = open_stream(&runtime, &client, 41);
+        let first: WireStreamOutcome = runtime
+            .block_on(client.request(
+                "lenso.stream.receive",
+                rpc_params![WireStreamCall::Receive {
+                    request_id: 42,
+                    stream_id: 41,
+                    session: session.clone(),
+                }],
+            ))
+            .expect("terminal Runtime Failure should be returned");
+        assert!(matches!(first, WireStreamOutcome::Runtime { .. }));
+        let late: WireStreamOutcome = runtime
+            .block_on(client.request(
+                "lenso.stream.receive",
+                rpc_params![WireStreamCall::Receive {
+                    request_id: 43,
+                    stream_id: 41,
+                    session,
+                }],
+            ))
+            .expect("late receive should be rejected in-band");
+        assert!(matches!(
+            late,
+            WireStreamOutcome::Runtime {
+                failure: WireFailure::ProtocolViolation { .. }
+            }
+        ));
+        server.shutdown();
+    }
+
+    #[test]
+    fn resource_exhausted_send_can_retry_the_same_sequence() {
+        let server = stream_server(
+            1,
+            RetryableSendStream {
+                reject_once: AtomicBool::new(true),
+            },
+        );
+        let client = HttpClientBuilder::default()
+            .build(format!("http://{}", server.address()))
+            .expect("client should build");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let session = open_stream(&runtime, &client, 51);
+        let send = |request_id| WireStreamCall::Send {
+            request_id,
+            stream_id: 51,
+            session: session.clone(),
+            sequence: 0,
+            payload: serde_json::json!({ "text": "retry" }),
+        };
+        let saturated: WireStreamOutcome = runtime
+            .block_on(client.request("lenso.stream.send", rpc_params![send(52)]))
+            .expect("saturation should be returned in-band");
+        assert!(matches!(
+            saturated,
+            WireStreamOutcome::Runtime {
+                failure: WireFailure::ResourceExhausted { .. }
+            }
+        ));
+        let retried: WireStreamOutcome = runtime
+            .block_on(client.request("lenso.stream.send", rpc_params![send(53)]))
+            .expect("retry should be returned in-band");
+        assert!(matches!(retried, WireStreamOutcome::Accepted { .. }));
+        server.shutdown();
+    }
+
+    #[test]
+    fn consumer_cancellation_retires_the_provider_stream_and_rejects_late_calls() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let server = stream_server(
+            1,
+            CancellationTrackingStream {
+                cancelled: cancelled.clone(),
+            },
+        );
+        let client = HttpClientBuilder::default()
+            .build(format!("http://{}", server.address()))
+            .expect("client should build");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let session = open_stream(&runtime, &client, 61);
+        runtime
+            .block_on(client.request::<bool, _>(
+                "lenso.stream.cancel",
+                rpc_params![serde_json::json!({
+                    "stream_id": 61,
+                    "session": session.clone(),
+                })],
+            ))
+            .expect("stream cancellation should succeed");
+        assert!(cancelled.load(Ordering::Acquire));
+
+        let late: WireStreamOutcome = runtime
+            .block_on(client.request(
+                "lenso.stream.receive",
+                rpc_params![WireStreamCall::Receive {
+                    request_id: 62,
+                    stream_id: 61,
+                    session,
+                }],
+            ))
+            .expect("late receive should be rejected in-band");
+        assert!(matches!(
+            late,
+            WireStreamOutcome::Runtime {
+                failure: WireFailure::ProtocolViolation { .. }
+            }
+        ));
+        server.shutdown();
+    }
+
+    #[test]
+    fn provider_shutdown_cancels_established_streams() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let server = stream_server(
+            1,
+            CancellationTrackingStream {
+                cancelled: cancelled.clone(),
+            },
+        );
+        let client = HttpClientBuilder::default()
+            .build(format!("http://{}", server.address()))
+            .expect("client should build");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let _session = open_stream(&runtime, &client, 71);
+
+        server.shutdown();
+
+        assert!(cancelled.load(Ordering::Acquire));
     }
 }

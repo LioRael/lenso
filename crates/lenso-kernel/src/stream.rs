@@ -3,9 +3,8 @@ use std::{any::Any, cell::Cell, fmt, marker::PhantomData, rc::Rc};
 use futures::future::LocalBoxFuture;
 
 use super::{
-    InvocationContext, NativeAppRuntime, NativeStreamEndpointBinding, NativeStreamEndpointState,
-    RequestPermit, RuntimeFailure, await_with_generation_context,
-    schedule_module_supervision_after_failure,
+    InvocationContext, NativeAppRuntime, NativeStreamEndpointBinding, RequestPermit,
+    RuntimeFailure, await_with_generation_context, schedule_module_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one stream Capability.
@@ -172,6 +171,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
         if !endpoint.state.is_current(snapshot.generation) {
             return Err(RuntimeFailure::Unavailable { capability: C::ID });
         }
+        let generation_cancellation = snapshot.cancellation.clone();
         let outcome = await_with_generation_context(
             &self.runtime.driver,
             &context,
@@ -200,7 +200,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             Ok(session) => Ok(Ok(NativeStream::new(
                 session,
                 self.runtime.clone(),
-                endpoint.state.clone(),
+                generation_cancellation,
                 endpoint.module_instance.clone(),
                 context,
                 permit,
@@ -233,7 +233,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
 pub struct NativeStream<C: StreamCapability> {
     inner: Rc<dyn NativeStreamSession>,
     runtime: Rc<NativeAppRuntime>,
-    state: Rc<NativeStreamEndpointState>,
+    generation_cancellation: super::CancellationToken,
     module_instance: String,
     context: InvocationContext,
     _permit: RequestPermit,
@@ -248,7 +248,7 @@ impl<C: StreamCapability> NativeStream<C> {
     fn new(
         session: Box<dyn NativeStreamSession>,
         runtime: Rc<NativeAppRuntime>,
-        state: Rc<NativeStreamEndpointState>,
+        generation_cancellation: super::CancellationToken,
         module_instance: String,
         context: InvocationContext,
         permit: RequestPermit,
@@ -256,7 +256,7 @@ impl<C: StreamCapability> NativeStream<C> {
         Self {
             inner: Rc::from(session),
             runtime,
-            state,
+            generation_cancellation,
             module_instance,
             context,
             _permit: permit,
@@ -270,14 +270,17 @@ impl<C: StreamCapability> NativeStream<C> {
 
     /// Sends one typed message to the remote side.
     pub async fn send(&self, message: C::Message) -> Result<(), RuntimeFailure> {
-        if self.local_half_closed.get() || self.terminal_seen.get() || self.cancelled.get() {
+        if let Some(error) = self.cancelled_outcome() {
+            return Err(error);
+        }
+        if self.local_half_closed.get() || self.terminal_seen.get() {
             return Err(self.protocol_violation());
         }
         let inner = self.inner.clone();
         await_with_generation_context(
             &self.runtime.driver,
             &self.context,
-            self.state.cancellation(),
+            self.generation_cancellation.clone(),
             C::ID,
             inner.send(Box::new(message)),
         )
@@ -288,14 +291,17 @@ impl<C: StreamCapability> NativeStream<C> {
 
     /// Receives the next ordered event from the remote side.
     pub async fn receive(&self) -> Result<StreamEvent<C::Message, C::DomainError>, RuntimeFailure> {
-        if self.terminal_seen.get() || self.cancelled.get() {
+        if let Some(error) = self.cancelled_outcome() {
+            return Err(error);
+        }
+        if self.terminal_seen.get() {
             return Err(self.protocol_violation());
         }
         let inner = self.inner.clone();
         let item = await_with_generation_context(
             &self.runtime.driver,
             &self.context,
-            self.state.cancellation(),
+            self.generation_cancellation.clone(),
             C::ID,
             inner.receive(),
         )
@@ -336,15 +342,17 @@ impl<C: StreamCapability> NativeStream<C> {
 
     /// Closes this side's sending direction while keeping receiving available.
     pub async fn close_send(&self) -> Result<(), RuntimeFailure> {
-        if self.terminal_seen.get() || self.cancelled.get() || self.local_half_closed.replace(true)
-        {
+        if let Some(error) = self.cancelled_outcome() {
+            return Err(error);
+        }
+        if self.terminal_seen.get() || self.local_half_closed.replace(true) {
             return Err(self.protocol_violation());
         }
         let inner = self.inner.clone();
         let result = await_with_generation_context(
             &self.runtime.driver,
             &self.context,
-            self.state.cancellation(),
+            self.generation_cancellation.clone(),
             C::ID,
             inner.close_send(),
         )
@@ -363,7 +371,7 @@ impl<C: StreamCapability> NativeStream<C> {
 
     /// Cancels the stream idempotently. No later frame is delivered to the caller.
     pub fn cancel(&self) {
-        if !self.cancelled.replace(true) {
+        if !self.terminal_seen.get() && !self.cancelled.replace(true) {
             self.context.cancellation().cancel();
             self.inner.cancel();
         }
@@ -378,18 +386,31 @@ impl<C: StreamCapability> NativeStream<C> {
         RuntimeFailure::ProtocolViolation { capability: C::ID }
     }
 
+    fn cancelled_outcome(&self) -> Option<RuntimeFailure> {
+        if !self.cancelled.get() {
+            return None;
+        }
+        if self.terminal_seen.replace(true) {
+            Some(self.protocol_violation())
+        } else {
+            Some(RuntimeFailure::Cancelled {
+                request_id: self.context.request_id(),
+            })
+        }
+    }
+
     fn schedule_failure(&self, error: RuntimeFailure) -> RuntimeFailure {
         schedule_module_supervision_after_failure(&self.runtime, &self.module_instance, error)
     }
 
     fn finish_with_error(&self, error: RuntimeFailure) -> RuntimeFailure {
         let error = self.schedule_failure(error);
-        if !matches!(error, RuntimeFailure::ResourceExhausted { .. })
-            && !self.cancelled.replace(true)
-        {
+        if !matches!(error, RuntimeFailure::ResourceExhausted { .. }) {
             self.terminal_seen.set(true);
-            self.context.cancellation().cancel();
-            self.inner.cancel();
+            if !self.cancelled.replace(true) {
+                self.context.cancellation().cancel();
+                self.inner.cancel();
+            }
         }
         error
     }

@@ -1846,10 +1846,6 @@ impl NativeStreamEndpointState {
     pub(crate) fn is_current(&self, generation: u64) -> bool {
         self.generation.get() == generation && self.endpoint.borrow().is_some()
     }
-
-    pub(crate) fn cancellation(&self) -> CancellationToken {
-        self.cancellation.borrow().clone()
-    }
 }
 
 impl NativeEndpointState {
@@ -2934,6 +2930,9 @@ async fn await_with_generation_context<F: Future>(
     future: F,
 ) -> Result<F::Output, RuntimeFailure> {
     ensure_context_active(driver, context)?;
+    if generation_cancellation.is_cancelled() {
+        return Err(RuntimeFailure::Unavailable { capability });
+    }
 
     let work = future.fuse();
     let cancellation = context.cancellation.cancelled().fuse();

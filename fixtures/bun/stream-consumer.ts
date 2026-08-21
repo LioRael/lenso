@@ -89,6 +89,40 @@ if (opened.kind === "domain") {
 }
 if (opened.kind !== "opened") throw new Error(`stream open failed: ${JSON.stringify(opened)}`);
 
+if (room === "provider-closes-first") {
+  const halfClosed = (await rpc("lenso.stream.receive", call(nextId++, "receive"))) as WireStreamOutcome;
+  if (halfClosed.kind !== "event" || halfClosed.event.kind !== "peer_half_closed") {
+    throw new Error(`provider-first half-close failed: ${JSON.stringify(halfClosed)}`);
+  }
+  const accepted = (await rpc(
+    "lenso.stream.send",
+    call(nextId++, "send", { sequence: 0, payload: { text } }),
+  )) as WireStreamOutcome;
+  if (accepted.kind !== "accepted") {
+    throw new Error(`send after provider half-close failed: ${JSON.stringify(accepted)}`);
+  }
+  const closed = (await rpc(
+    "lenso.stream.close_send",
+    call(nextId++, "close_send"),
+  )) as WireStreamOutcome;
+  if (closed.kind !== "accepted") throw new Error(`stream close failed: ${JSON.stringify(closed)}`);
+  const terminal = (await rpc("lenso.stream.receive", call(nextId++, "receive"))) as WireStreamOutcome;
+  if (
+    terminal.kind !== "event" ||
+    terminal.event.kind !== "terminal" ||
+    terminal.event.outcome.kind !== "success"
+  ) {
+    throw new Error(`stream terminal failed: ${JSON.stringify(terminal)}`);
+  }
+  process.stdout.write(
+    JSON.stringify({
+      kind: "success",
+      events: [halfClosed.event.kind, terminal.event.outcome.kind],
+    }),
+  );
+  process.exit(0);
+}
+
 const accepted = (await rpc(
   "lenso.stream.send",
   call(nextId++, "send", { sequence: 0, payload: { text } }),

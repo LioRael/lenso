@@ -3151,7 +3151,7 @@ fn generate_typescript(contract: &ContractIr) -> String {
                 typescript_property_name(&snake_case(&operation.name)),
             ));
             providers.push(format!(
-                "  {}(context: InvocationContext, request: {request_type}): Promise<StreamSession<{response_type}, {error_name}>>;",
+                "  {}(context: InvocationContext, request: {request_type}): Promise<{{ readonly ok: true; readonly value: StreamSession<{response_type}, {error_name}> }} | {{ readonly ok: false; readonly error: {error_name} }}>;",
                 typescript_property_name(&snake_case(&operation.name)),
             ));
         }

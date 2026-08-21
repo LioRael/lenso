@@ -74,6 +74,7 @@ type StreamState = {
   terminalQueued: boolean;
   terminalSeen: boolean;
   receiveInFlight: boolean;
+  providerClosesFirst: boolean;
 };
 
 const args = Bun.argv.slice(2);
@@ -96,12 +97,16 @@ const expectedEndpoints = JSON.parse(
   argument("--lenso-endpoints-json", JSON.stringify([fallbackEndpoint])),
 ) as EndpointDescriptor[];
 const streams = new Map<number, StreamState>();
+const MAX_BUFFERED_STREAM_EVENTS = 16;
 const retiredStreamIds = new Set<number>();
 const maxRetiredStreamIds = 1024;
 let activeHandshake: Handshake | undefined;
 let sessionToken: string | undefined;
 
 function runtime(kind: string, detail?: string, requestId?: number): WireStreamOutcome {
+  if (kind === "resource_exhausted") {
+    return { kind: "runtime", failure: { kind, operation: detail ?? "chat" } };
+  }
   const failure = detail === undefined ? { kind } : { kind, detail };
   if (requestId !== undefined && (kind === "cancelled" || kind === "deadline_exceeded")) {
     return { kind: "runtime", failure: { ...failure, request_id: requestId } };
@@ -188,12 +193,13 @@ function openStream(open: WireStreamOpen): WireStreamOutcome {
     nextInboundSequence: 0,
     nextOutboundSequence: 0,
     credit,
-    events: [],
+    events: payload.room === "provider-closes-first" ? [{ kind: "peer_half_closed" }] : [],
     peerHalfClosed: false,
     localHalfClosed: false,
     terminalQueued: false,
     terminalSeen: false,
     receiveInFlight: false,
+    providerClosesFirst: payload.room === "provider-closes-first",
   });
   return { kind: "opened", stream_id: open.stream_id, credit };
 }
@@ -211,15 +217,19 @@ function streamCall(call: WireStreamCall): WireStreamOutcome {
     ) {
       return protocolViolation();
     }
+    if (stream.events.length >= MAX_BUFFERED_STREAM_EVENTS) {
+      return runtime("resource_exhausted", call.action);
+    }
     if (stream.credit <= 0) return runtime("resource_exhausted", call.action);
     stream.credit -= 1;
     stream.nextInboundSequence += 1;
     const payload = call.payload as { text?: unknown };
     if (typeof payload?.text !== "string") return protocolViolation();
+    if (payload.text === "__crash__") process.exit(17);
     if (payload.text === "__domain__") {
       stream.events.push({ kind: "terminal", outcome: { kind: "domain", value: "room_closed" } });
       stream.terminalQueued = true;
-    } else {
+    } else if (!stream.providerClosesFirst) {
       stream.events.push({
         kind: "message",
         payload: { text: `Bun echo: ${payload.text}` },
@@ -233,7 +243,7 @@ function streamCall(call: WireStreamCall): WireStreamOutcome {
       return protocolViolation();
     }
     stream.peerHalfClosed = true;
-    stream.events.push({ kind: "peer_half_closed" });
+    if (!stream.providerClosesFirst) stream.events.push({ kind: "peer_half_closed" });
     stream.events.push({ kind: "terminal", outcome: { kind: "success" } });
     stream.terminalQueued = true;
     return { kind: "accepted", credit: stream.credit };

@@ -21,6 +21,9 @@ fn stream_descriptors_generate_bidirectional_rust_and_typescript_bindings() {
     assert!(artifacts.typescript.contains("StreamEvent"));
     assert!(artifacts.typescript.contains("send(message:"));
     assert!(artifacts.typescript.contains("receive(): Promise"));
+    assert!(artifacts.typescript.contains(
+        "chat(context: InvocationContext, request: ChatRequest): Promise<{ readonly ok: true; readonly value: StreamSession<ChatResponse, ChatError> } | { readonly ok: false; readonly error: ChatError }>;"
+    ));
 }
 
 #[allow(clippy::too_many_lines)]

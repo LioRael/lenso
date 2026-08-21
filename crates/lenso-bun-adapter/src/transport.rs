@@ -1755,6 +1755,34 @@ impl TransportStreamSession {
         }
     }
 
+    fn restore_rejected_send(
+        transport: &TransportClient,
+        state: &Arc<TransportStreamState>,
+        sequence: u64,
+    ) -> Result<(), RuntimeFailure> {
+        if state
+            .next_send_sequence
+            .compare_exchange(
+                sequence.saturating_add(1),
+                sequence,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_err()
+        {
+            return Err(RuntimeFailure::ProtocolViolation {
+                capability: state.capability,
+            });
+        }
+        state.send_credit.fetch_add(1, Ordering::AcqRel);
+        Self {
+            transport: transport.clone(),
+            state: state.clone(),
+        }
+        .wake_credit_waiters();
+        Ok(())
+    }
+
     fn register_credit_waiter(&self) -> Result<Option<oneshot::Receiver<()>>, RuntimeFailure> {
         if self.state.cancelled.load(Ordering::Acquire)
             || self.state.terminal_seen.load(Ordering::Acquire)
@@ -1859,7 +1887,12 @@ impl NativeStreamSession for TransportStreamSession {
         ) {
             Ok(call) => call,
             Err(error) => {
-                state.send_credit.fetch_add(1, Ordering::AcqRel);
+                if matches!(error, RuntimeFailure::ResourceExhausted { .. })
+                    && let Err(rollback_error) =
+                        Self::restore_rejected_send(&transport, &state, sequence)
+                {
+                    return Box::pin(futures::future::ready(Err(rollback_error)));
+                }
                 return Box::pin(futures::future::ready(Err(error)));
             }
         };
@@ -1879,12 +1912,7 @@ impl NativeStreamSession for TransportStreamSession {
                         failure,
                         crate::protocol::WireFailure::ResourceExhausted { .. }
                     ) {
-                        state.send_credit.fetch_add(1, Ordering::AcqRel);
-                        let session = Self {
-                            transport: transport.clone(),
-                            state: state.clone(),
-                        };
-                        session.wake_credit_waiters();
+                        Self::restore_rejected_send(&transport, &state, sequence)?;
                     }
                     Err(from_wire_failure(state.capability, failure))
                 }

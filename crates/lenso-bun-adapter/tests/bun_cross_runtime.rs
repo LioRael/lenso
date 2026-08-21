@@ -390,6 +390,7 @@ impl BunProviderHandler for CancellableRustGreetingProvider {
 struct RustChatStreamState {
     events: VecDeque<BunStreamEvent>,
     cancelled: bool,
+    provider_closes_first: bool,
 }
 
 #[derive(Debug)]
@@ -415,12 +416,14 @@ impl BunProviderStream for RustChatStream {
         if state.cancelled {
             return BunStreamAction::Runtime(RuntimeFailure::Cancelled { request_id: 0 });
         }
-        state.events.push_back(BunStreamEvent::Message(
-            serde_json::to_value(ChatMessage {
-                text: format!("Rust echo: {}", message.text),
-            })
-            .expect("chat message should serialize"),
-        ));
+        if !state.provider_closes_first {
+            state.events.push_back(BunStreamEvent::Message(
+                serde_json::to_value(ChatMessage {
+                    text: format!("Rust echo: {}", message.text),
+                })
+                .expect("chat message should serialize"),
+            ));
+        }
         BunStreamAction::Accepted
     }
 
@@ -449,7 +452,9 @@ impl BunProviderStream for RustChatStream {
         if state.cancelled {
             return BunStreamAction::Runtime(RuntimeFailure::Cancelled { request_id: 0 });
         }
-        state.events.push_back(BunStreamEvent::PeerHalfClosed);
+        if !state.provider_closes_first {
+            state.events.push_back(BunStreamEvent::PeerHalfClosed);
+        }
         state.events.push_back(BunStreamEvent::Terminal(Ok(())));
         BunStreamAction::Accepted
     }
@@ -490,8 +495,13 @@ impl BunProviderHandler for RustChatProvider {
         if request.room == "closed" {
             return BunStreamOpenResponse::Domain(serde_json::json!("room_closed"));
         }
+        let mut state = RustChatStreamState::default();
+        if request.room == "provider-closes-first" {
+            state.provider_closes_first = true;
+            state.events.push_back(BunStreamEvent::PeerHalfClosed);
+        }
         BunStreamOpenResponse::Success(Arc::new(RustChatStream {
-            state: Arc::new(Mutex::new(RustChatStreamState::default())),
+            state: Arc::new(Mutex::new(state)),
         }))
     }
 }
@@ -541,13 +551,20 @@ fn greeting_plan(script: &Path) -> lenso_app_plan::ResolvedAppPlan {
 }
 
 fn stream_plan(script: &Path) -> lenso_app_plan::ResolvedAppPlan {
+    stream_plan_with_concurrency(script, 1)
+}
+
+fn stream_plan_with_concurrency(
+    script: &Path,
+    max_concurrency: usize,
+) -> lenso_app_plan::ResolvedAppPlan {
     let endpoint = CapabilityEndpointPlan::new(
         CHAT_CAPABILITY_ID,
         CHAT_DESCRIPTOR_VERSION,
         [CHAT_OPERATION],
     )
     .with_stream_operation(CHAT_OPERATION)
-    .with_limits(0, 1);
+    .with_limits(0, max_concurrency);
     let provider = ModuleInstancePlan::new("bun-provider", "fixture.bun.stream")
         .with_entrypoint(script.to_string_lossy())
         .with_execution_class(ExecutionClassId::bun_child_process())
@@ -626,6 +643,15 @@ fn run_bun_stream(
         Ok(Ok(stream)) => {
             let result =
                 (|| -> Result<Vec<StreamEvent<ChatMessage, ChatError>>, RuntimeFailure> {
+                    if room == "provider-closes-first" {
+                        let half_closed = driver.run(stream.receive())?;
+                        driver.run(stream.send(ChatMessage {
+                            text: "accepted after provider half-close".to_owned(),
+                        }))?;
+                        driver.run(stream.close_send())?;
+                        let terminal = driver.run(stream.receive())?;
+                        return Ok(vec![half_closed, terminal]);
+                    }
                     driver.run(stream.send(ChatMessage {
                         text: "one".to_owned(),
                     }))?;
@@ -701,6 +727,14 @@ fn both_wires_support_full_duplex_streams_and_independent_half_close() {
 
         let domain = run_bun_stream(wire, "closed").expect("stream open should reach Bun");
         assert_eq!(domain, Err(ChatError::RoomClosed));
+
+        let provider_first = run_bun_stream(wire, "provider-closes-first")
+            .unwrap_or_else(|error| panic!("{wire:?} provider-first close failed: {error:?}"))
+            .expect("provider-first stream open should succeed");
+        assert_eq!(
+            provider_first,
+            vec![StreamEvent::PeerHalfClosed, StreamEvent::Terminal(Ok(()))]
+        );
     }
 }
 
@@ -719,6 +753,73 @@ fn both_wires_bound_stream_admission_and_reject_oversized_messages() {
         assert_bounded_stream_admission(wire);
         assert_oversized_stream_message_is_rejected(wire);
     }
+}
+
+#[test]
+#[ignore = "requires Bun; CI runs ignored cross-runtime tests after installing Bun"]
+fn saturated_stream_send_can_retry_without_losing_sequence() {
+    for wire in [BunWire::FramedStdio, BunWire::JsonRpcHttp] {
+        assert_saturated_stream_send_can_retry(wire);
+    }
+}
+
+fn assert_saturated_stream_send_can_retry(wire: BunWire) {
+    let script = fixture("stream-provider.ts");
+    let driver = DeterministicDriver::new();
+    let adapter = BunAdapter::new(bun_binary(), wire).with_codec(ChatCodec);
+    let app = driver
+        .run(Kernel::start(
+            stream_plan(&script),
+            driver.clone(),
+            ExecutionAdapterCatalog::single(adapter),
+        ))
+        .expect("Bun stream App should start");
+    let handle = app
+        .stream_handle::<Chat>("bun-consumer")
+        .expect("stream handle should be available");
+    let stream = driver
+        .run(handle.open(
+            CHAT_OPERATION,
+            ChatOpen {
+                room: "room-1".to_owned(),
+            },
+        ))
+        .expect("stream open should not fail")
+        .expect("stream should open");
+
+    for index in 0..16 {
+        driver
+            .run(stream.send(ChatMessage {
+                text: format!("buffered-{index}"),
+            }))
+            .expect("the bounded provider buffer should admit its advertised credit");
+    }
+    let overflow = ChatMessage {
+        text: "after-saturation".to_owned(),
+    };
+    let saturated = driver.run(stream.send(overflow.clone()));
+    assert!(
+        matches!(saturated, Err(RuntimeFailure::ResourceExhausted { .. })),
+        "{wire:?} should report bounded saturation, got {saturated:?}"
+    );
+
+    assert!(matches!(
+        driver.run(stream.receive()),
+        Ok(StreamEvent::Message(ChatMessage { text })) if text == "Bun echo: buffered-0"
+    ));
+    driver
+        .run(stream.send(overflow))
+        .expect("retry after one receive should preserve the rejected sequence");
+    for _ in 1..16 {
+        driver
+            .run(stream.receive())
+            .expect("previously admitted messages should remain ordered");
+    }
+    assert!(matches!(
+        driver.run(stream.receive()),
+        Ok(StreamEvent::Message(ChatMessage { text })) if text == "Bun echo: after-saturation"
+    ));
+    let _ = driver.run(app.shutdown(Duration::from_secs(2)));
 }
 
 fn assert_bounded_stream_admission(wire: BunWire) {
@@ -801,7 +902,7 @@ fn assert_stream_provider_restart(wire: BunWire) {
     let adapter = BunAdapter::new(bun_binary(), wire).with_codec(ChatCodec);
     let app = driver
         .run(Kernel::start(
-            stream_plan(&script),
+            stream_plan_with_concurrency(&script, 2),
             driver.clone(),
             ExecutionAdapterCatalog::single(adapter),
         ))
@@ -809,13 +910,29 @@ fn assert_stream_provider_restart(wire: BunWire) {
     let handle = app
         .stream_handle::<Chat>("bun-consumer")
         .expect("stream handle should be available");
-    let crashed = driver.run(handle.open(
-        CHAT_OPERATION,
-        ChatOpen {
-            room: "__crash__".to_owned(),
-        },
-    ));
+    let existing = driver
+        .run(handle.open(
+            CHAT_OPERATION,
+            ChatOpen {
+                room: "room-before-restart".to_owned(),
+            },
+        ))
+        .expect("existing stream open should not fail")
+        .expect("existing stream should open");
+    let crashing = driver
+        .run(handle.open(
+            CHAT_OPERATION,
+            ChatOpen {
+                room: "crashing-stream".to_owned(),
+            },
+        ))
+        .expect("crashing stream open should not fail")
+        .expect("crashing stream should open");
+    let crashed = driver.run(crashing.send(ChatMessage {
+        text: "__crash__".to_owned(),
+    }));
     assert!(matches!(crashed, Err(RuntimeFailure::ModuleFailure { .. })));
+    drop(crashing);
 
     let mut restarted = false;
     for _ in 0..100 {
@@ -834,6 +951,17 @@ fn assert_stream_provider_restart(wire: BunWire) {
         "stream provider generation should be recreated; generation={:?}",
         app.module_generation("bun-provider")
     );
+    let existing_result = driver.run(existing.receive());
+    assert!(
+        matches!(
+            existing_result,
+            Err(RuntimeFailure::Unavailable {
+                capability: CHAT_CAPABILITY_ID
+            }) | Err(RuntimeFailure::ModuleFailure { .. })
+        ),
+        "{wire:?} existing stream should terminate with its old generation, got {existing_result:?}"
+    );
+    drop(existing);
     let reopened = driver
         .run(handle.open(
             CHAT_OPERATION,
@@ -1103,6 +1231,14 @@ fn bun_consumer_can_open_full_duplex_streams_from_a_rust_provider_bridge() {
     assert_eq!(
         domain,
         serde_json::json!({ "kind": "domain", "value": "room_closed" })
+    );
+    let provider_first = run_bun_stream_consumer(&url, "provider-closes-first");
+    assert_eq!(
+        provider_first,
+        serde_json::json!({
+            "kind": "success",
+            "events": ["peer_half_closed", "success"]
+        })
     );
     server.shutdown();
 }
