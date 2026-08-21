@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/lenso-app-plan",
+    "crates/lenso-bun-adapter",
     "crates/lenso-contract-codegen",
     "crates/lenso-capability-greeting",
     "crates/lenso-browser-driver",

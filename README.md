@@ -11,6 +11,9 @@ The initial vNext workspace is intentionally small:
 - `crates/lenso-app-plan` — immutable, language-independent execution input.
 - `crates/lenso-kernel` — portable Kernel state machine and Runtime Driver
   interface, with a deterministic Driver for conformance tests.
+- `crates/lenso-bun-adapter` — Adapter-owned Bun child-process request
+  dispatch, selected JSON-RPC loopback wire, framed prototype, and reverse
+  Rust-provider bridge.
 - `crates/lenso-browser-driver` — browser/JavaScript Driver using the host
   monotonic clock, timers, and local event loop.
 - `crates/lenso-runner` — native Tokio Runtime Driver and the smallest host
@@ -44,7 +47,7 @@ does not provide a selected open execution-class identity.
 - [`CONTEXT.md`](CONTEXT.md) is the canonical vocabulary and invariant set.
 - [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md) is the
   runtime overview.
-- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0057.
+- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0058.
 - [`docs/roadmaps/lenso-vnext-validation.md`](docs/roadmaps/lenso-vnext-validation.md)
   records the evidence sequence.
 - [`docs/research/`](docs/research/) contains supporting research, not runtime
