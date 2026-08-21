@@ -75,14 +75,31 @@ authorization.
 Complete when deleting any fixture Module requires no Kernel feature flag or
 residual product hook.
 
-## 6. Console as an App
+## 6. Target-owned App Web UI
 
-Compose an independent Console App with replaceable Operator Identity, Access,
-Shell, UI catalog, and target client Modules. Connect it to a target through an
-allowlisted Connector Adapter.
+Compose an optional Web UI inside one target App from an ordinary Web Shell,
+Browser Adapter, business Module, and custom UI Contribution. Bind the Shell to
+`many` contribution providers and project generated browser clients only for
+portable requirements declared by each contribution and resolved before boot.
+Prove that one package can publish explicit backend and UI Module entrypoints
+without introducing a Console, Plugin, Surface, or nested-Module runtime type.
 
-Complete when the same UI and Capability seams can also run as an embedded
-local-development composition without a special Console type in Kernel.
+Complete when the custom route renders, invokes its App-local business
+Capability through a generated client, preserves target-owned authorization,
+rejects missing or colliding contribution metadata, and can be removed without
+changing Kernel or non-UI Module behavior. The App must also run with no Web UI
+selected, and installing or changing UI code must remain a reviewable
+authoring-time Composition and Plan change.
+
+An independent Console App and allowlisted target Connector are later
+cross-App product work. They enter validation only when a real requirement
+needs remote or multiple targets, an independent operator trust domain,
+durable cross-target state, or an independent release lifecycle. They are not
+prerequisites for the target-owned App Web UI or the initial vNext validation
+sequence.
+
+See ADRs [0043](../adr/0043-represent-ui-contributions-as-capabilities.md) and
+[0060](../adr/0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md).
 
 ## 7. Migration decisions
 
