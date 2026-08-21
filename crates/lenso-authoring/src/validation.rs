@@ -12,6 +12,7 @@ const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "properties",
     "required",
     "type",
+    "x-lenso-sensitive",
 ];
 const SCHEMA_METADATA_KEYWORDS: &[&str] = &[
     "$anchor",
@@ -28,10 +29,6 @@ const SCHEMA_METADATA_KEYWORDS: &[&str] = &[
 ];
 
 pub(crate) fn validate_configuration(root: &Path, module: &Module) -> Result<(), AuthoringError> {
-    reject_secret_values(
-        module.configuration(),
-        &format!("{}.configuration", module.key()),
-    )?;
     if let Some(schema) = module.configuration_schema() {
         let path = root.join(schema);
         let schema: Value =
@@ -44,6 +41,12 @@ pub(crate) fn validate_configuration(root: &Path, module: &Module) -> Result<(),
             &schema,
             &format!("{}.configuration", module.key()),
         )?;
+    } else if module.configuration() != &Value::Object(Map::new()) {
+        return Err(AuthoringError::InvalidConfiguration {
+            path: format!("{}.configuration", module.key()),
+            detail: "non-empty configuration requires a schema so secret fields are explicit"
+                .to_owned(),
+        });
     }
     Ok(())
 }
@@ -53,46 +56,6 @@ fn read_file(path: &Path) -> Result<Vec<u8>, AuthoringError> {
         path: path.to_owned(),
         source,
     })
-}
-
-fn reject_secret_values(value: &Value, path: &str) -> Result<(), AuthoringError> {
-    match value {
-        Value::Array(values) => {
-            for (index, value) in values.iter().enumerate() {
-                reject_secret_values(value, &format!("{path}[{index}]"))?;
-            }
-        }
-        Value::Object(object) => {
-            if is_secret_reference(value) {
-                return Ok(());
-            }
-            for (key, value) in object {
-                let child = format!("{path}.{key}");
-                if is_sensitive_key(key) && !is_secret_reference(value) {
-                    return Err(AuthoringError::SecretValue { path: child });
-                }
-                reject_secret_values(value, &child)?;
-            }
-        }
-        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-    }
-    Ok(())
-}
-
-fn is_sensitive_key(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
-    [
-        "secret",
-        "password",
-        "token",
-        "credential",
-        "private_key",
-        "privatekey",
-        "api_key",
-        "apikey",
-    ]
-    .iter()
-    .any(|part| key.contains(part))
 }
 
 fn is_secret_reference(value: &Value) -> bool {
@@ -113,6 +76,18 @@ fn validate_json_schema(value: &Value, schema: &Value, path: &str) -> Result<(),
             path,
             format!("unsupported JSON Schema keyword {keyword}"),
         ));
+    }
+    if schema
+        .get("x-lenso-sensitive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        if !is_secret_reference(value) {
+            return Err(AuthoringError::SecretValue {
+                path: path.to_owned(),
+            });
+        }
+        return Ok(());
     }
     validate_schema_type(value, schema, path)?;
     validate_schema_value_constraints(value, schema, path)?;

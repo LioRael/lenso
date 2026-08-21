@@ -2,7 +2,7 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::{BTreeMap, VecDeque},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     rc::Rc,
     sync::Arc,
@@ -19,7 +19,6 @@ use lenso_kernel::{
 use serde_json::Value;
 
 use crate::{
-    artifact::resolve_entrypoint,
     protocol::{
         EndpointDescriptor, EventBindingDescriptor, WireOutcome, WireStreamOutcome,
         from_wire_failure, handshake_for, wire_event, wire_request, wire_stream_open,
@@ -371,7 +370,12 @@ impl BunAdapter {
         event_bindings: &[EventBindingDescriptor],
         capability: &'static str,
     ) -> Result<Arc<ProcessState>, RuntimeFailure> {
-        let entrypoint = resolve_entrypoint(&self.config.working_directory, instance)?;
+        let entrypoint = Path::new(instance.entrypoint());
+        let entrypoint = if entrypoint.is_absolute() {
+            entrypoint.to_owned()
+        } else {
+            self.config.working_directory.join(entrypoint)
+        };
         if !entrypoint.is_file() {
             return Err(RuntimeFailure::InvalidResolvedPlan {
                 detail: format!(

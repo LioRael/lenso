@@ -2,12 +2,14 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 /// Stable, open identity of the execution mechanism selected for a Module
 /// Instance.
 ///
 /// Execution Adapter packages own these IDs. The Plan preserves them as opaque
 /// authoring data so third-party Adapters do not require changes to this crate.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct ExecutionClassId(String);
 
 impl ExecutionClassId {

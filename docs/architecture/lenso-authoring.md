@@ -1,64 +1,72 @@
 # Lenso authoring tooling
 
-The `lenso-authoring` crate is the authoring boundary for vNext App projects.
-It changes project data and package-manager inputs, validates the exact locked
-artifacts, and materializes a new immutable Resolved App Plan. It does not
-install packages, discover Modules, or mutate a running Kernel.
+The `lenso-app-plan::authoring` module owns the language-independent App
+Composition, package input, Capability contract, and Web profile data. The
+`lenso-authoring` crate owns filesystem changes, package-manager inspection,
+validation, Plan materialization, and native Runner orchestration.
+
+Neither layer installs code into a running Kernel. Package managers acquire
+packages and write their ordinary lockfiles before `check` or `resolve`.
 
 ## Project document
 
-An authoring project is a JSON document containing:
+`lenso.json` contains:
 
-- `composition.modules`: App-local Module Instance declarations, including
-  package identity, entrypoint, non-secret configuration, Capability endpoints,
-  requirements, and an optional Execution Adapter class;
-- `composition.bindings`: explicit consumer-to-provider Capability bindings;
-- `packages`: package-manager inputs selected by the author;
-- `lock`: exact artifact locators, versions, sources, and `sha256:` digests;
-- `contracts`: Descriptor paths and checked-in generated Rust/TypeScript files;
-- `profiles`: named Web composition recipes that select Module Instance keys
-  before resolution.
+- `composition.modules`: Module Instances, entrypoints, non-secret
+  configuration, Capability endpoints and requirements, execution classes,
+  and optional Web roles;
+- `composition.bindings`: explicit consumer-to-provider bindings;
+- `packages`: reviewable Cargo, Bun, npm, or OCI inputs, including the
+  package-manager manifest and optional explicit lockfile path;
+- `contracts`: exact Capability ID and Descriptor version mappings to the
+  Descriptor and generated Rust/TypeScript artifacts; and
+- `profiles`: pre-resolution Web recipes with explicit Web Shell, Browser
+  Adapter, UI Contribution, and ordinary Module selections.
 
-The current project and lock schema versions are both `1`. The lock is read as
-an exact input: a missing, mismatched, or locally modified artifact fails
-`check` and `resolve`. For local Bun/npm artifacts, the resolved entrypoint
-must be the exact digest-checked artifact that the Bun Adapter executes.
-Remote locators may carry an externally verified digest, but cannot contain
-credentials and must be materialized by the host before `run`.
+There is no Lenso-owned lock model. Cargo inputs are checked against
+`Cargo.lock`, npm inputs against `package-lock.json`, and Bun inputs through
+`bun pm ls` over `bun.lock`. OCI inputs must use an immutable `sha256:` digest.
+The selected exact package-manager version is copied into the Resolved App
+Plan as opaque execution identity; Kernel and Adapters do not hash or acquire
+artifacts.
 
-Secret values are rejected from Module configuration; Modules receive
-references such as `{ "secret_ref": "NAME" }` instead. Configuration schemas
-support the structural keywords `type`, `const`, `enum`, `required`,
-`properties`, `additionalProperties`, and `items`; unsupported validation
-keywords fail `check` instead of being silently ignored.
+Every Capability used by Composition must have a matching Descriptor input.
+`check` loads and validates that Descriptor and verifies that both generated
+bindings are fresh. Non-empty Module configuration requires a schema. Fields
+marked `x-lenso-sensitive: true` accept only a `{ "secret_ref": "NAME" }`
+reference, so secret handling is explicit rather than inferred from key names.
 
-## Commands
+## Resolved App Plan
 
-The `lenso` binary exposes the same authoring boundary for local workflows:
+`lenso resolve` serializes `lenso_app_plan::ResolvedAppPlan` itself. There is no
+parallel authoring-owned Plan document. Serialization is canonical and byte
+stable; loading rejects malformed, invalid, or non-canonical Plan files.
+
+`lenso run` reads that exact file, assembles the native Tokio Runner and the
+required built-in Bun production Adapter, translates Ctrl-C into cooperative
+shutdown, and reports the terminal outcome. A linked native host supplies its
+own statically linked Rust factories through the library API.
 
 ```text
 lenso add --project lenso.json --key greeter --package example.greeter \
   --source cargo --version 1.0.0 --manifest Cargo.toml
 lenso check --project lenso.json --execution-class lenso.native-rust@1
-lenso resolve --project lenso.json --execution-class lenso.native-rust@1 \
-  --output .lenso/resolved-plan.json
-lenso run --project lenso.json
+lenso resolve --project lenso.json --output .lenso/resolved-plan.json
+lenso run --plan .lenso/resolved-plan.json --root .
 ```
 
-`add` updates App Composition and an existing selected package-manager input.
-`check` verifies schema, lock/artifact integrity, generated contracts,
-configuration, execution classes, and Capability resolution. `resolve` writes
-canonical bytes for the immutable plan. `run` resolves again and passes that
-plan to the caller-selected Runtime Driver and Execution Adapter catalog; a
-new project or lock change therefore requires a new resolution before restart.
-The standalone binary has no linked third-party factories, so a non-empty App
-must call the library API from a host that supplies its Adapter catalog.
-
-The library API is the integration seam for real host adapters:
+Library hosts resolve once, persist or review the canonical bytes, load those
+same bytes, and pass the resulting `ResolvedProject` to the Runner:
 
 ```rust,ignore
-run_project(&project, root, driver, adapters, timeout, options).await?;
+use lenso_authoring::{ProjectAuthoring, ResolvedProject, run_project};
+
+let resolved = project.resolve(root, &options)?;
+write_plan(resolved.canonical_bytes())?;
+let approved = ResolvedProject::from_canonical_bytes(read_plan()?)?;
+let outcome = run_project(&approved, driver, adapters, timeout).await?;
 ```
 
-The Kernel only receives the resulting plan. It does not read this document,
-package manifests, lock files, or secret stores.
+Changing Composition, package-manager lock state, bindings, configuration, or
+profiles requires a new resolve and App restart. The running Kernel cannot
+install Modules, discover providers, mutate the graph, or rewrite locks.

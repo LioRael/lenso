@@ -1,15 +1,17 @@
 //! App Composition and immutable execution input for the Lenso vNext Kernel.
 
+pub mod authoring;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     time::Duration,
 };
 
-mod artifact;
+use serde::{Deserialize, Serialize};
+
 mod execution;
 
-pub use artifact::ModuleArtifact;
 pub use execution::ExecutionClassId;
 
 /// The Resolved App Plan schema understood by this Kernel version.
@@ -25,7 +27,8 @@ pub const DEFAULT_REQUEST_MAX_CONCURRENCY: usize = 1;
 pub const DEFAULT_EVENT_QUEUE_CAPACITY: usize = 16;
 
 /// The cardinality of one Module's Capability requirement.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CapabilityCardinality {
     /// Exactly one provider must be bound.
     One,
@@ -36,7 +39,8 @@ pub enum CapabilityCardinality {
 }
 
 /// The transport-independent interaction semantics of one Capability Operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CapabilityOperationKind {
     /// One request produces one response or Domain Error.
     Request,
@@ -51,7 +55,7 @@ pub enum CapabilityOperationKind {
 /// `queue_capacity` counts requests waiting for one of the
 /// `max_concurrency` execution slots. A zero queue capacity is valid and
 /// makes admission fail immediately while all execution slots are occupied.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RequestAdmissionPlan {
     queue_capacity: usize,
     max_concurrency: usize,
@@ -102,7 +106,7 @@ impl Default for RequestAdmissionPlan {
 ///
 /// Capacity counts all accepted Events that have not completed handling. Zero
 /// is valid and makes every publication to the binding report exhausted.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EventAdmissionPlan {
     capacity: usize,
 }
@@ -126,7 +130,8 @@ impl Default for EventAdmissionPlan {
 }
 
 /// The finite restart mode selected for one Module Instance.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RestartMode {
     /// Do not recreate a failed generation.
     Never,
@@ -135,7 +140,7 @@ pub enum RestartMode {
 }
 
 /// Bounded supervision settings materialized in the Resolved App Plan.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RestartPolicy {
     mode: RestartMode,
     max_attempts: usize,
@@ -226,7 +231,8 @@ impl Default for RestartPolicy {
 }
 
 /// Whether a failed Module Instance is allowed to remain unavailable.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ModuleCriticality {
     /// Exhaustion leaves this Module unavailable when it is not required by a `one` binding.
     #[default]
@@ -243,7 +249,7 @@ impl ModuleCriticality {
 }
 
 /// One Capability required by a Module Instance.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityRequirementPlan {
     capability_id: String,
     descriptor_version: String,
@@ -311,7 +317,7 @@ impl CapabilityRequirementPlan {
 }
 
 /// Exact Capability endpoint metadata expected from one Module Instance.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityEndpointPlan {
     capability_id: String,
     descriptor_version: String,
@@ -501,7 +507,7 @@ impl CapabilityEndpointPlan {
 }
 
 /// One exact App-local Module Instance selected by the resolved Plan.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ModuleInstancePlan {
     instance_key: String,
     package_id: String,
@@ -510,7 +516,7 @@ pub struct ModuleInstancePlan {
     provided_capabilities: Vec<CapabilityEndpointPlan>,
     required_capabilities: Vec<CapabilityRequirementPlan>,
     execution_class: ExecutionClassId,
-    artifact: Option<ModuleArtifact>,
+    package_revision: String,
     restart_policy: RestartPolicy,
     criticality: ModuleCriticality,
 }
@@ -526,7 +532,7 @@ impl ModuleInstancePlan {
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
             execution_class: ExecutionClassId::native_rust(),
-            artifact: None,
+            package_revision: String::new(),
             restart_policy: RestartPolicy::default(),
             criticality: ModuleCriticality::default(),
         }
@@ -573,10 +579,10 @@ impl ModuleInstancePlan {
         self
     }
 
-    /// Selects the exact locked artifact used to prepare this Instance.
+    /// Records the exact opaque package-manager lock selection before boot.
     #[must_use]
-    pub fn with_artifact(mut self, artifact: ModuleArtifact) -> Self {
-        self.artifact = Some(artifact);
+    pub fn with_package_revision(mut self, revision: impl Into<String>) -> Self {
+        self.package_revision = revision.into();
         self
     }
 
@@ -629,10 +635,9 @@ impl ModuleInstancePlan {
         &self.execution_class
     }
 
-    /// Returns the exact locked artifact selected for this Instance, when one
-    /// was supplied by an authoring tool.
-    pub fn artifact(&self) -> Option<&ModuleArtifact> {
-        self.artifact.as_ref()
+    /// Returns the exact opaque package-manager lock selection.
+    pub fn package_revision(&self) -> &str {
+        &self.package_revision
     }
 
     /// Returns the supervision policy selected for this Instance.
@@ -647,7 +652,7 @@ impl ModuleInstancePlan {
 }
 
 /// One exact consumer-to-provider Capability binding.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityBinding {
     consumer_instance: String,
     capability_id: String,
@@ -761,7 +766,7 @@ impl CapabilityBinding {
 }
 
 /// Declarative, language-independent authoring input for one App.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AppComposition {
     module_instances: Vec<ModuleInstancePlan>,
     capability_bindings: Vec<CapabilityBinding>,
@@ -1043,7 +1048,7 @@ impl fmt::Display for PlanResolutionError {
 impl std::error::Error for PlanResolutionError {}
 
 /// Exact, immutable execution input supplied to the Kernel.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ResolvedAppPlan {
     schema_version: u32,
     module_instances: Vec<ModuleInstancePlan>,
