@@ -23,6 +23,16 @@ packages and write their ordinary lockfiles before `check` or `resolve`.
 - `profiles`: pre-resolution Web recipes with explicit Web Shell, Browser
   Adapter, UI Contribution, and ordinary Module selections.
 
+A Web profile fails closed unless its Shell requires `many
+lenso.ui.contribution@1`, every selected contribution provides that Interface,
+and its Browser Adapter requires exactly one `lenso.web.shell@1`. The ordinary
+Plan resolver still validates every provider binding and execution class. Each
+portable Capability required by a selected contribution must be mirrored by
+the Browser Adapter with the same exactly-one provider binding; v1 rejects
+ambiguous `many` projections rather than granting a broader browser client.
+Adding, removing, or replacing a contribution therefore changes both the
+reviewable project document and canonical Plan and requires a restart.
+
 There is no Lenso-owned lock model. Cargo inputs are checked against
 `Cargo.lock`, npm inputs against `package-lock.json`, and Bun inputs through
 `bun pm ls` over `bun.lock`. OCI inputs must use an immutable `sha256:` digest.
