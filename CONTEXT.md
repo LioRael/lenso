@@ -77,6 +77,6 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0057 are normative for vNext. The vNext architecture overview,
+ADRs 0030–0060 are normative for vNext. The vNext architecture overview,
 validation roadmap, and research notes are retained beside them. Removed
 v0.3.x implementation docs are not recreated in this branch.

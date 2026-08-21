@@ -12,10 +12,13 @@ seams, but it does not make the product decision.
 ## Decision outcome
 
 ADR [0044](../adr/0044-run-console-as-an-independent-lenso-app.md) subsequently
-selected the independent Lenso App shape with a thin optional target Connector.
-The in-App shape remains a local-development composition, and a separate
-non-Lenso implementation remains an escape hatch rather than the official
-architecture.
+initially selected the independent Lenso App shape with a thin optional target
+Connector. ADR
+[0060](../adr/0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md)
+later superseded that universal production rule: a target-owned App Web UI is
+an ordinary in-App composition, while a genuinely cross-App Console remains an
+independent Lenso App. A separate non-Lenso implementation remains an escape
+hatch rather than the official architecture.
 
 ## Executive findings
 
