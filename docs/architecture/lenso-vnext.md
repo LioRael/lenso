@@ -211,6 +211,20 @@ same-realm security sandbox. An independent Console does not automatically
 execute UI code advertised by a connected target; executable UI must be
 selected independently by the Console App Composition.
 
+The first executable proof lives in `fixtures/vnext-web-ui`. Its Web Shell
+validates and assembles `many` `lenso.ui.contribution@1` providers behind the
+portable `lenso.web.shell@1` Interface. The Browser Adapter starts accepting
+HTTP only after the App Ready Gate opens and has a fixed generated-client
+projection for the exact portable requirement declared by the selected
+contribution. The client JavaScript is generated from the same validated
+Capability Descriptor IR as the Rust and TypeScript bindings and preserves the
+typed domain/runtime result envelope. The profile may inject a recorder for
+tests or a host system-browser launcher; either launcher is called only after
+readiness. The `fixture.orders` package exposes separate `backend` and `ui`
+entrypoints; removing the UI entrypoint, Shell, and Browser Adapter leaves the
+business binding usable. This trusted same-realm fixture is composition
+evidence, not hostile-code isolation.
+
 See ADRs [0043](../adr/0043-represent-ui-contributions-as-capabilities.md) and
 [0060](../adr/0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md).
 

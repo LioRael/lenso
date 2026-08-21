@@ -18,10 +18,15 @@ The initial vNext workspace is intentionally small:
   Rust-provider bridge.
 - `crates/lenso-browser-driver` — browser/JavaScript Driver using the host
   monotonic clock, timers, and local event loop.
+- `crates/lenso-capability-ui-contribution` and
+  `crates/lenso-capability-web-shell` — portable generated Interfaces for
+  target-owned routes, navigation, assets, and declared browser clients.
 - `crates/lenso-runner` — native Tokio Runtime Driver and the smallest host
   Runner.
 - `crates/lenso-wasip2-driver` — WASI Preview 2 Driver with a host-pumped
   local scheduler and monotonic clock.
+- `fixtures/vnext-web-ui` — target-owned Web Shell, Browser Adapter, Auth,
+  business Module, and optional UI Contribution tracer bullet.
 
 The Kernel has no Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, Outbox, Workflow, migration, release, or discovery implementation.

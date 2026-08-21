@@ -18,6 +18,8 @@ members = [
     "crates/lenso-capability-agent-memory",
     "crates/lenso-capability-agent-progress",
     "crates/lenso-capability-agent",
+    "crates/lenso-capability-ui-contribution",
+    "crates/lenso-capability-web-shell",
     "crates/lenso-auth-sdk",
     "crates/lenso-browser-driver",
     "crates/lenso-kernel",
@@ -31,6 +33,7 @@ members = [
     "fixtures/vnext-stateful-module",
     "fixtures/vnext-story-module",
     "fixtures/vnext-agent-harness",
+    "fixtures/vnext-web-ui",
     "xtask",
 ]
 
