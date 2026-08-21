@@ -9,6 +9,8 @@ members = [
     "crates/lenso-capability-auth",
     "crates/lenso-capability-secrets",
     "crates/lenso-capability-counter",
+    "crates/lenso-capability-story-events",
+    "crates/lenso-capability-story-query",
     "crates/lenso-auth-sdk",
     "crates/lenso-browser-driver",
     "crates/lenso-kernel",
@@ -19,6 +21,7 @@ members = [
     "fixtures/portable-contract/rust",
     "fixtures/vnext-native-greeter",
     "fixtures/vnext-stateful-module",
+    "fixtures/vnext-story-module",
 ]
 
 [workspace.package]

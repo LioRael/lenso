@@ -831,6 +831,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-capability-story-events"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-capability-story-query"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lenso-contract-codegen"
 version = "0.1.0"
 dependencies = [
@@ -915,6 +937,21 @@ dependencies = [
  "lenso-native-adapter",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lenso-vnext-story-module"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-app-plan",
+ "lenso-capability-story-events",
+ "lenso-capability-story-query",
+ "lenso-kernel",
+ "lenso-native-adapter",
+ "serde",
+ "serde_json",
+ "time",
 ]
 
 [[package]]
