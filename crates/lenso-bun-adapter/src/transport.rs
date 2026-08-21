@@ -26,9 +26,9 @@ use lenso_kernel::{NativeStreamItem, NativeStreamSession, RuntimeFailure};
 use serde_json::Value;
 
 use crate::protocol::{
-    FramedMessage, Handshake, HandshakeAck, WireOutcome, WireRequest, WireStreamCall,
-    WireStreamOpen, WireStreamOutcome, encode_frame, from_wire_failure, protocol_violation,
-    read_frame, verify_handshake, write_frame,
+    FramedMessage, Handshake, HandshakeAck, WireEventPublish, WireOutcome, WireRequest,
+    WireStreamCall, WireStreamOpen, WireStreamOutcome, encode_frame, from_wire_failure,
+    protocol_violation, read_frame, verify_handshake, write_frame,
 };
 
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -307,6 +307,17 @@ impl TransportClient {
         }
     }
 
+    pub(crate) fn publish_event(
+        &self,
+        mut event: WireEventPublish,
+    ) -> Result<WireCall, RuntimeFailure> {
+        event.session = Some(self.session());
+        match self {
+            Self::Framed(transport) => transport.event(event),
+            Self::JsonRpc(transport) => transport.event(event),
+        }
+    }
+
     pub(crate) fn open_stream(
         &self,
         mut request: WireStreamOpen,
@@ -536,8 +547,10 @@ impl Drop for WireCall {
 pub(crate) struct FramedTransport {
     process: Arc<ProcessState>,
     sender: SyncSender<Vec<u8>>,
+    event_sender: SyncSender<Vec<u8>>,
     control_sender: SyncSender<Vec<u8>>,
     pending: PendingResponses,
+    event_pending: PendingResponses,
     stream_pending: PendingStreamResponses,
     cancelled: Arc<Mutex<BTreeSet<u64>>>,
     stream_cancelled: Arc<Mutex<BTreeSet<u64>>>,
@@ -545,6 +558,7 @@ pub(crate) struct FramedTransport {
     stream_retired: Arc<Mutex<BTreeSet<u64>>>,
     max_frame_bytes: usize,
     admission_capacity: usize,
+    event_admission_capacity: usize,
     stream_admission_capacity: usize,
     session: String,
     capability: &'static str,
@@ -555,6 +569,7 @@ pub(crate) fn open_framed(
     process: &Arc<ProcessState>,
     expected: &Handshake,
     queue_capacity: usize,
+    event_queue_capacity: usize,
     capability_ids: CapabilityIds,
 ) -> Result<TransportClient, RuntimeFailure> {
     let mut stdin = process.take_stdin()?;
@@ -602,12 +617,16 @@ pub(crate) fn open_framed(
     let session = actual.session.unwrap_or_default();
     let queue_capacity = queue_capacity.max(1);
     let (sender, receiver) = mpsc::sync_channel(queue_capacity);
+    let event_queue_capacity = event_queue_capacity.max(1);
+    let (event_sender, event_receiver) = mpsc::sync_channel(event_queue_capacity);
     let (control_sender, control_receiver) = mpsc::sync_channel(queue_capacity.saturating_add(1));
     let transport = Arc::new(FramedTransport {
         process: process.clone(),
         sender,
+        event_sender,
         control_sender,
         pending: Arc::new(Mutex::new(BTreeMap::new())),
+        event_pending: Arc::new(Mutex::new(BTreeMap::new())),
         stream_pending: Arc::new(Mutex::new(BTreeMap::new())),
         cancelled: Arc::new(Mutex::new(BTreeSet::new())),
         stream_cancelled: Arc::new(Mutex::new(BTreeSet::new())),
@@ -615,6 +634,7 @@ pub(crate) fn open_framed(
         stream_retired: Arc::new(Mutex::new(BTreeSet::new())),
         max_frame_bytes: expected.max_frame_bytes,
         admission_capacity: queue_capacity,
+        event_admission_capacity: event_queue_capacity,
         stream_admission_capacity: queue_capacity.max(2),
         session,
         capability,
@@ -626,7 +646,13 @@ pub(crate) fn open_framed(
             transport.fail_all(&failure);
         }
     });
-    spawn_framed_writer(process.clone(), stdin, receiver, control_receiver);
+    spawn_framed_writer(
+        process.clone(),
+        stdin,
+        receiver,
+        event_receiver,
+        control_receiver,
+    );
     spawn_framed_reader(&transport, stdout);
     Ok(TransportClient::Framed(transport))
 }
@@ -635,6 +661,7 @@ fn spawn_framed_writer(
     process: Arc<ProcessState>,
     mut stdin: ChildStdin,
     receiver: Receiver<Vec<u8>>,
+    event_receiver: Receiver<Vec<u8>>,
     control_receiver: Receiver<Vec<u8>>,
 ) {
     thread::Builder::new()
@@ -643,10 +670,16 @@ fn spawn_framed_writer(
             loop {
                 let frame = match control_receiver.try_recv() {
                     Ok(frame) => frame,
-                    Err(_) => match receiver.recv_timeout(Duration::from_millis(5)) {
+                    Err(_) => match event_receiver.try_recv() {
                         Ok(frame) => frame,
-                        Err(RecvTimeoutError::Timeout) => continue,
-                        Err(RecvTimeoutError::Disconnected) => break,
+                        Err(_) => match receiver.try_recv() {
+                            Ok(frame) => frame,
+                            Err(_) => match receiver.recv_timeout(Duration::from_millis(5)) {
+                                Ok(frame) => frame,
+                                Err(RecvTimeoutError::Timeout) => continue,
+                                Err(RecvTimeoutError::Disconnected) => break,
+                            },
+                        },
                     },
                 };
                 if let Err(error) = stdin.write_all(&frame).and_then(|()| stdin.flush()) {
@@ -663,6 +696,7 @@ fn spawn_framed_writer(
 fn spawn_framed_reader(transport: &Arc<FramedTransport>, mut stdout: ChildStdout) {
     let process = transport.process.clone();
     let pending = transport.pending.clone();
+    let event_pending = transport.event_pending.clone();
     let stream_pending = transport.stream_pending.clone();
     let cancelled = transport.cancelled.clone();
     let stream_cancelled = transport.stream_cancelled.clone();
@@ -683,7 +717,13 @@ fn spawn_framed_reader(transport: &Arc<FramedTransport>, mut stdout: ChildStdout
                         let sender = pending
                             .lock()
                             .ok()
-                            .and_then(|mut pending| pending.remove(&request_id));
+                            .and_then(|mut pending| pending.remove(&request_id))
+                            .or_else(|| {
+                                event_pending
+                                    .lock()
+                                    .ok()
+                                    .and_then(|mut pending| pending.remove(&request_id))
+                            });
                         let Some(sender) = sender else {
                             let late_cancel = cancelled
                                 .lock()
@@ -739,6 +779,45 @@ fn spawn_framed_reader(transport: &Arc<FramedTransport>, mut stdout: ChildStdout
 
 impl FramedTransport {
     fn request(self: &Arc<Self>, request: WireRequest) -> Result<WireCall, RuntimeFailure> {
+        let request_id = request.request_id;
+        let request_capability = capability_id(&self.capability_ids, &request.capability_id);
+        let operation = request.operation.clone();
+        self.call_on(
+            FramedMessage::Request(request),
+            request_id,
+            request_capability,
+            operation,
+            &self.sender,
+            &self.pending,
+            self.admission_capacity,
+        )
+    }
+
+    fn event(self: &Arc<Self>, event: WireEventPublish) -> Result<WireCall, RuntimeFailure> {
+        let request_id = event.request_id;
+        let request_capability = capability_id(&self.capability_ids, &event.capability_id);
+        let operation = event.operation.clone();
+        self.call_on(
+            FramedMessage::EventPublish(event),
+            request_id,
+            request_capability,
+            operation,
+            &self.event_sender,
+            &self.event_pending,
+            self.event_admission_capacity,
+        )
+    }
+
+    fn call_on(
+        self: &Arc<Self>,
+        message: FramedMessage,
+        request_id: u64,
+        request_capability: &'static str,
+        operation: String,
+        wire_sender: &SyncSender<Vec<u8>>,
+        pending_registry: &PendingResponses,
+        admission_capacity: usize,
+    ) -> Result<WireCall, RuntimeFailure> {
         if !self.process.is_alive() {
             return Err(self
                 .process
@@ -747,15 +826,13 @@ impl FramedTransport {
                     capability: self.capability,
                 }));
         }
-        let request_id = request.request_id;
-        let request_capability = capability_id(&self.capability_ids, &request.capability_id);
-        let operation = request.operation.clone();
-        let message = FramedMessage::Request(request);
         let frame = encode_frame(&message, self.max_frame_bytes)?;
-        let (sender, receiver) = oneshot::channel();
-        let mut pending = self.pending.lock().map_err(|_| RuntimeFailure::Internal {
-            detail: "Bun pending response lock poisoned".to_owned(),
-        })?;
+        let (response_sender, receiver) = oneshot::channel();
+        let mut pending = pending_registry
+            .lock()
+            .map_err(|_| RuntimeFailure::Internal {
+                detail: "Bun pending response lock poisoned".to_owned(),
+            })?;
         let cancelled = self
             .cancelled
             .lock()
@@ -765,7 +842,7 @@ impl FramedTransport {
         if pending.contains_key(&request_id) || cancelled.contains(&request_id) {
             return Err(protocol_violation(Some(self.capability)));
         }
-        if pending.len() >= self.admission_capacity {
+        if pending.len() >= admission_capacity {
             return Err(RuntimeFailure::ResourceExhausted {
                 capability: request_capability,
                 operation,
@@ -782,16 +859,16 @@ impl FramedTransport {
         {
             return Err(protocol_violation(Some(self.capability)));
         }
-        pending.insert(request_id, sender);
+        pending.insert(request_id, response_sender);
         drop(pending);
-        match self.sender.try_send(frame) {
+        match wire_sender.try_send(frame) {
             Ok(()) => Ok(WireCall::new(
                 request_id,
                 TransportClient::Framed(self.clone()),
                 receiver,
             )),
             Err(TrySendError::Full(_)) => {
-                self.pending
+                pending_registry
                     .lock()
                     .ok()
                     .and_then(|mut pending| pending.remove(&request_id));
@@ -801,7 +878,7 @@ impl FramedTransport {
                 })
             }
             Err(TrySendError::Disconnected(_)) => {
-                self.pending
+                pending_registry
                     .lock()
                     .ok()
                     .and_then(|mut pending| pending.remove(&request_id));
@@ -909,7 +986,13 @@ impl FramedTransport {
             .pending
             .lock()
             .ok()
-            .and_then(|mut pending| pending.remove(&request_id));
+            .and_then(|mut pending| pending.remove(&request_id))
+            .or_else(|| {
+                self.event_pending
+                    .lock()
+                    .ok()
+                    .and_then(|mut pending| pending.remove(&request_id))
+            });
         if removed.is_none() || !self.process.is_alive() {
             return;
         }
@@ -979,6 +1062,12 @@ impl FramedTransport {
                 let _ = sender.send(Err(error.clone()));
             }
         }
+        if let Ok(mut pending) = self.event_pending.lock() {
+            let pending = std::mem::take(&mut *pending);
+            for (_, sender) in pending {
+                let _ = sender.send(Err(error.clone()));
+            }
+        }
         if let Ok(mut cancelled) = self.cancelled.lock() {
             cancelled.clear();
         }
@@ -1013,10 +1102,12 @@ impl Drop for FramedTransport {
 pub(crate) struct JsonRpcTransport {
     process: Arc<ProcessState>,
     sender: SyncSender<HttpCall>,
+    event_sender: SyncSender<HttpCall>,
     cancel_sender: SyncSender<u64>,
     stream_sender: SyncSender<HttpStreamCall>,
     stream_cancel_sender: SyncSender<StreamCancelCall>,
     pending: PendingResponses,
+    event_pending: PendingResponses,
     stream_pending: PendingStreamResponses,
     cancellations: Arc<Mutex<BTreeMap<u64, Arc<AtomicBool>>>>,
     stream_cancellations: Arc<Mutex<BTreeMap<u64, Arc<AtomicBool>>>>,
@@ -1026,6 +1117,7 @@ pub(crate) struct JsonRpcTransport {
     address: SocketAddr,
     max_frame_bytes: usize,
     admission_capacity: usize,
+    event_admission_capacity: usize,
     stream_admission_capacity: usize,
     session: String,
     capability: &'static str,
@@ -1034,8 +1126,14 @@ pub(crate) struct JsonRpcTransport {
 
 #[derive(Debug)]
 struct HttpCall {
-    request: WireRequest,
+    payload: HttpCallPayload,
     cancelled: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Debug)]
+enum HttpCallPayload {
+    Request(WireRequest),
+    Event(WireEventPublish),
 }
 
 #[derive(Debug)]
@@ -1057,6 +1155,7 @@ pub(crate) fn open_json_rpc(
     address: SocketAddr,
     expected: &Handshake,
     queue_capacity: usize,
+    event_queue_capacity: usize,
     capability_ids: CapabilityIds,
 ) -> Result<TransportClient, RuntimeFailure> {
     let capability_name = expected
@@ -1078,8 +1177,10 @@ pub(crate) fn open_json_rpc(
         .ok_or_else(|| protocol_violation(Some(capability)))?;
 
     let queue_capacity = queue_capacity.max(1);
+    let event_queue_capacity = event_queue_capacity.max(1);
     let stream_capacity = queue_capacity.max(2);
     let (sender, receiver) = mpsc::sync_channel(queue_capacity);
+    let (event_sender, event_receiver) = mpsc::sync_channel(event_queue_capacity);
     let (cancel_sender, cancel_receiver) = mpsc::sync_channel(queue_capacity.saturating_add(1));
     let (stream_sender, stream_receiver) = mpsc::sync_channel(stream_capacity);
     let (stream_cancel_sender, stream_cancel_receiver) =
@@ -1087,10 +1188,12 @@ pub(crate) fn open_json_rpc(
     let transport = Arc::new(JsonRpcTransport {
         process: process.clone(),
         sender,
+        event_sender,
         cancel_sender,
         stream_sender,
         stream_cancel_sender,
         pending: Arc::new(Mutex::new(BTreeMap::new())),
+        event_pending: Arc::new(Mutex::new(BTreeMap::new())),
         stream_pending: Arc::new(Mutex::new(BTreeMap::new())),
         cancellations: Arc::new(Mutex::new(BTreeMap::new())),
         stream_cancellations: Arc::new(Mutex::new(BTreeMap::new())),
@@ -1100,6 +1203,7 @@ pub(crate) fn open_json_rpc(
         address,
         max_frame_bytes: expected.max_frame_bytes,
         admission_capacity: queue_capacity,
+        event_admission_capacity: event_queue_capacity,
         stream_admission_capacity: stream_capacity,
         session,
         capability,
@@ -1111,7 +1215,16 @@ pub(crate) fn open_json_rpc(
             transport.fail_all(&failure);
         }
     });
-    spawn_json_rpc_worker(Arc::downgrade(&transport), receiver);
+    spawn_json_rpc_worker(
+        Arc::downgrade(&transport),
+        receiver,
+        "lenso-bun-json-rpc-worker",
+    );
+    spawn_json_rpc_worker(
+        Arc::downgrade(&transport),
+        event_receiver,
+        "lenso-bun-json-rpc-event-worker",
+    );
     spawn_json_rpc_cancel_worker(
         process.clone(),
         transport.client.clone(),
@@ -1127,9 +1240,13 @@ pub(crate) fn open_json_rpc(
     Ok(TransportClient::JsonRpc(transport))
 }
 
-fn spawn_json_rpc_worker(transport: Weak<JsonRpcTransport>, receiver: Receiver<HttpCall>) {
+fn spawn_json_rpc_worker(
+    transport: Weak<JsonRpcTransport>,
+    receiver: Receiver<HttpCall>,
+    thread_name: &'static str,
+) {
     thread::Builder::new()
-        .name("lenso-bun-json-rpc-worker".to_owned())
+        .name(thread_name.to_owned())
         .spawn(move || {
             let runtime = match json_rpc_runtime() {
                 Ok(runtime) => runtime,
@@ -1144,7 +1261,27 @@ fn spawn_json_rpc_worker(transport: Weak<JsonRpcTransport>, receiver: Receiver<H
                 let Some(transport) = transport.upgrade() else {
                     break;
                 };
-                let request_id = call.request.request_id;
+                let (request_id, method, operation, params) = match call.payload {
+                    HttpCallPayload::Request(request) => (
+                        request.request_id,
+                        "lenso.request",
+                        "request",
+                        serde_json::to_value(request).map_err(|_| protocol_violation(None)),
+                    ),
+                    HttpCallPayload::Event(event) => (
+                        event.request_id,
+                        "lenso.event.publish",
+                        "event",
+                        serde_json::to_value(event).map_err(|_| protocol_violation(None)),
+                    ),
+                };
+                let params = match params {
+                    Ok(params) => params,
+                    Err(error) => {
+                        transport.finish(request_id, Err(error));
+                        continue;
+                    }
+                };
                 if call.cancelled.load(Ordering::Acquire) {
                     transport.finish(request_id, Err(RuntimeFailure::Cancelled { request_id }));
                     continue;
@@ -1154,12 +1291,11 @@ fn spawn_json_rpc_worker(transport: Weak<JsonRpcTransport>, receiver: Receiver<H
                 } else {
                     runtime
                         .block_on(
-                            transport.client.request::<WireOutcome, _>(
-                                "lenso.request",
-                                rpc_params![call.request],
-                            ),
+                            transport
+                                .client
+                                .request::<WireOutcome, _>(method, rpc_params![params]),
                         )
-                        .map_err(|error| json_rpc_failure("request", &error, transport.capability))
+                        .map_err(|error| json_rpc_failure(operation, &error, transport.capability))
                         .and_then(|outcome| {
                             if call.cancelled.load(Ordering::Acquire) {
                                 Err(RuntimeFailure::Cancelled { request_id })
@@ -1447,6 +1583,14 @@ impl JsonRpcTransport {
     }
 
     fn request(self: &Arc<Self>, request: WireRequest) -> Result<WireCall, RuntimeFailure> {
+        self.call(HttpCallPayload::Request(request))
+    }
+
+    fn event(self: &Arc<Self>, event: WireEventPublish) -> Result<WireCall, RuntimeFailure> {
+        self.call(HttpCallPayload::Event(event))
+    }
+
+    fn call(self: &Arc<Self>, payload: HttpCallPayload) -> Result<WireCall, RuntimeFailure> {
         if !self.process.is_alive() {
             return Err(self
                 .process
@@ -1455,15 +1599,62 @@ impl JsonRpcTransport {
                     capability: self.capability,
                 }));
         }
-        let request_id = request.request_id;
-        let request_capability = capability_id(&self.capability_ids, &request.capability_id);
-        let mut request = request;
-        request.session = Some(self.session.clone());
+        let is_event = matches!(&payload, HttpCallPayload::Event(_));
+        let (payload, request_id, request_capability, operation, method, request_value) =
+            match payload {
+                HttpCallPayload::Request(mut request) => {
+                    request.session = Some(self.session.clone());
+                    let request_id = request.request_id;
+                    let capability = capability_id(&self.capability_ids, &request.capability_id);
+                    let operation = request.operation.clone();
+                    let value = serde_json::to_value(&request)
+                        .map_err(|_| protocol_violation(Some(self.capability)))?;
+                    (
+                        HttpCallPayload::Request(request),
+                        request_id,
+                        capability,
+                        operation,
+                        "lenso.request",
+                        value,
+                    )
+                }
+                HttpCallPayload::Event(mut event) => {
+                    event.session = Some(self.session.clone());
+                    let request_id = event.request_id;
+                    let capability = capability_id(&self.capability_ids, &event.capability_id);
+                    let operation = event.operation.clone();
+                    let value = serde_json::to_value(&event)
+                        .map_err(|_| protocol_violation(Some(self.capability)))?;
+                    (
+                        HttpCallPayload::Event(event),
+                        request_id,
+                        capability,
+                        operation,
+                        "lenso.event.publish",
+                        value,
+                    )
+                }
+            };
+        let wire_sender = if is_event {
+            &self.event_sender
+        } else {
+            &self.sender
+        };
+        let pending_registry = if is_event {
+            &self.event_pending
+        } else {
+            &self.pending
+        };
+        let admission_capacity = if is_event {
+            self.event_admission_capacity
+        } else {
+            self.admission_capacity
+        };
         let encoded_request = serde_json::json!({
             "jsonrpc": "2.0",
             "id": request_id,
-            "method": "lenso.request",
-            "params": [&request],
+            "method": method,
+            "params": [&request_value],
         });
         let encoded_size = serde_json::to_vec(&encoded_request)
             .map_err(|_| protocol_violation(Some(self.capability)))?
@@ -1483,7 +1674,6 @@ impl JsonRpcTransport {
         }
         let cancelled = Arc::new(AtomicBool::new(false));
         let (sender, receiver) = oneshot::channel();
-        let operation = request.operation.clone();
         let mut cancellations =
             self.cancellations
                 .lock()
@@ -1495,9 +1685,11 @@ impl JsonRpcTransport {
         }
         cancellations.insert(request_id, cancelled.clone());
         drop(cancellations);
-        let mut pending = self.pending.lock().map_err(|_| RuntimeFailure::Internal {
-            detail: "Bun JSON-RPC pending response lock poisoned".to_owned(),
-        })?;
+        let mut pending = pending_registry
+            .lock()
+            .map_err(|_| RuntimeFailure::Internal {
+                detail: "Bun JSON-RPC pending response lock poisoned".to_owned(),
+            })?;
         if pending.contains_key(&request_id) {
             self.cancellations
                 .lock()
@@ -1505,7 +1697,7 @@ impl JsonRpcTransport {
                 .and_then(|mut cancellations| cancellations.remove(&request_id));
             return Err(protocol_violation(Some(self.capability)));
         }
-        if pending.len() >= self.admission_capacity {
+        if pending.len() >= admission_capacity {
             self.cancellations
                 .lock()
                 .ok()
@@ -1517,7 +1709,7 @@ impl JsonRpcTransport {
         }
         pending.insert(request_id, sender);
         drop(pending);
-        match self.sender.try_send(HttpCall { request, cancelled }) {
+        match wire_sender.try_send(HttpCall { payload, cancelled }) {
             Ok(()) => Ok(WireCall::new(
                 request_id,
                 TransportClient::JsonRpc(self.clone()),
@@ -1528,7 +1720,7 @@ impl JsonRpcTransport {
                     .lock()
                     .ok()
                     .and_then(|mut cancellations| cancellations.remove(&request_id));
-                self.pending
+                pending_registry
                     .lock()
                     .ok()
                     .and_then(|mut pending| pending.remove(&request_id));
@@ -1542,7 +1734,7 @@ impl JsonRpcTransport {
                     .lock()
                     .ok()
                     .and_then(|mut cancellations| cancellations.remove(&request_id));
-                self.pending
+                pending_registry
                     .lock()
                     .ok()
                     .and_then(|mut pending| pending.remove(&request_id));
@@ -1573,7 +1765,13 @@ impl JsonRpcTransport {
             self.pending
                 .lock()
                 .ok()
-                .and_then(|mut pending| pending.remove(&request_id));
+                .and_then(|mut pending| pending.remove(&request_id))
+                .or_else(|| {
+                    self.event_pending
+                        .lock()
+                        .ok()
+                        .and_then(|mut pending| pending.remove(&request_id))
+                });
             remember_request_id(&self.retired, request_id);
             if self.cancel_sender.try_send(request_id).is_err() {
                 self.process.mark_dead(RuntimeFailure::ModuleFailure {
@@ -1625,6 +1823,12 @@ impl JsonRpcTransport {
             .lock()
             .ok()
             .and_then(|mut pending| pending.remove(&request_id))
+            .or_else(|| {
+                self.event_pending
+                    .lock()
+                    .ok()
+                    .and_then(|mut pending| pending.remove(&request_id))
+            })
             .map(|sender| sender.send(result));
         remember_request_id(&self.retired, request_id);
     }
@@ -1650,6 +1854,12 @@ impl JsonRpcTransport {
             cancellations.clear();
         }
         if let Ok(mut pending) = self.pending.lock() {
+            let pending = std::mem::take(&mut *pending);
+            for (_, sender) in pending {
+                let _ = sender.send(Err(error.clone()));
+            }
+        }
+        if let Ok(mut pending) = self.event_pending.lock() {
             let pending = std::mem::take(&mut *pending);
             for (_, sender) in pending {
                 let _ = sender.send(Err(error.clone()));
@@ -2183,10 +2393,17 @@ pub(crate) fn open_transport(
     wire: BunWire,
     expected: &Handshake,
     queue_capacity: usize,
+    event_queue_capacity: usize,
     capability_ids: CapabilityIds,
 ) -> Result<TransportClient, RuntimeFailure> {
     match wire {
-        BunWire::FramedStdio => open_framed(process, expected, queue_capacity, capability_ids),
+        BunWire::FramedStdio => open_framed(
+            process,
+            expected,
+            queue_capacity,
+            event_queue_capacity,
+            capability_ids,
+        ),
         BunWire::JsonRpcHttp => {
             let stdout = process.take_stdout()?;
             process.start_monitor();
@@ -2211,7 +2428,14 @@ pub(crate) fn open_transport(
                     });
                 }
             };
-            open_json_rpc(process, address, expected, queue_capacity, capability_ids)
+            open_json_rpc(
+                process,
+                address,
+                expected,
+                queue_capacity,
+                event_queue_capacity,
+                capability_ids,
+            )
         }
     }
 }
@@ -2278,8 +2502,10 @@ mod tests {
         let transport = FramedTransport {
             process: process.clone(),
             sender,
+            event_sender: mpsc::sync_channel(1).0,
             control_sender,
             pending: Arc::new(Mutex::new(BTreeMap::new())),
+            event_pending: Arc::new(Mutex::new(BTreeMap::new())),
             stream_pending: Arc::new(Mutex::new(BTreeMap::new())),
             cancelled: Arc::new(Mutex::new(BTreeSet::new())),
             stream_cancelled: Arc::new(Mutex::new(BTreeSet::new())),
@@ -2287,6 +2513,7 @@ mod tests {
             stream_retired: Arc::new(Mutex::new(BTreeSet::new())),
             max_frame_bytes: 4096,
             admission_capacity: 1,
+            event_admission_capacity: 1,
             stream_admission_capacity: 2,
             session: String::new(),
             capability: "example.greeting@1",

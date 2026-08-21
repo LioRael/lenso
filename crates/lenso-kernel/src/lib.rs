@@ -24,8 +24,13 @@ use lenso_app_plan::{
     ResolvedAppPlan, RestartMode, RestartPolicy,
 };
 
+mod event;
 mod stream;
 
+pub use event::{
+    EventAdmission, EventCapability, EventPublishResult, EventPublishStatus,
+    ModuleEventDependencyHandle, NativeEventEndpoint, NativeEventHandle,
+};
 pub use stream::{
     NativeStream, NativeStreamEndpoint, NativeStreamHandle, NativeStreamItem, NativeStreamSession,
     StreamCapability, StreamEvent, StreamSession,
@@ -37,6 +42,10 @@ type NativeBindingTable = BTreeMap<(String, &'static str), Vec<NativeEndpointBin
 type NativeEndpointStateTable = BTreeMap<(String, String), Rc<NativeEndpointState>>;
 type NativeStreamBindingTable = BTreeMap<(String, &'static str), Vec<NativeStreamEndpointBinding>>;
 type NativeStreamEndpointStateTable = BTreeMap<(String, String), Rc<NativeStreamEndpointState>>;
+type NativeEventBindingTable =
+    BTreeMap<(String, &'static str), Vec<event::NativeEventEndpointBinding>>;
+type NativeEventEndpointStateTable =
+    BTreeMap<(String, String), Rc<event::NativeEventEndpointState>>;
 
 /// Static identity and Rust value types generated for one request Capability.
 pub trait RequestCapability: 'static {
@@ -124,6 +133,7 @@ pub struct ModuleDependency {
     provider_order: usize,
     handle: Option<ModuleDependencyHandle>,
     stream_handle: Option<ModuleStreamDependencyHandle>,
+    event_handle: Option<ModuleEventDependencyHandle>,
 }
 
 impl ModuleDependency {
@@ -133,6 +143,7 @@ impl ModuleDependency {
         provider_order: usize,
         handle: Option<ModuleDependencyHandle>,
         stream_handle: Option<ModuleStreamDependencyHandle>,
+        event_handle: Option<ModuleEventDependencyHandle>,
     ) -> Self {
         Self {
             capability_id: capability_id.into(),
@@ -140,6 +151,7 @@ impl ModuleDependency {
             provider_order,
             handle,
             stream_handle,
+            event_handle,
         }
     }
 
@@ -166,6 +178,11 @@ impl ModuleDependency {
     /// Returns the resolved native stream endpoint handle when the Adapter supplied one.
     pub fn stream_handle(&self) -> Option<ModuleStreamDependencyHandle> {
         self.stream_handle.clone()
+    }
+
+    /// Returns the resolved native Event endpoint handle when the Adapter supplied one.
+    pub fn event_handle(&self) -> Option<ModuleEventDependencyHandle> {
+        self.event_handle.clone()
     }
 }
 
@@ -377,6 +394,58 @@ impl ModuleDependencies {
             .filter_map(ModuleDependency::stream_handle)
             .map(|handle| handle.typed::<C>())
             .collect()
+    }
+
+    /// Returns all explicitly bound typed Event dependencies in Plan order.
+    pub fn many_event<C: EventCapability>(
+        &self,
+    ) -> Result<Vec<NativeEventHandle<C>>, RuntimeFailure> {
+        self.bindings
+            .iter()
+            .filter(|binding| binding.capability_id() == C::ID)
+            .filter_map(ModuleDependency::event_handle)
+            .map(|handle| handle.typed::<C>())
+            .collect()
+    }
+
+    /// Returns the one explicitly bound typed Event dependency.
+    pub fn one_event<C: EventCapability>(&self) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        match self
+            .bindings
+            .iter()
+            .filter(|binding| binding.capability_id() == C::ID)
+            .filter_map(ModuleDependency::event_handle)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [handle] => handle.typed::<C>(),
+            [] => Err(RuntimeFailure::Unavailable { capability: C::ID }),
+            handles => Err(RuntimeFailure::AmbiguousBinding {
+                capability: C::ID,
+                providers: handles.len(),
+            }),
+        }
+    }
+
+    /// Returns an optional explicitly bound typed Event dependency.
+    pub fn optional_event<C: EventCapability>(
+        &self,
+    ) -> Result<Option<NativeEventHandle<C>>, RuntimeFailure> {
+        match self
+            .bindings
+            .iter()
+            .filter(|binding| binding.capability_id() == C::ID)
+            .filter_map(ModuleDependency::event_handle)
+            .collect::<Vec<_>>()
+            .as_slice()
+        {
+            [] => Ok(None),
+            [handle] => handle.typed::<C>().map(Some),
+            handles => Err(RuntimeFailure::AmbiguousBinding {
+                capability: C::ID,
+                providers: handles.len(),
+            }),
+        }
     }
 }
 
@@ -1341,6 +1410,7 @@ pub trait NativeRequestEndpoint: std::fmt::Debug {
 pub struct PreparedNativeModule {
     endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
     stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
+    event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
     lifecycle: Rc<dyn ModuleLifecycle>,
 }
 
@@ -1353,6 +1423,7 @@ impl PreparedNativeModule {
         Self {
             endpoints,
             stream_endpoints: Vec::new(),
+            event_endpoints: Vec::new(),
             lifecycle: Rc::new(lifecycle),
         }
     }
@@ -1365,6 +1436,7 @@ impl PreparedNativeModule {
         Self {
             endpoints,
             stream_endpoints: Vec::new(),
+            event_endpoints: Vec::new(),
             lifecycle,
         }
     }
@@ -1378,6 +1450,7 @@ impl PreparedNativeModule {
         Self {
             endpoints,
             stream_endpoints,
+            event_endpoints: Vec::new(),
             lifecycle: Rc::new(lifecycle),
         }
     }
@@ -1391,6 +1464,7 @@ impl PreparedNativeModule {
         Self {
             endpoints,
             stream_endpoints,
+            event_endpoints: Vec::new(),
             lifecycle,
         }
     }
@@ -1403,6 +1477,29 @@ impl PreparedNativeModule {
         Self::with_endpoints(Vec::new(), stream_endpoints, lifecycle)
     }
 
+    /// Creates one generation containing only ephemeral Event endpoints.
+    pub fn with_event_endpoints(
+        event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
+        lifecycle: impl ModuleLifecycle,
+    ) -> Self {
+        Self::with_all_endpoints(Vec::new(), Vec::new(), event_endpoints, lifecycle)
+    }
+
+    /// Creates one generation with request, stream, and ephemeral Event endpoints.
+    pub fn with_all_endpoints(
+        endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+        stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
+        event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
+        lifecycle: impl ModuleLifecycle,
+    ) -> Self {
+        Self {
+            endpoints,
+            stream_endpoints,
+            event_endpoints,
+            lifecycle: Rc::new(lifecycle),
+        }
+    }
+
     /// Returns the exact endpoints prepared for this generation.
     pub fn endpoints(&self) -> &[Rc<dyn NativeRequestEndpoint>] {
         &self.endpoints
@@ -1411,6 +1508,11 @@ impl PreparedNativeModule {
     /// Returns the exact stream endpoints prepared for this generation.
     pub fn stream_endpoints(&self) -> &[Rc<dyn NativeStreamEndpoint>] {
         &self.stream_endpoints
+    }
+
+    /// Returns the exact Event endpoints prepared for this generation.
+    pub fn event_endpoints(&self) -> &[Rc<dyn NativeEventEndpoint>] {
+        &self.event_endpoints
     }
 
     /// Returns the lifecycle Interface prepared for this generation.
@@ -1423,9 +1525,15 @@ impl PreparedNativeModule {
     ) -> (
         Vec<Rc<dyn NativeRequestEndpoint>>,
         Vec<Rc<dyn NativeStreamEndpoint>>,
+        Vec<Rc<dyn NativeEventEndpoint>>,
         Rc<dyn ModuleLifecycle>,
     ) {
-        (self.endpoints, self.stream_endpoints, self.lifecycle)
+        (
+            self.endpoints,
+            self.stream_endpoints,
+            self.event_endpoints,
+            self.lifecycle,
+        )
     }
 }
 
@@ -1443,6 +1551,50 @@ pub struct PreparedStreamBinding {
     consumer_instance: String,
     provider_instance: String,
     endpoint: Rc<dyn NativeStreamEndpoint>,
+}
+
+/// One provider-specific ephemeral Event binding prepared by an Adapter.
+#[derive(Clone, Debug)]
+pub struct PreparedEventBinding {
+    consumer_instance: String,
+    provider_instance: String,
+    endpoint: Rc<dyn NativeEventEndpoint>,
+}
+
+impl PreparedEventBinding {
+    /// Binds one consumer to one exact Event endpoint and provider Instance.
+    pub fn new(
+        consumer_instance: impl Into<String>,
+        provider_instance: impl Into<String>,
+        endpoint: Rc<dyn NativeEventEndpoint>,
+    ) -> Self {
+        Self {
+            consumer_instance: consumer_instance.into(),
+            provider_instance: provider_instance.into(),
+            endpoint,
+        }
+    }
+
+    /// Returns the App-local consumer Instance selected by the Plan.
+    pub fn consumer_instance(&self) -> &str {
+        &self.consumer_instance
+    }
+
+    /// Returns the App-local provider Instance selected by the Plan.
+    pub fn provider_instance(&self) -> &str {
+        &self.provider_instance
+    }
+
+    /// Returns the exact prepared Event endpoint referenced by this binding.
+    pub fn endpoint(&self) -> Rc<dyn NativeEventEndpoint> {
+        self.endpoint.clone()
+    }
+
+    fn same_identity(&self, other: &Self) -> bool {
+        self.consumer_instance == other.consumer_instance
+            && self.provider_instance == other.provider_instance
+            && self.endpoint.capability_id() == other.endpoint.capability_id()
+    }
 }
 
 impl PreparedStreamBinding {
@@ -1522,6 +1674,7 @@ impl PreparedBinding {
 pub struct PreparedNativeApp {
     bindings: Vec<PreparedBinding>,
     stream_bindings: Vec<PreparedStreamBinding>,
+    event_bindings: Vec<PreparedEventBinding>,
     generations: BTreeMap<String, PreparedNativeModule>,
 }
 
@@ -1534,6 +1687,7 @@ impl PreparedNativeApp {
         Self {
             bindings,
             stream_bindings: Vec::new(),
+            event_bindings: Vec::new(),
             generations,
         }
     }
@@ -1547,6 +1701,13 @@ impl PreparedNativeApp {
     #[must_use]
     pub fn with_stream_bindings(mut self, stream_bindings: Vec<PreparedStreamBinding>) -> Self {
         self.stream_bindings = stream_bindings;
+        self
+    }
+
+    /// Adds the exact ephemeral Event bindings prepared by an Adapter.
+    #[must_use]
+    pub fn with_event_bindings(mut self, event_bindings: Vec<PreparedEventBinding>) -> Self {
+        self.event_bindings = event_bindings;
         self
     }
 
@@ -1584,6 +1745,23 @@ impl PreparedNativeApp {
                 });
             }
             self.stream_bindings.push(binding);
+        }
+        for binding in other.event_bindings {
+            if self
+                .event_bindings
+                .iter()
+                .any(|existing| existing.same_identity(&binding))
+            {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "multiple Execution Adapters prepared Event binding `{}:{}:{}`",
+                        binding.consumer_instance,
+                        binding.endpoint.capability_id(),
+                        binding.provider_instance
+                    ),
+                });
+            }
+            self.event_bindings.push(binding);
         }
         for (instance_key, generation) in other.generations {
             if self
@@ -2014,6 +2192,7 @@ struct NativeAppRuntime {
     dependencies: BTreeMap<String, ModuleDependencies>,
     endpoint_states: BTreeMap<(String, String), Rc<NativeEndpointState>>,
     stream_endpoint_states: NativeStreamEndpointStateTable,
+    event_endpoint_states: NativeEventEndpointStateTable,
     supervision: RefCell<BTreeMap<String, ModuleSupervision>>,
     supervision_tasks: RefCell<BTreeMap<String, ManagedTask>>,
     activation_order: Vec<String>,
@@ -2035,6 +2214,7 @@ impl std::fmt::Debug for NativeAppRuntime {
             .field("module_count", &self.modules.len())
             .field("endpoint_count", &self.endpoint_states.len())
             .field("stream_endpoint_count", &self.stream_endpoint_states.len())
+            .field("event_endpoint_count", &self.event_endpoint_states.len())
             .field("ready", &self.ready_gate.is_open())
             .field("accepting", &self.admission.is_open())
             .field("next_request_id", &self.request_ids.get())
@@ -2060,6 +2240,9 @@ impl NativeAppRuntime {
         for endpoint in self.stream_endpoint_states.values() {
             endpoint.mark_unavailable();
         }
+        for endpoint in self.event_endpoint_states.values() {
+            endpoint.mark_unavailable();
+        }
         for module in self.modules.values() {
             if let Some((_, tasks, resources)) = module.generation_parts() {
                 tasks.close();
@@ -2074,6 +2257,7 @@ impl NativeAppRuntime {
 pub struct NativeApp {
     bindings: BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>,
     stream_bindings: NativeStreamBindingTable,
+    event_bindings: NativeEventBindingTable,
     runtime: Rc<NativeAppRuntime>,
 }
 
@@ -2203,7 +2387,14 @@ impl NativeApp {
                         .any(|((module, _), endpoint)| {
                             module == instance_key && endpoint.is_current(state.generation)
                         });
-                (request_current || stream_current).then_some(state.generation)
+                let event_current =
+                    self.runtime
+                        .event_endpoint_states
+                        .iter()
+                        .any(|((module, _), endpoint)| {
+                            module == instance_key && endpoint.is_current(state.generation)
+                        });
+                (request_current || stream_current || event_current).then_some(state.generation)
             })
     }
 
@@ -2338,6 +2529,67 @@ impl NativeApp {
             .map_or(0, <[_]>::len)
     }
 
+    /// Materializes a typed Event handle and requires at least one subscriber.
+    pub fn event_handle<C: EventCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        if self.runtime.admission.is_closed() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
+        let endpoints = self
+            .event_endpoints::<C>(caller_instance)
+            .filter(|endpoints| !endpoints.is_empty())
+            .ok_or(RuntimeFailure::Unavailable { capability: C::ID })?;
+        Ok(NativeEventHandle::from_endpoints(
+            endpoints,
+            self.runtime.clone(),
+            caller_instance,
+            false,
+        ))
+    }
+
+    /// Materializes an optional typed Event handle.
+    pub fn optional_event_handle<C: EventCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Option<NativeEventHandle<C>> {
+        let caller_instance = caller_instance.to_owned();
+        self.event_endpoints::<C>(&caller_instance)
+            .filter(|endpoints| !endpoints.is_empty())
+            .map(|endpoints| {
+                NativeEventHandle::from_endpoints(
+                    endpoints,
+                    self.runtime.clone(),
+                    &caller_instance,
+                    false,
+                )
+            })
+    }
+
+    /// Materializes a typed Event handle whose endpoint set may be empty.
+    pub fn many_event_handle<C: EventCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        if self.runtime.admission.is_closed() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
+        let endpoints = self.event_endpoints::<C>(caller_instance).unwrap_or(&[]);
+        Ok(NativeEventHandle::from_endpoints(
+            endpoints,
+            self.runtime.clone(),
+            caller_instance,
+            false,
+        ))
+    }
+
+    /// Returns the number of immutable Event subscriber endpoints bound to a requirement.
+    pub fn event_binding_count<C: EventCapability>(&self, caller_instance: &str) -> usize {
+        self.event_endpoints::<C>(caller_instance)
+            .map_or(0, <[_]>::len)
+    }
+
     fn next_request_id(&self) -> RequestId {
         let request_id = self.runtime.request_ids.get();
         self.runtime.request_ids.set(request_id.saturating_add(1));
@@ -2358,6 +2610,15 @@ impl NativeApp {
         caller_instance: &str,
     ) -> Option<&[NativeStreamEndpointBinding]> {
         self.stream_bindings
+            .get(&(caller_instance.to_owned(), C::ID))
+            .map(Vec::as_slice)
+    }
+
+    fn event_endpoints<C: EventCapability>(
+        &self,
+        caller_instance: &str,
+    ) -> Option<&[event::NativeEventEndpointBinding]> {
+        self.event_bindings
             .get(&(caller_instance.to_owned(), C::ID))
             .map(Vec::as_slice)
     }
@@ -2754,6 +3015,26 @@ impl RequestAdmission {
         }
     }
 
+    pub(crate) fn try_acquire(
+        &self,
+        capability: &'static str,
+        operation: &str,
+        context: &InvocationContext,
+        driver: &DriverControl,
+    ) -> Result<RequestPermit, RuntimeFailure> {
+        ensure_context_active(driver, context)?;
+        if self.state.active.get() < self.limits.max_concurrency() {
+            self.state.active.set(self.state.active.get() + 1);
+            return Ok(RequestPermit {
+                state: self.state.clone(),
+            });
+        }
+        Err(RuntimeFailure::ResourceExhausted {
+            capability,
+            operation: operation.to_owned(),
+        })
+    }
+
     fn acquire(
         &self,
         capability: &'static str,
@@ -2761,15 +3042,11 @@ impl RequestAdmission {
         context: InvocationContext,
         driver: DriverControl,
     ) -> LocalBoxFuture<'static, Result<RequestPermit, RuntimeFailure>> {
+        if let Ok(permit) = self.try_acquire(capability, operation, &context, &driver) {
+            return Box::pin(futures::future::ready(Ok(permit)));
+        }
         if let Err(error) = ensure_context_active(&driver, &context) {
             return Box::pin(futures::future::ready(Err(error)));
-        }
-
-        if self.state.active.get() < self.limits.max_concurrency() {
-            self.state.active.set(self.state.active.get() + 1);
-            return Box::pin(futures::future::ready(Ok(RequestPermit {
-                state: self.state.clone(),
-            })));
         }
 
         if self.state.queued.get() >= self.limits.queue_capacity() {
@@ -3087,19 +3364,29 @@ impl Kernel {
         let PreparedNativeApp {
             bindings: prepared_bindings,
             stream_bindings: prepared_stream_bindings,
+            event_bindings: prepared_event_bindings,
             generations,
         } = adapters.prepare(&plan)?;
         validate_prepared_native_app(
             &plan,
             &prepared_bindings,
             &prepared_stream_bindings,
+            &prepared_event_bindings,
             &generations,
         )?;
         let (bindings, endpoint_states) = native_bindings(&plan, &prepared_bindings);
         let (stream_bindings, stream_endpoint_states) =
             native_stream_bindings(&plan, &prepared_stream_bindings);
+        let (event_bindings, event_endpoint_states) =
+            native_event_bindings(&plan, &prepared_event_bindings);
         let runtime_link = Rc::new(RefCell::new(Weak::new()));
-        let dependencies = module_dependencies(&plan, &bindings, &stream_bindings, &runtime_link);
+        let dependencies = module_dependencies(
+            &plan,
+            &bindings,
+            &stream_bindings,
+            &event_bindings,
+            &runtime_link,
+        );
         let driver_control = DriverControl::new(&driver);
         let admission = AppAdmission::new();
         let module_runtimes = native_module_runtimes(&plan, &driver, generations);
@@ -3112,6 +3399,7 @@ impl Kernel {
             dependencies,
             endpoint_states,
             stream_endpoint_states,
+            event_endpoint_states,
             supervision: RefCell::new(supervision),
             supervision_tasks: RefCell::new(BTreeMap::new()),
             activation_order,
@@ -3158,6 +3446,7 @@ impl Kernel {
         Ok(NativeApp {
             bindings,
             stream_bindings,
+            event_bindings,
             runtime,
         })
     }
@@ -3202,6 +3491,7 @@ fn validate_prepared_native_app(
     plan: &ResolvedAppPlan,
     bindings: &[PreparedBinding],
     stream_bindings: &[PreparedStreamBinding],
+    event_bindings: &[PreparedEventBinding],
     generations: &BTreeMap<String, PreparedNativeModule>,
 ) -> Result<(), RuntimeFailure> {
     if generations.len() != plan.module_instances().len() {
@@ -3227,6 +3517,7 @@ fn validate_prepared_native_app(
             instance,
             generation.endpoints(),
             generation.stream_endpoints(),
+            generation.event_endpoints(),
         )?;
     }
     if let Some(instance_key) = generations.keys().find(|instance_key| {
@@ -3268,6 +3559,20 @@ fn validate_prepared_native_app(
                 .is_some_and(|endpoint| !endpoint.stream_operations().is_empty())
         })
         .count();
+    let expected_event_bindings = plan
+        .capability_bindings()
+        .iter()
+        .filter(|binding| {
+            plan.module_instance(binding.provider_instance())
+                .and_then(|provider| {
+                    provider
+                        .provided_capabilities()
+                        .iter()
+                        .find(|endpoint| endpoint.capability_id() == binding.capability_id())
+                })
+                .is_some_and(|endpoint| !endpoint.event_operations().is_empty())
+        })
+        .count();
     if bindings.len() != expected_request_bindings {
         return Err(RuntimeFailure::InvalidResolvedPlan {
             detail: if expected_stream_bindings == 0 && stream_bindings.is_empty() {
@@ -3291,6 +3596,15 @@ fn validate_prepared_native_app(
                 "Execution Adapters prepared {} stream bindings; expected {}",
                 stream_bindings.len(),
                 expected_stream_bindings
+            ),
+        });
+    }
+    if event_bindings.len() != expected_event_bindings {
+        return Err(RuntimeFailure::InvalidResolvedPlan {
+            detail: format!(
+                "Execution Adapters prepared {} Event bindings; expected {}",
+                event_bindings.len(),
+                expected_event_bindings
             ),
         });
     }
@@ -3372,6 +3686,42 @@ fn validate_prepared_native_app(
                 return Err(RuntimeFailure::InvalidResolvedPlan {
                     detail: format!(
                         "stream binding `{}:{}:{}` does not reference its provider generation endpoint",
+                        planned.consumer_instance(),
+                        planned.capability_id(),
+                        planned.provider_instance()
+                    ),
+                });
+            }
+        }
+        if !descriptor.event_operations().is_empty() {
+            let matching: Vec<_> = event_bindings
+                .iter()
+                .filter(|prepared| {
+                    prepared.consumer_instance == planned.consumer_instance()
+                        && prepared.provider_instance == planned.provider_instance()
+                        && prepared.endpoint.capability_id() == planned.capability_id()
+                        && prepared.endpoint.descriptor_version() == planned.descriptor_version()
+                })
+                .collect();
+            if matching.len() != 1 {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "Execution Adapters prepared {} Event bindings for `{}:{}:{}`; expected 1",
+                        matching.len(),
+                        planned.consumer_instance(),
+                        planned.capability_id(),
+                        planned.provider_instance()
+                    ),
+                });
+            }
+            if !provider
+                .event_endpoints()
+                .iter()
+                .any(|endpoint| Rc::ptr_eq(endpoint, &matching[0].endpoint))
+            {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "Event binding `{}:{}:{}` does not reference its provider generation endpoint",
                         planned.consumer_instance(),
                         planned.capability_id(),
                         planned.provider_instance()
@@ -3615,10 +3965,75 @@ fn native_stream_bindings(
     (bindings, endpoint_states)
 }
 
+fn native_event_bindings(
+    plan: &ResolvedAppPlan,
+    prepared: &[PreparedEventBinding],
+) -> (NativeEventBindingTable, NativeEventEndpointStateTable) {
+    let mut bindings = BTreeMap::new();
+    let mut endpoint_states = BTreeMap::new();
+    for binding in plan.capability_bindings() {
+        let Some(descriptor) =
+            plan.module_instance(binding.provider_instance())
+                .and_then(|provider| {
+                    provider
+                        .provided_capabilities()
+                        .iter()
+                        .find(|endpoint| endpoint.capability_id() == binding.capability_id())
+                })
+        else {
+            continue;
+        };
+        if descriptor.event_operations().is_empty() {
+            continue;
+        }
+        let Some(endpoint) = prepared.iter().find_map(|prepared| {
+            (prepared.consumer_instance == binding.consumer_instance()
+                && prepared.provider_instance == binding.provider_instance()
+                && prepared.endpoint.capability_id() == binding.capability_id())
+            .then_some(&prepared.endpoint)
+        }) else {
+            continue;
+        };
+        let state = endpoint_states
+            .entry((
+                binding.provider_instance().to_owned(),
+                endpoint.capability_id().to_owned(),
+            ))
+            .or_insert_with(|| Rc::new(event::NativeEventEndpointState::new(endpoint.clone(), 1)))
+            .clone();
+        let queues: BTreeMap<String, Rc<event::NativeEventQueue>> = endpoint
+            .operations()
+            .iter()
+            .map(|operation| {
+                (
+                    (*operation).to_owned(),
+                    event::NativeEventQueue::new(plan.request_admission_for(binding, operation)),
+                )
+            })
+            .collect();
+        for queue in queues.values() {
+            state.register_queue(queue);
+        }
+        bindings
+            .entry((
+                binding.consumer_instance().to_owned(),
+                endpoint.capability_id(),
+            ))
+            .or_insert_with(Vec::new)
+            .push(event::NativeEventEndpointBinding {
+                module_instance: binding.provider_instance().to_owned(),
+                state,
+                queues,
+            });
+    }
+    (bindings, endpoint_states)
+}
+
 fn module_dependencies(
     plan: &ResolvedAppPlan,
     endpoints: &BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>,
     stream_endpoints: &NativeStreamBindingTable,
+    event_endpoints: &NativeEventBindingTable,
     runtime: &Rc<RefCell<Weak<NativeAppRuntime>>>,
 ) -> BTreeMap<String, ModuleDependencies> {
     let mut dependencies: BTreeMap<String, ModuleDependencies> = plan
@@ -3660,6 +4075,18 @@ fn module_dependencies(
                     })
                     .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
                     .map(|endpoint| ModuleStreamDependencyHandle {
+                        binding: endpoint.clone(),
+                        caller_instance: binding.consumer_instance().to_owned(),
+                        runtime: runtime.clone(),
+                    }),
+                event_endpoints
+                    .iter()
+                    .find(|((consumer, capability), _)| {
+                        consumer == binding.consumer_instance()
+                            && *capability == binding.capability_id()
+                    })
+                    .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
+                    .map(|endpoint| ModuleEventDependencyHandle {
                         binding: endpoint.clone(),
                         caller_instance: binding.consumer_instance().to_owned(),
                         runtime: runtime.clone(),
@@ -3869,6 +4296,11 @@ fn begin_module_supervision(
             endpoint.mark_unavailable();
         }
     }
+    for ((provider, _), endpoint) in &runtime.event_endpoint_states {
+        if provider == instance_key {
+            endpoint.mark_unavailable();
+        }
+    }
     Ok(true)
 }
 
@@ -3949,9 +4381,15 @@ async fn supervise_module_instance(
         let Ok(prepared) = adapter.recreate(&runtime.plan, &instance_key) else {
             continue;
         };
-        let (endpoints, stream_endpoints, lifecycle) = prepared.into_parts();
-        if validate_native_endpoint_set(&instance_key, instance, &endpoints, &stream_endpoints)
-            .is_err()
+        let (endpoints, stream_endpoints, event_endpoints, lifecycle) = prepared.into_parts();
+        if validate_native_endpoint_set(
+            &instance_key,
+            instance,
+            &endpoints,
+            &stream_endpoints,
+            &event_endpoints,
+        )
+        .is_err()
         {
             continue;
         }
@@ -3988,6 +4426,7 @@ async fn supervise_module_instance(
             &instance_key,
             endpoints,
             stream_endpoints,
+            event_endpoints,
             generation_number,
         );
         if let Some(state) = runtime.supervision.borrow_mut().get_mut(&instance_key) {
@@ -4224,6 +4663,7 @@ fn install_module_endpoints(
     instance_key: &str,
     endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
     stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
+    event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
     generation: u64,
 ) {
     for endpoint in endpoints {
@@ -4242,6 +4682,14 @@ fn install_module_endpoints(
             state.install(endpoint, generation);
         }
     }
+    for endpoint in event_endpoints {
+        if let Some(state) = runtime
+            .event_endpoint_states
+            .get(&(instance_key.to_owned(), endpoint.capability_id().to_owned()))
+        {
+            state.install(endpoint, generation);
+        }
+    }
 }
 
 fn validate_native_endpoint_set(
@@ -4249,6 +4697,7 @@ fn validate_native_endpoint_set(
     expected: &lenso_app_plan::ModuleInstancePlan,
     actual: &[Rc<dyn NativeRequestEndpoint>],
     actual_streams: &[Rc<dyn NativeStreamEndpoint>],
+    actual_events: &[Rc<dyn NativeEventEndpoint>],
 ) -> Result<(), RuntimeFailure> {
     let expected_requests = expected
         .provided_capabilities()
@@ -4260,14 +4709,24 @@ fn validate_native_endpoint_set(
         .iter()
         .filter(|descriptor| !descriptor.stream_operations().is_empty())
         .count();
-    if expected_requests != actual.len() || expected_streams != actual_streams.len() {
+    let expected_events = expected
+        .provided_capabilities()
+        .iter()
+        .filter(|descriptor| !descriptor.event_operations().is_empty())
+        .count();
+    if expected_requests != actual.len()
+        || expected_streams != actual_streams.len()
+        || expected_events != actual_events.len()
+    {
         return Err(RuntimeFailure::InvalidResolvedPlan {
             detail: format!(
-                "Module Instance `{instance_key}` prepared {} request and {} stream endpoints; expected {} request and {} stream endpoints",
+                "Module Instance `{instance_key}` prepared {} request, {} stream, and {} Event endpoints; expected {} request, {} stream, and {} Event endpoints",
                 actual.len(),
                 actual_streams.len(),
+                actual_events.len(),
                 expected_requests,
-                expected_streams
+                expected_streams,
+                expected_events
             ),
         });
     }
@@ -4316,6 +4775,30 @@ fn validate_native_endpoint_set(
                 descriptor.capability_id(),
                 descriptor.descriptor_version(),
                 &stream_operations,
+                matching[0].descriptor_version(),
+                matching[0].operations(),
+            )?;
+        }
+        let event_operations = descriptor.event_operations();
+        if !event_operations.is_empty() {
+            let matching: Vec<_> = actual_events
+                .iter()
+                .filter(|endpoint| endpoint.capability_id() == descriptor.capability_id())
+                .collect();
+            if matching.len() != 1 {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "Module Instance `{instance_key}` prepared {} Event endpoints for Capability `{}`",
+                        matching.len(),
+                        descriptor.capability_id()
+                    ),
+                });
+            }
+            validate_endpoint_operations(
+                instance_key,
+                descriptor.capability_id(),
+                descriptor.descriptor_version(),
+                &event_operations,
                 matching[0].descriptor_version(),
                 matching[0].operations(),
             )?;

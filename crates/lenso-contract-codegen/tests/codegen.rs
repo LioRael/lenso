@@ -8,6 +8,7 @@ use serde_json::json;
 
 const FIXTURE: &str = "tests/fixtures/profile/capability.json";
 const STREAM_FIXTURE: &str = "tests/fixtures/stream/capability.json";
+const EVENT_FIXTURE: &str = "tests/fixtures/event/capability.json";
 
 #[test]
 fn stream_descriptors_generate_bidirectional_rust_and_typescript_bindings() {
@@ -24,6 +25,33 @@ fn stream_descriptors_generate_bidirectional_rust_and_typescript_bindings() {
     assert!(artifacts.typescript.contains(
         "chat(context: InvocationContext, request: ChatRequest): Promise<{ readonly ok: true; readonly value: StreamSession<ChatResponse, ChatError> } | { readonly ok: false; readonly error: ChatError }>;"
     ));
+}
+
+#[test]
+fn event_descriptors_generate_ephemeral_fan_out_bindings() {
+    let artifacts = generate(Path::new(EVENT_FIXTURE)).expect("Event Descriptor should generate");
+
+    assert!(artifacts.rust.contains("impl EventCapability"));
+    assert!(artifacts.rust.contains("NativeEventEndpoint"));
+    assert!(artifacts.rust.contains("NativeEventHandle"));
+    assert!(artifacts.rust.contains("EventPublishResult"));
+    assert!(artifacts.rust.contains("futures::future::join_all"));
+    assert!(artifacts.rust.contains("encode_notify_event"));
+    assert!(artifacts.typescript.contains("EventPublishResult"));
+    assert!(artifacts.typescript.contains("encodeNotifyEvent"));
+    assert!(
+        artifacts
+            .typescript
+            .contains("export type NotifyResult = ReadonlyArray<EventPublishResult>;")
+    );
+    assert!(artifacts.typescript.contains(
+        "notify(event: NotifyRequest, context?: InvocationContext): Promise<NotifyResult>;"
+    ));
+    assert!(
+        artifacts
+            .typescript
+            .contains("notify(context: InvocationContext, event: NotifyRequest")
+    );
 }
 
 #[allow(clippy::too_many_lines)]

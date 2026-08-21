@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     net::SocketAddr,
     sync::{
         Arc, Mutex,
@@ -21,9 +21,9 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::protocol::{
-    EndpointDescriptor, Handshake, HandshakeAck, WireFailure, WireOutcome, WireRequest,
-    WireStreamCall, WireStreamEvent, WireStreamOpen, WireStreamOutcome, WireStreamTerminal,
-    handshake_for, to_wire_failure, verify_handshake,
+    EndpointDescriptor, Handshake, HandshakeAck, WireEventPublish, WireFailure, WireOutcome,
+    WireRequest, WireStreamCall, WireStreamEvent, WireStreamOpen, WireStreamOutcome,
+    WireStreamTerminal, handshake_for, to_wire_failure, verify_handshake,
 };
 
 const PROVIDER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
@@ -42,6 +42,8 @@ pub struct BunProviderDescriptor {
     pub operations: Vec<String>,
     /// Exact stream Operation subset of the Capability.
     pub stream_operations: Vec<String>,
+    /// Exact ephemeral Event Operation subset of the Capability.
+    pub event_operations: Vec<String>,
 }
 
 /// One request received from a Bun consumer after the exact handshake.
@@ -77,6 +79,15 @@ pub enum BunResponse {
     /// A known or forward-compatible generated Domain Error value.
     Domain(Value),
     /// A Kernel Runtime Failure that the Adapter serializes without widening the Kernel.
+    Runtime(RuntimeFailure),
+}
+
+/// The admission result returned by a Rust Event subscriber bridge.
+#[derive(Clone, Debug)]
+pub enum BunEventAction {
+    /// The Event entered the subscriber's bounded volatile queue.
+    Accepted,
+    /// A Runtime Failure prevented admission.
     Runtime(RuntimeFailure),
 }
 
@@ -143,6 +154,14 @@ pub trait BunProviderHandler: std::fmt::Debug + Send + Sync + 'static {
     /// a terminal Runtime Failure instead of retaining the request forever.
     fn invoke(&self, request: BunRequest) -> BunResponse;
 
+    /// Admits one Event into the Rust subscriber's bounded volatile queue.
+    fn publish_event(&self, request: BunRequest) -> BunEventAction {
+        BunEventAction::Runtime(RuntimeFailure::UnknownOperation {
+            capability: "lenso.bun-process@1",
+            operation: request.operation,
+        })
+    }
+
     /// Opens one bidirectional stream after the exact handshake.
     fn open_stream(&self, request: BunRequest) -> BunStreamOpenResponse {
         BunStreamOpenResponse::Runtime(RuntimeFailure::UnknownOperation {
@@ -185,6 +204,8 @@ struct ProviderState {
     cancellations: CancellationRegistry,
     retired: RetiredRequestRegistry,
     admission: Admission,
+    event_admissions: Mutex<BTreeMap<(String, String), Arc<ProviderEventQueue>>>,
+    event_queue_capacity: usize,
     handler: Arc<dyn BunProviderHandler>,
     streams: Mutex<BTreeMap<u64, Arc<ProviderStreamEntry>>>,
     retired_streams: Mutex<BTreeSet<u64>>,
@@ -206,7 +227,7 @@ struct ProviderStreamEntry {
     cancelled: AtomicBool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Admission {
     active: Arc<AtomicUsize>,
     limit: usize,
@@ -254,6 +275,111 @@ impl Drop for AdmissionPermit {
     }
 }
 
+#[derive(Debug)]
+struct QueuedEvent {
+    request_id: u64,
+    request: BunRequest,
+}
+
+#[derive(Debug, Default)]
+struct ProviderEventQueueState {
+    pending: VecDeque<QueuedEvent>,
+    admitted: usize,
+    draining: bool,
+}
+
+#[derive(Debug)]
+struct ProviderEventQueue {
+    capacity: usize,
+    state: Mutex<ProviderEventQueueState>,
+}
+
+impl ProviderEventQueue {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity: capacity.max(1),
+            state: Mutex::new(ProviderEventQueueState::default()),
+        }
+    }
+
+    fn try_enqueue(&self, event: QueuedEvent) -> Result<Option<bool>, RuntimeFailure> {
+        let mut state = self.state.lock().map_err(|_| RuntimeFailure::Internal {
+            detail: "Bun provider Event queue lock poisoned".to_owned(),
+        })?;
+        if state.admitted >= self.capacity {
+            return Ok(None);
+        }
+        state.admitted += 1;
+        state.pending.push_back(event);
+        if state.draining {
+            Ok(Some(false))
+        } else {
+            state.draining = true;
+            Ok(Some(true))
+        }
+    }
+
+    fn pop(&self) -> Result<Option<QueuedEvent>, RuntimeFailure> {
+        self.state
+            .lock()
+            .map_err(|_| RuntimeFailure::Internal {
+                detail: "Bun provider Event queue lock poisoned".to_owned(),
+            })
+            .map(|mut state| state.pending.pop_front())
+    }
+
+    fn complete(&self) -> Result<(), RuntimeFailure> {
+        let mut state = self.state.lock().map_err(|_| RuntimeFailure::Internal {
+            detail: "Bun provider Event queue lock poisoned".to_owned(),
+        })?;
+        state.admitted = state.admitted.saturating_sub(1);
+        if state.pending.is_empty() {
+            state.draining = false;
+        }
+        Ok(())
+    }
+
+    fn abort(&self) -> Result<Vec<QueuedEvent>, RuntimeFailure> {
+        let mut state = self.state.lock().map_err(|_| RuntimeFailure::Internal {
+            detail: "Bun provider Event queue lock poisoned".to_owned(),
+        })?;
+        state.admitted = 0;
+        state.draining = false;
+        Ok(state.pending.drain(..).collect())
+    }
+}
+
+fn spawn_event_worker(
+    queue: Arc<ProviderEventQueue>,
+    handler: Arc<dyn BunProviderHandler>,
+    cancellations: CancellationRegistry,
+    retired: RetiredRequestRegistry,
+) -> Result<(), RuntimeFailure> {
+    thread::Builder::new()
+        .name("lenso-bun-provider-event-worker".to_owned())
+        .spawn(move || {
+            loop {
+                let event = match queue.pop() {
+                    Ok(Some(event)) => event,
+                    Ok(None) | Err(_) => return,
+                };
+                if !event.request.is_cancelled() {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        handler.publish_event(event.request.clone())
+                    }));
+                }
+                remove_request(&cancellations, &retired, event.request_id);
+                if queue.complete().is_err() {
+                    return;
+                }
+            }
+        })
+        .map(|_| ())
+        .map_err(|error| RuntimeFailure::Internal {
+            detail: format!("failed to start Bun provider Event worker: {error}"),
+        })
+}
+
 impl std::fmt::Debug for BunProviderServer {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -282,6 +408,7 @@ impl BunProviderServer {
             descriptor_version,
             operations,
             stream_operations,
+            event_operations,
         } = descriptor;
         let max_frame_bytes = max_frame_bytes.max(1);
         let expected = handshake_for(
@@ -290,6 +417,7 @@ impl BunProviderServer {
                 descriptor_version,
                 operations,
                 stream_operations,
+                event_operations,
             }],
             max_frame_bytes,
         );
@@ -300,6 +428,8 @@ impl BunProviderServer {
             cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             retired: Arc::new(Mutex::new(BTreeSet::new())),
             admission: Admission::new(queue_capacity),
+            event_admissions: Mutex::new(BTreeMap::new()),
+            event_queue_capacity: queue_capacity.max(1),
             handler: Arc::new(handler),
             streams: Mutex::new(BTreeMap::new()),
             retired_streams: Mutex::new(BTreeSet::new()),
@@ -421,6 +551,12 @@ fn provider_module(
         .register_blocking_method("lenso.request", |params, state, _| {
             let request = decode_params(params.parse::<Value>()?)?;
             Ok::<_, ErrorObjectOwned>(handle_request(request, &state))
+        })
+        .map_err(register_failure)?;
+    module
+        .register_blocking_method("lenso.event.publish", |params, state, _| {
+            let event = decode_params(params.parse::<Value>()?)?;
+            Ok::<_, ErrorObjectOwned>(handle_event(event, &state))
         })
         .map_err(register_failure)?;
     module
@@ -575,6 +711,104 @@ fn handle_request(request: WireRequest, state: &ProviderState) -> WireOutcome {
         BunResponse::Domain(value) => WireOutcome::Domain { value },
         BunResponse::Runtime(error) => runtime_outcome(&error),
     }
+}
+
+fn handle_event(event: WireEventPublish, state: &ProviderState) -> WireOutcome {
+    if !valid_session(event.session.as_deref(), state) {
+        return runtime_outcome(&protocol_failure(state));
+    }
+    let Some(endpoint) = state.expected.endpoints.first() else {
+        return runtime_outcome(&protocol_failure(state));
+    };
+    if event.capability_id != endpoint.capability_id
+        || !endpoint.event_operations.contains(&event.operation)
+    {
+        return WireOutcome::Runtime {
+            failure: WireFailure::UnknownOperation {
+                operation: event.operation,
+            },
+        };
+    }
+    let event_queue = match event_queue_for(state, &event) {
+        Ok(queue) => queue,
+        Err(error) => return runtime_outcome(&error),
+    };
+    let request_id = event.request_id;
+    let operation = event.operation.clone();
+    let cancellation = match register_request(
+        &state.cancellations,
+        &state.retired,
+        request_id,
+        state.capability,
+    ) {
+        Ok(cancellation) => cancellation,
+        Err(error) => return runtime_outcome(&error),
+    };
+    let queued = QueuedEvent {
+        request_id,
+        request: BunRequest {
+            request_id,
+            capability_id: event.capability_id,
+            operation: event.operation,
+            deadline_nanos: event.deadline_nanos,
+            caller_instance: event.caller_instance,
+            payload: event.payload,
+            cancellation,
+        },
+    };
+    let should_start = match event_queue.try_enqueue(queued) {
+        Ok(Some(should_start)) => should_start,
+        Ok(None) => {
+            remove_request(&state.cancellations, &state.retired, request_id);
+            return WireOutcome::Runtime {
+                failure: WireFailure::ResourceExhausted { operation },
+            };
+        }
+        Err(error) => {
+            remove_request(&state.cancellations, &state.retired, request_id);
+            return runtime_outcome(&error);
+        }
+    };
+    if should_start
+        && let Err(error) = spawn_event_worker(
+            event_queue.clone(),
+            state.handler.clone(),
+            state.cancellations.clone(),
+            state.retired.clone(),
+        )
+    {
+        if let Ok(aborted) = event_queue.abort() {
+            for event in aborted {
+                remove_request(&state.cancellations, &state.retired, event.request_id);
+            }
+        }
+        return runtime_outcome(&error);
+    }
+    WireOutcome::Success { value: Value::Null }
+}
+
+fn event_queue_for(
+    state: &ProviderState,
+    event: &WireEventPublish,
+) -> Result<Arc<ProviderEventQueue>, RuntimeFailure> {
+    let caller_instance = event
+        .caller_instance
+        .as_deref()
+        .filter(|caller| !caller.is_empty())
+        .ok_or_else(|| RuntimeFailure::ProtocolViolation {
+            capability: state.capability,
+        })?;
+    let key = (caller_instance.to_owned(), event.operation.clone());
+    let mut admissions = state
+        .event_admissions
+        .lock()
+        .map_err(|_| RuntimeFailure::Internal {
+            detail: "Bun provider Event admission lock poisoned".to_owned(),
+        })?;
+    Ok(admissions
+        .entry(key)
+        .or_insert_with(|| Arc::new(ProviderEventQueue::new(state.event_queue_capacity)))
+        .clone())
 }
 
 #[derive(Deserialize)]
@@ -1188,6 +1422,7 @@ mod tests {
                 descriptor_version: "1.0.0".to_owned(),
                 operations: vec!["greet".to_owned()],
                 stream_operations: Vec::new(),
+                event_operations: Vec::new(),
             },
             4096,
             queue_capacity,
@@ -1203,6 +1438,7 @@ mod tests {
                 descriptor_version: "1.0.0".to_owned(),
                 operations: vec!["chat".to_owned()],
                 stream_operations: vec!["chat".to_owned()],
+                event_operations: Vec::new(),
             },
             4096,
             queue_capacity,
@@ -1224,6 +1460,7 @@ mod tests {
                 descriptor_version: "1.0.0".to_owned(),
                 operations: vec!["chat".to_owned()],
                 stream_operations: vec!["chat".to_owned()],
+                event_operations: Vec::new(),
             }],
             4096,
         );
@@ -1268,6 +1505,7 @@ mod tests {
                     descriptor_version: "1.0.0".to_owned(),
                     operations: vec!["greet".to_owned()],
                     stream_operations: Vec::new(),
+                    event_operations: Vec::new(),
                 }],
                 4096,
             ),
@@ -1275,6 +1513,8 @@ mod tests {
             cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             retired: Arc::new(Mutex::new(BTreeSet::new())),
             admission: Admission::new(1),
+            event_admissions: Mutex::new(BTreeMap::new()),
+            event_queue_capacity: 1,
             handler: Arc::new(TestHandler),
             streams: Mutex::new(BTreeMap::new()),
             retired_streams: Mutex::new(BTreeSet::new()),
@@ -1308,6 +1548,7 @@ mod tests {
                 descriptor_version: "1.0.0".to_owned(),
                 operations: vec!["greet".to_owned()],
                 stream_operations: Vec::new(),
+                event_operations: Vec::new(),
             }],
             4096,
         );

@@ -1,0 +1,263 @@
+use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
+
+use futures::future::{LocalBoxFuture, ready};
+use lenso_app_plan::{
+    AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
+    ModuleInstancePlan, ResolvedAppPlan,
+};
+use lenso_kernel::{
+    DeterministicDriver, EventAdmission, EventCapability, InvocationContext, NativeEventEndpoint,
+    NativeExecutionAdapter, NoopModuleLifecycle, PreparedEventBinding, PreparedNativeApp,
+    PreparedNativeModule, RuntimeDriver, RuntimeFailure,
+};
+
+const CAPABILITY_ID: &str = "example.notifications@1";
+const DESCRIPTOR_VERSION: &str = "1.0.0";
+const OPERATION: &str = "notify";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Notification {
+    sequence: u64,
+}
+
+#[derive(Debug)]
+struct Notifications;
+
+impl EventCapability for Notifications {
+    type Event = Notification;
+
+    const ID: &'static str = CAPABILITY_ID;
+    const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;
+}
+
+#[derive(Debug)]
+struct RecordingEndpoint {
+    seen: Rc<RefCell<Vec<u64>>>,
+    exhausted_sequence: Option<u64>,
+}
+
+impl NativeEventEndpoint for RecordingEndpoint {
+    fn capability_id(&self) -> &'static str {
+        CAPABILITY_ID
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        DESCRIPTOR_VERSION
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        &[OPERATION]
+    }
+
+    fn publish(
+        &self,
+        operation: &str,
+        event: Box<dyn Any>,
+        _context: InvocationContext,
+    ) -> LocalBoxFuture<'static, Result<(), RuntimeFailure>> {
+        if operation != OPERATION {
+            return Box::pin(ready(Err(RuntimeFailure::UnknownOperation {
+                capability: CAPABILITY_ID,
+                operation: operation.to_owned(),
+            })));
+        }
+        let event = event
+            .downcast::<Notification>()
+            .expect("the typed event should cross the native endpoint seam");
+        if self.exhausted_sequence == Some(event.sequence) {
+            return Box::pin(ready(Err(RuntimeFailure::ResourceExhausted {
+                capability: CAPABILITY_ID,
+                operation: OPERATION.to_owned(),
+            })));
+        }
+        self.seen.borrow_mut().push(event.sequence);
+        Box::pin(ready(Ok(())))
+    }
+}
+
+#[derive(Debug)]
+struct EventAdapter {
+    endpoints: BTreeMap<String, Rc<dyn NativeEventEndpoint>>,
+}
+
+impl NativeExecutionAdapter for EventAdapter {
+    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        let mut generations = BTreeMap::new();
+        let mut bindings = Vec::new();
+        for (provider, endpoint) in &self.endpoints {
+            generations.insert(
+                provider.clone(),
+                PreparedNativeModule::with_event_endpoints(
+                    vec![endpoint.clone()],
+                    NoopModuleLifecycle,
+                ),
+            );
+            bindings.push(PreparedEventBinding::new(
+                "consumer",
+                provider,
+                endpoint.clone(),
+            ));
+        }
+        generations.insert(
+            "consumer".to_owned(),
+            PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+        );
+        Ok(PreparedNativeApp::new(Vec::new(), generations).with_event_bindings(bindings))
+    }
+}
+
+fn many_event_plan(provider_count: usize) -> ResolvedAppPlan {
+    let mut instances = vec![
+        ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION),
+        ),
+    ];
+    let mut bindings = Vec::new();
+    for index in 0..provider_count {
+        let provider = format!("provider-{index}");
+        let queue_capacity = if index == 0 { 1 } else { 2 };
+        instances.push(
+            ModuleInstancePlan::new(&provider, "package.provider").with_capability(
+                CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION])
+                    .with_event_operation(OPERATION)
+                    .with_limits(queue_capacity, 1),
+            ),
+        );
+        bindings.push(CapabilityBinding::new(
+            "consumer",
+            CAPABILITY_ID,
+            DESCRIPTOR_VERSION,
+            provider,
+        ));
+    }
+    AppComposition::new(instances, bindings)
+        .resolve()
+        .expect("the Event Composition should resolve")
+}
+
+#[test]
+fn event_fan_out_attempts_every_binding_in_deterministic_order_and_preserves_fifo() {
+    let first_seen = Rc::new(RefCell::new(Vec::new()));
+    let second_seen = Rc::new(RefCell::new(Vec::new()));
+    let app_driver = DeterministicDriver::new();
+    let app = app_driver
+        .run(lenso_kernel::Kernel::start_native(
+            many_event_plan(2),
+            app_driver.clone(),
+            EventAdapter {
+                endpoints: BTreeMap::from([
+                    (
+                        "provider-0".to_owned(),
+                        Rc::new(RecordingEndpoint {
+                            seen: first_seen.clone(),
+                            exhausted_sequence: Some(2),
+                        }) as Rc<dyn NativeEventEndpoint>,
+                    ),
+                    (
+                        "provider-1".to_owned(),
+                        Rc::new(RecordingEndpoint {
+                            seen: second_seen.clone(),
+                            exhausted_sequence: None,
+                        }) as Rc<dyn NativeEventEndpoint>,
+                    ),
+                ]),
+            },
+        ))
+        .expect("the Event App should start");
+    let handle = app
+        .many_event_handle::<Notifications>("consumer")
+        .expect("many Event handles should allow explicit bindings");
+    assert_eq!(handle.binding_count(), 2);
+
+    let first = app_driver.run(handle.publish(OPERATION, Notification { sequence: 1 }));
+    assert_eq!(
+        first
+            .iter()
+            .map(|result| (result.subscriber_instance(), result.admission()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("provider-0", EventAdmission::Accepted),
+            ("provider-1", EventAdmission::Accepted),
+        ]
+    );
+    assert!(first_seen.borrow().is_empty());
+
+    let partial = app_driver.run(handle.publish(OPERATION, Notification { sequence: 2 }));
+    assert_eq!(
+        partial
+            .iter()
+            .map(|result| (result.subscriber_instance(), result.admission()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("provider-0", EventAdmission::Exhausted),
+            ("provider-1", EventAdmission::Accepted),
+        ]
+    );
+
+    app_driver.run(app_driver.yield_now());
+    let third = app_driver.run(handle.publish(OPERATION, Notification { sequence: 3 }));
+    assert!(
+        third
+            .iter()
+            .all(|result| result.admission() == EventAdmission::Accepted)
+    );
+    app_driver.run(app_driver.yield_now());
+    assert_eq!(&*first_seen.borrow(), &[1, 3]);
+    assert_eq!(&*second_seen.borrow(), &[1, 2, 3]);
+}
+
+#[test]
+fn many_event_handle_with_no_bindings_is_an_empty_success() {
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(lenso_kernel::Kernel::start_native(
+            many_event_plan(0),
+            driver.clone(),
+            EventAdapter {
+                endpoints: BTreeMap::new(),
+            },
+        ))
+        .expect("an Event App without providers should start");
+    let handle = app
+        .many_event_handle::<Notifications>("consumer")
+        .expect("many Event handles should allow zero bindings");
+    assert_eq!(handle.binding_count(), 0);
+    assert!(
+        app.optional_event_handle::<Notifications>("consumer")
+            .is_none()
+    );
+    assert!(
+        driver
+            .run(handle.publish(OPERATION, Notification { sequence: 1 },))
+            .is_empty()
+    );
+}
+
+#[test]
+fn one_event_handle_materializes_one_explicit_subscriber() {
+    let endpoint = Rc::new(RecordingEndpoint {
+        seen: Rc::new(RefCell::new(Vec::new())),
+        exhausted_sequence: None,
+    }) as Rc<dyn NativeEventEndpoint>;
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(lenso_kernel::Kernel::start_native(
+            many_event_plan(1),
+            driver.clone(),
+            EventAdapter {
+                endpoints: BTreeMap::from([("provider-0".to_owned(), endpoint)]),
+            },
+        ))
+        .expect("the single-subscriber Event App should start");
+
+    assert_eq!(
+        app.event_handle::<Notifications>("consumer")
+            .expect("one Event binding should materialize")
+            .binding_count(),
+        1
+    );
+    assert!(
+        app.optional_event_handle::<Notifications>("consumer")
+            .is_some_and(|handle| handle.binding_count() == 1)
+    );
+}

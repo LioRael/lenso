@@ -449,6 +449,17 @@ impl CapabilityEndpointPlan {
             .collect()
     }
 
+    /// Returns the declared ephemeral Event Operation names in Descriptor order.
+    pub fn event_operations(&self) -> Vec<&str> {
+        self.operations
+            .iter()
+            .filter(|operation| {
+                self.operation_kind(operation) == Some(CapabilityOperationKind::Event)
+            })
+            .map(String::as_str)
+            .collect()
+    }
+
     /// Returns the endpoint-wide admission policy, when one was authored.
     pub fn default_admission(&self) -> Option<RequestAdmissionPlan> {
         self.default_admission
