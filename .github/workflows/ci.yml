@@ -42,6 +42,8 @@ jobs:
           bun-version: 1.2.21
       - name: Run TypeScript portable contract conformance
         run: bun test fixtures/portable-contract/conformance.test.ts
+      - name: Run Rust and TypeScript trace-context conformance
+        run: bun test fixtures/otel/trace-context-conformance.test.ts
       - name: Build Bun request-dispatch fixtures
         run: |
           bun build --target bun fixtures/bun/request-provider.ts --outdir /tmp/lenso-bun-fixtures
@@ -49,6 +51,8 @@ jobs:
           bun build --target bun fixtures/bun/wire-benchmark.ts --outdir /tmp/lenso-bun-fixtures
       - name: Run Bun cross-runtime request conformance
         run: cargo test --locked -p lenso-bun-adapter --test bun_cross_runtime -- --ignored --test-threads=1
+      - name: Run Bun OpenTelemetry propagation conformance
+        run: cargo test --locked -p lenso-bun-adapter --test bun_otel_cross_runtime -- --ignored --test-threads=1
       - name: Run Bun wire contract benchmark
         env:
           LENSO_BUN_BENCHMARK_REQUESTS: 10

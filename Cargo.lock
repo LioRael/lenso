@@ -877,6 +877,8 @@ dependencies = [
  "lenso-app-plan",
  "lenso-kernel",
  "lenso-native-adapter",
+ "serde",
+ "serde_json",
  "sha2",
 ]
 

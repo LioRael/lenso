@@ -30,6 +30,12 @@ OTel Span, Metric, and Log signals through a declared Capability or a host
 handle. Exporter rejection, panic, backpressure, and shutdown cancellation are
 Module-local outcomes; they do not fail or block the App.
 
+Each `instantiate` call creates a distinct telemetry queue owned by that Module
+Instance generation. A host handle names one App-local Instance and routes only
+to its active generation; activation replaces the route, and deactivation closes
+it. Exporter outcome counters may remain host-owned aggregates, but queues and
+export tasks never cross an Instance or generation boundary.
+
 The Module owns a registered W3C Trace Context propagator. It stores the
 `traceparent` and optional `tracestate` in the sealed
 `lenso.otel.trace-context` Invocation Context extension. The extension carries
@@ -51,6 +57,9 @@ The exporter boundary is host- and transport-neutral. An OTLP exporter can be
 provided by a Module Adapter without adding a network dependency to Kernel.
 Rust and Bun tests cover the sealed extension contract and both supported Bun
 request wires.
+The Rust and TypeScript propagators share checked-in conformance vectors for
+trace parsing, signing payloads, and proofs so their handwritten host-language
+implementations cannot silently define different protocols.
 
 ## Consequences
 
