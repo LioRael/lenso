@@ -13,7 +13,8 @@ use futures::{FutureExt, future::LocalBoxFuture};
 use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticSource, EventAdmissionPlan,
     InvocationContext, NativeAppRuntime, RuntimeFailure, await_with_generation_context,
-    ensure_context_active, schedule_module_supervision_after_failure,
+    diagnostics::diagnostic_operation, ensure_context_active,
+    schedule_module_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one ephemeral Event Capability.
@@ -494,16 +495,6 @@ impl<C: EventCapability> NativeEventHandle<C> {
         self.runtime.request_ids.set(request_id.saturating_add(1));
         request_id
     }
-}
-
-fn diagnostic_operation(
-    operations: &'static [&'static str],
-    operation: &str,
-) -> Option<&'static str> {
-    operations
-        .iter()
-        .copied()
-        .find(|candidate| *candidate == operation)
 }
 
 async fn drain_event_queue(

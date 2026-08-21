@@ -208,19 +208,26 @@ pub(super) struct ModuleSupervision {
 #[derive(Debug, Default)]
 pub(super) struct ShutdownCoordinator {
     pub(super) started: Cell<bool>,
+    pub(super) cleanup_started_at: Cell<Option<Duration>>,
+    pub(super) completed: Cell<bool>,
     pub(super) outcome: RefCell<Option<ShutdownOutcome>>,
     pub(super) waiters: RefCell<Vec<oneshot::Sender<ShutdownOutcome>>>,
 }
 
 impl ShutdownCoordinator {
-    pub(super) fn start(&self) -> bool {
-        !self.started.replace(true)
+    pub(super) fn start(&self, started_at: Duration) -> bool {
+        if self.started.replace(true) {
+            return false;
+        }
+        self.cleanup_started_at.set(Some(started_at));
+        true
     }
 
-    pub(super) fn complete(&self, outcome: &ShutdownOutcome) {
-        if self.outcome.borrow().is_some() {
-            return;
-        }
+    pub(super) fn begin_completion(&self) -> bool {
+        !self.completed.replace(true)
+    }
+
+    pub(super) fn publish(&self, outcome: &ShutdownOutcome) {
         self.outcome.replace(Some(outcome.clone()));
         for waiter in self.waiters.borrow_mut().drain(..) {
             let _ = waiter.send(outcome.clone());
@@ -262,8 +269,6 @@ pub(super) struct NativeAppRuntime {
     pub(super) request_ids: Rc<Cell<RequestId>>,
     pub(super) supervision_cancellation: CancellationToken,
     pub(super) shutdown_started: Cell<bool>,
-    pub(super) shutdown_diagnostic_started: Cell<bool>,
-    pub(super) shutdown_diagnostic_completed: Cell<bool>,
     pub(super) shutdown: ShutdownCoordinator,
     pub(super) shutdown_task: RefCell<Option<DriverTask>>,
     pub(super) terminal_failure: RefCell<Option<RuntimeFailure>>,
@@ -281,14 +286,8 @@ impl std::fmt::Debug for NativeAppRuntime {
             .field("accepting", &self.admission.is_open())
             .field("next_request_id", &self.request_ids.get())
             .field("shutdown_started", &self.shutdown_started.get())
-            .field(
-                "shutdown_diagnostic_started",
-                &self.shutdown_diagnostic_started.get(),
-            )
-            .field(
-                "shutdown_diagnostic_completed",
-                &self.shutdown_diagnostic_completed.get(),
-            )
+            .field("cleanup_started", &self.shutdown.started.get())
+            .field("cleanup_completed", &self.shutdown.completed.get())
             .field(
                 "terminal_failure",
                 &self.terminal_failure.borrow().is_some(),
@@ -299,6 +298,7 @@ impl std::fmt::Debug for NativeAppRuntime {
 
 impl NativeAppRuntime {
     pub(super) fn begin_shutdown(&self) {
+        let admission_closed_at = (self.driver.now)();
         if self.shutdown_started.replace(true) {
             return;
         }
@@ -319,6 +319,39 @@ impl NativeAppRuntime {
                 resources.close();
             }
         }
+        self.diagnostics
+            .emit(DiagnosticSource::Shutdown, admission_closed_at, |_| {
+                DiagnosticEvent::ShutdownAdmissionClosed
+            });
+    }
+
+    pub(super) fn complete_shutdown(&self, outcome: ShutdownOutcome) {
+        if !self.shutdown.begin_completion() {
+            return;
+        }
+        let completed_at = (self.driver.now)();
+        let started_at = self
+            .shutdown
+            .cleanup_started_at
+            .get()
+            .unwrap_or(completed_at);
+        let diagnostic_outcome = match &outcome {
+            ShutdownOutcome::Clean => DiagnosticShutdownOutcome::Clean,
+            ShutdownOutcome::RuntimeFailure { .. } => DiagnosticShutdownOutcome::RuntimeFailure,
+            ShutdownOutcome::Timeout => DiagnosticShutdownOutcome::Timeout,
+        };
+        self.diagnostics
+            .emit(DiagnosticSource::Shutdown, completed_at, |_| {
+                DiagnosticEvent::ShutdownCompleted {
+                    outcome: diagnostic_outcome,
+                    elapsed: completed_at.saturating_sub(started_at),
+                }
+            });
+        if let ShutdownOutcome::RuntimeFailure { error } = &outcome {
+            self.diagnostics
+                .emit_runtime_failure(completed_at, None, error);
+        }
+        self.shutdown.publish(&outcome);
     }
 }
 
@@ -338,6 +371,8 @@ impl NativeApp {
         instance_key: Option<&str>,
         error: RuntimeFailure,
     ) -> Result<T, RuntimeFailure> {
+        let instance_key = instance_key
+            .filter(|instance_key| self.runtime.plan.module_instance(instance_key).is_some());
         self.runtime.diagnostics.emit_runtime_failure(
             (self.runtime.driver.now)(),
             instance_key,
@@ -515,57 +550,31 @@ impl NativeApp {
 
     /// Performs bounded graceful shutdown using one global deadline.
     pub async fn shutdown(&self, timeout: Duration) -> ShutdownOutcome {
-        let started_at = (self.runtime.driver.now)();
-        let first_shutdown_diagnostic = !self.runtime.shutdown_diagnostic_started.replace(true);
         self.runtime.begin_shutdown();
-        if first_shutdown_diagnostic {
+        let cleanup_started_at = (self.runtime.driver.now)();
+        if self.runtime.shutdown.start(cleanup_started_at) {
             self.runtime
                 .diagnostics
-                .emit(DiagnosticSource::Shutdown, started_at, |_| {
-                    DiagnosticEvent::ShutdownStarted { timeout }
+                .emit(DiagnosticSource::Shutdown, cleanup_started_at, |_| {
+                    DiagnosticEvent::ShutdownCleanupStarted { timeout }
                 });
-        }
-        if self.runtime.shutdown.start() {
             let runtime = self.runtime.clone();
             let worker_runtime = runtime.clone();
             match (runtime.driver.spawn_local)(Box::pin(async move {
                 let outcome = shutdown_native_modules(&worker_runtime, timeout).await;
-                worker_runtime.shutdown.complete(&outcome);
+                worker_runtime.complete_shutdown(outcome);
             })) {
                 Ok(task) => {
                     runtime.shutdown_task.replace(Some(task));
                 }
-                Err(error) => runtime.shutdown.complete(&ShutdownOutcome::RuntimeFailure {
+                Err(error) => runtime.complete_shutdown(ShutdownOutcome::RuntimeFailure {
                     error: RuntimeFailure::Internal {
                         detail: format!("failed to schedule App shutdown: {error:?}"),
                     },
                 }),
             }
         }
-        let outcome = self.runtime.shutdown.wait().await;
-        if !self.runtime.shutdown_diagnostic_completed.replace(true) {
-            let diagnostic_outcome = match &outcome {
-                ShutdownOutcome::Clean => DiagnosticShutdownOutcome::Clean,
-                ShutdownOutcome::RuntimeFailure { .. } => DiagnosticShutdownOutcome::RuntimeFailure,
-                ShutdownOutcome::Timeout => DiagnosticShutdownOutcome::Timeout,
-            };
-            self.runtime.diagnostics.emit(
-                DiagnosticSource::Shutdown,
-                (self.runtime.driver.now)(),
-                |_| DiagnosticEvent::ShutdownCompleted {
-                    outcome: diagnostic_outcome,
-                    elapsed: (self.runtime.driver.now)().saturating_sub(started_at),
-                },
-            );
-            if let ShutdownOutcome::RuntimeFailure { error } = &outcome {
-                self.runtime.diagnostics.emit_runtime_failure(
-                    (self.runtime.driver.now)(),
-                    None,
-                    error,
-                );
-            }
-        }
-        outcome
+        self.runtime.shutdown.wait().await
     }
 
     /// Invokes a generated request Operation through the caller's resolved binding.

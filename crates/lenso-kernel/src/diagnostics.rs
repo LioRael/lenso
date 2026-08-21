@@ -1,7 +1,9 @@
 use std::{
     cell::{Cell, RefCell},
     collections::VecDeque,
+    future::poll_fn,
     rc::{Rc, Weak},
+    task::{Poll, Waker},
     time::Duration,
 };
 
@@ -175,7 +177,8 @@ pub enum DiagnosticShutdownOutcome {
 /// This enum intentionally has no payload, configuration, secret, opaque
 /// extension, `ActorAssertion`, or Domain Error fields. Delivery of these
 /// records is not itself observed, so exporting a record cannot recurse into
-/// the diagnostic feed.
+/// the diagnostic feed. Caller identities are present only when they resolve
+/// to a Module Instance in the immutable App Plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticEvent {
     /// The Kernel created a running App runtime.
@@ -199,7 +202,7 @@ pub enum DiagnosticEvent {
     /// A typed request or stream operation began.
     InvocationStarted {
         request_id: u64,
-        caller_instance: String,
+        caller_instance: Option<String>,
         provider_instance: Option<String>,
         capability: &'static str,
         operation: Option<&'static str>,
@@ -207,7 +210,7 @@ pub enum DiagnosticEvent {
     /// A typed request or stream operation completed.
     InvocationCompleted {
         request_id: u64,
-        caller_instance: String,
+        caller_instance: Option<String>,
         provider_instance: Option<String>,
         capability: &'static str,
         operation: Option<&'static str>,
@@ -217,7 +220,7 @@ pub enum DiagnosticEvent {
     /// Bounded request admission rejected an operation.
     AdmissionRejected {
         request_id: u64,
-        caller_instance: String,
+        caller_instance: Option<String>,
         provider_instance: Option<String>,
         capability: &'static str,
         operation: Option<&'static str>,
@@ -253,8 +256,10 @@ pub enum DiagnosticEvent {
         instance: Option<String>,
         kind: RuntimeFailureKind,
     },
-    /// App shutdown admission closed and cleanup started.
-    ShutdownStarted { timeout: Duration },
+    /// App admission closed and cooperative cancellation began.
+    ShutdownAdmissionClosed,
+    /// App cleanup began with one global timeout.
+    ShutdownCleanupStarted { timeout: Duration },
     /// App cleanup completed with a sanitized outcome and duration.
     ShutdownCompleted {
         outcome: DiagnosticShutdownOutcome,
@@ -286,6 +291,20 @@ pub enum DiagnosticSubscribeError {
 struct RuntimeDiagnosticsState {
     observers: RefCell<Vec<Weak<DiagnosticObserverState>>>,
     next_sequence: Cell<u64>,
+}
+
+impl Drop for RuntimeDiagnosticsState {
+    fn drop(&mut self) {
+        for observer in self
+            .observers
+            .get_mut()
+            .drain(..)
+            .filter_map(|observer| observer.upgrade())
+        {
+            observer.connected.set(false);
+            observer.wake_receiver();
+        }
+    }
 }
 
 /// An opt-in Runtime Diagnostics port.
@@ -320,6 +339,8 @@ impl RuntimeDiagnostics {
             capacity,
             queue: RefCell::new(VecDeque::with_capacity(capacity)),
             dropped: Cell::new(0),
+            connected: Cell::new(true),
+            receiver_waker: RefCell::new(None),
         });
         let mut observers = self.state.observers.borrow_mut();
         observers.retain(|observer| observer.upgrade().is_some());
@@ -404,6 +425,8 @@ struct DiagnosticObserverState {
     capacity: usize,
     queue: RefCell<VecDeque<DiagnosticRecord>>,
     dropped: Cell<u64>,
+    connected: Cell<bool>,
+    receiver_waker: RefCell<Option<Waker>>,
 }
 
 impl DiagnosticObserverState {
@@ -414,16 +437,48 @@ impl DiagnosticObserverState {
             return;
         }
         queue.push_back(record);
+        drop(queue);
+        self.wake_receiver();
+    }
+
+    fn wake_receiver(&self) {
+        if let Some(waker) = self.receiver_waker.borrow_mut().take() {
+            waker.wake();
+        }
     }
 }
 
 /// The receiving side of one independently bounded diagnostics queue.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DiagnosticObserver {
     state: Rc<DiagnosticObserverState>,
 }
 
 impl DiagnosticObserver {
+    /// Waits asynchronously for the oldest pending record.
+    ///
+    /// The observer side may await; Kernel producers always use non-blocking
+    /// enqueue and never execute observer-owned code.
+    pub async fn recv(&mut self) -> Option<DiagnosticRecord> {
+        poll_fn(|context| {
+            if let Some(record) = self.try_recv() {
+                return Poll::Ready(Some(record));
+            }
+            if !self.state.connected.get() {
+                return Poll::Ready(None);
+            }
+            self.state
+                .receiver_waker
+                .replace(Some(context.waker().clone()));
+            if let Some(record) = self.try_recv() {
+                self.state.receiver_waker.borrow_mut().take();
+                return Poll::Ready(Some(record));
+            }
+            Poll::Pending
+        })
+        .await
+    }
+
     /// Removes and returns the oldest pending record without waiting.
     pub fn try_recv(&self) -> Option<DiagnosticRecord> {
         self.state.queue.borrow_mut().pop_front()
@@ -437,11 +492,6 @@ impl DiagnosticObserver {
     /// Returns the number of records dropped because this queue was full.
     pub fn dropped_count(&self) -> u64 {
         self.state.dropped.get()
-    }
-
-    /// Returns the monotonic sequence-gap count for this observer.
-    pub fn gap_count(&self) -> u64 {
-        self.dropped_count()
     }
 
     /// Returns the number of records currently buffered.
@@ -458,6 +508,16 @@ impl DiagnosticObserver {
     pub fn filter(&self) -> DiagnosticFilter {
         self.state.filter
     }
+}
+
+pub(crate) fn diagnostic_operation(
+    operations: &'static [&'static str],
+    operation: &str,
+) -> Option<&'static str> {
+    operations
+        .iter()
+        .copied()
+        .find(|candidate| *candidate == operation)
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use futures::future::LocalBoxFuture;
 use super::{
     DiagnosticEvent, DiagnosticOutcome, DiagnosticSource, InvocationContext, NativeAppRuntime,
     NativeStreamEndpointBinding, RequestPermit, RuntimeFailure, await_with_generation_context,
-    schedule_module_supervision_after_failure,
+    diagnostics::diagnostic_operation, schedule_module_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one stream Capability.
@@ -146,7 +146,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             .emit(DiagnosticSource::Invocation, started_at, |_| {
                 DiagnosticEvent::InvocationStarted {
                     request_id,
-                    caller_instance: self.caller_instance.clone(),
+                    caller_instance: Some(self.caller_instance.clone()),
                     provider_instance: self
                         .endpoints
                         .first()
@@ -168,7 +168,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             (self.runtime.driver.now)(),
             |_| DiagnosticEvent::InvocationCompleted {
                 request_id,
-                caller_instance: self.caller_instance.clone(),
+                caller_instance: Some(self.caller_instance.clone()),
                 provider_instance: self
                     .endpoints
                     .first()
@@ -289,16 +289,6 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
         self.runtime.request_ids.set(request_id.saturating_add(1));
         request_id
     }
-}
-
-fn diagnostic_operation(
-    operations: &'static [&'static str],
-    operation: &str,
-) -> Option<&'static str> {
-    operations
-        .iter()
-        .copied()
-        .find(|candidate| *candidate == operation)
 }
 
 /// One opened, typed bidirectional stream session.

@@ -4,7 +4,8 @@ use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticOutcome, DiagnosticSource,
     ErasedDomainResult, InvocationContext, NativeAppRuntime, NativeEndpointBinding,
     RequestCapability, RequestId, RuntimeFailure, await_with_generation_context,
-    ensure_context_active, schedule_module_supervision_after_failure,
+    diagnostics::diagnostic_operation, ensure_context_active,
+    schedule_module_supervision_after_failure,
 };
 
 /// Typed, immutable native Capability endpoints materialized before App boot completes.
@@ -13,6 +14,7 @@ pub struct NativeRequestHandle<C: RequestCapability> {
     pub(super) endpoints: Vec<NativeEndpointBinding>,
     pub(super) runtime: Rc<NativeAppRuntime>,
     pub(super) caller_instance: String,
+    pub(super) caller_is_planned: bool,
     pub(super) allow_before_ready: bool,
     pub(super) capability: PhantomData<fn() -> C>,
 }
@@ -24,10 +26,12 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         caller_instance: &str,
         allow_before_ready: bool,
     ) -> Self {
+        let caller_is_planned = runtime.plan.module_instance(caller_instance).is_some();
         Self {
             endpoints: endpoints.to_vec(),
             runtime,
             caller_instance: caller_instance.to_owned(),
+            caller_is_planned,
             allow_before_ready,
             capability: PhantomData,
         }
@@ -36,6 +40,10 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     /// Returns the number of provider endpoints captured by this handle.
     pub fn binding_count(&self) -> usize {
         self.endpoints.len()
+    }
+
+    fn diagnostic_caller_instance(&self) -> Option<String> {
+        self.caller_is_planned.then(|| self.caller_instance.clone())
     }
 
     /// Invokes a singular Capability binding without falling back across providers.
@@ -66,7 +74,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
             .emit(DiagnosticSource::Invocation, started_at, |_| {
                 DiagnosticEvent::InvocationStarted {
                     request_id: context.request_id(),
-                    caller_instance: self.caller_instance.clone(),
+                    caller_instance: self.diagnostic_caller_instance(),
                     provider_instance: self
                         .endpoints
                         .first()
@@ -85,7 +93,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
             (self.runtime.driver.now)(),
             |_| DiagnosticEvent::InvocationCompleted {
                 request_id,
-                caller_instance: self.caller_instance.clone(),
+                caller_instance: self.diagnostic_caller_instance(),
                 provider_instance: self
                     .endpoints
                     .first()
@@ -110,7 +118,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     (self.runtime.driver.now)(),
                     |_| DiagnosticEvent::AdmissionRejected {
                         request_id,
-                        caller_instance: self.caller_instance.clone(),
+                        caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: self
                             .endpoints
                             .first()
@@ -232,7 +240,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
             .emit(DiagnosticSource::Invocation, started_at, |_| {
                 DiagnosticEvent::InvocationStarted {
                     request_id,
-                    caller_instance: self.caller_instance.clone(),
+                    caller_instance: self.diagnostic_caller_instance(),
                     provider_instance: None,
                     capability: C::ID,
                     operation: operation_name,
@@ -247,7 +255,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
             (self.runtime.driver.now)(),
             |_| DiagnosticEvent::InvocationCompleted {
                 request_id,
-                caller_instance: self.caller_instance.clone(),
+                caller_instance: self.diagnostic_caller_instance(),
                 provider_instance: None,
                 capability: C::ID,
                 operation: operation_name,
@@ -265,7 +273,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     (self.runtime.driver.now)(),
                     |_| DiagnosticEvent::AdmissionRejected {
                         request_id,
-                        caller_instance: self.caller_instance.clone(),
+                        caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: None,
                         capability: C::ID,
                         operation: operation_name,
@@ -382,16 +390,6 @@ fn decode_outcome<C: RequestCapability>(
             .map(|value| Err(*value))
             .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
     }
-}
-
-fn diagnostic_operation(
-    operations: &'static [&'static str],
-    operation: &str,
-) -> Option<&'static str> {
-    operations
-        .iter()
-        .copied()
-        .find(|candidate| *candidate == operation)
 }
 
 fn request_diagnostic_outcome<Response, DomainError>(

@@ -142,8 +142,6 @@ impl Kernel {
             request_ids: Rc::new(Cell::new(1)),
             supervision_cancellation: CancellationToken::new(),
             shutdown_started: Cell::new(false),
-            shutdown_diagnostic_started: Cell::new(false),
-            shutdown_diagnostic_completed: Cell::new(false),
             shutdown: ShutdownCoordinator::default(),
             shutdown_task: RefCell::new(None),
             terminal_failure: RefCell::new(None),

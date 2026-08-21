@@ -9,7 +9,7 @@ use lenso_capability_greeting::{
 };
 use lenso_kernel::{
     DeterministicDriver, DiagnosticEvent, DiagnosticFilter, DiagnosticOutcome, DiagnosticSource,
-    DiagnosticSubscribeError, ExecutionAdapterCatalog, Kernel, RuntimeDiagnostics,
+    DiagnosticSubscribeError, ExecutionAdapterCatalog, Kernel, RuntimeDiagnostics, RuntimeDriver,
     RuntimeFailureKind, ShutdownOutcome,
 };
 use lenso_native_adapter::NativeModuleRegistry;
@@ -77,6 +77,38 @@ fn diagnostics_filter_sources_and_drop_overflow_without_affecting_shutdown() {
 }
 
 #[test]
+fn observer_can_await_the_next_record() {
+    let driver = DeterministicDriver::new();
+    let diagnostics = RuntimeDiagnostics::new();
+    let mut observer = diagnostics
+        .subscribe_all(8)
+        .expect("the diagnostics observer should be bounded");
+
+    let start_driver = driver.clone();
+    let start_diagnostics = diagnostics.clone();
+    let (record, app) = driver.run(async {
+        futures::future::join(observer.recv(), async move {
+            start_driver.yield_now().await;
+            Kernel::start_with_diagnostics(
+                ResolvedAppPlan::empty(),
+                start_driver.clone(),
+                ExecutionAdapterCatalog::new(),
+                start_diagnostics,
+            )
+            .await
+            .expect("the empty App should start")
+        })
+        .await
+    });
+
+    assert!(record.is_some());
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        ShutdownOutcome::Clean
+    );
+}
+
+#[test]
 fn zero_observers_do_not_change_empty_app_behavior() {
     let driver = DeterministicDriver::new();
     let diagnostics = RuntimeDiagnostics::new();
@@ -130,7 +162,7 @@ fn observer_disconnect_and_zero_capacity_are_non_fatal() {
 }
 
 #[test]
-fn shutdown_requested_before_waiting_still_emits_one_shutdown_boundary() {
+fn shutdown_records_the_actual_admission_and_cleanup_boundaries() {
     let driver = DeterministicDriver::new();
     let diagnostics = RuntimeDiagnostics::new();
     let observer = diagnostics
@@ -146,6 +178,7 @@ fn shutdown_requested_before_waiting_still_emits_one_shutdown_boundary() {
         .expect("the empty App should start");
 
     app.request_shutdown();
+    driver.advance(Duration::from_millis(10));
     assert_eq!(
         driver.run(app.shutdown(Duration::from_secs(1))),
         ShutdownOutcome::Clean
@@ -155,16 +188,98 @@ fn shutdown_requested_before_waiting_still_emits_one_shutdown_boundary() {
     assert_eq!(
         records
             .iter()
-            .filter(|record| matches!(record.event, DiagnosticEvent::ShutdownStarted { .. }))
+            .filter(|record| matches!(record.event, DiagnosticEvent::ShutdownAdmissionClosed))
             .count(),
         1
     );
+    assert!(records.iter().any(|record| {
+        record.timestamp == Duration::from_millis(10)
+            && matches!(
+                record.event,
+                DiagnosticEvent::ShutdownCompleted {
+                    elapsed: Duration::ZERO,
+                    ..
+                }
+            )
+    }));
+    assert!(records.iter().any(|record| {
+        record.timestamp == Duration::ZERO
+            && matches!(record.event, DiagnosticEvent::ShutdownAdmissionClosed)
+    }));
+    assert!(records.iter().any(|record| {
+        record.timestamp == Duration::from_millis(10)
+            && matches!(record.event, DiagnosticEvent::ShutdownCleanupStarted { .. })
+    }));
     assert_eq!(
         records
             .iter()
             .filter(|record| matches!(record.event, DiagnosticEvent::ShutdownCompleted { .. }))
             .count(),
         1
+    );
+}
+
+#[test]
+fn diagnostics_do_not_treat_unresolved_caller_text_as_structural_identity() {
+    let driver = DeterministicDriver::new();
+    let diagnostics = RuntimeDiagnostics::new();
+    let observer = diagnostics
+        .subscribe_all(32)
+        .expect("the diagnostics observer should be bounded");
+    let app = driver
+        .run(Kernel::start_with_diagnostics(
+            ResolvedAppPlan::empty(),
+            driver.clone(),
+            ExecutionAdapterCatalog::new(),
+            diagnostics,
+        ))
+        .expect("the empty App should start");
+
+    let caller_text = "not-in-the-plan: secret-value";
+    assert!(app.ensure_binding::<Greeting>(caller_text).is_err());
+    let result = driver.run(
+        app.many_handle::<Greeting>(caller_text)
+            .expect("many requirements may have no providers")
+            .invoke_many(
+                GREET_OPERATION,
+                GreetRequest {
+                    name: "Ada".to_owned(),
+                },
+            ),
+    );
+    assert!(matches!(result, Ok(ref responses) if responses.is_empty()));
+
+    let records = std::iter::from_fn(|| observer.try_recv()).collect::<Vec<_>>();
+    assert!(records.iter().any(|record| {
+        matches!(
+            record.event,
+            DiagnosticEvent::RuntimeFailure { instance: None, .. }
+        )
+    }));
+    assert!(records.iter().any(|record| {
+        matches!(
+            record.event,
+            DiagnosticEvent::InvocationStarted {
+                caller_instance: None,
+                ..
+            }
+        )
+    }));
+    assert!(records.iter().all(|record| match &record.event {
+        DiagnosticEvent::RuntimeFailure { instance, .. } =>
+            instance.as_deref() != Some(caller_text),
+        DiagnosticEvent::InvocationStarted {
+            caller_instance, ..
+        }
+        | DiagnosticEvent::InvocationCompleted {
+            caller_instance, ..
+        } => caller_instance.as_deref() != Some(caller_text),
+        _ => true,
+    }));
+
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        ShutdownOutcome::Clean
     );
 }
 
