@@ -30,6 +30,7 @@ members = [
     "fixtures/vnext-stateful-module",
     "fixtures/vnext-story-module",
     "fixtures/vnext-agent-harness",
+    "xtask",
 ]
 
 [workspace.package]
