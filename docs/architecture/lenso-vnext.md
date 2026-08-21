@@ -56,6 +56,10 @@ See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.m
 [0045](../adr/0045-materialize-a-resolved-app-plan-before-boot.md), and
 [0057](../adr/0057-make-module-installation-an-authoring-operation.md).
 
+The initial implementation is [`lenso-authoring`](lenso-authoring.md). Its
+`add`, `check`, `resolve`, and `run` operations remain authoring/host tooling;
+the Kernel receives only the resulting immutable Plan.
+
 ## Kernel and hosts
 
 Kernel is one portable asynchronous state machine. A Runtime Driver supplies

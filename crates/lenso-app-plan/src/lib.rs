@@ -1,10 +1,18 @@
 //! App Composition and immutable execution input for the Lenso vNext Kernel.
 
+pub mod authoring;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     time::Duration,
 };
+
+use serde::{Deserialize, Serialize};
+
+mod execution;
+
+pub use execution::ExecutionClassId;
 
 /// The Resolved App Plan schema understood by this Kernel version.
 pub const PLAN_SCHEMA_VERSION: u32 = 1;
@@ -19,7 +27,8 @@ pub const DEFAULT_REQUEST_MAX_CONCURRENCY: usize = 1;
 pub const DEFAULT_EVENT_QUEUE_CAPACITY: usize = 16;
 
 /// The cardinality of one Module's Capability requirement.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CapabilityCardinality {
     /// Exactly one provider must be bound.
     One,
@@ -30,7 +39,8 @@ pub enum CapabilityCardinality {
 }
 
 /// The transport-independent interaction semantics of one Capability Operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CapabilityOperationKind {
     /// One request produces one response or Domain Error.
     Request,
@@ -45,7 +55,7 @@ pub enum CapabilityOperationKind {
 /// `queue_capacity` counts requests waiting for one of the
 /// `max_concurrency` execution slots. A zero queue capacity is valid and
 /// makes admission fail immediately while all execution slots are occupied.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RequestAdmissionPlan {
     queue_capacity: usize,
     max_concurrency: usize,
@@ -96,7 +106,7 @@ impl Default for RequestAdmissionPlan {
 ///
 /// Capacity counts all accepted Events that have not completed handling. Zero
 /// is valid and makes every publication to the binding report exhausted.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct EventAdmissionPlan {
     capacity: usize,
 }
@@ -120,7 +130,8 @@ impl Default for EventAdmissionPlan {
 }
 
 /// The finite restart mode selected for one Module Instance.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RestartMode {
     /// Do not recreate a failed generation.
     Never,
@@ -129,7 +140,7 @@ pub enum RestartMode {
 }
 
 /// Bounded supervision settings materialized in the Resolved App Plan.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RestartPolicy {
     mode: RestartMode,
     max_attempts: usize,
@@ -220,7 +231,8 @@ impl Default for RestartPolicy {
 }
 
 /// Whether a failed Module Instance is allowed to remain unavailable.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ModuleCriticality {
     /// Exhaustion leaves this Module unavailable when it is not required by a `one` binding.
     #[default]
@@ -236,43 +248,8 @@ impl ModuleCriticality {
     }
 }
 
-/// Stable, open identity of the execution mechanism selected for a Module Instance.
-///
-/// Execution Adapter packages own these IDs. The Plan preserves them as opaque
-/// authoring data so third-party Adapters do not require changes to this crate.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct ExecutionClassId(String);
-
-impl ExecutionClassId {
-    /// Creates an execution-class identity selected by App Composition.
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    /// Returns the official statically linked Rust execution class.
-    pub fn native_rust() -> Self {
-        Self::new("lenso.native-rust@1")
-    }
-
-    /// Returns the official trusted Bun child-process execution class.
-    pub fn bun_child_process() -> Self {
-        Self::new("lenso.bun-process@1")
-    }
-
-    /// Returns the stable execution-class identity.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for ExecutionClassId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
-    }
-}
-
 /// One Capability required by a Module Instance.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityRequirementPlan {
     capability_id: String,
     descriptor_version: String,
@@ -340,7 +317,7 @@ impl CapabilityRequirementPlan {
 }
 
 /// Exact Capability endpoint metadata expected from one Module Instance.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityEndpointPlan {
     capability_id: String,
     descriptor_version: String,
@@ -530,7 +507,7 @@ impl CapabilityEndpointPlan {
 }
 
 /// One exact App-local Module Instance selected by the resolved Plan.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ModuleInstancePlan {
     instance_key: String,
     package_id: String,
@@ -539,6 +516,7 @@ pub struct ModuleInstancePlan {
     provided_capabilities: Vec<CapabilityEndpointPlan>,
     required_capabilities: Vec<CapabilityRequirementPlan>,
     execution_class: ExecutionClassId,
+    package_revision: String,
     restart_policy: RestartPolicy,
     criticality: ModuleCriticality,
 }
@@ -554,6 +532,7 @@ impl ModuleInstancePlan {
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
             execution_class: ExecutionClassId::native_rust(),
+            package_revision: String::new(),
             restart_policy: RestartPolicy::default(),
             criticality: ModuleCriticality::default(),
         }
@@ -597,6 +576,13 @@ impl ModuleInstancePlan {
     #[must_use]
     pub fn with_execution_class(mut self, execution_class: ExecutionClassId) -> Self {
         self.execution_class = execution_class;
+        self
+    }
+
+    /// Records the exact opaque package-manager lock selection before boot.
+    #[must_use]
+    pub fn with_package_revision(mut self, revision: impl Into<String>) -> Self {
+        self.package_revision = revision.into();
         self
     }
 
@@ -649,6 +635,11 @@ impl ModuleInstancePlan {
         &self.execution_class
     }
 
+    /// Returns the exact opaque package-manager lock selection.
+    pub fn package_revision(&self) -> &str {
+        &self.package_revision
+    }
+
     /// Returns the supervision policy selected for this Instance.
     pub const fn restart_policy(&self) -> RestartPolicy {
         self.restart_policy
@@ -661,7 +652,7 @@ impl ModuleInstancePlan {
 }
 
 /// One exact consumer-to-provider Capability binding.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityBinding {
     consumer_instance: String,
     capability_id: String,
@@ -775,7 +766,7 @@ impl CapabilityBinding {
 }
 
 /// Declarative, language-independent authoring input for one App.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AppComposition {
     module_instances: Vec<ModuleInstancePlan>,
     capability_bindings: Vec<CapabilityBinding>,
@@ -1057,7 +1048,7 @@ impl fmt::Display for PlanResolutionError {
 impl std::error::Error for PlanResolutionError {}
 
 /// Exact, immutable execution input supplied to the Kernel.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ResolvedAppPlan {
     schema_version: u32,
     module_instances: Vec<ModuleInstancePlan>,

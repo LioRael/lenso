@@ -51,6 +51,8 @@ jobs:
           bun build --target bun fixtures/bun/wire-benchmark.ts --outdir /tmp/lenso-bun-fixtures
       - name: Run Bun cross-runtime request conformance
         run: cargo test --locked -p lenso-bun-adapter --test bun_cross_runtime -- --ignored --test-threads=1
+      - name: Run Bun authoring clean-project flow
+        run: cargo test --locked -p lenso-authoring --test authoring bun_clean_project_add_resolve_reload_and_run_use_the_same_plan -- --ignored --test-threads=1
       - name: Run Bun OpenTelemetry propagation conformance
         run: cargo test --locked -p lenso-bun-adapter --test bun_otel_cross_runtime -- --ignored --test-threads=1
       - name: Run Bun wire contract benchmark
