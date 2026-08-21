@@ -24,6 +24,7 @@ members = [
     "fixtures/vnext-game-session",
     "fixtures/vnext-stateful-module",
     "fixtures/vnext-story-module",
+    "xtask",
 ]
 
 [workspace.package]
