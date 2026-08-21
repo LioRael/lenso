@@ -1,5 +1,9 @@
 # Run Console as an independent Lenso App
 
+> Superseded by
+> [ADR 0060](0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md),
+> which distinguishes a target-owned App Web UI from a cross-App Console.
+
 The production Console will be an independent Lenso App composed from ordinary
 Modules. A target App that elects to expose Console functionality installs a
 thin Connector Module; an embedded Console remains a local-development
