@@ -20,9 +20,12 @@ use lenso_capability_secrets::{
 use lenso_kernel::{DeterministicDriver, Kernel, RuntimeFailure, ShutdownOutcome};
 use lenso_native_adapter::NativeModuleRegistry;
 use lenso_vnext_stateful_module::{
-    CALLER_PACKAGE_ID, COUNTER_PACKAGE_ID, CallerFactory, CounterFactory, SECRETS_PACKAGE_ID,
-    SecretsFactory, SetupOutcome, UpgradeOutcome, setup_owned_state, upgrade_owned_state,
+    COUNTER_PACKAGE_ID, CounterFactory, RecoveryOutcome, SetupOutcome, UpgradeOutcome,
+    recover_owned_state, setup_owned_state, upgrade_owned_state,
 };
+
+mod support;
+use support::{CALLER_PACKAGE_ID, CallerFactory, SECRETS_PACKAGE_ID, SecretsFactory};
 
 static NEXT_STORAGE_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -63,7 +66,7 @@ fn plan(storage_path: &Path) -> ResolvedAppPlan {
         .with_capability(CapabilityEndpointPlan::new(
             COUNTER_ID,
             COUNTER_VERSION,
-            [READ_OPERATION, INCREMENT_OPERATION],
+            [INCREMENT_OPERATION, READ_OPERATION],
         ))
         .with_requirement(CapabilityRequirementPlan::one(SECRETS_ID, SECRETS_VERSION));
     let secrets = ModuleInstancePlan::new("secrets", SECRETS_PACKAGE_ID).with_capability(
@@ -185,6 +188,38 @@ fn missing_storage_fails_preparation_without_an_in_memory_fallback() {
     assert!(!storage.path.exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn unwritable_storage_fails_preparation_before_the_first_operation() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let storage = TestStorage::new();
+    setup_owned_state(&storage.path).expect("explicit setup should create durable storage");
+    let original_mode = std::fs::metadata(&storage.path)
+        .expect("storage metadata should be readable")
+        .permissions()
+        .mode();
+    std::fs::set_permissions(&storage.path, std::fs::Permissions::from_mode(0o444))
+        .expect("storage should become read-only");
+
+    let driver = DeterministicDriver::new();
+    let result = driver.run(Kernel::start_native(
+        plan(&storage.path),
+        driver.clone(),
+        registry(Some("fixture-secret")),
+    ));
+
+    std::fs::set_permissions(
+        &storage.path,
+        std::fs::Permissions::from_mode(original_mode),
+    )
+    .expect("storage permissions should be restored");
+    assert!(matches!(
+        result,
+        Err(RuntimeFailure::Internal { detail }) if detail.contains("open storage read-write")
+    ));
+}
+
 #[test]
 fn missing_secret_fails_activation_without_starting_the_state_module() {
     let storage = TestStorage::new();
@@ -204,7 +239,7 @@ fn missing_secret_fails_activation_without_starting_the_state_module() {
 }
 
 #[test]
-fn secret_binding_rejects_a_different_secret_after_setup() {
+fn secret_rotation_preserves_owned_state_identity() {
     let storage = TestStorage::new();
     setup_owned_state(&storage.path).expect("explicit setup should create durable storage");
 
@@ -215,24 +250,70 @@ fn secret_binding_rejects_a_different_secret_after_setup() {
             driver.clone(),
             registry(Some("fixture-secret")),
         ))
-        .expect("the initial secret should bind the owned state");
+        .expect("the initial secret should activate the state owner");
+    driver
+        .run(app.invoke::<CounterIncrement>(
+            "caller",
+            INCREMENT_OPERATION,
+            IncrementRequest {
+                key: "rotated".to_owned(),
+                amount: 3,
+            },
+        ))
+        .expect("increment should reach the public Capability")
+        .expect("increment should succeed");
     assert!(matches!(
         driver.run(app.shutdown(Duration::from_secs(1))),
         ShutdownOutcome::Clean
     ));
 
     let driver = DeterministicDriver::new();
+    let app = driver
+        .run(Kernel::start_native(
+            plan(&storage.path),
+            driver.clone(),
+            registry(Some("different-secret")),
+        ))
+        .expect("routine secret rotation should not change durable state identity");
+    let value = driver
+        .run(app.invoke::<CounterRead>(
+            "caller",
+            READ_OPERATION,
+            ReadRequest {
+                key: "rotated".to_owned(),
+            },
+        ))
+        .expect("read should reach the public Capability")
+        .expect("state should remain available after secret rotation");
+    assert_eq!(value.value, 3);
+    assert!(matches!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        ShutdownOutcome::Clean
+    ));
+}
+
+#[test]
+fn interrupted_commit_requires_explicit_recovery_before_preparation() {
+    let storage = TestStorage::new();
+    setup_owned_state(&storage.path).expect("explicit setup should create durable storage");
+    let temporary_path = PathBuf::from(format!("{}.tmp", storage.path.display()));
+    std::fs::copy(&storage.path, &temporary_path).expect("interrupted commit should be simulated");
+    std::fs::remove_file(&storage.path).expect("committed document should be absent");
+
+    let driver = DeterministicDriver::new();
     let result = driver.run(Kernel::start_native(
         plan(&storage.path),
         driver.clone(),
-        registry(Some("different-secret")),
+        registry(Some("fixture-secret")),
     ));
-
     assert!(matches!(
         result,
-        Err(RuntimeFailure::ModuleFailure { detail })
-            if detail.contains("bound to a different secret")
+        Err(RuntimeFailure::Internal { detail }) if detail.contains("explicit recovery workflow")
     ));
+    assert_eq!(
+        recover_owned_state(&storage.path).expect("explicit recovery should restore state"),
+        RecoveryOutcome::Restored { schema_version: 1 }
+    );
 }
 
 #[test]
@@ -244,6 +325,11 @@ fn stale_schema_requires_explicit_upgrade_before_preparation() {
         r#"{"schema_version":0,"entries":{"alpha":4}}"#,
     )
     .expect("legacy document should be written");
+    std::fs::write(
+        PathBuf::from(format!("{}.lock", storage.path.display())),
+        [],
+    )
+    .expect("legacy transaction lock should be written");
 
     let driver = DeterministicDriver::new();
     let result = driver.run(Kernel::start_native(

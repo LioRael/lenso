@@ -261,8 +261,8 @@ pub fn encode_read_error(value: &ReadError) -> Result<String, serde_json::Error>
 pub fn decode_read_error(wire: &str) -> Result<ReadError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 
 pub trait CounterProvider: fmt::Debug + 'static {
-    fn increment(&self, context: InvocationContext, request: IncrementRequest) -> LocalBoxFuture<'static, Result<IncrementResponse, IncrementError>>;
-    fn read(&self, context: InvocationContext, request: ReadRequest) -> LocalBoxFuture<'static, Result<ReadResponse, ReadError>>;
+    fn increment(&self, context: InvocationContext, request: IncrementRequest) -> LocalBoxFuture<'static, Result<IncrementResponse, CounterIncrementInvocationError>>;
+    fn read(&self, context: InvocationContext, request: ReadRequest) -> LocalBoxFuture<'static, Result<ReadResponse, CounterReadInvocationError>>;
 }
 
 #[derive(Debug)]
@@ -286,9 +286,11 @@ impl<P: CounterProvider> NativeRequestEndpoint for CounterEndpoint<P> {
                 };
                 let provider = Rc::clone(&self.provider);
                 Box::pin(async move {
-                    Ok(provider.increment(context, *request).await
-                        .map(|value| Box::new(value) as Box<dyn std::any::Any>)
-                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))
+                    match provider.increment(context, *request).await {
+                        Ok(value) => Ok(Ok(Box::new(value) as Box<dyn std::any::Any>)),
+                        Err(CounterIncrementInvocationError::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),
+                        Err(CounterIncrementInvocationError::Runtime(error)) => Err(error),
+                    }
                 })
             },
             READ_OPERATION => {
@@ -297,9 +299,11 @@ impl<P: CounterProvider> NativeRequestEndpoint for CounterEndpoint<P> {
                 };
                 let provider = Rc::clone(&self.provider);
                 Box::pin(async move {
-                    Ok(provider.read(context, *request).await
-                        .map(|value| Box::new(value) as Box<dyn std::any::Any>)
-                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))
+                    match provider.read(context, *request).await {
+                        Ok(value) => Ok(Ok(Box::new(value) as Box<dyn std::any::Any>)),
+                        Err(CounterReadInvocationError::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),
+                        Err(CounterReadInvocationError::Runtime(error)) => Err(error),
+                    }
                 })
             }
             _ => Box::pin(futures::future::ready(Err(RuntimeFailure::UnknownOperation { capability: CAPABILITY_ID, operation: operation.to_owned() }))),

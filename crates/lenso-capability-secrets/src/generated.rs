@@ -173,7 +173,7 @@ pub fn encode_resolve_error(value: &ResolveError) -> Result<String, serde_json::
 pub fn decode_resolve_error(wire: &str) -> Result<ResolveError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 
 pub trait SecretsProvider: fmt::Debug + 'static {
-    fn resolve(&self, context: InvocationContext, request: ResolveRequest) -> LocalBoxFuture<'static, Result<ResolveResponse, ResolveError>>;
+    fn resolve(&self, context: InvocationContext, request: ResolveRequest) -> LocalBoxFuture<'static, Result<ResolveResponse, SecretsInvocationError>>;
 }
 
 #[derive(Debug)]
@@ -196,9 +196,11 @@ impl<P: SecretsProvider> NativeRequestEndpoint for SecretsEndpoint<P> {
                 };
                 let provider = Rc::clone(&self.provider);
                 Box::pin(async move {
-                    Ok(provider.resolve(context, *request).await
-                        .map(|value| Box::new(value) as Box<dyn std::any::Any>)
-                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))
+                    match provider.resolve(context, *request).await {
+                        Ok(value) => Ok(Ok(Box::new(value) as Box<dyn std::any::Any>)),
+                        Err(SecretsInvocationError::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),
+                        Err(SecretsInvocationError::Runtime(error)) => Err(error),
+                    }
                 })
             }
             _ => Box::pin(futures::future::ready(Err(RuntimeFailure::UnknownOperation { capability: CAPABILITY_ID, operation: operation.to_owned() }))),

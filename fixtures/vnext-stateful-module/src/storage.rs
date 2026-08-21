@@ -1,18 +1,24 @@
 //! Private file-backed persistence and owned migration workflows.
 
-use std::{collections::BTreeMap, path::PathBuf, rc::Rc};
+use std::{
+    collections::BTreeMap,
+    fs::{File, OpenOptions},
+    io::{Read, Write},
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use serde::{Deserialize, Serialize};
 
 use super::{CURRENT_SCHEMA_VERSION, INITIAL_MIGRATION};
+
+static NEXT_PROBE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct CounterDocument {
     schema_version: u32,
     revision: u64,
     entries: BTreeMap<String, i64>,
-    #[serde(default)]
-    secret_fingerprint: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,21 +37,19 @@ struct LegacyCounterDocument {
 #[derive(Clone, Debug)]
 pub(super) struct FileStateAdapter {
     path: PathBuf,
-    transaction_lock: Rc<std::cell::RefCell<()>>,
 }
 
 impl FileStateAdapter {
     /// Selects one required durable document path. No file is created here.
     pub(super) fn new(path: impl Into<PathBuf>) -> Self {
-        Self {
-            path: path.into(),
-            transaction_lock: Rc::new(std::cell::RefCell::new(())),
-        }
+        Self { path: path.into() }
     }
 
     /// Applies the owned initial migration, or reports that it is already applied.
     pub(super) fn setup(&self) -> Result<SetupOutcome, StateStorageError> {
-        let _guard = self.transaction_lock.borrow_mut();
+        let parent = self.ensure_parent()?;
+        let _lock = self.acquire_lock(true)?;
+        self.require_recovered()?;
         let migration = Self::owned_migration()?;
         if self.path.exists() {
             self.read_current_document()?;
@@ -53,15 +57,7 @@ impl FileStateAdapter {
                 schema_version: migration.version,
             });
         }
-        let Some(parent) = self.path.parent() else {
-            return Err(StateStorageError::InvalidPath {
-                path: self.path.clone(),
-            });
-        };
-        std::fs::create_dir_all(parent).map_err(|error| {
-            StateStorageError::io(&self.path, "create storage directory", &error)
-        })?;
-        self.write_document(&migration.initial_document)?;
+        self.write_document(&migration.initial_document, parent)?;
         Ok(SetupOutcome::Created {
             schema_version: migration.version,
         })
@@ -69,20 +65,12 @@ impl FileStateAdapter {
 
     /// Applies an explicit owned upgrade and never runs from Module preparation.
     pub(super) fn upgrade(&self) -> Result<UpgradeOutcome, StateStorageError> {
-        let _guard = self.transaction_lock.borrow_mut();
+        let parent = self.parent()?;
+        let _lock = self.acquire_lock(true)?;
+        self.require_recovered()?;
         let migration = Self::owned_migration()?;
-        let value = self.read_json_value()?;
-        let version = value
-            .get("schema_version")
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| StateStorageError::InvalidDocument {
-                path: self.path.clone(),
-                detail: "schema_version is missing".to_owned(),
-            })?;
-        let version = u32::try_from(version).map_err(|_| StateStorageError::InvalidDocument {
-            path: self.path.clone(),
-            detail: "schema_version is too large".to_owned(),
-        })?;
+        let value = self.read_json_value(&self.path)?;
+        let version = document_version(&self.path, &value)?;
         match version {
             version if version == migration.version => Ok(UpgradeOutcome::AlreadyCurrent {
                 schema_version: migration.version,
@@ -95,15 +83,16 @@ impl FileStateAdapter {
                             detail: error.to_string(),
                         }
                     })?;
-                let from = legacy.schema_version;
-                self.write_document(&CounterDocument {
-                    schema_version: migration.version,
-                    revision: migration.initial_document.revision,
-                    entries: legacy.entries,
-                    secret_fingerprint: migration.initial_document.secret_fingerprint,
-                })?;
+                self.write_document(
+                    &CounterDocument {
+                        schema_version: migration.version,
+                        revision: migration.initial_document.revision,
+                        entries: legacy.entries,
+                    },
+                    parent,
+                )?;
                 Ok(UpgradeOutcome::Applied {
-                    from,
+                    from: legacy.schema_version,
                     to: migration.version,
                 })
             }
@@ -115,31 +104,58 @@ impl FileStateAdapter {
         }
     }
 
-    /// Verifies required storage and schema compatibility without changing it.
-    pub(super) fn verify_ready(&self) -> Result<(), StateStorageError> {
-        let _guard = self.transaction_lock.borrow();
-        Self::owned_migration()?;
-        self.read_current_document().map(|_| ())
+    /// Reconciles an interrupted durable commit as an explicit operator action.
+    pub(super) fn recover(&self) -> Result<RecoveryOutcome, StateStorageError> {
+        let parent = self.parent()?;
+        let _lock = self.acquire_lock(true)?;
+        let temporary_path = self.temporary_path();
+        if !temporary_path.exists() {
+            return Ok(RecoveryOutcome::NoAction);
+        }
+        if self.path.exists() {
+            let value = self.read_json_value(&self.path)?;
+            document_version(&self.path, &value)?;
+            std::fs::remove_file(&temporary_path).map_err(|error| {
+                StateStorageError::io(&temporary_path, "discard interrupted transaction", &error)
+            })?;
+            sync_directory(parent)?;
+            return Ok(RecoveryOutcome::DiscardedUncommitted);
+        }
+
+        let document = self.read_current_document_at(&temporary_path)?;
+        std::fs::rename(&temporary_path, &self.path)
+            .map_err(|error| StateStorageError::io(&self.path, "restore transaction", &error))?;
+        sync_directory(parent)?;
+        Ok(RecoveryOutcome::Restored {
+            schema_version: document.schema_version,
+        })
     }
 
-    pub(super) fn bind_secret(&self, fingerprint: &[u8]) -> Result<(), StateStorageError> {
-        let _guard = self.transaction_lock.borrow_mut();
-        let mut document = self.read_current_document()?;
-        let fingerprint = fingerprint_hex(fingerprint);
-        match document.secret_fingerprint.as_deref() {
-            Some(existing) if existing != fingerprint => Err(StateStorageError::SecretMismatch {
+    /// Verifies storage, schema, and write capability without changing owned state.
+    pub(super) fn verify_ready(&self) -> Result<(), StateStorageError> {
+        if !self.path.exists() && !self.temporary_path().exists() {
+            return Err(StateStorageError::Missing {
                 path: self.path.clone(),
-            }),
-            Some(_) => Ok(()),
-            None => {
-                document.secret_fingerprint = Some(fingerprint);
-                self.write_document(&document)
-            }
+            });
         }
+        let parent = self.parent()?;
+        let _lock = self.acquire_lock(false)?;
+        self.require_recovered()?;
+        Self::owned_migration()?;
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&self.path)
+            .map_err(|error| {
+                StateStorageError::io(&self.path, "open storage read-write", &error)
+            })?;
+        self.read_current_document_from(&mut file, &self.path)?;
+        self.probe_parent_writable(parent)
     }
 
     pub(crate) fn read_counter(&self, key: &str) -> Result<Option<(i64, u64)>, StateStorageError> {
-        let _guard = self.transaction_lock.borrow();
+        let _lock = self.acquire_lock(false)?;
+        self.require_recovered()?;
         let document = self.read_current_document()?;
         Ok(document
             .entries
@@ -153,7 +169,9 @@ impl FileStateAdapter {
         key: &str,
         amount: i64,
     ) -> Result<(i64, u64), StateStorageError> {
-        let _guard = self.transaction_lock.borrow_mut();
+        let parent = self.parent()?;
+        let _lock = self.acquire_lock(false)?;
+        self.require_recovered()?;
         let mut document = self.read_current_document()?;
         let value = document.entries.entry(key.to_owned()).or_default();
         *value = value
@@ -171,38 +189,94 @@ impl FileStateAdapter {
                     detail: "revision overflow".to_owned(),
                 })?;
         let result = (*value, document.revision);
-        self.write_document(&document)?;
+        self.write_document(&document, parent)?;
         Ok(result)
     }
 
-    fn read_current_document(&self) -> Result<CounterDocument, StateStorageError> {
-        if !self.path.exists() {
-            return Err(StateStorageError::Missing {
+    fn parent(&self) -> Result<&Path, StateStorageError> {
+        self.path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .ok_or_else(|| StateStorageError::InvalidPath {
                 path: self.path.clone(),
-            });
-        }
-        let value = self.read_json_value()?;
-        let actual = value
-            .get("schema_version")
-            .and_then(serde_json::Value::as_u64)
-            .and_then(|version| u32::try_from(version).ok())
-            .ok_or_else(|| StateStorageError::InvalidDocument {
-                path: self.path.clone(),
-                detail: "schema_version is missing or too large".to_owned(),
+            })
+    }
+
+    fn ensure_parent(&self) -> Result<&Path, StateStorageError> {
+        let parent = self.parent()?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            StateStorageError::io(&self.path, "create storage directory", &error)
+        })?;
+        Ok(parent)
+    }
+
+    fn acquire_lock(&self, create: bool) -> Result<File, StateStorageError> {
+        let lock_path = self.lock_path();
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(create)
+            .open(&lock_path)
+            .map_err(|error| {
+                if !create && error.kind() == std::io::ErrorKind::NotFound {
+                    StateStorageError::MissingLock {
+                        path: lock_path.clone(),
+                    }
+                } else {
+                    StateStorageError::io(&lock_path, "open transaction lock", &error)
+                }
             })?;
+        File::lock(&file).map_err(|error| {
+            StateStorageError::io(&lock_path, "acquire transaction lock", &error)
+        })?;
+        Ok(file)
+    }
+
+    fn read_current_document(&self) -> Result<CounterDocument, StateStorageError> {
+        let mut file = File::open(&self.path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                StateStorageError::Missing {
+                    path: self.path.clone(),
+                }
+            } else {
+                StateStorageError::io(&self.path, "read storage", &error)
+            }
+        })?;
+        self.read_current_document_from(&mut file, &self.path)
+    }
+
+    fn read_current_document_at(&self, path: &Path) -> Result<CounterDocument, StateStorageError> {
+        let mut file = File::open(path)
+            .map_err(|error| StateStorageError::io(path, "read recovery document", &error))?;
+        self.read_current_document_from(&mut file, path)
+    }
+
+    fn read_current_document_from(
+        &self,
+        reader: &mut File,
+        path: &Path,
+    ) -> Result<CounterDocument, StateStorageError> {
+        let mut bytes = Vec::new();
+        reader
+            .read_to_end(&mut bytes)
+            .map_err(|error| StateStorageError::io(path, "read storage", &error))?;
+        let value =
+            serde_json::from_slice(&bytes).map_err(|error| StateStorageError::InvalidDocument {
+                path: path.to_owned(),
+                detail: error.to_string(),
+            })?;
+        let actual = document_version(path, &value)?;
         if actual != CURRENT_SCHEMA_VERSION {
             return Err(StateStorageError::IncompatibleSchema {
-                path: self.path.clone(),
+                path: path.to_owned(),
                 expected: CURRENT_SCHEMA_VERSION,
                 actual,
             });
         }
-        let document: CounterDocument =
-            serde_json::from_value(value).map_err(|error| StateStorageError::InvalidDocument {
-                path: self.path.clone(),
-                detail: error.to_string(),
-            })?;
-        Ok(document)
+        serde_json::from_value(value).map_err(|error| StateStorageError::InvalidDocument {
+            path: path.to_owned(),
+            detail: error.to_string(),
+        })
     }
 
     fn owned_migration() -> Result<OwnedMigration, StateStorageError> {
@@ -225,36 +299,92 @@ impl FileStateAdapter {
         Ok(migration)
     }
 
-    fn read_json_value(&self) -> Result<serde_json::Value, StateStorageError> {
-        let bytes = std::fs::read(&self.path)
-            .map_err(|error| StateStorageError::io(&self.path, "read storage", &error))?;
+    fn read_json_value(&self, path: &Path) -> Result<serde_json::Value, StateStorageError> {
+        let bytes = std::fs::read(path)
+            .map_err(|error| StateStorageError::io(path, "read storage", &error))?;
         serde_json::from_slice(&bytes).map_err(|error| StateStorageError::InvalidDocument {
-            path: self.path.clone(),
+            path: path.to_owned(),
             detail: error.to_string(),
         })
     }
 
-    fn write_document(&self, document: &CounterDocument) -> Result<(), StateStorageError> {
-        let Some(parent) = self.path.parent() else {
-            return Err(StateStorageError::InvalidPath {
-                path: self.path.clone(),
-            });
-        };
-        std::fs::create_dir_all(parent).map_err(|error| {
-            StateStorageError::io(&self.path, "create storage directory", &error)
-        })?;
-        let temporary_path = self.path.with_extension("json.tmp");
+    fn write_document(
+        &self,
+        document: &CounterDocument,
+        parent: &Path,
+    ) -> Result<(), StateStorageError> {
+        let temporary_path = self.temporary_path();
         let bytes = serde_json::to_vec_pretty(document).map_err(|error| {
             StateStorageError::InvalidDocument {
                 path: self.path.clone(),
                 detail: error.to_string(),
             }
         })?;
-        std::fs::write(&temporary_path, bytes).map_err(|error| {
-            StateStorageError::io(&temporary_path, "write migration result", &error)
-        })?;
+        let mut temporary = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary_path)
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    StateStorageError::RecoveryRequired {
+                        path: temporary_path.clone(),
+                    }
+                } else {
+                    StateStorageError::io(&temporary_path, "create transaction", &error)
+                }
+            })?;
+        temporary
+            .write_all(&bytes)
+            .map_err(|error| StateStorageError::io(&temporary_path, "write transaction", &error))?;
+        temporary
+            .sync_all()
+            .map_err(|error| StateStorageError::io(&temporary_path, "sync transaction", &error))?;
         std::fs::rename(&temporary_path, &self.path)
-            .map_err(|error| StateStorageError::io(&self.path, "commit transaction", &error))
+            .map_err(|error| StateStorageError::io(&self.path, "commit transaction", &error))?;
+        sync_directory(parent)
+    }
+
+    fn require_recovered(&self) -> Result<(), StateStorageError> {
+        let temporary_path = self.temporary_path();
+        if temporary_path.exists() {
+            Err(StateStorageError::RecoveryRequired {
+                path: temporary_path,
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    fn probe_parent_writable(&self, parent: &Path) -> Result<(), StateStorageError> {
+        let probe_path = sibling_path(
+            &self.path,
+            &format!(
+                ".probe.{}.{}",
+                std::process::id(),
+                NEXT_PROBE_ID.fetch_add(1, Ordering::Relaxed)
+            ),
+        );
+        let probe = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&probe_path)
+            .map_err(|error| {
+                StateStorageError::io(&probe_path, "probe storage directory", &error)
+            })?;
+        probe
+            .sync_all()
+            .map_err(|error| StateStorageError::io(&probe_path, "sync storage probe", &error))?;
+        std::fs::remove_file(&probe_path)
+            .map_err(|error| StateStorageError::io(&probe_path, "remove storage probe", &error))?;
+        sync_directory(parent)
+    }
+
+    fn lock_path(&self) -> PathBuf {
+        sibling_path(&self.path, ".lock")
+    }
+
+    fn temporary_path(&self) -> PathBuf {
+        sibling_path(&self.path, ".tmp")
     }
 }
 
@@ -270,14 +400,33 @@ pub(super) fn upgrade_owned_state(
     FileStateAdapter::new(path).upgrade()
 }
 
-fn fingerprint_hex(fingerprint: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = String::with_capacity(fingerprint.len() * 2);
-    for byte in fingerprint {
-        encoded.push(char::from(HEX[(byte >> 4) as usize]));
-        encoded.push(char::from(HEX[(byte & 0x0f) as usize]));
-    }
-    encoded
+pub(super) fn recover_owned_state(
+    path: impl Into<PathBuf>,
+) -> Result<RecoveryOutcome, StateStorageError> {
+    FileStateAdapter::new(path).recover()
+}
+
+fn sibling_path(path: &Path, suffix: &str) -> PathBuf {
+    let mut value = path.as_os_str().to_os_string();
+    value.push(suffix);
+    PathBuf::from(value)
+}
+
+fn document_version(path: &Path, value: &serde_json::Value) -> Result<u32, StateStorageError> {
+    value
+        .get("schema_version")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|version| u32::try_from(version).ok())
+        .ok_or_else(|| StateStorageError::InvalidDocument {
+            path: path.to_owned(),
+            detail: "schema_version is missing or too large".to_owned(),
+        })
+}
+
+fn sync_directory(parent: &Path) -> Result<(), StateStorageError> {
+    File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| StateStorageError::io(parent, "sync storage directory", &error))
 }
 
 /// Reviewable result from the explicit setup workflow.
@@ -298,11 +447,24 @@ pub enum UpgradeOutcome {
     Applied { from: u32, to: u32 },
 }
 
+/// Reviewable result from the explicit recovery workflow.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RecoveryOutcome {
+    /// No interrupted transaction existed.
+    NoAction,
+    /// The committed document was authoritative, so the temporary document was discarded.
+    DiscardedUncommitted,
+    /// A fully written temporary document was restored after an interrupted rename.
+    Restored { schema_version: u32 },
+}
+
 /// Failure from the private state Adapter, kept outside the Kernel.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum StateStorageError {
     /// The required durable document does not exist.
     Missing { path: PathBuf },
+    /// The stable transaction lock is missing because setup or upgrade has not run.
+    MissingLock { path: PathBuf },
     /// The configured path cannot be used as a storage document.
     InvalidPath { path: PathBuf },
     /// The document is malformed or cannot be decoded.
@@ -315,18 +477,18 @@ pub enum StateStorageError {
         expected: u32,
         actual: u32,
     },
+    /// An interrupted transaction must be reconciled explicitly.
+    RecoveryRequired { path: PathBuf },
     /// The host filesystem rejected one owned operation.
     Io {
         path: PathBuf,
         operation: String,
         detail: String,
     },
-    /// The durable state is already bound to another secret.
-    SecretMismatch { path: PathBuf },
 }
 
 impl StateStorageError {
-    fn io(path: &std::path::Path, operation: &str, error: &std::io::Error) -> Self {
+    fn io(path: &Path, operation: &str, error: &std::io::Error) -> Self {
         Self::Io {
             path: path.to_owned(),
             operation: operation.to_owned(),
@@ -341,6 +503,11 @@ impl std::fmt::Display for StateStorageError {
             Self::Missing { path } => write!(
                 formatter,
                 "required durable storage `{}` is missing; run setup",
+                path.display()
+            ),
+            Self::MissingLock { path } => write!(
+                formatter,
+                "transaction lock `{}` is missing; run the explicit setup or upgrade workflow",
                 path.display()
             ),
             Self::InvalidPath { path } => {
@@ -363,6 +530,11 @@ impl std::fmt::Display for StateStorageError {
                 "storage document `{}` uses schema {actual}; expected {expected}, run the explicit upgrade workflow",
                 path.display()
             ),
+            Self::RecoveryRequired { path } => write!(
+                formatter,
+                "interrupted transaction `{}` requires the explicit recovery workflow",
+                path.display()
+            ),
             Self::Io {
                 path,
                 operation,
@@ -372,13 +544,11 @@ impl std::fmt::Display for StateStorageError {
                 "cannot {operation} `{}`: {detail}",
                 path.display()
             ),
-            Self::SecretMismatch { path } => write!(
-                formatter,
-                "durable storage `{}` is bound to a different secret",
-                path.display()
-            ),
         }
     }
 }
 
 impl std::error::Error for StateStorageError {}
+
+#[cfg(test)]
+mod tests;

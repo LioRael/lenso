@@ -131,8 +131,8 @@ export interface ProfileClient {
 }
 
 export interface ProfileProvider {
-  corpus_round_trip(context: InvocationContext, request: CorpusRoundTripRequest): Promise<{ readonly ok: true; readonly value: CorpusRoundTripResponse } | { readonly ok: false; readonly error: CorpusRoundTripError }>;
-  round_trip(context: InvocationContext, request: RoundTripRequest): Promise<{ readonly ok: true; readonly value: RoundTripResponse } | { readonly ok: false; readonly error: RoundTripError }>;
+  corpus_round_trip(context: InvocationContext, request: CorpusRoundTripRequest): Promise<CorpusRoundTripResult>;
+  round_trip(context: InvocationContext, request: RoundTripRequest): Promise<RoundTripResult>;
 }
 
 export const portableValueProfile = {

@@ -1,27 +1,23 @@
 //! A native stateful Module fixture with owned storage and explicit Secrets.
 
-use std::{collections::BTreeMap, path::PathBuf, rc::Rc};
+use std::{cell::Cell, path::PathBuf, rc::Rc};
 
 use lenso_capability_counter::{
-    CounterIncrementInvocationError, CounterReadInvocationError, CounterRuntimeEndpoint,
-    CounterRuntimeProvider, IncrementError, IncrementRequest, IncrementResponse, ReadError,
-    ReadRequest, ReadResponse,
+    CounterEndpoint, CounterIncrementInvocationError, CounterProvider, CounterReadInvocationError,
+    IncrementError, IncrementRequest, IncrementResponse, ReadError, ReadRequest, ReadResponse,
 };
-use lenso_capability_secrets::{
-    ResolveError, ResolveRequest, SecretsClient, SecretsEndpoint, SecretsProvider,
-};
+use lenso_capability_secrets::{ResolveRequest, SecretsClient};
 use lenso_kernel::{
     ActivateContext, DeactivateContext, InvocationContext, ModuleFuture, ModuleLifecycle,
     NativeRequestEndpoint, PrepareContext, RuntimeFailure,
 };
 use lenso_native_adapter::{NativeModuleFactory, NativeModuleFactoryContext, NativeModuleInstance};
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 mod storage;
 use storage::FileStateAdapter;
 
-pub use storage::{SetupOutcome, StateStorageError, UpgradeOutcome};
+pub use storage::{RecoveryOutcome, SetupOutcome, StateStorageError, UpgradeOutcome};
 
 /// Runs the owned Module setup workflow without exposing its persistence Adapter.
 pub fn setup_owned_state(path: impl Into<PathBuf>) -> Result<SetupOutcome, StateStorageError> {
@@ -33,12 +29,13 @@ pub fn upgrade_owned_state(path: impl Into<PathBuf>) -> Result<UpgradeOutcome, S
     storage::upgrade_owned_state(path)
 }
 
+/// Runs the explicit recovery workflow for an interrupted owned transaction.
+pub fn recover_owned_state(path: impl Into<PathBuf>) -> Result<RecoveryOutcome, StateStorageError> {
+    storage::recover_owned_state(path)
+}
+
 /// Package identity for the example state owner.
 pub const COUNTER_PACKAGE_ID: &str = "example.owned-counter";
-/// Package identity for the fixture Secrets provider.
-pub const SECRETS_PACKAGE_ID: &str = "example.fixture-secrets";
-/// Package identity for a test-only caller with no public endpoints.
-pub const CALLER_PACKAGE_ID: &str = "example.counter-caller";
 /// The only schema version currently accepted by the counter Module.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 /// The owned migration artifact compiled into this Module package.
@@ -55,7 +52,7 @@ struct CounterConfiguration {
 #[derive(Debug)]
 struct CounterRuntime {
     storage: FileStateAdapter,
-    secret_fingerprint: std::cell::RefCell<Option<Vec<u8>>>,
+    secret_ready: Cell<bool>,
 }
 
 #[derive(Debug)]
@@ -102,12 +99,7 @@ impl ModuleLifecycle for CounterLifecycle {
                     ),
                 });
             }
-            let secret_digest = Sha256::digest(response.value.as_bytes()).to_vec();
-            runtime
-                .storage
-                .bind_secret(&secret_digest)
-                .map_err(|error| storage_activation_failure(&error))?;
-            runtime.secret_fingerprint.replace(Some(secret_digest));
+            runtime.secret_ready.set(true);
             Ok(())
         })
     }
@@ -115,7 +107,7 @@ impl ModuleLifecycle for CounterLifecycle {
     fn deactivate(&self, _context: DeactivateContext) -> ModuleFuture {
         let runtime = Rc::clone(&self.runtime);
         Box::pin(async move {
-            runtime.secret_fingerprint.take();
+            runtime.secret_ready.set(false);
             Ok(())
         })
     }
@@ -126,7 +118,7 @@ struct CounterProviderImpl {
     runtime: Rc<CounterRuntime>,
 }
 
-impl CounterRuntimeProvider for CounterProviderImpl {
+impl CounterProvider for CounterProviderImpl {
     fn read(
         &self,
         _context: InvocationContext,
@@ -195,17 +187,8 @@ fn storage_runtime_failure(error: &StateStorageError) -> RuntimeFailure {
     }
 }
 
-fn storage_activation_failure(error: &StateStorageError) -> RuntimeFailure {
-    match error {
-        StateStorageError::SecretMismatch { .. } => RuntimeFailure::ModuleFailure {
-            detail: error.to_string(),
-        },
-        _ => storage_runtime_failure(error),
-    }
-}
-
 fn secret_is_ready(runtime: &CounterRuntime) -> bool {
-    runtime.secret_fingerprint.borrow().is_some()
+    runtime.secret_ready.get()
 }
 
 fn ensure_secret_increment(
@@ -251,10 +234,10 @@ impl NativeModuleFactory for CounterFactory {
         }
         let runtime = Rc::new(CounterRuntime {
             storage: FileStateAdapter::new(configuration.storage_path),
-            secret_fingerprint: std::cell::RefCell::new(None),
+            secret_ready: Cell::new(false),
         });
         let endpoint: Rc<dyn NativeRequestEndpoint> =
-            Rc::new(CounterRuntimeEndpoint::new(CounterProviderImpl {
+            Rc::new(CounterEndpoint::new(CounterProviderImpl {
                 runtime: Rc::clone(&runtime),
             }));
         Ok(NativeModuleInstance::with_lifecycle(
@@ -264,77 +247,6 @@ impl NativeModuleFactory for CounterFactory {
                 secret_ref: configuration.secret_ref,
             },
         ))
-    }
-}
-
-#[derive(Debug)]
-struct FixtureSecretsProvider {
-    values: BTreeMap<String, String>,
-}
-
-impl SecretsProvider for FixtureSecretsProvider {
-    fn resolve(
-        &self,
-        _context: InvocationContext,
-        request: ResolveRequest,
-    ) -> futures::future::LocalBoxFuture<
-        'static,
-        Result<lenso_capability_secrets::ResolveResponse, ResolveError>,
-    > {
-        let result = self
-            .values
-            .get(&request.reference)
-            .cloned()
-            .map(|value| lenso_capability_secrets::ResolveResponse { value })
-            .ok_or(ResolveError::UnknownReference);
-        Box::pin(async move { result })
-    }
-}
-
-/// Factory for a fixture Secrets Capability provider.
-#[derive(Clone, Debug)]
-pub struct SecretsFactory {
-    values: BTreeMap<String, String>,
-}
-
-impl SecretsFactory {
-    /// Creates a provider with values held outside App Composition.
-    pub fn new(values: BTreeMap<String, String>) -> Self {
-        Self { values }
-    }
-}
-
-impl NativeModuleFactory for SecretsFactory {
-    fn package_id(&self) -> &'static str {
-        SECRETS_PACKAGE_ID
-    }
-
-    fn instantiate(
-        &self,
-        _context: NativeModuleFactoryContext<'_>,
-    ) -> Result<NativeModuleInstance, RuntimeFailure> {
-        Ok(NativeModuleInstance::new(vec![Rc::new(
-            SecretsEndpoint::new(FixtureSecretsProvider {
-                values: self.values.clone(),
-            }),
-        )]))
-    }
-}
-
-/// Factory for a caller Module used by the black-box fixture tests.
-#[derive(Debug)]
-pub struct CallerFactory;
-
-impl NativeModuleFactory for CallerFactory {
-    fn package_id(&self) -> &'static str {
-        CALLER_PACKAGE_ID
-    }
-
-    fn instantiate(
-        &self,
-        _context: NativeModuleFactoryContext<'_>,
-    ) -> Result<NativeModuleInstance, RuntimeFailure> {
-        Ok(NativeModuleInstance::default())
     }
 }
 

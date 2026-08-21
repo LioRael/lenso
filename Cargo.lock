@@ -899,7 +899,6 @@ dependencies = [
  "lenso-native-adapter",
  "serde",
  "serde_json",
- "sha2",
 ]
 
 [[package]]

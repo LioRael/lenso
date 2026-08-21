@@ -84,7 +84,7 @@ export interface SecretsClient {
 }
 
 export interface SecretsProvider {
-  resolve(context: InvocationContext, request: ResolveRequest): Promise<{ readonly ok: true; readonly value: ResolveResponse } | { readonly ok: false; readonly error: ResolveError }>;
+  resolve(context: InvocationContext, request: ResolveRequest): Promise<ResolveResult>;
 }
 
 export const portableValueProfile = {

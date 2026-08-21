@@ -116,8 +116,8 @@ export interface CounterClient {
 }
 
 export interface CounterProvider {
-  increment(context: InvocationContext, request: IncrementRequest): Promise<{ readonly ok: true; readonly value: IncrementResponse } | { readonly ok: false; readonly error: IncrementError }>;
-  read(context: InvocationContext, request: ReadRequest): Promise<{ readonly ok: true; readonly value: ReadResponse } | { readonly ok: false; readonly error: ReadError }>;
+  increment(context: InvocationContext, request: IncrementRequest): Promise<IncrementResult>;
+  read(context: InvocationContext, request: ReadRequest): Promise<ReadResult>;
 }
 
 export const portableValueProfile = {
