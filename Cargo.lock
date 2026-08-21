@@ -771,6 +771,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-capability-agent"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-capability-agent-memory"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-capability-agent-model"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-capability-agent-progress"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-capability-agent-tool"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lenso-capability-auth"
 version = "0.1.0"
 dependencies = [
@@ -936,6 +991,23 @@ dependencies = [
  "lenso-app-plan",
  "lenso-kernel",
  "tokio",
+]
+
+[[package]]
+name = "lenso-vnext-agent-harness"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-app-plan",
+ "lenso-capability-agent",
+ "lenso-capability-agent-memory",
+ "lenso-capability-agent-model",
+ "lenso-capability-agent-progress",
+ "lenso-capability-agent-tool",
+ "lenso-kernel",
+ "lenso-native-adapter",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -66,8 +66,20 @@ fn event_descriptors_generate_ephemeral_fan_out_bindings() {
     assert!(artifacts.rust.contains("NativeEventHandle"));
     assert!(artifacts.rust.contains("EventPublishResult"));
     assert!(artifacts.rust.contains("notify: NativeEventHandle<"));
+    assert!(
+        artifacts
+            .rust
+            .contains("pub fn new(handle: NativeEventHandle<")
+    );
+    assert!(
+        !artifacts
+            .rust
+            .contains("pub fn new(handles: Vec<NativeEventHandle<")
+    );
     assert!(!artifacts.rust.contains("futures::future::join_all"));
     assert!(artifacts.rust.contains("encode_notify_event"));
+    assert!(artifacts.rust.ends_with('\n'));
+    assert!(!artifacts.rust.ends_with("\n\n"));
     assert!(artifacts.typescript.contains("EventPublishResult"));
     assert!(artifacts.typescript.contains("encodeNotifyEvent"));
     assert!(
