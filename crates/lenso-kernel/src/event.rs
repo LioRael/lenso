@@ -1,7 +1,7 @@
 use std::{
     any::Any,
     cell::{Cell, RefCell},
-    collections::{BTreeMap, VecDeque},
+    collections::VecDeque,
     fmt,
     marker::PhantomData,
     panic::AssertUnwindSafe,
@@ -11,7 +11,7 @@ use std::{
 use futures::{FutureExt, future::LocalBoxFuture};
 
 use super::{
-    CancellationToken, InvocationContext, NativeAppRuntime, RequestAdmissionPlan, RuntimeFailure,
+    CancellationToken, EventAdmissionPlan, InvocationContext, NativeAppRuntime, RuntimeFailure,
     await_with_generation_context, ensure_context_active,
     schedule_module_supervision_after_failure,
 };
@@ -138,29 +138,26 @@ pub(crate) struct NativeEventQueue {
 }
 
 impl NativeEventQueue {
-    pub(crate) fn new(limits: RequestAdmissionPlan) -> Rc<Self> {
+    pub(crate) fn new(admission: EventAdmissionPlan) -> Rc<Self> {
         Self {
-            // Event handlers are drained serially so accepted values retain
-            // FIFO order. Keep the mailbox bounded even when a Descriptor
-            // uses a zero request queue capacity.
-            capacity: limits.queue_capacity().max(1),
+            capacity: admission.capacity(),
             state: RefCell::new(NativeEventQueueState::default()),
         }
         .into()
     }
 
-    fn try_enqueue(&self, event: QueuedEvent) -> Result<bool, QueuedEvent> {
+    fn try_enqueue(&self, event: QueuedEvent) -> Option<bool> {
         let mut state = self.state.borrow_mut();
         if state.admitted >= self.capacity {
-            return Err(event);
+            return None;
         }
         state.admitted += 1;
         state.pending.push_back(event);
         if state.draining {
-            Ok(false)
+            Some(false)
         } else {
             state.draining = true;
-            Ok(true)
+            Some(true)
         }
     }
 
@@ -261,13 +258,7 @@ impl NativeEventEndpointState {
 pub(crate) struct NativeEventEndpointBinding {
     pub(crate) module_instance: String,
     pub(crate) state: Rc<NativeEventEndpointState>,
-    pub(crate) queues: BTreeMap<String, Rc<NativeEventQueue>>,
-}
-
-impl NativeEventEndpointBinding {
-    pub(crate) fn queue(&self, operation: &str) -> Option<&Rc<NativeEventQueue>> {
-        self.queues.get(operation)
-    }
+    pub(crate) queue: Rc<NativeEventQueue>,
 }
 
 /// An opaque Event endpoint passed to Module lifecycle code.
@@ -396,28 +387,27 @@ impl<C: EventCapability> NativeEventHandle<C> {
         let Some(snapshot) = endpoint.state.snapshot() else {
             return unavailable();
         };
-        let Some(queue) = endpoint.queue(operation) else {
+        if !endpoint.state.operations.contains(&operation) {
             return unavailable();
-        };
+        }
+        let queue = &endpoint.queue;
         if !endpoint.state.is_current(snapshot.generation)
             || ensure_context_active(&self.runtime.driver, &context).is_err()
         {
             return unavailable();
         }
         if snapshot.endpoint.owns_event_admission() {
-            let result = await_with_generation_context(
-                &self.runtime.driver,
-                &context,
-                snapshot.cancellation,
-                C::ID,
-                snapshot
-                    .endpoint
-                    .publish(operation, Box::new(event), context.clone()),
-            )
-            .await;
+            // Once an out-of-process Adapter starts admission, wait for its
+            // commit acknowledgement. Racing that acknowledgement against the
+            // caller deadline can report unavailable after the subscriber has
+            // already accepted the Event.
+            let result = snapshot
+                .endpoint
+                .publish(operation, Box::new(event), context.clone())
+                .await;
             return match result {
-                Ok(Ok(())) => EventPublishResult::new(subscriber, EventAdmission::Accepted),
-                Ok(Err(error)) | Err(error) => {
+                Ok(()) => EventPublishResult::new(subscriber, EventAdmission::Accepted),
+                Err(error) => {
                     let error = schedule_module_supervision_after_failure(
                         &self.runtime,
                         &endpoint.module_instance,
@@ -438,11 +428,8 @@ impl<C: EventCapability> NativeEventHandle<C> {
             context,
             snapshot,
         };
-        let should_start = match queue.try_enqueue(queued) {
-            Ok(should_start) => should_start,
-            Err(_) => {
-                return EventPublishResult::new(subscriber, EventAdmission::Exhausted);
-            }
+        let Some(should_start) = queue.try_enqueue(queued) else {
+            return EventPublishResult::new(subscriber, EventAdmission::Exhausted);
         };
         if should_start {
             let Some(tasks) = self
@@ -502,7 +489,7 @@ async fn drain_event_queue(
         .await;
         match result {
             Ok(Ok(Ok(()))) => {}
-            Ok(Ok(Err(error))) | Ok(Err(error)) => {
+            Ok(Ok(Err(error)) | Err(error)) => {
                 let _ =
                     schedule_module_supervision_after_failure(&runtime, &module_instance, error);
             }

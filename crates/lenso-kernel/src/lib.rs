@@ -20,8 +20,8 @@ use futures::{
     task::{LocalSpawnExt, SpawnError},
 };
 use lenso_app_plan::{
-    ExecutionClassId, ModuleCriticality, PlanResolutionError, RequestAdmissionPlan,
-    ResolvedAppPlan, RestartMode, RestartPolicy,
+    EventAdmissionPlan, ExecutionClassId, ModuleCriticality, PlanResolutionError,
+    RequestAdmissionPlan, ResolvedAppPlan, RestartMode, RestartPolicy,
 };
 
 mod event;
@@ -276,9 +276,22 @@ impl ModuleDependencyHandle {
 #[derive(Clone, Debug, Default)]
 pub struct ModuleDependencies {
     bindings: Vec<ModuleDependency>,
+    caller_instance: String,
+    runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
 }
 
 impl ModuleDependencies {
+    fn new(
+        caller_instance: impl Into<String>,
+        runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
+    ) -> Self {
+        Self {
+            bindings: Vec::new(),
+            caller_instance: caller_instance.into(),
+            runtime,
+        }
+    }
+
     /// Returns dependencies in the order materialized by the Resolved App Plan.
     pub fn bindings(&self) -> &[ModuleDependency] {
         &self.bindings
@@ -396,16 +409,34 @@ impl ModuleDependencies {
             .collect()
     }
 
-    /// Returns all explicitly bound typed Event dependencies in Plan order.
-    pub fn many_event<C: EventCapability>(
-        &self,
-    ) -> Result<Vec<NativeEventHandle<C>>, RuntimeFailure> {
-        self.bindings
+    /// Returns one typed Event handle over every explicit binding in Plan order.
+    pub fn many_event<C: EventCapability>(&self) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        let handles: Vec<_> = self
+            .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
             .filter_map(ModuleDependency::event_handle)
-            .map(|handle| handle.typed::<C>())
-            .collect()
+            .collect();
+        if handles.iter().any(|handle| {
+            handle.capability_id() != C::ID || handle.descriptor_version() != C::DESCRIPTOR_VERSION
+        }) {
+            return Err(RuntimeFailure::ProtocolViolation { capability: C::ID });
+        }
+        let runtime = self
+            .runtime
+            .borrow()
+            .upgrade()
+            .ok_or(RuntimeFailure::AdmissionClosed)?;
+        let endpoints = handles
+            .iter()
+            .map(|handle| handle.binding.clone())
+            .collect::<Vec<_>>();
+        Ok(NativeEventHandle::from_endpoints(
+            &endpoints,
+            runtime,
+            &self.caller_instance,
+            true,
+        ))
     }
 
     /// Returns the one explicitly bound typed Event dependency.
@@ -4001,19 +4032,8 @@ fn native_event_bindings(
             ))
             .or_insert_with(|| Rc::new(event::NativeEventEndpointState::new(endpoint.clone(), 1)))
             .clone();
-        let queues: BTreeMap<String, Rc<event::NativeEventQueue>> = endpoint
-            .operations()
-            .iter()
-            .map(|operation| {
-                (
-                    (*operation).to_owned(),
-                    event::NativeEventQueue::new(plan.request_admission_for(binding, operation)),
-                )
-            })
-            .collect();
-        for queue in queues.values() {
-            state.register_queue(queue);
-        }
+        let queue = event::NativeEventQueue::new(plan.event_admission_for(binding));
+        state.register_queue(&queue);
         bindings
             .entry((
                 binding.consumer_instance().to_owned(),
@@ -4023,7 +4043,7 @@ fn native_event_bindings(
             .push(event::NativeEventEndpointBinding {
                 module_instance: binding.provider_instance().to_owned(),
                 state,
-                queues,
+                queue,
             });
     }
     (bindings, endpoint_states)
@@ -4042,14 +4062,14 @@ fn module_dependencies(
         .map(|instance| {
             (
                 instance.instance_key().to_owned(),
-                ModuleDependencies::default(),
+                ModuleDependencies::new(instance.instance_key(), runtime.clone()),
             )
         })
         .collect();
     for binding in plan.capability_bindings() {
         dependencies
-            .entry(binding.consumer_instance().to_owned())
-            .or_default()
+            .get_mut(binding.consumer_instance())
+            .expect("every resolved binding consumer has Module dependencies")
             .bindings
             .push(ModuleDependency::new(
                 binding.capability_id(),

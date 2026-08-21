@@ -9,7 +9,7 @@ use std::{
 };
 
 use futures::{FutureExt, channel::oneshot, future::LocalBoxFuture};
-use lenso_app_plan::{ExecutionClassId, ModuleInstancePlan, RequestAdmissionPlan, ResolvedAppPlan};
+use lenso_app_plan::{EventAdmissionPlan, ExecutionClassId, ModuleInstancePlan, ResolvedAppPlan};
 use lenso_kernel::{
     ActivateContext, DeactivateContext, ManagedResource, ModuleFuture, ModuleLifecycle,
     NativeEventEndpoint, NativeRequestEndpoint, NativeStreamEndpoint, NativeStreamItem,
@@ -20,8 +20,9 @@ use serde_json::Value;
 
 use crate::{
     protocol::{
-        DEFAULT_STREAM_CREDIT, EndpointDescriptor, WireEventPublish, WireOutcome, WireRequest,
-        WireStreamOpen, WireStreamOutcome, from_wire_failure, handshake_for,
+        DEFAULT_STREAM_CREDIT, EndpointDescriptor, EventBindingDescriptor, WireEventPublish,
+        WireOutcome, WireRequest, WireStreamOpen, WireStreamOutcome, from_wire_failure,
+        handshake_for,
     },
     transport::{
         ProcessState, TransportClient, TransportStreamSession, open_transport, spawn_process,
@@ -259,10 +260,9 @@ impl BunAdapter {
         let process_capability = codecs
             .first()
             .map_or("lenso.bun-process@1", |codec| codec.capability_id());
-        let mut event_queues_by_capability: BTreeMap<
-            String,
-            BTreeMap<(String, String), Rc<BunEventQueue>>,
-        > = BTreeMap::new();
+        let mut event_queues_by_capability: BTreeMap<String, BTreeMap<String, Rc<BunEventQueue>>> =
+            BTreeMap::new();
+        let mut event_bindings = Vec::new();
         for binding in plan
             .capability_bindings()
             .iter()
@@ -275,14 +275,20 @@ impl BunAdapter {
             else {
                 continue;
             };
-            for operation in endpoint.event_operations() {
+            if !endpoint.event_operations().is_empty() {
+                let admission = plan.event_admission_for(binding);
                 event_queues_by_capability
                     .entry(endpoint.capability_id().to_owned())
                     .or_default()
                     .insert(
-                        (binding.consumer_instance().to_owned(), operation.to_owned()),
-                        BunEventQueue::new(plan.request_admission_for(binding, operation)),
+                        binding.consumer_instance().to_owned(),
+                        BunEventQueue::new(admission),
                     );
+                event_bindings.push(EventBindingDescriptor {
+                    capability_id: endpoint.capability_id().to_owned(),
+                    caller_instance: binding.consumer_instance().to_owned(),
+                    capacity: admission.capacity(),
+                });
             }
         }
         let event_queue_capacity = event_queues_by_capability
@@ -290,7 +296,8 @@ impl BunAdapter {
             .map(BTreeMap::len)
             .sum::<usize>()
             .max(1);
-        let process = self.spawn_process(instance, &descriptors, process_capability)?;
+        let process =
+            self.spawn_process(instance, &descriptors, &event_bindings, process_capability)?;
         let handshake = handshake_for(descriptors, self.config.max_frame_bytes);
         let transport = match open_transport(
             &process,
@@ -361,6 +368,7 @@ impl BunAdapter {
         &self,
         instance: &ModuleInstancePlan,
         endpoints: &[EndpointDescriptor],
+        event_bindings: &[EventBindingDescriptor],
         capability: &'static str,
     ) -> Result<Arc<ProcessState>, RuntimeFailure> {
         let entrypoint = Path::new(instance.entrypoint());
@@ -393,6 +401,12 @@ impl BunAdapter {
                     detail: format!("failed to encode Bun endpoint descriptors: {error}"),
                 })?,
             )
+            .arg("--lenso-event-bindings-json")
+            .arg(serde_json::to_string(event_bindings).map_err(|error| {
+                RuntimeFailure::Internal {
+                    detail: format!("failed to encode Bun Event bindings: {error}"),
+                }
+            })?)
             .arg("--lenso-port")
             .arg("0")
             .current_dir(&self.config.working_directory)
@@ -544,9 +558,9 @@ struct BunEventQueueState {
 }
 
 impl BunEventQueue {
-    fn new(limits: RequestAdmissionPlan) -> Rc<Self> {
+    fn new(admission: EventAdmissionPlan) -> Rc<Self> {
         Rc::new(Self {
-            capacity: limits.queue_capacity().max(1),
+            capacity: admission.capacity(),
             state: RefCell::new(BunEventQueueState::default()),
         })
     }
@@ -693,7 +707,7 @@ struct BunEventEndpoint {
     capability: String,
     codec: Rc<dyn BunCapabilityCodec>,
     transport: TransportClient,
-    event_queues: BTreeMap<(String, String), Rc<BunEventQueue>>,
+    event_queues: BTreeMap<String, Rc<BunEventQueue>>,
 }
 
 impl NativeEventEndpoint for BunEventEndpoint {
@@ -732,10 +746,7 @@ impl NativeEventEndpoint for BunEventEndpoint {
             Err(error) => return Box::pin(futures::future::ready(Err(error))),
         };
         let caller_instance = context.caller_instance().unwrap_or_default().to_owned();
-        let Some(queue) = self
-            .event_queues
-            .get(&(caller_instance, operation.to_owned()))
-        else {
+        let Some(queue) = self.event_queues.get(&caller_instance) else {
             return Box::pin(futures::future::ready(Err(RuntimeFailure::Unavailable {
                 capability: self.codec.capability_id(),
             })));

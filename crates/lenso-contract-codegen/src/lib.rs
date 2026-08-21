@@ -2784,14 +2784,12 @@ fn generate_rust(contract: &ContractIr) -> String {
                 rust_field_name(&operation.name),
             ));
             let field = rust_field_name(&operation.name);
-            client_fields.push(format!(
-                "    {field}: Vec<NativeEventHandle<{marker_name}>>,"
-            ));
+            client_fields.push(format!("    {field}: NativeEventHandle<{marker_name}>,"));
             client_initializers.push(format!(
                 "            {field}: dependencies.many_event::<{marker_name}>()?,"
             ));
             client_methods.push(format!(
-                "    pub async fn {field}(&self, event: {request_type}) -> Vec<EventPublishResult> {{\n        futures::future::join_all(self.{field}.iter().map(|handle| handle.publish({operation_const}_OPERATION, event.clone())))\n            .await\n            .into_iter()\n            .flatten()\n            .collect()\n    }}\n\n    pub async fn {field}_with_context(&self, context: InvocationContext, event: {request_type}) -> Vec<EventPublishResult> {{\n        futures::future::join_all(self.{field}.iter().map(|handle| handle.publish_with_context({operation_const}_OPERATION, context.clone(), event.clone())))\n            .await\n            .into_iter()\n            .flatten()\n            .collect()\n    }}"
+                "    pub async fn {field}(&self, event: {request_type}) -> Vec<EventPublishResult> {{\n        self.{field}.publish({operation_const}_OPERATION, event).await\n    }}\n\n    pub async fn {field}_with_context(&self, context: InvocationContext, event: {request_type}) -> Vec<EventPublishResult> {{\n        self.{field}.publish_with_context({operation_const}_OPERATION, context, event).await\n    }}"
             ));
         }
     }

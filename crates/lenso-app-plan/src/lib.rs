@@ -15,6 +15,9 @@ pub const DEFAULT_REQUEST_QUEUE_CAPACITY: usize = 16;
 /// Default maximum concurrent executions for one Operation.
 pub const DEFAULT_REQUEST_MAX_CONCURRENCY: usize = 1;
 
+/// Default maximum number of accepted Events retained by one explicit binding.
+pub const DEFAULT_EVENT_QUEUE_CAPACITY: usize = 16;
+
 /// The cardinality of one Module's Capability requirement.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CapabilityCardinality {
@@ -86,6 +89,33 @@ impl Default for RequestAdmissionPlan {
             DEFAULT_REQUEST_QUEUE_CAPACITY,
             DEFAULT_REQUEST_MAX_CONCURRENCY,
         )
+    }
+}
+
+/// The bounded volatile mailbox policy materialized for one Event binding.
+///
+/// Capacity counts all accepted Events that have not completed handling. Zero
+/// is valid and makes every publication to the binding report exhausted.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EventAdmissionPlan {
+    capacity: usize,
+}
+
+impl EventAdmissionPlan {
+    /// Creates one Event mailbox policy.
+    pub const fn new(capacity: usize) -> Self {
+        Self { capacity }
+    }
+
+    /// Returns the maximum number of accepted Events retained by the binding.
+    pub const fn capacity(self) -> usize {
+        self.capacity
+    }
+}
+
+impl Default for EventAdmissionPlan {
+    fn default() -> Self {
+        Self::new(DEFAULT_EVENT_QUEUE_CAPACITY)
     }
 }
 
@@ -318,6 +348,7 @@ pub struct CapabilityEndpointPlan {
     operation_kinds: BTreeMap<String, CapabilityOperationKind>,
     default_admission: Option<RequestAdmissionPlan>,
     operation_admissions: BTreeMap<String, RequestAdmissionPlan>,
+    event_admission: Option<EventAdmissionPlan>,
 }
 
 impl CapabilityEndpointPlan {
@@ -334,6 +365,7 @@ impl CapabilityEndpointPlan {
             operation_kinds: BTreeMap::new(),
             default_admission: None,
             operation_admissions: BTreeMap::new(),
+            event_admission: None,
         }
     }
 
@@ -371,6 +403,19 @@ impl CapabilityEndpointPlan {
     #[must_use]
     pub fn with_event_operation(self, operation: impl Into<String>) -> Self {
         self.with_operation_kind(operation, CapabilityOperationKind::Event)
+    }
+
+    /// Applies one volatile mailbox policy to every Event Operation on this endpoint.
+    #[must_use]
+    pub fn with_event_admission(mut self, admission: EventAdmissionPlan) -> Self {
+        self.event_admission = Some(admission);
+        self
+    }
+
+    /// Applies one volatile mailbox capacity to every Event Operation on this endpoint.
+    #[must_use]
+    pub fn with_event_capacity(self, capacity: usize) -> Self {
+        self.with_event_admission(EventAdmissionPlan::new(capacity))
     }
 
     /// Applies one bounded admission policy to a named Operation.
@@ -458,6 +503,11 @@ impl CapabilityEndpointPlan {
             })
             .map(String::as_str)
             .collect()
+    }
+
+    /// Returns the endpoint-wide Event mailbox policy, when one was authored.
+    pub const fn event_admission(&self) -> Option<EventAdmissionPlan> {
+        self.event_admission
     }
 
     /// Returns the endpoint-wide admission policy, when one was authored.
@@ -620,6 +670,8 @@ pub struct CapabilityBinding {
     provider_order: usize,
     admission: RequestAdmissionPlan,
     admission_explicit: bool,
+    event_admission: EventAdmissionPlan,
+    event_admission_explicit: bool,
 }
 
 impl CapabilityBinding {
@@ -638,6 +690,8 @@ impl CapabilityBinding {
             provider_order: 0,
             admission: RequestAdmissionPlan::default(),
             admission_explicit: false,
+            event_admission: EventAdmissionPlan::default(),
+            event_admission_explicit: false,
         }
     }
 
@@ -653,6 +707,20 @@ impl CapabilityBinding {
     #[must_use]
     pub fn with_limits(self, queue_capacity: usize, max_concurrency: usize) -> Self {
         self.with_admission(RequestAdmissionPlan::new(queue_capacity, max_concurrency))
+    }
+
+    /// Overrides the Event mailbox policy for this binding.
+    #[must_use]
+    pub fn with_event_admission(mut self, admission: EventAdmissionPlan) -> Self {
+        self.event_admission = admission;
+        self.event_admission_explicit = true;
+        self
+    }
+
+    /// Overrides the Event mailbox capacity for this binding.
+    #[must_use]
+    pub fn with_event_capacity(self, capacity: usize) -> Self {
+        self.with_event_admission(EventAdmissionPlan::new(capacity))
     }
 
     fn with_provider_order(mut self, provider_order: usize) -> Self {
@@ -693,6 +761,16 @@ impl CapabilityBinding {
     /// Returns whether this binding explicitly overrides the provider policy.
     pub const fn has_explicit_admission(&self) -> bool {
         self.admission_explicit
+    }
+
+    /// Returns the binding's effective fallback Event mailbox policy.
+    pub const fn event_admission(&self) -> EventAdmissionPlan {
+        self.event_admission
+    }
+
+    /// Returns whether this binding explicitly overrides the provider Event policy.
+    pub const fn has_explicit_event_admission(&self) -> bool {
+        self.event_admission_explicit
     }
 }
 
@@ -1085,6 +1163,25 @@ impl ResolvedAppPlan {
             })
             .and_then(|endpoint| endpoint.operation_admission(operation))
             .unwrap_or_else(|| binding.admission())
+    }
+
+    /// Returns the bounded volatile mailbox policy for one Event binding.
+    pub fn event_admission_for(&self, binding: &CapabilityBinding) -> EventAdmissionPlan {
+        if binding.has_explicit_event_admission() {
+            return binding.event_admission();
+        }
+
+        self.module_instances
+            .iter()
+            .find(|instance| instance.instance_key() == binding.provider_instance())
+            .and_then(|provider| {
+                provider
+                    .provided_capabilities()
+                    .iter()
+                    .find(|endpoint| endpoint.capability_id() == binding.capability_id())
+            })
+            .and_then(CapabilityEndpointPlan::event_admission)
+            .unwrap_or_else(|| binding.event_admission())
     }
 
     /// Returns the exact Module Instance selected by its App-local key.

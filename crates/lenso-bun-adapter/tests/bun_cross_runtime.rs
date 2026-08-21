@@ -22,9 +22,9 @@ use lenso_kernel::{
 };
 
 use lenso_bun_adapter::{
-    BunAdapter, BunAdapterConfig, BunCapabilityCodec, BunEventAction, BunProviderDescriptor,
-    BunProviderHandler, BunProviderServer, BunProviderStream, BunRequest, BunResponse,
-    BunStreamAction, BunStreamEvent, BunStreamOpenResponse, BunStreamReceive, BunWire,
+    BunAdapter, BunAdapterConfig, BunCapabilityCodec, BunEventAction, BunEventBinding,
+    BunProviderDescriptor, BunProviderHandler, BunProviderServer, BunProviderStream, BunRequest,
+    BunResponse, BunStreamAction, BunStreamEvent, BunStreamOpenResponse, BunStreamReceive, BunWire,
 };
 
 #[derive(Debug)]
@@ -677,7 +677,7 @@ fn event_plan(accepting_script: &Path, rejecting_script: &Path) -> lenso_app_pla
         [EVENT_OPERATION],
     )
     .with_event_operation(EVENT_OPERATION)
-    .with_limits(8, 8);
+    .with_event_capacity(2);
     let provider_a = ModuleInstancePlan::new("bun-provider-a", "fixture.bun.events")
         .with_entrypoint(accepting_script.to_string_lossy())
         .with_execution_class(ExecutionClassId::bun_child_process())
@@ -1021,6 +1021,21 @@ fn accepted_event_is_not_replayed_when_a_bun_subscriber_exits_and_recovers() {
             app.module_generation("bun-provider-a"),
             app.terminal_failure()
         );
+        assert_eq!(
+            app.module_generation("bun-provider-a"),
+            Some(2),
+            "{wire:?} should recreate exactly one generation after the crashing Event"
+        );
+        for _ in 0..25 {
+            driver.run(driver.yield_now());
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            app.module_generation("bun-provider-a"),
+            Some(2),
+            "{wire:?} must not replay the accepted crashing Event into the recovered generation"
+        );
+        assert!(app.terminal_failure().is_none());
 
         let after_restart = driver.run(handle.publish(
             EVENT_OPERATION,
@@ -1538,6 +1553,7 @@ fn bun_consumer_can_call_a_rust_provider_bridge() {
             operations: vec!["greet".to_owned()],
             stream_operations: Vec::new(),
             event_operations: Vec::new(),
+            event_bindings: Vec::new(),
         },
         64 * 1024,
         8,
@@ -1567,6 +1583,7 @@ fn bun_consumer_can_publish_events_to_a_rust_provider_bridge() {
             operations: vec![EVENT_OPERATION.to_owned()],
             stream_operations: Vec::new(),
             event_operations: vec![EVENT_OPERATION.to_owned()],
+            event_bindings: vec![BunEventBinding::new("bun-consumer", 8)],
         },
         64 * 1024,
         8,
@@ -1605,6 +1622,7 @@ fn bun_consumer_can_open_full_duplex_streams_from_a_rust_provider_bridge() {
             operations: vec![CHAT_OPERATION.to_owned()],
             stream_operations: vec![CHAT_OPERATION.to_owned()],
             event_operations: Vec::new(),
+            event_bindings: Vec::new(),
         },
         64 * 1024,
         8,
@@ -1647,6 +1665,7 @@ fn shared_request_corpus_has_the_same_outcomes_for_a_bun_consumer() {
             operations: vec!["greet".to_owned()],
             stream_operations: Vec::new(),
             event_operations: Vec::new(),
+            event_bindings: Vec::new(),
         },
         64 * 1024,
         8,
@@ -1699,6 +1718,7 @@ fn shared_request_corpus_has_the_same_outcomes_for_a_bun_consumer() {
             operations: vec!["greet".to_owned()],
             stream_operations: Vec::new(),
             event_operations: Vec::new(),
+            event_bindings: Vec::new(),
         },
         64 * 1024,
         8,
@@ -1720,6 +1740,7 @@ fn shared_request_corpus_has_the_same_outcomes_for_a_bun_consumer() {
             operations: vec!["greet".to_owned()],
             stream_operations: Vec::new(),
             event_operations: Vec::new(),
+            event_bindings: Vec::new(),
         },
         64 * 1024,
         1,
@@ -1753,6 +1774,7 @@ fn bun_consumer_can_cancel_a_rust_provider_bridge() {
             operations: vec!["greet".to_owned()],
             stream_operations: Vec::new(),
             event_operations: Vec::new(),
+            event_bindings: Vec::new(),
         },
         64 * 1024,
         8,

@@ -44,6 +44,25 @@ pub struct BunProviderDescriptor {
     pub stream_operations: Vec<String>,
     /// Exact ephemeral Event Operation subset of the Capability.
     pub event_operations: Vec<String>,
+    /// Explicit Bun consumer bindings allowed to publish Events to this endpoint.
+    pub event_bindings: Vec<BunEventBinding>,
+}
+
+/// One explicit Bun consumer-to-Rust Event binding and its volatile capacity.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BunEventBinding {
+    caller_instance: String,
+    capacity: usize,
+}
+
+impl BunEventBinding {
+    /// Creates one explicit Event binding.
+    pub fn new(caller_instance: impl Into<String>, capacity: usize) -> Self {
+        Self {
+            caller_instance: caller_instance.into(),
+            capacity,
+        }
+    }
 }
 
 /// One request received from a Bun consumer after the exact handshake.
@@ -204,8 +223,7 @@ struct ProviderState {
     cancellations: CancellationRegistry,
     retired: RetiredRequestRegistry,
     admission: Admission,
-    event_admissions: Mutex<BTreeMap<(String, String), Arc<ProviderEventQueue>>>,
-    event_queue_capacity: usize,
+    event_admissions: BTreeMap<String, Arc<ProviderEventQueue>>,
     handler: Arc<dyn BunProviderHandler>,
     streams: Mutex<BTreeMap<u64, Arc<ProviderStreamEntry>>>,
     retired_streams: Mutex<BTreeSet<u64>>,
@@ -409,6 +427,7 @@ impl BunProviderServer {
             operations,
             stream_operations,
             event_operations,
+            event_bindings,
         } = descriptor;
         let max_frame_bytes = max_frame_bytes.max(1);
         let expected = handshake_for(
@@ -421,6 +440,15 @@ impl BunProviderServer {
             }],
             max_frame_bytes,
         );
+        let event_admissions = event_bindings
+            .into_iter()
+            .map(|binding| {
+                (
+                    binding.caller_instance,
+                    Arc::new(ProviderEventQueue::new(binding.capacity)),
+                )
+            })
+            .collect();
         let state = Arc::new(ProviderState {
             capability: capability_id,
             expected,
@@ -428,8 +456,7 @@ impl BunProviderServer {
             cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             retired: Arc::new(Mutex::new(BTreeSet::new())),
             admission: Admission::new(queue_capacity),
-            event_admissions: Mutex::new(BTreeMap::new()),
-            event_queue_capacity: queue_capacity.max(1),
+            event_admissions,
             handler: Arc::new(handler),
             streams: Mutex::new(BTreeMap::new()),
             retired_streams: Mutex::new(BTreeSet::new()),
@@ -798,17 +825,13 @@ fn event_queue_for(
         .ok_or_else(|| RuntimeFailure::ProtocolViolation {
             capability: state.capability,
         })?;
-    let key = (caller_instance.to_owned(), event.operation.clone());
-    let mut admissions = state
+    state
         .event_admissions
-        .lock()
-        .map_err(|_| RuntimeFailure::Internal {
-            detail: "Bun provider Event admission lock poisoned".to_owned(),
-        })?;
-    Ok(admissions
-        .entry(key)
-        .or_insert_with(|| Arc::new(ProviderEventQueue::new(state.event_queue_capacity)))
-        .clone())
+        .get(caller_instance)
+        .cloned()
+        .ok_or(RuntimeFailure::ProtocolViolation {
+            capability: state.capability,
+        })
 }
 
 #[derive(Deserialize)]
@@ -1329,6 +1352,22 @@ mod tests {
     struct TestHandler;
 
     #[derive(Debug)]
+    struct EventTestHandler;
+
+    impl BunProviderHandler for EventTestHandler {
+        fn invoke(&self, request: BunRequest) -> BunResponse {
+            BunResponse::Runtime(RuntimeFailure::UnknownOperation {
+                capability: "example.notifications@1",
+                operation: request.operation,
+            })
+        }
+
+        fn publish_event(&self, _request: BunRequest) -> BunEventAction {
+            BunEventAction::Accepted
+        }
+    }
+
+    #[derive(Debug)]
     struct StreamTestHandler {
         stream: Arc<dyn BunProviderStream>,
     }
@@ -1423,6 +1462,7 @@ mod tests {
                 operations: vec!["greet".to_owned()],
                 stream_operations: Vec::new(),
                 event_operations: Vec::new(),
+                event_bindings: Vec::new(),
             },
             4096,
             queue_capacity,
@@ -1439,6 +1479,7 @@ mod tests {
                 operations: vec!["chat".to_owned()],
                 stream_operations: vec!["chat".to_owned()],
                 event_operations: Vec::new(),
+                event_bindings: Vec::new(),
             },
             4096,
             queue_capacity,
@@ -1447,6 +1488,62 @@ mod tests {
             },
         )
         .expect("stream server should start")
+    }
+
+    #[test]
+    fn event_publication_rejects_a_caller_absent_from_the_explicit_binding_set() {
+        let descriptor = BunProviderDescriptor {
+            capability_id: "example.notifications@1",
+            descriptor_version: "1.0.0".to_owned(),
+            operations: vec!["notify".to_owned()],
+            stream_operations: Vec::new(),
+            event_operations: vec!["notify".to_owned()],
+            event_bindings: vec![BunEventBinding::new("bound-consumer", 1)],
+        };
+        let expected = handshake_for(
+            [EndpointDescriptor {
+                capability_id: descriptor.capability_id.to_owned(),
+                descriptor_version: descriptor.descriptor_version.clone(),
+                operations: descriptor.operations.clone(),
+                stream_operations: descriptor.stream_operations.clone(),
+                event_operations: descriptor.event_operations.clone(),
+            }],
+            4096,
+        );
+        let server = BunProviderServer::json_rpc(descriptor, 4096, 1, EventTestHandler)
+            .expect("Event server should start");
+        let client = HttpClientBuilder::default()
+            .build(format!("http://{}", server.address()))
+            .expect("client should build");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should build");
+        let accepted: HandshakeAck = runtime
+            .block_on(client.request("lenso.handshake", rpc_params![expected]))
+            .expect("exact Event handshake should pass");
+        let outcome: WireOutcome = runtime
+            .block_on(client.request(
+                "lenso.event.publish",
+                rpc_params![WireEventPublish {
+                    request_id: 1,
+                    capability_id: "example.notifications@1".to_owned(),
+                    operation: "notify".to_owned(),
+                    deadline_nanos: None,
+                    caller_instance: Some("unbound-consumer".to_owned()),
+                    session: accepted.session,
+                    payload: serde_json::json!({ "message": "not bound" }),
+                }],
+            ))
+            .expect("Event publication should return a wire outcome");
+        server.shutdown();
+
+        assert!(matches!(
+            outcome,
+            WireOutcome::Runtime {
+                failure: WireFailure::ProtocolViolation { .. }
+            }
+        ));
     }
 
     fn open_stream(
@@ -1513,8 +1610,7 @@ mod tests {
             cancellations: Arc::new(Mutex::new(BTreeMap::new())),
             retired: Arc::new(Mutex::new(BTreeSet::new())),
             admission: Admission::new(1),
-            event_admissions: Mutex::new(BTreeMap::new()),
-            event_queue_capacity: 1,
+            event_admissions: BTreeMap::new(),
             handler: Arc::new(TestHandler),
             streams: Mutex::new(BTreeMap::new()),
             retired_streams: Mutex::new(BTreeSet::new()),

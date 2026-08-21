@@ -3,7 +3,7 @@ use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
 use futures::future::{LocalBoxFuture, ready};
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    ModuleInstancePlan, ResolvedAppPlan,
+    EventAdmissionPlan, ModuleInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
     DeterministicDriver, EventAdmission, EventCapability, InvocationContext, NativeEventEndpoint,
@@ -14,6 +14,7 @@ use lenso_kernel::{
 const CAPABILITY_ID: &str = "example.notifications@1";
 const DESCRIPTOR_VERSION: &str = "1.0.0";
 const OPERATION: &str = "notify";
+const SECOND_OPERATION: &str = "audit";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Notification {
@@ -34,6 +35,74 @@ impl EventCapability for Notifications {
 struct RecordingEndpoint {
     seen: Rc<RefCell<Vec<u64>>>,
     exhausted_sequence: Option<u64>,
+}
+
+#[derive(Debug)]
+struct MultiOperationEndpoint;
+
+impl NativeEventEndpoint for MultiOperationEndpoint {
+    fn capability_id(&self) -> &'static str {
+        CAPABILITY_ID
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        DESCRIPTOR_VERSION
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        &[OPERATION, SECOND_OPERATION]
+    }
+
+    fn publish(
+        &self,
+        _operation: &str,
+        _event: Box<dyn Any>,
+        _context: InvocationContext,
+    ) -> LocalBoxFuture<'static, Result<(), RuntimeFailure>> {
+        Box::pin(ready(Ok(())))
+    }
+}
+
+#[derive(Debug)]
+struct AcknowledgedAdmissionEndpoint {
+    driver: DeterministicDriver,
+    seen: Rc<RefCell<Vec<u64>>>,
+}
+
+impl NativeEventEndpoint for AcknowledgedAdmissionEndpoint {
+    fn capability_id(&self) -> &'static str {
+        CAPABILITY_ID
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        DESCRIPTOR_VERSION
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        &[OPERATION]
+    }
+
+    fn owns_event_admission(&self) -> bool {
+        true
+    }
+
+    fn publish(
+        &self,
+        _operation: &str,
+        event: Box<dyn Any>,
+        _context: InvocationContext,
+    ) -> LocalBoxFuture<'static, Result<(), RuntimeFailure>> {
+        let event = event
+            .downcast::<Notification>()
+            .expect("the typed event should reach adapter admission");
+        self.seen.borrow_mut().push(event.sequence);
+        let driver = self.driver.clone();
+        let acknowledgement = driver.now() + std::time::Duration::from_millis(20);
+        Box::pin(async move {
+            driver.sleep_until(acknowledgement).await;
+            Ok(())
+        })
+    }
 }
 
 impl NativeEventEndpoint for RecordingEndpoint {
@@ -120,7 +189,7 @@ fn many_event_plan(provider_count: usize) -> ResolvedAppPlan {
             ModuleInstancePlan::new(&provider, "package.provider").with_capability(
                 CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION])
                     .with_event_operation(OPERATION)
-                    .with_limits(queue_capacity, 1),
+                    .with_event_capacity(queue_capacity),
             ),
         );
         bindings.push(CapabilityBinding::new(
@@ -133,6 +202,148 @@ fn many_event_plan(provider_count: usize) -> ResolvedAppPlan {
     AppComposition::new(instances, bindings)
         .resolve()
         .expect("the Event Composition should resolve")
+}
+
+#[test]
+fn one_binding_shares_one_event_mailbox_across_operations() {
+    let plan = AppComposition::new(
+        vec![
+            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+                CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION),
+            ),
+            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+                CapabilityEndpointPlan::new(
+                    CAPABILITY_ID,
+                    DESCRIPTOR_VERSION,
+                    [OPERATION, SECOND_OPERATION],
+                )
+                .with_event_operation(OPERATION)
+                .with_event_operation(SECOND_OPERATION)
+                .with_event_admission(EventAdmissionPlan::new(1)),
+            ),
+        ],
+        vec![CapabilityBinding::new(
+            "consumer",
+            CAPABILITY_ID,
+            DESCRIPTOR_VERSION,
+            "provider",
+        )],
+    )
+    .resolve()
+    .expect("the multi-operation Event Composition should resolve");
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(lenso_kernel::Kernel::start_native(
+            plan,
+            driver.clone(),
+            EventAdapter {
+                endpoints: BTreeMap::from([(
+                    "provider".to_owned(),
+                    Rc::new(MultiOperationEndpoint) as Rc<dyn NativeEventEndpoint>,
+                )]),
+            },
+        ))
+        .expect("the multi-operation Event App should start");
+    let handle = app
+        .many_event_handle::<Notifications>("consumer")
+        .expect("the Event handle should materialize");
+
+    let first = driver.run(handle.publish(OPERATION, Notification { sequence: 1 }));
+    let second = driver.run(handle.publish(SECOND_OPERATION, Notification { sequence: 2 }));
+
+    assert_eq!(first[0].admission(), EventAdmission::Accepted);
+    assert_eq!(second[0].admission(), EventAdmission::Exhausted);
+}
+
+#[test]
+fn zero_capacity_event_binding_never_accepts_a_publication() {
+    let plan = AppComposition::new(
+        vec![
+            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+                CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION),
+            ),
+            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+                CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION])
+                    .with_event_operation(OPERATION)
+                    .with_event_capacity(0),
+            ),
+        ],
+        vec![CapabilityBinding::new(
+            "consumer",
+            CAPABILITY_ID,
+            DESCRIPTOR_VERSION,
+            "provider",
+        )],
+    )
+    .resolve()
+    .expect("zero-capacity Event Composition should resolve");
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(lenso_kernel::Kernel::start_native(
+            plan,
+            driver.clone(),
+            EventAdapter {
+                endpoints: BTreeMap::from([(
+                    "provider".to_owned(),
+                    Rc::new(RecordingEndpoint {
+                        seen: Rc::new(RefCell::new(Vec::new())),
+                        exhausted_sequence: None,
+                    }) as Rc<dyn NativeEventEndpoint>,
+                )]),
+            },
+        ))
+        .expect("zero-capacity Event App should start");
+    let handle = app
+        .many_event_handle::<Notifications>("consumer")
+        .expect("the Event handle should materialize");
+
+    let outcome = driver.run(handle.publish(OPERATION, Notification { sequence: 1 }));
+
+    assert_eq!(outcome[0].admission(), EventAdmission::Exhausted);
+}
+
+#[test]
+fn adapter_owned_admission_reports_the_acknowledged_commit_even_if_the_deadline_elapses() {
+    let plan = many_event_plan(1);
+    let driver = DeterministicDriver::new();
+    let seen = Rc::new(RefCell::new(Vec::new()));
+    let app = driver
+        .run(lenso_kernel::Kernel::start_native(
+            plan,
+            driver.clone(),
+            EventAdapter {
+                endpoints: BTreeMap::from([(
+                    "provider-0".to_owned(),
+                    Rc::new(AcknowledgedAdmissionEndpoint {
+                        driver: driver.clone(),
+                        seen: seen.clone(),
+                    }) as Rc<dyn NativeEventEndpoint>,
+                )]),
+            },
+        ))
+        .expect("the Adapter-owned Event App should start");
+    let handle = app
+        .many_event_handle::<Notifications>("consumer")
+        .expect("the Event handle should materialize");
+    let context = app.invocation_context_after(
+        std::time::Duration::from_millis(10),
+        lenso_kernel::CancellationToken::new(),
+    );
+    let advance = driver.clone();
+    driver
+        .spawn_local(Box::pin(async move {
+            advance.yield_now().await;
+            advance.advance(std::time::Duration::from_millis(10));
+            advance.yield_now().await;
+            advance.advance(std::time::Duration::from_millis(10));
+        }))
+        .expect("the deterministic Driver should accept the clock task");
+
+    let outcome =
+        driver.run(handle.publish_with_context(OPERATION, context, Notification { sequence: 1 }));
+
+    assert_eq!(outcome[0].admission(), EventAdmission::Accepted);
+    assert_eq!(&*seen.borrow(), &[1]);
 }
 
 #[test]

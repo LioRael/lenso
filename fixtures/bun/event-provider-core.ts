@@ -23,6 +23,12 @@ type WireEventPublish = {
   payload: unknown;
 };
 
+type EventBindingDescriptor = {
+  capability_id: string;
+  caller_instance: string;
+  capacity: number;
+};
+
 type WireOutcome =
   | { kind: "success"; value: unknown }
   | { kind: "runtime"; failure: Record<string, unknown> };
@@ -49,30 +55,34 @@ const eventEndpoint: EndpointDescriptor = {
 const expectedEndpoints = JSON.parse(
   argument("--lenso-endpoints-json", JSON.stringify([eventEndpoint])),
 ) as EndpointDescriptor[];
-const maxEventQueue = 2;
+const expectedEventBindings = JSON.parse(
+  argument("--lenso-event-bindings-json", "[]"),
+) as EventBindingDescriptor[];
 type EventQueueState = {
   queue: WireEventPublish[];
   active: boolean;
+  capacity: number;
 };
 
-const eventQueues = new Map<string, EventQueueState>();
+const eventQueues = new Map(
+  expectedEventBindings.map((binding) => [
+    `${binding.caller_instance}:${binding.capability_id}`,
+    { queue: [], active: false, capacity: binding.capacity } satisfies EventQueueState,
+  ]),
+);
 const cancelled = new Set<number>();
 let activeHandshake: Handshake | undefined;
 let sessionToken: string | undefined;
 
 function eventBindingKey(event: WireEventPublish): string | undefined {
   if (!event.caller_instance) return undefined;
-  return `${event.caller_instance}:${event.capability_id}:${event.operation}`;
+  return `${event.caller_instance}:${event.capability_id}`;
 }
 
 function eventQueueFor(event: WireEventPublish): EventQueueState | undefined {
   const key = eventBindingKey(event);
   if (!key) return undefined;
-  const existing = eventQueues.get(key);
-  if (existing) return existing;
-  const created: EventQueueState = { queue: [], active: false };
-  eventQueues.set(key, created);
-  return created;
+  return eventQueues.get(key);
 }
 
 function runtime(kind: string, detail?: string, requestId?: number): WireOutcome {
@@ -155,10 +165,8 @@ function publishEvent(event: WireEventPublish, mode: EventMode): WireOutcome {
   if (!state) {
     return runtime("protocol_violation", "event caller instance is required");
   }
-  if (state.active && state.queue.length >= maxEventQueue - 1) {
-    return runtime("resource_exhausted", event.operation);
-  }
-  if (!state.active && state.queue.length >= maxEventQueue) {
+  const retained = state.queue.length + (state.active ? 1 : 0);
+  if (retained >= state.capacity) {
     return runtime("resource_exhausted", event.operation);
   }
   state.queue.push(event);

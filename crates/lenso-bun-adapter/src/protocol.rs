@@ -25,6 +25,13 @@ pub(crate) struct EndpointDescriptor {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct EventBindingDescriptor {
+    pub capability_id: String,
+    pub caller_instance: String,
+    pub capacity: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Handshake {
     pub protocol_version: u32,
     pub value_profile: String,
