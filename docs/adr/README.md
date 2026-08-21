@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0062 are the accepted, normative architecture decisions for
+ADRs 0030 through 0063 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -25,6 +25,11 @@ optional removable Module.
 [`0062-serve-authenticated-game-sessions-through-protocol-modules.md`](0062-serve-authenticated-game-sessions-through-protocol-modules.md)
 keeps non-HTTP framing and game-session authorization in replaceable Modules
 while the Kernel owns only the typed Stream and Auth seams.
+
+[`0063-scale-native-apps-across-replicated-kernel-lanes.md`](0063-scale-native-apps-across-replicated-kernel-lanes.md)
+scales native Apps by replicating the single-owner Kernel across Plan-declared
+Execution Lanes and rejects work stealing, runtime Instance migration, and
+handler-level thread-pool offloading.
 
 ## Legacy decisions
 
