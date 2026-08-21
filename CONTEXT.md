@@ -26,6 +26,10 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 - **Runtime Driver** — host scheduling and monotonic-time implementation.
 - **Execution Adapter** — host-specific Module generation and endpoint
   implementation.
+- **Execution Lane** — one single-owner Kernel replica on its own host thread
+  together with the Module Instances placed on it.
+- **Placement** — the Plan-declared assignment of Module Instances to
+  Execution Lanes.
 
 `Service`, `Provider`, `Console`, `Story`, `System Plane`, and `Plugin` are not
 peer runtime types in vNext. A separately running program is a host or an
@@ -48,6 +52,9 @@ seam.
   concerns, never Kernel features.
 - The same portable Kernel must compile for native and supported WebAssembly
   targets without target-specific host services in its core state machine.
+- Parallelism comes from placing Module Instances on more Execution Lanes;
+  Kernel correctness never requires work stealing, runtime Instance
+  migration, or thread-safe Module state.
 
 ## Workspace ownership
 
@@ -77,6 +84,6 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0061 are normative for vNext. The vNext architecture overview,
+ADRs 0030–0063 are normative for vNext. The vNext architecture overview,
 validation roadmap, and research notes are retained beside them. Removed
 v0.3.x implementation docs are not recreated in this branch.
