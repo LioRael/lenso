@@ -1,8 +1,7 @@
 use super::{
     AbortHandle, AssertUnwindSafe, Cell, Context, DriverControl, DriverTask, Duration, Future,
     FutureExt, LocalBoxFuture, LocalTask, ModuleDependencies, ModuleLifecyclePhase, Pin, Poll, Rc,
-    RefCell, RequestId, RuntimeDriver, RuntimeFailure, SpawnError, TaskOutcome, oneshot,
-    wait_until,
+    RefCell, RuntimeDriver, RuntimeFailure, SpawnError, TaskOutcome, oneshot, wait_until,
 };
 
 /// A shared App-wide signal that opens exactly once after every Module activates.
@@ -196,68 +195,6 @@ impl Drop for CancellationWaiter {
 impl Default for CancellationToken {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Kernel-owned context propagated across one native request invocation.
-#[derive(Clone, Debug)]
-pub struct InvocationContext {
-    pub(super) caller_instance: Option<String>,
-    pub(super) request_id: RequestId,
-    pub(super) deadline: Option<Duration>,
-    pub(super) cancellation: CancellationToken,
-}
-
-impl InvocationContext {
-    /// Creates an invocation context with an absolute Driver-monotonic deadline.
-    pub fn new(
-        request_id: RequestId,
-        deadline: Option<Duration>,
-        cancellation: CancellationToken,
-    ) -> Self {
-        Self {
-            caller_instance: None,
-            request_id,
-            deadline,
-            cancellation,
-        }
-    }
-
-    /// Attaches the resolved Caller Module Instance to this context.
-    #[must_use]
-    pub fn with_caller_instance(mut self, caller_instance: impl Into<String>) -> Self {
-        self.caller_instance = Some(caller_instance.into());
-        self
-    }
-
-    /// Returns the Caller Module Instance, when the App attached one.
-    pub fn caller_instance(&self) -> Option<&str> {
-        self.caller_instance.as_deref()
-    }
-
-    /// Returns the Kernel Request ID used for correlation and cancellation.
-    pub const fn request_id(&self) -> RequestId {
-        self.request_id
-    }
-
-    /// Returns the absolute Driver-monotonic deadline, when one was supplied.
-    pub const fn deadline(&self) -> Option<Duration> {
-        self.deadline
-    }
-
-    /// Returns the caller-owned cooperative cancellation signal.
-    pub fn cancellation(&self) -> CancellationToken {
-        self.cancellation.clone()
-    }
-
-    /// Returns whether the caller has already cancelled this invocation.
-    pub fn is_cancelled(&self) -> bool {
-        self.cancellation.is_cancelled()
-    }
-
-    /// Returns whether the context deadline has passed at a Driver instant.
-    pub fn is_expired(&self, now: Duration) -> bool {
-        self.deadline.is_some_and(|deadline| deadline <= now)
     }
 }
 

@@ -353,7 +353,9 @@ impl<C: EventCapability> NativeEventHandle<C> {
         context: InvocationContext,
         event: C::Event,
     ) -> Vec<EventPublishResult> {
-        let context = context.with_caller_instance(self.caller_instance.clone());
+        let context = context
+            .with_caller_instance(self.caller_instance.clone())
+            .for_target(C::ID, operation);
         futures::future::join_all(self.endpoints.iter().map(|endpoint| {
             self.publish_to_endpoint(endpoint, operation, context.clone(), event.clone())
         }))

@@ -63,7 +63,9 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         context: InvocationContext,
         request: C::Request,
     ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
-        let context = context.with_caller_instance(self.caller_instance.clone());
+        let context = context
+            .with_caller_instance(self.caller_instance.clone())
+            .for_target(C::ID, operation);
         let started_at = (self.runtime.driver.now)();
         let operation_name = self
             .endpoints
