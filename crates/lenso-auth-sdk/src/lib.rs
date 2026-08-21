@@ -295,30 +295,53 @@ pub enum AssertionValidationError {
     DelegationWidensValidity,
 }
 
-/// Issuer and verifier configured for one Auth Module.
+/// Assertion issuer configured for one Auth Module.
 #[derive(Clone)]
 pub struct ActorAssertionIssuer {
+    verifier: ActorAssertionVerifier,
+}
+
+/// Verification-only assertion authority supplied to target Modules.
+#[derive(Clone)]
+pub struct ActorAssertionVerifier {
     issuer: String,
-    signing_key: Vec<u8>,
+    verification_key: Vec<u8>,
 }
 
 impl fmt::Debug for ActorAssertionIssuer {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ActorAssertionIssuer")
-            .field("issuer", &self.issuer)
+            .field("issuer", &self.verifier.issuer)
             .field("signing_key", &"<redacted>")
             .finish()
     }
 }
 
+impl fmt::Debug for ActorAssertionVerifier {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ActorAssertionVerifier")
+            .field("issuer", &self.issuer)
+            .field("verification_key", &"<redacted>")
+            .finish()
+    }
+}
+
 impl ActorAssertionIssuer {
-    /// Creates an issuer/verifier from App-selected secret material.
+    /// Creates an issuer from App-selected secret material.
     pub fn new(issuer: impl Into<String>, signing_key: impl AsRef<[u8]>) -> Self {
         Self {
-            issuer: issuer.into(),
-            signing_key: signing_key.as_ref().to_vec(),
+            verifier: ActorAssertionVerifier {
+                issuer: issuer.into(),
+                verification_key: signing_key.as_ref().to_vec(),
+            },
         }
+    }
+
+    /// Derives verification-only authority for a target Module.
+    pub fn verifier(&self) -> ActorAssertionVerifier {
+        self.verifier.clone()
     }
 
     /// Issues a signed assertion.
@@ -338,7 +361,7 @@ impl ActorAssertionIssuer {
             claims: Some(claims),
             expires_at: format_timestamp(validity.expires_at),
             issued_at: format_timestamp(validity.issued_at),
-            issuer: self.issuer.clone(),
+            issuer: self.verifier.issuer.clone(),
             parent_provenance: None,
             proof: String::new(),
             subject: subject.into(),
@@ -358,7 +381,7 @@ impl ActorAssertionIssuer {
         audience: impl IntoIterator<Item = String>,
         expires_at: OffsetDateTime,
     ) -> Result<ActorAssertion, AssertionValidationError> {
-        self.verify_proof(parent)?;
+        self.verifier.verify_proof(parent)?;
         let audience = audience.into_iter().collect::<Vec<_>>();
         if audience
             .iter()
@@ -381,6 +404,15 @@ impl ActorAssertionIssuer {
         })
     }
 
+    fn sign(&self, assertion: &AuthActorAssertion) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.verifier.verification_key)
+            .expect("HMAC accepts keys of any size");
+        mac.update(ActorAssertionVerifier::signing_payload(assertion).as_bytes());
+        URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
+    }
+}
+
+impl ActorAssertionVerifier {
     /// Verifies and projects the assertion carried by a target context.
     pub fn project_context<T: TypedActor>(
         &self,
@@ -430,21 +462,14 @@ impl ActorAssertionIssuer {
         let expected = URL_SAFE_NO_PAD
             .decode(assertion.proof())
             .map_err(|_| AssertionValidationError::InvalidProof)?;
-        let mut mac = Hmac::<Sha256>::new_from_slice(&self.signing_key)
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.verification_key)
             .expect("HMAC accepts keys of any size");
-        mac.update(self.signing_payload(&assertion.wire).as_bytes());
+        mac.update(Self::signing_payload(&assertion.wire).as_bytes());
         mac.verify_slice(&expected)
             .map_err(|_| AssertionValidationError::InvalidProof)
     }
 
-    fn sign(&self, assertion: &AuthActorAssertion) -> String {
-        let mut mac = Hmac::<Sha256>::new_from_slice(&self.signing_key)
-            .expect("HMAC accepts keys of any size");
-        mac.update(self.signing_payload(assertion).as_bytes());
-        URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
-    }
-
-    fn signing_payload(&self, assertion: &AuthActorAssertion) -> String {
+    fn signing_payload(assertion: &AuthActorAssertion) -> String {
         #[derive(Serialize)]
         struct SigningPayload<'a> {
             actor_kind: &'a str,
@@ -515,7 +540,8 @@ mod tests {
         let context = assertion
             .attach(InvocationContext::new(1, None, CancellationToken::new()))
             .expect("assertion should attach");
-        let actor = issuer
+        let verifier = issuer.verifier();
+        let actor = verifier
             .project_context::<UserActor>(
                 &context,
                 "example.secure@1",
@@ -534,7 +560,7 @@ mod tests {
             .contains("secret")
         );
         assert!(
-            issuer
+            verifier
                 .project_context::<UserActor>(
                     &context,
                     "example.other@1",
