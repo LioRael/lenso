@@ -314,7 +314,7 @@ pub enum CodegenError {
     InvalidDescriptor { detail: String },
     /// A Schema cannot be used by the portable value profile.
     UnsupportedSchema { path: PathBuf, detail: String },
-    /// Generated bindings support request and stream Operations; Events remain a later seam.
+    /// A Descriptor interaction is not supported by the generated language bindings.
     UnsupportedInteraction {
         operation: String,
         interaction: String,
@@ -340,7 +340,7 @@ impl fmt::Display for CodegenError {
                 interaction,
             } => write!(
                 formatter,
-                "Operation `{operation}` uses `{interaction}`; generated bindings support `request` and `stream` only"
+                "Operation `{operation}` uses unsupported interaction `{interaction}`"
             ),
             Self::InvalidPortableValue { path, detail } => {
                 write!(formatter, "invalid portable value at `{path}`: {detail}")
@@ -504,7 +504,7 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
                 detail: format!("Operation `{name}` has unsupported interaction `{interaction}`"),
             });
         }
-        if matches!(interaction.as_str(), "request" | "stream") {
+        if matches!(interaction.as_str(), "request" | "stream" | "event") {
             let client_method_name = rust_field_name(&name);
             for generated_name in [
                 client_method_name.clone(),
@@ -1173,16 +1173,6 @@ fn validate_domain_error_schema(schema: &Value, source_path: &Path) -> Result<()
 /// Generates both language artifacts from one Descriptor source.
 pub fn generate(path: &Path) -> Result<GeneratedArtifacts, CodegenError> {
     let descriptor = load_descriptor(path)?;
-    if let Some(operation) = descriptor
-        .operations
-        .iter()
-        .find(|operation| operation.interaction == "event")
-    {
-        return Err(CodegenError::UnsupportedInteraction {
-            operation: operation.name.clone(),
-            interaction: operation.interaction.clone(),
-        });
-    }
     let contract = contract_ir(&descriptor);
     let metadata = GeneratedMetadata {
         capability_id: descriptor.capability_id.clone(),
@@ -2642,10 +2632,12 @@ fn generate_rust(contract: &ContractIr) -> String {
     let mut types = RustTypes::new();
     let mut operation_rows = Vec::new();
     let mut stream_operation_rows = Vec::new();
+    let mut event_operation_rows = Vec::new();
     let mut operation_markers = Vec::new();
     let mut provider_methods = Vec::new();
     let mut endpoint_arms = Vec::new();
     let mut stream_endpoint_arms = Vec::new();
+    let mut event_endpoint_arms = Vec::new();
     let mut client_fields = Vec::new();
     let mut client_initializers = Vec::new();
     let mut client_methods = Vec::new();
@@ -2711,15 +2703,21 @@ fn generate_rust(contract: &ContractIr) -> String {
             &response_type,
             &error_name,
         ));
+        if operation.interaction == "event" {
+            wire_codecs.push(generate_rust_event_codecs(&operation.name, &request_type));
+        }
         let operation_const = screaming_snake_case(&operation.name);
-        operation_markers.push(if operation.interaction == "request" {
-            format!(
+        operation_markers.push(match operation.interaction.as_str() {
+            "request" => format!(
                 "#[derive(Debug)]\npub struct {marker_name};\nimpl RequestCapability for {marker_name} {{\n    type Request = {request_type};\n    type Response = {response_type};\n    type DomainError = {error_name};\n    const ID: &'static str = CAPABILITY_ID;\n    const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;\n}}\n"
-            )
-        } else {
-            format!(
+            ),
+            "stream" => format!(
                 "#[derive(Debug)]\npub struct {marker_name};\npub type {marker_name}Event = StreamEvent<{response_type}, {error_name}>;\nimpl StreamCapability for {marker_name} {{\n    type OpenRequest = {request_type};\n    type Message = {response_type};\n    type DomainError = {error_name};\n    const ID: &'static str = CAPABILITY_ID;\n    const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;\n}}\n"
-            )
+            ),
+            "event" => format!(
+                "#[derive(Debug)]\npub struct {marker_name};\nimpl EventCapability for {marker_name} {{\n    type Event = {request_type};\n    const ID: &'static str = CAPABILITY_ID;\n    const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;\n}}\n"
+            ),
+            _ => unreachable!("Descriptor validation restricts interactions"),
         });
         if operation.interaction == "request" {
             operation_rows.push(format!("        {operation_const}_OPERATION,\n"));
@@ -2749,7 +2747,7 @@ fn generate_rust(contract: &ContractIr) -> String {
             invocation_errors.push(format!(
                 "#[derive(Clone, Debug, PartialEq)]\npub enum {invocation_error_name} {{\n    Domain({error_name}),\n    Runtime(RuntimeFailure),\n}}\n"
             ));
-        } else {
+        } else if operation.interaction == "stream" {
             stream_operation_rows.push(format!("        {operation_const}_OPERATION,\n"));
             provider_methods.push(format!(
                 "    fn {}(&self, context: InvocationContext, request: {request_type}) -> LocalBoxFuture<'static, Result<Box<dyn NativeStreamSession>, {error_name}>>;",
@@ -2775,6 +2773,24 @@ fn generate_rust(contract: &ContractIr) -> String {
             invocation_errors.push(format!(
                 "#[derive(Clone, Debug, PartialEq)]\npub enum {invocation_error_name} {{\n    Domain({error_name}),\n    Runtime(RuntimeFailure),\n}}\n"
             ));
+        } else {
+            event_operation_rows.push(format!("        {operation_const}_OPERATION,\n"));
+            provider_methods.push(format!(
+                "    fn {}(&self, context: InvocationContext, event: {request_type});",
+                rust_field_name(&operation.name)
+            ));
+            event_endpoint_arms.push(format!(
+                "            {operation_const}_OPERATION => {{\n                let Ok(event) = event.downcast::<{request_type}>() else {{\n                    return Box::pin(futures::future::ready(Err(RuntimeFailure::ProtocolViolation {{ capability: CAPABILITY_ID }})));\n                }};\n                let provider = Rc::clone(&self.provider);\n                Box::pin(async move {{\n                    provider.{}(context, *event);\n                    Ok(())\n                }})\n            }}",
+                rust_field_name(&operation.name),
+            ));
+            let field = rust_field_name(&operation.name);
+            client_fields.push(format!("    {field}: NativeEventHandle<{marker_name}>,"));
+            client_initializers.push(format!(
+                "            {field}: dependencies.many_event::<{marker_name}>()?,"
+            ));
+            client_methods.push(format!(
+                "    pub async fn {field}(&self, event: {request_type}) -> Vec<EventPublishResult> {{\n        self.{field}.publish({operation_const}_OPERATION, event).await\n    }}\n\n    pub async fn {field}_with_context(&self, context: InvocationContext, event: {request_type}) -> Vec<EventPublishResult> {{\n        self.{field}.publish_with_context({operation_const}_OPERATION, context, event).await\n    }}"
+            ));
         }
     }
 
@@ -2796,10 +2812,20 @@ fn generate_rust(contract: &ContractIr) -> String {
             stream_endpoint_arms.join(",\n")
         )
     };
+    let event_endpoint_impl = if event_operation_rows.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "impl<P: {capability_name}Provider> NativeEventEndpoint for {capability_name}Endpoint<P> {{\n    fn capability_id(&self) -> &'static str {{ CAPABILITY_ID }}\n    fn descriptor_version(&self) -> &'static str {{ DESCRIPTOR_VERSION }}\n    fn operations(&self) -> &'static [&'static str] {{ &[\n{}    ] }}\n    fn publish(&self, operation: &str, event: Box<dyn std::any::Any>, context: InvocationContext) -> LocalBoxFuture<'static, Result<(), RuntimeFailure>> {{\n        match operation {{\n{}\n            _ => Box::pin(futures::future::ready(Err(RuntimeFailure::UnknownOperation {{ capability: CAPABILITY_ID, operation: operation.to_owned() }}))),\n        }}\n    }}\n}}\n\n",
+            event_operation_rows.concat(),
+            event_endpoint_arms.join(",\n")
+        )
+    };
     let mut output = String::new();
     output.push_str(GENERATED_HEADER);
     let has_request_operations = !operation_rows.is_empty();
     let has_stream_operations = !stream_operation_rows.is_empty();
+    let has_event_operations = !event_operation_rows.is_empty();
     let mut kernel_imports = vec!["InvocationContext", "ModuleDependencies", "RuntimeFailure"];
     if has_request_operations {
         kernel_imports.extend([
@@ -2816,6 +2842,14 @@ fn generate_rust(contract: &ContractIr) -> String {
             "NativeStreamSession",
             "StreamCapability",
             "StreamEvent",
+        ]);
+    }
+    if has_event_operations {
+        kernel_imports.extend([
+            "EventCapability",
+            "EventPublishResult",
+            "NativeEventEndpoint",
+            "NativeEventHandle",
         ]);
     }
     writeln!(
@@ -2888,17 +2922,21 @@ fn generate_rust(contract: &ContractIr) -> String {
     .expect("writing to a String cannot fail");
     output.push_str(&request_endpoint_impl);
     output.push_str(&stream_endpoint_impl);
+    output.push_str(&event_endpoint_impl);
     let new_method = if contract.operations.len() == 1 {
         let field = rust_field_name(&contract.operations[0].name);
         let marker = &capability_name;
-        if contract.operations[0].interaction == "request" {
-            format!(
+        match contract.operations[0].interaction.as_str() {
+            "request" => format!(
                 "    pub fn new(handle: NativeRequestHandle<{marker}>) -> Self {{\n        Self {{ {field}: handle }}\n    }}\n\n"
-            )
-        } else {
-            format!(
+            ),
+            "stream" => format!(
                 "    pub fn new(handle: NativeStreamHandle<{marker}>) -> Self {{\n        Self {{ {field}: handle }}\n    }}\n\n"
-            )
+            ),
+            "event" => format!(
+                "    pub fn new(handles: Vec<NativeEventHandle<{marker}>>) -> Self {{\n        Self {{ {field}: handles }}\n    }}\n\n"
+            ),
+            _ => unreachable!("Descriptor validation restricts interactions"),
         }
     } else {
         String::new()
@@ -3044,6 +3082,13 @@ fn generate_rust_wire_codecs(
     )
 }
 
+fn generate_rust_event_codecs(operation: &str, event_type: &str) -> String {
+    let stem = snake_case(operation);
+    format!(
+        "pub fn encode_{stem}_event(value: &{event_type}) -> Result<String, serde_json::Error> {{ let value = serde_json::to_value(value)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::to_string(&value) }}\npub fn decode_{stem}_event(wire: &str) -> Result<{event_type}, serde_json::Error> {{ let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }}\n"
+    )
+}
+
 fn generate_typescript_codecs(
     operation: &str,
     request_type: &str,
@@ -3066,6 +3111,13 @@ fn generate_typescript_codecs(
     )
 }
 
+fn generate_typescript_event_codecs(operation: &str, event_type: &str) -> String {
+    let stem = pascal_case(operation);
+    format!(
+        "export function encode{stem}Event(value: {event_type}): string {{ validatePortableJson(value); const wire = JSON.stringify(value); if (wire === undefined) throw new Error(\"event cannot be encoded\"); return wire; }}\nexport function decode{stem}Event(wire: string): {event_type} {{ const value: unknown = JSON.parse(wire); validatePortableJson(value); return value as {event_type}; }}\n"
+    )
+}
+
 #[allow(clippy::too_many_lines)]
 fn generate_typescript(contract: &ContractIr) -> String {
     let capability_name = pascal_case(
@@ -3081,6 +3133,10 @@ fn generate_typescript(contract: &ContractIr) -> String {
     let mut providers = Vec::new();
     let mut errors = Vec::new();
     let mut codecs = Vec::new();
+    let has_event_operations = contract
+        .operations
+        .iter()
+        .any(|operation| operation.interaction == "event");
     for operation in &contract.operations {
         let operation_name = pascal_case(&operation.name);
         let request_name = format!("{operation_name}Request");
@@ -3121,14 +3177,20 @@ fn generate_typescript(contract: &ContractIr) -> String {
         };
         let invocation_error_name = format!("{operation_name}InvocationError");
         let result_name = format!("{operation_name}Result");
-        let result_value_type = if operation.interaction == "stream" {
-            format!("StreamSession<{response_type}, {error_name}>")
-        } else {
-            response_type.clone()
+        let result_value_type = match operation.interaction.as_str() {
+            "stream" => format!("StreamSession<{response_type}, {error_name}>"),
+            "event" => "ReadonlyArray<EventPublishResult>".to_owned(),
+            _ => response_type.clone(),
         };
-        errors.push(format!(
-            "export type {error_name} = {error_type};\nexport type {invocation_error_name} = {{ readonly kind: \"domain\"; readonly error: {error_name} }} | {{ readonly kind: \"runtime\"; readonly error: RuntimeFailure }};\nexport type {result_name} = {{ readonly ok: true; readonly value: {result_value_type} }} | {{ readonly ok: false; readonly error: {invocation_error_name} }};"
-        ));
+        if operation.interaction == "event" {
+            errors.push(format!(
+                "export type {error_name} = {error_type};\nexport type {result_name} = ReadonlyArray<EventPublishResult>;"
+            ));
+        } else {
+            errors.push(format!(
+                "export type {error_name} = {error_type};\nexport type {invocation_error_name} = {{ readonly kind: \"domain\"; readonly error: {error_name} }} | {{ readonly kind: \"runtime\"; readonly error: RuntimeFailure }};\nexport type {result_name} = {{ readonly ok: true; readonly value: {result_value_type} }} | {{ readonly ok: false; readonly error: {invocation_error_name} }};"
+            ));
+        }
         codecs.push(generate_typescript_codecs(
             &operation.name,
             &request_type,
@@ -3136,6 +3198,12 @@ fn generate_typescript(contract: &ContractIr) -> String {
             &error_name,
             variants,
         ));
+        if operation.interaction == "event" {
+            codecs.push(generate_typescript_event_codecs(
+                &operation.name,
+                &request_type,
+            ));
+        }
         if operation.interaction == "request" {
             clients.push(format!(
                 "  {}(request: {request_type}, context?: InvocationContext): Promise<{result_name}>;",
@@ -3145,13 +3213,22 @@ fn generate_typescript(contract: &ContractIr) -> String {
                 "  {}(context: InvocationContext, request: {request_type}): Promise<{{ readonly ok: true; readonly value: {response_type} }} | {{ readonly ok: false; readonly error: {error_name} }}>;",
                 typescript_property_name(&snake_case(&operation.name)),
             ));
-        } else {
+        } else if operation.interaction == "stream" {
             clients.push(format!(
                 "  {}(request: {request_type}, context?: InvocationContext): Promise<{result_name}>;",
                 typescript_property_name(&snake_case(&operation.name)),
             ));
             providers.push(format!(
                 "  {}(context: InvocationContext, request: {request_type}): Promise<{{ readonly ok: true; readonly value: StreamSession<{response_type}, {error_name}> }} | {{ readonly ok: false; readonly error: {error_name} }}>;",
+                typescript_property_name(&snake_case(&operation.name)),
+            ));
+        } else {
+            clients.push(format!(
+                "  {}(event: {request_type}, context?: InvocationContext): Promise<{result_name}>;",
+                typescript_property_name(&snake_case(&operation.name)),
+            ));
+            providers.push(format!(
+                "  {}(context: InvocationContext, event: {request_type}): void;",
                 typescript_property_name(&snake_case(&operation.name)),
             ));
         }
@@ -3173,6 +3250,9 @@ fn generate_typescript(contract: &ContractIr) -> String {
     write!(output, "export const PORTABLE = {};\n\n", contract.portable)
         .expect("writing to a String cannot fail");
     output.push_str("export type Int64 = string & { readonly __lensoInt64: unique symbol };\nexport type Uint64 = string & { readonly __lensoUint64: unique symbol };\nexport type Bytes = string & { readonly __lensoBytes: unique symbol };\nexport type Timestamp = string & { readonly __lensoTimestamp: unique symbol };\nexport type Duration = string & { readonly __lensoDuration: unique symbol };\nexport type OptionalValue<T> = T | null | undefined;\n\nexport interface InvocationContext {\n  readonly requestId: Uint64;\n  readonly deadline?: Duration;\n  readonly cancelled: boolean;\n  readonly callerInstance?: string;\n  readonly extensions?: Record<string, unknown>;\n}\n\nexport type RuntimeFailure = { readonly kind: \"unavailable\" | \"unknown_operation\" | \"ambiguous_binding\" | \"protocol_violation\" | \"missing_module_factory\" | \"unavailable_execution_class\" | \"invalid_resolved_plan\" | \"admission_closed\" | \"resource_exhausted\" | \"deadline_exceeded\" | \"cancelled\" | \"internal\" | \"module_failure\" | \"module_restart_exhausted\"; readonly detail?: unknown; readonly [key: string]: unknown };\nexport type UnknownDomainError = { readonly code: string; readonly payload?: unknown; readonly [key: string]: unknown };\n\nexport type StreamEvent<Message, DomainError> =\n  | { readonly kind: \"message\"; readonly message: Message }\n  | { readonly kind: \"peer_half_closed\" }\n  | { readonly kind: \"terminal\"; readonly outcome: { readonly ok: true } | { readonly ok: false; readonly error: DomainError } };\nexport interface StreamSession<Message, DomainError> {\n  send(message: Message): Promise<void>;\n  receive(): Promise<StreamEvent<Message, DomainError>>;\n  closeSend(): Promise<void>;\n  cancel(): void;\n}\n\n");
+    if has_event_operations {
+        output.push_str("export type EventAdmission = \"accepted\" | \"unavailable\" | \"exhausted\";\nexport interface EventPublishResult {\n  readonly subscriberInstance: string;\n  readonly admission: EventAdmission;\n}\n\n");
+    }
     for declaration in types.declarations {
         output.push_str(&declaration);
         output.push('\n');
