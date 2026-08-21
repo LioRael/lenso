@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use super::{
-    EventCapability, ModuleEventDependencyHandle, NativeAppRuntime, NativeEndpointBinding,
-    NativeEventHandle, NativeRequestHandle, NativeStreamEndpointBinding, NativeStreamHandle, Rc,
-    RefCell, StreamCapability, Weak,
+    CancellationToken, EventCapability, InvocationContext, ModuleEventDependencyHandle,
+    NativeAppRuntime, NativeEndpointBinding, NativeEventHandle, NativeRequestHandle,
+    NativeStreamEndpointBinding, NativeStreamHandle, Rc, RefCell, StreamCapability, Weak,
 };
 
 pub trait RequestCapability: 'static {
@@ -261,6 +263,43 @@ impl ModuleDependencies {
     /// Returns whether this Module has no explicit dependencies.
     pub fn is_empty(&self) -> bool {
         self.bindings.is_empty()
+    }
+
+    /// Creates a Kernel Invocation Context for work initiated by this Module.
+    ///
+    /// The request identity and monotonic deadline come from the same Runtime
+    /// Driver as the App. The context is still owned by the caller and its
+    /// cancellation token remains explicit.
+    pub fn invocation_context(
+        &self,
+        deadline: Option<Duration>,
+        cancellation: CancellationToken,
+    ) -> Result<InvocationContext, RuntimeFailure> {
+        let runtime = self
+            .runtime
+            .borrow()
+            .upgrade()
+            .ok_or(RuntimeFailure::AdmissionClosed)?;
+        let request_id = runtime.request_ids.get();
+        runtime.request_ids.set(request_id.saturating_add(1));
+        Ok(InvocationContext::new(request_id, deadline, cancellation)
+            .with_caller_instance(self.caller_instance.clone()))
+    }
+
+    /// Creates a Module Invocation Context with a Driver-relative deadline.
+    pub fn invocation_context_after(
+        &self,
+        timeout: Duration,
+        cancellation: CancellationToken,
+    ) -> Result<InvocationContext, RuntimeFailure> {
+        let runtime = self
+            .runtime
+            .borrow()
+            .upgrade()
+            .ok_or(RuntimeFailure::AdmissionClosed)?;
+        let deadline = (runtime.driver.now)().saturating_add(timeout);
+        drop(runtime);
+        self.invocation_context(Some(deadline), cancellation)
     }
 
     /// Returns the one explicitly bound typed dependency.
