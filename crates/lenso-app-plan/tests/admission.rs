@@ -2,9 +2,41 @@ use std::time::Duration;
 
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, ModuleCriticality, ModuleInstancePlan, PlanResolutionError,
-    RequestAdmissionPlan, RestartMode, RestartPolicy,
+    CapabilityRequirementPlan, EventAdmissionPlan, ModuleCriticality, ModuleInstancePlan,
+    PlanResolutionError, RequestAdmissionPlan, RestartMode, RestartPolicy,
 };
+
+#[test]
+fn resolved_bindings_materialize_event_mailbox_capacity_independently_from_requests() {
+    let plan = AppComposition::new(
+        vec![
+            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+                CapabilityRequirementPlan::many("capability.notifications", "1.0.0"),
+            ),
+            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+                CapabilityEndpointPlan::new("capability.notifications", "1.0.0", ["notify"])
+                    .with_event_operation("notify")
+                    .with_event_admission(EventAdmissionPlan::new(0)),
+            ),
+        ],
+        vec![CapabilityBinding::new(
+            "consumer",
+            "capability.notifications",
+            "1.0.0",
+            "provider",
+        )],
+    )
+    .resolve()
+    .expect("zero-capacity Event admission should remain valid");
+
+    let binding = &plan.capability_bindings()[0];
+
+    assert_eq!(plan.event_admission_for(binding).capacity(), 0);
+    assert_eq!(
+        plan.request_admission_for(binding, "notify"),
+        RequestAdmissionPlan::default()
+    );
+}
 
 #[test]
 fn resolved_bindings_materialize_bounded_request_admission() {
