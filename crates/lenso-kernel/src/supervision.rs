@@ -385,13 +385,13 @@ pub(super) async fn supervise_module_instance(
                 continue;
             }
         };
-        let (endpoints, stream_endpoints, event_endpoints, lifecycle) = prepared.into_parts();
+        let (endpoints, lifecycle) = prepared.into_parts();
         if let Err(error) = validate_native_endpoint_set(
             &instance_key,
             instance,
-            &endpoints,
-            &stream_endpoints,
-            &event_endpoints,
+            endpoints.request(),
+            endpoints.stream(),
+            endpoints.event(),
         ) {
             runtime.diagnostics.emit_runtime_failure(
                 (runtime.driver.now)(),
@@ -438,9 +438,9 @@ pub(super) async fn supervise_module_instance(
         install_module_endpoints(
             &runtime,
             &instance_key,
-            endpoints,
-            stream_endpoints,
-            event_endpoints,
+            endpoints.request().to_vec(),
+            endpoints.stream().to_vec(),
+            endpoints.event().to_vec(),
             generation_number,
         );
         if let Some(state) = runtime.supervision.borrow_mut().get_mut(&instance_key) {

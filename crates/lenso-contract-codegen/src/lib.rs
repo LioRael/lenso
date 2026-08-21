@@ -2883,7 +2883,7 @@ fn generate_rust(contract: &ContractIr) -> String {
                 "    pub fn new(handle: NativeStreamHandle<{marker}>) -> Self {{\n        Self {{ {field}: handle }}\n    }}\n\n"
             ),
             "event" => format!(
-                "    pub fn new(handles: Vec<NativeEventHandle<{marker}>>) -> Self {{\n        Self {{ {field}: handles }}\n    }}\n\n"
+                "    pub fn new(handle: NativeEventHandle<{marker}>) -> Self {{\n        Self {{ {field}: handle }}\n    }}\n\n"
             ),
             _ => unreachable!("Descriptor validation restricts interactions"),
         }
@@ -2902,7 +2902,7 @@ fn generate_rust(contract: &ContractIr) -> String {
     for error in invocation_errors {
         output.push_str(&error);
     }
-    output
+    format!("{}\n", output.trim_end())
 }
 
 #[allow(clippy::too_many_lines)]
