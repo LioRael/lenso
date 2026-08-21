@@ -2,11 +2,14 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0057 are the accepted, normative architecture decisions for
+ADRs 0030 through 0058 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
 routing.
+
+[`0058-select-json-rpc-over-http-for-bun-request-dispatch.md`](0058-select-json-rpc-over-http-for-bun-request-dispatch.md)
+records the first Bun wire selection and its reproducible comparison evidence.
 
 ## Legacy decisions
 
