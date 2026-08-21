@@ -105,7 +105,7 @@ export interface AuthClient {
 }
 
 export interface AuthProvider {
-  authenticate(context: InvocationContext, request: AuthenticateRequest): Promise<{ readonly ok: true; readonly value: AuthenticateResponse } | { readonly ok: false; readonly error: AuthenticateError }>;
+  authenticate(context: InvocationContext, request: AuthenticateRequest): Promise<AuthenticateResult>;
 }
 
 export const portableValueProfile = {

@@ -372,8 +372,8 @@ pub fn encode_round_trip_error(value: &RoundTripError) -> Result<String, serde_j
 pub fn decode_round_trip_error(wire: &str) -> Result<RoundTripError, serde_json::Error> { let value: serde_json::Value = serde_json::from_str(wire)?; validate_portable_json_value(&value).map_err(portable_json_error)?; serde_json::from_value(value) }
 
 pub trait ProfileProvider: fmt::Debug + 'static {
-    fn corpus_round_trip(&self, context: InvocationContext, request: CorpusRoundTripRequest) -> LocalBoxFuture<'static, Result<CorpusRoundTripResponse, CorpusRoundTripError>>;
-    fn round_trip(&self, context: InvocationContext, request: RoundTripRequest) -> LocalBoxFuture<'static, Result<RoundTripResponse, RoundTripError>>;
+    fn corpus_round_trip(&self, context: InvocationContext, request: CorpusRoundTripRequest) -> LocalBoxFuture<'static, Result<CorpusRoundTripResponse, ProfileCorpusRoundTripInvocationError>>;
+    fn round_trip(&self, context: InvocationContext, request: RoundTripRequest) -> LocalBoxFuture<'static, Result<RoundTripResponse, ProfileRoundTripInvocationError>>;
 }
 
 #[derive(Debug)]
@@ -397,9 +397,11 @@ impl<P: ProfileProvider> NativeRequestEndpoint for ProfileEndpoint<P> {
                 };
                 let provider = Rc::clone(&self.provider);
                 Box::pin(async move {
-                    Ok(provider.corpus_round_trip(context, *request).await
-                        .map(|value| Box::new(value) as Box<dyn std::any::Any>)
-                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))
+                    match provider.corpus_round_trip(context, *request).await {
+                        Ok(value) => Ok(Ok(Box::new(value) as Box<dyn std::any::Any>)),
+                        Err(ProfileCorpusRoundTripInvocationError::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),
+                        Err(ProfileCorpusRoundTripInvocationError::Runtime(error)) => Err(error),
+                    }
                 })
             },
             ROUND_TRIP_OPERATION => {
@@ -408,9 +410,11 @@ impl<P: ProfileProvider> NativeRequestEndpoint for ProfileEndpoint<P> {
                 };
                 let provider = Rc::clone(&self.provider);
                 Box::pin(async move {
-                    Ok(provider.round_trip(context, *request).await
-                        .map(|value| Box::new(value) as Box<dyn std::any::Any>)
-                        .map_err(|error| Box::new(error) as Box<dyn std::any::Any>))
+                    match provider.round_trip(context, *request).await {
+                        Ok(value) => Ok(Ok(Box::new(value) as Box<dyn std::any::Any>)),
+                        Err(ProfileRoundTripInvocationError::Domain(error)) => Ok(Err(Box::new(error) as Box<dyn std::any::Any>)),
+                        Err(ProfileRoundTripInvocationError::Runtime(error)) => Err(error),
+                    }
                 })
             }
             _ => Box::pin(futures::future::ready(Err(RuntimeFailure::UnknownOperation { capability: CAPABILITY_ID, operation: operation.to_owned() }))),
