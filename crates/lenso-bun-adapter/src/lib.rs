@@ -6,6 +6,7 @@
 //! contract.
 
 mod adapter;
+mod artifact;
 mod protocol;
 mod request;
 mod server;

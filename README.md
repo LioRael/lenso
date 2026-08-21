@@ -9,6 +9,8 @@ The maintained v0.3.x implementation remains on `main`.
 The initial vNext workspace is intentionally small:
 
 - `crates/lenso-app-plan` — immutable, language-independent execution input.
+- `crates/lenso-authoring` — project Composition, lock validation, canonical
+  Plan resolution, and the `lenso` authoring CLI.
 - `crates/lenso-kernel` — portable Kernel state machine and Runtime Driver
   interface, with a deterministic Driver for conformance tests.
 - `crates/lenso-bun-adapter` — Adapter-owned Bun child-process request
@@ -47,6 +49,8 @@ does not provide a selected open execution-class identity.
 - [`CONTEXT.md`](CONTEXT.md) is the canonical vocabulary and invariant set.
 - [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md) is the
   runtime overview.
+- [`docs/architecture/lenso-authoring.md`](docs/architecture/lenso-authoring.md)
+  documents project authoring and Plan resolution.
 - [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0058.
 - [`docs/roadmaps/lenso-vnext-validation.md`](docs/roadmaps/lenso-vnext-validation.md)
   records the evidence sequence.

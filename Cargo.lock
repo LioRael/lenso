@@ -738,6 +738,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-authoring"
+version = "0.1.0"
+dependencies = [
+ "lenso-app-plan",
+ "lenso-bun-adapter",
+ "lenso-capability-greeting",
+ "lenso-contract-codegen",
+ "lenso-kernel",
+ "lenso-native-adapter",
+ "lenso-native-greeter",
+ "lenso-runner",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "lenso-browser-driver"
 version = "0.1.0"
 dependencies = [
@@ -766,6 +784,7 @@ dependencies = [
  "lenso-otel-module",
  "serde",
  "serde_json",
+ "sha2",
  "time",
  "tokio",
 ]

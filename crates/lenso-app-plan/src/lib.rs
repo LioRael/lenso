@@ -6,6 +6,12 @@ use std::{
     time::Duration,
 };
 
+mod artifact;
+mod execution;
+
+pub use artifact::ModuleArtifact;
+pub use execution::ExecutionClassId;
+
 /// The Resolved App Plan schema understood by this Kernel version.
 pub const PLAN_SCHEMA_VERSION: u32 = 1;
 
@@ -233,41 +239,6 @@ impl ModuleCriticality {
     /// Returns whether this criticality requires a terminal App outcome on exhaustion.
     pub const fn is_critical(self) -> bool {
         matches!(self, Self::Critical)
-    }
-}
-
-/// Stable, open identity of the execution mechanism selected for a Module Instance.
-///
-/// Execution Adapter packages own these IDs. The Plan preserves them as opaque
-/// authoring data so third-party Adapters do not require changes to this crate.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct ExecutionClassId(String);
-
-impl ExecutionClassId {
-    /// Creates an execution-class identity selected by App Composition.
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    /// Returns the official statically linked Rust execution class.
-    pub fn native_rust() -> Self {
-        Self::new("lenso.native-rust@1")
-    }
-
-    /// Returns the official trusted Bun child-process execution class.
-    pub fn bun_child_process() -> Self {
-        Self::new("lenso.bun-process@1")
-    }
-
-    /// Returns the stable execution-class identity.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for ExecutionClassId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
     }
 }
 
@@ -539,6 +510,7 @@ pub struct ModuleInstancePlan {
     provided_capabilities: Vec<CapabilityEndpointPlan>,
     required_capabilities: Vec<CapabilityRequirementPlan>,
     execution_class: ExecutionClassId,
+    artifact: Option<ModuleArtifact>,
     restart_policy: RestartPolicy,
     criticality: ModuleCriticality,
 }
@@ -554,6 +526,7 @@ impl ModuleInstancePlan {
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
             execution_class: ExecutionClassId::native_rust(),
+            artifact: None,
             restart_policy: RestartPolicy::default(),
             criticality: ModuleCriticality::default(),
         }
@@ -597,6 +570,13 @@ impl ModuleInstancePlan {
     #[must_use]
     pub fn with_execution_class(mut self, execution_class: ExecutionClassId) -> Self {
         self.execution_class = execution_class;
+        self
+    }
+
+    /// Selects the exact locked artifact used to prepare this Instance.
+    #[must_use]
+    pub fn with_artifact(mut self, artifact: ModuleArtifact) -> Self {
+        self.artifact = Some(artifact);
         self
     }
 
@@ -647,6 +627,12 @@ impl ModuleInstancePlan {
     /// Returns the host execution class selected for this Instance.
     pub fn execution_class(&self) -> &ExecutionClassId {
         &self.execution_class
+    }
+
+    /// Returns the exact locked artifact selected for this Instance, when one
+    /// was supplied by an authoring tool.
+    pub fn artifact(&self) -> Option<&ModuleArtifact> {
+        self.artifact.as_ref()
     }
 
     /// Returns the supervision policy selected for this Instance.
