@@ -1,8 +1,0 @@
-{
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["room"],
-  "properties": {
-    "room": { "type": "string" }
-  }
-}

@@ -7,8 +7,7 @@ history.
 
 ## Workspace
 
-The workspace is in a staged repository extraction. Its durable core ownership
-is intentionally small:
+The repository extraction is complete. Its durable product ownership is:
 
 - `crates/lenso-app-plan` — immutable, language-independent execution input.
 - `crates/lenso-kernel` — portable Kernel state machine and Runtime Driver
@@ -18,9 +17,20 @@ is intentionally small:
   Capability, or example App.
 
 Runtime Drivers, Execution Adapters, protocol tooling, Capability packages,
-optional Modules, authoring tools, and examples remain temporary workspace
-members while they move to the owners defined by ADR 0064. Their physical
-presence does not make them part of portable core ownership.
+optional Modules, authoring tools, and examples live in the owner repositories
+defined by ADR 0064 and are consumed through versioned dependencies.
+
+- [lenso-protocols](https://github.com/LioRael/lenso-protocols) owns portable
+  contract tooling and conformance vectors.
+- [lenso-runtime-rust](https://github.com/LioRael/lenso-runtime-rust) and
+  [lenso-bun-adapter](https://github.com/LioRael/lenso-bun-adapter) own host
+  runtimes and Execution Adapters.
+- [lenso-otel-module](https://github.com/LioRael/lenso-otel-module) and
+  [lenso-auth-module](https://github.com/LioRael/lenso-auth-module) own their
+  optional Module contracts and implementations.
+- [lenso-cli](https://github.com/LioRael/lenso-cli) owns authoring, while
+  [lenso-examples](https://github.com/LioRael/lenso-examples) owns example
+  Capabilities and executable fixtures.
 
 The Kernel has no Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, Outbox, Workflow, migration, release, or discovery implementation.
@@ -35,14 +45,11 @@ cargo fmt --all -- --check
 cargo xtask check-core-repository-boundary
 cargo check --locked --workspace --all-targets
 cargo test --locked --workspace
-cargo run --locked -p lenso-runner
 ```
 
-The portable Kernel and its host Drivers are compile-checked for
-`wasm32-unknown-unknown` and `wasm32-wasip2` in CI. Browser and WASIp2 Runners
-can install only Adapter packages their hosts can execute; Kernel rejects a
-Plan before preparation when its immutable Runner-assembled Adapter catalog
-does not provide a selected open execution-class identity.
+The portable Plan, Kernel, and conformance Interface are compile-checked for
+`wasm32-unknown-unknown` and `wasm32-wasip2` in CI. Host Driver and Adapter
+repositories own their target-specific checks against released core packages.
 
 ## Architecture
 

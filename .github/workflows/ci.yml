@@ -23,50 +23,11 @@ jobs:
         run: cargo xtask check-core-repository-boundary
       - name: Check formatting
         run: cargo fmt --all -- --check
-      - name: Check generated portable bindings
-        run: |
-          cargo run --locked -p lenso-contract-codegen -- check \
-            crates/lenso-capability-greeting/capability.json \
-            crates/lenso-capability-greeting/src/generated.rs \
-            crates/lenso-capability-greeting/generated/bindings.ts
-          cargo run --locked -p lenso-contract-codegen -- check \
-            crates/lenso-contract-codegen/tests/fixtures/profile/capability.json \
-            fixtures/portable-contract/generated/profile.rs \
-            fixtures/portable-contract/generated/profile.ts
       - name: Check the workspace
         run: cargo check --locked --workspace --all-targets
       - name: Test the workspace
         run: cargo test --locked --workspace
-      - name: Install Bun for portable contract conformance
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.2.21
-      - name: Run target-owned Web UI generated-client conformance
-        run: cargo test --locked -p lenso-vnext-web-ui --test web_ui generated_browser_client_invokes_the_allowlisted_app_capability -- --ignored --test-threads=1
-      - name: Run TypeScript portable contract conformance
-        run: bun test fixtures/portable-contract/conformance.test.ts
-      - name: Run Rust and TypeScript trace-context conformance
-        run: bun test fixtures/otel/trace-context-conformance.test.ts
-      - name: Build Bun request-dispatch fixtures
+      - name: Compile portable core for WebAssembly hosts
         run: |
-          bun build --target bun fixtures/bun/request-provider.ts --outdir /tmp/lenso-bun-fixtures
-          bun build --target bun fixtures/bun/request-consumer.ts --outdir /tmp/lenso-bun-fixtures
-          bun build --target bun fixtures/bun/wire-benchmark.ts --outdir /tmp/lenso-bun-fixtures
-      - name: Run Bun cross-runtime request conformance
-        run: cargo test --locked -p lenso-bun-adapter --test bun_cross_runtime -- --ignored --test-threads=1
-      - name: Run Bun authoring clean-project flow
-        run: cargo test --locked -p lenso-authoring --test authoring bun_clean_project_add_resolve_reload_and_run_use_the_same_plan -- --ignored --test-threads=1
-      - name: Run Bun OpenTelemetry propagation conformance
-        run: cargo test --locked -p lenso-bun-adapter --test bun_otel_cross_runtime -- --ignored --test-threads=1
-      - name: Run Bun wire contract benchmark
-        env:
-          LENSO_BUN_BENCHMARK_REQUESTS: 10
-        run: bun run fixtures/bun/wire-benchmark.ts -- --output /tmp/lenso-bun-wire-benchmark.json
-      - name: Compile the portable Kernel for WebAssembly hosts
-        run: |
-          cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-unknown-unknown
-          cargo check --locked -p lenso-app-plan -p lenso-kernel --target wasm32-wasip2
-          cargo check --locked -p lenso-browser-driver --all-targets --target wasm32-unknown-unknown
-          cargo check --locked -p lenso-wasip2-driver --all-targets --target wasm32-wasip2
-      - name: Run the native skeleton
-        run: cargo run --locked -p lenso-runner
+          cargo check --locked -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-unknown-unknown
+          cargo check --locked -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2
