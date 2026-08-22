@@ -62,8 +62,8 @@ seam.
 `lenso-app-plan` owns serializable plan data. `lenso-kernel` owns the portable
 runtime and deterministic test Driver. `lenso-runtime-conformance` owns the
 product-neutral executable test surface for Kernel Interfaces. Runtime Drivers,
-Execution Adapters, Modules, authoring tools, and examples are outer owners
-being extracted under ADR 0064. New concerns must first identify their
+Execution Adapters, Modules, authoring tools, and examples have been extracted
+to their ADR 0064 owners. New concerns must first identify their
 Capability, Module, Adapter, or authoring seam before adding a crate.
 
 ## Delivery
