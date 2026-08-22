@@ -1,6 +1,0 @@
-{
-  "oneOf": [
-    {"const": "invalid_event"},
-    {"const": "conflicting_event_id"}
-  ]
-}

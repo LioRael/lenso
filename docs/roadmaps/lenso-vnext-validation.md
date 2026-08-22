@@ -1,17 +1,17 @@
 # Lenso vNext validation roadmap
 
 This roadmap proves the vNext architecture with executable tracer bullets. It
-is not a release calendar. The `next` branch contains only the vNext runtime;
-`main` remains the v0.3.x maintenance and release line.
+is not a release calendar. The `main` branch contains only the vNext runtime;
+the final v0.3.x source remains available from the `lenso@0.3.47` tag and Git
+history.
 
 Implementation is tracked by issue
 [#577](https://github.com/LioRael/lenso/issues/577) and child tickets #578
-through #603. Each ticket starts from the latest `origin/next` and targets
-`next`.
+through #603. New work starts from the latest `origin/main` and targets `main`.
 
 ## 0. Workspace reset
 
-The `next` workspace starts with only the immutable App Plan, portable Kernel,
+The vNext workspace started with only the immutable App Plan, portable Kernel,
 native Runtime Driver, deterministic test Driver, and their governance. The
 old Service/Provider/System Plane workspace is removed atomically with this
 skeleton.

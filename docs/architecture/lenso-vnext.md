@@ -2,13 +2,11 @@
 
 ## Status
 
-This document describes the vNext target and the initial implementation
-boundary of the minimal `next` workspace. The current code is the App Plan,
-portable Kernel, native Runtime Driver, and deterministic test Driver skeleton;
-the remaining graph, lifecycle, and adapter slices are introduced by later
-vNext work. ADRs 0030 onward are the authoritative decisions; this overview
-routes readers through them without repeating every detailed invariant. The
-maintained v0.3.x implementation is owned by `main`.
+This document describes the vNext target and the implementation boundary that
+started in the minimal vNext workspace. ADRs 0030 onward are the authoritative
+decisions; this overview routes readers through them without repeating every
+detailed invariant. The final v0.3.x source is retained by the
+`lenso@0.3.47` tag and Git history.
 
 ## Shape
 
@@ -42,6 +40,11 @@ lifecycle, bounded invocation, cancellation, supervision, and diagnostics.
 HTTP, PostgreSQL, Auth, Console, Story, and similar features do not pass this
 deletion test because their complexity disappears when their Modules are not
 selected.
+
+Repository ownership is narrower than the current migration workspace. The
+main repository owns Plan, Kernel, and Kernel conformance; host runtimes,
+Adapters, protocols, Modules, tooling, and examples depend inward and move to
+their named owners under [ADR 0064](../adr/0064-keep-only-portable-core-ownership-in-the-main-repository.md).
 
 ## Composition and packages
 

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     env,
     ffi::OsStr,
     fs,
@@ -10,7 +10,52 @@ use std::{
 const NOTICE_LINE_LIMIT: usize = 600;
 const DEFAULT_LINE_LIMIT: usize = 1_000;
 const DEBT_FILE: &str = "scripts/rust-module-size-debt.txt";
-const SOURCE_ROOTS: &[&str] = &["crates", "fixtures"];
+const SOURCE_ROOTS: &[&str] = &["crates"];
+const CORE_DIRECTORIES: &[&str] = &[
+    "lenso-app-plan",
+    "lenso-kernel",
+    "lenso-runtime-conformance",
+];
+const CORE_PACKAGE_RULES: &[CorePackageRule] = &[
+    CorePackageRule {
+        directory: "crates/lenso-app-plan",
+        allowed_packages: &["lenso-app-plan"],
+        allowed_crates: &["lenso_app_plan"],
+    },
+    CorePackageRule {
+        directory: "crates/lenso-kernel",
+        allowed_packages: &[
+            "lenso-app-plan",
+            "lenso-kernel",
+            "lenso-runtime-conformance",
+        ],
+        allowed_crates: &[
+            "lenso_app_plan",
+            "lenso_kernel",
+            "lenso_runtime_conformance",
+        ],
+    },
+    CorePackageRule {
+        directory: "crates/lenso-runtime-conformance",
+        allowed_packages: &[
+            "lenso-app-plan",
+            "lenso-kernel",
+            "lenso-runtime-conformance",
+        ],
+        allowed_crates: &[
+            "lenso_app_plan",
+            "lenso_kernel",
+            "lenso_runtime_conformance",
+        ],
+    },
+];
+
+#[derive(Clone, Copy, Debug)]
+struct CorePackageRule {
+    directory: &'static str,
+    allowed_packages: &'static [&'static str],
+    allowed_crates: &'static [&'static str],
+}
 
 fn main() {
     if let Err(error) = run() {
@@ -21,40 +66,49 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let mut arguments = env::args_os().skip(1);
-    let usage = "usage: cargo xtask check-rust-module-size [--report-notices]";
+    let usage = "usage: cargo xtask <check-rust-module-size [--report-notices] | check-core-repository-boundary>";
     let Some(command) = arguments.next() else {
         return Err(usage.to_owned());
     };
 
-    if command != OsStr::new("check-rust-module-size") {
-        return Err(format!(
+    match command.to_str() {
+        Some("check-rust-module-size") => {
+            let report_notices = match arguments.next() {
+                None => false,
+                Some(flag) if flag == OsStr::new("--report-notices") => true,
+                Some(argument) => {
+                    return Err(format!(
+                        "unexpected argument `{}`; {usage}",
+                        argument.to_string_lossy()
+                    ));
+                }
+            };
+            if arguments.next().is_some() {
+                return Err(usage.to_owned());
+            }
+            check_rust_module_sizes(report_notices)
+        }
+        Some("check-core-repository-boundary") => {
+            if arguments.next().is_some() {
+                return Err(usage.to_owned());
+            }
+            check_core_repository_boundary()
+        }
+        _ => Err(format!(
             "unknown xtask command `{}`; {usage}",
             command.to_string_lossy()
-        ));
+        )),
     }
+}
 
-    let report_notices = match arguments.next() {
-        None => false,
-        Some(flag) if flag == OsStr::new("--report-notices") => true,
-        Some(argument) => {
-            return Err(format!(
-                "unexpected argument `{}`; {usage}",
-                argument.to_string_lossy()
-            ));
-        }
-    };
-
-    if arguments.next().is_some() {
-        return Err(usage.to_owned());
-    }
-
-    check_rust_module_sizes(report_notices)
+fn repository_root() -> Result<&'static Path, String> {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "xtask manifest has no repository parent".to_owned())
 }
 
 fn check_rust_module_sizes(report_notices: bool) -> Result<(), String> {
-    let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "xtask manifest has no repository parent".to_owned())?;
+    let repository_root = repository_root()?;
     let debt_path = repository_root.join(DEBT_FILE);
     let debt = fs::read_to_string(&debt_path).map_err(|error| {
         format!(
@@ -100,6 +154,130 @@ fn check_rust_module_sizes(report_notices: bool) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn check_core_repository_boundary() -> Result<(), String> {
+    let repository_root = repository_root()?;
+    let mut failures = Vec::new();
+
+    let crates_root = repository_root.join("crates");
+    let mut actual_directories = fs::read_dir(&crates_root)
+        .map_err(|error| format!("could not read {}: {error}", crates_root.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("could not inspect {}: {error}", crates_root.display()))?
+        .into_iter()
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(std::fs::FileType::is_dir)
+                .map(|_| entry.file_name().to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>();
+    actual_directories.sort();
+    let expected_directories = CORE_DIRECTORIES
+        .iter()
+        .map(|directory| (*directory).to_owned())
+        .collect::<Vec<_>>();
+    if actual_directories != expected_directories {
+        failures.push(format!(
+            "crates/ must contain only portable core directories; expected {expected_directories:?}, found {actual_directories:?}"
+        ));
+    }
+    if repository_root.join("fixtures").exists() {
+        failures.push("fixtures/ is owned by outer repositories".to_owned());
+    }
+
+    for rule in CORE_PACKAGE_RULES {
+        let package_root = repository_root.join(rule.directory);
+        let manifest_path = package_root.join("Cargo.toml");
+        let manifest = fs::read_to_string(&manifest_path).map_err(|error| {
+            format!(
+                "could not read {}: {error}",
+                display_path(repository_root, &manifest_path)
+            )
+        })?;
+        for dependency in path_dependencies(&manifest) {
+            if !rule.allowed_packages.contains(&dependency.as_str()) {
+                failures.push(format!(
+                    "{} has forbidden path dependency `{dependency}`",
+                    display_path(repository_root, &manifest_path)
+                ));
+            }
+        }
+
+        let mut rust_files = Vec::new();
+        for source_directory in [package_root.join("src"), package_root.join("tests")] {
+            if source_directory.is_dir() {
+                collect_rust_files(&source_directory, &mut rust_files)?;
+            }
+        }
+        rust_files.sort();
+        for rust_file in rust_files {
+            let contents = fs::read_to_string(&rust_file).map_err(|error| {
+                format!(
+                    "could not read {}: {error}",
+                    display_path(repository_root, &rust_file)
+                )
+            })?;
+            for crate_name in referenced_lenso_crates(&contents) {
+                if !rule.allowed_crates.contains(&crate_name.as_str()) {
+                    failures.push(format!(
+                        "{} references forbidden crate `{crate_name}`",
+                        display_path(repository_root, &rust_file)
+                    ));
+                }
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        return Ok(());
+    }
+    failures.sort();
+    failures.dedup();
+    Err(format!(
+        "Core repository boundary check failed:\n{}",
+        failures.join("\n")
+    ))
+}
+
+fn path_dependencies(manifest: &str) -> BTreeSet<String> {
+    manifest
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let (name, value) = line.split_once('=')?;
+            let name = name.trim();
+            (value.trim_start().starts_with('{')
+                && inline_dependency_field(value, "path").is_some())
+            .then(|| package_name_from_inline_dependency(value).unwrap_or_else(|| name.to_owned()))
+        })
+        .collect()
+}
+
+fn package_name_from_inline_dependency(value: &str) -> Option<String> {
+    let package = inline_dependency_field(value, "package")?;
+
+    package
+        .strip_prefix('"')
+        .and_then(|package| package.split_once('"'))
+        .map(|(package, _)| package.to_owned())
+}
+
+fn inline_dependency_field<'a>(value: &'a str, expected: &str) -> Option<&'a str> {
+    value.split(',').find_map(|field| {
+        let (name, value) = field.split_once('=')?;
+        (name.trim().trim_start_matches('{').trim() == expected).then_some(value.trim())
+    })
+}
+
+fn referenced_lenso_crates(source: &str) -> BTreeSet<String> {
+    source
+        .split(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+        .filter(|token| token.starts_with("lenso_") && token.len() > "lenso_".len())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 fn collect_rust_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
@@ -228,5 +406,26 @@ mod tests {
         assert_eq!(physical_line_count(&path).expect("read test source"), 2);
 
         fs::remove_file(path).expect("remove test source");
+    }
+
+    #[test]
+    fn finds_path_dependencies_and_resolves_package_aliases() {
+        let dependencies = path_dependencies(
+            "lenso-kernel = { path = \"../lenso-kernel\" }\n\
+             kernel = { package = \"lenso-kernel\", path = \"../lenso-kernel\" }\n\
+             description = \"mentions a path but is not a dependency\"\n\
+             serde.workspace = true\n",
+        );
+
+        assert_eq!(dependencies, BTreeSet::from(["lenso-kernel".to_owned()]));
+    }
+
+    #[test]
+    fn finds_referenced_lenso_crates_without_matching_product_words() {
+        let crates = referenced_lenso_crates(
+            "use lenso_app_plan::ResolvedAppPlan; // lenso-kernel is not a Rust crate token",
+        );
+
+        assert_eq!(crates, BTreeSet::from(["lenso_app_plan".to_owned()]));
     }
 }

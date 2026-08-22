@@ -2,45 +2,16 @@
 resolver = "2"
 members = [
     "crates/lenso-app-plan",
-    "crates/lenso-authoring",
-    "crates/lenso-bun-adapter",
-    "crates/lenso-contract-codegen",
-    "crates/lenso-capability-greeting",
-    "crates/lenso-capability-secure-greeting",
-    "crates/lenso-capability-auth",
-    "crates/lenso-capability-game-session",
-    "crates/lenso-capability-secrets",
-    "crates/lenso-capability-counter",
-    "crates/lenso-capability-story-events",
-    "crates/lenso-capability-story-query",
-    "crates/lenso-capability-agent-model",
-    "crates/lenso-capability-agent-tool",
-    "crates/lenso-capability-agent-memory",
-    "crates/lenso-capability-agent-progress",
-    "crates/lenso-capability-agent",
-    "crates/lenso-capability-ui-contribution",
-    "crates/lenso-capability-web-shell",
-    "crates/lenso-auth-sdk",
-    "crates/lenso-browser-driver",
     "crates/lenso-kernel",
-    "crates/lenso-native-adapter",
-    "crates/lenso-runner",
-    "crates/lenso-wasip2-driver",
-    "crates/lenso-otel-module",
-    "fixtures/portable-contract/rust",
-    "fixtures/vnext-native-greeter",
-    "fixtures/vnext-game-session",
-    "fixtures/vnext-stateful-module",
-    "fixtures/vnext-story-module",
-    "fixtures/vnext-agent-harness",
-    "fixtures/vnext-web-ui",
+    "crates/lenso-runtime-conformance",
     "xtask",
 ]
 
 [workspace.package]
 edition = "2024"
-license = "UNLICENSED"
+license = "MIT"
 publish = false
+repository = "https://github.com/LioRael/lenso"
 rust-version = "1.94"
 
 [workspace.dependencies]
@@ -48,11 +19,6 @@ futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 semver = "1.0"
-tokio = { version = "1.52", features = ["io-util", "macros", "net", "rt", "signal", "time"] }
-base64 = "0.22"
-hmac = "0.12"
-sha2 = "0.10"
-time = { version = "0.3", features = ["formatting", "parsing"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
