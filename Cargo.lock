@@ -749,7 +749,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-auth-sdk"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "hmac",
@@ -763,7 +763,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-authoring"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "lenso-app-plan",
  "lenso-bun-adapter",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-browser-driver"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-bun-adapter"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "jsonrpsee",
@@ -870,7 +870,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-auth"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "lenso-contract-codegen",
@@ -995,7 +995,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-kernel"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -1003,7 +1003,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-native-adapter"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "lenso-app-plan",
  "lenso-kernel",
@@ -1021,7 +1021,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-otel-module"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "futures",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runner"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cpu-time",
  "futures",
@@ -1059,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runtime-conformance"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "lenso-app-plan",
