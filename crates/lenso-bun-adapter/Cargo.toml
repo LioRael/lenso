@@ -18,12 +18,12 @@ sha2.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-lenso-auth-sdk = { path = "../lenso-auth-sdk", version = "0.1.0" }
-lenso-capability-auth = { path = "../lenso-capability-auth", version = "0.1.0" }
-lenso-capability-greeting = { path = "../lenso-capability-greeting", version = "0.1.0" }
-lenso-capability-secure-greeting = { path = "../lenso-capability-secure-greeting", version = "0.1.0" }
-lenso-native-adapter = { path = "../lenso-native-adapter", version = "0.1.0" }
-lenso-otel-module = { path = "../lenso-otel-module", version = "0.1.0" }
+lenso-auth-sdk = { path = "../lenso-auth-sdk" }
+lenso-capability-auth = { path = "../lenso-capability-auth" }
+lenso-capability-greeting = { path = "../lenso-capability-greeting" }
+lenso-capability-secure-greeting = { path = "../lenso-capability-secure-greeting" }
+lenso-native-adapter = { path = "../lenso-native-adapter" }
+lenso-otel-module = { path = "../lenso-otel-module" }
 time.workspace = true
 
 [lints]
