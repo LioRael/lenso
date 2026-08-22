@@ -23,6 +23,7 @@ members = [
     "crates/lenso-auth-sdk",
     "crates/lenso-browser-driver",
     "crates/lenso-kernel",
+    "crates/lenso-runtime-conformance",
     "crates/lenso-native-adapter",
     "crates/lenso-runner",
     "crates/lenso-wasip2-driver",

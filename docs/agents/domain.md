@@ -1,11 +1,11 @@
 # Domain docs
 
-Lenso `next` is the vNext context. Before exploring or changing the code, read:
+Lenso `main` is the vNext context. Before exploring or changing the code, read:
 
 - [`CONTEXT.md`](../../CONTEXT.md)
 - [`docs/adr/README.md`](../adr/README.md)
 - [`docs/architecture/lenso-vnext.md`](../architecture/lenso-vnext.md)
-- the relevant ADR 0030–0057
+- the relevant ADR 0030–0064
 
 Use the canonical terms App, Module, Module Instance, Capability, Operation,
 App Composition, Resolved App Plan, Kernel, Runtime Driver, and Execution
