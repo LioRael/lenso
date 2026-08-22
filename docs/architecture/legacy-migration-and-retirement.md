@@ -2,18 +2,20 @@
 
 ## Status and source baseline
 
-This document classifies the maintained v0.3.x framework at legacy commit
+This document classifies the final v0.3.x framework at legacy commit
 [`79ea3e59`](https://github.com/LioRael/lenso/tree/79ea3e59446c56923c2707842e3ffcdd1e7b64c2)
 against the executable vNext evidence present at `next` commit
 [`4f090814`](https://github.com/LioRael/lenso/tree/4f090814c575ae2e2766bd0155e73857b353bb63).
 It is a cutover plan, not a compatibility promise and not evidence that an
 unimplemented product has shipped.
 
-The `main` branch remains the v0.3.x maintenance and release lane while
-`next` remains the isolated vNext lane. Historical source paths below refer to
-the pinned legacy commit even though those files deliberately do not exist in
-the vNext workspace. Git history, not a copied `legacy/` directory, is the
-forensics source.
+The branch statements below describe the pinned pre-cutover baseline. The
+cutover has since made `main` the vNext delivery line; `next` is retained as a
+pre-cutover integration reference, and `lenso@0.3.47` plus Git history retain
+the final v0.3.x source. Historical source paths below still refer to the pinned
+legacy commit even though those files deliberately do not exist in the vNext
+workspace. Git history, not a copied `legacy/` directory, is the forensics
+source.
 
 Every row has exactly one primary vNext owner or an explicit retirement
 decision:
@@ -110,7 +112,7 @@ not route users back into retired concepts.
 
 | Legacy skill family | Decision |
 | --- | --- |
-| `lenso-start`, `lenso-business-planning`, `lenso-app-composition` | Rewrite around App, Module, Capability, package-manager inputs and immutable Plan generation. The vNext versions already present in `next` are the replacement path. |
+| `lenso-start`, `lenso-business-planning`, `lenso-app-composition` | Rewrite around App, Module, Capability, package-manager inputs and immutable Plan generation. The vNext versions delivered through `main` are the replacement path. |
 | `lenso-module-authoring` | Rewrite around minimal Module lifecycle and generated Capability contracts. The vNext skill must not emit Manifest hooks, Surfaces, migrations or a private registry. |
 | `lenso-api-client` and `lenso-contract-evolution` | Rewrite for generated Capability clients, Descriptor SemVer, portable values and owner-specific protocol edges; retire Service discovery and universal compatibility matrices. |
 | `lenso-starter-host` | Retire the Host workflow; any replacement scaffolds a thin App Runner and reviewable Composition/Plan. |
@@ -168,7 +170,7 @@ Kernel or every App.
 
 | Layer | Explicit users | Boundary | Removal criterion |
 | --- | --- | --- | --- |
-| Maintained v0.3.x line | Consumers of the published `lenso`, `lenso-contracts`, `lenso-module-management`, `lenso-bootstrap`, `lenso-api`, `lenso-migrate`, `lenso-worker`, `lenso-service`, `lenso-autonomous-service`, `lenso-platform-core`, `lenso-platform-module`, `lenso-platform-module-management`, `lenso-platform-provider`, `lenso-platform-http`, `lenso-platform-runtime`, `lenso-platform-runtime-observability`, `lenso-platform-runtime-operations`, `lenso-platform-system-plane`, `lenso-platform-testing` crates and `@lenso/service-kit` package | Separate branch, binaries, dependency graph and releases; no linking into `next`. The v0.3.x release maintainer owns this package-coordinate register; registry versions, tags and changelogs are its evidence. | Remove support only after every listed coordinate is deprecated under its published support window, known first-party consumers have migrated or accepted retirement, and any remaining external consumer can pin an independently maintained release or fork. |
+| Final v0.3.x release | Consumers of the published `lenso`, `lenso-contracts`, `lenso-module-management`, `lenso-bootstrap`, `lenso-api`, `lenso-migrate`, `lenso-worker`, `lenso-service`, `lenso-autonomous-service`, `lenso-platform-core`, `lenso-platform-module`, `lenso-platform-module-management`, `lenso-platform-provider`, `lenso-platform-http`, `lenso-platform-runtime`, `lenso-platform-runtime-observability`, `lenso-platform-runtime-operations`, `lenso-platform-system-plane`, `lenso-platform-testing` crates and `@lenso/service-kit` package | Tagged source, binaries, dependency graph and releases; no linking into the vNext workspace. Registry versions, tags and changelogs are the package-coordinate evidence. | Remove support only after every listed coordinate is deprecated under its published support window, known first-party consumers have migrated or accepted retirement, and any remaining external consumer can pin an independently maintained release or fork. |
 | Legacy edge-contract Adapter | A named application whose external HTTP/gRPC clients cannot switch atomically | App-selected protocol Module maps one pinned legacy edge contract to explicit generated Capability clients; no registry, ambient admin authority or business ownership | Delete after traffic and client telemetry show no use for the agreed compatibility window and rollback has expired. No current App authorizes this layer by default. |
 | Owner-specific PostgreSQL export/import command | The named stateful Module receiving records from one legacy schema | Offline or quiesced authoring/operations tool; verifies source version, produces a reviewable report and invokes the new owner's explicit setup/import seam | Delete after backup retention and rollback windows close, migrated counts/checksums reconcile, and the owner has exercised restore from the new format. |
 | Legacy durable-event bridge | A named producer/consumer pair that must overlap during cutover | Optional broker/Outbox Module translates one versioned domain Event; Kernel Event semantics remain volatile and unchanged | Delete after all producers and consumers use the new Capability/Event contract and the old queue is drained under the owner's policy. |

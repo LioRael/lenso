@@ -1,49 +1,52 @@
+//! Black-box Kernel diagnostics conformance through product-neutral fixtures.
+
 use std::time::Duration;
 
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
     CapabilityRequirementPlan, ModuleInstancePlan, ResolvedAppPlan,
 };
-use lenso_capability_greeting::{
-    GREET_OPERATION, GREETING_CAPABILITY_ID, GREETING_DESCRIPTOR_VERSION, GreetRequest, Greeting,
-};
 use lenso_kernel::{
     DeterministicDriver, DiagnosticEvent, DiagnosticFilter, DiagnosticOutcome, DiagnosticSource,
     DiagnosticSubscribeError, ExecutionAdapterCatalog, Kernel, RuntimeDiagnostics, RuntimeDriver,
     RuntimeFailureKind, ShutdownOutcome,
 };
-use lenso_native_adapter::NativeModuleRegistry;
-use lenso_native_greeter::{
-    CONSUMER_PACKAGE_ID, ConsumerFactory, GREETER_PACKAGE_ID, GreeterFactory,
+use lenso_runtime_conformance::ConformanceExecutionAdapter;
+use lenso_runtime_conformance::{
+    PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION, PROBE_OPERATION, Probe, ProbeRequest,
+};
+use lenso_runtime_conformance::{
+    PROBE_CONSUMER_PACKAGE_ID, PROBE_PROVIDER_PACKAGE_ID, ProbeConsumerFactory,
+    ProbeProviderFactory,
 };
 
-fn greeting_plan() -> ResolvedAppPlan {
+fn probe_plan() -> ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("greeter", GREETER_PACKAGE_ID).with_capability(
+            ModuleInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
-                    GREETING_CAPABILITY_ID,
-                    GREETING_DESCRIPTOR_VERSION,
-                    [GREET_OPERATION],
+                    PROBE_CAPABILITY_ID,
+                    PROBE_DESCRIPTOR_VERSION,
+                    [PROBE_OPERATION],
                 ),
             ),
-            ModuleInstancePlan::new("consumer", CONSUMER_PACKAGE_ID).with_requirement(
+            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::new(
-                    GREETING_CAPABILITY_ID,
-                    GREETING_DESCRIPTOR_VERSION,
+                    PROBE_CAPABILITY_ID,
+                    PROBE_DESCRIPTOR_VERSION,
                     CapabilityCardinality::One,
                 ),
             ),
         ],
         vec![CapabilityBinding::new(
             "consumer",
-            GREETING_CAPABILITY_ID,
-            GREETING_DESCRIPTOR_VERSION,
-            "greeter",
+            PROBE_CAPABILITY_ID,
+            PROBE_DESCRIPTOR_VERSION,
+            "provider",
         )],
     )
     .resolve()
-    .expect("the greeting Plan should resolve")
+    .expect("the conformance Plan should resolve")
 }
 
 #[test]
@@ -236,14 +239,14 @@ fn diagnostics_do_not_treat_unresolved_caller_text_as_structural_identity() {
         .expect("the empty App should start");
 
     let caller_text = "not-in-the-plan: secret-value";
-    assert!(app.ensure_binding::<Greeting>(caller_text).is_err());
+    assert!(app.ensure_binding::<Probe>(caller_text).is_err());
     let result = driver.run(
-        app.many_handle::<Greeting>(caller_text)
+        app.many_handle::<Probe>(caller_text)
             .expect("many requirements may have no providers")
             .invoke_many(
-                GREET_OPERATION,
-                GreetRequest {
-                    name: "Ada".to_owned(),
+                PROBE_OPERATION,
+                ProbeRequest {
+                    value: "Ada".to_owned(),
                 },
             ),
     );
@@ -292,38 +295,38 @@ fn request_diagnostics_expose_timing_and_failure_categories_without_domain_bodie
         .expect("observer capacity is positive");
     let app = driver
         .run(Kernel::start_native_with_diagnostics(
-            greeting_plan(),
+            probe_plan(),
             driver.clone(),
-            NativeModuleRegistry::new()
-                .with_factory(GreeterFactory)
-                .with_factory(ConsumerFactory),
+            ConformanceExecutionAdapter::new()
+                .with_factory(ProbeProviderFactory)
+                .with_factory(ProbeConsumerFactory),
             diagnostics,
         ))
-        .expect("the greeting App should start");
+        .expect("the conformance App should start");
 
-    let success = driver.run(app.invoke::<Greeting>(
+    let success = driver.run(app.invoke::<Probe>(
         "consumer",
-        GREET_OPERATION,
-        GreetRequest {
-            name: "Ada".to_owned(),
+        PROBE_OPERATION,
+        ProbeRequest {
+            value: "Ada".to_owned(),
         },
     ));
     assert!(success.is_ok());
 
-    let domain_error = driver.run(app.invoke::<Greeting>(
+    let domain_error = driver.run(app.invoke::<Probe>(
         "consumer",
-        GREET_OPERATION,
-        GreetRequest {
-            name: String::new(),
+        PROBE_OPERATION,
+        ProbeRequest {
+            value: String::new(),
         },
     ));
     assert!(matches!(domain_error, Ok(Err(_))));
 
-    let unknown = driver.run(app.invoke::<Greeting>(
+    let unknown = driver.run(app.invoke::<Probe>(
         "consumer",
         "unknown.operation",
-        GreetRequest {
-            name: "Ada".to_owned(),
+        ProbeRequest {
+            value: "Ada".to_owned(),
         },
     ));
     assert!(unknown.is_err());

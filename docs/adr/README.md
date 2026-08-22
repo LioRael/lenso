@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0063 are the accepted, normative architecture decisions for
+ADRs 0030 through 0064 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -31,9 +31,14 @@ scales native Apps by replicating the single-owner Kernel across Plan-declared
 Execution Lanes and rejects work stealing, runtime Instance migration, and
 handler-level thread-pool offloading.
 
+[`0064-keep-only-portable-core-ownership-in-the-main-repository.md`](0064-keep-only-portable-core-ownership-in-the-main-repository.md)
+keeps only Plan, Kernel, and core conformance ownership in this repository and
+defines the one-way extraction path for runtimes, protocols, Modules, tooling,
+and examples.
+
 ## Legacy decisions
 
-ADRs 0001 through 0029 describe the maintained v0.3.x Service-oriented
+ADRs 0001 through 0029 describe the final v0.3.x Service-oriented
 architecture and the design path that preceded vNext. ADR 0030 supersedes them
 for vNext. They remain immutable historical and migration evidence rather than
 active vNext requirements.

@@ -999,9 +999,6 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "lenso-app-plan",
- "lenso-capability-greeting",
- "lenso-native-adapter",
- "lenso-native-greeter",
 ]
 
 [[package]]
@@ -1055,11 +1052,18 @@ dependencies = [
  "cpu-time",
  "futures",
  "lenso-app-plan",
- "lenso-capability-greeting",
  "lenso-kernel",
- "lenso-native-adapter",
- "lenso-native-greeter",
+ "lenso-runtime-conformance",
  "tokio",
+]
+
+[[package]]
+name = "lenso-runtime-conformance"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-app-plan",
+ "lenso-kernel",
 ]
 
 [[package]]

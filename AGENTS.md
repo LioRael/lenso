@@ -1,14 +1,14 @@
 # AGENTS.md
 
-This repository's `next` branch contains only Lenso vNext. `main` is the
-separate v0.3.x maintenance and release line.
+This repository's `main` branch contains only Lenso vNext. The final v0.3.x
+source is retained by the `lenso@0.3.47` tag and Git history.
 
 ## Start safely
 
 - Read [`CONTEXT.md`](CONTEXT.md), [`docs/adr/README.md`](docs/adr/README.md),
   [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md), and
   the relevant ADR 0030–0057 before changing architecture.
-- Create vNext worktrees from the latest `origin/next` with
+- Create vNext worktrees from the latest `origin/main` with
   `wt switch --create`; do not edit the primary worktree when an isolated
   worktree is available.
 - Preserve unrelated dirty work. Inspect `git status` and diffs before
@@ -23,6 +23,10 @@ separate v0.3.x maintenance and release line.
   database, process, product, and release concerns.
 - Keep authoring data in `lenso-app-plan`; keep host scheduling in a Runtime
   Driver; keep host-specific Module execution in an Execution Adapter.
+- Keep main-repository product ownership limited to `lenso-app-plan`,
+  `lenso-kernel`, and Kernel-owned runtime conformance under ADR 0064. Do not
+  add inward dependencies on a concrete Driver, Adapter, Capability, Module,
+  CLI, or example.
 - A Resolved App Plan is immutable and complete before boot. No runtime
   discovery, installation, graph mutation, dynamic rebinding, or fallback
   provider behavior.
@@ -40,6 +44,7 @@ cross-cutting runtime or workspace changes:
 
 ```sh
 cargo fmt --all -- --check
+cargo xtask check-core-repository-boundary
 cargo check --locked --workspace --all-targets
 cargo test --locked --workspace
 ```
