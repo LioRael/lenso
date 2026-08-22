@@ -2,9 +2,10 @@
 
 ## Status
 
-This branch is the vNext implementation line. It is a clean local-first
-runtime, not a compatibility workspace for the maintained v0.3.x release.
-`main` owns v0.3.x maintenance and release history; `next` owns vNext.
+`main` is the vNext implementation and release line. It is a clean local-first
+runtime, not a compatibility workspace for v0.3.x. The final v0.3.x source is
+retained by the `lenso@0.3.47` tag and Git history; `next` is a pre-cutover
+integration reference rather than a delivery target.
 
 The vNext reset keeps the accepted design evidence in Git while removing the
 old implementation from this branch. Git history remains the migration and
@@ -59,15 +60,17 @@ seam.
 ## Workspace ownership
 
 `lenso-app-plan` owns serializable plan data. `lenso-kernel` owns the portable
-runtime and deterministic test Driver. `lenso-runner` owns the native Tokio
-Driver and minimal executable Runner. New concerns must first identify their
+runtime and deterministic test Driver. `lenso-runtime-conformance` owns the
+product-neutral executable test surface for Kernel Interfaces. Runtime Drivers,
+Execution Adapters, Modules, authoring tools, and examples are outer owners
+being extracted under ADR 0064. New concerns must first identify their
 Capability, Module, Adapter, or authoring seam before adding a crate.
 
 ## Delivery
 
-Create vNext worktrees from the latest `origin/next` with Worktrunk. Pull
-requests target `next`. Do not publish v0.3.x artifacts from `next`; release
-automation remains a `main` concern until an explicit cutover decision.
+Create worktrees from the latest `origin/main` with Worktrunk. Pull requests
+target `main`. Do not publish or recreate v0.3.x artifacts from the vNext
+workspace.
 
 ## Evidence
 
@@ -75,6 +78,7 @@ Use the smallest meaningful gate during development:
 
 ```sh
 cargo fmt --all -- --check
+cargo xtask check-core-repository-boundary
 cargo check --locked --workspace --all-targets
 cargo test --locked --workspace
 ```
@@ -84,6 +88,6 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0063 are normative for vNext. The vNext architecture overview,
+ADRs 0030–0064 are normative for vNext. The vNext architecture overview,
 validation roadmap, and research notes are retained beside them. Removed
 v0.3.x implementation docs are not recreated in this branch.

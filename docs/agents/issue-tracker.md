@@ -8,11 +8,11 @@ CLI for issue and pull-request operations.
 Issue #577 is the vNext implementation specification. Its dependency-ordered
 child tickets are #578 through #603.
 
-- Create vNext worktrees from the latest `origin/next`.
-- Target `next` in every vNext pull request.
-- Keep `main` as the v0.3.x maintenance and release base.
+- Create vNext worktrees from the latest `origin/main`.
+- Target `main` in every vNext pull request.
+- Treat `next` as a pre-cutover integration reference, not a delivery branch.
 - Do not repurpose the vNext specification or reintroduce removed legacy
-  implementation into `next`.
+  implementation into `main`.
 - Resolve blockers through normal issue and pull-request evidence before
   implementing a child ticket.
 

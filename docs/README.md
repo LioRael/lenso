@@ -1,6 +1,6 @@
 # Lenso vNext documentation
 
-This directory contains the design evidence for the `next` branch.
+This directory contains the design evidence for the vNext `main` branch.
 
 ## Normative
 
@@ -24,5 +24,6 @@ support vNext decisions. Research is evidence, not an executable contract.
 [`agents/`](agents/) contains issue-tracker and agent wayfinding
 conventions. Root governance lives in [`AGENTS.md`](../AGENTS.md).
 
-The previous v0.3.x implementation documentation is not maintained on `next`.
-Its source and release history remain available on `main` and in Git history.
+The previous v0.3.x implementation documentation is not maintained on `main`.
+Its source and release history remain available from the `lenso@0.3.47` tag
+and Git history.
