@@ -10,7 +10,12 @@ use std::{
 const NOTICE_LINE_LIMIT: usize = 600;
 const DEFAULT_LINE_LIMIT: usize = 1_000;
 const DEBT_FILE: &str = "scripts/rust-module-size-debt.txt";
-const SOURCE_ROOTS: &[&str] = &["crates", "fixtures"];
+const SOURCE_ROOTS: &[&str] = &["crates"];
+const CORE_DIRECTORIES: &[&str] = &[
+    "lenso-app-plan",
+    "lenso-kernel",
+    "lenso-runtime-conformance",
+];
 const CORE_PACKAGE_RULES: &[CorePackageRule] = &[
     CorePackageRule {
         directory: "crates/lenso-app-plan",
@@ -154,6 +159,34 @@ fn check_rust_module_sizes(report_notices: bool) -> Result<(), String> {
 fn check_core_repository_boundary() -> Result<(), String> {
     let repository_root = repository_root()?;
     let mut failures = Vec::new();
+
+    let crates_root = repository_root.join("crates");
+    let mut actual_directories = fs::read_dir(&crates_root)
+        .map_err(|error| format!("could not read {}: {error}", crates_root.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("could not inspect {}: {error}", crates_root.display()))?
+        .into_iter()
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(std::fs::FileType::is_dir)
+                .map(|_| entry.file_name().to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>();
+    actual_directories.sort();
+    let expected_directories = CORE_DIRECTORIES
+        .iter()
+        .map(|directory| (*directory).to_owned())
+        .collect::<Vec<_>>();
+    if actual_directories != expected_directories {
+        failures.push(format!(
+            "crates/ must contain only portable core directories; expected {expected_directories:?}, found {actual_directories:?}"
+        ));
+    }
+    if repository_root.join("fixtures").exists() {
+        failures.push("fixtures/ is owned by outer repositories".to_owned());
+    }
 
     for rule in CORE_PACKAGE_RULES {
         let package_root = repository_root.join(rule.directory);
