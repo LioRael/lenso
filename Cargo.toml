@@ -9,8 +9,9 @@ members = [
 
 [workspace.package]
 edition = "2024"
-license = "UNLICENSED"
+license = "MIT"
 publish = false
+repository = "https://github.com/LioRael/lenso"
 rust-version = "1.94"
 
 [workspace.dependencies]
