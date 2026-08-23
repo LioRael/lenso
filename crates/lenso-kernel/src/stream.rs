@@ -226,12 +226,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             })?
             .clone();
         let permit = admission
-            .acquire(
-                C::ID,
-                operation,
-                context.clone(),
-                self.runtime.driver.clone(),
-            )
+            .acquire(C::ID, operation, &context, &self.runtime.driver)
             .await?;
         if !endpoint.state.is_current(snapshot.generation) {
             return Err(RuntimeFailure::Unavailable { capability: C::ID });

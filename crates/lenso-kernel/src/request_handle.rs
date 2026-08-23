@@ -65,46 +65,58 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         let context = context
             .for_caller(&self.caller_instance)
             .for_target(C::ID, operation);
-        let started_at = (self.runtime.driver.now)();
-        let operation_name = self
-            .endpoints
-            .first()
-            .and_then(|endpoint| diagnostic_operation(endpoint.state.operations, operation));
-        self.runtime
+        let invocation_diagnostics = self
+            .runtime
             .diagnostics
-            .emit(DiagnosticSource::Invocation, started_at, |_| {
-                DiagnosticEvent::InvocationStarted {
-                    request_id: context.request_id(),
-                    caller_instance: self.diagnostic_caller_instance(),
-                    provider_instance: self
-                        .endpoints
-                        .first()
-                        .map(|endpoint| endpoint.module_instance.clone()),
-                    capability: C::ID,
-                    operation: operation_name,
-                }
-            });
+            .has_interested_observer(DiagnosticSource::Invocation);
+        let started_at = invocation_diagnostics.then(|| (self.runtime.driver.now)());
+        let operation_name = invocation_diagnostics
+            .then(|| {
+                self.endpoints
+                    .first()
+                    .and_then(|endpoint| diagnostic_operation(endpoint.state.operations, operation))
+            })
+            .flatten();
+        if let Some(started_at) = started_at {
+            self.runtime
+                .diagnostics
+                .emit(DiagnosticSource::Invocation, started_at, |_| {
+                    DiagnosticEvent::InvocationStarted {
+                        request_id: context.request_id(),
+                        caller_instance: self.diagnostic_caller_instance(),
+                        provider_instance: self
+                            .endpoints
+                            .first()
+                            .map(|endpoint| endpoint.module_instance.clone()),
+                        capability: C::ID,
+                        operation: operation_name,
+                    }
+                });
+        }
         let request_id = context.request_id();
         let result = self
             .invoke_with_context_inner(operation, context, request)
             .await;
         let outcome = request_diagnostic_outcome(&result);
-        self.runtime.diagnostics.emit(
-            DiagnosticSource::Invocation,
-            (self.runtime.driver.now)(),
-            |_| DiagnosticEvent::InvocationCompleted {
-                request_id,
-                caller_instance: self.diagnostic_caller_instance(),
-                provider_instance: self
-                    .endpoints
-                    .first()
-                    .map(|endpoint| endpoint.module_instance.clone()),
-                capability: C::ID,
-                operation: operation_name,
-                outcome,
-                elapsed: (self.runtime.driver.now)().saturating_sub(started_at),
-            },
-        );
+        if let Some(started_at) = started_at {
+            let completed_at = (self.runtime.driver.now)();
+            self.runtime
+                .diagnostics
+                .emit(DiagnosticSource::Invocation, completed_at, |_| {
+                    DiagnosticEvent::InvocationCompleted {
+                        request_id,
+                        caller_instance: self.diagnostic_caller_instance(),
+                        provider_instance: self
+                            .endpoints
+                            .first()
+                            .map(|endpoint| endpoint.module_instance.clone()),
+                        capability: C::ID,
+                        operation: operation_name,
+                        outcome,
+                        elapsed: completed_at.saturating_sub(started_at),
+                    }
+                });
+        }
         if let Err(error) = &result {
             self.runtime.diagnostics.emit_runtime_failure(
                 (self.runtime.driver.now)(),
@@ -167,12 +179,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     operation: operation.to_owned(),
                 })?;
         let _permit = admission
-            .acquire(
-                C::ID,
-                operation,
-                context.clone(),
-                self.runtime.driver.clone(),
-            )
+            .acquire(C::ID, operation, &context, &self.runtime.driver)
             .await?;
         if !endpoint.state.is_current(snapshot.generation) {
             return Err(RuntimeFailure::Unavailable { capability: C::ID });
@@ -233,40 +240,52 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         C::Request: Clone,
     {
         let context = context.for_caller(&self.caller_instance);
-        let started_at = (self.runtime.driver.now)();
-        let operation_name = self
-            .endpoints
-            .first()
-            .and_then(|endpoint| diagnostic_operation(endpoint.state.operations, operation));
-        let request_id = context.request_id();
-        self.runtime
+        let invocation_diagnostics = self
+            .runtime
             .diagnostics
-            .emit(DiagnosticSource::Invocation, started_at, |_| {
-                DiagnosticEvent::InvocationStarted {
-                    request_id,
-                    caller_instance: self.diagnostic_caller_instance(),
-                    provider_instance: None,
-                    capability: C::ID,
-                    operation: operation_name,
-                }
-            });
+            .has_interested_observer(DiagnosticSource::Invocation);
+        let started_at = invocation_diagnostics.then(|| (self.runtime.driver.now)());
+        let operation_name = invocation_diagnostics
+            .then(|| {
+                self.endpoints
+                    .first()
+                    .and_then(|endpoint| diagnostic_operation(endpoint.state.operations, operation))
+            })
+            .flatten();
+        let request_id = context.request_id();
+        if let Some(started_at) = started_at {
+            self.runtime
+                .diagnostics
+                .emit(DiagnosticSource::Invocation, started_at, |_| {
+                    DiagnosticEvent::InvocationStarted {
+                        request_id,
+                        caller_instance: self.diagnostic_caller_instance(),
+                        provider_instance: None,
+                        capability: C::ID,
+                        operation: operation_name,
+                    }
+                });
+        }
         let result = self
             .invoke_many_with_context_inner(operation, context, request)
             .await;
         let outcome = many_request_diagnostic_outcome(&result);
-        self.runtime.diagnostics.emit(
-            DiagnosticSource::Invocation,
-            (self.runtime.driver.now)(),
-            |_| DiagnosticEvent::InvocationCompleted {
-                request_id,
-                caller_instance: self.diagnostic_caller_instance(),
-                provider_instance: None,
-                capability: C::ID,
-                operation: operation_name,
-                outcome,
-                elapsed: (self.runtime.driver.now)().saturating_sub(started_at),
-            },
-        );
+        if let Some(started_at) = started_at {
+            let completed_at = (self.runtime.driver.now)();
+            self.runtime
+                .diagnostics
+                .emit(DiagnosticSource::Invocation, completed_at, |_| {
+                    DiagnosticEvent::InvocationCompleted {
+                        request_id,
+                        caller_instance: self.diagnostic_caller_instance(),
+                        provider_instance: None,
+                        capability: C::ID,
+                        operation: operation_name,
+                        outcome,
+                        elapsed: completed_at.saturating_sub(started_at),
+                    }
+                });
+        }
         if let Err(error) = &result {
             self.runtime
                 .diagnostics
@@ -320,12 +339,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                         operation: operation.to_owned(),
                     })?;
             let _permit = admission
-                .acquire(
-                    C::ID,
-                    operation,
-                    context.clone(),
-                    self.runtime.driver.clone(),
-                )
+                .acquire(C::ID, operation, &context, &self.runtime.driver)
                 .await?;
             if !endpoint.state.is_current(snapshot.generation) {
                 return Err(RuntimeFailure::Unavailable { capability: C::ID });

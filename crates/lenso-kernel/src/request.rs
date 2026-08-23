@@ -285,7 +285,7 @@ impl ModuleDependencyHandle {
 #[derive(Clone, Debug, Default)]
 pub struct ModuleDependencies {
     pub(super) bindings: Vec<ModuleDependency>,
-    pub(super) caller_instance: String,
+    pub(super) caller_instance: Rc<str>,
     pub(super) runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
 }
 
@@ -296,7 +296,7 @@ impl ModuleDependencies {
     ) -> Self {
         Self {
             bindings: Vec::new(),
-            caller_instance: caller_instance.into(),
+            caller_instance: Rc::from(caller_instance.into()),
             runtime,
         }
     }
@@ -334,7 +334,7 @@ impl ModuleDependencies {
         let request_id = runtime.request_ids.get();
         runtime.request_ids.set(request_id.saturating_add(1));
         Ok(InvocationContext::new(request_id, deadline, cancellation)
-            .with_caller_instance(self.caller_instance.clone()))
+            .with_shared_caller_instance(self.caller_instance.clone()))
     }
 
     /// Creates a Module Invocation Context with a Driver-relative deadline.
