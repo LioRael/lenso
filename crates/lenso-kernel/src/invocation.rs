@@ -1,5 +1,5 @@
 use std::time::Duration;
-use std::{collections::BTreeMap, fmt};
+use std::{collections::BTreeMap, fmt, rc::Rc};
 
 use super::{RequestId, lifecycle::CancellationToken};
 
@@ -160,7 +160,7 @@ impl std::fmt::Display for InvocationContextError {
 /// Kernel-owned context propagated across one native request invocation.
 #[derive(Clone, Debug)]
 pub struct InvocationContext {
-    pub(super) caller_instance: Option<String>,
+    pub(super) caller_instance: Option<Rc<str>>,
     pub(super) request_id: RequestId,
     pub(super) deadline: Option<Duration>,
     pub(super) cancellation: CancellationToken,
@@ -188,13 +188,18 @@ impl InvocationContext {
     /// Attaches the resolved Caller Module Instance to this context.
     #[must_use]
     pub fn with_caller_instance(mut self, caller_instance: impl Into<String>) -> Self {
-        self.caller_instance = Some(caller_instance.into());
+        self.caller_instance = Some(Rc::from(caller_instance.into()));
+        self
+    }
+
+    pub(super) fn with_shared_caller_instance(mut self, caller_instance: Rc<str>) -> Self {
+        self.caller_instance = Some(caller_instance);
         self
     }
 
     pub(super) fn for_caller(mut self, caller_instance: &str) -> Self {
         if self.caller_instance.as_deref() != Some(caller_instance) {
-            self.caller_instance = Some(caller_instance.to_owned());
+            self.caller_instance = Some(Rc::from(caller_instance));
         }
         self
     }
@@ -332,5 +337,17 @@ mod tests {
 
         let context = context.for_caller("resolved-consumer");
         assert_eq!(context.caller_instance(), Some("resolved-consumer"));
+    }
+
+    #[test]
+    fn cloning_context_reuses_caller_storage() {
+        let context = InvocationContext::new(1, None, CancellationToken::new())
+            .with_caller_instance("consumer".to_owned());
+        let cloned = context.clone();
+
+        assert_eq!(
+            context.caller_instance().unwrap().as_ptr(),
+            cloned.caller_instance().unwrap().as_ptr()
+        );
     }
 }

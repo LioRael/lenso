@@ -363,18 +363,20 @@ impl RuntimeDiagnostics {
         observers.len()
     }
 
-    pub(crate) fn emit<F>(&self, source: DiagnosticSource, timestamp: Duration, build: F)
-    where
-        F: FnOnce(u64) -> DiagnosticEvent,
-    {
-        let interested = self
-            .state
+    pub(crate) fn has_interested_observer(&self, source: DiagnosticSource) -> bool {
+        self.state
             .observers
             .borrow()
             .iter()
             .filter_map(Weak::upgrade)
-            .any(|observer| observer.filter.includes(source));
-        if !interested {
+            .any(|observer| observer.filter.includes(source))
+    }
+
+    pub(crate) fn emit<F>(&self, source: DiagnosticSource, timestamp: Duration, build: F)
+    where
+        F: FnOnce(u64) -> DiagnosticEvent,
+    {
+        if !self.has_interested_observer(source) {
             return;
         }
 

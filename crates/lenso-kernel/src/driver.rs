@@ -1,3 +1,5 @@
+use std::future::poll_fn;
+
 use super::{
     AbortHandle, CancellationToken, Cell, Context, Duration, Either, Future, FutureExt,
     InvocationContext, LocalBoxFuture, NativeAppRuntime, Pin, Poll, Rc, RefCell,
@@ -62,6 +64,15 @@ pub trait RuntimeDriver: Clone + 'static {
 
     /// Cooperatively yields to other work on the local task lane.
     fn yield_now(&self) -> LocalBoxFuture<'static, ()>;
+
+    /// Waits for Runner control work or until the supplied monotonic instant.
+    ///
+    /// Drivers with an event source should override this to park the lane. The
+    /// yielding default preserves compatibility with deterministic and embedded
+    /// Drivers that advance work cooperatively.
+    fn wait_for_runtime_event(&self, _deadline: Duration) -> LocalBoxFuture<'static, ()> {
+        self.yield_now()
+    }
 
     /// Supplies deterministic or entropy-backed jitter bounded by the policy value.
     fn jitter(&self, _maximum: Duration) -> Duration {
@@ -183,27 +194,25 @@ impl RequestAdmission {
         })
     }
 
-    pub(super) fn acquire(
+    pub(super) async fn acquire(
         &self,
         capability: &'static str,
         operation: &str,
-        context: InvocationContext,
-        driver: DriverControl,
-    ) -> LocalBoxFuture<'static, Result<RequestPermit, RuntimeFailure>> {
-        if let Ok(permit) = self.try_acquire(capability, operation, &context, &driver) {
-            return Box::pin(futures::future::ready(Ok(permit)));
+        context: &InvocationContext,
+        driver: &DriverControl,
+    ) -> Result<RequestPermit, RuntimeFailure> {
+        if let Ok(permit) = self.try_acquire(capability, operation, context, driver) {
+            return Ok(permit);
         }
-        if let Err(error) = ensure_context_active(&driver, &context) {
-            return Box::pin(futures::future::ready(Err(error)));
+        if let Err(error) = ensure_context_active(driver, context) {
+            return Err(error);
         }
 
         if self.state.queued.get() >= self.limits.queue_capacity() {
-            return Box::pin(futures::future::ready(Err(
-                RuntimeFailure::ResourceExhausted {
-                    capability,
-                    operation: operation.to_owned(),
-                },
-            )));
+            return Err(RuntimeFailure::ResourceExhausted {
+                capability,
+                operation: operation.to_owned(),
+            });
         }
 
         let (wakeup, waiter) = oneshot::channel();
@@ -221,7 +230,7 @@ impl RequestAdmission {
             waiter_state,
             waiter,
         };
-        Box::pin(async move { queued.wait(&driver, &context).await })
+        queued.wait(driver, context).await
     }
 }
 
@@ -328,13 +337,22 @@ pub(super) async fn await_with_context<F: Future>(
     ensure_context_active(driver, context)?;
 
     let work = future.fuse();
+    futures::pin_mut!(work);
+    if let Some(output) = poll_fn(|context| match work.as_mut().poll(context) {
+        Poll::Ready(output) => Poll::Ready(Some(output)),
+        Poll::Pending => Poll::Ready(None),
+    })
+    .await
+    {
+        return Ok(output);
+    }
     let cancellation = context.cancellation.cancelled().fuse();
     let deadline: LocalBoxFuture<'static, ()> = context.deadline().map_or_else(
         || Box::pin(pending::<()>()) as LocalBoxFuture<'static, ()>,
         |deadline| (driver.sleep_until)(deadline),
     );
     let deadline = deadline.fuse();
-    futures::pin_mut!(work, cancellation, deadline);
+    futures::pin_mut!(cancellation, deadline);
 
     match select(select(work, cancellation), deadline).await {
         Either::Left((Either::Left((output, _)), _)) => Ok(output),
@@ -360,6 +378,15 @@ pub(super) async fn await_with_generation_context<F: Future>(
     }
 
     let work = future.fuse();
+    futures::pin_mut!(work);
+    if let Some(output) = poll_fn(|context| match work.as_mut().poll(context) {
+        Poll::Ready(output) => Poll::Ready(Some(output)),
+        Poll::Pending => Poll::Ready(None),
+    })
+    .await
+    {
+        return Ok(output);
+    }
     let cancellation = context.cancellation.cancelled().fuse();
     let generation_cancellation = generation_cancellation.cancelled().fuse();
     let deadline: LocalBoxFuture<'static, ()> = context.deadline().map_or_else(
@@ -367,7 +394,7 @@ pub(super) async fn await_with_generation_context<F: Future>(
         |deadline| (driver.sleep_until)(deadline),
     );
     let deadline = deadline.fuse();
-    futures::pin_mut!(work, cancellation, generation_cancellation, deadline);
+    futures::pin_mut!(cancellation, generation_cancellation, deadline);
 
     match select(
         select(select(work, cancellation), generation_cancellation),
@@ -471,4 +498,45 @@ pub enum TerminalOutcome {
     RuntimeFailureWithShutdownTimeout { error: RuntimeFailure },
     /// The App exceeded its one global shutdown deadline.
     ShutdownTimeout,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DeterministicDriver;
+
+    #[test]
+    fn ready_work_does_not_register_cancellation_waiters() {
+        let driver = DeterministicDriver::new();
+        let control = DriverControl::new(&driver);
+        let caller_cancellation = CancellationToken::new();
+        let generation_cancellation = CancellationToken::new();
+        let context = InvocationContext::new(
+            1,
+            Some(Duration::from_millis(10)),
+            caller_cancellation.clone(),
+        );
+        let observed = Rc::new(Cell::new((usize::MAX, usize::MAX)));
+        let observed_waiters = observed.clone();
+        let work_caller = caller_cancellation.clone();
+        let work_generation = generation_cancellation.clone();
+        let work = poll_fn(move |_| {
+            observed_waiters.set((
+                work_caller.state.waiters.borrow().len(),
+                work_generation.state.waiters.borrow().len(),
+            ));
+            Poll::Ready("done")
+        });
+
+        let outcome = driver.run(await_with_generation_context(
+            &control,
+            &context,
+            generation_cancellation,
+            "test.capability",
+            work,
+        ));
+
+        assert_eq!(outcome, Ok("done"));
+        assert_eq!(observed.get(), (0, 0));
+    }
 }
