@@ -192,7 +192,7 @@ impl InvocationContext {
         self
     }
 
-    pub(super) fn with_shared_caller_instance(mut self, caller_instance: Rc<str>) -> Self {
+    pub(crate) fn with_shared_caller_instance(mut self, caller_instance: Rc<str>) -> Self {
         self.caller_instance = Some(caller_instance);
         self
     }

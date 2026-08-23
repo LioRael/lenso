@@ -40,7 +40,7 @@ mod supervision;
 pub use diagnostics::{
     DiagnosticAdmission, DiagnosticEvent, DiagnosticFilter, DiagnosticObserver, DiagnosticOutcome,
     DiagnosticRecord, DiagnosticShutdownOutcome, DiagnosticSource, DiagnosticSubscribeError,
-    RuntimeDiagnostics, RuntimeFailureKind,
+    RuntimeDiagnostics, RuntimeFailureKind, RuntimeInvocationProbe,
 };
 pub use event::{
     EventAdmission, EventCapability, EventPublishResult, EventPublishStatus,

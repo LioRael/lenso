@@ -33,7 +33,7 @@ pub trait RequestCapability: 'static {
     where
         Self: Sized,
     {
-        invoke_erased_native_request::<Self>(endpoint, operation, request, context)
+        invoke_typed_or_erased_native_request::<Self>(endpoint, operation, request, context)
     }
 }
 
@@ -46,6 +46,67 @@ pub type NativeRequestFuture<C> = LocalBoxFuture<
         RuntimeFailure,
     >,
 >;
+
+type TypedNativeRequestFn<C> =
+    dyn Fn(&str, <C as RequestCapability>::Request, InvocationContext) -> NativeRequestFuture<C>;
+
+/// Runtime-provided typed endpoint used when a request crosses an execution boundary.
+///
+/// Generated in-process endpoints may expose a more specific endpoint type. This generic
+/// carrier lets execution adapters preserve typed request, response, and domain-error values
+/// without routing them through `Box<dyn Any>`.
+#[doc(hidden)]
+pub struct TypedNativeRequestEndpoint<C: RequestCapability> {
+    invoke: Rc<TypedNativeRequestFn<C>>,
+}
+
+impl<C: RequestCapability> TypedNativeRequestEndpoint<C> {
+    /// Creates a typed endpoint around one runtime-owned dispatcher.
+    pub fn new(
+        invoke: impl Fn(&str, C::Request, InvocationContext) -> NativeRequestFuture<C> + 'static,
+    ) -> Self {
+        Self {
+            invoke: Rc::new(invoke),
+        }
+    }
+
+    /// Dispatches one request without type erasure.
+    pub fn invoke(
+        &self,
+        operation: &str,
+        request: C::Request,
+        context: InvocationContext,
+    ) -> NativeRequestFuture<C> {
+        (self.invoke)(operation, request, context)
+    }
+}
+
+impl<C: RequestCapability> std::fmt::Debug for TypedNativeRequestEndpoint<C> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("TypedNativeRequestEndpoint")
+            .field("capability", &C::ID)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Uses a runtime-provided typed endpoint when present, retaining erased compatibility.
+#[doc(hidden)]
+pub fn invoke_typed_or_erased_native_request<C: RequestCapability>(
+    endpoint: &dyn NativeRequestEndpoint,
+    operation: &str,
+    request: C::Request,
+    context: InvocationContext,
+) -> NativeRequestFuture<C> {
+    if let Some(endpoint) = endpoint
+        .typed_endpoint()
+        .and_then(|endpoint| endpoint.downcast_ref::<TypedNativeRequestEndpoint<C>>())
+    {
+        endpoint.invoke(operation, request, context)
+    } else {
+        invoke_erased_native_request::<C>(endpoint, operation, request, context)
+    }
+}
 
 /// Compatibility dispatcher used by generated bindings when a typed endpoint is unavailable.
 #[doc(hidden)]
@@ -132,6 +193,71 @@ pub enum ModuleLifecyclePhase {
     Ready,
     /// The Module must release work and resources owned by this generation.
     Deactivate,
+}
+
+#[cfg(test)]
+mod typed_endpoint_tests {
+    use std::any::Any;
+
+    use super::*;
+
+    #[derive(Debug)]
+    struct Echo;
+
+    impl RequestCapability for Echo {
+        type Request = u64;
+        type Response = u64;
+        type DomainError = ();
+        const ID: &'static str = "test.echo@1";
+        const DESCRIPTOR_VERSION: &'static str = "1.0.0";
+    }
+
+    #[derive(Debug)]
+    struct Endpoint {
+        typed: TypedNativeRequestEndpoint<Echo>,
+    }
+
+    impl NativeRequestEndpoint for Endpoint {
+        fn capability_id(&self) -> &'static str {
+            Echo::ID
+        }
+
+        fn descriptor_version(&self) -> &'static str {
+            Echo::DESCRIPTOR_VERSION
+        }
+
+        fn operations(&self) -> &'static [&'static str] {
+            &["echo"]
+        }
+
+        fn typed_endpoint(&self) -> Option<&dyn Any> {
+            Some(&self.typed)
+        }
+
+        fn invoke(
+            &self,
+            _operation: &str,
+            _request: Box<dyn Any>,
+            _context: InvocationContext,
+        ) -> LocalBoxFuture<'static, Result<crate::ErasedDomainResult, RuntimeFailure>> {
+            panic!("typed dispatch must not call the erased endpoint")
+        }
+    }
+
+    #[test]
+    fn default_dispatch_uses_runtime_typed_endpoint() {
+        let endpoint = Endpoint {
+            typed: TypedNativeRequestEndpoint::new(|_, request, _| {
+                Box::pin(futures::future::ready(Ok(Ok(request + 1))))
+            }),
+        };
+        let context = InvocationContext::new(1, None, CancellationToken::new());
+
+        let result =
+            futures::executor::block_on(Echo::invoke_native(&endpoint, "echo", 41, context));
+
+        assert_eq!(result, Ok(Ok(42)));
+    }
 }
 
 /// A deterministic dependency visible to one Module Instance.
