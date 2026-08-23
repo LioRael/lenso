@@ -1,4 +1,9 @@
-use super::*;
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::{
+    CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan, ExecutionLanePlan,
+    ModuleInstancePlan, PlanResolutionError,
+};
 
 pub(super) fn resolve_parts(
     module_instances: &[ModuleInstancePlan],
@@ -119,20 +124,6 @@ fn validate_binding(
             provider_instance: binding.provider_instance.clone(),
             capability_id: binding.capability_id.clone(),
         });
-    }
-    if consumer.execution_lane != provider.execution_lane {
-        for operation in &endpoint.operations {
-            let interaction = endpoint
-                .operation_kind(operation)
-                .expect("iterated Operation is declared by this endpoint");
-            if interaction != CapabilityOperationKind::Request {
-                return Err(PlanResolutionError::CrossLaneInteractionUnsupported {
-                    capability_id: endpoint.capability_id.clone(),
-                    operation: operation.clone(),
-                    interaction,
-                });
-            }
-        }
     }
     if binding.has_explicit_admission() {
         for operation in &endpoint.operations {

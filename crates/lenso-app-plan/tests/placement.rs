@@ -1,7 +1,6 @@
 use lenso_app_plan::{
-    AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityOperationKind,
-    CapabilityRequirementPlan, ExecutionLaneId, ExecutionLanePlan, ModuleInstancePlan,
-    PlanResolutionError,
+    AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
+    ExecutionLaneId, ExecutionLanePlan, ModuleInstancePlan, PlanResolutionError,
 };
 
 #[test]
@@ -186,7 +185,7 @@ fn placement_accepts_cross_lane_binding_with_contract_transfer_support() {
 }
 
 #[test]
-fn placement_rejects_unimplemented_cross_lane_interaction_kinds() {
+fn placement_accepts_transfer_capable_stream_and_event_interactions() {
     let composition = AppComposition::new(
         vec![
             ModuleInstancePlan::new("consumer", "package.consumer")
@@ -198,8 +197,10 @@ fn placement_rejects_unimplemented_cross_lane_interaction_kinds() {
             ModuleInstancePlan::new("provider", "package.provider")
                 .with_execution_lane(ExecutionLaneId::new("lane-b"))
                 .with_capability(
-                    CapabilityEndpointPlan::new("example.greeting@1", "1.0.0", ["watch"])
-                        .with_operation_kind("watch", CapabilityOperationKind::Stream)
+                    CapabilityEndpointPlan::new("example.greeting@1", "1.0.0", ["watch", "notify"])
+                        .with_stream_operation("watch")
+                        .with_event_operation("notify")
+                        .with_event_capacity(1)
                         .with_cross_lane_transfer(),
                 ),
         ],
@@ -215,12 +216,8 @@ fn placement_rejects_unimplemented_cross_lane_interaction_kinds() {
         ExecutionLanePlan::new("lane-b"),
     ]);
 
-    assert_eq!(
-        composition.resolve(),
-        Err(PlanResolutionError::CrossLaneInteractionUnsupported {
-            capability_id: "example.greeting@1".to_owned(),
-            operation: "watch".to_owned(),
-            interaction: CapabilityOperationKind::Stream,
-        })
-    );
+    let plan = composition
+        .resolve()
+        .expect("transfer-capable Stream and Event Operations should permit cross-lane placement");
+    assert_eq!(plan.capability_bindings().len(), 1);
 }

@@ -491,6 +491,29 @@ impl NativeApp {
         self.diagnostics.clone()
     }
 
+    /// Returns the exact resolved Capability dependencies for one Module Instance.
+    ///
+    /// Runners use this host-facing view when they must preserve provider identity
+    /// while transferring one binding across an Execution Lane. Ordinary Module
+    /// code receives the same Interface through its lifecycle context.
+    pub fn dependencies(
+        &self,
+        caller_instance: &str,
+    ) -> Result<ModuleDependencies, RuntimeFailure> {
+        if self.runtime.admission.is_closed() {
+            return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
+        }
+        self.runtime
+            .dependencies
+            .get(caller_instance)
+            .cloned()
+            .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                detail: format!(
+                    "Module Instance `{caller_instance}` has no resolved dependency table"
+                ),
+            })
+    }
+
     /// Returns current bounded request queue depths grouped by provider Instance.
     ///
     /// This structural snapshot contains no request payloads and is intended for

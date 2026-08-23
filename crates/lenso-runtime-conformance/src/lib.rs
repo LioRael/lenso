@@ -9,10 +9,15 @@ use std::{collections::BTreeMap, fmt, rc::Rc};
 use futures::future::LocalBoxFuture;
 use lenso_app_plan::{ExecutionClassId, ModuleInstancePlan, ResolvedAppPlan};
 use lenso_kernel::{
-    ActivateContext, InvocationContext, ModuleLifecycle, NativeRequestEndpoint,
-    NativeRequestHandle, NoopModuleLifecycle, PreparedBinding, PreparedNativeApp,
-    PreparedNativeModule, RequestCapability, RuntimeFailure,
+    ActivateContext, InvocationContext, ModuleLifecycle, NativeEndpointSet, NativeEventEndpoint,
+    NativeRequestEndpoint, NativeRequestHandle, NativeStreamEndpoint, NoopModuleLifecycle,
+    PreparedBinding, PreparedEventBinding, PreparedNativeApp, PreparedNativeModule,
+    PreparedStreamBinding, RequestCapability, RuntimeFailure,
 };
+
+mod interaction;
+
+pub use interaction::*;
 
 /// Stable identity used only by the runtime conformance suite.
 pub const PROBE_CAPABILITY_ID: &str = "lenso.runtime.conformance.probe@1";
@@ -172,7 +177,7 @@ pub enum ProbeInvocationError {
 /// One generation returned by the conformance Adapter.
 #[derive(Debug)]
 pub struct ConformanceModule {
-    endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
+    endpoints: NativeEndpointSet,
     lifecycle: Rc<dyn ModuleLifecycle>,
 }
 
@@ -185,14 +190,43 @@ impl ConformanceModule {
         endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
         lifecycle: impl ModuleLifecycle,
     ) -> Self {
+        Self::with_all_endpoints(endpoints, Vec::new(), Vec::new(), lifecycle)
+    }
+
+    /// Creates one conformance generation with every native interaction kind.
+    pub fn with_all_endpoints(
+        request: Vec<Rc<dyn NativeRequestEndpoint>>,
+        stream: Vec<Rc<dyn NativeStreamEndpoint>>,
+        event: Vec<Rc<dyn NativeEventEndpoint>>,
+        lifecycle: impl ModuleLifecycle,
+    ) -> Self {
         Self {
-            endpoints,
+            endpoints: NativeEndpointSet::new(request, stream, event),
             lifecycle: Rc::new(lifecycle),
         }
     }
 
+    /// Creates one conformance generation containing bidirectional stream endpoints.
+    pub fn with_stream_endpoints(
+        endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
+        lifecycle: impl ModuleLifecycle,
+    ) -> Self {
+        Self::with_all_endpoints(Vec::new(), endpoints, Vec::new(), lifecycle)
+    }
+
+    /// Creates one conformance generation containing ephemeral Event endpoints.
+    pub fn with_event_endpoints(
+        endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
+        lifecycle: impl ModuleLifecycle,
+    ) -> Self {
+        Self::with_all_endpoints(Vec::new(), Vec::new(), endpoints, lifecycle)
+    }
+
     fn prepared(&self) -> PreparedNativeModule {
-        PreparedNativeModule::with_lifecycle(self.endpoints.clone(), self.lifecycle.clone())
+        PreparedNativeModule::with_endpoint_set_lifecycle(
+            self.endpoints.clone(),
+            self.lifecycle.clone(),
+        )
     }
 }
 
@@ -216,7 +250,7 @@ pub trait ConformanceModuleFactory: fmt::Debug + 'static {
     ) -> Result<ConformanceModule, RuntimeFailure>;
 }
 
-/// Request-only Execution Adapter used to test the Kernel Interface directly.
+/// Interaction-complete Execution Adapter used to test the Kernel Interface directly.
 #[derive(Debug, Default)]
 pub struct ConformanceExecutionAdapter {
     factories: Vec<Rc<dyn ConformanceModuleFactory>>,
@@ -282,34 +316,50 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
         }
 
         let mut bindings = Vec::new();
+        let mut stream_bindings = Vec::new();
+        let mut event_bindings = Vec::new();
         for binding in plan.capability_bindings() {
             let Some(module) = modules.get(binding.provider_instance()) else {
                 continue;
             };
-            let endpoint = module
-                .endpoints
+            let provider = plan
+                .module_instance(binding.provider_instance())
+                .expect("validated binding provider should exist");
+            let descriptor = provider
+                .provided_capabilities()
                 .iter()
-                .find(|endpoint| {
-                    endpoint.capability_id() == binding.capability_id()
-                        && endpoint.descriptor_version() == binding.descriptor_version()
-                })
-                .cloned()
-                .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
-                    detail: format!(
-                        "Capability `{}` version `{}` has no request endpoint on provider `{}`",
-                        binding.capability_id(),
-                        binding.descriptor_version(),
-                        binding.provider_instance()
-                    ),
-                })?;
-            bindings.push(PreparedBinding::new(
-                binding.consumer_instance(),
-                binding.provider_instance(),
-                endpoint,
-            ));
+                .find(|descriptor| descriptor.capability_id() == binding.capability_id())
+                .expect("validated binding descriptor should exist");
+
+            if !descriptor.request_operations().is_empty() {
+                let endpoint = find_endpoint(module.endpoints.request(), binding, "request")?;
+                bindings.push(PreparedBinding::new(
+                    binding.consumer_instance(),
+                    binding.provider_instance(),
+                    endpoint,
+                ));
+            }
+            if !descriptor.stream_operations().is_empty() {
+                let endpoint = find_endpoint(module.endpoints.stream(), binding, "stream")?;
+                stream_bindings.push(PreparedStreamBinding::new(
+                    binding.consumer_instance(),
+                    binding.provider_instance(),
+                    endpoint,
+                ));
+            }
+            if !descriptor.event_operations().is_empty() {
+                let endpoint = find_endpoint(module.endpoints.event(), binding, "Event")?;
+                event_bindings.push(PreparedEventBinding::new(
+                    binding.consumer_instance(),
+                    binding.provider_instance(),
+                    endpoint,
+                ));
+            }
         }
 
-        Ok(PreparedNativeApp::new(bindings, generations))
+        Ok(PreparedNativeApp::new(bindings, generations)
+            .with_stream_bindings(stream_bindings)
+            .with_event_bindings(event_bindings))
     }
 
     fn recreate(
@@ -324,6 +374,66 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
         })?;
         Ok(self.instantiate(instance)?.prepared())
     }
+}
+
+trait ConformanceEndpoint {
+    fn capability_id(&self) -> &'static str;
+    fn descriptor_version(&self) -> &'static str;
+}
+
+impl ConformanceEndpoint for dyn NativeRequestEndpoint {
+    fn capability_id(&self) -> &'static str {
+        NativeRequestEndpoint::capability_id(self)
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        NativeRequestEndpoint::descriptor_version(self)
+    }
+}
+
+impl ConformanceEndpoint for dyn NativeStreamEndpoint {
+    fn capability_id(&self) -> &'static str {
+        NativeStreamEndpoint::capability_id(self)
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        NativeStreamEndpoint::descriptor_version(self)
+    }
+}
+
+impl ConformanceEndpoint for dyn NativeEventEndpoint {
+    fn capability_id(&self) -> &'static str {
+        NativeEventEndpoint::capability_id(self)
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        NativeEventEndpoint::descriptor_version(self)
+    }
+}
+
+fn find_endpoint<T>(
+    endpoints: &[Rc<T>],
+    binding: &lenso_app_plan::CapabilityBinding,
+    interaction: &str,
+) -> Result<Rc<T>, RuntimeFailure>
+where
+    T: ConformanceEndpoint + ?Sized,
+{
+    endpoints
+        .iter()
+        .find(|endpoint| {
+            endpoint.capability_id() == binding.capability_id()
+                && endpoint.descriptor_version() == binding.descriptor_version()
+        })
+        .cloned()
+        .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+            detail: format!(
+                "Capability `{}` version `{}` has no {interaction} endpoint on provider `{}`",
+                binding.capability_id(),
+                binding.descriptor_version(),
+                binding.provider_instance()
+            ),
+        })
 }
 
 /// Default consumer factory. It verifies its singular dependency during activation.
