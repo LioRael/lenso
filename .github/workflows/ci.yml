@@ -23,6 +23,8 @@ jobs:
         run: cargo xtask check-core-repository-boundary
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Lint the workspace
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: Check the workspace
         run: cargo check --locked --workspace --all-targets
       - name: Test the workspace

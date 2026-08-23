@@ -51,7 +51,7 @@ impl RequestCapability for Echo {
         else {
             return invoke_erased_native_request::<Self>(endpoint, operation, request, context);
         };
-        endpoint.invoke_echo(request, context)
+        endpoint.invoke_echo(request, &context)
     }
 }
 
@@ -98,7 +98,7 @@ impl EchoEndpoint {
     fn invoke_echo(
         &self,
         request: String,
-        context: InvocationContext,
+        context: &InvocationContext,
     ) -> futures::future::LocalBoxFuture<'static, Result<Result<String, String>, RuntimeFailure>>
     {
         let (release, released) = oneshot::channel();
@@ -167,7 +167,7 @@ impl NativeRequestEndpoint for EchoEndpoint {
         let request = request
             .downcast::<String>()
             .expect("the generated request type should cross the native seam");
-        let invocation = self.invoke_echo(*request, context);
+        let invocation = self.invoke_echo(*request, &context);
         Box::pin(async move {
             invocation.await.map(|outcome| {
                 outcome

@@ -17,6 +17,18 @@ legacy commit even though those files deliberately do not exist in the vNext
 workspace. Git history, not a copied `legacy/` directory, is the forensics
 source.
 
+Current executable evidence follows the repository owners established by ADR
+0064: portable core remains here; Rust Runner and host evidence lives in
+[`lenso-runtime-rust`](https://github.com/LioRael/lenso-runtime-rust/tree/0e9d2dc446dbcd30912cfe018ebf1f55cd7de893);
+protocol generation lives in
+[`lenso-protocols`](https://github.com/LioRael/lenso-protocols/tree/f8575ab93a6442dca96e02d4785db6f25f70846b);
+Bun transport lives in
+[`lenso-bun-adapter`](https://github.com/LioRael/lenso-bun-adapter/tree/563c1df87f3c1a9cd48123d0f6254770e82c4892);
+and authoring lives in
+[`lenso-cli`](https://github.com/LioRael/lenso-cli/tree/749f42ac45efe1bce3275e6c8ca964653464fb7d).
+The complete pre-extraction tracer-bullet workspace remains available at
+[`67d21499`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9).
+
 Every row has exactly one primary vNext owner or an explicit retirement
 decision:
 
@@ -78,7 +90,7 @@ has one owner.
 | App-specific browser contribution metadata and assets | UI Contribution Module |
 | Package/release provenance policy before boot | Optional external supply-chain or authoring policy tool |
 | Runtime package catalog, discovery, graph mutation, fallback binding and hot installation | Retire from v1 |
-| Plan-declared local Execution Lane placement and replicated single-owner Kernel lanes | Resolved App Plan data plus native Runner; accepted by ADR 0063 but not implemented until its verification gate passes |
+| Plan-declared local Execution Lane placement and replicated single-owner Kernel lanes | Resolved App Plan data plus the native Runner; ADR 0063's Request/Stream/Event conformance, terminal propagation, and scaling gates are implemented in `lenso-runtime-rust` |
 | System Plane enrollment, discovery, remote placement, workload replicas, reconciliation and remote execution | Defer; no current owner or implementation |
 | Kubernetes deployment and release orchestration | External deployment tooling, not Lenso Kernel |
 
@@ -131,18 +143,18 @@ following behaviors remain valuable when restated at vNext public seams.
 | Valuable behavior | vNext restatement and evidence |
 | --- | --- |
 | Complete ordered startup, readiness, failure rollback and bounded shutdown | Feed one immutable Plan to Kernel, observe lifecycle and terminal outcomes through its public App seam. See [`lenso-kernel` lifecycle tests](../../crates/lenso-kernel/tests/lifecycle.rs) and [`shutdown.rs`](../../crates/lenso-kernel/tests/shutdown.rs). |
-| Explicit dependencies and replaceable implementations | Change only App Composition/Plan bindings and keep the consumer unchanged. See [`vnext-native-greeter`](../../fixtures/vnext-native-greeter) and [`lenso-authoring` acceptance](../../crates/lenso-authoring/tests/authoring.rs). |
+| Explicit dependencies and replaceable implementations | Change only App Composition/Plan bindings and keep the consumer unchanged. See the pinned [`vnext-native-greeter`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-native-greeter) proof and current [`lenso-authoring` acceptance](https://github.com/LioRael/lenso-cli/blob/749f42ac45efe1bce3275e6c8ca964653464fb7d/crates/lenso-authoring/tests/authoring.rs). |
 | Provider outage, bounded restart and no replay | Stable handles report `Unavailable`, generations advance only after recreation, and in-flight work is not retried. See [`supervision.rs`](../../crates/lenso-kernel/tests/supervision.rs). |
-| Machine-readable business refusal versus runtime failure | Capability Domain Errors remain separate from Runtime Failures across native and Bun paths. See [`provider_failures.rs`](../../crates/lenso-contract-codegen/tests/provider_failures.rs) and Bun conformance in [`lenso-bun-adapter`](../../crates/lenso-bun-adapter/tests). |
-| Contract generation, artifact freshness and additive evolution | Generate Rust and TypeScript from one Capability Descriptor and reject drift or incompatible evolution before boot. See [`codegen.rs`](../../crates/lenso-contract-codegen/tests/codegen.rs). |
-| Exact Provider descriptor/digest checks and HTTP/gRPC operation parity | Preserve fail-closed exact Capability identity, Descriptor version and Operation-table checks in the Adapter handshake, then run transport-independent request/Stream/Event conformance. Retire live Provider discovery, generic health and Adapter-owned durable invocation replay. See [`lenso-bun-adapter`](../../crates/lenso-bun-adapter/tests) and [`lenso-contract-codegen`](../../crates/lenso-contract-codegen/tests). |
-| Bounded queues, cancellation and transport-neutral interaction semantics | Assert request, Stream and Event outcomes at the Capability seam, including partial Event admission and one Stream terminal outcome. See Kernel invocation tests and [`bun_cross_runtime.rs`](../../crates/lenso-bun-adapter/tests/bun_cross_runtime.rs). |
-| Protocol credentials become authenticated domain authority and the target decides authorization | Ingress selects credential evidence, Auth issues a sealed assertion, the target projects its Actor and performs final authorization. See [`vnext-game-session`](../../fixtures/vnext-game-session/tests/game_session.rs). |
-| Durable state survives restart and migration is explicit | A stateful Module owns schema/setup/upgrade/recovery and fails closed when storage is unavailable. See [`vnext-stateful-module`](../../fixtures/vnext-stateful-module/tests/durable_state.rs). |
-| Durable business narrative is independent from telemetry | Story consumes explicit business Events, is removable, and survives restart without Runtime Diagnostics. See [`vnext-story-module`](../../fixtures/vnext-story-module/tests/durable_story.rs). |
-| Observation cannot block or alter the App | Runtime Diagnostics are bounded and lossy; the optional OTel Module owns export and trace propagation. See [`diagnostics.rs`](../../crates/lenso-kernel/tests/diagnostics.rs) and [`lenso-otel-module`](../../crates/lenso-otel-module/tests). |
-| App-specific Web UI is removable and least-authority by composition | Web Shell, Browser Adapter and UI Contribution are selected pre-boot; generated clients expose only declared resolved requirements. See [`vnext-web-ui`](../../fixtures/vnext-web-ui/tests/web_ui.rs). |
-| Agent tools, memory and models remain replaceable product capabilities | The Agent Harness is an ordinary optional composition, not a Kernel mode. See [`vnext-agent-harness`](../../fixtures/vnext-agent-harness/tests/harness.rs). |
+| Machine-readable business refusal versus runtime failure | Capability Domain Errors remain separate from Runtime Failures across native and Bun paths. See [`provider_failures.rs`](https://github.com/LioRael/lenso-protocols/blob/f8575ab93a6442dca96e02d4785db6f25f70846b/crates/lenso-contract-codegen/tests/provider_failures.rs) and current [Bun conformance](https://github.com/LioRael/lenso-bun-adapter/tree/563c1df87f3c1a9cd48123d0f6254770e82c4892/crates/lenso-bun-adapter/tests). |
+| Contract generation, artifact freshness and additive evolution | Generate Rust and TypeScript from one Capability Descriptor and reject drift or incompatible evolution before boot. See [`codegen.rs`](https://github.com/LioRael/lenso-protocols/blob/f8575ab93a6442dca96e02d4785db6f25f70846b/crates/lenso-contract-codegen/tests/codegen.rs). |
+| Exact Provider descriptor/digest checks and HTTP/gRPC operation parity | Preserve fail-closed exact Capability identity, Descriptor version and Operation-table checks in the Adapter handshake, then run transport-independent Request/Stream/Event conformance. Retire live Provider discovery, generic health and Adapter-owned durable invocation replay. See [Bun Adapter tests](https://github.com/LioRael/lenso-bun-adapter/tree/563c1df87f3c1a9cd48123d0f6254770e82c4892/crates/lenso-bun-adapter/tests) and [contract-codegen tests](https://github.com/LioRael/lenso-protocols/tree/f8575ab93a6442dca96e02d4785db6f25f70846b/crates/lenso-contract-codegen/tests). |
+| Bounded queues, cancellation and transport-neutral interaction semantics | Assert Request, Stream and Event outcomes at the Capability seam, including partial Event admission and one Stream terminal outcome. See core invocation tests and [`bun_cross_runtime.rs`](https://github.com/LioRael/lenso-bun-adapter/blob/563c1df87f3c1a9cd48123d0f6254770e82c4892/crates/lenso-bun-adapter/tests/bun_cross_runtime.rs). |
+| Protocol credentials become authenticated domain authority and the target decides authorization | Ingress selects credential evidence, Auth issues a sealed assertion, the target projects its Actor and performs final authorization. See the pinned [`vnext-game-session`](https://github.com/LioRael/lenso/blob/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-game-session/tests/game_session.rs) proof. |
+| Durable state survives restart and migration is explicit | A stateful Module owns schema/setup/upgrade/recovery and fails closed when storage is unavailable. See the pinned [`vnext-stateful-module`](https://github.com/LioRael/lenso/blob/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-stateful-module/tests/durable_state.rs) proof. |
+| Durable business narrative is independent from telemetry | Story consumes explicit business Events, is removable, and survives restart without Runtime Diagnostics. See the pinned [`vnext-story-module`](https://github.com/LioRael/lenso/blob/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-story-module/tests/durable_story.rs) proof. |
+| Observation cannot block or alter the App | Runtime Diagnostics are bounded and lossy; the optional OTel Module owns export and trace propagation. See core [`diagnostics.rs`](../../crates/lenso-runtime-conformance/tests/diagnostics.rs) and current [`lenso-otel-module` tests](https://github.com/LioRael/lenso-otel-module/tree/856190e128605479becb484a790368307085428c/crates/lenso-otel-module/tests). |
+| App-specific Web UI is removable and least-authority by composition | Web Shell, Browser Adapter and UI Contribution are selected pre-boot; generated clients expose only declared resolved requirements. See the pinned [`vnext-web-ui`](https://github.com/LioRael/lenso/blob/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-web-ui/tests/web_ui.rs) proof. |
+| Agent tools, memory and models remain replaceable product capabilities | The Agent Harness is an ordinary optional composition, not a Kernel mode. See the pinned [`vnext-agent-harness`](https://github.com/LioRael/lenso/blob/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-agent-harness/tests/harness.rs) proof. |
 
 The following legacy tests are not blanket retention requirements: database
 table layouts, process-wide migration order, generic admin scopes, global
@@ -155,11 +167,11 @@ name its Module, Capability or external tool and then port the black-box intent.
 
 | Migration decision | Current evidence | Maturity boundary |
 | --- | --- | --- |
-| Native typed Modules and provider replacement | [`lenso-native-adapter`](../../crates/lenso-native-adapter), [`vnext-native-greeter`](../../fixtures/vnext-native-greeter) | Executable tracer bullet; native Rust remains statically linked in v1. |
-| Bun process Modules and portable request/Stream/Event contracts | [`lenso-bun-adapter`](../../crates/lenso-bun-adapter) and portable conformance fixtures | Executable tracer bullet; trusted child process, not a sandbox or remote runtime. |
-| Browser and WASIp2 Runtime Drivers | [`lenso-browser-driver`](../../crates/lenso-browser-driver), [`lenso-wasip2-driver`](../../crates/lenso-wasip2-driver), issue [#585](https://github.com/LioRael/lenso/issues/585) | Driver smoke and compile evidence, not one universal Wasm artifact ABI. |
-| Native replicated Execution Lanes and local placement | [ADR 0063](../adr/0063-scale-native-apps-across-replicated-kernel-lanes.md) | Accepted design only at this baseline. The multi-lane conformance and scaling verification gate has not been implemented. |
-| Optional OTel, Story, protocol/game, Agent and target Web UI products | [`lenso-otel-module`](../../crates/lenso-otel-module), [`vnext-story-module`](../../fixtures/vnext-story-module), [`vnext-game-session`](../../fixtures/vnext-game-session), [`vnext-agent-harness`](../../fixtures/vnext-agent-harness), [`vnext-web-ui`](../../fixtures/vnext-web-ui) | Executable examples proving ownership and removability, not production-complete products. |
+| Native typed Modules and provider replacement | Current [`lenso-native-adapter`](https://github.com/LioRael/lenso-runtime-rust/tree/0e9d2dc446dbcd30912cfe018ebf1f55cd7de893/crates/lenso-native-adapter) and pinned [`vnext-native-greeter`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-native-greeter) | Executable tracer bullet; native Rust remains statically linked in v1. |
+| Bun process Modules and portable Request/Stream/Event contracts | Current [`lenso-bun-adapter`](https://github.com/LioRael/lenso-bun-adapter/tree/563c1df87f3c1a9cd48123d0f6254770e82c4892/crates/lenso-bun-adapter) and portable conformance fixtures | Executable tracer bullet; trusted child process, not a sandbox or remote runtime. |
+| Browser and WASIp2 Runtime Drivers | Current [`lenso-browser-driver`](https://github.com/LioRael/lenso-runtime-rust/tree/0e9d2dc446dbcd30912cfe018ebf1f55cd7de893/crates/lenso-browser-driver), [`lenso-wasip2-driver`](https://github.com/LioRael/lenso-runtime-rust/tree/0e9d2dc446dbcd30912cfe018ebf1f55cd7de893/crates/lenso-wasip2-driver), issue [#585](https://github.com/LioRael/lenso/issues/585) | Real Chrome and Wasmtime lifecycle smoke, not one universal Wasm artifact ABI. WASIp2 remains experimental and unpublished. |
+| Native replicated Execution Lanes and local placement | [ADR 0063](../adr/0063-scale-native-apps-across-replicated-kernel-lanes.md), current [lane tests and evidence](https://github.com/LioRael/lenso-runtime-rust/tree/0e9d2dc446dbcd30912cfe018ebf1f55cd7de893/crates/lenso-runner/tests) | Implemented Request/Stream/Event transfer, terminal propagation, and checked scaling evidence; no work stealing or live migration. |
+| Optional OTel, Story, protocol/game, Agent and target Web UI products | Current [`lenso-otel-module`](https://github.com/LioRael/lenso-otel-module/tree/856190e128605479becb484a790368307085428c) plus pinned pre-extraction [`vnext-story-module`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-story-module), [`vnext-game-session`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-game-session), [`vnext-agent-harness`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-agent-harness), and [`vnext-web-ui`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-web-ui) proofs | Executable examples proving ownership and removability, not production-complete products. |
 | Cross-App Console Connector | Deferred issue [#601](https://github.com/LioRael/lenso/issues/601) and [ADR 0060](../adr/0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md) | No implementation is authorized until a real remote/multi-target, independent identity/state, or release-lifecycle requirement is accepted. |
 | Distribution and microservices | [`distributed-module-runtime.md`](future-directions/distributed-module-runtime.md) | Motivation only. Discovery, remote placement, replicas, reconciliation and Control Plane remain out of scope. |
 
@@ -204,7 +216,8 @@ point of no return before a production migration is approved.
 2. Generate Capability bindings from one Descriptor source and install them in
    Rust and Bun consumers through their ordinary package managers.
 3. Transition a simple linked-module or first-user App to
-   [`vnext-native-greeter`](../../fixtures/vnext-native-greeter) shape first.
+   pinned [`vnext-native-greeter`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-native-greeter)
+   shape first.
    Its rollback is the unchanged v0.3.x binary and data because no shared
    runtime state is mutated.
 4. Replace the legacy `fixtures/provider` proof with the native/Bun Adapter
@@ -212,9 +225,11 @@ point of no return before a production migration is approved.
    descriptor endpoint, generic health API, HTTP/gRPC wire, or durable replay
    store as a compatibility protocol.
 5. Transition stateful behavior through
-   [`vnext-stateful-module`](../../fixtures/vnext-stateful-module), then add only
+   pinned [`vnext-stateful-module`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-stateful-module),
+   then add only
    the optional Story, OTel, protocol, Agent or Web UI packages the App needs.
-6. A target-owned page follows [`vnext-web-ui`](../../fixtures/vnext-web-ui),
+6. A target-owned page follows the pinned
+   [`vnext-web-ui`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-web-ui),
    not legacy Console Surface packaging. A cross-App Console waits for #601's
    entry criteria.
 7. Release automation for v0.3.x stays on `main`. A future vNext release lane

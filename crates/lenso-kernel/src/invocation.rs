@@ -260,10 +260,7 @@ impl InvocationContext {
         if extension.issuer().is_empty()
             || extension.audience().is_empty()
             || extension.proof().is_empty()
-            || extension
-                .audience()
-                .iter()
-                .any(|audience| audience.is_empty())
+            || extension.audience().iter().any(String::is_empty)
         {
             return Err(InvocationContextError::InvalidSealedExtension {
                 key: extension.key().to_owned(),
