@@ -104,10 +104,12 @@ kinds. Portable contracts use JSON Schema 2020-12 plus a minimal value profile
 and generate Rust and TypeScript clients and providers. Native Rust dispatch can
 remain typed and direct; cross-runtime Adapters validate their wire boundary.
 
-The `lenso-contract-codegen` authoring tool treats the Descriptor and resolved
-package-local Schemas as one source. It emits deterministic Rust and TypeScript
-artifacts, checks the decimal-string/base64/time/missing-value profile, lints
-additive minor evolution, and fails when checked-in generated artifacts drift.
+The [`lenso-contract-codegen`](https://github.com/LioRael/lenso-protocols/tree/f8575ab93a6442dca96e02d4785db6f25f70846b/crates/lenso-contract-codegen)
+authoring tool, now owned by `lenso-protocols`, treats the Descriptor and
+resolved package-local Schemas as one source. It emits deterministic Rust and
+TypeScript artifacts, checks the decimal-string/base64/time/missing-value
+profile, lints additive minor evolution, and fails when checked-in generated
+artifacts drift.
 Generated metadata carries the Capability `namespace.name@major` identity and
 exact Descriptor SemVer; Module package versions are not part of that identity.
 Generated Rust values include serde wire codecs and generated TypeScript values
@@ -122,10 +124,11 @@ Generation is an authoring/build step, and the initial Rust-plus-TypeScript
 proof does not imply that every contract must publish bindings for every
 language. Future targets are selected by the real Execution Adapters and
 consumers that support them.
-The binding surface covers request and stream Operations; Event transport
-semantics remain owned by later Runtime Adapter and transport work. Stream
-bindings preserve the same typed contract while the Kernel owns only the
-transport-neutral session seam and the selected Adapter owns framing.
+The binding surface covers Request, Stream, and Event Operations. The Kernel
+owns their portable interaction semantics, while each selected Runtime Adapter
+owns physical transport and host failure mechanics. Stream bindings preserve
+the typed contract across Adapter-owned framing; Event bindings preserve
+volatile independent bounded admission without implying durable delivery.
 
 Request has one terminal result. Stream is bidirectional with independent
 half-close, bounded flow, cancellation, and an explicit terminal outcome. Event
@@ -171,12 +174,14 @@ See ADRs [0036](../adr/0036-expose-non-blocking-runtime-diagnostics.md),
 
 ### Optional OpenTelemetry Module
 
-The `lenso-otel-module` package subscribes to the externally supplied Runtime
-Diagnostics port and owns its bounded asynchronous exporter tasks. It converts
-structural diagnostics to OTel Logs and accepts explicitly authored OTel Span,
-Metric, and Log signals only when the App selects the Module and its declared
-Capability binding. Exporter failure, queue drops, and cancellation are
-best-effort telemetry outcomes and do not change App behavior.
+The independently owned
+[`lenso-otel-module`](https://github.com/LioRael/lenso-otel-module/tree/856190e128605479becb484a790368307085428c)
+package subscribes to the externally supplied Runtime Diagnostics port and owns
+its bounded asynchronous exporter tasks. It converts structural diagnostics to
+OTel Logs and accepts explicitly authored OTel Span, Metric, and Log signals
+only when the App selects the Module and its declared Capability binding.
+Exporter failure, queue drops, and cancellation are best-effort telemetry
+outcomes and do not change App behavior.
 
 The package also owns W3C Trace Context propagation through the sealed
 `lenso.otel.trace-context` extension. Issuer provenance, exact target audience,
@@ -214,19 +219,21 @@ same-realm security sandbox. An independent Console does not automatically
 execute UI code advertised by a connected target; executable UI must be
 selected independently by the Console App Composition.
 
-The first executable proof lives in `fixtures/vnext-web-ui`. Its Web Shell
-validates and assembles `many` `lenso.ui.contribution@1` providers behind the
-portable `lenso.web.shell@1` Interface. The Browser Adapter starts accepting
-HTTP only after the App Ready Gate opens and has a fixed generated-client
-projection for the exact portable requirement declared by the selected
-contribution. The client JavaScript is generated from the same validated
-Capability Descriptor IR as the Rust and TypeScript bindings and preserves the
-typed domain/runtime result envelope. The profile may inject a recorder for
-tests or a host system-browser launcher; either launcher is called only after
-readiness. The `fixture.orders` package exposes separate `backend` and `ui`
-entrypoints; removing the UI entrypoint, Shell, and Browser Adapter leaves the
-business binding usable. This trusted same-realm fixture is composition
-evidence, not hostile-code isolation.
+The first executable proof is preserved at the pinned pre-extraction
+[`fixtures/vnext-web-ui`](https://github.com/LioRael/lenso/tree/67d21499548d07e92c2f6529d7c8345e58c067d9/fixtures/vnext-web-ui)
+baseline. Its Web Shell validates and assembles `many`
+`lenso.ui.contribution@1` providers behind the portable `lenso.web.shell@1`
+Interface. The Browser Adapter starts accepting HTTP only after the App Ready
+Gate opens and has a fixed generated-client projection for the exact portable
+requirement declared by the selected contribution. The client JavaScript is
+generated from the same validated Capability Descriptor IR as the Rust and
+TypeScript bindings and preserves the typed domain/runtime result envelope. The
+profile may inject a recorder for tests or a host system-browser launcher;
+either launcher is called only after readiness. The `fixture.orders` package
+exposes separate `backend` and `ui` entrypoints; removing the UI entrypoint,
+Shell, and Browser Adapter leaves the business binding usable. This trusted
+same-realm fixture is historical composition evidence, not hostile-code
+isolation or a reason to return product code to portable core.
 
 See ADRs [0043](../adr/0043-represent-ui-contributions-as-capabilities.md) and
 [0060](../adr/0060-compose-target-web-ui-in-app-and-separate-cross-app-console.md).
