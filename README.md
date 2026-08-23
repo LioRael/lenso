@@ -38,6 +38,19 @@ Those concerns can return only as ordinary Modules, Execution Adapters,
 authoring tools, or separate repositories when a vNext decision assigns them an
 owner.
 
+## Agent skills
+
+The [project skill pack](skills/README.md) turns the vNext architecture into
+cross-repository planning, Capability, Module, composition, and runtime
+workflows without relocating implementation ownership. List the six workflows
+with:
+
+```sh
+npx skills add LioRael/lenso --list
+```
+
+Start with `lenso-start` when the owning seam is not yet clear.
+
 ## Quick start
 
 ```sh
