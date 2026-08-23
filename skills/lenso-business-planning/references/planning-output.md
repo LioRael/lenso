@@ -17,6 +17,9 @@ For each Module, record:
 - provided and required Capabilities
 - execution needs without choosing an unnecessary process boundary
 
+Also record configuration/resources, final authorization responsibility, first
+slice behavior, and deletion proof.
+
 ## Capability map
 
 For each cross-Module edge, record:
@@ -32,5 +35,16 @@ For each cross-Module edge, record:
 - success, failure, and observable evidence
 - primary implementation skill for each remaining owner
 
+## Artifact handoff
+
+Name the concrete artifact expected from each workflow:
+
+- Capability package/Descriptor/Schemas/generated targets;
+- Module package/factory or Bun entrypoint and lifecycle behavior;
+- `lenso.json` Instances/contracts/bindings/package inputs;
+- focused success/Domain Error/Runtime Failure fixture; and
+- real Adapter/host evidence when the slice crosses one.
+
 The handoff is incomplete if a fact has multiple owners, a dependency is only
-a code import, or the proof requires an undeclared global registry.
+a code import, the first slice depends on later work, or the proof requires an
+undeclared global registry/private table.

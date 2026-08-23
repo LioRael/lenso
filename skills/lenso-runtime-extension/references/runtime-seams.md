@@ -13,17 +13,32 @@ and deleting that selection should remove it, use a Module.
 | Authoring tooling | project files, package-manager inspection, validation, code generation, Plan materialization | running graph mutation, Kernel installation state |
 | Kernel | portable graph, lifecycle, invocation, admission, readiness, supervision, diagnostics | OS facilities, networks, databases, Auth, UI, transport, product policy |
 
+Apply both tests before editing:
+
+1. **Deletion:** would removing one selected product feature remove this
+   concern? If yes, it is Module behavior.
+2. **Translation:** which portable Interface would every supported host need to
+   implement differently? That Interface identifies Driver, Adapter, or Runner.
+
+Kernel changes require a portable semantic gap proven across more than one host
+or by product-neutral conformance. A missing convenience method in one Adapter
+is not evidence for a new Kernel feature.
+
 ## Boundary cases
 
-- An HTTP or game Ingress Module owns protocol-facing product behavior and
-  Capability projection. Socket accept loops, browser host APIs, or process
-  bridges belong to the supporting Adapter or Runner.
+- An HTTP or game Ingress Module may own its selected listener, framing,
+  transport limits, protocol behavior, and Capability projection. Host-wide
+  listener sharing across replicated lanes belongs to the Runner/Host; a
+  process or wire bridge belongs to an Execution Adapter only when it is the
+  generic mechanism used to execute Module packages.
 - A database client or pool is normally a private Module persistence Adapter,
   not a global Module and not Kernel state.
 - Bun child-process framing belongs to the Bun Adapter; the TypeScript business
   implementation remains a Module.
-- Web Shell and UI Contributions are Modules; browser scheduling and generated
-  client projection are Driver or Adapter mechanics.
+- Web Shell, Browser Adapter, and UI Contributions are Modules. The Browser
+  Adapter owns browser-to-App transport and generated-client projection;
+  browser host scheduling needed to run the portable Kernel remains a Driver
+  concern.
 
 Current ownership is physically split: portable Plan, Kernel, and conformance
 remain in `lenso`; Rust Drivers, native Adapter, and Runner live in
@@ -31,3 +46,8 @@ remain in `lenso`; Rust Drivers, native Adapter, and Runner live in
 source and code generation live in `lenso-protocols`; authoring lives in
 `lenso-cli`; optional Modules live with their product owners. Verify these
 locations before editing because repository ownership may evolve.
+
+Use source search rather than repository names alone: `RuntimeDriver`,
+`ExecutionAdapter`, `ExecutionAdapterCatalog`, `PreparedNativeApp`,
+`NativeModuleFactory`, and `lenso-contract-codegen` are reliable current seam
+anchors.

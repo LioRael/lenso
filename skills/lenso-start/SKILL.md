@@ -22,8 +22,9 @@ skill owns the work.
    - package selection, keyed Module Instances, configuration, bindings,
      placement, Web profiles, or Resolved App Plan ->
      `lenso-app-composition`
-   - scheduling, clocks, Module generation, endpoint mechanics, process or
-     transport integration, execution classes, or Runner orchestration ->
+   - scheduling, clocks, Module generation, Adapter-level endpoint
+     preparation, language-process/wire integration, execution classes, or
+     Runner orchestration ->
      `lenso-runtime-extension`
 3. Treat portable graph, lifecycle, invocation, admission, supervision,
    readiness, and diagnostic semantics as Kernel work. Read the core
@@ -32,6 +33,14 @@ skill owns the work.
 4. Name a secondary workflow only when the request crosses a real ownership
    boundary. Continue with the primary skill when it is available; otherwise
    report the missing catalog entry.
+
+Examples:
+
+- "Design a support-ticket product" -> planning first.
+- "Add `assign_ticket` to the Ticket contract" -> Capability authoring.
+- "Implement the Rust or Bun Ticket provider" -> Module authoring.
+- "Select two providers and bind one consumer" -> App Composition.
+- "Add a Python process execution class" -> Runtime extension.
 
 Routing is complete when one owner and one observable completion state are
 unambiguous. Ask one boundary question only when two owners still fit.
