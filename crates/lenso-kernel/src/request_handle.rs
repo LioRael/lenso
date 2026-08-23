@@ -12,7 +12,7 @@ use super::{
 pub struct NativeRequestHandle<C: RequestCapability> {
     pub(super) endpoints: Vec<NativeEndpointBinding>,
     pub(super) runtime: Rc<NativeAppRuntime>,
-    pub(super) caller_instance: String,
+    pub(super) caller_instance: Rc<str>,
     pub(super) caller_is_planned: bool,
     pub(super) allow_before_ready: bool,
     pub(super) capability: PhantomData<fn() -> C>,
@@ -29,7 +29,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         Self {
             endpoints: endpoints.to_vec(),
             runtime,
-            caller_instance: caller_instance.to_owned(),
+            caller_instance: Rc::from(caller_instance),
             caller_is_planned,
             allow_before_ready,
             capability: PhantomData,
@@ -42,7 +42,8 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     }
 
     fn diagnostic_caller_instance(&self) -> Option<String> {
-        self.caller_is_planned.then(|| self.caller_instance.clone())
+        self.caller_is_planned
+            .then(|| self.caller_instance.to_string())
     }
 
     /// Invokes a singular Capability binding without falling back across providers.
@@ -65,6 +66,11 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         let context = context
             .for_caller(&self.caller_instance)
             .for_target(C::ID, operation);
+        if let Some(endpoint) = self.endpoints.first() {
+            self.runtime
+                .diagnostics
+                .record_invocation(&self.caller_instance, &endpoint.module_instance);
+        }
         let invocation_diagnostics = self
             .runtime
             .diagnostics
@@ -240,6 +246,11 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         C::Request: Clone,
     {
         let context = context.for_caller(&self.caller_instance);
+        for endpoint in &self.endpoints {
+            self.runtime
+                .diagnostics
+                .record_invocation(&self.caller_instance, &endpoint.module_instance);
+        }
         let invocation_diagnostics = self
             .runtime
             .diagnostics
@@ -388,7 +399,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
 
     pub(super) fn next_context(&self) -> InvocationContext {
         self.invocation_context(None, CancellationToken::new())
-            .with_caller_instance(self.caller_instance.clone())
+            .with_shared_caller_instance(self.caller_instance.clone())
     }
 
     pub(super) fn next_request_id(&self) -> RequestId {

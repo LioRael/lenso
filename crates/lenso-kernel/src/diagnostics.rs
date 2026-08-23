@@ -9,6 +9,16 @@ use std::{
 
 use super::{ModuleLifecyclePhase, RuntimeFailure};
 
+/// Allocation-free request probe used by host runtimes for aggregate placement metrics.
+///
+/// This hook receives borrowed, Plan-owned identities and must return immediately. Rich,
+/// buffered diagnostics remain available through [`RuntimeDiagnostics::subscribe`].
+#[doc(hidden)]
+pub trait RuntimeInvocationProbe: std::fmt::Debug {
+    /// Records one request edge observed by the local runtime.
+    fn record(&self, caller_instance: &str, provider_instance: &str);
+}
+
 /// The Kernel subsystem that produced one Runtime Diagnostic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -291,6 +301,7 @@ pub enum DiagnosticSubscribeError {
 struct RuntimeDiagnosticsState {
     observers: RefCell<Vec<Weak<DiagnosticObserverState>>>,
     next_sequence: Cell<u64>,
+    invocation_probe: Option<Rc<dyn RuntimeInvocationProbe>>,
 }
 
 impl Drop for RuntimeDiagnosticsState {
@@ -323,6 +334,16 @@ impl RuntimeDiagnostics {
         Self {
             state: Rc::new(RuntimeDiagnosticsState::default()),
         }
+    }
+
+    /// Attaches a compact aggregate probe without enabling rich Invocation records.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn with_invocation_probe(mut self, probe: Rc<dyn RuntimeInvocationProbe>) -> Self {
+        Rc::get_mut(&mut self.state)
+            .expect("a newly configured diagnostics port is uniquely owned")
+            .invocation_probe = Some(probe);
+        self
     }
 
     /// Adds an independently bounded, source-filtered observer queue.
@@ -370,6 +391,12 @@ impl RuntimeDiagnostics {
             .iter()
             .filter_map(Weak::upgrade)
             .any(|observer| observer.filter.includes(source))
+    }
+
+    pub(crate) fn record_invocation(&self, caller_instance: &str, provider_instance: &str) {
+        if let Some(probe) = &self.state.invocation_probe {
+            probe.record(caller_instance, provider_instance);
+        }
     }
 
     pub(crate) fn emit<F>(&self, source: DiagnosticSource, timestamp: Duration, build: F)
@@ -524,8 +551,20 @@ pub(crate) fn diagnostic_operation(
 
 #[cfg(test)]
 mod tests {
-    use super::{DiagnosticEvent, DiagnosticFilter, DiagnosticSource, RuntimeDiagnostics};
-    use std::time::Duration;
+    use super::{
+        DiagnosticEvent, DiagnosticFilter, DiagnosticSource, RuntimeDiagnostics,
+        RuntimeInvocationProbe,
+    };
+    use std::{cell::Cell, rc::Rc, time::Duration};
+
+    #[derive(Debug)]
+    struct CountProbe(Rc<Cell<u64>>);
+
+    impl RuntimeInvocationProbe for CountProbe {
+        fn record(&self, _caller_instance: &str, _provider_instance: &str) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
 
     #[test]
     fn does_not_build_a_record_without_an_interested_observer() {
@@ -555,5 +594,17 @@ mod tests {
 
         assert!(!built.get());
         assert!(observer.try_recv().is_none());
+    }
+
+    #[test]
+    fn compact_probe_does_not_enable_rich_invocation_records() {
+        let count = Rc::new(Cell::new(0));
+        let diagnostics =
+            RuntimeDiagnostics::new().with_invocation_probe(Rc::new(CountProbe(Rc::clone(&count))));
+
+        diagnostics.record_invocation("caller", "provider");
+
+        assert_eq!(count.get(), 1);
+        assert!(!diagnostics.has_interested_observer(DiagnosticSource::Invocation));
     }
 }
