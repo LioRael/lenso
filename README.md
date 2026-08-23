@@ -50,6 +50,9 @@ npx skills add LioRael/lenso --list
 ```
 
 Start with `lenso-start` when the owning seam is not yet clear.
+The [Agents and skills guide](docs/agents/skills.md) documents invocation,
+installation, progressive disclosure, contributor validation, and behavioral
+forward testing.
 
 ## Quick start
 
