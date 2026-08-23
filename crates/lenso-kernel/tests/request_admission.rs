@@ -15,6 +15,7 @@ use lenso_kernel::{
     CancellationToken, DeterministicDriver, InvocationContext, Kernel, NativeExecutionAdapter,
     NativeRequestEndpoint, NoopModuleLifecycle, PreparedBinding, PreparedNativeApp,
     PreparedNativeModule, RequestCapability, RuntimeDriver, RuntimeFailure,
+    invoke_erased_native_request,
 };
 
 const CAPABILITY_ID: &str = "test.echo";
@@ -31,11 +32,33 @@ impl RequestCapability for Echo {
 
     const ID: &'static str = CAPABILITY_ID;
     const DESCRIPTOR_VERSION: &'static str = DESCRIPTOR_VERSION;
+
+    fn invoke_native(
+        endpoint: &dyn NativeRequestEndpoint,
+        operation: &str,
+        request: Self::Request,
+        context: InvocationContext,
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<Result<Self::Response, Self::DomainError>, RuntimeFailure>,
+    > {
+        if operation != OPERATION {
+            return invoke_erased_native_request::<Self>(endpoint, operation, request, context);
+        }
+        let Some(endpoint) = endpoint
+            .typed_endpoint()
+            .and_then(|endpoint| endpoint.downcast_ref::<EchoEndpoint>())
+        else {
+            return invoke_erased_native_request::<Self>(endpoint, operation, request, context);
+        };
+        endpoint.invoke_echo(request, context)
+    }
 }
 
 #[derive(Debug, Default)]
 struct Probe {
     started: Cell<usize>,
+    erased_invocations: Cell<usize>,
     active: Rc<Cell<usize>>,
     maximum_active: Cell<usize>,
     request_ids: RefCell<Vec<u64>>,
@@ -71,38 +94,13 @@ struct EchoEndpoint {
     probe: Rc<Probe>,
 }
 
-impl NativeRequestEndpoint for EchoEndpoint {
-    fn capability_id(&self) -> &'static str {
-        CAPABILITY_ID
-    }
-
-    fn descriptor_version(&self) -> &'static str {
-        DESCRIPTOR_VERSION
-    }
-
-    fn operations(&self) -> &'static [&'static str] {
-        &[OPERATION]
-    }
-
-    fn invoke(
+impl EchoEndpoint {
+    fn invoke_echo(
         &self,
-        operation: &str,
-        request: Box<dyn Any>,
+        request: String,
         context: InvocationContext,
-    ) -> futures::future::LocalBoxFuture<
-        'static,
-        Result<Result<Box<dyn Any>, Box<dyn Any>>, RuntimeFailure>,
-    > {
-        if operation != OPERATION {
-            return futures::future::ready(Err(RuntimeFailure::UnknownOperation {
-                capability: CAPABILITY_ID,
-                operation: operation.to_owned(),
-            }))
-            .boxed_local();
-        }
-        let request = request
-            .downcast::<String>()
-            .expect("the generated request type should cross the native seam");
+    ) -> futures::future::LocalBoxFuture<'static, Result<Result<String, String>, RuntimeFailure>>
+    {
         let (release, released) = oneshot::channel();
         self.probe.releases.borrow_mut().push_back(release);
         self.probe.started.set(self.probe.started.get() + 1);
@@ -125,7 +123,57 @@ impl NativeRequestEndpoint for EchoEndpoint {
             let _guard = ActiveGuard { active };
             let _ = released.await;
             let _ = probe;
-            Ok(Ok(Box::new(*request) as Box<dyn Any>))
+            Ok(Ok(request))
+        })
+    }
+}
+
+impl NativeRequestEndpoint for EchoEndpoint {
+    fn capability_id(&self) -> &'static str {
+        CAPABILITY_ID
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        DESCRIPTOR_VERSION
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        &[OPERATION]
+    }
+
+    fn typed_endpoint(&self) -> Option<&dyn Any> {
+        Some(self)
+    }
+
+    fn invoke(
+        &self,
+        operation: &str,
+        request: Box<dyn Any>,
+        context: InvocationContext,
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<Result<Box<dyn Any>, Box<dyn Any>>, RuntimeFailure>,
+    > {
+        self.probe
+            .erased_invocations
+            .set(self.probe.erased_invocations.get() + 1);
+        if operation != OPERATION {
+            return futures::future::ready(Err(RuntimeFailure::UnknownOperation {
+                capability: CAPABILITY_ID,
+                operation: operation.to_owned(),
+            }))
+            .boxed_local();
+        }
+        let request = request
+            .downcast::<String>()
+            .expect("the generated request type should cross the native seam");
+        let invocation = self.invoke_echo(*request, context);
+        Box::pin(async move {
+            invocation.await.map(|outcome| {
+                outcome
+                    .map(|response| Box::new(response) as Box<dyn Any>)
+                    .map_err(|error| Box::new(error) as Box<dyn Any>)
+            })
         })
     }
 }
@@ -242,6 +290,7 @@ fn queue_and_concurrency_limits_reject_overload_and_recover() {
         }))
         .expect("the deterministic Driver should accept the recovery release");
     assert_eq!(driver.run(recovered).unwrap().unwrap(), "recovered");
+    assert_eq!(probe.erased_invocations.get(), 0);
 }
 
 #[test]

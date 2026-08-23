@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use super::{
     BTreeMap, BTreeSet, ErasedDomainResult, ErasedValue, ExecutionClassId, InvocationContext,
     LocalBoxFuture, ModuleLifecycle, NativeEventEndpoint, NativeStreamEndpoint, Rc,
@@ -12,6 +14,13 @@ pub trait NativeRequestEndpoint: std::fmt::Debug {
     fn descriptor_version(&self) -> &'static str;
     /// Exact stable Operation names implemented by this endpoint.
     fn operations(&self) -> &'static [&'static str];
+    /// Exposes a generated endpoint to its matching typed Capability binding.
+    ///
+    /// Hand-written and older generated endpoints use the default erased path.
+    #[doc(hidden)]
+    fn typed_endpoint(&self) -> Option<&dyn Any> {
+        None
+    }
     /// Dispatches one operation without serializing its typed Rust payload.
     fn invoke(
         &self,
