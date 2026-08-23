@@ -204,9 +204,7 @@ impl RequestAdmission {
         if let Ok(permit) = self.try_acquire(capability, operation, context, driver) {
             return Ok(permit);
         }
-        if let Err(error) = ensure_context_active(driver, context) {
-            return Err(error);
-        }
+        ensure_context_active(driver, context)?;
 
         if self.state.queued.get() >= self.limits.queue_capacity() {
             return Err(RuntimeFailure::ResourceExhausted {

@@ -44,6 +44,10 @@ pub(super) async fn deactivate_in_reverse(
     first_error
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "shutdown keeps one global deadline and reverse-order cleanup in one sequence"
+)]
 pub(super) async fn shutdown_native_modules(
     runtime: &NativeAppRuntime,
     timeout: Duration,
@@ -303,6 +307,10 @@ pub(super) fn schedule_module_supervision(
     Ok(())
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "the supervision generation transition remains linear and auditable"
+)]
 pub(super) async fn supervise_module_instance(
     runtime: Rc<NativeAppRuntime>,
     instance_key: String,
@@ -571,6 +579,10 @@ pub(super) fn finish_module_cleanup_failure(
     Err(error)
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "prepare, activate, and rollback share one generation transaction"
+)]
 pub(super) async fn prepare_and_activate_generation(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
@@ -738,6 +750,10 @@ pub(super) async fn cleanup_native_generation(
     .await
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "cleanup spells out every generation-owned input without hidden runtime state"
+)]
 pub(super) async fn cleanup_generation(
     instance_key: &str,
     generation: NativeModuleGeneration,
@@ -830,6 +846,10 @@ pub(super) fn install_module_endpoints(
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "request, stream, and event endpoint validation must remain symmetric"
+)]
 pub(super) fn validate_native_endpoint_set(
     instance_key: &str,
     expected: &lenso_app_plan::ModuleInstancePlan,

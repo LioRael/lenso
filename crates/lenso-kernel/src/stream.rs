@@ -66,6 +66,12 @@ pub trait NativeStreamSession: fmt::Debug {
     fn cancel(&self);
 }
 
+/// Adapter-owned result of opening one type-erased native stream session.
+pub type NativeStreamOpenFuture = LocalBoxFuture<
+    'static,
+    Result<Result<Box<dyn NativeStreamSession>, Box<dyn Any>>, RuntimeFailure>,
+>;
+
 /// Adapter-facing endpoint for one or more bidirectional stream Operations.
 pub trait NativeStreamEndpoint: fmt::Debug {
     /// Stable Capability series identity.
@@ -80,10 +86,7 @@ pub trait NativeStreamEndpoint: fmt::Debug {
         operation: &str,
         request: Box<dyn Any>,
         context: InvocationContext,
-    ) -> LocalBoxFuture<
-        'static,
-        Result<Result<Box<dyn NativeStreamSession>, Box<dyn Any>>, RuntimeFailure>,
-    >;
+    ) -> NativeStreamOpenFuture;
 }
 
 /// Typed, immutable stream endpoints materialized before App boot completes.
@@ -334,7 +337,7 @@ impl<C: StreamCapability> NativeStream<C> {
             return Err(error);
         }
         if self.local_half_closed.get() || self.terminal_seen.get() {
-            return Err(self.protocol_violation());
+            return Err(Self::protocol_violation());
         }
         let inner = self.inner.clone();
         await_with_generation_context(
@@ -355,7 +358,7 @@ impl<C: StreamCapability> NativeStream<C> {
             return Err(error);
         }
         if self.terminal_seen.get() {
-            return Err(self.protocol_violation());
+            return Err(Self::protocol_violation());
         }
         let inner = self.inner.clone();
         let item = await_with_generation_context(
@@ -371,29 +374,29 @@ impl<C: StreamCapability> NativeStream<C> {
         match item {
             super::NativeStreamItem::Message(message) => {
                 if self.peer_half_closed.get() {
-                    return Err(self.finish_with_error(self.protocol_violation()));
+                    return Err(self.finish_with_error(Self::protocol_violation()));
                 }
                 message
                     .downcast::<C::Message>()
                     .map(|message| StreamEvent::Message(*message))
-                    .map_err(|_| self.finish_with_error(self.protocol_violation()))
+                    .map_err(|_| self.finish_with_error(Self::protocol_violation()))
             }
             super::NativeStreamItem::PeerHalfClosed => {
                 if self.peer_half_closed.replace(true) {
-                    return Err(self.finish_with_error(self.protocol_violation()));
+                    return Err(self.finish_with_error(Self::protocol_violation()));
                 }
                 Ok(StreamEvent::PeerHalfClosed)
             }
             super::NativeStreamItem::Terminal(outcome) => {
                 if self.terminal_seen.replace(true) {
-                    return Err(self.finish_with_error(self.protocol_violation()));
+                    return Err(self.finish_with_error(Self::protocol_violation()));
                 }
                 let outcome = match outcome {
                     Ok(()) => Ok(()),
                     Err(error) => Err(error
                         .downcast::<C::DomainError>()
                         .map(|error| *error)
-                        .map_err(|_| self.finish_with_error(self.protocol_violation()))?),
+                        .map_err(|_| self.finish_with_error(Self::protocol_violation()))?),
                 };
                 Ok(StreamEvent::Terminal(outcome))
             }
@@ -406,7 +409,7 @@ impl<C: StreamCapability> NativeStream<C> {
             return Err(error);
         }
         if self.terminal_seen.get() || self.local_half_closed.replace(true) {
-            return Err(self.protocol_violation());
+            return Err(Self::protocol_violation());
         }
         let inner = self.inner.clone();
         let result = await_with_generation_context(
@@ -442,7 +445,7 @@ impl<C: StreamCapability> NativeStream<C> {
         self.context.request_id()
     }
 
-    fn protocol_violation(&self) -> RuntimeFailure {
+    fn protocol_violation() -> RuntimeFailure {
         RuntimeFailure::ProtocolViolation { capability: C::ID }
     }
 
@@ -451,7 +454,7 @@ impl<C: StreamCapability> NativeStream<C> {
             return None;
         }
         if self.terminal_seen.replace(true) {
-            Some(self.protocol_violation())
+            Some(Self::protocol_violation())
         } else {
             Some(RuntimeFailure::Cancelled {
                 request_id: self.context.request_id(),

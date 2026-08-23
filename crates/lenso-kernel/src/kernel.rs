@@ -79,6 +79,10 @@ impl Kernel {
     }
 
     /// Starts an App with an opt-in Runtime Diagnostics port.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "startup remains linear so validation, preparation, and activation fail closed in order"
+    )]
     pub async fn start_with_diagnostics<D: RuntimeDriver>(
         plan: ResolvedAppPlan,
         driver: D,
@@ -234,6 +238,10 @@ pub(super) fn runtime_plan_error(error: &PlanResolutionError) -> RuntimeFailure 
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one fail-closed pass keeps request, stream, event, and generation validation aligned"
+)]
 pub(super) fn validate_prepared_native_app(
     plan: &ResolvedAppPlan,
     bindings: &[PreparedBinding],

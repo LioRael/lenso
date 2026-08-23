@@ -325,7 +325,7 @@ impl NativeAppRuntime {
             });
     }
 
-    pub(super) fn complete_shutdown(&self, outcome: ShutdownOutcome) {
+    pub(super) fn complete_shutdown(&self, outcome: &ShutdownOutcome) {
         if !self.shutdown.begin_completion() {
             return;
         }
@@ -335,7 +335,7 @@ impl NativeAppRuntime {
             .cleanup_started_at
             .get()
             .unwrap_or(completed_at);
-        let diagnostic_outcome = match &outcome {
+        let diagnostic_outcome = match outcome {
             ShutdownOutcome::Clean => DiagnosticShutdownOutcome::Clean,
             ShutdownOutcome::RuntimeFailure { .. } => DiagnosticShutdownOutcome::RuntimeFailure,
             ShutdownOutcome::Timeout => DiagnosticShutdownOutcome::Timeout,
@@ -347,11 +347,11 @@ impl NativeAppRuntime {
                     elapsed: completed_at.saturating_sub(started_at),
                 }
             });
-        if let ShutdownOutcome::RuntimeFailure { error } = &outcome {
+        if let ShutdownOutcome::RuntimeFailure { error } = outcome {
             self.diagnostics
                 .emit_runtime_failure(completed_at, None, error);
         }
-        self.shutdown.publish(&outcome);
+        self.shutdown.publish(outcome);
     }
 }
 
@@ -604,16 +604,18 @@ impl NativeApp {
             let worker_runtime = runtime.clone();
             match (runtime.driver.spawn_local)(Box::pin(async move {
                 let outcome = shutdown_native_modules(&worker_runtime, timeout).await;
-                worker_runtime.complete_shutdown(outcome);
+                worker_runtime.complete_shutdown(&outcome);
             })) {
                 Ok(task) => {
                     runtime.shutdown_task.replace(Some(task));
                 }
-                Err(error) => runtime.complete_shutdown(ShutdownOutcome::RuntimeFailure {
-                    error: RuntimeFailure::Internal {
-                        detail: format!("failed to schedule App shutdown: {error:?}"),
-                    },
-                }),
+                Err(error) => {
+                    runtime.complete_shutdown(&ShutdownOutcome::RuntimeFailure {
+                        error: RuntimeFailure::Internal {
+                            detail: format!("failed to schedule App shutdown: {error:?}"),
+                        },
+                    });
+                }
             }
         }
         self.runtime.shutdown.wait().await
