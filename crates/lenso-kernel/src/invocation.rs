@@ -192,6 +192,13 @@ impl InvocationContext {
         self
     }
 
+    pub(super) fn for_caller(mut self, caller_instance: &str) -> Self {
+        if self.caller_instance.as_deref() != Some(caller_instance) {
+            self.caller_instance = Some(caller_instance.to_owned());
+        }
+        self
+    }
+
     /// Returns the Caller Module Instance, when the App attached one.
     pub fn caller_instance(&self) -> Option<&str> {
         self.caller_instance.as_deref()
@@ -308,5 +315,22 @@ impl InvocationContext {
     /// Returns whether the context deadline has passed at a Driver instant.
     pub fn is_expired(&self, now: Duration) -> bool {
         self.deadline.is_some_and(|deadline| deadline <= now)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolved_caller_reuses_matching_storage_and_overrides_spoofed_identity() {
+        let context = InvocationContext::new(1, None, CancellationToken::new())
+            .with_caller_instance("consumer".to_owned());
+        let original = context.caller_instance().unwrap().as_ptr();
+        let context = context.for_caller("consumer");
+        assert_eq!(context.caller_instance().unwrap().as_ptr(), original);
+
+        let context = context.for_caller("resolved-consumer");
+        assert_eq!(context.caller_instance(), Some("resolved-consumer"));
     }
 }

@@ -1,9 +1,10 @@
 use std::time::Duration;
 
 use super::{
-    CancellationToken, EventCapability, InvocationContext, ModuleEventDependencyHandle,
-    NativeAppRuntime, NativeEndpointBinding, NativeEventHandle, NativeRequestHandle,
-    NativeStreamEndpointBinding, NativeStreamHandle, Rc, RefCell, StreamCapability, Weak,
+    CancellationToken, EventCapability, InvocationContext, LocalBoxFuture,
+    ModuleEventDependencyHandle, NativeAppRuntime, NativeEndpointBinding, NativeEventHandle,
+    NativeRequestEndpoint, NativeRequestHandle, NativeStreamEndpointBinding, NativeStreamHandle,
+    Rc, RefCell, StreamCapability, Weak,
 };
 
 pub trait RequestCapability: 'static {
@@ -17,6 +18,56 @@ pub trait RequestCapability: 'static {
     const ID: &'static str;
     /// Exact generated Descriptor version.
     const DESCRIPTOR_VERSION: &'static str;
+
+    /// Invokes one native endpoint using the most specific binding available.
+    ///
+    /// Generated bindings override this hook with a typed path. Older bindings retain the
+    /// type-erased compatibility path without requiring regeneration.
+    #[doc(hidden)]
+    fn invoke_native(
+        endpoint: &dyn NativeRequestEndpoint,
+        operation: &str,
+        request: Self::Request,
+        context: InvocationContext,
+    ) -> NativeRequestFuture<Self>
+    where
+        Self: Sized,
+    {
+        invoke_erased_native_request::<Self>(endpoint, operation, request, context)
+    }
+}
+
+/// A typed native request result before Kernel cancellation and supervision are applied.
+#[doc(hidden)]
+pub type NativeRequestFuture<C> = LocalBoxFuture<
+    'static,
+    Result<
+        Result<<C as RequestCapability>::Response, <C as RequestCapability>::DomainError>,
+        RuntimeFailure,
+    >,
+>;
+
+/// Compatibility dispatcher used by generated bindings when a typed endpoint is unavailable.
+#[doc(hidden)]
+pub fn invoke_erased_native_request<C: RequestCapability>(
+    endpoint: &dyn NativeRequestEndpoint,
+    operation: &str,
+    request: C::Request,
+    context: InvocationContext,
+) -> NativeRequestFuture<C> {
+    let invocation = endpoint.invoke(operation, Box::new(request), context);
+    Box::pin(async move {
+        match invocation.await? {
+            Ok(value) => value
+                .downcast::<C::Response>()
+                .map(|value| Ok(*value))
+                .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
+            Err(value) => value
+                .downcast::<C::DomainError>()
+                .map(|value| Err(*value))
+                .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
+        }
+    })
 }
 
 /// Kernel-generated identity for one logical request invocation.

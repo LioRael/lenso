@@ -2,10 +2,9 @@ use std::{marker::PhantomData, rc::Rc, time::Duration};
 
 use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticOutcome, DiagnosticSource,
-    ErasedDomainResult, InvocationContext, NativeAppRuntime, NativeEndpointBinding,
-    RequestCapability, RequestId, RuntimeFailure, await_with_generation_context,
-    diagnostics::diagnostic_operation, ensure_context_active,
-    schedule_module_supervision_after_failure,
+    InvocationContext, NativeAppRuntime, NativeEndpointBinding, RequestCapability, RequestId,
+    RuntimeFailure, await_with_generation_context, diagnostics::diagnostic_operation,
+    ensure_context_active, schedule_module_supervision_after_failure,
 };
 
 /// Typed, immutable native Capability endpoints materialized before App boot completes.
@@ -64,7 +63,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         request: C::Request,
     ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
         let context = context
-            .with_caller_instance(self.caller_instance.clone())
+            .for_caller(&self.caller_instance)
             .for_target(C::ID, operation);
         let started_at = (self.runtime.driver.now)();
         let operation_name = self
@@ -184,9 +183,12 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
             &context,
             snapshot.cancellation,
             C::ID,
-            snapshot
-                .endpoint
-                .invoke(operation, Box::new(request), context.clone()),
+            C::invoke_native(
+                snapshot.endpoint.as_ref(),
+                operation,
+                request,
+                context.clone(),
+            ),
         )
         .await
         .map_err(|error| {
@@ -203,7 +205,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 error,
             )
         })?;
-        decode_outcome::<C>(outcome)
+        Ok(outcome)
     }
 
     /// Invokes every provider in the resolved many order with the same typed request.
@@ -230,7 +232,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     where
         C::Request: Clone,
     {
-        let context = context.with_caller_instance(self.caller_instance.clone());
+        let context = context.for_caller(&self.caller_instance);
         let started_at = (self.runtime.driver.now)();
         let operation_name = self
             .endpoints
@@ -334,9 +336,12 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 &context,
                 snapshot.cancellation,
                 C::ID,
-                snapshot
-                    .endpoint
-                    .invoke(operation, Box::new(request.clone()), context.clone()),
+                C::invoke_native(
+                    snapshot.endpoint.as_ref(),
+                    operation,
+                    request.clone(),
+                    context.clone(),
+                ),
             )
             .await
             .map_err(|error| {
@@ -353,7 +358,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     error,
                 )
             })?;
-            outcomes.push(decode_outcome::<C>(outcome)?);
+            outcomes.push(outcome);
         }
         Ok(outcomes)
     }
@@ -376,21 +381,6 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         let request_id = self.runtime.request_ids.get();
         self.runtime.request_ids.set(request_id.saturating_add(1));
         request_id
-    }
-}
-
-fn decode_outcome<C: RequestCapability>(
-    outcome: ErasedDomainResult,
-) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
-    match outcome {
-        Ok(value) => value
-            .downcast::<C::Response>()
-            .map(|value| Ok(*value))
-            .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
-        Err(value) => value
-            .downcast::<C::DomainError>()
-            .map(|value| Err(*value))
-            .map_err(|_| RuntimeFailure::ProtocolViolation { capability: C::ID }),
     }
 }
 
