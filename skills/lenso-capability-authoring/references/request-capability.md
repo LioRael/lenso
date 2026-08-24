@@ -15,10 +15,9 @@ crates/greeting-contract/
 │   ├── greet-request.schema.json
 │   ├── greet-response.schema.json
 │   └── greet-error.schema.json
-├── src/
-│   ├── lib.rs
-│   └── generated.rs
-└── generated/bindings.ts
+└── src/
+    ├── lib.rs
+    └── generated.rs
 ```
 
 `capability.json` is the source for identity, version, portability, Operation
@@ -79,21 +78,28 @@ Use structured error objects with stable `code` and payload Schemas when an
 error carries fields. Keep expected business rejection here; keep deadlines,
 cancellation, unavailable providers, and other Runtime Failures outside it.
 
-## 2. Generate both projections
+## 2. Generate the projection this package owns
 
 Use the installed tool's current help, then run the equivalent of:
 
 ```sh
 lenso-contract-codegen generate \
   capability.json \
-  src/generated.rs \
-  generated/bindings.ts
+  --rust \
+  src/generated.rs
 
 lenso-contract-codegen check \
   capability.json \
-  src/generated.rs \
-  generated/bindings.ts
+  --rust \
+  src/generated.rs
 ```
+
+Generate each language projection in the package that distributes it. A native
+Rust Capability package normally owns only its Rust projection. The supported
+Bun SDK owns the TypeScript projection that Bun Modules import; it generates
+that projection from the same versioned Descriptor and Schemas. A conformance
+fixture may intentionally keep both projections when the cross-language pair
+is the artifact under test.
 
 `src/lib.rs` normally exposes only the generated contract plus handwritten
 convenience behavior that does not duplicate the portable Interface:
@@ -108,17 +114,16 @@ make drift fail compilation:
 ```rust,ignore
 use std::path::Path;
 
-use lenso_contract_codegen::check_generated;
+use lenso_contract_codegen::{ProjectionLanguage, check_projection};
 
 fn main() {
     println!("cargo:rerun-if-changed=capability.json");
     println!("cargo:rerun-if-changed=schemas");
     println!("cargo:rerun-if-changed=src/generated.rs");
-    println!("cargo:rerun-if-changed=generated/bindings.ts");
-    check_generated(
+    check_projection(
         Path::new("capability.json"),
+        ProjectionLanguage::Rust,
         Path::new("src/generated.rs"),
-        Path::new("generated/bindings.ts"),
     )
     .expect("generated Capability artifacts are stale");
 }
@@ -149,9 +154,10 @@ let client = GreetingClient::from_dependencies(activate_context.dependencies())?
 let response = client.greet(GreetRequest { name: "Ada".into() }).await?;
 ```
 
-The generated TypeScript surface supplies the corresponding Provider binding
-and Client/value codecs used by Bun and browser Adapters. Do not hand-maintain a
-parallel TypeScript Interface.
+The generated TypeScript surface in the supported Bun SDK supplies the
+corresponding Provider binding and Client/value codecs used by Bun Adapters.
+Do not hand-maintain or copy a parallel TypeScript Interface into the Rust
+Capability package.
 
 ## 4. Source anchors
 
@@ -166,7 +172,8 @@ Use the selected dependency source first. Current complete examples are:
 
 ## Completion
 
-The request contract is complete when the Descriptor/Schemas regenerate both
-targets deterministically, stale outputs fail the build, Rust and TypeScript
-compile/typecheck, and one generated consumer invokes one generated provider
-while preserving success, Domain Error, and Runtime Failure channels.
+The request contract is complete when each declared projection regenerates
+deterministically in its owning package, stale outputs fail that package's
+build, Rust and TypeScript compile/typecheck in their respective distributions,
+and one generated consumer invokes one generated provider while preserving
+success, Domain Error, and Runtime Failure channels.

@@ -82,18 +82,20 @@ impl WebProfile {
     }
 }
 
-/// One generated Capability contract whose checked-in artifacts must be fresh.
+/// One Capability Descriptor and any language projections owned by this project.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ContractInput {
     capability_id: String,
     descriptor_version: String,
     descriptor: String,
-    rust: String,
-    typescript: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rust: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    typescript: Option<String>,
 }
 
 impl ContractInput {
-    /// Declares the descriptor and its generated Rust/TypeScript artifacts.
+    /// Declares the descriptor and both generated language projections.
     pub fn new(
         capability_id: impl Into<String>,
         descriptor_version: impl Into<String>,
@@ -105,9 +107,35 @@ impl ContractInput {
             capability_id: capability_id.into(),
             descriptor_version: descriptor_version.into(),
             descriptor: descriptor.into(),
-            rust: rust.into(),
-            typescript: typescript.into(),
+            rust: Some(rust.into()),
+            typescript: Some(typescript.into()),
         }
+    }
+    /// Declares a Descriptor without claiming ownership of a language projection.
+    pub fn descriptor_only(
+        capability_id: impl Into<String>,
+        descriptor_version: impl Into<String>,
+        descriptor: impl Into<String>,
+    ) -> Self {
+        Self {
+            capability_id: capability_id.into(),
+            descriptor_version: descriptor_version.into(),
+            descriptor: descriptor.into(),
+            rust: None,
+            typescript: None,
+        }
+    }
+    /// Adds the generated Rust projection owned by this project.
+    #[must_use]
+    pub fn with_rust_projection(mut self, path: impl Into<String>) -> Self {
+        self.rust = Some(path.into());
+        self
+    }
+    /// Adds the generated TypeScript projection owned by this project.
+    #[must_use]
+    pub fn with_typescript_projection(mut self, path: impl Into<String>) -> Self {
+        self.typescript = Some(path.into());
+        self
     }
     pub fn capability_id(&self) -> &str {
         &self.capability_id
@@ -119,13 +147,25 @@ impl ContractInput {
     pub fn descriptor(&self) -> &str {
         &self.descriptor
     }
-    /// Returns the generated Rust path.
+    /// Returns the generated Rust path, or an empty string when it is not owned here.
+    ///
+    /// New callers should prefer [`Self::rust_projection`] so absence remains typed.
     pub fn rust(&self) -> &str {
-        &self.rust
+        self.rust.as_deref().unwrap_or_default()
     }
-    /// Returns the generated TypeScript path.
+    /// Returns the generated Rust path when this project owns that projection.
+    pub fn rust_projection(&self) -> Option<&str> {
+        self.rust.as_deref()
+    }
+    /// Returns the generated TypeScript path, or an empty string when it is not owned here.
+    ///
+    /// New callers should prefer [`Self::typescript_projection`] so absence remains typed.
     pub fn typescript(&self) -> &str {
-        &self.typescript
+        self.typescript.as_deref().unwrap_or_default()
+    }
+    /// Returns the generated TypeScript path when this project owns that projection.
+    pub fn typescript_projection(&self) -> Option<&str> {
+        self.typescript.as_deref()
     }
 }
 
@@ -251,5 +291,43 @@ impl ProjectFile {
     /// Returns mutable Web profiles.
     pub fn profiles_mut(&mut self) -> &mut BTreeMap<String, WebProfile> {
         &mut self.profiles
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ContractInput;
+
+    #[test]
+    fn contract_inputs_can_own_only_one_language_projection() {
+        let contract = ContractInput::descriptor_only(
+            "example.greeting@1",
+            "1.0.0",
+            "contract/capability.json",
+        )
+        .with_rust_projection("contract/src/generated.rs");
+
+        assert_eq!(
+            contract.rust_projection(),
+            Some("contract/src/generated.rs")
+        );
+        assert_eq!(contract.typescript_projection(), None);
+
+        let value = serde_json::to_value(&contract).expect("contract should serialize");
+        assert_eq!(value["rust"], "contract/src/generated.rs");
+        assert!(value.get("typescript").is_none());
+    }
+
+    #[test]
+    fn descriptor_only_documents_remain_valid_contract_inputs() {
+        let contract: ContractInput = serde_json::from_value(serde_json::json!({
+            "capability_id": "example.greeting@1",
+            "descriptor_version": "1.0.0",
+            "descriptor": "contract/capability.json"
+        }))
+        .expect("language projections should be optional");
+
+        assert_eq!(contract.rust_projection(), None);
+        assert_eq!(contract.typescript_projection(), None);
     }
 }

@@ -36,11 +36,13 @@ acquisition and locks; Kernel receives only canonical Resolved Plan bytes.
    deterministic provider order for `many`. Finish when no required edge is
    missing, ambiguous, incompatible, duplicated, or part of a forbidden
    request/stream activation cycle.
-5. **Declare contract inputs and policy.** Add one exact Descriptor version and
-   its generated Rust/TypeScript artifacts for every used Capability. Set
-   request admission, Event capacity, and sensitive references only in the
+5. **Declare contract inputs and policy.** Add one exact Descriptor version for
+   every used Capability and only the generated language projections this
+   project owns. Omit `rust` or `typescript` when its projection ships from a
+   different package; omission does not weaken checks for declared artifacts.
+   Set request admission, Event capacity, and sensitive references only in the
    authoring surfaces that own them. Use other execution policy only when the
-   installed project schema exposes it. Finish when generated bindings,
+   installed project schema exposes it. Finish when owned generated bindings,
    endpoint tables, and requirement versions agree.
 6. **Apply optional profiles or placement.** Read
    [Web profiles and lanes](references/web-profiles-and-lanes.md) only for a
