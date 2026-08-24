@@ -5,6 +5,7 @@ use lenso_app_plan::{
         ModuleSelection,
     },
 };
+use serde_json::json;
 
 const CAPABILITY: &str = "example.model@1";
 const VERSION: &str = "1.0.0";
@@ -95,4 +96,71 @@ fn many_binds_every_provider_in_stable_order() {
         .map(|binding| (binding.provider_instance(), binding.provider_order()))
         .collect::<Vec<_>>();
     assert_eq!(providers, vec![("a-provider", 0), ("z-provider", 1)]);
+}
+
+#[test]
+fn package_owned_schema_validates_configuration_before_materialization() {
+    let configurable = ModuleDescriptor::new("example.configurable", "1.0.0")
+        .with_configuration_schema(json!({
+            "type": "object",
+            "required": ["model"],
+            "properties": {"model": {"const": "fixture"}},
+            "additionalProperties": false
+        }));
+    let catalog = ModuleCatalog::new([configurable]).unwrap();
+    let valid = AppDefinition::new("valid").with_module(
+        ModuleSelection::new("configured", "example.configurable")
+            .with_configuration(json!({"model": "fixture"})),
+    );
+    assert!(valid.derive(&catalog).is_ok());
+
+    let invalid = AppDefinition::new("invalid").with_module(
+        ModuleSelection::new("configured", "example.configurable")
+            .with_configuration(json!({"model": "other"})),
+    );
+    assert!(matches!(
+        invalid.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidConfiguration { .. })
+    ));
+}
+
+#[test]
+fn non_empty_configuration_without_package_schema_fails_closed() {
+    let catalog = ModuleCatalog::new([ModuleDescriptor::new("example.raw", "1.0.0")]).unwrap();
+    let definition = AppDefinition::new("invalid").with_module(
+        ModuleSelection::new("raw", "example.raw").with_configuration(json!({"undeclared": true})),
+    );
+
+    assert_eq!(
+        definition.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidConfiguration {
+            instance_key: "raw".to_owned(),
+            detail: "$: non-empty configuration requires a package-owned schema".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn sensitive_configuration_accepts_only_secret_references() {
+    let descriptor =
+        ModuleDescriptor::new("example.secret", "1.0.0").with_configuration_schema(json!({
+            "type": "object",
+            "required": ["token"],
+            "properties": {"token": {"x-lenso-sensitive": true}},
+            "additionalProperties": false
+        }));
+    let catalog = ModuleCatalog::new([descriptor]).unwrap();
+    let raw = AppDefinition::new("raw").with_module(
+        ModuleSelection::new("secret", "example.secret")
+            .with_configuration(json!({"token": "plaintext"})),
+    );
+    assert!(matches!(
+        raw.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidConfiguration { .. })
+    ));
+    let reference = AppDefinition::new("reference").with_module(
+        ModuleSelection::new("secret", "example.secret")
+            .with_configuration(json!({"token": {"secret_ref": "API_TOKEN"}})),
+    );
+    assert!(reference.derive(&catalog).is_ok());
 }
