@@ -825,10 +825,14 @@ negative cases. It does not establish marketplace distribution, automatic
 updates, hostile-code isolation, Wasm, arbitrary Capability hot loading,
 state-copy migration, or rollback of durable writes.
 
-## Deferred branches
+## Remaining branches and acceptance work
 
-- implementation and conformance of the reviewed Wasm Component, QuickJS, and
-  native dylib branches in [Plugin execution classes](plugin-execution-classes.md);
+- typed generated-WIT integration and the two-guest-language proof for the Wasm
+  Component preview, followed by consume Request and stable conformance;
+- stable consume Request and a product proof for the implemented QuickJS-NG
+  preview Adapter;
+- allocator fuzzing, crash fixtures, platform review, and Host-restart evidence
+  for the implemented experimental native dylib C ABI;
 - a marketplace, search, ratings, remote registry, and automatic updates;
 - any stable Rust library ABI or safe live dylib unloading claim;
 - Process consume, Stream, or Event Profiles lacking public SDK and two-way

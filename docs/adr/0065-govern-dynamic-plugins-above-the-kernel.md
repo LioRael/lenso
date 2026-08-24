@@ -295,5 +295,7 @@ product policy because it can retain old code for an unbounded Session.
   of introducing in-place graph rebinding.
 - The linked proposed implementation contracts settle the authority schemas,
   Process Protocol Profile, shared-state gates, multi-execution branches, and
-  exact V1 proof. Repository assignments and implementation beyond the Process
-  spike remain future work.
+  exact V1 proof. Host-layer control-plane, Wasm preview-envelope, QuickJS-NG
+  preview, trusted dylib C-ABI, WIT, and generated runtime-codec implementations
+  now exist in their ADR 0064 owners; product E2E acceptance, stable Wasm WIT
+  integration, and graduation gates remain future work.

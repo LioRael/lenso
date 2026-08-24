@@ -48,10 +48,10 @@ from the fact that a Plugin can be installed.
 | Contribution or branch | Dynamic install | Process isolation | In-process | Initial interaction claim | Dynamic Plugin status |
 | --- | --- | --- | --- | --- | --- |
 | Native built-in, `lenso.native-rust@1` | No new machine code | No | Yes | Existing native Request, Stream, and Event conformance | Stable execution; Plugin governance proposed |
-| Process, current `lenso.bun-process@1` | Yes | Yes | No | `provide-request-v1` only | Protocol and Adapter spike; complete control plane absent |
-| Wasm Component, proposed `lenso.wasm-component@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | Designed; implementation deferred |
-| Embedded JavaScript, proposed `lenso.quickjs@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | Designed; implementation deferred |
-| Native dynamic library, proposed `lenso.native-dylib@1` | Yes | No | Yes | Provide Request only | Experimental, trusted, implementation deferred |
+| Process, current `lenso.bun-process@1` | Yes | Yes | No | `provide-request-v1` only | Protocol and Adapter spike; product acceptance incomplete |
+| Wasm Component, `lenso.wasm-component@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | Preview Adapter implemented with a bounded runtime envelope; generated typed WIT integration and two-language proof remain open |
+| Embedded JavaScript, `lenso.quickjs@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | QuickJS-NG preview Adapter implemented; stable consume and product proof remain open |
+| Native dynamic library, `lenso.native-dylib@1` | Yes | No | Yes | Provide Request only | Experimental trusted C-ABI Adapter implemented; fuzzing and platform review remain open |
 | Data contribution | Yes | Not applicable | Interpreted by an existing Module | No interaction Profile of its own | Designed; interpreter vertical proof deferred |
 
 `Stream` and `Event` remain disabled for Process, Wasm, QuickJS, and dylib until
@@ -308,6 +308,13 @@ Each branch is a separate vertical milestone after the shared control plane:
 No milestone changes Kernel Plugin semantics. A branch adds one Execution
 Adapter, host policy entry, Artifact kind, conformance surface, and truthful UI
 support state. Repository creation remains subject to ADR 0064.
+
+The implementation packages currently live with the extracted host runtimes in
+`lenso-runtime-rust`: `lenso-plugin-control-plane`,
+`lenso-wasm-component-adapter`, `lenso-quickjs-adapter`, and
+`lenso-dylib-adapter`. `lenso-protocols` owns the deterministic WIT and generated
+Rust runtime-codec projections. Package existence is not stable support: the
+remaining gates above still control every support claim.
 
 ## Primary implementation references
 
