@@ -3,9 +3,9 @@
 ## Status
 
 This document describes the vNext target and the implementation boundary that
-started in the minimal vNext workspace. ADRs 0030 onward are the authoritative
-decisions; this overview routes readers through them without repeating every
-detailed invariant. The final v0.3.x source is retained by the
+started in the minimal vNext workspace. Accepted ADRs from 0030 onward are the
+authoritative decisions; this overview routes readers through them without
+repeating every detailed invariant. The final v0.3.x source is retained by the
 `lenso@0.3.47` tag and Git history.
 
 ## Shape
@@ -51,8 +51,14 @@ their named owners under [ADR 0064](../adr/0064-keep-only-portable-core-ownershi
 App Composition is declarative and language-independent. Authoring tools combine
 it with ordinary package-manager resolution to produce one exact Resolved App
 Plan. Kernel executes that Plan and performs no package acquisition, SemVer
-selection, schema diff, signature admission, or graph discovery. Module
-installation is a reviewable project edit, not a runtime operation.
+selection, schema diff, signature admission, or graph discovery. Built-in
+Module installation is a reviewable project edit, not a runtime operation.
+
+[Proposed ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md)
+defines a separate optional Plugin control plane for a precompiled App. It
+admits exact Plugin Artifacts above Kernel and resolves a new immutable App
+Generation; it does not turn Plugin into a runtime type or mutate a running
+Plan.
 
 See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.md),
 [0034](../adr/0034-make-app-composition-the-capability-binding-authority.md),
