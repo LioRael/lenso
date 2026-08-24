@@ -114,8 +114,9 @@ remain typed and direct; cross-runtime Adapters validate their wire boundary.
 
 The [`lenso-contract-codegen`](https://github.com/LioRael/lenso-protocols/tree/f8575ab93a6442dca96e02d4785db6f25f70846b/crates/lenso-contract-codegen)
 authoring tool, now owned by `lenso-protocols`, treats the Descriptor and
-resolved package-local Schemas as one source. It emits deterministic Rust and
-TypeScript artifacts, checks the decimal-string/base64/time/missing-value
+resolved package-local Schemas as one source. It emits deterministic Rust,
+TypeScript, Component Model WIT, and byte-Adapter Rust codec artifacts, checks
+the decimal-string/base64/time/missing-value
 profile, lints additive minor evolution, and fails when checked-in generated
 artifacts drift.
 Generated metadata carries the Capability `namespace.name@major` identity and
