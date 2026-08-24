@@ -4,7 +4,9 @@
 - Date: 2026-08-24
 - Extends: ADR 0030, ADR 0031, ADR 0045, ADR 0046, ADR 0055, ADR 0057,
   ADR 0064
-- Contract: [`../architecture/dynamic-plugins.md`](../architecture/dynamic-plugins.md)
+- Contracts:
+  [`../architecture/dynamic-plugins.md`](../architecture/dynamic-plugins.md),
+  [`../architecture/plugin-execution-classes.md`](../architecture/plugin-execution-classes.md)
 
 ## Context
 
@@ -67,19 +69,37 @@ inside one of them.
 
 A Plugin Release declares one atomic required contribution set and may expose
 named optional Plugin Features. Feature selection happens before Plan
-resolution. Every selected contribution must prepare and become ready before
-the App Generation activates; the control plane never publishes a partially
-ready subset. Package and Bundle dependencies may acquire required content, but
-V1 does not resolve implicit cross-Plugin installation dependencies. Runtime
+resolution. Every selected Module contribution must prepare and become ready,
+and every selected Data contribution must verify and mount into its explicit
+interpreter before the App Generation activates; the control plane never
+publishes a partially ready subset. Package and Bundle dependencies may acquire
+required content, but V1 does not resolve implicit cross-Plugin installation
+dependencies. Runtime
 collaboration is expressed only through Module Capability requirements and
 explicit bindings. Neither Modules nor Plugins discover peers through a Plugin
 registry.
 
 The generic Plugin Manifest contains only platform meaning: Release identity,
-Module contributions, Artifacts, Features, and requested permissions. Product
-owners attach namespaced extensions or separate Product Plugin Metadata for
-categories, curation, explanations, and UI such as Agent Tool, Prompt, or Model.
-Product vocabulary does not enter the generic Lenso schema or Kernel.
+Module and Data contributions, Artifacts, Features, and requested permissions.
+Product owners attach namespaced extensions or separate Product Plugin Metadata
+for categories, curation, explanations, and UI such as Agent Tool, Prompt, or
+Model. Product vocabulary does not enter the generic Lenso schema or Kernel.
+
+Plugin governance and execution topology are orthogonal. One logical Module
+contribution may declare several target-constrained implementation variants,
+but resolution selects exactly one variant for each keyed Instance under one
+canonical Host Execution Policy and records that decision in the immutable
+Artifact Set. Runtime never benchmarks, negotiates, silently falls back, or
+chooses a nearby variant after staging starts. Native built-ins, Process, Wasm
+Components, embedded JavaScript, and trusted native dynamic libraries are
+therefore Execution Adapter branches under one Plugin lifecycle rather than
+separate Plugin systems.
+
+Data contribution is a contribution kind, not an Execution Class. Prompt,
+Skill, template, rule, and similar content remains inert admitted data until an
+explicitly selected ordinary Module interprets its exact schema and digest.
+The product resolver records that interpreter and input slot; data never gains
+ambient execution, Capability access, or a hidden Module graph.
 
 One immutable App Generation Spec is the control-plane authority for a staged
 or running App Generation. It atomically binds an immutable Host Build Manifest,
@@ -235,10 +255,23 @@ declares real confinement. Plugin permission declarations must not be presented
 as enforced sandboxing when no such enforcement exists. Untrusted code requires
 a later reviewed Wasm or isolated-process security boundary.
 
+The multi-execution contract fixes the reviewed branches. Wasm Component is the
+preferred future constrained in-process path. Embedded JavaScript uses one
+QuickJS-NG host class with immutable bundled ES modules and no runtime npm,
+Node API, or native-addon compatibility. Native dynamic libraries use a
+versioned C ABI and strict byte protocol, remain experimental and explicitly
+trusted, and are never unloaded from a live Host. Agent Harness V1 exposes only
+Turn-pinned Generation adoption; Session-pinned adoption remains a later
+product policy because it can retain old code for an unbounded Session.
+
 ## Consequences
 
 - External Process and future Wasm execution remain Adapter choices; neither
   makes a Module a Plugin by itself.
+- One Release may carry several target variants for one logical contribution;
+  the resolver records one exact implementation and runtime cannot fall back.
+- Data Plugins contribute inert, schema-identified content to an explicit
+  interpreter Module and therefore do not create a data Execution Adapter.
 - A fixed first-party Process Module need not be a Plugin, while an installed
   Plugin still becomes ordinary Module Instances at runtime.
 - Built-in Modules and Bundled Plugins remain distinct even when both ship in
@@ -260,6 +293,7 @@ a later reviewed Wasm or isolated-process security boundary.
   Process Plugin.
 - Dynamic replacement preserves Kernel, Plan, and Capability semantics instead
   of introducing in-place graph rebinding.
-- The linked proposed implementation contract settles the authority schemas,
-  Process Protocol Profile, shared-state gates, and exact V1 proof. Repository
-  assignments and implementation remain future work.
+- The linked proposed implementation contracts settle the authority schemas,
+  Process Protocol Profile, shared-state gates, multi-execution branches, and
+  exact V1 proof. Repository assignments and implementation beyond the Process
+  spike remain future work.

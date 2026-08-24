@@ -14,6 +14,14 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`architecture/future-directions/distributed-module-runtime.md`](architecture/future-directions/distributed-module-runtime.md)
   records deferred distribution decisions.
 
+## Proposed contracts
+
+- [`architecture/dynamic-plugins.md`](architecture/dynamic-plugins.md) defines
+  the proposed Plugin control plane and App Generation protocol.
+- [`architecture/plugin-execution-classes.md`](architecture/plugin-execution-classes.md)
+  defines deterministic Artifact-variant selection, Data contributions, and
+  the reviewed Process, Wasm, QuickJS, and native-library branches.
+
 ## Research
 
 [`research/`](research/) contains dated research and architecture reviews that
