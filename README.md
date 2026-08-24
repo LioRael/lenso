@@ -9,7 +9,8 @@ history.
 
 The repository extraction is complete. Its durable product ownership is:
 
-- `crates/lenso-app-plan` — immutable, language-independent execution input.
+- `crates/lenso-app-plan` — immutable, language-independent Plan Snapshots and
+  validated Plan Transition data.
 - `crates/lenso-kernel` — portable Kernel state machine and Runtime Driver
   interface, with a deterministic Driver for conformance tests.
 - `crates/lenso-runtime-conformance` — product-neutral fixtures that make the
@@ -75,7 +76,7 @@ repositories own their target-specific checks against released core packages.
   runtime overview.
 - [`docs/architecture/lenso-authoring.md`](docs/architecture/lenso-authoring.md)
   documents project authoring and Plan resolution.
-- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0064.
+- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0067.
 - [`docs/roadmaps/lenso-vnext-validation.md`](docs/roadmaps/lenso-vnext-validation.md)
   records the evidence sequence.
 - [`docs/research/`](docs/research/) contains supporting research, not runtime

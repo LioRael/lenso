@@ -1,14 +1,20 @@
 # Dynamic Plugin control-plane contract
 
-Status: proposed implementation contract for [ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md).
+Status: accepted implementation contract for
+[ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md);
+implementation incomplete.
 
-This contract becomes architecture authority only if ADR 0065 is accepted.
-Until then, its vocabulary and mechanisms are provisional. Process Protocol
-packages and Bun smoke tests are an implementation spike for the process/wire
-slice; they do not claim that the Plugin Store, authority records, Generation
-Supervisor, routing fences, recovery, Session fencing, or Agent Tool Plugin
-vertical proof exists. Acceptance requires the complete proof below, not only
-a successful child-process handshake.
+This contract is architecture authority, not an implementation-completion
+claim. Process Protocol packages and Bun smoke tests are an implementation
+spike for the process/wire slice; they do not claim that the Plugin Store,
+authority records, Generation Supervisor, routing fences, recovery, Session
+fencing, or Agent Tool Plugin vertical proof exists. Delivery requires the
+complete proof below, not only a successful child-process handshake.
+
+The current implementation-spike documents use schema version `1`. The
+authoring and resolution redesign changes Manifest, Plugin Set Lock, Host Build
+Manifest, and App Generation Spec meaning and therefore requires new schema
+versions. It does not reinterpret existing version-`1` bytes under new rules.
 
 Read this document when implementing or reviewing Plugin manifests, admission,
 the Plugin Store, App Generation resolution and supervision, Process Plugin
@@ -17,17 +23,28 @@ contract; the current repositories do not yet implement the complete control
 plane.
 
 Read [Plugin execution classes](plugin-execution-classes.md) when adding an
-Artifact variant, Host Execution Policy, Data contribution, Execution Adapter,
+Artifact variant, Host Execution Policy, data entry, Execution Adapter,
 or product UI that presents execution support. That companion owns the
 multi-execution branch contracts; this document remains the control-plane and
 Process Protocol authority.
+
+Read [Module authoring, Slots, and dynamic resolution](plugin-authoring-and-resolution.md)
+when designing the ordinary author Interface, Slots, Desired State, Change
+Proposal, or the Reconciler that classifies a delta as a hot Plan Transition
+under [ADR 0067](../adr/0067-transition-between-immutable-plan-snapshots.md)
+or as a structural App Generation swap. This document owns the structural
+path and treats the resulting Manifest, locks, Plan Snapshots, and Generation
+records as internal canonical authorities; hot Plan Transitions reuse its
+admission, lock, Artifact, and grant authorities without staging a new
+Generation.
 
 ## Ownership map
 
 | Concern | Owner | Completion criterion |
 | --- | --- | --- |
 | Plugin identity, Bundle admission, Store, locks, and Generation Specs | Lenso platform outside portable core | A precompiled App installs and switches an exact Plugin Release without changing its binary |
-| Product categories, curation, configuration UX, and durable work provenance | Product repository such as Agent Harness | Product concepts remain absent from generic schemas and Kernel |
+| Product Slots, categories, curation, configuration UX, Slot Catalog rules, and durable work provenance | Product repository such as Agent Harness | A compatible Plugin attaches without a per-Plugin Host code change; product concepts remain absent from generic schemas and Kernel |
+| Desired State, proposal decisions, and approved scopes | App owner through product CLI or UI | Users select Plugins and semantic choices without writing Module Instances or bindings |
 | Module graph, Capability bindings, lanes, and supervision policy | Resolved App Plan | Kernel receives one complete, immutable, validated Plan |
 | Artifact materialization, process launch, wire, confinement, and host failures | Execution Adapter and host | Every Instance executes only its admitted bytes and Effective Host Grants |
 | Execution-class allowance, deterministic variant preference, and support status | Product-owned Host Execution Policy | Resolution selects one exact implementation and runtime cannot fall back |
@@ -40,18 +57,28 @@ repository is created.
 ## Authority chain
 
 ```text
+Module source + product SDK derivation (ADR 0066)
+  -> generated Plugin Manifest + Product Plugin Metadata + Artifacts
+
 Plugin Bundle
   -> Plugin Manifest + Product Plugin Metadata + Artifacts
   -> Admission Receipts + content-addressed Plugin Store
-  -> App-local Plugin Set Lock
-  -> Resolved Artifact Set + Effective Host Grant Set
 
 Product build -> Host Build Manifest
-Product policy -> Host Execution Policy
+Product attachment rules -> Slot Catalog
+Execution allowance -> Host Execution Policy
+
+App-owner intent -> Desired State
+
+Desired State + admitted Plugin Store
+  + Slot Catalog + Host Build Manifest + Host Execution Policy
+  -> Change Proposal
+  -> exact Plugin Set Lock + generated App Composition
+  -> Resolved Artifact Set + Effective Host Grant Set
 
 Plugin Set Lock + Resolved Artifact Set + Effective Host Grant Set
-  + Host Build Manifest + Host Execution Policy
-  -> Resolved App Plan
+  + Host Build Manifest + Slot Catalog + Host Execution Policy
+  -> Resolved App Plan (one Plan Snapshot)
   -> App Generation Spec
 
 active Generation Spec + candidate Generation Spec
@@ -61,9 +88,14 @@ active Generation Spec + candidate Generation Spec
   -> Runner -> Kernel
 ```
 
-Every arrow is fail closed. No later stage may discover a missing contribution,
-select a newer version, broaden a grant, change an Artifact, or repair an
-ambiguous binding.
+Every arrow is fail closed. No later stage may execute Plugin code to discover
+a Slot Entry, select a newer version, broaden a grant, change an Artifact, or
+repair an ambiguous binding.
+
+A hot Plan Transition (ADR 0067) shortcuts only the final stage: it reuses the
+same admitted Store, lock, Artifact, and grant authorities to produce the next
+Plan Snapshot and one validated Plan Transition instead of a new App
+Generation Spec.
 
 ### Canonical document rules
 
@@ -87,36 +119,40 @@ verified before Store commit and again before staging.
 ### Plugin Manifest: `lenso-plugin.json`
 
 The Plugin publisher owns one platform-neutral Manifest per immutable Plugin
-Release. Its canonical digest is the content-identity component of the
-`PluginReleaseRef` tuple `(plugin_id, release_version, manifest_digest)` used by
-every later document.
+Release. The derivation build and packaging tooling generate it from Module source
+under ADR 0066; admission and resolution never execute Plugin runtime code
+to discover its contents. Its canonical digest is the content-identity
+component of the `PluginReleaseRef` tuple
+`(plugin_id, release_version, manifest_digest)` used by every later document.
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | Exact Manifest schema version; V1 is `1` |
+| `schema_version` | Exact Manifest schema version; generated-authoring Manifest is version `2` |
 | `plugin_id` | Stable reverse-domain-style Plugin identity |
 | `release_version` | Semantic version of this immutable Release |
 | `artifacts[]` | Release-local ID, kind, digest, size, media type, Bundle path, and target constraints |
-| `module_contributions[]` | Stable logical contribution ID, package ID, configuration-schema reference, provided/required Capability descriptors, and one or more implementation variants |
-| `data_contributions[]` | Stable inert contribution ID, Artifact reference, media type, exact content-schema identity and digest, and Product Metadata reference |
-| `features[]` | Named optional sets of Module contributions, Data contributions, Artifacts, and permission requests |
-| `binding_templates[]` | Bindings only between contributions inside this Manifest; cross-Plugin bindings remain App Composition decisions |
+| `module_entries[]` | Generated stable logical entry ID, immutable Module Descriptor reference, and one or more implementation variants |
+| `data_entries[]` | Stable inert entry ID, Artifact reference, media type, exact content-schema identity and digest, and Product Metadata reference |
+| `features[]` | Named optional sets of Module entries, data entries, Artifacts, and permission requests |
+| `binding_templates[]` | Compiler-generated bindings only between entries inside this Manifest; Slot resolution owns attachment to built-in or other Plugin behavior |
 | `permission_requests[]` | Stable ID, resource kind, required/optional status, requested scope, and explanation key |
 | `product_metadata[]` | Namespace, schema identity, relative path, and digest of product-owned metadata |
 
-Capability declarations reference exact Descriptor versions and canonical
-Descriptor digests; the Manifest does not copy or reinterpret their Schemas.
-Each Module implementation variant has a Release-local ID, exactly one
+Each executable entry references an immutable Module Descriptor whose
+digest closes the configuration Schema, provided and required Capability
+Descriptors, state identity, and authoring Interface. The Manifest does not ask
+ordinary Plugin authors to repeat these values or copy their Schemas. Each
+Module implementation variant has a Release-local ID, exactly one
 execution input, entrypoint, Execution Class, target constraints, required
 Protocol Profiles, and support channel. An execution input is either an
 Artifact reference or an exact built-in factory reference declared by the Host
 Build Manifest; a built-in reference installs no new machine code. Variants of
-one logical contribution expose the same Capability and configuration
+one logical entry expose the same Capability and configuration
 Interface. They are alternatives, not
 separately enabled implementations, and publishers do not assign runtime
 preference.
 
-Data contributions declare no entrypoint, Execution Class, Capability, or
+Data entries declare no entrypoint, Execution Class, Capability, or
 permission request. They remain inert until an App-local product resolver binds
 one to an explicitly selected interpreter Module Instance and named input slot.
 Generic admission verifies bytes and schema identity; the product validates the
@@ -128,31 +164,98 @@ values, credentials, download tokens, machine-local paths, and signatures are
 absent.
 
 Product metadata is a separately digested file. For example, Agent Harness may
-own `lenso-agent-plugin.json` for Tool, Prompt, or Model curation without adding
-those terms to the generic Manifest. Generic admission bounds the metadata file
-and verifies its digest; the product validates its schema.
+own `lenso-agent-plugin.json` for Tool, Prompt, Model, Skill, or UI Slot
+Entries without adding those terms to the generic Manifest.
+Generic admission bounds the metadata file and verifies its digest; the product
+validates its schema. The Slot Catalog, not the publisher, owns how valid
+metadata lowers into Module Instances, bindings, data mounts, and UI
+attachments.
 
 Publisher signatures and provenance use detached envelopes over the Manifest
 digest and referenced Artifact digests. A signature never self-authorizes a
 Release: the operator's admission policy produces the Admission Receipt.
 
-### Plugin Set Lock: `lenso-plugin-set.lock.json`
+### Desired State
 
-The App resolver owns this canonical, App-local selection. Disabled and merely
-installed Plugins are absent.
+The App owner owns this user-intent document. Product CLI and UI maintain its
+canonical projection; ordinary users are not expected to hand-edit it.
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | Exact lock schema version |
+| `schema_version` | Exact intent schema version |
+| `app_id` | App identity that owns the desired selection |
+| `plugins[]` | Plugin ID, exact admitted Release reference, selected Features, and named Plugin Instances |
+| `instances[]` | Plugin ID, App-local Plugin Instance key, non-secret configuration or secret references, and product-supported instance options |
+| `choices[]` | Explicit semantic selection or ordering for one Slot |
+| `approved_scopes[]` | App-owner permission-request approval narrowed to one Plugin Instance |
+
+Desired state is not installed content, a resolved lock, or evidence that a
+candidate is runnable. It contains no Module Instance keys, Capability
+bindings, Execution Lanes, Adapter profiles, Artifact paths, or Resolved Plan
+data.
+
+### Slot Catalog
+
+The product owner owns one immutable catalog containing its exact Slots and
+declarative lowering inputs. The Host Build Manifest identifies the product
+resolver implementation; this Slot Catalog digest identifies the rules
+supplied to that implementation.
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | Exact catalog schema version |
+| `app_id` | Product identity governed by the catalog |
+| `slots[]` | Versioned identity, Slot Entry schema digest, add/provide/intercept/mount attachment kind, cardinality, instance policy, attachment target or public root Capability, Descriptor constraints, typed interception and ordering rules when applicable, and explanation keys |
+| `allowed_product_metadata[]` | Namespace and schema digests that may contribute to each Slot |
+| `base_composition_digest` | Exact built-in App Composition input to which Slot Entries may attach |
+| `soft_conflicts[]` | Exact product conflicts that an App owner may waive |
+
+Publisher metadata cannot add product policy, select private target Instances,
+or assign global priority. A future owner-scoped package-published Slot follows
+the additional ownership rules in the authoring contract and is absent when
+its owner Plugin is not selected.
+
+The attachment kind is product authority, not publisher input. `provide`
+entries offer candidates but cannot displace an active `one` provider;
+`intercept` entries cannot change their declared observation,
+transformation, short-circuit, or recovery contract; and `mount` exposes only
+the policy-admitted root Capability of one Plugin-owned Module graph.
+
+### Change Proposal
+
+The resolver derives a proposal without changing the running App. It contains
+the candidate Plugin-level diff, Slot attachments, the hot or structural delta
+classification under ADR 0067, requested and effective permission changes,
+replacement and ordering choices, state transition mode, rollback
+truthfulness, execution facts, and an explainability path to the generated
+graph.
+
+The proposal state is `ready`, `needs_decision`, or `rejected`. Only `ready`
+may be applied. Choices and approvals become explicit Desired State inputs
+before the resolver seals exact authority. The proposal digest binds the
+running snapshot or active Generation, Desired State, admitted Release
+catalog, Slot Catalog, Host Build Manifest, Host Execution Policy, and every
+derived candidate digest. Application rejects a stale proposal rather than
+reinterpreting it.
+
+### Plugin Set Lock: `lenso-plugin-set.lock.json`
+
+The App resolver generates and owns this canonical, exact App-local selection
+from one ready proposal. It is internal authority rather than the ordinary user
+Interface. Disabled and merely installed Plugins are absent.
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | Exact lock schema version; Desired State resolution output is version `2` |
 | `app_id` | App identity that owns the selection |
 | `plugins[]` | Plugin ID, Release version, Manifest digest, selected Features, and Product Metadata digests |
-| `instances[]` | Module contribution reference, final App-local Instance key, optional exact implementation-variant pin, non-secret configuration or secret references, and placement input |
-| `data_mounts[]` | Data contribution reference, explicit interpreter Instance key, product-owned input slot, and interpretation-schema digest |
+| `instances[]` | Source Plugin Instance and Slot Entry reference, final App-local Module Instance key, optional exact implementation-variant pin, canonical configuration, and placement input |
+| `data_mounts[]` | Data entry reference, explicit interpreter Instance key, product-owned input slot, and interpretation-schema digest |
 | `approved_grants[]` | Permission reference, narrowed approved scope, intended enforcement kind, and intended enforcer identity |
 
-One lock selects at most one Release per Plugin ID. One contribution may produce
+One lock selects at most one Release per Plugin ID. One entry may produce
 multiple keyed Instances. A variant pin is exact; absence delegates only to the
-bound Host Execution Policy. Every Data contribution mount names one ordinary
+bound Host Execution Policy. Every data mount names one ordinary
 Module Instance already selected in App Composition; it creates no hidden
 Instance or binding. Plugin, Instance, Feature, mount, slot, and permission
 references are unique and close over installed, admitted Manifests. An approved
@@ -177,9 +280,10 @@ behavior when presented to different host binaries or Adapter catalogs.
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | Exact Host Build schema version |
+| `schema_version` | Exact Host Build schema version; Product Resolver identity requires version `2` |
 | `app_id` | Product identity this host can run |
 | `host_executable` | Content digest, size, target, and product build identity |
+| `product_resolver` | Exact build identity of the Slot lowering implementation |
 | `built_in_modules[]` | Package ID, product-build revision, factory identity, execution class, and Capability Descriptor digests |
 | `fixed_artifacts[]` | Product-owned Process or static Artifact digest, size, target, and admitted entrypoint |
 | `adapter_profiles[]` | Execution class, Adapter build identity, supported target constraints, and exact Protocol Profiles |
@@ -204,7 +308,7 @@ selected on one host target; it does not add an Execution Class to the host.
 | `target` | Exact operating system, architecture, ABI, and host feature set |
 | `classes[]` | Execution Class, allowed support channels, required isolation floor, allowed trust level, and exact Protocol Profiles |
 | `preference[]` | Ordered Execution Class IDs used only when an Instance does not pin an implementation variant |
-| `instance_overrides[]` | Optional exact Instance or contribution rule with a narrower allowed class set and deterministic preference |
+| `instance_overrides[]` | Optional exact Instance or entry rule with a narrower allowed class set and deterministic preference |
 
 Preference order is product policy, never publisher metadata and never an
 implicit claim that one class is fastest. Resolution filters variants by exact
@@ -231,14 +335,14 @@ for one Plugin Set Lock.
 | `host_execution_policy_digest` | Exact product policy used for variant selection |
 | `releases[]` | Plugin ID, Release version, Manifest digest, and Admission Receipt digest |
 | `artifacts[]` | Manifest and Artifact IDs, content digest, size, media type, and selected target |
-| `instances[]` | Instance key, contribution and implementation-variant references, exact Artifact or built-in factory reference, entrypoint, Execution Class, target, support channel, selection reason, exact Profiles, and bounded per-instance limits |
-| `data_mounts[]` | Data contribution and Artifact references, interpreter Instance key, input slot, content-schema digest, and product interpretation-schema digest |
+| `instances[]` | Instance key, Slot Entry and implementation-variant references, exact Artifact or built-in factory reference, entrypoint, Execution Class, target, support channel, selection reason, exact Profiles, and bounded per-instance limits |
+| `data_mounts[]` | Data entry and Artifact references, interpreter Instance key, input slot, content-schema digest, and product interpretation-schema digest |
 
-Each selected Instance appears exactly once. Manifest, contribution, execution
+Each selected Instance appears exactly once. Manifest, entry, execution
 input, variant, entrypoint, execution class, target, policy, and Admission
 Receipt references must all close. An Artifact input closes over admitted Store
 bytes; a built-in input closes over one exact Host Build factory. Every selected
-Data contribution mount closes over one admitted Artifact and one Plan-owned
+Data mount closes over one admitted Artifact and one Plan-owned
 interpreter Instance; it does not create a Kernel endpoint or execution input
 of its own. Absolute Store paths do not enter canonical authority. At staging time,
 the host resolves each digest to a safe read-only directory handle or
@@ -293,9 +397,10 @@ The Generation Supervisor owns this immutable node authority:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "app_id": "agent-harness",
   "host_build_manifest_digest": "sha256:...",
+  "product_resolution_policy_digest": "sha256:...",
   "host_execution_policy_digest": "sha256:...",
   "resolved_plan_digest": "sha256:...",
   "plugin_set_lock_digest": "sha256:...",
@@ -340,22 +445,26 @@ Staging loads every document by digest, validates it independently, and then
 checks closure across documents:
 
 1. App identities match across every document.
-2. The running executable, built-in factories, fixed Artifacts, Adapter builds,
-   targets, and Protocol Profiles exactly match the Host Build Manifest; the
-   Host Execution Policy binds that exact Manifest and App.
-3. Selected Features expand to one exact contribution, Artifact, permission,
-   and Product Metadata set; unselected optional content cannot enter the Plan.
-4. Every selected Module contribution maps to exactly one execution-input-backed
+2. The running executable, Slot resolver, built-in factories,
+   fixed Artifacts, Adapter builds, targets, and Protocol Profiles exactly match
+   the Host Build Manifest; Slot Catalog and Host Execution Policy
+   bind that exact Manifest and App.
+3. Desired State choices and approvals close over one ready Change
+   Proposal and exact Plugin Set Lock. Selected Features expand to one exact
+   entry, Artifact, permission, and Product Metadata set; unselected
+   optional content cannot enter the Plan.
+4. Every selected Module entry maps to exactly one execution-input-backed
    Plan Instance, one implementation variant selected under the bound policy, and
-   every Plugin-backed Plan Instance maps back. Every selected Data contribution
+   every Plugin-backed Plan Instance maps back. Every selected data entry
    maps to one admitted Artifact and explicit Plan-owned interpreter slot.
 5. Package ID, variant, entrypoint, execution class, Capability Descriptor
    digests, canonical configuration and secret references, Instance keys,
    selected execution inputs, Data mounts, interpreter slots, and lane placement agree
    across the lock, Artifact Set, policy, and Plan.
-6. Every selected intra-Plugin binding template maps to the same final explicit
-   Plan binding; every cross-Plugin or built-in binding is an App Composition
-   decision, and no undeclared binding appears.
+6. Every selected compiler-generated intra-Plugin binding maps to the same final
+   explicit Plan binding. Every cross-Plugin or built-in attachment is generated
+   by one bound Slot decision, and no undeclared binding
+   appears.
 7. Every Admission Receipt covers the Manifest and Artifact digests it admits.
 8. Every required permission has an equal or narrower approved and effective
    grant with truthful enforcement.
@@ -394,20 +503,25 @@ It neither enables the Plugin nor changes an App Generation.
 ### Update and enable
 
 V1 installs new Releases beside old Releases and performs no automatic update.
-Enablement explicitly rewrites one App-local Plugin Set Lock, resolves a new
-Plan and Generation Spec, then creates a Transition from the exact active
-Generation before staging. Bundled and user-installed Releases obey the same
-explicit selection; neither implicitly overrides the other.
+Enablement derives a new Desired State and Change Proposal. After all choices
+and grants are explicit, a hot-classified delta applies as one validated Plan
+Transition to the running snapshot under ADR 0067; a structural delta
+generates one exact App-local Plugin Set Lock, Plan Snapshot, and Generation
+Spec, then creates a Generation Transition from the exact active Generation
+before staging. Bundled and user-installed Releases
+obey the same explicit selection; neither implicitly overrides the other.
 
 ### Disable, uninstall, and garbage collection
 
-Disable removes a Plugin from a future App-local lock. Uninstall is refused
-while any saved lock, staged, active, draining, standby, or rollback reference
-uses the Release and reports all blockers. Once unreferenced, Store registration is
-removed and the exact content-addressed directory becomes garbage-collection
-eligible. Destructive cleanup first moves the resolved Store-owned target into
-quarantine or trash; it never accepts arbitrary user paths, globs, unresolved
-variables, or symlink targets.
+Disable removes a Plugin or named Plugin Instance from the App's Desired
+State and applies the newly resolved snapshot — hot when the delta qualifies,
+otherwise as a newly staged complete Generation. Uninstall is refused
+while any saved desired state, exact lock, staged, active, draining, standby, or
+rollback reference uses the Release and reports all blockers. Once
+unreferenced, Store registration is removed and the exact content-addressed
+directory becomes garbage-collection eligible. Destructive cleanup first moves
+the resolved Store-owned target into quarantine or trash; it never accepts
+arbitrary user paths, globs, unresolved variables, or symlink targets.
 
 ## App Generation protocol
 
