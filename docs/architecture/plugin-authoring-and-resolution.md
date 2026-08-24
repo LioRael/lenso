@@ -1,9 +1,10 @@
 # Module authoring, Slots, and dynamic resolution
 
-Status: proposed companion contract for
+Status: accepted companion contract for
 [ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md),
 [ADR 0066](../adr/0066-derive-module-descriptors-and-plans-from-source.md), and
-[ADR 0067](../adr/0067-transition-between-immutable-plan-snapshots.md).
+[ADR 0067](../adr/0067-transition-between-immutable-plan-snapshots.md);
+implementation pending.
 
 This document owns the Interface between Module authors, App owners, product
 Slots, the resolver, and the Reconciler. The

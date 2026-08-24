@@ -1,6 +1,6 @@
 # ADR 0066: Derive Module Descriptors, contracts, and Plans from source
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-25
 - Extends: ADR 0031, ADR 0034, ADR 0045, ADR 0050, ADR 0055, ADR 0056,
   ADR 0057

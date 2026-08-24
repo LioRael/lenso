@@ -1,6 +1,6 @@
 # ADR 0065: Govern dynamic Plugins above the Kernel
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-25
 - Extends: ADR 0030, ADR 0031, ADR 0045, ADR 0046, ADR 0055, ADR 0057,
   ADR 0064

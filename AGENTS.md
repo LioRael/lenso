@@ -7,7 +7,7 @@ source is retained by the `lenso@0.3.47` tag and Git history.
 
 - Read [`CONTEXT.md`](CONTEXT.md), [`docs/adr/README.md`](docs/adr/README.md),
   [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md), and
-  the relevant ADR 0030–0064 before changing architecture.
+  the relevant ADR 0030–0067 before changing architecture.
 - Route product planning, Capability, Module, App Composition, and host-runtime
   work through the canonical [`skills/`](skills/) pack. Use `lenso-start` when
   ownership is unclear; see the [Agents and skills guide](docs/agents/skills.md)
@@ -31,12 +31,13 @@ source is retained by the `lenso@0.3.47` tag and Git history.
   `lenso-kernel`, and Kernel-owned runtime conformance under ADR 0064. Do not
   add inward dependencies on a concrete Driver, Adapter, Capability, Module,
   CLI, or example.
-- A Resolved App Plan is immutable and complete before boot. No runtime
-  discovery, installation, graph mutation, dynamic rebinding, or fallback
-  provider behavior.
-- Use the canonical terms App, Module, Module Instance, Capability, Operation,
-  App Composition, Resolved App Plan, Kernel, Runtime Driver, and Execution
-  Adapter.
+- Kernel executes only immutable, completely resolved Plan Snapshots. It may
+  apply only an ADR 0067 validated atomic Plan Transition between adjacent
+  snapshots; discovery, installation, version selection, product policy,
+  unvalidated graph mutation, and fallback provider behavior remain forbidden.
+- Use the canonical terms App, App Definition, Module, Module Instance,
+  Capability, Port, Slot, App Composition, Plan Snapshot, Plan Transition,
+  Reconciler, App Generation, Kernel, Runtime Driver, and Execution Adapter.
 - Do not reintroduce Service, Provider, System Plane, Console, Story, Auth,
   PostgreSQL, migration, Outbox, Workflow, release, digest, or compatibility
   crates into the Kernel workspace.

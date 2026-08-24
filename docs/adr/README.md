@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0064 are the accepted, normative architecture decisions for
+ADRs 0030 through 0067 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -37,17 +37,17 @@ defines the one-way extraction path for runtimes, protocols, Modules, tooling,
 and examples.
 
 [`0065-govern-dynamic-plugins-above-the-kernel.md`](0065-govern-dynamic-plugins-above-the-kernel.md)
-is a proposed decision that makes Plugin the installable distribution role of
+is the accepted decision that makes Plugin the installable distribution role of
 a Module Package, attaches installed behavior through product-owned Slots, and
 keeps install, trust, and enablement governance above the Kernel.
 
 [`0066-derive-module-descriptors-and-plans-from-source.md`](0066-derive-module-descriptors-and-plans-from-source.md)
-is a proposed decision that makes Module source the single source of truth and
+is the accepted decision that makes Module source the single source of truth and
 turns Descriptors, Capability Schemas, factories, registrations, Compositions,
 and Plans into generated, locked artifacts.
 
 [`0067-transition-between-immutable-plan-snapshots.md`](0067-transition-between-immutable-plan-snapshots.md)
-is a proposed decision that amends ADR 0045 and ADR 0046 so an App executes a
+is the accepted decision that amends ADR 0045 and ADR 0046 so an App executes a
 totally ordered sequence of immutable Plan Snapshots with one validated atomic
 Transition mechanism, keeping App Generation swaps for structural change.
 

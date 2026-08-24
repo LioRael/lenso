@@ -1,6 +1,6 @@
 # ADR 0067: Transition between immutable Plan Snapshots
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-25
 - Amends: ADR 0045, ADR 0046
 - Extends: ADR 0032, ADR 0047, ADR 0063

@@ -1,14 +1,15 @@
 # Dynamic Plugin control-plane contract
 
-Status: proposed implementation contract for [ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md).
+Status: accepted implementation contract for
+[ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md);
+implementation incomplete.
 
-This contract becomes architecture authority only if ADR 0065 is accepted.
-Until then, its vocabulary and mechanisms are provisional. Process Protocol
-packages and Bun smoke tests are an implementation spike for the process/wire
-slice; they do not claim that the Plugin Store, authority records, Generation
-Supervisor, routing fences, recovery, Session fencing, or Agent Tool Plugin
-vertical proof exists. Acceptance requires the complete proof below, not only
-a successful child-process handshake.
+This contract is architecture authority, not an implementation-completion
+claim. Process Protocol packages and Bun smoke tests are an implementation
+spike for the process/wire slice; they do not claim that the Plugin Store,
+authority records, Generation Supervisor, routing fences, recovery, Session
+fencing, or Agent Tool Plugin vertical proof exists. Delivery requires the
+complete proof below, not only a successful child-process handshake.
 
 The current implementation-spike documents use schema version `1`. The
 authoring and resolution redesign changes Manifest, Plugin Set Lock, Host Build

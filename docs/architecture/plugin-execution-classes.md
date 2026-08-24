@@ -1,7 +1,8 @@
 # Plugin execution classes
 
-Status: proposed companion contract for
-[ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md).
+Status: accepted companion contract for
+[ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md);
+implementation support remains branch-specific below.
 
 This document defines how one Plugin governance model selects different Module
 execution mechanics. It does not make those mechanics uniformly implemented.
@@ -50,7 +51,7 @@ from the fact that a Plugin can be installed.
 
 | Entry or branch | Dynamic install | Process isolation | In-process | Initial interaction claim | Dynamic Plugin status |
 | --- | --- | --- | --- | --- | --- |
-| Native built-in, `lenso.native-rust@1` | No new machine code | No | Yes | Existing native Request, Stream, and Event conformance | Stable execution; Plugin governance proposed |
+| Native built-in, `lenso.native-rust@1` | No new machine code | No | Yes | Existing native Request, Stream, and Event conformance | Stable execution; Plugin governance accepted, implementation pending |
 | Process, current `lenso.bun-process@1` | Yes | Yes | No | `provide-request-v1` only | Protocol and Adapter spike; product acceptance incomplete |
 | Wasm Component, `lenso.wasm-component@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | Preview Adapter implemented with a bounded runtime envelope; generated typed WIT integration and two-language proof remain open |
 | Embedded JavaScript, `lenso.quickjs@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | QuickJS-NG preview Adapter implemented; stable consume and product proof remain open |
