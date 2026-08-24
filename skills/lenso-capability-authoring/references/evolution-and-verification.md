@@ -26,14 +26,15 @@ creates a new `@major` series.
 Require evidence for every changed Operation:
 
 - Descriptor and Schema validation;
-- deterministic generation and a freshness check for committed artifacts;
+- deterministic generation and a freshness check for every declared artifact;
 - typed consumer and provider compilation;
 - success, domain-error, and runtime-failure preservation;
 - cross-language wire vectors for portable contracts; and
 - stream or event terminal, cancellation, backpressure, and partial-admission
   behavior when those interaction kinds are present.
 
-Also compile/typecheck the generated Provider and Client from a clean checkout.
+Also compile/typecheck each generated Provider and Client from a clean checkout
+of the package that distributes that language projection.
 Exercise at least one old consumer or provider against an additive minor change
 when compatibility is claimed. Verify that an older generated client preserves
 an unknown Domain Error code and payload instead of discarding it.

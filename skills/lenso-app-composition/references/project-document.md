@@ -12,7 +12,7 @@ and CLI flags are owned by those packages.
 | `composition.bindings` | explicit consumer requirement to provider Instance edges |
 | `composition.execution_lanes` | App-local single-owner Kernel lane identities |
 | `packages` | reviewable package-manager inputs and lock locations |
-| `contracts` | exact Capability Descriptor versions and checked-in generated artifacts |
+| `contracts` | exact Capability Descriptor versions and this project's checked-in language projections |
 | `profiles` | pre-resolution Web authoring recipes |
 
 Package managers acquire code and own locks. `lenso.json` records the inputs
@@ -93,13 +93,18 @@ configuration carries a Schema, and the binding names the exact provider key.
       "capability_id": "example.greeting@1",
       "descriptor_version": "1.0.0",
       "descriptor": "contracts/greeting/capability.json",
-      "rust": "contracts/greeting/src/generated.rs",
-      "typescript": "contracts/greeting/generated/bindings.ts"
+      "rust": "contracts/greeting/src/generated.rs"
     }
   ],
   "profiles": {}
 }
 ```
+
+Each `contracts` entry declares the exact Descriptor independently from its
+language projections. Include `rust` and/or `typescript` only when this project
+owns and checks that generated artifact. Omitted projections may ship from a
+different runtime package; `lenso check` still requires every declared path to
+be exactly reproducible from the Descriptor and package-local Schemas.
 
 The exact package version/revision must agree with the ordinary lockfile and,
 for native Modules, the linked factory's `package_id()`/`package_version()`.
