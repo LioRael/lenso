@@ -36,6 +36,10 @@ keeps only Plan, Kernel, and core conformance ownership in this repository and
 defines the one-way extraction path for runtimes, protocols, Modules, tooling,
 and examples.
 
+[`0065-govern-dynamic-plugins-above-the-kernel.md`](0065-govern-dynamic-plugins-above-the-kernel.md)
+is a proposed decision that defines Plugins as installation and governance
+units above Kernel and preserves immutable App Generations during replacement.
+
 ## Legacy decisions
 
 ADRs 0001 through 0029 describe the final v0.3.x Service-oriented
