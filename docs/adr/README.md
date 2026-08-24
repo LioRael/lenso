@@ -37,8 +37,19 @@ defines the one-way extraction path for runtimes, protocols, Modules, tooling,
 and examples.
 
 [`0065-govern-dynamic-plugins-above-the-kernel.md`](0065-govern-dynamic-plugins-above-the-kernel.md)
-is a proposed decision that defines Plugins as installation and governance
-units above Kernel and preserves immutable App Generations during replacement.
+is a proposed decision that makes Plugin the installable distribution role of
+a Module Package, attaches installed behavior through product-owned Slots, and
+keeps install, trust, and enablement governance above the Kernel.
+
+[`0066-derive-module-descriptors-and-plans-from-source.md`](0066-derive-module-descriptors-and-plans-from-source.md)
+is a proposed decision that makes Module source the single source of truth and
+turns Descriptors, Capability Schemas, factories, registrations, Compositions,
+and Plans into generated, locked artifacts.
+
+[`0067-transition-between-immutable-plan-snapshots.md`](0067-transition-between-immutable-plan-snapshots.md)
+is a proposed decision that amends ADR 0045 and ADR 0046 so an App executes a
+totally ordered sequence of immutable Plan Snapshots with one validated atomic
+Transition mechanism, keeping App Generation swaps for structural change.
 
 ## Legacy decisions
 

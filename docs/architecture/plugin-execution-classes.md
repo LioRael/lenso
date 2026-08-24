@@ -7,6 +7,9 @@ This document defines how one Plugin governance model selects different Module
 execution mechanics. It does not make those mechanics uniformly implemented.
 The [Dynamic Plugin control-plane contract](dynamic-plugins.md) owns identity,
 admission, locks, grants, App Generations, routing, and the Process Protocol.
+The [Module authoring, Slots, and dynamic resolution contract](plugin-authoring-and-resolution.md)
+owns the ordinary author Interface and the Slot lowering that generates these
+internal execution declarations.
 
 ## One lifecycle, orthogonal execution
 
@@ -15,19 +18,19 @@ admission, locks, grants, App Generations, routing, and the Process Protocol.
 `Execution Class` selects the Adapter that makes that Instance executable.
 
 One Plugin Release may carry several target variants for one logical Module
-contribution. Resolution chooses one variant for each keyed Instance and locks
+entry. Resolution chooses one variant for each keyed Instance and locks
 it before staging. The variants expose the same configuration and Capability
 Interface; they cannot change product meaning merely because their topology is
 different.
 
 ```text
 Plugin Release
-  Module contribution: example.search-provider
+  Module entry: example.search-provider
     implementation: native-builtin  -> exact product-linked factory
     implementation: process         -> admitted executable Artifact
     implementation: wasm-component  -> admitted Component Artifact
     implementation: quickjs         -> admitted bundled ESM Artifact
-  Data contribution: example.search-prompts
+  Data entry: example.search-prompts
     Artifact + content Schema -> explicit Prompt Catalog Module input
 
 Host Execution Policy + target + Host Build Manifest
@@ -45,14 +48,14 @@ resolution and App Generation Transition.
 Support is reported per execution branch and interaction Profile, not inferred
 from the fact that a Plugin can be installed.
 
-| Contribution or branch | Dynamic install | Process isolation | In-process | Initial interaction claim | Dynamic Plugin status |
+| Entry or branch | Dynamic install | Process isolation | In-process | Initial interaction claim | Dynamic Plugin status |
 | --- | --- | --- | --- | --- | --- |
 | Native built-in, `lenso.native-rust@1` | No new machine code | No | Yes | Existing native Request, Stream, and Event conformance | Stable execution; Plugin governance proposed |
 | Process, current `lenso.bun-process@1` | Yes | Yes | No | `provide-request-v1` only | Protocol and Adapter spike; product acceptance incomplete |
 | Wasm Component, `lenso.wasm-component@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | Preview Adapter implemented with a bounded runtime envelope; generated typed WIT integration and two-language proof remain open |
 | Embedded JavaScript, `lenso.quickjs@1` | Yes | No | Yes | Preview: provide Request; stable: provide and consume Request | QuickJS-NG preview Adapter implemented; stable consume and product proof remain open |
 | Native dynamic library, `lenso.native-dylib@1` | Yes | No | Yes | Provide Request only | Experimental trusted C-ABI Adapter implemented; fuzzing and platform review remain open |
-| Data contribution | Yes | Not applicable | Interpreted by an existing Module | No interaction Profile of its own | Designed; interpreter vertical proof deferred |
+| Data entry | Yes | Not applicable | Interpreted by an existing Module | No interaction Profile of its own | Designed; interpreter vertical proof deferred |
 
 `Stream` and `Event` remain disabled for Process, Wasm, QuickJS, and dylib until
 each branch passes the shared bidirectional conformance surface for admission,
@@ -62,17 +65,16 @@ readiness.
 
 ## Manifest variants and deterministic resolution
 
-One `module_contributions[]` entry owns the logical package ID, configuration
-Schema, provided Capabilities, and required Capabilities. Its
-`implementations[]` entries own only execution facts:
+One generated `module_entries[]` entry references the immutable Module
+Descriptor that owns the logical package ID, configuration Schema, provided
+Capabilities, and required Capabilities. Its `implementations[]` entries own
+only execution facts. This is canonical publication output, not the ordinary
+Plugin author's Interface:
 
 ```json
 {
   "id": "search-provider",
-  "package_id": "example.search-provider",
-  "configuration_schema_digest": "sha256:...",
-  "provides": [],
-  "requires": [],
+  "module_descriptor_digest": "sha256:...",
   "implementations": [
     {
       "id": "wasm-aarch64",
@@ -113,14 +115,14 @@ example, stable Wasm over a stable Process implementation for constrained
 third-party code, but that order is an explicit reviewable policy rather than
 an implicit `fastest` rule.
 
-## Data contributions
+## Data entries
 
-Data is a contribution kind, not an Execution Class. A Prompt, Skill, template,
+Data is an entry kind, not an Execution Class. A Prompt, Skill, template,
 rule set, locale, or static model table has no entrypoint, lifecycle callbacks,
 Capabilities, or ambient authority merely because it arrived in a Plugin
 Bundle.
 
-A Data contribution declares one admitted Artifact, media type, exact content
+A data entry declares one admitted Artifact, media type, exact content
 Schema identity and digest, and Product Metadata reference. The App-local lock
 mounts it into one named input slot of one explicitly selected interpreter
 Module Instance. The product resolver validates that the interpreter supports
@@ -260,7 +262,7 @@ review for every supported target family.
 
 Products present one Plugin lifecycle: `installed`, `enabled`, `disabled`,
 `update available`, `staged`, `active`, `draining`, `rollback standby`, and
-`removal blocked`. Each contribution row also shows execution facts rather than
+`removal blocked`. Each entry row also shows execution facts rather than
 hiding them behind a generic Plugin badge:
 
 - selected implementation and why the Host Execution Policy chose it;
@@ -268,14 +270,15 @@ hiding them behind a generic Plugin badge:
 - in-process or out-of-process topology and truthful isolation claim;
 - requested, approved, and effective grants with named enforcers;
 - interaction Profiles and unsupported behavior;
-- whether enable, disable, update, or reclamation requires an App Generation or
-  complete Host restart; and
+- whether enable, disable, update, or reclamation applies as a hot Plan
+  Transition or requires an App Generation or complete Host restart; and
 - measured boundary cost only from a named benchmark and comparison scope.
 
-One enable action stages the complete candidate Generation. UI never offers
-per-contribution partial activation, runtime fallback, or a security claim based
-only on a signature. A failed candidate preserves the active Generation and
-shows the exact failed stage.
+One enable action applies one complete validated change — a hot Plan
+Transition or a staged candidate Generation. UI never offers per-entry partial
+activation, runtime fallback, or a security claim based only on a signature. A
+failed candidate preserves the running snapshot and shows the exact failed
+stage.
 
 Agent Harness V1 adopts Generations per Turn. One Turn and all nested Model,
 Tool, Stream, and durable commit work retain one Generation Lease; the next

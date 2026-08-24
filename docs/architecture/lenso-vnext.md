@@ -55,10 +55,16 @@ selection, schema diff, signature admission, or graph discovery. Built-in
 Module installation is a reviewable project edit, not a runtime operation.
 
 [Proposed ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md)
-defines a separate optional Plugin control plane for a precompiled App. It
-admits exact Plugin Artifacts above Kernel and resolves a new immutable App
-Generation; it does not turn Plugin into a runtime type or mutate a running
-Plan. Its [multi-execution companion](plugin-execution-classes.md) keeps Plugin
+defines a separate optional Plugin control plane for a precompiled App: Plugin
+is the installable distribution role of a Module Package, attached through
+product-owned Slots, never a runtime type. [Proposed ADR
+0066](../adr/0066-derive-module-descriptors-and-plans-from-source.md) makes
+Module source the single source of truth with generated, locked Descriptors,
+Schemas, and Plans, and [proposed ADR
+0067](../adr/0067-transition-between-immutable-plan-snapshots.md) lets an App
+execute a totally ordered sequence of immutable Plan Snapshots with validated
+atomic Transitions, keeping App Generation swaps for structural change. The
+[multi-execution companion](plugin-execution-classes.md) keeps Plugin
 governance orthogonal to native, Process, Wasm, QuickJS, and trusted dylib
 Execution Adapter choices and forbids runtime Artifact fallback.
 
