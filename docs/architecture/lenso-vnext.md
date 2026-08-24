@@ -58,7 +58,9 @@ Module installation is a reviewable project edit, not a runtime operation.
 defines a separate optional Plugin control plane for a precompiled App. It
 admits exact Plugin Artifacts above Kernel and resolves a new immutable App
 Generation; it does not turn Plugin into a runtime type or mutate a running
-Plan.
+Plan. Its [multi-execution companion](plugin-execution-classes.md) keeps Plugin
+governance orthogonal to native, Process, Wasm, QuickJS, and trusted dylib
+Execution Adapter choices and forbids runtime Artifact fallback.
 
 See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.md),
 [0034](../adr/0034-make-app-composition-the-capability-binding-authority.md),

@@ -16,6 +16,12 @@ execution, or the first Agent Harness Plugin slice. It defines the intended
 contract; the current repositories do not yet implement the complete control
 plane.
 
+Read [Plugin execution classes](plugin-execution-classes.md) when adding an
+Artifact variant, Host Execution Policy, Data contribution, Execution Adapter,
+or product UI that presents execution support. That companion owns the
+multi-execution branch contracts; this document remains the control-plane and
+Process Protocol authority.
+
 ## Ownership map
 
 | Concern | Owner | Completion criterion |
@@ -24,6 +30,7 @@ plane.
 | Product categories, curation, configuration UX, and durable work provenance | Product repository such as Agent Harness | Product concepts remain absent from generic schemas and Kernel |
 | Module graph, Capability bindings, lanes, and supervision policy | Resolved App Plan | Kernel receives one complete, immutable, validated Plan |
 | Artifact materialization, process launch, wire, confinement, and host failures | Execution Adapter and host | Every Instance executes only its admitted bytes and Effective Host Grants |
+| Execution-class allowance, deterministic variant preference, and support status | Product-owned Host Execution Policy | Resolution selects one exact implementation and runtime cannot fall back |
 | Lifecycle, invocation, cancellation, readiness, and terminal outcomes | Kernel | No Plugin-specific branch or mutable registry is added |
 
 Logical ownership does not assign repositories. ADR 0064 still requires a
@@ -40,9 +47,10 @@ Plugin Bundle
   -> Resolved Artifact Set + Effective Host Grant Set
 
 Product build -> Host Build Manifest
+Product policy -> Host Execution Policy
 
 Plugin Set Lock + Resolved Artifact Set + Effective Host Grant Set
-  + Host Build Manifest
+  + Host Build Manifest + Host Execution Policy
   -> Resolved App Plan
   -> App Generation Spec
 
@@ -89,14 +97,31 @@ every later document.
 | `plugin_id` | Stable reverse-domain-style Plugin identity |
 | `release_version` | Semantic version of this immutable Release |
 | `artifacts[]` | Release-local ID, kind, digest, size, media type, Bundle path, and target constraints |
-| `contributions[]` | Release-local ID, package ID, Artifact reference, entrypoint, execution class, configuration-schema reference, and provided/required Capability descriptors |
-| `features[]` | Named optional sets of contributions, Artifacts, and permission requests |
+| `module_contributions[]` | Stable logical contribution ID, package ID, configuration-schema reference, provided/required Capability descriptors, and one or more implementation variants |
+| `data_contributions[]` | Stable inert contribution ID, Artifact reference, media type, exact content-schema identity and digest, and Product Metadata reference |
+| `features[]` | Named optional sets of Module contributions, Data contributions, Artifacts, and permission requests |
 | `binding_templates[]` | Bindings only between contributions inside this Manifest; cross-Plugin bindings remain App Composition decisions |
 | `permission_requests[]` | Stable ID, resource kind, required/optional status, requested scope, and explanation key |
 | `product_metadata[]` | Namespace, schema identity, relative path, and digest of product-owned metadata |
 
 Capability declarations reference exact Descriptor versions and canonical
 Descriptor digests; the Manifest does not copy or reinterpret their Schemas.
+Each Module implementation variant has a Release-local ID, exactly one
+execution input, entrypoint, Execution Class, target constraints, required
+Protocol Profiles, and support channel. An execution input is either an
+Artifact reference or an exact built-in factory reference declared by the Host
+Build Manifest; a built-in reference installs no new machine code. Variants of
+one logical contribution expose the same Capability and configuration
+Interface. They are alternatives, not
+separately enabled implementations, and publishers do not assign runtime
+preference.
+
+Data contributions declare no entrypoint, Execution Class, Capability, or
+permission request. They remain inert until an App-local product resolver binds
+one to an explicitly selected interpreter Module Instance and named input slot.
+Generic admission verifies bytes and schema identity; the product validates the
+content schema and interpretation contract.
+
 Package dependencies may acquire content, but runtime dependencies remain
 Capability requirements. Manifest permission requests are not grants. Secret
 values, credentials, download tokens, machine-local paths, and signatures are
@@ -121,14 +146,19 @@ installed Plugins are absent.
 | `schema_version` | Exact lock schema version |
 | `app_id` | App identity that owns the selection |
 | `plugins[]` | Plugin ID, Release version, Manifest digest, selected Features, and Product Metadata digests |
-| `instances[]` | Contribution reference, final App-local Instance key, non-secret configuration or secret references, and placement input |
+| `instances[]` | Module contribution reference, final App-local Instance key, optional exact implementation-variant pin, non-secret configuration or secret references, and placement input |
+| `data_mounts[]` | Data contribution reference, explicit interpreter Instance key, product-owned input slot, and interpretation-schema digest |
 | `approved_grants[]` | Permission reference, narrowed approved scope, intended enforcement kind, and intended enforcer identity |
 
 One lock selects at most one Release per Plugin ID. One contribution may produce
-multiple keyed Instances. Plugin, Instance, Feature, and permission references
-are unique and close over installed, admitted Manifests. An approved scope is
-equal to or narrower than its request; a missing required request fails
-resolution. `trust_review_only` remains visibly distinct from enforcement.
+multiple keyed Instances. A variant pin is exact; absence delegates only to the
+bound Host Execution Policy. Every Data contribution mount names one ordinary
+Module Instance already selected in App Composition; it creates no hidden
+Instance or binding. Plugin, Instance, Feature, mount, slot, and permission
+references are unique and close over installed, admitted Manifests. An approved
+scope is equal to or narrower than its request; a missing required request
+fails resolution. `trust_review_only` remains visibly distinct from
+enforcement.
 
 ### Admission Receipt
 
@@ -160,6 +190,35 @@ Adapter or fixed Artifact bytes, then constructs a catalog containing exactly
 the declared factory and profile identities. A mismatch fails before Runner
 startup. The final Plan still decides which available built-in inputs are used.
 
+### Host Execution Policy: `lenso-execution-policy.json`
+
+The product owner signs or otherwise admits this canonical policy independently
+of Plugin publishers. It determines which installed execution mechanics may be
+selected on one host target; it does not add an Execution Class to the host.
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | Exact policy schema version |
+| `app_id` | Product identity governed by the policy |
+| `host_build_manifest_digest` | Exact host and Adapter catalog to which the policy applies |
+| `target` | Exact operating system, architecture, ABI, and host feature set |
+| `classes[]` | Execution Class, allowed support channels, required isolation floor, allowed trust level, and exact Protocol Profiles |
+| `preference[]` | Ordered Execution Class IDs used only when an Instance does not pin an implementation variant |
+| `instance_overrides[]` | Optional exact Instance or contribution rule with a narrower allowed class set and deterministic preference |
+
+Preference order is product policy, never publisher metadata and never an
+implicit claim that one class is fastest. Resolution filters variants by exact
+target, Host Build support, policy allowance, required Profiles, grants, and
+support channel. It then honors an exact App-local variant pin or selects the
+first class in the applicable policy preference containing exactly one valid
+variant. Zero matches and ambiguity within one preference rank fail resolution.
+
+The decision records the policy digest, chosen variant ID, chosen Artifact,
+Execution Class, matched target, support channel, and selection reason. Staging
+does not retry another variant when Artifact verification, Adapter preparation,
+readiness, or execution fails. Another choice requires a new resolution,
+Artifact Set, Generation Spec, and Transition.
+
 ### Resolved Artifact Set: `lenso-artifacts.lock.json`
 
 Admission, Store, and resolution jointly produce the exact Artifact authority
@@ -169,13 +228,19 @@ for one Plugin Set Lock.
 | --- | --- |
 | `schema_version` | Exact Artifact Set schema version |
 | `plugin_set_lock_digest` | Exact App-local Plugin selection |
+| `host_execution_policy_digest` | Exact product policy used for variant selection |
 | `releases[]` | Plugin ID, Release version, Manifest digest, and Admission Receipt digest |
 | `artifacts[]` | Manifest and Artifact IDs, content digest, size, media type, and selected target |
-| `instances[]` | Instance key, contribution reference, Artifact reference, entrypoint, execution class, exact Process Protocol Profiles, and bounded per-instance protocol limits |
+| `instances[]` | Instance key, contribution and implementation-variant references, exact Artifact or built-in factory reference, entrypoint, Execution Class, target, support channel, selection reason, exact Profiles, and bounded per-instance limits |
+| `data_mounts[]` | Data contribution and Artifact references, interpreter Instance key, input slot, content-schema digest, and product interpretation-schema digest |
 
-Each selected Instance appears exactly once. Manifest, contribution, Artifact,
-entrypoint, execution class, target, and Admission Receipt references must all
-close. Absolute Store paths do not enter canonical authority. At staging time,
+Each selected Instance appears exactly once. Manifest, contribution, execution
+input, variant, entrypoint, execution class, target, policy, and Admission
+Receipt references must all close. An Artifact input closes over admitted Store
+bytes; a built-in input closes over one exact Host Build factory. Every selected
+Data contribution mount closes over one admitted Artifact and one Plan-owned
+interpreter Instance; it does not create a Kernel endpoint or execution input
+of its own. Absolute Store paths do not enter canonical authority. At staging time,
 the host resolves each digest to a safe read-only directory handle or
 materialized root and injects that non-serializable handle into the Adapter.
 Adapters never receive a mutable Store handle.
@@ -231,6 +296,7 @@ The Generation Supervisor owns this immutable node authority:
   "schema_version": 1,
   "app_id": "agent-harness",
   "host_build_manifest_digest": "sha256:...",
+  "host_execution_policy_digest": "sha256:...",
   "resolved_plan_digest": "sha256:...",
   "plugin_set_lock_digest": "sha256:...",
   "resolved_artifact_set_digest": "sha256:...",
@@ -275,14 +341,18 @@ checks closure across documents:
 
 1. App identities match across every document.
 2. The running executable, built-in factories, fixed Artifacts, Adapter builds,
-   targets, and Protocol Profiles exactly match the Host Build Manifest.
+   targets, and Protocol Profiles exactly match the Host Build Manifest; the
+   Host Execution Policy binds that exact Manifest and App.
 3. Selected Features expand to one exact contribution, Artifact, permission,
    and Product Metadata set; unselected optional content cannot enter the Plan.
-4. Every selected contribution maps to exactly one Artifact-backed Plan
-   Instance, and every Plugin-backed Plan Instance maps back.
-5. Package ID, entrypoint, execution class, Capability Descriptor digests,
-   canonical configuration and secret references, Instance keys, selected
-   Artifacts, and lane placement agree across the lock, Artifact Set, and Plan.
+4. Every selected Module contribution maps to exactly one execution-input-backed
+   Plan Instance, one implementation variant selected under the bound policy, and
+   every Plugin-backed Plan Instance maps back. Every selected Data contribution
+   maps to one admitted Artifact and explicit Plan-owned interpreter slot.
+5. Package ID, variant, entrypoint, execution class, Capability Descriptor
+   digests, canonical configuration and secret references, Instance keys,
+   selected execution inputs, Data mounts, interpreter slots, and lane placement agree
+   across the lock, Artifact Set, policy, and Plan.
 6. Every selected intra-Plugin binding template maps to the same final explicit
    Plan binding; every cross-Plugin or built-in binding is an App Composition
    decision, and no undeclared binding appears.
@@ -757,9 +827,10 @@ state-copy migration, or rollback of durable writes.
 
 ## Deferred branches
 
-- Wasm Component execution and resource confinement;
+- implementation and conformance of the reviewed Wasm Component, QuickJS, and
+  native dylib branches in [Plugin execution classes](plugin-execution-classes.md);
 - a marketplace, search, ratings, remote registry, and automatic updates;
-- dynamic Rust library loading or a stable Rust library ABI;
+- any stable Rust library ABI or safe live dylib unloading claim;
 - Process consume, Stream, or Event Profiles lacking public SDK and two-way
   conformance evidence;
 - zero-downtime destructive state migration;
