@@ -2,14 +2,18 @@
 
 Status: accepted implementation contract for
 [ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md);
-implementation incomplete.
+the structural App Generation runtime is implemented; the complete Dynamic
+Plugin product chain remains incomplete.
 
 This contract is architecture authority, not an implementation-completion
-claim. Process Protocol packages and Bun smoke tests are an implementation
-spike for the process/wire slice; they do not claim that the Plugin Store,
-authority records, Generation Supervisor, routing fences, recovery, Session
-fencing, or Agent Tool Plugin vertical proof exists. Delivery requires the
-complete proof below, not only a successful child-process handshake.
+claim for the whole Dynamic Plugin product. The runtime implementation now owns
+canonical Generation and Transition authorities, durable compare-and-set
+supervision, fenced routing and Leases, complete-Lane-Set staging and readiness,
+atomic switch, bounded drain, standby, rollback, terminal-failure reconciliation,
+recovery, and shutdown. It does not by itself claim that product Desired State,
+installation UX, Session fencing, marketplace distribution, or the Agent Tool
+Plugin vertical proof exists. Delivery of those layers requires their own proof
+below, not only a successful runtime or child-process test.
 
 The current implementation-spike documents use schema version `1`. The
 authoring and resolution redesign changes Manifest, Plugin Set Lock, Host Build
@@ -18,9 +22,10 @@ versions. It does not reinterpret existing version-`1` bytes under new rules.
 
 Read this document when implementing or reviewing Plugin manifests, admission,
 the Plugin Store, App Generation resolution and supervision, Process Plugin
-execution, or the first Agent Harness Plugin slice. It defines the intended
-contract; the current repositories do not yet implement the complete control
-plane.
+execution, or the first Agent Harness Plugin slice. It defines both the
+implemented structural Generation boundary and the remaining product contract;
+the current repositories do not yet implement the complete Dynamic Plugin
+product chain.
 
 Read [Plugin execution classes](plugin-execution-classes.md) when adding an
 Artifact variant, Host Execution Policy, data entry, Execution Adapter,
@@ -37,6 +42,37 @@ path and treats the resulting Manifest, locks, Plan Snapshots, and Generation
 records as internal canonical authorities; hot Plan Transitions reuse its
 admission, lock, Artifact, and grant authorities without staging a new
 Generation.
+
+### Current implementation boundary
+
+`lenso-plugin-control-plane` and `lenso-runner` implement the structural App
+Generation runtime as a Host-owned facility above the portable Kernel:
+
+- one immutable `ResolvedGeneration` closes the exact Plan, Artifact Set,
+  Effective Host Grants, Host Build, Plugin Lock, and Generation Spec;
+- one `GenerationController` serializes bounded transition, route, maintenance,
+  and shutdown commands and publishes operator-visible outcomes;
+- one durable Supervisor uses revision, Supervisor Epoch, and Routing Epoch
+  compare-and-set authority, and rejects a stale recovered Supervisor;
+- a route pins one exact Generation through a Lease, so admitted work never
+  migrates during switch, drain, standby, or rollback;
+- `ReplicatedGenerationRuntime` stages the complete declared Lane Set behind one
+  bounded Ready Gate and treats one terminal lane as a terminal Generation;
+- terminal active failure either performs the exact authorized automatic
+  rollback or fences the route and retires the failed Generation; a failed
+  standby is never selected as a rollback target; and
+- recovery restages durable live records, completes only the recorded rollback
+  edge when permitted, and bounded shutdown retires active, draining, and
+  standby Generations.
+
+This completion is deliberately structural. Product Desired State and Change
+Proposal UX, automatic Store discovery and distribution, durable product
+Session fencing, Hot Plan Transition, and stable Wasm/QuickJS execution-class
+graduation remain separate work. Hosts with more than one execution lane must
+use the complete-Lane-Set runtime; the lane-local runtime rejects that Plan
+rather than partially starting it. Recovery also assumes one durable Host
+authority at a time: the recovered Supervisor fences stale routing operations,
+while process-level leader election remains a product deployment concern.
 
 ## Ownership map
 
@@ -882,8 +918,9 @@ complete; none is per-Plugin recompilation:
   IDs, remaining-time semantics, bootstrap authentication, failure mapping, and
   graceful shutdown;
 - a canonical Resolved App Plan reader that preserves the complete Lane Set;
-- Host Build, Plugin Store, resolver, Generation and Transition authority,
-  Supervisor, fenced router, and durable recovery; and
+- Host Build, Plugin Store, and product resolver integration around the
+  implemented Generation and Transition authority, Supervisor, fenced router,
+  complete-Lane-Set runtime, and durable recovery; and
 - durable cross-generation Agent Session fencing plus the generated Tool
   Provider host codec.
 
