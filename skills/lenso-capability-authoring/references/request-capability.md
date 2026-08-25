@@ -159,6 +159,12 @@ corresponding Provider binding and Client/value codecs used by Bun Adapters.
 Do not hand-maintain or copy a parallel TypeScript Interface into the Rust
 Capability package.
 
+For Wasm, QuickJS, or another guest target, inspect the selected generator and
+Adapter first. Current codegen can emit plan-bound guest host Capability import
+bridges so admitted guests call only the exact bindings present in their
+Resolved Plan. Keep target glue generated and Adapter-owned; a handwritten
+guest registry or ambient Host API would bypass Plan authority.
+
 ## 4. Source anchors
 
 Use the selected dependency source first. Current complete examples are:
@@ -168,7 +174,9 @@ Use the selected dependency source first. Current complete examples are:
 - `LioRael/lenso-secrets-module/crates/lenso-capability-secrets` for a published
   contract package with a build-time freshness gate; and
 - `LioRael/lenso-bun-adapter/fixtures/bun` for generated TypeScript Provider
-  usage across the process Adapter.
+  usage across the process Adapter; and
+- current `LioRael/lenso-protocols` guest-import fixtures plus
+  `LioRael/lenso-runtime-rust` Adapter tests for generated guest Host bridges.
 
 ## Completion
 
