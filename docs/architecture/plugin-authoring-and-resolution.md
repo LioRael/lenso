@@ -35,7 +35,7 @@ support seam rather than making generated Capability bindings depend on one
 Execution Adapter. The facade is source-available but remains unpublished
 while its package dependencies are Git-pinned.
 
-This is still not the complete public shape below. Request and Stream
+This is still not the complete public shape below. Request, Stream, and Event
 Capabilities generate hidden lowering glue, so the ordinary Rust path is an
 inherent `async fn` rather than a generated Provider trait implementation;
 boxing, dispatch, endpoint construction, and Provider conformance stay behind
@@ -45,15 +45,23 @@ messages through `ProviderStreamChannel<C>`; `ModuleError` keeps Domain Errors
 separate from `RuntimeFailure`. Agent Loop now proves this path without a
 module-local `NativeStreamSession`, `Any` erasure, generated Invocation Error,
 or Kernel stream item construction. Kernel vocabulary remains inside the
-facade and generated lowering rather than the Module implementation.
+facade and generated lowering rather than the Module implementation. An Event
+subscriber receives its generated Event type in an async method and returns
+either `()` or `ModuleEventResult`; because publication reports admission rather
+than handler completion, a handler Runtime Failure goes to diagnostics and
+Module supervision instead of becoming a publisher-visible Domain result. A
+freshness-checked executable Event Capability fixture proves async lowering,
+wrong-type rejection, and Runtime Failure preservation. No current product
+repository owns an Event Module to migrate, so the fixture is deliberately not
+presented as product behavior.
 
 The implementation still supports one provided Capability per Module and has a
 first portable scalar/container configuration type profile. Bidirectional
 provider input is typed, bounded, cancellation-aware, and single-consumer, but
 Agent Loop currently uses only the output direction. A broader Schema profile,
-multi-Capability provider aggregation, remaining Module migrations, typed Event
-authoring, TypeScript `defineModule`, package/Slot generation, complete Desired
-State resolver, Reconciler, and hot Plan Transitions remain. The existing
+multi-Capability provider aggregation, remaining Module migrations, TypeScript
+`defineModule`, package/Slot generation, complete Desired State resolver,
+Reconciler, and hot Plan Transitions remain. The existing
 control-plane slice begins from an exact lock and caller-supplied Instances and
 bindings; it is migration input, not evidence that the complete experience
 exists.
@@ -69,7 +77,7 @@ domain-method authoring shape.
 
 | State | Gates | Current evidence or principal gap |
 |---|---|---|
-| partial | 1, 4, 6, 7, 10, 12, 15 | Rust Tool and deep Module proofs, generated Request/Stream domain-method lowering, deterministic static `many`, permission and Generation authorities, data-only Skill behavior, structural replacement slices, provenance inspection, source-first Capability drift plus byte-identical Agent Loop derivation |
+| partial | 1, 4, 6, 7, 10, 12, 15 | Rust Tool and deep Module proofs, generated Request/Stream/Event domain-method lowering, deterministic static `many`, permission and Generation authorities, data-only Skill behavior, structural replacement slices, provenance inspection, source-first Capability drift plus byte-identical Agent Loop derivation |
 | missing | 2, 3, 5, 8, 9, 11, 13, 14, 16 | hot Transition mechanics and conformance, structured owner decisions, named Instance/state proof, atomic Host+Web package, full state evolution, hooks, mounted subgraphs |
 
 ## Outcome
