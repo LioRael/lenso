@@ -25,24 +25,34 @@ resolves to the previously reviewed Plan byte-for-byte without its former raw
 Descriptor, Schema file, factory, endpoint construction, or connection
 lifecycle glue.
 
-This is not yet the complete public shape below. The implementation currently
-uses the Adapter-level `lenso_native_adapter::{module, provides, ModuleConfig}`
-macros, generated Provider trait signatures, one provided Capability per
-Module, and a first portable scalar/container configuration type profile. The
-`lenso::prelude` facade, domain-method lowering, broader Schema profile,
-multi-Capability provider aggregation, remaining Module migrations, TypeScript
-`defineModule`, package/Slot generation, complete Desired State resolver,
-Reconciler, and hot Plan Transitions remain. The existing control-plane slice
-begins from an exact lock and caller-supplied Instances and bindings; it is
-migration input, not evidence that the complete experience exists.
+The first public Rust authoring facade now lives in `lenso-runtime-rust` as the
+`lenso` crate. Agent Loop consumes `lenso::prelude`, `lenso::module`,
+`lenso::provides`, and `lenso::ModuleConfig` without direct dependencies on
+`lenso-module-authoring` or `lenso-native-adapter`; macro expansion keeps the
+Adapter, Kernel, inventory, and endpoint glue behind a hidden support seam.
+Capability crates remain portable because the consuming Module injects that
+support seam rather than making generated Capability bindings depend on one
+Execution Adapter. The facade is source-available but remains unpublished
+while its package dependencies are Git-pinned.
+
+This is still not the complete public shape below. The implementation exposes
+generated Provider trait signatures, supports one provided Capability per
+Module, and has a first portable scalar/container configuration type profile.
+Domain-method lowering, a broader Schema profile, multi-Capability provider
+aggregation, remaining Module migrations, TypeScript `defineModule`,
+package/Slot generation, complete Desired State resolver, Reconciler, and hot
+Plan Transitions remain. The existing control-plane slice begins from an exact
+lock and caller-supplied Instances and bindings; it is migration input, not
+evidence that the complete experience exists.
 
 ### Implementation checkpoint: 2026-08-25
 
 Against the 16 final acceptance gates below, the repository family currently
 has **0 fully closed, 7 partial, and 9 missing**. The new struct compiler
 deepens gates 1 and 15 but does not close them: gate 1 still lacks the complete
-TypeScript and install/hot-transition proof, while gate 15 still lacks all
-derived artifact classes and the final public authoring facade.
+TypeScript and install/hot-transition proof, while gate 15 still lacks the
+remaining derived artifact classes, publication readiness, and final
+domain-method authoring shape.
 
 | State | Gates | Current evidence or principal gap |
 |---|---|---|
