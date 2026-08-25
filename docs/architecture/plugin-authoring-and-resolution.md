@@ -36,23 +36,27 @@ Execution Adapter. The facade is source-available but remains unpublished
 while its package dependencies are Git-pinned.
 
 This is still not the complete public shape below. Request and Stream
-Capabilities now generate hidden lowering glue, so the ordinary Rust path is an
+Capabilities generate hidden lowering glue, so the ordinary Rust path is an
 inherent `async fn` rather than a generated Provider trait implementation;
 boxing, dispatch, endpoint construction, and Provider conformance stay behind
-the macros. A request method may return its domain `Result` directly. A deep
-Stream Module may return a private concrete `NativeStreamSession`, and may use
-the generated Invocation Error only when opening the session can itself fail at
-runtime. A typed provider-side Stream authoring seam is therefore still needed
-before Stream Modules are fully free of Kernel vocabulary.
+the macros. A Request method may return its domain `Result` directly. A Stream
+method returns `ModuleResult<ProviderStream<C>, DomainError>` and writes typed
+messages through `ProviderStreamChannel<C>`; `ModuleError` keeps Domain Errors
+separate from `RuntimeFailure`. Agent Loop now proves this path without a
+module-local `NativeStreamSession`, `Any` erasure, generated Invocation Error,
+or Kernel stream item construction. Kernel vocabulary remains inside the
+facade and generated lowering rather than the Module implementation.
 
-The implementation also still supports one provided Capability per Module and
-has a first portable scalar/container configuration type profile. A broader
-Schema profile, multi-Capability provider aggregation, remaining Module
-migrations, TypeScript `defineModule`, package/Slot generation, complete
-Desired State resolver, Reconciler, and hot Plan Transitions remain. The
-existing control-plane slice begins from an exact lock and caller-supplied
-Instances and bindings; it is migration input, not evidence that the complete
-experience exists.
+The implementation still supports one provided Capability per Module and has a
+first portable scalar/container configuration type profile. Bidirectional
+provider input is typed, bounded, cancellation-aware, and single-consumer, but
+Agent Loop currently uses only the output direction. A broader Schema profile,
+multi-Capability provider aggregation, remaining Module migrations, typed Event
+authoring, TypeScript `defineModule`, package/Slot generation, complete Desired
+State resolver, Reconciler, and hot Plan Transitions remain. The existing
+control-plane slice begins from an exact lock and caller-supplied Instances and
+bindings; it is migration input, not evidence that the complete experience
+exists.
 
 ### Implementation checkpoint: 2026-08-25
 
@@ -161,19 +165,26 @@ struct DeepLoop {
 
 #[lenso::provides(agent::Agent)]
 impl DeepLoop {
-    async fn run_turn(&self, ctx: Ctx<'_>, req: TurnRequest) -> Result<TurnReply, TurnError> {
-        let draft = self.model.complete(ctx.reborrow(), req.clone().into()).await?;
-        // ... full loop behavior, private helpers, state
+    async fn run_turn(
+        &self,
+        ctx: Ctx,
+        req: TurnRequest,
+    ) -> ModuleResult<ProviderStream<agent::Agent>, TurnError> {
+        let (stream, output) = ProviderStream::channel(&ctx, 8);
+        self.spawn_turn(ctx, req, output)?; // private managed-task helper
+        Ok(stream)
     }
 }
 ```
 
 `provides`, `requires`, cardinality, configuration Schema, and state identity
-are derived; the author writes domain `Result`s and generated glue owns
-dispatch, boxing, and `RuntimeFailure`. Offering this Module to the Agent Loop
-Slot is one generated Slot Entry (`agent.loop(DeepLoop)` in the package
-manifest builder or a macro argument). The same construct scales from the
-uppercase tool to an Agent Loop replacement; there is no second system.
+are derived; the author writes domain behavior and typed stream messages while
+the facade and generated glue own dispatch, boxing, type erasure, cancellation
+plumbing, terminal validation, and translation into `RuntimeFailure`. Offering
+this Module to the Agent Loop Slot is one generated Slot Entry
+(`agent.loop(DeepLoop)` in the package manifest builder or a macro argument).
+The same construct scales from the uppercase tool to an Agent Loop replacement;
+there is no second system.
 
 ### Capability contract as types
 
