@@ -73,9 +73,12 @@ See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.m
 [0045](../adr/0045-materialize-a-resolved-app-plan-before-boot.md), and
 [0057](../adr/0057-make-module-installation-an-authoring-operation.md).
 
-The initial implementation is [`lenso-authoring`](lenso-authoring.md). Its
-`add`, `check`, `resolve`, and `run` operations remain authoring/host tooling;
-the Kernel receives only the resulting immutable Plan.
+The executable implementation is [`lenso-authoring`](lenso-authoring.md).
+Its public CLI exposes Module intent through `new`, `check`, `dev`, and
+`verify`, plus advanced source-derived `app` edits and Plan materialization.
+Resolution, recipe expansion, Adapter assembly, and Plan execution remain
+library or product-Host implementation; Kernel receives only immutable Plan
+bytes.
 
 ## Kernel and hosts
 

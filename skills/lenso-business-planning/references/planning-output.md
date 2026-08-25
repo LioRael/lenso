@@ -41,7 +41,8 @@ Name the concrete artifact expected from each workflow:
 
 - Capability package/Descriptor/Schemas/generated targets;
 - Module package/factory or Bun entrypoint and lifecycle behavior;
-- `lenso.json` Instances/contracts/bindings/package inputs;
+- `lenso.app.json` package selections, keyed Instances, configuration, lanes,
+  and real ambiguity decisions;
 - focused success/Domain Error/Runtime Failure fixture; and
 - real Adapter/host evidence when the slice crosses one.
 

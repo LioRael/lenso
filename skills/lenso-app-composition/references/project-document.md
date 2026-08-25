@@ -1,148 +1,91 @@
-# App project document recipe
+# Source-derived App Definition recipe
 
-`lenso.json` is the language-independent authoring source. Inspect the selected
-`lenso-app-plan`/`lenso-authoring` versions before copying this example; fields
-and CLI flags are owned by those packages.
+`lenso.app.json` is the only hand-authored App composition input. Inspect the
+installed `lenso --help` and selected package versions before copying examples;
+the CLI owns edit mechanics while Module packages own their generated
+Descriptors and ordinary package managers own dependency locks.
 
 ## Ownership map
 
-| Section | Owns |
+| Input or artifact | Owner |
 | --- | --- |
-| `composition.modules` | keyed Instances, entrypoints, configuration, endpoints, requirements, execution class, role, lane |
-| `composition.bindings` | explicit consumer requirement to provider Instance edges |
-| `composition.execution_lanes` | App-local single-owner Kernel lane identities |
-| `packages` | reviewable package-manager inputs and lock locations |
-| `contracts` | exact Capability Descriptor versions and this project's checked-in language projections |
-| `profiles` | pre-resolution Web authoring recipes |
+| `lenso.app.json` | App name, selected Module packages, keyed Instances, configuration, lane choices, real ambiguity decisions |
+| `Cargo.toml` / package manifest | requested package dependencies |
+| package lock | exact selected releases |
+| Module Descriptor and Schemas | generated from Module source and locked by the Module package |
+| derived App Composition | resolver output, never hand-authored |
+| Resolved App Plan | canonical generated Host input |
 
-Package managers acquire code and own locks. `lenso.json` records the inputs
-needed to verify and resolve those selections; it is not another package lock.
+Do not copy Capability IDs, Operations, Ports, execution classes, lifecycle
+policy, or unambiguous bindings into the App Definition. Those facts come from
+the selected package-owned Descriptor.
 
-## Worked provider/consumer project
+## Worked App Definition
 
-This example selects one native greeting provider and one consumer. Non-empty
-configuration carries a Schema, and the binding names the exact provider key.
+This example selects one Module Instance and provides only App-owned intent:
 
 ```json
 {
   "schema_version": 1,
-  "composition": {
+  "manifest": "Cargo.toml",
+  "packages": {
+    "example.greeting": "greeting-module"
+  },
+  "app": {
+    "name": "example",
     "modules": [
       {
         "key": "greeter",
         "package": "example.greeting",
-        "entrypoint": "default",
-        "configuration": { "prefix": "Hello" },
-        "configuration_schema": "modules/greeting/config.schema.json",
-        "provides": [
-          {
-            "capability_id": "example.greeting@1",
-            "descriptor_version": "1.0.0",
-            "operations": ["greet"]
-          }
-        ],
-        "requires": [],
-        "execution_class": "lenso.native-rust@1"
-      },
-      {
-        "key": "welcome-flow",
-        "package": "example.welcome-flow",
-        "entrypoint": "default",
-        "configuration": {},
-        "provides": [],
-        "requires": [
-          {
-            "capability_id": "example.greeting@1",
-            "descriptor_version": "1.0.0",
-            "cardinality": "one"
-          }
-        ],
-        "execution_class": "lenso.native-rust@1"
+        "configuration": { "prefix": "Hello" }
       }
     ],
-    "bindings": [
-      {
-        "consumer": "welcome-flow",
-        "capability_id": "example.greeting@1",
-        "descriptor_version": "1.0.0",
-        "provider": "greeter"
-      }
-    ],
-    "execution_lanes": [{ "id": "main" }]
-  },
-  "packages": {
-    "example.greeting": {
-      "name": "example.greeting",
-      "package_name": "greeting-module",
-      "source": "cargo",
-      "version": "0.1.0",
-      "manifest": "Cargo.toml",
-      "lockfile": "Cargo.lock"
-    },
-    "example.welcome-flow": {
-      "name": "example.welcome-flow",
-      "package_name": "welcome-flow-module",
-      "source": "cargo",
-      "version": "0.1.0",
-      "manifest": "Cargo.toml",
-      "lockfile": "Cargo.lock"
-    }
-  },
-  "contracts": [
-    {
-      "capability_id": "example.greeting@1",
-      "descriptor_version": "1.0.0",
-      "descriptor": "contracts/greeting/capability.json",
-      "rust": "contracts/greeting/src/generated.rs"
-    }
-  ],
-  "profiles": {}
+    "decisions": []
+  }
 }
 ```
 
-Each `contracts` entry declares the exact Descriptor independently from its
-language projections. Include `rust` and/or `typescript` only when this project
-owns and checks that generated artifact. Omitted projections may ship from a
-different runtime package; `lenso check` still requires every declared path to
-be exactly reproducible from the Descriptor and package-local Schemas.
+If exactly one compatible provider exists, the resolver binds it. Add a
+decision only when more than one valid provider leaves a real App-owner choice.
+The same package may appear under several keys with different configuration.
 
-The exact package version/revision must agree with the ordinary lockfile and,
-for native Modules, the linked factory's `package_id()`/`package_version()`.
-For a Bun/npm package, select `lenso.bun-process@1` when that is the installed
-Adapter class and set `entrypoint` to the executable script. OCI inputs need an
-immutable `sha256:` digest and an explicitly supported execution class.
+## Authoring commands
 
-## Authoring command shape
-
-Read `lenso --help` first. The current workflow has this shape:
+Read `lenso --help` first. Add and remove express App intent; check and resolve
+remain advanced App-owner and Host operations:
 
 ```sh
-lenso add --project lenso.json \
-  --key greeter \
-  --package example.greeting \
-  --package-name greeting-module \
-  --source cargo \
-  --version 0.1.0 \
-  --manifest Cargo.toml \
-  --lockfile Cargo.lock
+lenso app add greeting-module \
+  --definition lenso.app.json \
+  --version '^1.0' \
+  --configuration '{"prefix":"Hello"}' \
+  --dry-run
 
-lenso check --project lenso.json \
-  --execution-class lenso.native-rust@1
+lenso app add greeting-module \
+  --definition lenso.app.json \
+  --version '^1.0' \
+  --configuration '{"prefix":"Hello"}'
 
-lenso resolve --project lenso.json \
-  --execution-class lenso.native-rust@1 \
+lenso app check --definition lenso.app.json
+lenso app resolve --definition lenso.app.json \
   --output .lenso/resolved-plan.json
 
-lenso run --plan .lenso/resolved-plan.json --root .
+lenso app remove greeter --definition lenso.app.json --dry-run
+lenso app remove greeter --definition lenso.app.json --uninstall
 ```
 
-`add` is a reviewable project/package edit, not permission to install into a
-running App. Manually add the endpoint/requirement/contract/binding data that
-the installed CLI does not yet author, then run `check`.
+`app add` delegates acquisition and exact selection to Cargo, reads the
+package-owned Descriptor without executing Module code, and applies the App
+Definition edit transactionally. `--dry-run` performs the complete build and
+resolution check, reports touched files, and restores them byte-for-byte.
+
+`app resolve` emits canonical Plan bytes for a product-owned Runner or Host.
+There is no generic author-facing `lenso run --plan` command and no recipe or
+fragment document that becomes a second composition authority.
 
 ## Secret and configuration rule
 
-Configuration is Module-owned opaque data. Non-empty configuration needs its
-declared JSON Schema. Fields marked `x-lenso-sensitive: true` accept a
-`{"secret_ref":"NAME"}` reference, not a raw secret. Secret values stay out
-of Composition, Resolved Plan, Invocation Context, and Runtime Diagnostics.
+Configuration is Module-owned opaque data. Non-empty configuration follows its
+generated Schema. Sensitive values use a secret reference rather than raw
+secret material. Secret values stay out of the App Definition, Resolved Plan,
+Invocation Context, and Runtime Diagnostics.

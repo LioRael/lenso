@@ -99,5 +99,5 @@ Observable acceptance:
 | `support.ticketing@1` source and generated bindings | `lenso-capability-authoring` | Descriptor, Schemas, Rust/TypeScript outputs, compatibility/freshness proof |
 | Ticket factory, storage boundary, policy | `lenso-module-authoring` | Module package plus Capability/lifecycle/removal tests |
 | HTTP endpoint Module | `lenso-module-authoring` | endpoint provider, generated Ticket client, real HTTP proof |
-| package/Instance/contract/bindings | `lenso-app-composition` | checked `lenso.json` and canonical Resolved Plan |
+| package/Instance/configuration/decisions | `lenso-app-composition` | checked `lenso.app.json` and canonical Resolved Plan |
 | only a missing listener/process/host mechanism | `lenso-runtime-extension` | conformance plus real host smoke; no ticket policy |
