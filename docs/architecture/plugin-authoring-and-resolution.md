@@ -13,16 +13,41 @@ admission, exact authority documents, App Generation staging, routing, drain,
 and rollback. [Plugin execution classes](plugin-execution-classes.md)
 continues to own execution mechanics.
 
-`lenso-module-authoring` in `lenso-protocols` now owns the portable
+`lenso-module-authoring` in `lenso-protocols` owns the portable
 `CapabilityClient` and lifecycle-bound `Port<C>` foundation. Generated
-Capability clients lower onto it, and Agent Harness uses those Ports for the
-deep Agent Loop requirements. The struct-level Module macros still need to
-derive the same connections before the Deep Module shape below is the public
-developer experience. No current repository yet implements the complete
-derivation build, Desired State resolver, Reconciler, or hot Plan Transitions.
-The existing control-plane slice begins from an exact lock and caller-supplied
-Instances and bindings; it is migration input, not evidence that the complete
-experience exists.
+Capability bindings now also emit hidden requirement, provider, and native
+endpoint metadata. `lenso-runtime-rust` lowers a named-field Module struct and
+one annotated generated Provider implementation into configuration decoding,
+a type-derived configuration Schema, Port requirements and activation,
+endpoint construction, a complete static Descriptor artifact, factory, and
+link-time registration. Agent Harness Agent Loop is the first deep proof and
+resolves to the previously reviewed Plan byte-for-byte without its former raw
+Descriptor, Schema file, factory, endpoint construction, or connection
+lifecycle glue.
+
+This is not yet the complete public shape below. The implementation currently
+uses the Adapter-level `lenso_native_adapter::{module, provides, ModuleConfig}`
+macros, generated Provider trait signatures, one provided Capability per
+Module, and a first portable scalar/container configuration type profile. The
+`lenso::prelude` facade, domain-method lowering, broader Schema profile,
+multi-Capability provider aggregation, remaining Module migrations, TypeScript
+`defineModule`, package/Slot generation, complete Desired State resolver,
+Reconciler, and hot Plan Transitions remain. The existing control-plane slice
+begins from an exact lock and caller-supplied Instances and bindings; it is
+migration input, not evidence that the complete experience exists.
+
+### Implementation checkpoint: 2026-08-25
+
+Against the 16 final acceptance gates below, the repository family currently
+has **0 fully closed, 7 partial, and 9 missing**. The new struct compiler
+deepens gates 1 and 15 but does not close them: gate 1 still lacks the complete
+TypeScript and install/hot-transition proof, while gate 15 still lacks all
+derived artifact classes and the final public authoring facade.
+
+| State | Gates | Current evidence or principal gap |
+|---|---|---|
+| partial | 1, 4, 6, 7, 10, 12, 15 | Rust Tool and deep Module proofs, deterministic static `many`, permission and Generation authorities, data-only Skill behavior, structural replacement slices, provenance inspection, source-first Capability drift plus byte-identical Agent Loop derivation |
+| missing | 2, 3, 5, 8, 9, 11, 13, 14, 16 | hot Transition mechanics and conformance, structured owner decisions, named Instance/state proof, atomic Host+Web package, full state evolution, hooks, mounted subgraphs |
 
 ## Outcome
 
