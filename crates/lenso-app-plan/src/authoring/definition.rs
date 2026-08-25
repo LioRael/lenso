@@ -385,6 +385,7 @@ const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "const",
     "enum",
     "items",
+    "minimum",
     "properties",
     "required",
     "type",
@@ -456,6 +457,7 @@ fn validate_json_schema(
         });
     }
     validate_schema_type(value, schema, path, instance_key)?;
+    validate_schema_numeric_constraints(value, schema, path, instance_key)?;
     if let Some(expected) = schema.get("const")
         && value != expected
     {
@@ -480,6 +482,31 @@ fn validate_json_schema(
     validate_required(value, schema, path, instance_key)?;
     validate_properties(value, schema, path, instance_key)?;
     validate_items(value, schema, path, instance_key)
+}
+
+fn validate_schema_numeric_constraints(
+    value: &Value,
+    schema: &serde_json::Map<String, Value>,
+    path: &str,
+    instance_key: &str,
+) -> Result<(), DefinitionResolutionError> {
+    let Some(minimum) = schema.get("minimum") else {
+        return Ok(());
+    };
+    let minimum = minimum.as_f64().ok_or_else(|| {
+        invalid_configuration(instance_key, path, "schema minimum must be a number")
+    })?;
+    let Some(value) = value.as_f64() else {
+        return Ok(());
+    };
+    if value < minimum {
+        return Err(invalid_configuration(
+            instance_key,
+            path,
+            format!("number must be greater than or equal to {minimum}"),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_schema_type(

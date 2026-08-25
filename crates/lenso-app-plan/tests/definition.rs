@@ -125,6 +125,54 @@ fn package_owned_schema_validates_configuration_before_materialization() {
 }
 
 #[test]
+fn package_owned_schema_enforces_numeric_minimum() {
+    let descriptor =
+        ModuleDescriptor::new("example.numeric", "1.0.0").with_configuration_schema(json!({
+            "type": "object",
+            "required": ["ttl"],
+            "properties": {"ttl": {"type": "integer", "minimum": 1}},
+            "additionalProperties": false
+        }));
+    let catalog = ModuleCatalog::new([descriptor]).unwrap();
+    let boundary = AppDefinition::new("boundary").with_module(
+        ModuleSelection::new("numeric", "example.numeric").with_configuration(json!({"ttl": 1})),
+    );
+    assert!(boundary.derive(&catalog).is_ok());
+
+    let below = AppDefinition::new("below").with_module(
+        ModuleSelection::new("numeric", "example.numeric").with_configuration(json!({"ttl": 0})),
+    );
+    assert_eq!(
+        below.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidConfiguration {
+            instance_key: "numeric".to_owned(),
+            detail: "$.ttl: number must be greater than or equal to 1".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn malformed_numeric_minimum_fails_closed() {
+    let descriptor =
+        ModuleDescriptor::new("example.numeric", "1.0.0").with_configuration_schema(json!({
+            "type": "integer",
+            "minimum": "one"
+        }));
+    let catalog = ModuleCatalog::new([descriptor]).unwrap();
+    let definition = AppDefinition::new("malformed").with_module(
+        ModuleSelection::new("numeric", "example.numeric").with_configuration(json!(1)),
+    );
+
+    assert_eq!(
+        definition.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidConfiguration {
+            instance_key: "numeric".to_owned(),
+            detail: "$: schema minimum must be a number".to_owned(),
+        })
+    );
+}
+
+#[test]
 fn non_empty_configuration_without_package_schema_fails_closed() {
     let catalog = ModuleCatalog::new([ModuleDescriptor::new("example.raw", "1.0.0")]).unwrap();
     let definition = AppDefinition::new("invalid").with_module(
