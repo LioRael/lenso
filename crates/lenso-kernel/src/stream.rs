@@ -476,7 +476,7 @@ impl<C: StreamCapability> NativeStream<C> {
         if !matches!(error, RuntimeFailure::ResourceExhausted { .. }) {
             self.terminal_seen.set(true);
             if !self.cancelled.replace(true) {
-                self.context.cancellation().cancel();
+                // A provider failure terminates this session, not the caller's shared context.
                 self.inner.cancel();
             }
         }
