@@ -13,12 +13,14 @@ admission, exact authority documents, App Generation staging, routing, drain,
 and rollback. [Plugin execution classes](plugin-execution-classes.md)
 continues to own execution mechanics.
 
-`lenso-module` now owns the portable `CapabilityClient` and lifecycle-bound
-`Port<C>` foundation. Generated Capability clients and the Module macros still
-need to lower onto it before the Deep Module shape below is public developer
-experience. No current repository yet implements the complete derivation
-build, Desired State resolver, Reconciler, or hot Plan Transitions. The
-existing control-plane slice begins from an exact lock and caller-supplied
+`lenso-module-authoring` in `lenso-protocols` now owns the portable
+`CapabilityClient` and lifecycle-bound `Port<C>` foundation. Generated
+Capability clients lower onto it, and Agent Harness uses those Ports for the
+deep Agent Loop requirements. The struct-level Module macros still need to
+derive the same connections before the Deep Module shape below is the public
+developer experience. No current repository yet implements the complete
+derivation build, Desired State resolver, Reconciler, or hot Plan Transitions.
+The existing control-plane slice begins from an exact lock and caller-supplied
 Instances and bindings; it is migration input, not evidence that the complete
 experience exists.
 

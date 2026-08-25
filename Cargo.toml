@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "crates/lenso-app-plan",
     "crates/lenso-kernel",
-    "crates/lenso-module",
     "crates/lenso-runtime-conformance",
     "xtask",
 ]
