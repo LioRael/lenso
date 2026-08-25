@@ -1,72 +1,63 @@
 # Lenso authoring tooling
 
-The `lenso-app-plan::authoring` module owns the language-independent App
-Composition, package input, Capability contract, and Web profile data. The
-`lenso-authoring` crate owns filesystem changes, package-manager inspection,
-validation, Plan materialization, and native Runner orchestration.
+The `lenso-cli` repository owns the executable authoring product and the
+`lenso-authoring` library under ADR 0064. The public CLI exposes author intent;
+the library owns filesystem edits, package inspection, validation, derivation,
+canonical Plan materialization, and development Host mechanics.
 
-Neither layer installs code into a running Kernel. Package managers acquire
-packages and write their ordinary lockfiles before `check` or `resolve`.
+Neither installs code into a running Kernel. Package managers acquire packages
+and write ordinary lockfiles. Kernel receives only a complete immutable
+Resolved App Plan.
 
-## Project document
+## Module author interface
 
-`lenso.json` contains:
-
-- `composition.modules`: Module Instances, entrypoints, non-secret
-  configuration, Capability endpoints and requirements, execution classes,
-  and optional Web roles;
-- `composition.bindings`: explicit consumer-to-provider bindings;
-- `packages`: reviewable Cargo, Bun, npm, or OCI inputs, including the
-  package-manager manifest and optional explicit lockfile path;
-- `contracts`: exact Capability ID and Descriptor version mappings to the
-  Descriptor and generated Rust/TypeScript artifacts; and
-- `profiles`: pre-resolution Web recipes with explicit Web Shell, Browser
-  Adapter, UI Contribution, and ordinary Module selections.
-
-A Web profile fails closed unless its Shell requires `many
-lenso.ui.contribution@1`, every selected contribution provides that Interface,
-and its Browser Adapter requires exactly one `lenso.web.shell@1`. The ordinary
-Plan resolver still validates every provider binding and execution class. Each
-portable Capability required by a selected contribution must be mirrored by
-the Browser Adapter with the same exactly-one provider binding; v1 rejects
-ambiguous `many` projections rather than granting a broader browser client.
-Adding, removing, or replacing a contribution therefore changes both the
-reviewable project document and canonical Plan and requires a restart.
-
-There is no Lenso-owned lock model. Cargo inputs are checked against
-`Cargo.lock`, npm inputs against `package-lock.json`, and Bun inputs through
-`bun pm ls` over `bun.lock`. OCI inputs must use an immutable `sha256:` digest.
-The selected exact package-manager version is copied into the Resolved App
-Plan as opaque execution identity; Kernel and Adapters do not hash or acquire
-artifacts.
-
-Every Capability used by Composition must have a matching Descriptor input.
-`check` loads and validates that Descriptor and verifies that both generated
-bindings are fresh. Non-empty Module configuration requires a schema. Fields
-marked `x-lenso-sensitive: true` accept only a `{ "secret_ref": "NAME" }`
-reference, so secret handling is explicit rather than inferred from key names.
-
-## Resolved App Plan
-
-`lenso resolve` serializes `lenso_app_plan::ResolvedAppPlan` itself. There is no
-parallel authoring-owned Plan document. Serialization is canonical and byte
-stable; loading rejects malformed, invalid, or non-canonical Plan files.
-
-`lenso run` reads that exact file, assembles the native Tokio Runner and the
-required built-in Bun production Adapter, translates Ctrl-C into cooperative
-shutdown, and reports the terminal outcome. A linked native host supplies its
-own statically linked Rust factories through the library API.
+Ordinary Module authors use five top-level commands:
 
 ```text
-lenso add --project lenso.json --key greeter --package example.greeter \
-  --source cargo --version 1.0.0 --manifest Cargo.toml
-lenso check --project lenso.json --execution-class lenso.native-rust@1
-lenso resolve --project lenso.json --output .lenso/resolved-plan.json
-lenso run --plan .lenso/resolved-plan.json --root .
+lenso new
+lenso dev
+lenso check
+lenso verify
+lenso app
 ```
 
-Library hosts resolve once, persist or review the canonical bytes, load those
-same bytes, and pass the resulting `ResolvedProject` to the Runner:
+`new` creates a Module project. `check` emits fast actionable diagnostics.
+`dev` validates, resolves, and runs a fresh development generation. `verify`
+proves declared behavior and removal. These commands hide Descriptor lowering,
+binding closure, Plan serialization, Adapter assembly, and development Runner
+mechanics behind one deep Interface.
+
+The CLI intentionally does not expose the removed top-level `add`, `resolve`,
+`run`, `compose`, or `module` command surfaces. They restated implementation
+stages or duplicated the ordinary Module workflow.
+
+## Source-derived App Definition
+
+`lenso.app.json` is the only hand-authored App composition input. It selects
+Module packages and keyed Instances, supplies configuration and lane choices,
+and records only real binding ambiguities. Generated package-owned Descriptors
+provide Capabilities, Ports, Operations, execution classes, and lifecycle
+facts. Derived App Composition and Plan documents are locked outputs rather
+than authoring surfaces.
+
+```sh
+lenso app add greeting-module --definition lenso.app.json --version '^1.0'
+lenso app check --definition lenso.app.json
+lenso app resolve --definition lenso.app.json \
+  --output .lenso/resolved-plan.json
+lenso app remove greeter --definition lenso.app.json --uninstall
+```
+
+`app add` and `app remove` apply transactional package-manager and App
+Definition edits. `app check` and `app resolve` remain explicit advanced
+operations for App owners and Hosts that review or exchange canonical Plan
+bytes. A product-owned Runner or Host executes those bytes; the authoring CLI
+does not provide a generic `run --plan` interface.
+
+## Internal Plan seam
+
+Library Hosts may resolve once, persist or review canonical bytes, reload the
+same bytes, and pass the resulting `ResolvedProject` to their Runner:
 
 ```rust,ignore
 use lenso_authoring::{ProjectAuthoring, ResolvedProject, run_project};
@@ -77,6 +68,8 @@ let approved = ResolvedProject::from_canonical_bytes(read_plan()?)?;
 let outcome = run_project(&approved, driver, adapters, timeout).await?;
 ```
 
-Changing Composition, package-manager lock state, bindings, configuration, or
-profiles requires a new resolve and App restart. The running Kernel cannot
-install Modules, discover providers, mutate the graph, or rewrite locks.
+Changing the App Definition, package lock, configuration, lane, or explicit
+decision requires a new resolution before the Host applies a validated Plan
+Transition or starts a fresh App Generation. Kernel never discovers packages,
+selects providers, rewrites locks, or accepts an authoring recipe as runtime
+authority.

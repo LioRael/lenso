@@ -62,7 +62,7 @@ versions, repository instructions, manifests, `--help`, and CI.
 The support-ticket planning example shows how the workflows hand off to each
 other. The Module references contain complete native Rust, Bun, Web/UI,
 stateful, and cross-cutting recipes. Capability and App Composition contain a
-request contract and a full `lenso.json` provider/consumer example.
+request contract and a source-derived `lenso.app.json` example.
 
 The old Service, Provider, Host, Console Surface, and API-client workflows are
 not peer vNext authoring models. Out-of-process behavior, UI Contributions,

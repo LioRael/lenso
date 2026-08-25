@@ -57,11 +57,11 @@ contract. It owns durable ticket state and must reject invalid configuration."
 current native Adapter dependencies, and a selected durable test store plus
 migration policy. The evaluator must not invent these inputs.
 
-**Required observations:** the agent finds the selected API versions; implements
-generated Provider plus `NativeModuleFactory`; validates entrypoint/config;
-constructs exact endpoints; uses lifecycle phases correctly; keeps persistence
-private and failure honest; registers the factory but still edits Composition;
-and proves real invocation, restart/cleanup, storage failure, and removal.
+**Required observations:** the agent finds the selected API versions; uses the
+ordinary Module facade and generated Provider lowering; validates configuration;
+uses lifecycle phases correctly; keeps persistence private and failure honest;
+selects the package in the App Definition; and proves real invocation,
+restart/cleanup, storage failure, and removal.
 
 ## 4. Bun Module
 
@@ -92,10 +92,11 @@ current authoring CLI. A synthetic package fixture proves authoring/resolution
 only, not executable host integration.
 
 **Required observations:** package-manager inputs/locks, stable Instance keys,
-contract inputs, exact endpoints/requirements, `one` Auth/Ticket bindings, and
-`many` endpoint bindings are visible in `lenso.json`; non-empty configuration
-has a Schema; `check` rejects an intentional missing binding; canonical Plan
-diff is reviewed; and removing one optional endpoint leaves a valid Plan.
+configuration, lanes, and real ambiguity decisions are visible in
+`lenso.app.json`; generated Descriptors carry endpoints and requirements;
+`lenso app check` rejects an intentional missing binding; the derived
+Composition and canonical Plan diff are reviewed; and removing one optional
+endpoint leaves a valid Plan.
 
 ## 6. Execution Adapter
 

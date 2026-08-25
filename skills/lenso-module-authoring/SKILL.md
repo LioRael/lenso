@@ -26,8 +26,8 @@ not the product type.
    on the card.
 3. **Read the implementation branch.** Read only the branches the selected
    Module needs:
-   - [native Rust](references/native-rust.md) for a statically linked Cargo
-     package and `NativeModuleFactory`;
+   - [native Rust](references/native-rust.md) for the public `lenso` facade,
+     generated linked factory, and statically linked Cargo package;
    - [Bun](references/bun.md) for a child-process Module built with
      `@lenso/bun-module`;
    - [Web and UI](references/web-and-ui.md) for HTTP endpoints, Web Ingress, a
@@ -37,25 +37,26 @@ not the product type.
      Workflow, or similar optional behavior.
    Finish when the package layout, factory/entrypoint, and supported Operation
    kinds are concrete.
-4. **Implement the Capability edges.** A provider implements the generated or
-   Adapter-local Provider Interface and exposes the generated endpoint. A
-   consumer constructs its generated Client or typed handle only from the
-   lifecycle context's explicit `ModuleDependencies`. Change the Descriptor or
-   Operation through `lenso-capability-authoring`; keep another Module's
-   private types, storage, and tables outside this package. Finish when every
-   cross-Module call maps to one declared requirement and binding.
-5. **Implement one fresh generation.** Decode and validate opaque
-   configuration; construct the exact endpoint set; reserve reversible
-   resources in `prepare`; initialize against active dependencies and spawn
-   generation-owned work in `activate`; release work and resources in
-   `deactivate`. External ingress waits for the App Ready Gate. Finish when a
-   restart creates no shared mutable generation state or leaked task/resource.
+4. **Implement the Capability edges.** Prefer `#[module]` plus one
+   `#[provides(...)]` inherent impl; generated lowering owns Provider traits,
+   endpoints, Descriptor bytes, factory construction, and linked registration.
+   A consumer declares `Port<Client>` fields and receives only Plan-owned
+   dependencies. Change the Descriptor or Operation through
+   `lenso-capability-authoring`; keep another Module's private types, storage,
+   and tables outside this package. Finish when every cross-Module call maps to
+   one declared requirement and binding.
+5. **Implement one fresh generation.** Omit configuration for a stateless
+   Module. Otherwise derive `ModuleConfig` or select one package-owned complex
+   Schema. Use `#[module(lifecycle)]` plus `impl Lifecycle` only when the Module
+   owns resources or work. External ingress waits for the App Ready Gate.
+   Finish when restart creates no shared mutable generation state or leaked
+   task/resource.
 6. **Compose the Instance.** Use `lenso-app-composition` to select the package,
    entrypoint, keyed Instance, non-secret configuration or secret references,
-   execution class, provided endpoints, requirements, and bindings. Register a
-   native factory in the Runner when the selected Adapter requires static
-   linking. Finish when the resolved Plan, package lock, and factory identity
-   agree exactly.
+   execution lane, and real ambiguity decisions. Generated Descriptors and
+   linked factories supply endpoints, requirements, execution class, and
+   registration. Finish when the resolved Plan, package lock, generated
+   Descriptor, and factory identity agree exactly.
 7. **Prove behavior and deletion.** Follow
    [Module verification](references/verification.md). Exercise success, a
    Domain Error, a Runtime Failure or startup rejection, lifecycle cleanup,
