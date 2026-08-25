@@ -35,15 +35,24 @@ support seam rather than making generated Capability bindings depend on one
 Execution Adapter. The facade is source-available but remains unpublished
 while its package dependencies are Git-pinned.
 
-This is still not the complete public shape below. The implementation exposes
-generated Provider trait signatures, supports one provided Capability per
-Module, and has a first portable scalar/container configuration type profile.
-Domain-method lowering, a broader Schema profile, multi-Capability provider
-aggregation, remaining Module migrations, TypeScript `defineModule`,
-package/Slot generation, complete Desired State resolver, Reconciler, and hot
-Plan Transitions remain. The existing control-plane slice begins from an exact
-lock and caller-supplied Instances and bindings; it is migration input, not
-evidence that the complete experience exists.
+This is still not the complete public shape below. Request and Stream
+Capabilities now generate hidden lowering glue, so the ordinary Rust path is an
+inherent `async fn` rather than a generated Provider trait implementation;
+boxing, dispatch, endpoint construction, and Provider conformance stay behind
+the macros. A request method may return its domain `Result` directly. A deep
+Stream Module may return a private concrete `NativeStreamSession`, and may use
+the generated Invocation Error only when opening the session can itself fail at
+runtime. A typed provider-side Stream authoring seam is therefore still needed
+before Stream Modules are fully free of Kernel vocabulary.
+
+The implementation also still supports one provided Capability per Module and
+has a first portable scalar/container configuration type profile. A broader
+Schema profile, multi-Capability provider aggregation, remaining Module
+migrations, TypeScript `defineModule`, package/Slot generation, complete
+Desired State resolver, Reconciler, and hot Plan Transitions remain. The
+existing control-plane slice begins from an exact lock and caller-supplied
+Instances and bindings; it is migration input, not evidence that the complete
+experience exists.
 
 ### Implementation checkpoint: 2026-08-25
 
@@ -56,7 +65,7 @@ domain-method authoring shape.
 
 | State | Gates | Current evidence or principal gap |
 |---|---|---|
-| partial | 1, 4, 6, 7, 10, 12, 15 | Rust Tool and deep Module proofs, deterministic static `many`, permission and Generation authorities, data-only Skill behavior, structural replacement slices, provenance inspection, source-first Capability drift plus byte-identical Agent Loop derivation |
+| partial | 1, 4, 6, 7, 10, 12, 15 | Rust Tool and deep Module proofs, generated Request/Stream domain-method lowering, deterministic static `many`, permission and Generation authorities, data-only Skill behavior, structural replacement slices, provenance inspection, source-first Capability drift plus byte-identical Agent Loop derivation |
 | missing | 2, 3, 5, 8, 9, 11, 13, 14, 16 | hot Transition mechanics and conformance, structured owner decisions, named Instance/state proof, atomic Host+Web package, full state evolution, hooks, mounted subgraphs |
 
 ## Outcome
