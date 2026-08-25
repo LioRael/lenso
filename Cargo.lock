@@ -115,9 +115,6 @@ dependencies = [
 [[package]]
 name = "lenso-module"
 version = "0.1.0"
-dependencies = [
- "lenso-kernel",
-]
 
 [[package]]
 name = "lenso-runtime-conformance"

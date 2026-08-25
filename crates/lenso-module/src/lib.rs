@@ -2,8 +2,6 @@
 
 use std::{cell::OnceCell, ops::Deref, rc::Rc};
 
-use lenso_kernel::{ModuleDependencies, RuntimeFailure};
-
 /// A generated, strongly typed client for one required Capability.
 ///
 /// Capability binding generators implement this trait for their client type so
@@ -11,13 +9,21 @@ use lenso_kernel::{ModuleDependencies, RuntimeFailure};
 /// Capability's operation kinds or handle layout. Implementations must use only
 /// the supplied Plan-owned dependencies; they must not perform discovery.
 pub trait CapabilityClient: Sized + 'static {
+    /// Adapter-owned dependency view used to connect this client.
+    type Dependencies: ?Sized;
+    /// Adapter-owned failure returned when connection cannot complete.
+    type Error;
+
     /// Stable Capability identity required by this client.
     const CAPABILITY_ID: &'static str;
     /// Exact Descriptor version understood by this generated client.
     const DESCRIPTOR_VERSION: &'static str;
 
     /// Connects this client to one Module Instance's resolved dependencies.
-    fn from_dependencies(dependencies: &ModuleDependencies) -> Result<Self, RuntimeFailure>;
+    fn from_dependencies(dependencies: &Self::Dependencies) -> Result<Self, Self::Error>;
+
+    /// Creates the adapter failure for an invalid second connection attempt.
+    fn already_connected() -> Self::Error;
 }
 
 /// A typed, lifecycle-bound Capability requirement declared by a Module.
@@ -40,16 +46,9 @@ impl<C: CapabilityClient> Port<C> {
     }
 
     /// Connects the Port from this Module Instance's resolved dependencies.
-    pub fn connect(&self, dependencies: &ModuleDependencies) -> Result<(), RuntimeFailure> {
+    pub fn connect(&self, dependencies: &C::Dependencies) -> Result<(), C::Error> {
         let client = C::from_dependencies(dependencies)?;
-        self.client
-            .set(client)
-            .map_err(|_| RuntimeFailure::ModuleFailure {
-                detail: format!(
-                    "Capability Port {} was connected more than once",
-                    C::CAPABILITY_ID
-                ),
-            })
+        self.client.set(client).map_err(|_| C::already_connected())
     }
 
     /// Returns whether lifecycle activation connected this Port.
@@ -109,12 +108,24 @@ mod tests {
     #[derive(Debug, Eq, PartialEq)]
     struct ExampleClient(u64);
 
+    #[derive(Debug, Eq, PartialEq)]
+    enum ExampleError {
+        AlreadyConnected,
+    }
+
     impl CapabilityClient for ExampleClient {
+        type Dependencies = ();
+        type Error = ExampleError;
+
         const CAPABILITY_ID: &'static str = "example.echo@1";
         const DESCRIPTOR_VERSION: &'static str = "1.0.0";
 
-        fn from_dependencies(_dependencies: &ModuleDependencies) -> Result<Self, RuntimeFailure> {
+        fn from_dependencies(_dependencies: &Self::Dependencies) -> Result<Self, Self::Error> {
             Ok(Self(42))
+        }
+
+        fn already_connected() -> Self::Error {
+            ExampleError::AlreadyConnected
         }
     }
 
@@ -124,11 +135,11 @@ mod tests {
         let module_clone = port.clone();
         assert!(!port.is_connected());
 
-        port.connect(&ModuleDependencies::default())
+        port.connect(&())
             .expect("the generated client should connect");
 
         assert!(module_clone.is_connected());
         assert_eq!(module_clone.0, 42);
-        assert!(port.connect(&ModuleDependencies::default()).is_err());
+        assert_eq!(port.connect(&()), Err(ExampleError::AlreadyConnected));
     }
 }

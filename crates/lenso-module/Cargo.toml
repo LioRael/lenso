@@ -8,8 +8,5 @@ repository.workspace = true
 description = "Portable authoring primitives for strongly typed Lenso Modules."
 readme = "README.md"
 
-[dependencies]
-lenso-kernel = { path = "../lenso-kernel", version = "0.1.9" }
-
 [lints]
 workspace = true
