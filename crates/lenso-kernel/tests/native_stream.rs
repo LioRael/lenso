@@ -545,3 +545,26 @@ fn established_stream_stays_bound_to_its_opening_generation() {
             .is_ok()
     );
 }
+
+#[test]
+fn provider_failure_terminates_only_the_nested_stream() {
+    let (app, driver) = stream_app(0, 1);
+    let handle = app
+        .stream_handle::<Chat>("consumer")
+        .expect("the stream binding should resolve");
+    let caller_cancellation = lenso_kernel::CancellationToken::new();
+    let context = app.invocation_context(None, caller_cancellation.clone());
+    let stream = driver
+        .run(handle.open_with_context(OPERATION, context, "crash-session".to_owned()))
+        .expect("crashing stream open should not fail")
+        .expect("crashing stream should open");
+
+    assert!(matches!(
+        driver.run(stream.send("crash".to_owned())),
+        Err(RuntimeFailure::ModuleFailure { .. })
+    ));
+    assert!(
+        !caller_cancellation.is_cancelled(),
+        "a nested provider failure must not cancel its caller's shared invocation context"
+    );
+}
