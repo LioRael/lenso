@@ -4,7 +4,7 @@ Status: accepted companion contract for
 [ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md),
 [ADR 0066](../adr/0066-derive-module-descriptors-and-plans-from-source.md), and
 [ADR 0067](../adr/0067-transition-between-immutable-plan-snapshots.md);
-implementation pending.
+implementation in progress.
 
 This document owns the Interface between Module authors, App owners, product
 Slots, the resolver, and the Reconciler. The
@@ -13,11 +13,14 @@ admission, exact authority documents, App Generation staging, routing, drain,
 and rollback. [Plugin execution classes](plugin-execution-classes.md)
 continues to own execution mechanics.
 
-No current repository implements this authoring Interface, the derivation
-build, the Desired State resolver, the Reconciler, or hot Plan Transitions.
-The existing control-plane slice begins from an exact lock and caller-supplied
-Instances and bindings; it is migration input, not evidence that this
-developer experience exists.
+`lenso-module` now owns the portable `CapabilityClient` and lifecycle-bound
+`Port<C>` foundation. Generated Capability clients and the Module macros still
+need to lower onto it before the Deep Module shape below is public developer
+experience. No current repository yet implements the complete derivation
+build, Desired State resolver, Reconciler, or hot Plan Transitions. The
+existing control-plane slice begins from an exact lock and caller-supplied
+Instances and bindings; it is migration input, not evidence that the complete
+experience exists.
 
 ## Outcome
 
