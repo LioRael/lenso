@@ -1,6 +1,6 @@
 ---
 name: lenso-module-authoring
-description: Implement or change removable Lenso product behavior after its Module boundary and Capability roles are known. Covers native Rust, Bun, Web, stateful, and cross-cutting Modules; route contract, Composition, or host-mechanics work to their owning workflows.
+description: Implement or change removable Lenso product behavior and, when supported, package it as an installable Plugin Release after its Module boundary and Capability roles are known. Covers native Rust, Bun, Web, stateful, and cross-cutting Modules; route App choices or host mechanics to their owning workflows.
 ---
 
 # Lenso Module Authoring
@@ -28,13 +28,15 @@ not the product type.
    Module needs:
    - [native Rust](references/native-rust.md) for the public `lenso` facade,
      generated linked factory, and statically linked Cargo package;
-   - [Bun](references/bun.md) for a child-process Module built with
-     `@lenso/bun-module`;
+   - [Bun](references/bun.md) for a child-process Module built with the
+     official `@lenso/bun` package;
    - [Web and UI](references/web-and-ui.md) for HTTP endpoints, Web Ingress, a
      Web Shell, Browser Adapter, or UI Contribution; and
    - [stateful and cross-cutting](references/stateful-and-cross-cutting.md) for
      owned persistence, migrations, Auth, Secrets, Audit, OpenTelemetry,
-     Workflow, or similar optional behavior.
+     Workflow, or similar optional behavior; and
+   - [Plugin distribution](references/plugin-distribution.md) only when the
+     Module must ship as an installable, governable Plugin Release.
    Finish when the package layout, factory/entrypoint, and supported Operation
    kinds are concrete.
 4. **Implement the Capability edges.** Prefer `#[module]` plus one
@@ -66,5 +68,5 @@ not the product type.
 
 Return the Module owner and shape, deletion boundary, provided and required
 Capabilities, package/factory/entrypoint paths, lifecycle and state choices,
-Composition changes, generated artifacts, exact checks, behavior proof,
-removal proof, and delivery state.
+Composition changes, generated artifacts, optional Plugin Release/admission
+artifacts, exact checks, behavior proof, removal proof, and delivery state.

@@ -11,9 +11,7 @@ Inspect the selected runtime packages and assemble one unambiguous Adapter per
 execution class:
 
 ```rust,ignore
-let native = NativeModuleRegistry::new()
-    .with_factory(GreetingFactory)
-    .with_factory(SecretsFactory::new());
+let native = NativeModuleRegistry::new().with_linked_factories();
 
 let adapters = ExecutionAdapterCatalog::new()
     .with_adapter(native)?
@@ -31,7 +29,9 @@ let outcome = lenso_runner::run(
 The catalog rejects duplicate execution classes. Kernel rejects an Instance
 whose class is unavailable. The Runner may expose configuration for host paths,
 limits, shutdown timeout, lane count, or Adapter selection, but cannot rewrite
-the Plan or invent bindings.
+the Plan or invent bindings. Direct `with_factory(...)` registration remains an
+implementation-level compatibility escape hatch; ordinary Rust Modules use the
+public facade and linked generated registration.
 
 For host shutdown, set Driver shutdown state and wake the lane. Report startup
 failure, runtime failure, cleanup failure, and shutdown timeout as distinct

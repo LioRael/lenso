@@ -16,9 +16,9 @@ implementation ownership remains in the repositories assigned by ADR 0064.
 | --- | --- | --- |
 | Ownership or product boundary is unclear | `lenso-business-planning` | Module cards, Capability edges, and one executable slice |
 | Capability identity, Operations, Schemas, compatibility, or generated bindings | `lenso-capability-authoring` | Descriptor, Schemas, generated targets, compatibility and behavior proof |
-| Removable Rust, Bun, Web, stateful, or cross-cutting product behavior | `lenso-module-authoring` | Module package, factory/entrypoint, lifecycle, Composition and removal proof |
-| Package selection, keyed Instances, configuration, bindings, profiles, or lanes | `lenso-app-composition` | Checked project document and immutable Resolved App Plan |
-| Driver, Execution Adapter, Runner, process/wire, or host execution mechanics | `lenso-runtime-extension` | Narrow host implementation plus conformance and real-host evidence |
+| Removable Rust, Bun, Web, stateful, or cross-cutting product behavior, including optional Plugin Release packaging | `lenso-module-authoring` | Module behavior/removal proof plus exact Release artifacts when supported |
+| Package or admitted Plugin selection, keyed Instances, configuration, Slots, bindings, profiles, or lanes | `lenso-app-composition` | Checked App intent and immutable Plan/Generation authority |
+| Driver, Execution Adapter, Runner, process/wire, Plugin admission/Store, Reconciler, or App Generation mechanics | `lenso-runtime-extension` | Narrow host implementation plus conformance and real-host evidence |
 | The owner is not yet clear | `lenso-start` | One primary workflow and one observable completion state |
 
 Kernel semantics are not a seventh product workflow. Changes to portable graph,
@@ -43,6 +43,12 @@ Use $lenso-module-authoring to implement the generated Ticket provider in Bun.
 
 ```text
 Use $lenso-app-composition to bind two HTTP endpoint providers to Web Ingress.
+```
+
+```text
+Use $lenso-app-composition with $lenso-runtime-extension to install a reviewed
+Agent Harness Plugin, stage its candidate Generation, and retain exact rollback
+authority.
 ```
 
 Select one primary workflow. Add a secondary workflow only when the request
@@ -75,7 +81,9 @@ npx skills update
 ```
 
 Installation does not remove unrelated legacy skill names automatically. Use
-the canonical six-workflow table above for vNext work.
+the canonical six-workflow table above for vNext work. In particular, legacy
+Service-authoring skills are not a parallel vNext model; out-of-process product
+behavior remains a Module and process mechanics remain an Execution Adapter.
 
 For a local checkout, inspect what the installer will discover without
 changing an installed copy:

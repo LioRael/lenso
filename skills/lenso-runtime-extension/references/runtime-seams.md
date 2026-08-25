@@ -9,7 +9,7 @@ and deleting that selection should remove it, use a Module.
 | --- | --- | --- |
 | Runtime Driver | local task lane, scheduling, monotonic time, timers, cooperative cancellation, progress | Module factories, endpoints, product policy |
 | Execution Adapter | Module generation, endpoint mechanics, execution class, isolation, process or wire translation, host-specific failure semantics | graph resolution, Capability selection, business behavior |
-| Runner | Driver and Adapter catalog, root Kernel future, host shutdown translation, terminal outcome | package acquisition, App mutation, product services |
+| Runner/Generation control | Driver and Adapter catalog, root Kernel future, host shutdown, exact Generation stage/switch/drain/rollback, terminal outcome | package acquisition, Desired State, product Slots/services |
 | Authoring tooling | project files, package-manager inspection, validation, code generation, Plan materialization | running graph mutation, Kernel installation state |
 | Kernel | portable graph, lifecycle, invocation, admission, readiness, supervision, diagnostics | OS facilities, networks, databases, Auth, UI, transport, product policy |
 
@@ -49,5 +49,7 @@ locations before editing because repository ownership may evolve.
 
 Use source search rather than repository names alone: `RuntimeDriver`,
 `ExecutionAdapter`, `ExecutionAdapterCatalog`, `PreparedNativeApp`,
-`NativeModuleFactory`, and `lenso-contract-codegen` are reliable current seam
-anchors.
+`NativeModuleRegistry::with_linked_factories`, `ResolvedGeneration`,
+`GenerationController`, and `lenso-contract-codegen` are reliable current seam
+anchors. `NativeModuleFactory` remains an internal/compatibility seam, not the
+ordinary Module authoring API.

@@ -1,14 +1,14 @@
 ---
 name: lenso-app-composition
-description: Edit a source-derived Lenso App Definition to select locked Module packages, keyed Instances, configuration, lanes, and real binding decisions, then verify and materialize the immutable Resolved App Plan. Use for App choices rather than Module behavior.
+description: Edit Lenso App intent to select locked Module packages or admitted Plugin Releases, keyed Instances, configuration, lanes, Slots, and real binding decisions, then verify the immutable Plan or Generation authority. Use for App-owner choices rather than Module behavior or Host mechanics.
 ---
 
 # Lenso App Composition
 
 Select the exact Modules that make one App without hand-authoring the derived
-Composition. The App Definition owns intent; package managers own acquisition
-and locks; generated Descriptors close ordinary bindings; Kernel receives only
-canonical Resolved Plan bytes.
+Composition. A source App Definition owns static intent; a product Desired
+State owns supported dynamic Plugin intent. Generated Descriptors close
+ordinary bindings; Kernel receives only canonical Resolved Plan bytes.
 
 ## Workflow
 
@@ -19,6 +19,10 @@ canonical Resolved Plan bytes.
    [project document recipe](references/project-document.md). Finish when every
    path is classified as authored, generated, package-manager-owned, or
    canonical output.
+   For product-supported dynamic Plugin work, read
+   [dynamic Plugin intent](references/dynamic-plugin-intent.md) and use that
+   product's Desired State/CLI instead of adding Plugin authority to
+   `lenso.app.json`.
 2. **Select locked packages.** Use `lenso app add` for supported Cargo Modules
    and the owning package manager for other inputs. Preview each edit. Finish
    when the package manifest, lock, package-owned Descriptor, and App Definition
@@ -49,13 +53,16 @@ canonical Resolved Plan bytes.
    package locks, execution classes, entrypoints, configuration Schemas,
    sensitive references, contract freshness, endpoints, bindings, and lane
    placement all pass before boot.
-8. **Run through the owning Host and prove removal.** Give the reviewed Plan to
+8. **Apply through the owning Host and prove removal.** Give the reviewed Plan to
    the product-owned Runner or Host; the authoring CLI does not expose a generic
-   `run --plan` command. Change intent and resolve again before restart. Use
-   `lenso app remove` in a focused fixture and resolve the remainder. Finish
-   when no running Kernel mutation or hidden install state is needed.
+   `run --plan` command. For a dynamic Plugin, require candidate readiness and
+   an atomic Generation/Transition authority before switching. Change intent
+   and resolve again before restart or transition. Use `lenso app remove` or
+   the product's Plugin removal workflow in a focused fixture. Finish when no
+   running Kernel mutation or hidden install state is needed.
 
 Return the project and Plan paths, packages selected, keyed Instances,
 bindings and cardinalities, execution classes and placement, validation
-results, package/contract freshness evidence, reviewed diffs, run evidence,
-and whether removing each optional Module leaves a valid Composition.
+results, package/contract freshness evidence, reviewed diffs, Plan/Generation
+evidence, and whether removing each optional Module or Plugin leaves valid
+authority.

@@ -70,14 +70,15 @@ restart/cleanup, storage failure, and removal.
 **Prompt:** "Provide the same ticket request Capability from Bun."
 
 **Fixture:** the exact generated TypeScript contract, current
-`@lenso/bun-module` packages, a target Bun package/App project, and the real Bun
+`@lenso/bun` packages, a target Bun package/App project, and the real Bun
 Adapter test harness.
 
-**Required observations:** generated TypeScript Provider plus
-`@lenso/bun-module` is used; the Module does not implement wire/process
+**Required observations:** the official `@lenso/bun` generated Provider is
+used; the Module does not implement wire/process
 mechanics; unsupported stream/event authoring fails closed; package lock,
 script entrypoint, Bun execution class, and endpoints are composed explicitly;
-and a real child-process Adapter test crosses the boundary.
+the incomplete source-derived TypeScript packaging path is reported; and a real
+child-process Adapter test crosses the boundary.
 
 ## 5. App Composition
 
@@ -117,6 +118,27 @@ Instances are filtered exactly; generated codec/endpoint/handshake tables are
 validated before readiness; process/frame/queue/cancel/shutdown/recreate
 mechanics stay in the Adapter; Runner assembly is explicit; product behavior is
 absent; and product-neutral plus real Python-process conformance is required.
+
+## 7. Dynamic Plugin transition
+
+**Skill:** `lenso-app-composition` with `lenso-runtime-extension` as the
+secondary workflow
+
+**Prompt:** "Install a reviewed Tool Plugin into the Agent Harness, upgrade it,
+prove one in-flight Turn is not migrated, then roll back."
+
+**Fixture:** current Agent Harness CLI and accepted product ADRs, two immutable
+reviewed Tool Bundles, the Plugin Store, durable Generation controller, and a
+real Turn fixture. Do not pre-author the expected lock or Generation records.
+
+**Required observations:** Plugin is treated as Module distribution rather than
+a Kernel type; admission and activation are separate; automatic local
+admission is used only if the exact risk profile qualifies; requested and
+effective grants remain distinct; the candidate closes exact lock/Plan/
+Artifact/Generation authority; readiness precedes switch; a Generation Lease
+pins the in-flight Turn while the predecessor drains; history/provenance names
+exact digests; rollback uses retained authority; and unsupported generic
+Desired State or hot-Transition claims are excluded.
 
 ## Pass condition
 

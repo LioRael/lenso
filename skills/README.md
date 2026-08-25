@@ -14,11 +14,16 @@ product outcome
       v
 Module map -> Capability contracts -> Module implementations
                                       |
+                                      +--> optional Plugin Release
+                                      |        |
+                                      |        v
+                                      |   admission + App intent
+                                      |        |
                                       v
                          App Composition -> Resolved App Plan
                                       |
                                       v
-                         Driver + Execution Adapters
+                    Driver + Adapters + App Generations
 ```
 
 “Everything is a Module” is the product rule, not a reason to turn every
@@ -32,9 +37,9 @@ Kernel make those Modules run.
 | `lenso-start` | Explicitly route a request to one primary vNext workflow. |
 | `lenso-business-planning` | Turn a product outcome into a vertical Module map. |
 | `lenso-capability-authoring` | Design or evolve a versioned Capability contract and bindings. |
-| `lenso-module-authoring` | Implement any Module shape, including Rust, Bun, Web, stateful, and cross-cutting Modules. |
-| `lenso-app-composition` | Select packages and keyed Module Instances, bind Capabilities, and resolve the Plan. |
-| `lenso-runtime-extension` | Extend the Driver, Execution Adapter, Runner, or host mechanism that executes Modules. |
+| `lenso-module-authoring` | Implement any Module shape and, when supported, package it as an installable Plugin Release. |
+| `lenso-app-composition` | Select packages or admitted Plugins, keyed Instances, App-owner decisions, and immutable Plan/Generation intent. |
+| `lenso-runtime-extension` | Extend the Driver, Execution Adapter, Runner, App Generation controller, or other host mechanism. |
 
 ## How to use the pack
 
@@ -70,6 +75,13 @@ Auth, State, Story, Audit, OpenTelemetry, Web ingress, and similar product
 concerns route through Module authoring. Generated consumers and providers
 route through Capability authoring. Process, transport, and endpoint mechanics
 route through runtime extension.
+
+Plugin is likewise not a peer programming model. Module authoring owns its
+behavior and optional Release packaging; App Composition owns selection and
+semantic choices; Runtime Extension owns admission, Store, Reconciler, and App
+Generation mechanics. The structural Generation runtime is implemented, while
+the complete generic Dynamic Plugin authoring/distribution/Desired State and
+hot-Transition product chain remains incomplete.
 
 Install this catalog from its owning repository with:
 

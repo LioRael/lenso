@@ -38,7 +38,10 @@ provider's package, storage, process, or concrete type.
    `lenso-contract-codegen --help`, then its generate and check workflows.
    Compile/typecheck both generated targets that the contract publishes. A
    provider implements the generated Provider Interface; a consumer uses the
-   generated Client/handle. Custom behavior stays outside generated files.
+   generated Client/handle. For guest execution, use the generator's plan-bound
+   host-import bridge output when the selected Adapter supports it; do not
+   handwrite a second guest dispatch table. Custom behavior stays outside
+   generated files.
    Finish when changing the Descriptor without regeneration makes the
    freshness gate fail.
 6. **Classify compatibility and prove behavior.** Follow
