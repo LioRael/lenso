@@ -35,10 +35,34 @@ stages or duplicated the ordinary Module workflow.
 
 `lenso.app.json` is the only hand-authored App composition input. It selects
 Module packages and keyed Instances, supplies configuration and lane choices,
-and records only real binding ambiguities. Generated package-owned Descriptors
-provide Capabilities, Ports, Operations, execution classes, and lifecycle
-facts. Derived App Composition and Plan documents are locked outputs rather
-than authoring surfaces.
+records real binding ambiguities, and may assign request-admission limits to an
+exact derived binding. Generated package-owned Descriptors provide
+Capabilities, Ports, Operations, execution classes, and lifecycle facts.
+Derived App Composition and Plan documents are locked outputs rather than
+authoring surfaces.
+
+Binding policies identify the consumer Instance, Capability, and provider
+Instance together. They tune queue capacity and maximum concurrency without
+selecting a provider or changing package-owned requirements and endpoints:
+
+```json
+{
+  "binding_policies": [
+    {
+      "consumer": "agent",
+      "capability_id": "lenso.agent.tools@2",
+      "provider": "tools",
+      "admission": {
+        "queue_capacity": 0,
+        "max_concurrency": 4
+      }
+    }
+  ]
+}
+```
+
+A duplicate policy or a policy that does not match a derived binding fails
+resolution closed.
 
 ```sh
 lenso app add greeting-module --definition lenso.app.json --version '^1.0'
@@ -68,8 +92,8 @@ let approved = ResolvedProject::from_canonical_bytes(read_plan()?)?;
 let outcome = run_project(&approved, driver, adapters, timeout).await?;
 ```
 
-Changing the App Definition, package lock, configuration, lane, or explicit
-decision requires a new resolution before the Host applies a validated Plan
-Transition or starts a fresh App Generation. Kernel never discovers packages,
-selects providers, rewrites locks, or accepts an authoring recipe as runtime
-authority.
+Changing the App Definition, package lock, configuration, lane, explicit
+decision, or binding policy requires a new resolution before the Host applies
+a validated Plan Transition or starts a fresh App Generation. Kernel never
+discovers packages, selects providers, rewrites locks, or accepts an authoring
+recipe as runtime authority.
