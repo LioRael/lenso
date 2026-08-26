@@ -7,6 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::{BindingPolicy, binding_policy::index_binding_policies};
 use crate::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
     CapabilityRequirementPlan, ExecutionClassId, ExecutionLaneId, ExecutionLanePlan,
@@ -267,6 +268,8 @@ pub struct AppDefinition {
     modules: Vec<ModuleSelection>,
     #[serde(default)]
     decisions: Vec<BindingDecision>,
+    #[serde(default)]
+    binding_policies: Vec<BindingPolicy>,
     #[serde(default = "default_execution_lanes")]
     execution_lanes: Vec<ExecutionLanePlan>,
 }
@@ -277,6 +280,7 @@ impl AppDefinition {
             name: name.into(),
             modules: Vec::new(),
             decisions: Vec::new(),
+            binding_policies: Vec::new(),
             execution_lanes: default_execution_lanes(),
         }
     }
@@ -289,6 +293,11 @@ impl AppDefinition {
     #[must_use]
     pub fn with_decision(mut self, decision: BindingDecision) -> Self {
         self.decisions.push(decision);
+        self
+    }
+    #[must_use]
+    pub fn with_binding_policy(mut self, policy: BindingPolicy) -> Self {
+        self.binding_policies.push(policy);
         self
     }
     #[must_use]
@@ -305,6 +314,9 @@ impl AppDefinition {
     pub fn decisions(&self) -> &[BindingDecision] {
         &self.decisions
     }
+    pub fn binding_policies(&self) -> &[BindingPolicy] {
+        &self.binding_policies
+    }
 
     /// Derives the complete, explicit App Composition from selected descriptors.
     pub fn derive(
@@ -312,7 +324,7 @@ impl AppDefinition {
         catalog: &ModuleCatalog,
     ) -> Result<AppComposition, DefinitionResolutionError> {
         let instances = materialize_instances(&self.modules, catalog)?;
-        let bindings = derive_bindings(&instances, &self.decisions)?;
+        let bindings = derive_bindings(&instances, &self.decisions, &self.binding_policies)?;
         let composition = AppComposition::new(instances, bindings)
             .with_execution_lanes(self.execution_lanes.clone());
         composition
@@ -676,9 +688,12 @@ fn invalid_configuration(
 fn derive_bindings(
     instances: &[ModuleInstancePlan],
     authored_decisions: &[BindingDecision],
+    authored_policies: &[BindingPolicy],
 ) -> Result<Vec<CapabilityBinding>, DefinitionResolutionError> {
     let decisions = index_decisions(authored_decisions)?;
+    let policies = index_binding_policies(authored_policies)?;
     let mut consumed_decisions = BTreeSet::new();
+    let mut consumed_policies = BTreeSet::new();
     let mut bindings = Vec::new();
     for consumer in instances {
         for requirement in consumer.required_capabilities() {
@@ -695,12 +710,22 @@ fn derive_bindings(
                 &mut consumed_decisions,
             )?;
             bindings.extend(selected.into_iter().map(|provider| {
-                CapabilityBinding::new(
+                let policy_key = (
+                    consumer.instance_key().to_owned(),
+                    requirement.capability_id().to_owned(),
+                    provider.clone(),
+                );
+                let mut binding = CapabilityBinding::new(
                     consumer.instance_key(),
                     requirement.capability_id(),
                     requirement.descriptor_version(),
                     provider,
-                )
+                );
+                if let Some(admission) = policies.get(&policy_key) {
+                    consumed_policies.insert(policy_key);
+                    binding = binding.with_admission(*admission);
+                }
+                binding
             }));
         }
     }
@@ -709,6 +734,16 @@ fn derive_bindings(
         .find(|(key, _)| !consumed_decisions.contains(*key))
     {
         return Err(DefinitionResolutionError::UnusedDecision {
+            consumer: consumer.clone(),
+            capability_id: capability_id.clone(),
+            provider: provider.clone(),
+        });
+    }
+    if let Some(((consumer, capability_id, provider), _)) = policies
+        .iter()
+        .find(|(key, _)| !consumed_policies.contains(*key))
+    {
+        return Err(DefinitionResolutionError::UnusedBindingPolicy {
             consumer: consumer.clone(),
             capability_id: capability_id.clone(),
             provider: provider.clone(),
@@ -816,6 +851,11 @@ pub enum DefinitionResolutionError {
         consumer: String,
         capability_id: String,
     },
+    DuplicateBindingPolicy {
+        consumer: String,
+        capability_id: String,
+        provider: String,
+    },
     MissingProvider {
         consumer: String,
         capability_id: String,
@@ -833,6 +873,11 @@ pub enum DefinitionResolutionError {
         candidates: Vec<String>,
     },
     UnusedDecision {
+        consumer: String,
+        capability_id: String,
+        provider: String,
+    },
+    UnusedBindingPolicy {
         consumer: String,
         capability_id: String,
         provider: String,
@@ -875,6 +920,14 @@ impl fmt::Display for DefinitionResolutionError {
                 formatter,
                 "duplicate binding decision for `{consumer}` Capability `{capability_id}`"
             ),
+            Self::DuplicateBindingPolicy {
+                consumer,
+                capability_id,
+                provider,
+            } => write!(
+                formatter,
+                "duplicate binding policy `{consumer}` -> `{provider}` for Capability `{capability_id}`"
+            ),
             Self::MissingProvider {
                 consumer,
                 capability_id,
@@ -909,6 +962,14 @@ impl fmt::Display for DefinitionResolutionError {
             } => write!(
                 formatter,
                 "binding decision `{consumer}` -> `{provider}` for Capability `{capability_id}` does not match a one/optional requirement"
+            ),
+            Self::UnusedBindingPolicy {
+                consumer,
+                capability_id,
+                provider,
+            } => write!(
+                formatter,
+                "binding policy `{consumer}` -> `{provider}` for Capability `{capability_id}` does not match a derived binding"
             ),
             Self::InvalidComposition(error) => {
                 write!(formatter, "derived App Composition is invalid: {error}")

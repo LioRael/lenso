@@ -1,8 +1,8 @@
 use lenso_app_plan::{
-    CapabilityEndpointPlan, CapabilityRequirementPlan,
+    CapabilityEndpointPlan, CapabilityRequirementPlan, RequestAdmissionPlan,
     authoring::{
-        AppDefinition, BindingDecision, DefinitionResolutionError, ModuleCatalog, ModuleDescriptor,
-        ModuleSelection,
+        AppDefinition, BindingDecision, BindingPolicy, DefinitionResolutionError, ModuleCatalog,
+        ModuleDescriptor, ModuleSelection,
     },
 };
 use serde_json::json;
@@ -96,6 +96,124 @@ fn many_binds_every_provider_in_stable_order() {
         .map(|binding| (binding.provider_instance(), binding.provider_order()))
         .collect::<Vec<_>>();
     assert_eq!(providers, vec![("a-provider", 0), ("z-provider", 1)]);
+}
+
+#[test]
+fn binding_policy_overrides_one_derived_binding_admission() {
+    let catalog = ModuleCatalog::new([consumer(), provider("example.model")]).unwrap();
+    let definition = AppDefinition::new("agent")
+        .with_module(ModuleSelection::new("agent", "example.agent"))
+        .with_module(ModuleSelection::new("model", "example.model"))
+        .with_binding_policy(BindingPolicy::with_limits(
+            "agent", CAPABILITY, "model", 3, 4,
+        ));
+
+    let encoded = serde_json::to_value(&definition).unwrap();
+    assert_eq!(
+        encoded["binding_policies"][0]["admission"],
+        json!({"queue_capacity": 3, "max_concurrency": 4})
+    );
+    let plan = definition.derive(&catalog).unwrap().resolve().unwrap();
+    let binding = &plan.capability_bindings()[0];
+    assert!(binding.has_explicit_admission());
+    assert_eq!(binding.admission(), RequestAdmissionPlan::new(3, 4));
+}
+
+#[test]
+fn definition_without_binding_policies_remains_deserializable() {
+    let definition: AppDefinition = serde_json::from_value(json!({
+        "schema_version": 1,
+        "name": "agent",
+        "modules": [],
+        "decisions": [],
+        "execution_lanes": []
+    }))
+    .unwrap();
+
+    assert!(definition.binding_policies().is_empty());
+}
+
+#[test]
+fn many_binding_policies_can_assign_each_provider_distinct_capacity() {
+    let collector = ModuleDescriptor::new("example.tools", "1.0.0")
+        .with_requirement(CapabilityRequirementPlan::many(CAPABILITY, VERSION));
+    let catalog =
+        ModuleCatalog::new([collector, provider("model.a"), provider("model.b")]).unwrap();
+    let definition = AppDefinition::new("tools")
+        .with_module(ModuleSelection::new("tools", "example.tools"))
+        .with_module(ModuleSelection::new("a-provider", "model.a"))
+        .with_module(ModuleSelection::new("b-provider", "model.b"))
+        .with_binding_policy(BindingPolicy::with_limits(
+            "tools",
+            CAPABILITY,
+            "a-provider",
+            0,
+            2,
+        ))
+        .with_binding_policy(BindingPolicy::with_limits(
+            "tools",
+            CAPABILITY,
+            "b-provider",
+            1,
+            8,
+        ));
+
+    let plan = definition.derive(&catalog).unwrap().resolve().unwrap();
+    assert_eq!(
+        plan.capability_bindings()
+            .iter()
+            .map(|binding| (binding.provider_instance(), binding.admission()))
+            .collect::<Vec<_>>(),
+        [
+            ("a-provider", RequestAdmissionPlan::new(0, 2)),
+            ("b-provider", RequestAdmissionPlan::new(1, 8))
+        ]
+    );
+}
+
+#[test]
+fn binding_policies_fail_closed_when_duplicate_unused_or_invalid() {
+    let catalog = ModuleCatalog::new([consumer(), provider("example.model")]).unwrap();
+    let base = || {
+        AppDefinition::new("agent")
+            .with_module(ModuleSelection::new("agent", "example.agent"))
+            .with_module(ModuleSelection::new("model", "example.model"))
+    };
+    let duplicate = base()
+        .with_binding_policy(BindingPolicy::with_limits(
+            "agent", CAPABILITY, "model", 0, 2,
+        ))
+        .with_binding_policy(BindingPolicy::with_limits(
+            "agent", CAPABILITY, "model", 0, 3,
+        ));
+    assert_eq!(
+        duplicate.derive(&catalog),
+        Err(DefinitionResolutionError::DuplicateBindingPolicy {
+            consumer: "agent".to_owned(),
+            capability_id: CAPABILITY.to_owned(),
+            provider: "model".to_owned(),
+        })
+    );
+
+    let unused = base().with_binding_policy(BindingPolicy::with_limits(
+        "agent", CAPABILITY, "missing", 0, 2,
+    ));
+    assert_eq!(
+        unused.derive(&catalog),
+        Err(DefinitionResolutionError::UnusedBindingPolicy {
+            consumer: "agent".to_owned(),
+            capability_id: CAPABILITY.to_owned(),
+            provider: "missing".to_owned(),
+        })
+    );
+
+    let invalid = base().with_binding_policy(BindingPolicy::with_limits(
+        "agent", CAPABILITY, "model", 0, 0,
+    ));
+    assert!(matches!(
+        invalid.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidComposition(_))
+    ));
 }
 
 #[test]

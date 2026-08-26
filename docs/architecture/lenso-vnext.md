@@ -76,6 +76,9 @@ See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.m
 The executable implementation is [`lenso-authoring`](lenso-authoring.md).
 Its public CLI exposes Module intent through `new`, `check`, `dev`, and
 `verify`, plus advanced source-derived `app` edits and Plan materialization.
+The App Definition may also set request-admission limits for an exact derived
+binding; this remains App-owner policy and does not move Capability or endpoint
+facts out of Module packages.
 Resolution, recipe expansion, Adapter assembly, and Plan execution remain
 library or product-Host implementation; Kernel receives only immutable Plan
 bytes.
