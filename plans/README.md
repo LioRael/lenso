@@ -11,10 +11,11 @@ The target is deliberately scoped by persona:
 
 - a **Harness Plugin author** creates, develops, checks, packages, and tests one
   Plugin without authoring or naming a Module;
-- a **Lenso App owner** may continue to author built-in Modules directly;
-- the runtime may lower a Plugin into an internal Module Descriptor and Module
-  Instance, but that lowering is generated and absent from the Plugin author
-  interface;
+- a **Lenso App owner** selects required embedded Plugins and optional bundled
+  or installed Plugins through the same model;
+- the runtime may temporarily lower a Plugin into compatibility-era internal
+  `Module*` values, but that lowering is generated and absent from every author,
+  App-owner, and operator interface;
 - V1 has exactly one executable entry per Plugin Release. Multi-entry Plugins,
   Plugin Features, and publisher-authored binding templates remain deferred.
 
@@ -31,8 +32,9 @@ remote repositories.
 | [001](001-define-one-harness-plugin-authoring-model.md) | Define one Harness Plugin authoring model | P1 | M | — | DONE (`5cd8b04d`) |
 | [002](002-derive-one-plugin-entry-from-source.md) | Derive one Plugin entry from source without executing it | P1 | L | 001 | DONE (`f513184`) |
 | [003](003-ship-one-plugin-cli-workflow.md) | Ship one end-to-end Plugin CLI workflow | P1 | L | 002 + Runtime release checkpoint | DONE (`174b32d`) |
-| [004](004-migrate-harness-to-one-plugin-unit.md) | Make Harness consume one Plugin as one selectable unit | P1 | L | 003 + CLI release checkpoint | TODO |
-| [005](005-prove-and-retire-the-dual-authoring-path.md) | Prove the clean-room workflow and retire the dual path | P2 | L | 004 + approved releases | TODO |
+| [004](004-migrate-harness-to-one-plugin-unit.md) | Make Harness consume one Plugin as one selectable unit | P1 | L | 003 + CLI release checkpoint | DONE (`4f2a354`) |
+| [005](005-prove-and-retire-the-dual-authoring-path.md) | Prove the clean-room workflow and retire the dual path | P2 | L | 004 + approved releases | BLOCKED (candidate passes; corrected CLI release required) |
+| [006](006-migrate-embedded-behavior-to-plugins.md) | Make embedded Host behavior use the same Plugin model | P1 | XL | ADR 0069 + 005 candidate | TODO |
 
 Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED` with a one-line reason,
 or `REJECTED` with a one-line rationale.
@@ -49,10 +51,9 @@ lenso architecture decision
             -> independent clean-room proof
 ```
 
-- Plan 001 fixes the persona and vocabulary before any aliases or schemas are
-  introduced. It supersedes only the authoring portion of ADRs 0065 and 0066;
-  immutable Plans, Capability binding, Module runtime semantics, and
-  above-Kernel Plugin governance remain intact.
+- Plan 001 fixed the first Harness persona. ADR 0069 now supersedes its decision
+  to retain Module as a separate public model; immutable execution, Capability
+  binding, and above-Kernel Plugin governance remain intact.
 - Plan 002 must prove a non-executing descriptor transport before a public
   authoring interface is released. A runtime `describe()` call is not packaging
   authority.
@@ -72,6 +73,8 @@ lenso architecture decision
 - Plan 005 independently re-verifies the checkpoint releases and performs the
   product proof. Any follow-up compatibility-removal release still requires
   explicit operator approval at each repository.
+- Plan 006 gives embedded Host behavior a Plugin distribution mode before the
+  hidden Module compatibility commands and App Definition fields are deleted.
 
 ## Canonical acceptance workflow
 
@@ -101,10 +104,9 @@ or a second identity/version/configuration declaration.
 - **Hide Module only in documentation** — rejected. Today authors compile
   `#[module]`, receive Module diagnostics, and create a Plugin Manifest later;
   wording alone cannot internalize that interface.
-- **Rename every Lenso Module globally to Plugin** — rejected. App-owned
-  built-in behavior is not necessarily installed or independently governed.
-  The plan creates a real Harness Plugin authoring facade while preserving the
-  lower runtime model.
+- **Keep Module public because embedded behavior is not installed** — rejected
+  by ADR 0069. Installability is a distribution mode, not a different behavior
+  identity. Private runtime lowering may migrate incrementally.
 - **Keep `Plugin` as only a marketing alias for Module** — rejected. It leaves
   two command families and the packaging handoff intact.
 - **Require a separate `plugin verify` author step** — rejected. `pack` must
@@ -116,8 +118,8 @@ or a second identity/version/configuration declaration.
   required first-party contract.
 - **Design Bun, QuickJS, Process, native dylib, and Wasm Plugin authoring at
   once** — rejected. The first public tracer is one constrained Rust-authored
-  Wasm Component Tool Plugin. Built-in Module authoring remains available for
-  other execution classes.
+  Wasm Component Tool Plugin. Other execution classes join the same Plugin
+  interface only when each has an executable tracer.
 - **Remove Store, Receipt, Controller, Supervisor, or Generation first** —
   rejected as the primary simplification. Their interfaces should later be
   deepened, but doing so does not repair the dual author identity.
