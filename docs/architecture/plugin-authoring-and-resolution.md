@@ -1,6 +1,13 @@
-# Module authoring, Slots, and dynamic resolution
+# Historical Module authoring and dynamic-resolution contract
 
-Status: accepted companion contract for
+> **Public authoring superseded.** ADR 0069 replaces Module with Plugin as the
+> sole behavior model, and ADR 0070 replaces App Definitions with Host defaults
+> plus one Plugin Root. This document remains implementation and migration
+> evidence for Descriptor derivation, Slots, Change Proposals, and Plan
+> reconciliation. The current public contract is
+> [`plugin-root-resolution.md`](plugin-root-resolution.md).
+
+Status: retained migration contract for
 [ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md),
 [ADR 0066](../adr/0066-derive-module-descriptors-and-plans-from-source.md), and
 [ADR 0067](../adr/0067-transition-between-immutable-plan-snapshots.md);

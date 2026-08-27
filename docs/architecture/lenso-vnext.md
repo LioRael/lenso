@@ -11,11 +11,13 @@ repeating every detailed invariant. The final v0.3.x source is retained by the
 ## Shape
 
 ```text
-App Composition + Cargo/npm/OCI inputs
-                  |
-          authoring and build tools
-                  |
-          Resolved App Plan
+Host Catalog + Plugin Root
+             |
+          resolver
+             |
+     derived App Composition
+             |
+      Resolved App Plan
                   |
         +---------+----------+
         |      thin Runner   |
@@ -31,35 +33,35 @@ App Composition + Cargo/npm/OCI inputs
       Native Rust     Bun process       future host-supported
       Adapter         Adapter           Execution Adapters
              |           |
-           Module Instances providing and requiring Capabilities
+           Plugin Instances providing and requiring Capabilities
 ```
 
 The Kernel is deliberately smaller than the product. Its deletion would force
 every Runner and Execution Adapter to reimplement deterministic composition,
 lifecycle, bounded invocation, cancellation, supervision, and diagnostics.
 HTTP, PostgreSQL, Auth, Console, Story, and similar features do not pass this
-deletion test because their complexity disappears when their Modules are not
+deletion test because their complexity disappears when their Plugins are not
 selected.
 
 Repository ownership is narrower than the current migration workspace. The
 main repository owns Plan, Kernel, and Kernel conformance; host runtimes,
-Adapters, protocols, Modules, tooling, and examples depend inward and move to
+Adapters, protocols, Plugins, tooling, and examples depend inward and move to
 their named owners under [ADR 0064](../adr/0064-keep-only-portable-core-ownership-in-the-main-repository.md).
 
 ## Composition and packages
 
-App Composition is declarative and language-independent. Authoring tools combine
-it with ordinary package-manager resolution to produce one exact Resolved App
-Plan. Kernel executes that Plan and performs no package acquisition, SemVer
-selection, schema diff, signature admission, or graph discovery. Built-in
-Module installation is a reviewable project edit, not a runtime operation.
+App Composition is declarative, language-independent resolver output. A Host
+supplies root Slots, exact embedded Plugin Releases, default Instances, and
+replacement policy; the App owner expresses only differences in one Plugin
+Root. Authoring tools combine those inputs into one exact Resolved App Plan.
+Kernel executes that Plan and performs no package acquisition, SemVer
+selection, schema diff, signature admission, or graph discovery.
 
 [ADR 0065](../adr/0065-govern-dynamic-plugins-above-the-kernel.md)
-defines a separate optional Plugin control plane for a precompiled App: Plugin
-is the installable distribution role of a Module Package, attached through
-product-owned Slots, never a runtime type. [ADR
+defines the Plugin control plane for a precompiled App, attached through
+product-owned Slots and kept above Kernel. [ADR
 0066](../adr/0066-derive-module-descriptors-and-plans-from-source.md) makes
-Module source the single source of truth with generated, locked Descriptors,
+behavior source the single source of truth with generated, locked Descriptors,
 Schemas, and Plans, and [ADR
 0067](../adr/0067-transition-between-immutable-plan-snapshots.md) lets an App
 execute a totally ordered sequence of immutable Plan Snapshots with validated
@@ -68,24 +70,24 @@ atomic Transitions, keeping App Generation swaps for structural change. The
 governance orthogonal to native, Process, Wasm, QuickJS, and trusted dylib
 Execution Adapter choices and forbids runtime Artifact fallback.
 
+ADR [0069](../adr/0069-use-plugin-as-the-only-application-behavior-unit.md)
+retires Module as a public behavior model, and ADR
+[0070](../adr/0070-resolve-apps-from-plugin-roots.md) retires the App Definition
+and derives Apps from Host defaults plus a Plugin Root.
+
 See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.md),
 [0034](../adr/0034-make-app-composition-the-capability-binding-authority.md),
 [0045](../adr/0045-materialize-a-resolved-app-plan-before-boot.md), and
 [0057](../adr/0057-make-module-installation-an-authoring-operation.md).
 
 The executable implementation is [`lenso-authoring`](lenso-authoring.md).
-Its public CLI exposes Module intent through `new`, `check`, `dev`, and
-`verify`, plus advanced source-derived `app` edits and Plan materialization.
-The App Definition may also set request-admission limits for an exact derived
-binding; this remains App-owner policy and does not move Capability or endpoint
-facts out of Module packages.
-Module packages provide locked, deny-safe configuration defaults. App
-Definitions contain only product-owned differences and explicit local-setting
-admission, while a product Host may supply typed local user settings. The
-resolver validates and materializes one complete canonical configuration per
-Instance before producing the next Plan Snapshot; Kernel never reads or merges
-configuration sources. See ADR
-[0068](../adr/0068-layer-module-configuration-sources.md).
+Its public CLI exposes Plugin authoring through `plugin new`, `check`, `dev`,
+and `pack`, plus Plugin Root management and derived App inspection. Plugin
+packages provide locked deny-safe configuration defaults; direct Instance TOML
+contains only explicit differences. The resolver validates and materializes
+one complete canonical configuration per Instance before producing the next
+Plan Snapshot; Kernel never reads or merges configuration sources. See the
+[Plugin Root contract](plugin-root-resolution.md).
 Resolution, recipe expansion, Adapter assembly, and Plan execution remain
 library or product-Host implementation; Kernel receives only immutable Plan
 bytes.
@@ -93,7 +95,7 @@ bytes.
 ## Kernel and hosts
 
 Kernel is one portable asynchronous state machine. A Runtime Driver supplies
-host scheduling and monotonic time; Execution Adapters supply Module generation
+host scheduling and monotonic time; Execution Adapters supply Plugin generation
 and endpoint mechanics. Native Tokio is one Driver implementation rather than a
 Kernel dependency. The same engine compile-checks for native,
 `wasm32-unknown-unknown`, and `wasm32-wasip2`; each host supports only the
@@ -104,9 +106,9 @@ See ADRs [0047](../adr/0047-scope-runtime-work-to-module-lifecycles.md),
 [0053](../adr/0053-run-the-kernel-on-a-portable-runtime-driver.md), and
 [0054](../adr/0054-layer-the-rust-implementation-around-the-portable-kernel.md).
 
-## Modules and lifecycle
+## Plugins and lifecycle
 
-A Module package publishes data Descriptors plus factories understood by its
+A Plugin Release publishes data Descriptors plus factories understood by its
 Execution Adapters. A Resolved Plan may instantiate the same package several
 times. Boot validates the graph, prepares every Instance, activates providers in
 dependency order, and opens one App Ready Gate only after full activation.
@@ -114,7 +116,7 @@ Managed tasks and resources belong to one Instance generation; restarts create a
 new generation and preserve stable consumer handles when the Adapter supports
 recreation.
 
-Native Rust Modules are statically linked Cargo dependencies in v1. Bun Modules
+Native Rust Plugins are statically linked Cargo dependencies in v1. Bun Plugins
 run through the first process Adapter, initially one process per Instance by
 default. That topology is an Adapter choice, not a Kernel contract.
 
@@ -139,12 +141,12 @@ the decimal-string/base64/time/missing-value
 profile, lints additive minor evolution, and fails when checked-in generated
 artifacts drift.
 Generated metadata carries the Capability `namespace.name@major` identity and
-exact Descriptor SemVer; Module package versions are not part of that identity.
+exact Descriptor SemVer; Plugin Release versions are not part of that identity.
 Generated Rust values include serde wire codecs and generated TypeScript values
 include JSON codecs; both preserve optional-versus-null fields and open unknown
 Domain Error code/payload pairs. Unsupported unions and object shapes that
 would discard wire data fail generation before artifacts are written.
-Bindings belong to the Capability contract package rather than to every Module
+Bindings belong to the Capability contract package rather than to every Plugin
 implementation package. A Rust consumer and provider reuse one generated
 crate for a selected Descriptor so their Rust types remain identical; a Bun
 consumer or provider installs the corresponding generated TypeScript package.
@@ -173,11 +175,11 @@ See ADRs [0033](../adr/0033-use-request-stream-and-event-capability-interactions
 
 ## Identity and invocation authority
 
-Kernel establishes Caller Module identity and transports opaque ordinary or
-sealed extensions without interpreting their domains. Auth Modules turn
+Kernel establishes caller Plugin identity and transports opaque ordinary or
+sealed extensions without interpreting their domains. Auth Plugins turn
 protocol-neutral Credential Evidence into short-lived ActorAssertions. Provider
 SDKs validate and project those assertions into typed domain Actors, and the
-target Module performs final authorization. There is no ambient System Actor,
+target Plugin performs final authorization. There is no ambient System Actor,
 universal grants array, or automatic anonymous identity.
 
 See ADRs [0037](../adr/0037-preserve-provenance-of-sealed-invocation-extensions.md),
@@ -185,12 +187,12 @@ See ADRs [0037](../adr/0037-preserve-provenance-of-sealed-invocation-extensions.
 [0039](../adr/0039-make-authentication-protocol-neutral-and-explicit.md), and
 [0040](../adr/0040-attenuate-actor-assertions-across-capabilities.md).
 
-## State, diagnostics, and product Modules
+## State, diagnostics, and product Plugins
 
-Kernel state is volatile. Stateful Modules own schema meaning, migrations, and
+Kernel state is volatile. Stateful Plugins own schema meaning, migrations, and
 transaction scope behind private persistence Adapters or deep semantic
 Capabilities. Workflow, Outbox, durable Event delivery, Secrets, Audit,
-OpenTelemetry, Story, and health are optional Modules or owner-local behavior.
+OpenTelemetry, Story, and health are optional Plugins or owner-local behavior.
 
 Runtime Diagnostics expose bounded, non-blocking, best-effort structural facts.
 Observers cannot block or change App behavior, and diagnostic records exclude
@@ -200,14 +202,14 @@ See ADRs [0036](../adr/0036-expose-non-blocking-runtime-diagnostics.md),
 [0041](../adr/0041-keep-persistence-owned-by-stateful-modules.md), and
 [0042](../adr/0042-keep-migrations-and-distributed-consistency-out-of-the-kernel.md).
 
-### Optional OpenTelemetry Module
+### Optional OpenTelemetry Plugin
 
 The independently owned
 [`lenso-otel-module`](https://github.com/LioRael/lenso-otel-module/tree/856190e128605479becb484a790368307085428c)
 package subscribes to the externally supplied Runtime Diagnostics port and owns
 its bounded asynchronous exporter tasks. It converts structural diagnostics to
 OTel Logs and accepts explicitly authored OTel Span, Metric, and Log signals
-only when the App selects the Module and its declared Capability binding.
+only when the App selects the Plugin and its declared Capability binding.
 Exporter failure, queue drops, and cancellation are best-effort telemetry
 outcomes and do not change App behavior.
 
@@ -218,17 +220,17 @@ before interpretation. The payload remains free of request bodies, secrets,
 configuration, domain error bodies, arbitrary extensions, and ActorAssertions.
 
 Telemetry is operational observation, not durable business evidence. Audit and
-Story Modules remain the owners for compliance history, durable events, and
+Story Plugins remain the owners for compliance history, durable events, and
 replayable business narrative. Removing this package leaves Kernel diagnostics,
 Invocation Context, and Adapter contracts unchanged; see
 [ADR 0061](../adr/0061-export-opentelemetry-from-a-removable-module.md).
 
 ## Console and UI
 
-A target-owned App Web UI is an optional ordinary Module composition inside the
+A target-owned App Web UI is an optional ordinary Plugin composition inside the
 target App. A Web Shell binds `many` UI Contribution providers, while a Browser
 Adapter projects generated clients only for portable Capability requirements
-declared by those contributions and resolved before boot. A Module package may
+declared by those contributions and resolved before boot. A Plugin Release may
 ship explicit backend and UI entrypoints without introducing a Console or
 Plugin runtime type.
 
@@ -237,7 +239,7 @@ product with remote or multiple targets, an independent operator trust domain,
 durable cross-target state, or an independent release lifecycle. Only that
 shape requires target Apps to opt into a thin Connector with an explicit
 portable Capability allowlist. PostgreSQL, Outbox, Story, Audit, and target
-catalog choices remain conditional Modules rather than Console or Kernel
+catalog choices remain conditional Plugins rather than Console or Kernel
 requirements.
 
 UI Contributions are Capabilities rather than Console-specific Surfaces. A

@@ -7,7 +7,7 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`CONTEXT.md`](../CONTEXT.md) defines vocabulary, ownership, and invariants.
 - [`architecture/lenso-vnext.md`](architecture/lenso-vnext.md) describes the
   runtime shape.
-- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0067 and the
+- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0070 and the
   historical ADRs 0001–0029.
 - [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md)
   defines the implementation evidence sequence.
@@ -19,9 +19,12 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`architecture/dynamic-plugins.md`](architecture/dynamic-plugins.md) defines
   the accepted Plugin control plane and App Generation protocol; its opening
   status records the incomplete implementation evidence.
+- [`architecture/plugin-root-resolution.md`](architecture/plugin-root-resolution.md)
+  defines the current Plugin Root input and deterministic App resolution
+  contract.
 - [`architecture/plugin-authoring-and-resolution.md`](architecture/plugin-authoring-and-resolution.md)
-  defines Module authoring, product Slots, Desired State resolution, and Plan
-  reconciliation.
+  retains the superseded Module/App Definition contract as implementation and
+  migration evidence for Slots, proposals, and Plan reconciliation.
 - [`architecture/plugin-execution-classes.md`](architecture/plugin-execution-classes.md)
   defines deterministic Artifact-variant selection, Data contributions, and
   the reviewed Process, Wasm, QuickJS, and native-library branches.

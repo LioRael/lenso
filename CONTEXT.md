@@ -13,21 +13,25 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 
 ## Canonical vocabulary
 
-- **App** — one composed runtime process or host instance.
-- **App Definition** — the App-owner-authored intent: selected Plugins, Slot
-  choices, product configuration values, admitted local-setting paths, and
-  Execution Lane assignments. It is the only
-  hand-authored composition input.
+- **Host** — one runnable product boundary with an immutable catalog of root
+  Slots, embedded Plugin Releases, default Plugin Instances, and replacement
+  policy.
+- **Plugin Root** — the App-owner-owned collection of explicit Plugin
+  Instances, configuration, disabled markers, and exact non-embedded Releases
+  offered to one Host. It expresses differences from Host defaults rather than
+  restating a complete application.
+- **App** — the valid resolved result of combining one Host with one Plugin
+  Root. It is runtime output, not a hand-authored manifest.
 - **Plugin** — the sole application-behavior abstraction: product behavior
   authored in source with explicit execution, lifecycle, failure, state, and
   placement semantics. A Plugin may be embedded in a Host, bundled with a
   product, or installed later without becoming a different kind of thing.
 - **Plugin Descriptor** — the generated, locked declaration of a Plugin's
-  configuration Schema, safe defaults and local-setting comparison rules,
-  provided and required Capabilities, and optional durable state Interface. It
-  is derived from Plugin source and is never hand-authored.
-- **Plugin Instance** — one keyed App-local instantiation of an exact Plugin
-  Release. The App owner may pin it as required or expose it as optional.
+  configuration Schema, safe defaults, provided and required Capabilities, and
+  optional durable state Interface. It is derived from Plugin source and is
+  never hand-authored.
+- **Plugin Instance** — one App-local instantiation of an exact Plugin Release,
+  identified by its Plugin ID and Instance key together.
 - **Capability** — a versioned deep role Interface exposed or required by a
   Plugin; authored as source types whose canonical Schema is generated and
   locked.
@@ -44,9 +48,8 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 - **Plugin Release** — one immutable version of a Plugin and its exact
   metadata and Artifacts. Embedded, bundled, and installed are distribution
   modes of the same Release model, not separate authoring abstractions.
-- **Desired State** — App-owner intent: the App Definition plus enabled Plugin
-  Releases, Plugin Instances, Slot choices, configuration, and approved
-  permission scopes.
+- **Desired State** — the Host defaults plus the exact Plugin Root state and
+  approved permission scopes proposed for the next App.
 - **Change Proposal** — a deterministic explanation of one Desired State
   change that is ready, needs an App-owner decision, or is rejected; it is not
   runtime authority.
@@ -74,9 +77,10 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 - **Placement** — the Plan-declared assignment of Plugin Instances to
   Execution Lanes.
 
-`Module`, `Service`, `Provider`, `Console`, `Story`, and `System Plane` are not
-peer product or authoring types in vNext. Existing `Module*` code identifiers
-are compatibility-era private lowering and must not appear in an author,
+`App Definition`, `Module`, `Service`, `Provider`, `Console`, `Story`, and
+`System Plane` are not peer product or authoring types in vNext. Existing
+`Module*` code identifiers are compatibility-era private lowering and must not
+appear in an author,
 operator, or App-owner interface. `Plugin Contribution`, `Product Extension
 Point`, `Plugin Runtime Facet`, `Desired Plugin Set`, and `Composition Proposal`
 are retired draft terms: attachment is a Slot concern, shared runtime resources
@@ -94,6 +98,9 @@ separately running program is a host or an Execution Adapter concern.
 - Descriptors, Schemas, manifests, Compositions, Plan Snapshots, and
   Transitions are generated, locked build or resolver artifacts; hand-editing
   them is not an authoring path.
+- A Plugin Root is the only App-owner composition input. The resolver fills
+  Host defaults and unique legal bindings, rejects ambiguity, and never
+  exposes a hand-authored binding or placement escape hatch.
 - Kernel is independent of Tokio, operating-system facilities, filesystems,
   networks, databases, process control, and product policy.
 - Runtime Driver owns scheduling, clocks, cancellation lanes, and host
@@ -107,7 +114,7 @@ separately running program is a host or an Execution Adapter concern.
   targets without target-specific host services in its core state machine.
 - Parallelism comes from placing Plugin Instances on more Execution Lanes;
   Kernel correctness never requires work stealing, runtime Instance
-  migration, or thread-safe Module state.
+  migration, or thread-safe Plugin state.
 
 ## Workspace ownership
 
@@ -140,7 +147,7 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0069 are normative for vNext. The vNext architecture overview,
+ADRs 0030–0070 are normative for vNext. The vNext architecture overview,
 validation roadmap, and research notes are retained beside them. Accepted
 architecture is not an implementation claim; each contract states its current
 evidence and remaining delivery gates. Removed v0.3.x implementation docs are

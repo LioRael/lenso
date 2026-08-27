@@ -1,99 +1,101 @@
 # Lenso authoring tooling
 
-The `lenso-cli` repository owns the executable authoring product and the
-`lenso-authoring` library under ADR 0064. The public CLI exposes author intent;
-the library owns filesystem edits, package inspection, validation, derivation,
-canonical Plan materialization, and development Host mechanics.
+Status: accepted target under
+[Plan 006](../../plans/006-migrate-embedded-behavior-to-plugins.md). Released
+tools may retain compatibility commands until that plan's migration and
+retirement gates close.
 
-Neither installs code into a running Kernel. Package managers acquire packages
-and write ordinary lockfiles. Kernel receives only a complete immutable
-Resolved App Plan.
+The `lenso-cli` repository owns the executable authoring product and its
+filesystem-facing library under ADR 0064. The public CLI exposes Plugin source
+and Plugin Root intent; the library owns safe filesystem edits, bundle
+inspection, validation, derivation, canonical Plan materialization, and
+development Host mechanics.
 
-## Module author interface
+Neither the CLI nor its library installs code into a running Kernel. A Host
+resolves a complete candidate App, passes its Ready Gate, and then applies an
+immutable Plan Transition or App Generation swap above Kernel.
 
-Ordinary Module authors use five top-level commands:
+## Plugin author interface
+
+Every application-behavior author uses one command family:
 
 ```text
-lenso new
-lenso dev
-lenso check
-lenso verify
-lenso app
+lenso plugin new <id>
+lenso plugin check
+lenso plugin dev
+lenso plugin pack
 ```
 
-`new` creates a Module project. `check` emits fast actionable diagnostics.
-`dev` validates, resolves, and runs a fresh development generation. `verify`
-proves declared behavior and removal. These commands hide Descriptor lowering,
-binding closure, Plan serialization, Adapter assembly, and development Runner
-mechanics behind one deep Interface.
+`new` creates one Plugin project. `check` emits fast actionable diagnostics.
+`dev` validates and runs a fresh development App. `pack` validates the exact
+bundle it creates when the Plugin is distributed independently. A separate
+`verify` command is deliberately absent: `pack` checks authored output, and an
+installing Host independently verifies untrusted input.
 
-The CLI intentionally does not expose the removed top-level `add`, `resolve`,
-`run`, `compose`, or `module` command surfaces. They restated implementation
-stages or duplicated the ordinary Module workflow.
+These commands hide Descriptor lowering, binding closure, Plan serialization,
+Execution Adapter assembly, and development Host mechanics behind one deep
+interface. `Module` is not a public authoring type.
 
-## Source-derived App Definition
+## App-owner interface
 
-`lenso.app.json` is the only hand-authored App composition input. It selects
-Module packages and keyed Instances, supplies configuration and lane choices,
-records real binding ambiguities, and may assign request-admission limits to an
-exact derived binding. Generated package-owned Descriptors provide
-Capabilities, Ports, Operations, execution classes, and lifecycle facts.
-Derived App Composition and Plan documents are locked outputs rather than
-authoring surfaces.
+A Host supplies its root Slots, embedded Plugin Releases, default Plugin
+Instances, and replacement policy. An App owner expresses only differences in
+the current project's Plugin Root:
 
-Binding policies identify the consumer Instance, Capability, and provider
-Instance together. They tune queue capacity and maximum concurrency without
-selecting a provider or changing package-owned requirements and endpoints:
-
-```json
-{
-  "binding_policies": [
-    {
-      "consumer": "agent",
-      "capability_id": "lenso.agent.tools@2",
-      "provider": "tools",
-      "admission": {
-        "queue_capacity": 0,
-        "max_concurrency": 4
-      }
-    }
-  ]
-}
+```text
+plugins/<plugin-id>/<instance>.toml
+plugins/<plugin-id>/<instance>.disabled
+plugins/<plugin-id>/plugin.lenso-plugin
 ```
 
-A duplicate policy or a policy that does not match a derived binding fails
-resolution closed.
+The TOML body is direct Plugin configuration. Identity comes from its path;
+Capabilities, Slots, execution, placement constraints, Schema, and safe
+defaults come from generated Plugin and Host artifacts. There is no central
+App manifest.
 
-```sh
-lenso app add greeting-module --definition lenso.app.json --version '^1.0'
-lenso app check --definition lenso.app.json
-lenso app resolve --definition lenso.app.json \
-  --output .lenso/resolved-plan.json
-lenso app remove greeter --definition lenso.app.json --uninstall
+The ordinary commands are:
+
+```text
+lenso plugins list
+lenso plugins add <bundle>
+lenso plugins configure <plugin-id> [instance]
+lenso plugins disable <plugin-id> [instance]
+lenso plugins enable <plugin-id> [instance]
+lenso plugins remove <plugin-id> [instance]
+lenso app check
+lenso app show
+lenso run
 ```
 
-`app add` and `app remove` apply transactional package-manager and App
-Definition edits. `app check` and `app resolve` remain explicit advanced
-operations for App owners and Hosts that review or exchange canonical Plan
-bytes. A product-owned Runner or Host executes those bytes; the authoring CLI
-does not provide a generic `run --plan` interface.
+Mutation commands stage the minimum Plugin Root edit, resolve and Ready-check
+the complete candidate, then commit atomically. Direct file edits remain
+supported and fail startup closed when invalid. `app check` validates the
+derived App; `app show` explains Host defaults, explicit Instances,
+replacements, bindings, authority, and provenance.
+
+`lenso.app.json`, `lenso.app.toml`, `--definition`, manual bindings, package
+tables, and lane selections are retired authoring interfaces. `lenso app
+migrate` may consume an old Definition once and remove it only after proving
+the new Plugin Root resolves to equivalent behavior and authority.
+
+See the exact [Plugin Root and App resolution
+contract](plugin-root-resolution.md).
 
 ## Internal Plan seam
 
-Library Hosts may resolve once, persist or review canonical bytes, reload the
-same bytes, and pass the resulting `ResolvedProject` to their Runner:
+The resolver closes every Slot, Capability binding, execution variant, and
+placement from the Host Catalog, Plugin Root snapshot, and generated
+Descriptors. Library Hosts may inspect, persist, or exchange the resulting
+canonical Plan bytes, but those bytes never become author input:
 
 ```rust,ignore
-use lenso_authoring::{ProjectAuthoring, ResolvedProject, run_project};
-
-let resolved = project.resolve(root, &options)?;
-write_plan(resolved.canonical_bytes())?;
-let approved = ResolvedProject::from_canonical_bytes(read_plan()?)?;
-let outcome = run_project(&approved, driver, adapters, timeout).await?;
+let candidate = resolver.resolve(&host_catalog, &plugin_root_snapshot)?;
+candidate.require_ready()?;
+write_derived_plan(candidate.canonical_plan_bytes())?;
+host.apply(candidate).await?;
 ```
 
-Changing the App Definition, package lock, configuration, lane, explicit
-decision, or binding policy requires a new resolution before the Host applies
-a validated Plan Transition or starts a fresh App Generation. Kernel never
-discovers packages, selects providers, rewrites locks, or accepts an authoring
-recipe as runtime authority.
+Changing Host defaults, a Plugin Release, direct Instance configuration, or a
+disabled marker requires a fresh resolution. Kernel never discovers packages,
+selects providers, rewrites locks, reads Plugin Root files, or accepts an
+authoring recipe as runtime authority.

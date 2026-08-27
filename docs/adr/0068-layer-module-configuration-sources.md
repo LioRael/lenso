@@ -1,6 +1,6 @@
 # ADR 0068: Layer Module configuration sources without creating a generic overlay
 
-- Status: accepted
+- Status: superseded by [ADR 0070](0070-resolve-apps-from-plugin-roots.md)
 - Date: 2026-08-27
 - Extends: ADR 0031, ADR 0045, ADR 0066, ADR 0067
 - Related: ADR 0064
