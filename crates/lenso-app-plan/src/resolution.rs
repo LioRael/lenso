@@ -2,14 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan, ExecutionLanePlan,
-    ModuleInstancePlan, PlanResolutionError,
+    PlanResolutionError, PluginInstancePlan,
 };
 
 pub(super) fn resolve_parts(
-    module_instances: &[ModuleInstancePlan],
+    plugin_instances: &[PluginInstancePlan],
     capability_bindings: &[CapabilityBinding],
-) -> Result<(Vec<ModuleInstancePlan>, Vec<CapabilityBinding>), PlanResolutionError> {
-    let (instances, instance_indices) = normalize_instances(module_instances)?;
+) -> Result<(Vec<PluginInstancePlan>, Vec<CapabilityBinding>), PlanResolutionError> {
+    let (instances, instance_indices) = normalize_instances(plugin_instances)?;
     let grouped_bindings = group_bindings(&instances, &instance_indices, capability_bindings)?;
     validate_requirement_cardinality(&instances, &grouped_bindings)?;
     validate_activation_cycles(&instances, &grouped_bindings)?;
@@ -17,10 +17,10 @@ pub(super) fn resolve_parts(
 }
 
 fn normalize_instances(
-    module_instances: &[ModuleInstancePlan],
-) -> Result<(Vec<ModuleInstancePlan>, BTreeMap<String, usize>), PlanResolutionError> {
-    let mut instances = module_instances.to_vec();
-    sort_module_instances(&mut instances);
+    plugin_instances: &[PluginInstancePlan],
+) -> Result<(Vec<PluginInstancePlan>, BTreeMap<String, usize>), PlanResolutionError> {
+    let mut instances = plugin_instances.to_vec();
+    sort_plugin_instances(&mut instances);
 
     let mut instance_indices = BTreeMap::new();
     for (index, instance) in instances.iter().enumerate() {
@@ -28,7 +28,7 @@ fn normalize_instances(
             .insert(instance.instance_key.clone(), index)
             .is_some()
         {
-            return Err(PlanResolutionError::DuplicateModuleInstance {
+            return Err(PlanResolutionError::DuplicatePluginInstance {
                 instance_key: instance.instance_key.clone(),
             });
         }
@@ -39,7 +39,7 @@ fn normalize_instances(
 }
 
 fn group_bindings(
-    instances: &[ModuleInstancePlan],
+    instances: &[PluginInstancePlan],
     instance_indices: &BTreeMap<String, usize>,
     capability_bindings: &[CapabilityBinding],
 ) -> Result<BTreeMap<(String, String), Vec<CapabilityBinding>>, PlanResolutionError> {
@@ -58,7 +58,7 @@ fn group_bindings(
 }
 
 fn validate_binding(
-    instances: &[ModuleInstancePlan],
+    instances: &[PluginInstancePlan],
     instance_indices: &BTreeMap<String, usize>,
     binding: &CapabilityBinding,
 ) -> Result<(), PlanResolutionError> {
@@ -136,7 +136,7 @@ fn validate_binding(
 }
 
 fn validate_requirement_cardinality(
-    instances: &[ModuleInstancePlan],
+    instances: &[PluginInstancePlan],
     grouped_bindings: &BTreeMap<(String, String), Vec<CapabilityBinding>>,
 ) -> Result<(), PlanResolutionError> {
     for instance in instances {
@@ -241,7 +241,7 @@ fn order_bindings(
 }
 
 fn validate_activation_cycles(
-    instances: &[ModuleInstancePlan],
+    instances: &[PluginInstancePlan],
     grouped_bindings: &BTreeMap<(String, String), Vec<CapabilityBinding>>,
 ) -> Result<(), PlanResolutionError> {
     let bindings = grouped_bindings
@@ -255,7 +255,7 @@ fn validate_activation_cycles(
 }
 
 pub(super) fn activation_order_for(
-    instances: &[ModuleInstancePlan],
+    instances: &[PluginInstancePlan],
     bindings: &[CapabilityBinding],
 ) -> Result<Vec<String>, Vec<String>> {
     let mut indegrees: BTreeMap<String, usize> = instances
@@ -311,10 +311,10 @@ pub(super) fn activation_order_for(
 }
 
 fn validate_instance_declarations(
-    instance: &ModuleInstancePlan,
+    instance: &PluginInstancePlan,
 ) -> Result<(), PlanResolutionError> {
     if instance.entrypoint.trim().is_empty() {
-        return Err(PlanResolutionError::InvalidModuleEntrypoint {
+        return Err(PlanResolutionError::InvalidPluginEntrypoint {
             instance_key: instance.instance_key.clone(),
         });
     }
@@ -350,7 +350,7 @@ fn validate_instance_declarations(
     Ok(())
 }
 
-pub(super) fn sort_module_instances(instances: &mut [ModuleInstancePlan]) {
+pub(super) fn sort_plugin_instances(instances: &mut [PluginInstancePlan]) {
     instances.sort_by(|left, right| left.instance_key.cmp(&right.instance_key));
 }
 
@@ -362,7 +362,7 @@ pub(super) fn sorted_execution_lanes(lanes: &[ExecutionLanePlan]) -> Vec<Executi
 
 pub(super) fn validate_execution_lanes(
     lanes: &[ExecutionLanePlan],
-    instances: &[ModuleInstancePlan],
+    instances: &[PluginInstancePlan],
 ) -> Result<(), PlanResolutionError> {
     if lanes.is_empty() {
         return Err(PlanResolutionError::MissingExecutionLane);

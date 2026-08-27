@@ -1,10 +1,10 @@
 use std::time::Duration;
 
 use super::{
-    CancellationToken, EventCapability, InvocationContext, LocalBoxFuture,
-    ModuleEventDependencyHandle, NativeAppRuntime, NativeEndpointBinding, NativeEventHandle,
-    NativeRequestEndpoint, NativeRequestHandle, NativeStreamEndpointBinding, NativeStreamHandle,
-    Rc, RefCell, StreamCapability, Weak,
+    CancellationToken, EventCapability, InvocationContext, LocalBoxFuture, NativeAppRuntime,
+    NativeEndpointBinding, NativeEventHandle, NativeRequestEndpoint, NativeRequestHandle,
+    NativeStreamEndpointBinding, NativeStreamHandle, PluginEventDependencyHandle, Rc, RefCell,
+    StreamCapability, Weak,
 };
 
 pub trait RequestCapability: 'static {
@@ -152,7 +152,7 @@ pub enum RuntimeFailure {
     /// Generated native types disagreed with the prepared endpoint.
     ProtocolViolation { capability: &'static str },
     /// A package selected by the Plan was not linked into the native App.
-    MissingModuleFactory {
+    MissingPluginFactory {
         instance: String,
         package_id: String,
     },
@@ -176,22 +176,22 @@ pub enum RuntimeFailure {
     Cancelled { request_id: RequestId },
     /// The Runtime Driver or Adapter reported an internal execution failure.
     Internal { detail: String },
-    /// A Module generation reported a failure that should trigger supervision.
-    ModuleFailure { detail: String },
-    /// A Module Instance exhausted its finite restart budget.
-    ModuleRestartExhausted { instance: String, attempts: usize },
+    /// A Plugin generation reported a failure that should trigger supervision.
+    PluginFailure { detail: String },
+    /// A Plugin Instance exhausted its finite restart budget.
+    PluginRestartExhausted { instance: String, attempts: usize },
 }
 
-/// The lifecycle phase represented by a Module context.
+/// The lifecycle phase represented by a Plugin context.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ModuleLifecyclePhase {
-    /// The Module may validate configuration and reserve reversible resources.
+pub enum PluginLifecyclePhase {
+    /// The Plugin may validate configuration and reserve reversible resources.
     Prepare,
-    /// The Module may initialize against already prepared dependencies.
+    /// The Plugin may initialize against already prepared dependencies.
     Activate,
     /// The App Ready Gate has opened and externally triggered work may begin.
     Ready,
-    /// The Module must release work and resources owned by this generation.
+    /// The Plugin must release work and resources owned by this generation.
     Deactivate,
 }
 
@@ -260,25 +260,25 @@ mod typed_endpoint_tests {
     }
 }
 
-/// A deterministic dependency visible to one Module Instance.
+/// A deterministic dependency visible to one Plugin Instance.
 #[derive(Clone, Debug)]
-pub struct ModuleDependency {
+pub struct PluginDependency {
     pub(super) capability_id: String,
     pub(super) provider_instance: String,
     pub(super) provider_order: usize,
-    pub(super) handle: Option<ModuleDependencyHandle>,
-    pub(super) stream_handle: Option<ModuleStreamDependencyHandle>,
-    pub(super) event_handle: Option<ModuleEventDependencyHandle>,
+    pub(super) handle: Option<PluginDependencyHandle>,
+    pub(super) stream_handle: Option<PluginStreamDependencyHandle>,
+    pub(super) event_handle: Option<PluginEventDependencyHandle>,
 }
 
-impl ModuleDependency {
+impl PluginDependency {
     pub(super) fn new(
         capability_id: impl Into<String>,
         provider_instance: impl Into<String>,
         provider_order: usize,
-        handle: Option<ModuleDependencyHandle>,
-        stream_handle: Option<ModuleStreamDependencyHandle>,
-        event_handle: Option<ModuleEventDependencyHandle>,
+        handle: Option<PluginDependencyHandle>,
+        stream_handle: Option<PluginStreamDependencyHandle>,
+        event_handle: Option<PluginEventDependencyHandle>,
     ) -> Self {
         Self {
             capability_id: capability_id.into(),
@@ -306,24 +306,24 @@ impl ModuleDependency {
     }
 
     /// Returns the resolved native endpoint handle when the Adapter supplied one.
-    pub fn handle(&self) -> Option<ModuleDependencyHandle> {
+    pub fn handle(&self) -> Option<PluginDependencyHandle> {
         self.handle.clone()
     }
 
     /// Returns the resolved native stream endpoint handle when the Adapter supplied one.
-    pub fn stream_handle(&self) -> Option<ModuleStreamDependencyHandle> {
+    pub fn stream_handle(&self) -> Option<PluginStreamDependencyHandle> {
         self.stream_handle.clone()
     }
 
     /// Returns the resolved native Event endpoint handle when the Adapter supplied one.
-    pub fn event_handle(&self) -> Option<ModuleEventDependencyHandle> {
+    pub fn event_handle(&self) -> Option<PluginEventDependencyHandle> {
         self.event_handle.clone()
     }
 }
 
 /// An opaque, Adapter-resolved Capability endpoint passed to lifecycle code.
 #[derive(Clone, Debug)]
-pub struct ModuleDependencyHandle {
+pub struct PluginDependencyHandle {
     pub(super) binding: NativeEndpointBinding,
     pub(super) caller_instance: String,
     pub(super) runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
@@ -331,13 +331,13 @@ pub struct ModuleDependencyHandle {
 
 /// An opaque, Adapter-resolved stream Capability endpoint passed to lifecycle code.
 #[derive(Clone, Debug)]
-pub struct ModuleStreamDependencyHandle {
+pub struct PluginStreamDependencyHandle {
     pub(super) binding: NativeStreamEndpointBinding,
     pub(super) caller_instance: String,
     pub(super) runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
 }
 
-impl ModuleStreamDependencyHandle {
+impl PluginStreamDependencyHandle {
     /// Returns the Capability implemented by this stream handle.
     pub fn capability_id(&self) -> &'static str {
         self.binding.state.capability_id
@@ -372,7 +372,7 @@ impl ModuleStreamDependencyHandle {
     }
 }
 
-impl ModuleDependencyHandle {
+impl PluginDependencyHandle {
     /// Returns the Capability implemented by this handle.
     pub fn capability_id(&self) -> &'static str {
         self.binding.state.capability_id
@@ -407,15 +407,15 @@ impl ModuleDependencyHandle {
     }
 }
 
-/// The explicit Capability dependencies available during Module lifecycle.
+/// The explicit Capability dependencies available during Plugin lifecycle.
 #[derive(Clone, Debug, Default)]
-pub struct ModuleDependencies {
-    pub(super) bindings: Vec<ModuleDependency>,
+pub struct PluginDependencies {
+    pub(super) bindings: Vec<PluginDependency>,
     pub(super) caller_instance: Rc<str>,
     pub(super) runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
 }
 
-impl ModuleDependencies {
+impl PluginDependencies {
     pub(super) fn new(
         caller_instance: impl Into<String>,
         runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
@@ -428,7 +428,7 @@ impl ModuleDependencies {
     }
 
     /// Returns dependencies in the order materialized by the Resolved App Plan.
-    pub fn bindings(&self) -> &[ModuleDependency] {
+    pub fn bindings(&self) -> &[PluginDependency] {
         &self.bindings
     }
 
@@ -437,12 +437,12 @@ impl ModuleDependencies {
         self.bindings.len()
     }
 
-    /// Returns whether this Module has no explicit dependencies.
+    /// Returns whether this Plugin has no explicit dependencies.
     pub fn is_empty(&self) -> bool {
         self.bindings.is_empty()
     }
 
-    /// Creates a Kernel Invocation Context for work initiated by this Module.
+    /// Creates a Kernel Invocation Context for work initiated by this Plugin.
     ///
     /// The request identity and monotonic deadline come from the same Runtime
     /// Driver as the App. The context is still owned by the caller and its
@@ -463,7 +463,7 @@ impl ModuleDependencies {
             .with_shared_caller_instance(self.caller_instance.clone()))
     }
 
-    /// Creates a Module Invocation Context with a Driver-relative deadline.
+    /// Creates a Plugin Invocation Context with a Driver-relative deadline.
     pub fn invocation_context_after(
         &self,
         timeout: Duration,
@@ -485,7 +485,7 @@ impl ModuleDependencies {
             .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::handle)
+            .filter_map(PluginDependency::handle)
             .collect();
         match handles.as_slice() {
             [handle] => handle.typed::<C>(),
@@ -505,7 +505,7 @@ impl ModuleDependencies {
             .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::handle)
+            .filter_map(PluginDependency::handle)
             .collect::<Vec<_>>()
             .as_slice()
         {
@@ -525,7 +525,7 @@ impl ModuleDependencies {
         self.bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::handle)
+            .filter_map(PluginDependency::handle)
             .map(|handle| handle.typed::<C>())
             .collect()
     }
@@ -536,7 +536,7 @@ impl ModuleDependencies {
             .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::stream_handle)
+            .filter_map(PluginDependency::stream_handle)
             .collect();
         match handles.as_slice() {
             [handle] => handle.typed::<C>(),
@@ -556,7 +556,7 @@ impl ModuleDependencies {
             .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::stream_handle)
+            .filter_map(PluginDependency::stream_handle)
             .collect::<Vec<_>>()
             .as_slice()
         {
@@ -576,7 +576,7 @@ impl ModuleDependencies {
         self.bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::stream_handle)
+            .filter_map(PluginDependency::stream_handle)
             .map(|handle| handle.typed::<C>())
             .collect()
     }
@@ -587,7 +587,7 @@ impl ModuleDependencies {
             .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::event_handle)
+            .filter_map(PluginDependency::event_handle)
             .collect();
         if handles.iter().any(|handle| {
             handle.capability_id() != C::ID || handle.descriptor_version() != C::DESCRIPTOR_VERSION
@@ -617,7 +617,7 @@ impl ModuleDependencies {
             .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::event_handle)
+            .filter_map(PluginDependency::event_handle)
             .collect::<Vec<_>>()
             .as_slice()
         {
@@ -638,7 +638,7 @@ impl ModuleDependencies {
             .bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
-            .filter_map(ModuleDependency::event_handle)
+            .filter_map(PluginDependency::event_handle)
             .collect::<Vec<_>>()
             .as_slice()
         {

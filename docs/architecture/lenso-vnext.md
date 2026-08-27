@@ -80,17 +80,17 @@ See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.m
 [0045](../adr/0045-materialize-a-resolved-app-plan-before-boot.md), and
 [0057](../adr/0057-make-module-installation-an-authoring-operation.md).
 
-The executable implementation is [`lenso-authoring`](lenso-authoring.md).
-Its public CLI exposes Plugin authoring through `plugin new`, `check`, `dev`,
+The executable contract is documented in [Lenso authoring tooling](lenso-authoring.md)
+and implemented by the `lenso-cli` repository. Its public CLI exposes Plugin
+authoring through `plugin new`, `check`, `dev`,
 and `pack`, plus Plugin Root management and derived App inspection. Plugin
 packages provide locked deny-safe configuration defaults; direct Instance TOML
 contains only explicit differences. The resolver validates and materializes
 one complete canonical configuration per Instance before producing the next
 Plan Snapshot; Kernel never reads or merges configuration sources. See the
 [Plugin Root contract](plugin-root-resolution.md).
-Resolution, recipe expansion, Adapter assembly, and Plan execution remain
-library or product-Host implementation; Kernel receives only immutable Plan
-bytes.
+Resolution, Adapter assembly, and Plan execution remain library or product-Host
+implementation; Kernel receives only immutable Plan bytes.
 
 ## Kernel and hosts
 
@@ -275,7 +275,7 @@ cancellation, and Adapter seams that could support remote execution later. v1
 does not define discovery, placement, replicas, rolling upgrades, dynamic graph
 mutation, or a Lenso Control Plane. Revisit them only from a concrete App that
 needs distribution; see
-[`future-directions/distributed-module-runtime.md`](future-directions/distributed-module-runtime.md).
+[`future-directions/distributed-plugin-runtime.md`](future-directions/distributed-plugin-runtime.md).
 
 ## Legacy cutover
 

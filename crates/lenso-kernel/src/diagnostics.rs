@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use super::{ModuleLifecyclePhase, RuntimeFailure};
+use super::{PluginLifecyclePhase, RuntimeFailure};
 
 /// Allocation-free request probe used by host runtimes for aggregate placement metrics.
 ///
@@ -23,7 +23,7 @@ pub trait RuntimeInvocationProbe: std::fmt::Debug {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum DiagnosticSource {
-    /// Module generation preparation, activation, readiness, or deactivation.
+    /// Plugin generation preparation, activation, readiness, or deactivation.
     Lifecycle = 0,
     /// A Request or Stream-open operation entered or left the Kernel.
     Invocation = 1,
@@ -104,8 +104,8 @@ pub enum RuntimeFailureKind {
     AmbiguousBinding,
     /// The generated contract and endpoint disagreed.
     ProtocolViolation,
-    /// A selected Module factory was not linked.
-    MissingModuleFactory,
+    /// A selected Plugin factory was not linked.
+    MissingPluginFactory,
     /// The selected Execution Adapter is unavailable.
     UnavailableExecutionClass,
     /// The resolved Plan or prepared endpoint set is invalid.
@@ -120,10 +120,10 @@ pub enum RuntimeFailureKind {
     Cancelled,
     /// The Driver or Adapter reported an internal failure.
     Internal,
-    /// A Module generation reported a failure.
-    ModuleFailure,
-    /// A finite Module restart budget was exhausted.
-    ModuleRestartExhausted,
+    /// A Plugin generation reported a failure.
+    PluginFailure,
+    /// A finite Plugin restart budget was exhausted.
+    PluginRestartExhausted,
 }
 
 impl From<&RuntimeFailure> for RuntimeFailureKind {
@@ -133,7 +133,7 @@ impl From<&RuntimeFailure> for RuntimeFailureKind {
             RuntimeFailure::UnknownOperation { .. } => Self::UnknownOperation,
             RuntimeFailure::AmbiguousBinding { .. } => Self::AmbiguousBinding,
             RuntimeFailure::ProtocolViolation { .. } => Self::ProtocolViolation,
-            RuntimeFailure::MissingModuleFactory { .. } => Self::MissingModuleFactory,
+            RuntimeFailure::MissingPluginFactory { .. } => Self::MissingPluginFactory,
             RuntimeFailure::UnavailableExecutionClass { .. } => Self::UnavailableExecutionClass,
             RuntimeFailure::InvalidResolvedPlan { .. } => Self::InvalidResolvedPlan,
             RuntimeFailure::AdmissionClosed => Self::AdmissionClosed,
@@ -141,8 +141,8 @@ impl From<&RuntimeFailure> for RuntimeFailureKind {
             RuntimeFailure::DeadlineExceeded { .. } => Self::DeadlineExceeded,
             RuntimeFailure::Cancelled { .. } => Self::Cancelled,
             RuntimeFailure::Internal { .. } => Self::Internal,
-            RuntimeFailure::ModuleFailure { .. } => Self::ModuleFailure,
-            RuntimeFailure::ModuleRestartExhausted { .. } => Self::ModuleRestartExhausted,
+            RuntimeFailure::PluginFailure { .. } => Self::PluginFailure,
+            RuntimeFailure::PluginRestartExhausted { .. } => Self::PluginRestartExhausted,
         }
     }
 }
@@ -188,24 +188,24 @@ pub enum DiagnosticShutdownOutcome {
 /// extension, `ActorAssertion`, or Domain Error fields. Delivery of these
 /// records is not itself observed, so exporting a record cannot recurse into
 /// the diagnostic feed. Caller identities are present only when they resolve
-/// to a Module Instance in the immutable App Plan.
+/// to a Plugin Instance in the immutable App Plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticEvent {
     /// The Kernel created a running App runtime.
-    AppStarted { module_count: usize },
-    /// Every selected Module generation has activated and App admission opened.
+    AppStarted { plugin_count: usize },
+    /// Every selected Plugin generation has activated and App admission opened.
     AppReady,
-    /// A Module lifecycle phase began.
+    /// A Plugin lifecycle phase began.
     LifecycleStarted {
         instance: String,
         generation: u64,
-        phase: ModuleLifecyclePhase,
+        phase: PluginLifecyclePhase,
     },
-    /// A Module lifecycle phase completed with a sanitized outcome and duration.
+    /// A Plugin lifecycle phase completed with a sanitized outcome and duration.
     LifecycleCompleted {
         instance: String,
         generation: u64,
-        phase: ModuleLifecyclePhase,
+        phase: PluginLifecyclePhase,
         outcome: DiagnosticOutcome,
         elapsed: Duration,
     },

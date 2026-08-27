@@ -1,10 +1,10 @@
-use lenso_app_plan::{AppComposition, ExecutionClassId, ModuleInstancePlan};
+use lenso_app_plan::{AppComposition, ExecutionClassId, PluginInstancePlan};
 
 #[test]
 fn resolved_plan_preserves_an_open_execution_class_id() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("python", "package.python")
+            PluginInstancePlan::new("python", "package.python")
                 .with_execution_class(ExecutionClassId::new("community.python-process@1")),
         ],
         vec![],
@@ -13,7 +13,7 @@ fn resolved_plan_preserves_an_open_execution_class_id() {
     .expect("the execution class ID is valid authoring data");
 
     assert_eq!(
-        plan.module_instance("python")
+        plan.plugin_instance("python")
             .expect("the instance is materialized")
             .execution_class()
             .as_str(),
@@ -24,14 +24,14 @@ fn resolved_plan_preserves_an_open_execution_class_id() {
 #[test]
 fn native_rust_is_the_default_execution_class() {
     let plan = AppComposition::new(
-        vec![ModuleInstancePlan::new("native", "package.native")],
+        vec![PluginInstancePlan::new("native", "package.native")],
         vec![],
     )
     .resolve()
     .expect("the default execution class is valid authoring data");
 
     assert_eq!(
-        plan.module_instance("native")
+        plan.plugin_instance("native")
             .expect("the instance is materialized")
             .execution_class(),
         &ExecutionClassId::native_rust()

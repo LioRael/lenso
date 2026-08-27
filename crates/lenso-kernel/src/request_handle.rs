@@ -4,7 +4,7 @@ use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticOutcome, DiagnosticSource,
     InvocationContext, NativeAppRuntime, NativeEndpointBinding, RequestCapability, RequestId,
     RuntimeFailure, await_with_generation_context, diagnostics::diagnostic_operation,
-    ensure_context_active, schedule_module_supervision_after_failure,
+    ensure_context_active, schedule_plugin_supervision_after_failure,
 };
 
 /// Typed, immutable native Capability endpoints materialized before App boot completes.
@@ -25,7 +25,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         caller_instance: &str,
         allow_before_ready: bool,
     ) -> Self {
-        let caller_is_planned = runtime.plan.module_instance(caller_instance).is_some();
+        let caller_is_planned = runtime.plan.plugin_instance(caller_instance).is_some();
         Self {
             endpoints: endpoints.to_vec(),
             runtime,
@@ -69,7 +69,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         if let Some(endpoint) = self.endpoints.first() {
             self.runtime
                 .diagnostics
-                .record_invocation(&self.caller_instance, &endpoint.module_instance);
+                .record_invocation(&self.caller_instance, &endpoint.plugin_instance);
         }
         let invocation_diagnostics = self
             .runtime
@@ -93,7 +93,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                         provider_instance: self
                             .endpoints
                             .first()
-                            .map(|endpoint| endpoint.module_instance.clone()),
+                            .map(|endpoint| endpoint.plugin_instance.clone()),
                         capability: C::ID,
                         operation: operation_name,
                     }
@@ -115,7 +115,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                         provider_instance: self
                             .endpoints
                             .first()
-                            .map(|endpoint| endpoint.module_instance.clone()),
+                            .map(|endpoint| endpoint.plugin_instance.clone()),
                         capability: C::ID,
                         operation: operation_name,
                         outcome,
@@ -128,7 +128,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 (self.runtime.driver.now)(),
                 self.endpoints
                     .first()
-                    .map(|endpoint| endpoint.module_instance.as_str()),
+                    .map(|endpoint| endpoint.plugin_instance.as_str()),
                 error,
             );
             if let Some(admission) = diagnostic_admission(error) {
@@ -141,7 +141,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                         provider_instance: self
                             .endpoints
                             .first()
-                            .map(|endpoint| endpoint.module_instance.clone()),
+                            .map(|endpoint| endpoint.plugin_instance.clone()),
                         capability: C::ID,
                         operation: operation_name,
                         outcome: admission,
@@ -205,16 +205,16 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         )
         .await
         .map_err(|error| {
-            schedule_module_supervision_after_failure(
+            schedule_plugin_supervision_after_failure(
                 &self.runtime,
-                &endpoint.module_instance,
+                &endpoint.plugin_instance,
                 error,
             )
         })?
         .map_err(|error| {
-            schedule_module_supervision_after_failure(
+            schedule_plugin_supervision_after_failure(
                 &self.runtime,
-                &endpoint.module_instance,
+                &endpoint.plugin_instance,
                 error,
             )
         })?;
@@ -249,7 +249,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         for endpoint in &self.endpoints {
             self.runtime
                 .diagnostics
-                .record_invocation(&self.caller_instance, &endpoint.module_instance);
+                .record_invocation(&self.caller_instance, &endpoint.plugin_instance);
         }
         let invocation_diagnostics = self
             .runtime
@@ -370,16 +370,16 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
             )
             .await
             .map_err(|error| {
-                schedule_module_supervision_after_failure(
+                schedule_plugin_supervision_after_failure(
                     &self.runtime,
-                    &endpoint.module_instance,
+                    &endpoint.plugin_instance,
                     error,
                 )
             })?
             .map_err(|error| {
-                schedule_module_supervision_after_failure(
+                schedule_plugin_supervision_after_failure(
                     &self.runtime,
-                    &endpoint.module_instance,
+                    &endpoint.plugin_instance,
                     error,
                 )
             })?;

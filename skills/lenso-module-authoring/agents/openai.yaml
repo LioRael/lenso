@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso Module Authoring"
-  short_description: "Author removable Modules and Plugin Releases."
-  default_prompt: "Use $lenso-module-authoring to implement this product behavior as a vertical Module behind explicit Capabilities and, when requested and supported, package it as an installable Plugin Release."

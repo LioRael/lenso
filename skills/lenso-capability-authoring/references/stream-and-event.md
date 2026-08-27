@@ -57,7 +57,7 @@ has independent bounded admission and publication reports partial outcomes.
 
 Event does not promise persistence, replay, redelivery, global ordering, or
 exactly-once delivery. Model those product requirements through an owning
-stateful Module, Outbox, broker Adapter, or durable Capability rather than
+stateful Plugin, Outbox, broker Adapter, or durable Capability rather than
 changing Kernel Event semantics.
 
 ## Proof matrix

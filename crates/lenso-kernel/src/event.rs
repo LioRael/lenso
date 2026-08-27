@@ -14,7 +14,7 @@ use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticSource, EventAdmissionPlan,
     InvocationContext, NativeAppRuntime, RuntimeFailure, await_with_generation_context,
     diagnostics::diagnostic_operation, ensure_context_active,
-    schedule_module_supervision_after_failure,
+    schedule_plugin_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one ephemeral Event Capability.
@@ -257,20 +257,20 @@ impl NativeEventEndpointState {
 
 #[derive(Clone, Debug)]
 pub(crate) struct NativeEventEndpointBinding {
-    pub(crate) module_instance: String,
+    pub(crate) plugin_instance: String,
     pub(crate) state: Rc<NativeEventEndpointState>,
     pub(crate) queue: Rc<NativeEventQueue>,
 }
 
-/// An opaque Event endpoint passed to Module lifecycle code.
+/// An opaque Event endpoint passed to Plugin lifecycle code.
 #[derive(Clone, Debug)]
-pub struct ModuleEventDependencyHandle {
+pub struct PluginEventDependencyHandle {
     pub(crate) binding: NativeEventEndpointBinding,
     pub(crate) caller_instance: String,
     pub(crate) runtime: Rc<RefCell<std::rc::Weak<NativeAppRuntime>>>,
 }
 
-impl ModuleEventDependencyHandle {
+impl PluginEventDependencyHandle {
     /// Returns the Capability implemented by this handle.
     pub fn capability_id(&self) -> &'static str {
         self.binding.state.capability_id
@@ -387,7 +387,7 @@ impl<C: EventCapability> NativeEventHandle<C> {
             |_| DiagnosticEvent::EventAdmission {
                 request_id: context.request_id(),
                 publisher_instance: self.caller_instance.clone(),
-                subscriber_instance: endpoint.module_instance.clone(),
+                subscriber_instance: endpoint.plugin_instance.clone(),
                 capability: C::ID,
                 operation: operation_name,
                 outcome,
@@ -403,7 +403,7 @@ impl<C: EventCapability> NativeEventHandle<C> {
         context: InvocationContext,
         event: C::Event,
     ) -> EventPublishResult {
-        let subscriber = endpoint.module_instance.clone();
+        let subscriber = endpoint.plugin_instance.clone();
         let unavailable =
             || EventPublishResult::new(subscriber.clone(), EventAdmission::Unavailable);
         if self.runtime.shutdown_started.get()
@@ -435,14 +435,14 @@ impl<C: EventCapability> NativeEventHandle<C> {
             return match result {
                 Ok(()) => EventPublishResult::new(subscriber, EventAdmission::Accepted),
                 Err(error) => {
-                    let error = schedule_module_supervision_after_failure(
+                    let error = schedule_plugin_supervision_after_failure(
                         &self.runtime,
-                        &endpoint.module_instance,
+                        &endpoint.plugin_instance,
                         error,
                     );
                     self.runtime.diagnostics.emit_runtime_failure(
                         (self.runtime.driver.now)(),
-                        Some(&endpoint.module_instance),
+                        Some(&endpoint.plugin_instance),
                         &error,
                     );
                     let admission = if matches!(error, RuntimeFailure::ResourceExhausted { .. }) {
@@ -466,9 +466,9 @@ impl<C: EventCapability> NativeEventHandle<C> {
         if should_start {
             let Some(tasks) = self
                 .runtime
-                .modules
-                .get(&endpoint.module_instance)
-                .and_then(|module| module.generation_parts().map(|(_, tasks, _)| tasks))
+                .plugins
+                .get(&endpoint.plugin_instance)
+                .and_then(|plugin| plugin.generation_parts().map(|(_, tasks, _)| tasks))
             else {
                 queue.abort();
                 return unavailable();
@@ -476,7 +476,7 @@ impl<C: EventCapability> NativeEventHandle<C> {
             let drain = drain_event_queue(
                 queue.clone(),
                 self.runtime.clone(),
-                endpoint.module_instance.clone(),
+                endpoint.plugin_instance.clone(),
                 C::ID,
             );
             if tasks.spawn_local(Box::pin(drain)).is_err() {
@@ -502,7 +502,7 @@ impl<C: EventCapability> NativeEventHandle<C> {
 async fn drain_event_queue(
     queue: Rc<NativeEventQueue>,
     runtime: Rc<NativeAppRuntime>,
-    module_instance: String,
+    plugin_instance: String,
     capability: &'static str,
 ) {
     while let Some(queued) = queue.pop() {
@@ -524,23 +524,23 @@ async fn drain_event_queue(
             Ok(Ok(Err(error)) | Err(error)) => {
                 runtime.diagnostics.emit_runtime_failure(
                     (runtime.driver.now)(),
-                    Some(&module_instance),
+                    Some(&plugin_instance),
                     &error,
                 );
                 let _ =
-                    schedule_module_supervision_after_failure(&runtime, &module_instance, error);
+                    schedule_plugin_supervision_after_failure(&runtime, &plugin_instance, error);
             }
             Err(_) => {
-                let error = RuntimeFailure::ModuleFailure {
-                    detail: format!("native Event subscriber `{module_instance}` panicked"),
+                let error = RuntimeFailure::PluginFailure {
+                    detail: format!("native Event subscriber `{plugin_instance}` panicked"),
                 };
                 runtime.diagnostics.emit_runtime_failure(
                     (runtime.driver.now)(),
-                    Some(&module_instance),
+                    Some(&plugin_instance),
                     &error,
                 );
                 let _ =
-                    schedule_module_supervision_after_failure(&runtime, &module_instance, error);
+                    schedule_plugin_supervision_after_failure(&runtime, &plugin_instance, error);
             }
         }
         queue.complete();

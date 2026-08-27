@@ -3,12 +3,12 @@ use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
 use futures::future::{LocalBoxFuture, ready};
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    EventAdmissionPlan, ModuleInstancePlan, ResolvedAppPlan,
+    EventAdmissionPlan, PluginInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
     DeterministicDriver, DiagnosticEvent, EventAdmission, EventCapability, InvocationContext,
-    NativeEventEndpoint, NativeExecutionAdapter, NoopModuleLifecycle, PreparedEventBinding,
-    PreparedNativeApp, PreparedNativeModule, RuntimeDriver, RuntimeFailure,
+    NativeEventEndpoint, NativeExecutionAdapter, NoopPluginLifecycle, PreparedEventBinding,
+    PreparedNativeApp, PreparedNativePlugin, RuntimeDriver, RuntimeFailure,
 };
 
 const CAPABILITY_ID: &str = "example.notifications@1";
@@ -156,9 +156,9 @@ impl NativeExecutionAdapter for EventAdapter {
         for (provider, endpoint) in &self.endpoints {
             generations.insert(
                 provider.clone(),
-                PreparedNativeModule::with_event_endpoints(
+                PreparedNativePlugin::with_event_endpoints(
                     vec![endpoint.clone()],
-                    NoopModuleLifecycle,
+                    NoopPluginLifecycle,
                 ),
             );
             bindings.push(PreparedEventBinding::new(
@@ -169,7 +169,7 @@ impl NativeExecutionAdapter for EventAdapter {
         }
         generations.insert(
             "consumer".to_owned(),
-            PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+            PreparedNativePlugin::new(Vec::new(), NoopPluginLifecycle),
         );
         Ok(PreparedNativeApp::new(Vec::new(), generations).with_event_bindings(bindings))
     }
@@ -177,7 +177,7 @@ impl NativeExecutionAdapter for EventAdapter {
 
 fn many_event_plan(provider_count: usize) -> ResolvedAppPlan {
     let mut instances = vec![
-        ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+        PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
             CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION),
         ),
     ];
@@ -186,7 +186,7 @@ fn many_event_plan(provider_count: usize) -> ResolvedAppPlan {
         let provider = format!("provider-{index}");
         let queue_capacity = if index == 0 { 1 } else { 2 };
         instances.push(
-            ModuleInstancePlan::new(&provider, "package.provider").with_capability(
+            PluginInstancePlan::new(&provider, "package.provider").with_capability(
                 CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION])
                     .with_event_operation(OPERATION)
                     .with_event_capacity(queue_capacity),
@@ -208,10 +208,10 @@ fn many_event_plan(provider_count: usize) -> ResolvedAppPlan {
 fn one_binding_shares_one_event_mailbox_across_operations() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new(
                     CAPABILITY_ID,
                     DESCRIPTOR_VERSION,
@@ -286,10 +286,10 @@ fn one_binding_shares_one_event_mailbox_across_operations() {
 fn zero_capacity_event_binding_never_accepts_a_publication() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION])
                     .with_event_operation(OPERATION)
                     .with_event_capacity(0),

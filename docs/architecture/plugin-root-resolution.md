@@ -5,10 +5,9 @@ model accepted by [ADR 0070](../adr/0070-resolve-apps-from-plugin-roots.md).
 It changes App authoring above Kernel; it does not change Plan or Kernel
 semantics.
 
-Implementation is tracked by [Plan 006](../../plans/006-migrate-embedded-behavior-to-plugins.md).
-Until that plan closes, released Hosts and CLIs may still expose compatibility
-App Definition and `Module*` inputs; this target contract is not a shipped-state
-claim.
+The core resolver implements this contract. Product Hosts generate their own
+Catalogs and filesystem adapters, while `lenso-cli` exposes the common Plugin
+and App-owner command surface.
 
 ## The complete public model
 
@@ -59,9 +58,11 @@ max_output_tokens = 2048
 ```
 
 An empty TOML document explicitly enables an optional Plugin Instance with its
-package defaults. A Host default Instance with only package defaults needs no
-file. A configuration file matching a Host default Instance key replaces only
-its configuration values; it does not create a duplicate Instance.
+package defaults plus any Host-owned configuration for that Instance. Host
+configuration does not activate an optional Plugin by itself. A Host default
+Instance needs no file. A configuration file matching a Host default Instance
+key replaces only its configuration values; it does not create a duplicate
+Instance.
 
 One optional `plugin.lenso-plugin` is the exact Release source when the Plugin
 is not in the Host's immutable Plugin Catalog. Its declared Plugin ID must
@@ -86,9 +87,9 @@ escape the Plugin Root, and case-colliding paths fail closed.
 One immutable Host Catalog declares:
 
 - the exact embedded Plugin Releases available to this Host build;
-- root Slots, their attachment kind and cardinality;
-- default Plugin Instances and any Host-owned configuration over package
-  defaults;
+- root Slots, their cardinality and replacement policy;
+- default Plugin Instances and Host-owned configuration for default or
+  optional linked Instances;
 - whether each default is required, optional, or replaceable;
 - deterministic ordering for `many` and `intercept` Slots;
 - execution constraints and maximum counts or resource ceilings; and
@@ -195,9 +196,9 @@ accept no Definition path. An advanced `lenso app resolve --output <path>` may
 export derived evidence for debugging or deployment; its output is never the
 next authoring input.
 
-## Migration from App Definitions
+## Retirement of App Definitions
 
-Migration is mechanical and fail-closed:
+The retired shape maps mechanically to the new model:
 
 - every `plugins[]` or compatibility `modules[]` entry becomes
   `plugins/<plugin-id>/<instance>.toml`;
@@ -209,9 +210,9 @@ Migration is mechanical and fail-closed:
   from author input and are re-derived;
 - a choice that the new resolver cannot determine uniquely blocks migration
   with the conflicting Plugin Instances and Host Slot involved; and
-- once migrated, `lenso.app.json`, `lenso.app.toml`, `--definition`, and
-  `app add/remove --definition` produce an actionable retirement diagnostic.
+- `lenso.app.json`, `lenso.app.toml`, `--definition`, and
+  `app add/remove --definition` are not accepted interfaces.
 
-The migration tool must prove that the old and new inputs resolve to the same
-effective Plugin Instances, configuration, bindings, authority, and Plan before
-it removes the old file.
+There is no permanent migration command: an App owner moves the intended
+Plugin differences into `plugins/`, reviews `lenso app show`, and proves the
+derived behavior before deleting the obsolete file.

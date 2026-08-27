@@ -1,8 +1,8 @@
 # App Generation control
 
 Use this branch for Host mechanics that replace or recover a complete immutable
-Plan snapshot. Plugin identity, admission, Desired State, and product Slot
-policy stay above portable Kernel; Module behavior stays in Modules.
+Plan snapshot. Plugin identity, package admission, Plugin Root resolution, and
+product Slot policy stay above portable Kernel; Plugin behavior stays in Plugins.
 
 ## Current boundary
 
@@ -12,15 +12,15 @@ supervision, fenced routing epochs and Leases, complete-lane staging and
 readiness, atomic switch, bounded drain, standby, rollback, terminal-failure
 reconciliation, recovery, and shutdown.
 
-This does not prove the complete Dynamic Plugin product. Product Desired State
-and Change Proposal UX, automatic Store discovery/distribution, durable product
-Session fencing, marketplace flows, Hot Plan Transition, and stable graduation
-of preview execution classes require separate evidence.
+This does not prove a package marketplace or remote distribution product.
+Automatic acquisition, durable product Session fencing, marketplace flows, Hot
+Plan Transition, and stable graduation of preview execution classes require
+separate evidence.
 
 ## Preserve the authority chain
 
 One resolved candidate must close exact canonical bytes for the Plan, Artifact
-Set, Effective Host Grants, Host Build, Plugin Lock, and Generation Spec. Every
+Set, Effective Host Grants, Host Build, resolution authority, and Generation Spec. Every
 later stage verifies those authorities; it must not execute Plugin code to
 discover metadata, broaden a grant, repair a binding, substitute an Artifact,
 or select a newer Release.
@@ -40,7 +40,7 @@ standby.
 ## Do not mutate Kernel
 
 Kernel executes one immutable Plan Snapshot and validated transitions. It has
-no Plugin registry, downloader, resolver, Store, Desired State, or mutable
+no Plugin registry, downloader, filesystem resolver, Store, Plugin Root, or mutable
 binding graph. A structural change uses a fresh Generation. Use an in-place
 Plan Transition only when the accepted whitelist and conformance prove that the
 change is hot-applicable; Hot Plan Transition remains incomplete today.

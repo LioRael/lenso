@@ -38,9 +38,9 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 - **Operation** — one request, stream, or event interaction in a Capability.
 - **Port** — one typed Capability requirement declared in Plugin source; its
   cardinality and Descriptor requirement are derived, not restated.
-- **Slot** — a product-owned, versioned attachment point with a fixed
-  attachment kind (add, provide, intercept, or mount), cardinality, and
-  ordering policy. Plugins and data items are offered to Slots.
+- **Slot** — a product-owned, versioned attachment point with cardinality,
+  replacement policy, and deterministic ordering. Plugins are offered to
+  Slots.
 - **Slot Entry** — one generated manifest declaration offering a Plugin or
   data item to one Slot.
 - **Slot Catalog** — the immutable product-owned catalog of Slots and their
@@ -78,10 +78,8 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
   Execution Lanes.
 
 `App Definition`, `Module`, `Service`, `Provider`, `Console`, `Story`, and
-`System Plane` are not peer product or authoring types in vNext. Existing
-`Module*` code identifiers are compatibility-era private lowering and must not
-appear in an author,
-operator, or App-owner interface. `Plugin Contribution`, `Product Extension
+`System Plane` are not peer product or authoring types in vNext and must not
+appear in an author, operator, or App-owner interface. `Plugin Contribution`, `Product Extension
 Point`, `Plugin Runtime Facet`, `Desired Plugin Set`, and `Composition Proposal`
 are retired draft terms: attachment is a Slot concern, shared runtime resources
 are Plugins, and intent plus proposal are Desired State and Change Proposal. A

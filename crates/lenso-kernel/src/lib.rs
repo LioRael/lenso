@@ -19,7 +19,7 @@ use futures::{
     task::{LocalSpawnExt, SpawnError},
 };
 use lenso_app_plan::{
-    EventAdmissionPlan, ExecutionClassId, ModuleCriticality, PlanResolutionError,
+    EventAdmissionPlan, ExecutionClassId, PlanResolutionError, PluginCriticality,
     RequestAdmissionPlan, ResolvedAppPlan, RestartMode, RestartPolicy,
 };
 
@@ -43,8 +43,8 @@ pub use diagnostics::{
     RuntimeDiagnostics, RuntimeFailureKind, RuntimeInvocationProbe,
 };
 pub use event::{
-    EventAdmission, EventCapability, EventPublishResult, EventPublishStatus,
-    ModuleEventDependencyHandle, NativeEventEndpoint, NativeEventHandle,
+    EventAdmission, EventCapability, EventPublishResult, EventPublishStatus, NativeEventEndpoint,
+    NativeEventHandle, PluginEventDependencyHandle,
 };
 pub use invocation::*;
 pub use stream::{
@@ -73,6 +73,6 @@ pub use request::*;
 pub use request_handle::*;
 pub use runtime::*;
 use supervision::{
-    begin_module_supervision, deactivate_in_reverse, module_supervision,
-    schedule_module_supervision, shutdown_native_modules, validate_native_endpoint_set,
+    begin_plugin_supervision, deactivate_in_reverse, plugin_supervision,
+    schedule_plugin_supervision, shutdown_native_plugins, validate_native_endpoint_set,
 };

@@ -1,44 +1,42 @@
-# Module-first Lenso skills
+# Plugin-first Lenso skills
 
 These public skills follow the vNext product model on `main`: selected product
-behavior is built from ordinary Modules, while Capabilities, App Composition,
+behavior is built from ordinary Plugins, while Capabilities, App configuration,
 and the runtime seams each keep one distinct responsibility.
 
 This catalog is project-level agent documentation. It routes work to the
 repository that owns each implementation; its location does not move CLI,
-protocol, Driver, Adapter, Module, or example ownership into the portable core.
+protocol, Driver, Adapter, Plugin, or example ownership into the portable core.
 
 ```text
 product outcome
       |
       v
-Module map -> Capability contracts -> Module implementations
+Plugin map -> Capability contracts -> Plugin implementations
                                       |
-                                      +--> optional Plugin Release
-                                      |        |
-                                      |        v
-                                      |   admission + App intent
+                                      +--> optional portable package
                                       |        |
                                       v
-                         App Composition -> Resolved App Plan
+                    Host Catalog + plugins/ -> Resolved App Plan
                                       |
                                       v
                     Driver + Adapters + App Generations
 ```
 
-“Everything is a Module” is the product rule, not a reason to turn every
-technical object into one. A Module owns removable product behavior. A
-Capability is its collaboration Interface. App Composition selects Instances
-and bindings. Runtime Drivers, Execution Adapters, Runners, and the portable
-Kernel make those Modules run.
+“Everything is a Plugin” is the product rule, not a reason to turn every
+technical object into one. A Plugin owns removable product behavior. A
+Capability is its collaboration Interface. The Host Catalog supplies defaults;
+App configuration records only differences in `plugins/`; resolution derives
+Instances and bindings. Runtime Drivers, Execution Adapters, Runners, and the
+portable Kernel make those Plugins run.
 
 | Skill | Use it for |
 | --- | --- |
 | `lenso-start` | Explicitly route a request to one primary vNext workflow. |
-| `lenso-business-planning` | Turn a product outcome into a vertical Module map. |
+| `lenso-business-planning` | Turn a product outcome into a vertical Plugin map. |
 | `lenso-capability-authoring` | Design or evolve a versioned Capability contract and bindings. |
-| `lenso-module-authoring` | Implement any Module shape and, when supported, package it as an installable Plugin Release. |
-| `lenso-app-composition` | Select packages or admitted Plugins, keyed Instances, App-owner decisions, and immutable Plan/Generation intent. |
+| `lenso-plugin-authoring` | Implement one Plugin and, when portable, package it with `plugin pack`. |
+| `lenso-app-configuration` | Configure `plugins/`, inspect the Host-derived App, and prove behavior/removal. |
 | `lenso-runtime-extension` | Extend the Driver, Execution Adapter, Runner, App Generation controller, or other host mechanism. |
 
 ## How to use the pack
@@ -53,8 +51,8 @@ unclear outcome/owner
 business planning
         |
         +--> Capability source + generated bindings
-        +--> Module behavior + factory/entrypoint + lifecycle
-        +--> App package/Instance/binding choices + Resolved Plan
+        +--> Plugin behavior + factory/entrypoint + lifecycle
+        +--> Plugin Root differences + derived Plan
         `--> Driver/Adapter/Runner host mechanics
 ```
 
@@ -65,23 +63,22 @@ the work. Exact current APIs and commands still come from the selected package
 versions, repository instructions, manifests, `--help`, and CI.
 
 The support-ticket planning example shows how the workflows hand off to each
-other. The Module references contain complete native Rust, Bun, Web/UI,
-stateful, and cross-cutting recipes. Capability and App Composition contain a
-request contract and a source-derived `lenso.app.json` example.
+other. Plugin authoring covers the supported linked-native and portable Wasm
+paths. Capability and App configuration document typed contracts and the
+visible Plugin Root.
 
 The old Service, Provider, Host, Console Surface, and API-client workflows are
 not peer vNext authoring models. Out-of-process behavior, UI Contributions,
 Auth, State, Story, Audit, OpenTelemetry, Web ingress, and similar product
-concerns route through Module authoring. Generated consumers and providers
+concerns route through Plugin authoring. Generated consumers and providers
 route through Capability authoring. Process, transport, and endpoint mechanics
 route through runtime extension.
 
-Plugin is likewise not a peer programming model. Module authoring owns its
-behavior and optional Release packaging; App Composition owns selection and
-semantic choices; Runtime Extension owns admission, Store, Reconciler, and App
-Generation mechanics. The structural Generation runtime is implemented, while
-the complete generic Dynamic Plugin authoring/distribution/Desired State and
-hot-Transition product chain remains incomplete.
+Plugin authoring owns behavior and packaging; App configuration owns only the
+visible `plugins/` differences; Host Catalog generation owns product defaults
+and root Slots; Runtime Extension owns readiness, reconciliation, and App
+Generation mechanics. Store, Receipt, Controller, and Supervisor remain
+internal implementation concepts rather than additional authoring models.
 
 Install this catalog from its owning repository with:
 

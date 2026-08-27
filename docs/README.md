@@ -11,7 +11,7 @@ This directory contains the design evidence for the vNext `main` branch.
   historical ADRs 0001–0029.
 - [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md)
   defines the implementation evidence sequence.
-- [`architecture/future-directions/distributed-module-runtime.md`](architecture/future-directions/distributed-module-runtime.md)
+- [`architecture/future-directions/distributed-plugin-runtime.md`](architecture/future-directions/distributed-plugin-runtime.md)
   records deferred distribution decisions.
 
 ## Accepted contracts
@@ -22,12 +22,15 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`architecture/plugin-root-resolution.md`](architecture/plugin-root-resolution.md)
   defines the current Plugin Root input and deterministic App resolution
   contract.
-- [`architecture/plugin-authoring-and-resolution.md`](architecture/plugin-authoring-and-resolution.md)
-  retains the superseded Module/App Definition contract as implementation and
-  migration evidence for Slots, proposals, and Plan reconciliation.
 - [`architecture/plugin-execution-classes.md`](architecture/plugin-execution-classes.md)
-  defines deterministic Artifact-variant selection, Data contributions, and
-  the reviewed Process, Wasm, QuickJS, and native-library branches.
+  defines how one Plugin model reaches native, Wasm, QuickJS, process, and
+  native-library execution.
+
+## Historical contracts
+
+[`architecture/plugin-authoring-and-resolution.md`](architecture/plugin-authoring-and-resolution.md)
+retains the superseded Module/App Definition design only as migration evidence.
+It is not a current authoring contract.
 
 ## Research
 

@@ -12,10 +12,10 @@ from collections import deque
 from pathlib import Path
 
 EXPECTED_SKILLS = {
-    "lenso-app-composition",
+    "lenso-app-configuration",
     "lenso-business-planning",
     "lenso-capability-authoring",
-    "lenso-module-authoring",
+    "lenso-plugin-authoring",
     "lenso-runtime-extension",
     "lenso-start",
 }

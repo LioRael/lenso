@@ -1,6 +1,9 @@
 use serde_json::Value;
 
-use super::DefinitionResolutionError;
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ConfigurationError {
+    pub(super) detail: String,
+}
 
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
@@ -27,12 +30,12 @@ const SCHEMA_METADATA_KEYWORDS: &[&str] = &[
     "writeOnly",
 ];
 
-pub(super) fn resolve_configuration(
+pub(super) fn resolve_configuration_layers(
     defaults: &Value,
-    app_values: &Value,
+    overlays: &[&Value],
     schema: Option<&Value>,
     instance_key: &str,
-) -> Result<Value, DefinitionResolutionError> {
+) -> Result<Value, ConfigurationError> {
     if !defaults.is_object() {
         return Err(invalid_configuration(
             instance_key,
@@ -41,7 +44,9 @@ pub(super) fn resolve_configuration(
         ));
     }
     let mut effective = defaults.clone();
-    overlay_configuration(&mut effective, app_values);
+    for overlay in overlays {
+        overlay_configuration(&mut effective, overlay);
+    }
     validate_configuration(&effective, schema, instance_key)?;
     Ok(effective)
 }
@@ -65,7 +70,7 @@ fn validate_configuration(
     configuration: &Value,
     schema: Option<&Value>,
     instance_key: &str,
-) -> Result<(), DefinitionResolutionError> {
+) -> Result<(), ConfigurationError> {
     match schema {
         Some(schema) => validate_json_schema(configuration, schema, "$", instance_key),
         None if configuration
@@ -87,7 +92,7 @@ fn validate_json_schema(
     schema: &Value,
     path: &str,
     instance_key: &str,
-) -> Result<(), DefinitionResolutionError> {
+) -> Result<(), ConfigurationError> {
     let schema = schema.as_object().ok_or_else(|| {
         invalid_configuration(
             instance_key,
@@ -150,7 +155,7 @@ fn validate_schema_numeric_constraints(
     schema: &serde_json::Map<String, Value>,
     path: &str,
     instance_key: &str,
-) -> Result<(), DefinitionResolutionError> {
+) -> Result<(), ConfigurationError> {
     let Some(minimum) = schema.get("minimum") else {
         return Ok(());
     };
@@ -175,7 +180,7 @@ fn validate_schema_type(
     schema: &serde_json::Map<String, Value>,
     path: &str,
     instance_key: &str,
-) -> Result<(), DefinitionResolutionError> {
+) -> Result<(), ConfigurationError> {
     let Some(expected) = schema.get("type") else {
         return Ok(());
     };
@@ -219,7 +224,7 @@ fn validate_required(
     schema: &serde_json::Map<String, Value>,
     path: &str,
     instance_key: &str,
-) -> Result<(), DefinitionResolutionError> {
+) -> Result<(), ConfigurationError> {
     let Some(required) = schema.get("required") else {
         return Ok(());
     };
@@ -253,7 +258,7 @@ fn validate_properties(
     schema: &serde_json::Map<String, Value>,
     path: &str,
     instance_key: &str,
-) -> Result<(), DefinitionResolutionError> {
+) -> Result<(), ConfigurationError> {
     let empty = serde_json::Map::new();
     let properties = match schema.get("properties") {
         Some(properties) => properties.as_object().ok_or_else(|| {
@@ -303,7 +308,7 @@ fn validate_items(
     schema: &serde_json::Map<String, Value>,
     path: &str,
     instance_key: &str,
-) -> Result<(), DefinitionResolutionError> {
+) -> Result<(), ConfigurationError> {
     let Some(item_schema) = schema.get("items") else {
         return Ok(());
     };
@@ -324,12 +329,11 @@ fn validate_items(
 }
 
 fn invalid_configuration(
-    instance_key: &str,
+    _instance_key: &str,
     path: &str,
     detail: impl Into<String>,
-) -> DefinitionResolutionError {
-    DefinitionResolutionError::InvalidConfiguration {
-        instance_key: instance_key.to_owned(),
+) -> ConfigurationError {
+    ConfigurationError {
         detail: format!("{path}: {}", detail.into()),
     }
 }

@@ -7,12 +7,12 @@
 use std::{collections::BTreeMap, fmt, rc::Rc};
 
 use futures::future::LocalBoxFuture;
-use lenso_app_plan::{ExecutionClassId, ModuleInstancePlan, ResolvedAppPlan};
+use lenso_app_plan::{ExecutionClassId, PluginInstancePlan, ResolvedAppPlan};
 use lenso_kernel::{
-    ActivateContext, InvocationContext, ModuleLifecycle, NativeEndpointSet, NativeEventEndpoint,
-    NativeRequestEndpoint, NativeRequestHandle, NativeStreamEndpoint, NoopModuleLifecycle,
-    PreparedBinding, PreparedEventBinding, PreparedNativeApp, PreparedNativeModule,
-    PreparedStreamBinding, RequestCapability, RuntimeFailure,
+    ActivateContext, InvocationContext, NativeEndpointSet, NativeEventEndpoint,
+    NativeRequestEndpoint, NativeRequestHandle, NativeStreamEndpoint, NoopPluginLifecycle,
+    PluginLifecycle, PreparedBinding, PreparedEventBinding, PreparedNativeApp,
+    PreparedNativePlugin, PreparedStreamBinding, RequestCapability, RuntimeFailure,
 };
 
 mod interaction;
@@ -150,7 +150,7 @@ impl ProbeClient {
     }
 
     pub fn from_dependencies(
-        dependencies: &lenso_kernel::ModuleDependencies,
+        dependencies: &lenso_kernel::PluginDependencies,
     ) -> Result<Self, RuntimeFailure> {
         Ok(Self::new(dependencies.one::<Probe>()?))
     }
@@ -176,19 +176,19 @@ pub enum ProbeInvocationError {
 
 /// One generation returned by the conformance Adapter.
 #[derive(Debug)]
-pub struct ConformanceModule {
+pub struct ConformancePlugin {
     endpoints: NativeEndpointSet,
-    lifecycle: Rc<dyn ModuleLifecycle>,
+    lifecycle: Rc<dyn PluginLifecycle>,
 }
 
-impl ConformanceModule {
+impl ConformancePlugin {
     pub fn new(endpoints: Vec<Rc<dyn NativeRequestEndpoint>>) -> Self {
-        Self::with_lifecycle(endpoints, NoopModuleLifecycle)
+        Self::with_lifecycle(endpoints, NoopPluginLifecycle)
     }
 
     pub fn with_lifecycle(
         endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self::with_all_endpoints(endpoints, Vec::new(), Vec::new(), lifecycle)
     }
@@ -198,7 +198,7 @@ impl ConformanceModule {
         request: Vec<Rc<dyn NativeRequestEndpoint>>,
         stream: Vec<Rc<dyn NativeStreamEndpoint>>,
         event: Vec<Rc<dyn NativeEventEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self {
             endpoints: NativeEndpointSet::new(request, stream, event),
@@ -209,7 +209,7 @@ impl ConformanceModule {
     /// Creates one conformance generation containing bidirectional stream endpoints.
     pub fn with_stream_endpoints(
         endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self::with_all_endpoints(Vec::new(), endpoints, Vec::new(), lifecycle)
     }
@@ -217,27 +217,27 @@ impl ConformanceModule {
     /// Creates one conformance generation containing ephemeral Event endpoints.
     pub fn with_event_endpoints(
         endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self::with_all_endpoints(Vec::new(), Vec::new(), endpoints, lifecycle)
     }
 
-    fn prepared(&self) -> PreparedNativeModule {
-        PreparedNativeModule::with_endpoint_set_lifecycle(
+    fn prepared(&self) -> PreparedNativePlugin {
+        PreparedNativePlugin::with_endpoint_set_lifecycle(
             self.endpoints.clone(),
             self.lifecycle.clone(),
         )
     }
 }
 
-impl Default for ConformanceModule {
+impl Default for ConformancePlugin {
     fn default() -> Self {
         Self::new(Vec::new())
     }
 }
 
 /// Adapter-specific factory used only by the runtime conformance suite.
-pub trait ConformanceModuleFactory: fmt::Debug + 'static {
+pub trait ConformancePluginFactory: fmt::Debug + 'static {
     fn package_id(&self) -> &'static str;
 
     fn package_version(&self) -> &'static str {
@@ -246,14 +246,14 @@ pub trait ConformanceModuleFactory: fmt::Debug + 'static {
 
     fn instantiate(
         &self,
-        instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure>;
+        instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure>;
 }
 
 /// Interaction-complete Execution Adapter used to test the Kernel Interface directly.
 #[derive(Debug, Default)]
 pub struct ConformanceExecutionAdapter {
-    factories: Vec<Rc<dyn ConformanceModuleFactory>>,
+    factories: Vec<Rc<dyn ConformancePluginFactory>>,
 }
 
 impl ConformanceExecutionAdapter {
@@ -262,15 +262,15 @@ impl ConformanceExecutionAdapter {
     }
 
     #[must_use]
-    pub fn with_factory(mut self, factory: impl ConformanceModuleFactory) -> Self {
+    pub fn with_factory(mut self, factory: impl ConformancePluginFactory) -> Self {
         self.factories.push(Rc::new(factory));
         self
     }
 
     fn instantiate(
         &self,
-        instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
+        instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
         let matches = self
             .factories
             .iter()
@@ -281,7 +281,7 @@ impl ConformanceExecutionAdapter {
             })
             .collect::<Vec<_>>();
         match matches.as_slice() {
-            [] => Err(RuntimeFailure::MissingModuleFactory {
+            [] => Err(RuntimeFailure::MissingPluginFactory {
                 instance: instance.instance_key().to_owned(),
                 package_id: instance.package_id().to_owned(),
             }),
@@ -303,27 +303,27 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
                 detail: error.to_string(),
             })?;
 
-        let mut modules = BTreeMap::new();
+        let mut plugins = BTreeMap::new();
         let mut generations = BTreeMap::new();
         for instance in plan
-            .module_instances()
+            .plugin_instances()
             .iter()
             .filter(|instance| instance.execution_class() == &ExecutionClassId::native_rust())
         {
-            let module = self.instantiate(instance)?;
-            generations.insert(instance.instance_key().to_owned(), module.prepared());
-            modules.insert(instance.instance_key().to_owned(), module);
+            let plugin = self.instantiate(instance)?;
+            generations.insert(instance.instance_key().to_owned(), plugin.prepared());
+            plugins.insert(instance.instance_key().to_owned(), plugin);
         }
 
         let mut bindings = Vec::new();
         let mut stream_bindings = Vec::new();
         let mut event_bindings = Vec::new();
         for binding in plan.capability_bindings() {
-            let Some(module) = modules.get(binding.provider_instance()) else {
+            let Some(plugin) = plugins.get(binding.provider_instance()) else {
                 continue;
             };
             let provider = plan
-                .module_instance(binding.provider_instance())
+                .plugin_instance(binding.provider_instance())
                 .expect("validated binding provider should exist");
             let descriptor = provider
                 .provided_capabilities()
@@ -332,7 +332,7 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
                 .expect("validated binding descriptor should exist");
 
             if !descriptor.request_operations().is_empty() {
-                let endpoint = find_endpoint(module.endpoints.request(), binding, "request")?;
+                let endpoint = find_endpoint(plugin.endpoints.request(), binding, "request")?;
                 bindings.push(PreparedBinding::new(
                     binding.consumer_instance(),
                     binding.provider_instance(),
@@ -340,7 +340,7 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
                 ));
             }
             if !descriptor.stream_operations().is_empty() {
-                let endpoint = find_endpoint(module.endpoints.stream(), binding, "stream")?;
+                let endpoint = find_endpoint(plugin.endpoints.stream(), binding, "stream")?;
                 stream_bindings.push(PreparedStreamBinding::new(
                     binding.consumer_instance(),
                     binding.provider_instance(),
@@ -348,7 +348,7 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
                 ));
             }
             if !descriptor.event_operations().is_empty() {
-                let endpoint = find_endpoint(module.endpoints.event(), binding, "Event")?;
+                let endpoint = find_endpoint(plugin.endpoints.event(), binding, "Event")?;
                 event_bindings.push(PreparedEventBinding::new(
                     binding.consumer_instance(),
                     binding.provider_instance(),
@@ -366,10 +366,10 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
         &self,
         plan: &ResolvedAppPlan,
         instance_key: &str,
-    ) -> Result<PreparedNativeModule, RuntimeFailure> {
-        let instance = plan.module_instance(instance_key).ok_or_else(|| {
+    ) -> Result<PreparedNativePlugin, RuntimeFailure> {
+        let instance = plan.plugin_instance(instance_key).ok_or_else(|| {
             RuntimeFailure::InvalidResolvedPlan {
-                detail: format!("unknown Module Instance `{instance_key}`"),
+                detail: format!("unknown Plugin Instance `{instance_key}`"),
             }
         })?;
         Ok(self.instantiate(instance)?.prepared())
@@ -440,7 +440,7 @@ where
 #[derive(Debug)]
 pub struct ProbeConsumerFactory;
 
-impl ConformanceModuleFactory for ProbeConsumerFactory {
+impl ConformancePluginFactory for ProbeConsumerFactory {
     fn package_id(&self) -> &'static str {
         PROBE_CONSUMER_PACKAGE_ID
     }
@@ -451,9 +451,9 @@ impl ConformanceModuleFactory for ProbeConsumerFactory {
 
     fn instantiate(
         &self,
-        _instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
-        Ok(ConformanceModule::with_lifecycle(
+        _instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
+        Ok(ConformancePlugin::with_lifecycle(
             Vec::new(),
             ProbeConsumerLifecycle,
         ))
@@ -463,8 +463,8 @@ impl ConformanceModuleFactory for ProbeConsumerFactory {
 #[derive(Debug)]
 struct ProbeConsumerLifecycle;
 
-impl ModuleLifecycle for ProbeConsumerLifecycle {
-    fn activate(&self, context: ActivateContext) -> lenso_kernel::ModuleFuture {
+impl PluginLifecycle for ProbeConsumerLifecycle {
+    fn activate(&self, context: ActivateContext) -> lenso_kernel::PluginFuture {
         let client = (context.dependencies().len() == 1)
             .then(|| ProbeClient::from_dependencies(context.dependencies()));
         Box::pin(async move {
@@ -479,7 +479,7 @@ impl ModuleLifecycle for ProbeConsumerLifecycle {
             {
                 Ok(_) => Ok(()),
                 Err(ProbeInvocationError::Runtime(error)) => Err(error),
-                Err(ProbeInvocationError::Domain(error)) => Err(RuntimeFailure::ModuleFailure {
+                Err(ProbeInvocationError::Domain(error)) => Err(RuntimeFailure::PluginFailure {
                     detail: format!("probe activation dependency returned {error:?}"),
                 }),
             }
@@ -491,7 +491,7 @@ impl ModuleLifecycle for ProbeConsumerLifecycle {
 #[derive(Debug)]
 pub struct ProbeProviderFactory;
 
-impl ConformanceModuleFactory for ProbeProviderFactory {
+impl ConformancePluginFactory for ProbeProviderFactory {
     fn package_id(&self) -> &'static str {
         PROBE_PROVIDER_PACKAGE_ID
     }
@@ -502,9 +502,9 @@ impl ConformanceModuleFactory for ProbeProviderFactory {
 
     fn instantiate(
         &self,
-        _instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
-        Ok(ConformanceModule::new(vec![Rc::new(ProbeEndpoint::new(
+        _instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
+        Ok(ConformancePlugin::new(vec![Rc::new(ProbeEndpoint::new(
             EchoProbe("Echo"),
         ))]))
     }
@@ -514,7 +514,7 @@ impl ConformanceModuleFactory for ProbeProviderFactory {
 #[derive(Debug)]
 pub struct AlternateProbeProviderFactory;
 
-impl ConformanceModuleFactory for AlternateProbeProviderFactory {
+impl ConformancePluginFactory for AlternateProbeProviderFactory {
     fn package_id(&self) -> &'static str {
         ALTERNATE_PROBE_PROVIDER_PACKAGE_ID
     }
@@ -525,9 +525,9 @@ impl ConformanceModuleFactory for AlternateProbeProviderFactory {
 
     fn instantiate(
         &self,
-        _instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
-        Ok(ConformanceModule::new(vec![Rc::new(ProbeEndpoint::new(
+        _instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
+        Ok(ConformancePlugin::new(vec![Rc::new(ProbeEndpoint::new(
             EchoProbe("Alternate"),
         ))]))
     }

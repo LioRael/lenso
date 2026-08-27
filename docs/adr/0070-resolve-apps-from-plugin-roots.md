@@ -47,6 +47,9 @@ Kernel executes only an immutable Plan.
 - An explicit provider may replace a Host default only where the Host marks the
   Slot replaceable. More than one explicit candidate for a `one` Slot is an
   actionable error; the resolver never chooses by discovery order or version.
+- Host Slots expose only cardinality, replacement, and deterministic ordering.
+  The earlier `add`, `provide`, `intercept`, and `mount` kind labels are retired
+  because they add no independent resolution behavior.
 - App inspection operates on the derived result: `lenso app check` validates
   it and `lenso app show` explains defaults, replacements, bindings, and source
   provenance. `lenso app add/remove --definition` and `--definition` disappear.

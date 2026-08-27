@@ -7,7 +7,7 @@ use super::{
     PlanResolutionError,
 };
 
-/// The cardinality of one Module's Capability requirement.
+/// The cardinality of one Plugin's Capability requirement.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityCardinality {
@@ -114,7 +114,7 @@ impl Default for EventAdmissionPlan {
     }
 }
 
-/// The finite restart mode selected for one Module Instance.
+/// The finite restart mode selected for one Plugin Instance.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RestartMode {
@@ -215,18 +215,18 @@ impl Default for RestartPolicy {
     }
 }
 
-/// Whether a failed Module Instance is allowed to remain unavailable.
+/// Whether a failed Plugin Instance is allowed to remain unavailable.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ModuleCriticality {
-    /// Exhaustion leaves this Module unavailable when it is not required by a `one` binding.
+pub enum PluginCriticality {
+    /// Exhaustion leaves this Plugin unavailable when it is not required by a `one` binding.
     #[default]
     NonCritical,
-    /// Exhaustion fails the App even when no `one` binding reaches this Module.
+    /// Exhaustion fails the App even when no `one` binding reaches this Plugin.
     Critical,
 }
 
-impl ModuleCriticality {
+impl PluginCriticality {
     /// Returns whether this criticality requires a terminal App outcome on exhaustion.
     pub const fn is_critical(self) -> bool {
         matches!(self, Self::Critical)

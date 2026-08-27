@@ -3,8 +3,8 @@ use std::future::poll_fn;
 use super::{
     AbortHandle, CancellationToken, Cell, Context, Duration, Either, Future, FutureExt,
     InvocationContext, LocalBoxFuture, NativeAppRuntime, Pin, Poll, Rc, RefCell,
-    RequestAdmissionPlan, RuntimeFailure, SpawnError, VecDeque, begin_module_supervision, oneshot,
-    pending, schedule_module_supervision, select,
+    RequestAdmissionPlan, RuntimeFailure, SpawnError, VecDeque, begin_plugin_supervision, oneshot,
+    pending, schedule_plugin_supervision, select,
 };
 
 /// A task owned by a Runtime Driver's single-threaded local lane.
@@ -415,18 +415,18 @@ pub(super) async fn await_with_generation_context<F: Future>(
     }
 }
 
-pub(super) fn is_module_failure(error: &RuntimeFailure) -> bool {
-    matches!(error, RuntimeFailure::ModuleFailure { .. })
+pub(super) fn is_plugin_failure(error: &RuntimeFailure) -> bool {
+    matches!(error, RuntimeFailure::PluginFailure { .. })
 }
 
-pub(super) fn schedule_module_supervision_after_failure(
+pub(super) fn schedule_plugin_supervision_after_failure(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
     error: RuntimeFailure,
 ) -> RuntimeFailure {
-    if is_module_failure(&error)
-        && begin_module_supervision(runtime, instance_key).unwrap_or(false)
-        && let Err(schedule_error) = schedule_module_supervision(runtime, instance_key)
+    if is_plugin_failure(&error)
+        && begin_plugin_supervision(runtime, instance_key).unwrap_or(false)
+        && let Err(schedule_error) = schedule_plugin_supervision(runtime, instance_key)
     {
         return handle_supervision_schedule_failure(runtime, instance_key, schedule_error);
     }
@@ -470,9 +470,9 @@ pub(super) fn ensure_context_active(
 /// The result of bounded cleanup after a graceful shutdown request.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShutdownOutcome {
-    /// Every managed task, resource, and Module generation was cleaned up.
+    /// Every managed task, resource, and Plugin generation was cleaned up.
     Clean,
-    /// Cleanup completed but a Module or resource reported a Runtime Failure.
+    /// Cleanup completed but a Plugin or resource reported a Runtime Failure.
     RuntimeFailure { error: RuntimeFailure },
     /// The global shutdown deadline expired; remaining work was terminated.
     Timeout,
@@ -483,7 +483,7 @@ pub enum ShutdownOutcome {
 pub enum TerminalOutcome {
     /// The App completed a bounded clean shutdown.
     CleanShutdown,
-    /// The App could not start because a Module reported a startup failure.
+    /// The App could not start because a Plugin reported a startup failure.
     StartupFailure { error: RuntimeFailure },
     /// The running App reported a Runtime Failure during terminal cleanup.
     RuntimeFailure { error: RuntimeFailure },

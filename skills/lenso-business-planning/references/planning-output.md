@@ -8,9 +8,9 @@ Return one compact implementation handoff.
 - first success and honest failure
 - authoritative facts and trust boundary
 
-## Module map
+## Plugin map
 
-For each Module, record:
+For each Plugin, record:
 
 - responsibility and deletion boundary
 - owned facts and lifecycle
@@ -22,7 +22,7 @@ slice behavior, and deletion proof.
 
 ## Capability map
 
-For each cross-Module edge, record:
+For each cross-Plugin edge, record:
 
 - Capability role and owning contract package
 - consumer, eligible providers, and cardinality
@@ -30,8 +30,8 @@ For each cross-Module edge, record:
 
 ## First executable slice
 
-- keyed Module Instances
-- explicit bindings and required configuration or secret references
+- keyed Plugin Instances
+- selected Plugin differences, required Capability roles, and configuration or secret references
 - success, failure, and observable evidence
 - primary implementation skill for each remaining owner
 
@@ -40,9 +40,10 @@ For each cross-Module edge, record:
 Name the concrete artifact expected from each workflow:
 
 - Capability package/Descriptor/Schemas/generated targets;
-- Module package/factory or Bun entrypoint and lifecycle behavior;
-- `lenso.app.json` package selections, keyed Instances, configuration, lanes,
-  and real ambiguity decisions;
+- Plugin package/factory or Bun entrypoint and lifecycle behavior;
+- `plugins/` package/Instance/configuration differences;
+- Host Catalog default, root Slot, attachment, and execution-policy changes when
+  the existing Host cannot derive the intended App;
 - focused success/Domain Error/Runtime Failure fixture; and
 - real Adapter/host evidence when the slice crosses one.
 

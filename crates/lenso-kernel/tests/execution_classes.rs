@@ -3,12 +3,12 @@ use std::{any::Any, cell::Cell, rc::Rc};
 use futures::FutureExt;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, ExecutionClassId, ModuleInstancePlan, ResolvedAppPlan,
+    CapabilityRequirementPlan, ExecutionClassId, PluginInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
     DeterministicDriver, ExecutionAdapter, ExecutionAdapterCatalog, ExecutionAdapterCatalogError,
-    InvocationContext, Kernel, NativeRequestEndpoint, NoopModuleLifecycle, PreparedBinding,
-    PreparedNativeApp, PreparedNativeModule, RuntimeFailure,
+    InvocationContext, Kernel, NativeRequestEndpoint, NoopPluginLifecycle, PreparedBinding,
+    PreparedNativeApp, PreparedNativePlugin, RuntimeFailure,
 };
 
 const CAPABILITY_ID: &str = "test.echo";
@@ -78,11 +78,11 @@ impl ExecutionAdapter for MissingBindingAdapter {
             [
                 (
                     "consumer".to_owned(),
-                    PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+                    PreparedNativePlugin::new(Vec::new(), NoopPluginLifecycle),
                 ),
                 (
                     "provider".to_owned(),
-                    PreparedNativeModule::new(vec![endpoint], NoopModuleLifecycle),
+                    PreparedNativePlugin::new(vec![endpoint], NoopPluginLifecycle),
                 ),
             ]
             .into_iter()
@@ -99,7 +99,7 @@ impl ExecutionAdapter for RecordingAdapter {
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         self.prepared.set(true);
         let generations = plan
-            .module_instances()
+            .plugin_instances()
             .iter()
             .filter(|instance| instance.execution_class() == &self.execution_class)
             .map(|instance| {
@@ -111,7 +111,7 @@ impl ExecutionAdapter for RecordingAdapter {
                     .collect();
                 (
                     instance.instance_key().to_owned(),
-                    PreparedNativeModule::new(endpoints, NoopModuleLifecycle),
+                    PreparedNativePlugin::new(endpoints, NoopPluginLifecycle),
                 )
             })
             .collect();
@@ -125,7 +125,7 @@ fn plan_with_classes(classes: &[&str]) -> ResolvedAppPlan {
             .iter()
             .enumerate()
             .map(|(index, execution_class)| {
-                ModuleInstancePlan::new(format!("module-{index}"), format!("package-{index}"))
+                PluginInstancePlan::new(format!("plugin-{index}"), format!("package-{index}"))
                     .with_execution_class(ExecutionClassId::new(*execution_class))
             })
             .collect(),
@@ -155,7 +155,7 @@ fn kernel_rejects_a_missing_execution_class_before_any_adapter_prepares() {
         Err(RuntimeFailure::UnavailableExecutionClass {
             instance_key,
             execution_class,
-        }) if instance_key == "module-0" && execution_class == "community.python-process@1"
+        }) if instance_key == "plugin-0" && execution_class == "community.python-process@1"
     ));
     assert!(!native_prepared.get());
 }
@@ -174,7 +174,7 @@ fn kernel_rejects_an_incomplete_adapter_result_before_lifecycle() {
     assert!(matches!(
         result,
         Err(RuntimeFailure::InvalidResolvedPlan { detail })
-            if detail.contains("prepared 0 Module generations; expected 1")
+            if detail.contains("prepared 0 Plugin generations; expected 1")
     ));
 }
 
@@ -182,10 +182,10 @@ fn kernel_rejects_an_incomplete_adapter_result_before_lifecycle() {
 fn kernel_rejects_a_missing_prepared_binding_before_lifecycle() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::one(CAPABILITY_ID, DESCRIPTOR_VERSION),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, ["echo"]),
             ),
         ],
@@ -273,17 +273,17 @@ fn runner_catalog_rejects_duplicate_execution_class_plugins() {
 fn catalog_composes_many_bindings_prepared_by_different_execution_classes() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::new(
                     CAPABILITY_ID,
                     DESCRIPTOR_VERSION,
                     CapabilityCardinality::Many,
                 ),
             ),
-            ModuleInstancePlan::new("native-provider", "package.native").with_capability(
+            PluginInstancePlan::new("native-provider", "package.native").with_capability(
                 CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, ["echo"]),
             ),
-            ModuleInstancePlan::new("bun-provider", "package.bun")
+            PluginInstancePlan::new("bun-provider", "package.bun")
                 .with_execution_class(ExecutionClassId::bun_child_process())
                 .with_capability(CapabilityEndpointPlan::new(
                     CAPABILITY_ID,

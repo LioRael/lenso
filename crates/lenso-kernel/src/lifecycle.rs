@@ -1,10 +1,10 @@
 use super::{
     AbortHandle, AssertUnwindSafe, Cell, Context, DriverControl, DriverTask, Duration, Future,
-    FutureExt, LocalBoxFuture, LocalTask, ModuleDependencies, ModuleLifecyclePhase, Pin, Poll, Rc,
+    FutureExt, LocalBoxFuture, LocalTask, Pin, PluginDependencies, PluginLifecyclePhase, Poll, Rc,
     RefCell, RuntimeDriver, RuntimeFailure, SpawnError, TaskOutcome, oneshot, wait_until,
 };
 
-/// A shared App-wide signal that opens exactly once after every Module activates.
+/// A shared App-wide signal that opens exactly once after every Plugin activates.
 #[derive(Clone, Debug)]
 pub struct AppReadyGate {
     pub(super) state: Rc<AppReadyState>,
@@ -100,7 +100,7 @@ impl AppAdmission {
     }
 }
 
-/// Cooperative cancellation shared by one Module Instance generation.
+/// Cooperative cancellation shared by one Plugin Instance generation.
 #[derive(Clone, Debug)]
 pub struct CancellationToken {
     pub(super) state: Rc<CancellationState>,
@@ -201,7 +201,7 @@ impl Default for CancellationToken {
 /// A future used to release one Driver-backed managed resource.
 pub type ResourceFuture = LocalBoxFuture<'static, Result<(), RuntimeFailure>>;
 
-/// A resource whose release is owned by one Module Instance generation.
+/// A resource whose release is owned by one Plugin Instance generation.
 pub trait ManagedResource: std::fmt::Debug + 'static {
     /// Releases the resource exactly once when its generation is cleaned up.
     fn release(&self) -> ResourceFuture;
@@ -210,7 +210,7 @@ pub trait ManagedResource: std::fmt::Debug + 'static {
 /// Error returned when a resource cannot be registered in a closed scope.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResourceRegistrationError {
-    /// The Module generation has begun shutdown or rollback cleanup.
+    /// The Plugin generation has begun shutdown or rollback cleanup.
     ScopeClosed,
 }
 
@@ -290,7 +290,7 @@ impl Future for ManagedResourceReleaseOperation {
     }
 }
 
-/// A Module-generation resource scope backed by Driver-polled cleanup futures.
+/// A Plugin-generation resource scope backed by Driver-polled cleanup futures.
 #[derive(Clone)]
 pub struct ManagedResourceScope {
     pub(super) state: Rc<ManagedResourceScopeState>,
@@ -318,7 +318,7 @@ impl ManagedResourceScope {
         }
     }
 
-    /// Registers a resource owned by this Module Instance generation.
+    /// Registers a resource owned by this Plugin Instance generation.
     pub fn register(
         &self,
         resource: impl ManagedResource,
@@ -391,7 +391,7 @@ impl ManagedResourceScope {
     }
 }
 
-/// A Kernel-owned task handle that is cleaned up with its Module generation.
+/// A Kernel-owned task handle that is cleaned up with its Plugin generation.
 #[derive(Clone, Debug)]
 pub struct ManagedTask {
     pub(super) task: Rc<RefCell<Option<DriverTask>>>,
@@ -433,7 +433,7 @@ impl ManagedTask {
 /// Error returned when a managed task cannot be admitted to its scope.
 #[derive(Debug)]
 pub enum ManagedTaskError {
-    /// The Module generation has begun shutdown or rollback cleanup.
+    /// The Plugin generation has begun shutdown or rollback cleanup.
     ScopeClosed,
     /// The Runtime Driver rejected the local task.
     Driver(SpawnError),
@@ -445,7 +445,7 @@ impl From<SpawnError> for ManagedTaskError {
     }
 }
 
-/// A Module-generation task scope backed by the selected Runtime Driver.
+/// A Plugin-generation task scope backed by the selected Runtime Driver.
 #[derive(Clone)]
 pub struct ManagedTaskScope {
     pub(super) spawn: Rc<dyn Fn(LocalTask) -> Result<DriverTask, SpawnError>>,
@@ -509,7 +509,7 @@ impl ManagedTaskScope {
         }
     }
 
-    /// Spawns work owned by this Module Instance generation.
+    /// Spawns work owned by this Plugin Instance generation.
     pub fn spawn_local(&self, task: LocalTask) -> Result<ManagedTask, ManagedTaskError> {
         if self.state.closed.get() {
             return Err(ManagedTaskError::ScopeClosed);
@@ -599,20 +599,20 @@ impl ManagedTaskScopeState {
     }
 }
 
-/// Context supplied while a Module reserves reversible resources.
+/// Context supplied while a Plugin reserves reversible resources.
 #[derive(Clone, Debug)]
 pub struct PrepareContext {
     pub(super) instance_key: String,
     pub(super) entrypoint: String,
     pub(super) configuration: String,
-    pub(super) dependencies: ModuleDependencies,
+    pub(super) dependencies: PluginDependencies,
     pub(super) resources: ManagedResourceScope,
     pub(super) cancellation: CancellationToken,
     pub(super) admission: AppAdmission,
 }
 
 impl PrepareContext {
-    /// Returns the App-local Module Instance key.
+    /// Returns the App-local Plugin Instance key.
     pub fn instance_key(&self) -> &str {
         &self.instance_key
     }
@@ -622,18 +622,18 @@ impl PrepareContext {
         &self.entrypoint
     }
 
-    /// Returns opaque Module-owned configuration selected by the immutable Plan.
+    /// Returns opaque Plugin-owned configuration selected by the immutable Plan.
     pub fn configuration(&self) -> &str {
         &self.configuration
     }
 
     /// Returns the phase represented by this context.
-    pub const fn phase(&self) -> ModuleLifecyclePhase {
-        ModuleLifecyclePhase::Prepare
+    pub const fn phase(&self) -> PluginLifecyclePhase {
+        PluginLifecyclePhase::Prepare
     }
 
     /// Returns the explicit dependencies selected for this Instance.
-    pub fn dependencies(&self) -> &ModuleDependencies {
+    pub fn dependencies(&self) -> &PluginDependencies {
         &self.dependencies
     }
 
@@ -653,11 +653,11 @@ impl PrepareContext {
     }
 }
 
-/// Context supplied while a Module initializes against prepared dependencies.
+/// Context supplied while a Plugin initializes against prepared dependencies.
 #[derive(Clone, Debug)]
 pub struct ActivateContext {
     pub(super) instance_key: String,
-    pub(super) dependencies: ModuleDependencies,
+    pub(super) dependencies: PluginDependencies,
     pub(super) ready_gate: AppReadyGate,
     pub(super) tasks: ManagedTaskScope,
     pub(super) resources: ManagedResourceScope,
@@ -666,18 +666,18 @@ pub struct ActivateContext {
 }
 
 impl ActivateContext {
-    /// Returns the App-local Module Instance key.
+    /// Returns the App-local Plugin Instance key.
     pub fn instance_key(&self) -> &str {
         &self.instance_key
     }
 
     /// Returns the phase represented by this context.
-    pub const fn phase(&self) -> ModuleLifecyclePhase {
-        ModuleLifecyclePhase::Activate
+    pub const fn phase(&self) -> PluginLifecyclePhase {
+        PluginLifecyclePhase::Activate
     }
 
     /// Returns the explicit dependencies selected for this Instance.
-    pub fn dependencies(&self) -> &ModuleDependencies {
+    pub fn dependencies(&self) -> &PluginDependencies {
         &self.dependencies
     }
 
@@ -686,7 +686,7 @@ impl ActivateContext {
         self.ready_gate.clone()
     }
 
-    /// Returns the readiness context a Module may pass to managed work.
+    /// Returns the readiness context a Plugin may pass to managed work.
     pub fn readiness(&self) -> ReadinessContext {
         ReadinessContext {
             instance_key: self.instance_key.clone(),
@@ -724,7 +724,7 @@ impl ActivateContext {
 #[derive(Clone, Debug)]
 pub struct ReadinessContext {
     pub(super) instance_key: String,
-    pub(super) dependencies: ModuleDependencies,
+    pub(super) dependencies: PluginDependencies,
     pub(super) ready_gate: AppReadyGate,
     pub(super) tasks: ManagedTaskScope,
     pub(super) resources: ManagedResourceScope,
@@ -733,18 +733,18 @@ pub struct ReadinessContext {
 }
 
 impl ReadinessContext {
-    /// Returns the App-local Module Instance key.
+    /// Returns the App-local Plugin Instance key.
     pub fn instance_key(&self) -> &str {
         &self.instance_key
     }
 
     /// Returns the phase represented by this context.
-    pub const fn phase(&self) -> ModuleLifecyclePhase {
-        ModuleLifecyclePhase::Ready
+    pub const fn phase(&self) -> PluginLifecyclePhase {
+        PluginLifecyclePhase::Ready
     }
 
     /// Returns the explicit dependencies selected for this Instance.
-    pub fn dependencies(&self) -> &ModuleDependencies {
+    pub fn dependencies(&self) -> &PluginDependencies {
         &self.dependencies
     }
 
@@ -789,7 +789,7 @@ impl ReadinessContext {
     }
 }
 
-/// The reason a Module generation is being deactivated.
+/// The reason a Plugin generation is being deactivated.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DeactivationReason {
     /// Startup failed and prepared work is being rolled back.
@@ -800,11 +800,11 @@ pub enum DeactivationReason {
     SupervisionRestart,
 }
 
-/// Context supplied while a Module releases one generation.
+/// Context supplied while a Plugin releases one generation.
 #[derive(Clone, Debug)]
 pub struct DeactivateContext {
     pub(super) instance_key: String,
-    pub(super) dependencies: ModuleDependencies,
+    pub(super) dependencies: PluginDependencies,
     pub(super) reason: DeactivationReason,
     pub(super) tasks: ManagedTaskScope,
     pub(super) resources: ManagedResourceScope,
@@ -813,18 +813,18 @@ pub struct DeactivateContext {
 }
 
 impl DeactivateContext {
-    /// Returns the App-local Module Instance key.
+    /// Returns the App-local Plugin Instance key.
     pub fn instance_key(&self) -> &str {
         &self.instance_key
     }
 
     /// Returns the phase represented by this context.
-    pub const fn phase(&self) -> ModuleLifecyclePhase {
-        ModuleLifecyclePhase::Deactivate
+    pub const fn phase(&self) -> PluginLifecyclePhase {
+        PluginLifecyclePhase::Deactivate
     }
 
     /// Returns the explicit dependencies selected for this Instance.
-    pub fn dependencies(&self) -> &ModuleDependencies {
+    pub fn dependencies(&self) -> &PluginDependencies {
         &self.dependencies
     }
 
@@ -855,28 +855,28 @@ impl DeactivateContext {
 }
 
 /// The result type returned by prepare, activate, and deactivate hooks.
-pub type ModuleFuture = LocalBoxFuture<'static, Result<(), RuntimeFailure>>;
+pub type PluginFuture = LocalBoxFuture<'static, Result<(), RuntimeFailure>>;
 
-/// Adapter-facing lifecycle Interface for one Module Instance generation.
-pub trait ModuleLifecycle: std::fmt::Debug + 'static {
+/// Adapter-facing lifecycle Interface for one Plugin Instance generation.
+pub trait PluginLifecycle: std::fmt::Debug + 'static {
     /// Reserves reversible resources without exposing external work.
-    fn prepare(&self, _context: PrepareContext) -> ModuleFuture {
+    fn prepare(&self, _context: PrepareContext) -> PluginFuture {
         Box::pin(futures::future::ready(Ok(())))
     }
 
     /// Initializes the generation against already prepared dependencies.
-    fn activate(&self, _context: ActivateContext) -> ModuleFuture {
+    fn activate(&self, _context: ActivateContext) -> PluginFuture {
         Box::pin(futures::future::ready(Ok(())))
     }
 
     /// Releases resources and work owned by this generation.
-    fn deactivate(&self, _context: DeactivateContext) -> ModuleFuture {
+    fn deactivate(&self, _context: DeactivateContext) -> PluginFuture {
         Box::pin(futures::future::ready(Ok(())))
     }
 }
 
 /// Default no-op lifecycle used by endpoint-only native fixtures.
 #[derive(Debug, Default)]
-pub struct NoopModuleLifecycle;
+pub struct NoopPluginLifecycle;
 
-impl ModuleLifecycle for NoopModuleLifecycle {}
+impl PluginLifecycle for NoopPluginLifecycle {}

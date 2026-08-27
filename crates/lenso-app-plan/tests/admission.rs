@@ -2,18 +2,18 @@ use std::time::Duration;
 
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, EventAdmissionPlan, ModuleCriticality, ModuleInstancePlan,
-    PlanResolutionError, RequestAdmissionPlan, RestartMode, RestartPolicy,
+    CapabilityRequirementPlan, EventAdmissionPlan, PlanResolutionError, PluginCriticality,
+    PluginInstancePlan, RequestAdmissionPlan, RestartMode, RestartPolicy,
 };
 
 #[test]
 fn resolved_bindings_materialize_event_mailbox_capacity_independently_from_requests() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::many("capability.notifications", "1.0.0"),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new("capability.notifications", "1.0.0", ["notify"])
                     .with_event_operation("notify")
                     .with_event_admission(EventAdmissionPlan::new(0)),
@@ -42,10 +42,10 @@ fn resolved_bindings_materialize_event_mailbox_capacity_independently_from_reque
 fn resolved_bindings_materialize_bounded_request_admission() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::one("capability.greeting", "1.0.0"),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new("capability.greeting", "1.0.0", ["greet"])
                     .with_operation_admission("greet", RequestAdmissionPlan::new(3, 2)),
             ),
@@ -71,14 +71,14 @@ fn resolved_bindings_materialize_bounded_request_admission() {
 fn a_binding_can_override_the_provider_operation_admission() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::new(
                     "capability.greeting",
                     "1.0.0",
                     CapabilityCardinality::One,
                 ),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new("capability.greeting", "1.0.0", ["greet"])
                     .with_admission(RequestAdmissionPlan::new(3, 2)),
             ),
@@ -102,7 +102,7 @@ fn a_binding_can_override_the_provider_operation_admission() {
 fn zero_concurrency_is_rejected_before_boot() {
     let result = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new("capability.greeting", "1.0.0", ["greet"])
                     .with_admission(RequestAdmissionPlan::new(1, 0)),
             ),
@@ -125,10 +125,10 @@ fn zero_concurrency_is_rejected_before_boot() {
 fn zero_binding_concurrency_is_rejected_before_boot() {
     let result = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::one("capability.greeting", "1.0.0"),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new("capability.greeting", "1.0.0", ["greet"]),
             ),
         ],
@@ -160,17 +160,17 @@ fn resolved_plan_materializes_finite_supervision_and_criticality() {
     );
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::one("capability.greeting", "1.0.0"),
             ),
-            ModuleInstancePlan::new("provider", "package.provider")
+            PluginInstancePlan::new("provider", "package.provider")
                 .with_capability(CapabilityEndpointPlan::new(
                     "capability.greeting",
                     "1.0.0",
                     ["greet"],
                 ))
                 .with_restart_policy(policy)
-                .with_criticality(ModuleCriticality::Critical),
+                .with_criticality(PluginCriticality::Critical),
         ],
         vec![CapabilityBinding::new(
             "consumer",
@@ -186,16 +186,16 @@ fn resolved_plan_materializes_finite_supervision_and_criticality() {
     assert_eq!(policy.mode(), RestartMode::OnFailure);
     assert_eq!(
         plan.criticality_for("provider"),
-        Some(ModuleCriticality::Critical)
+        Some(PluginCriticality::Critical)
     );
-    assert!(plan.module_instance_is_required("provider"));
+    assert!(plan.plugin_instance_is_required("provider"));
 }
 
 #[test]
 fn an_on_failure_policy_requires_a_positive_attempt_window() {
     let result = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("provider", "package.provider")
+            PluginInstancePlan::new("provider", "package.provider")
                 .with_capability(CapabilityEndpointPlan::new(
                     "capability.greeting",
                     "1.0.0",
@@ -226,20 +226,20 @@ fn an_on_failure_policy_requires_a_positive_attempt_window() {
 #[test]
 fn empty_entrypoints_and_duplicate_operations_are_rejected_before_boot() {
     let empty_entrypoint = AppComposition::new(
-        vec![ModuleInstancePlan::new("module", "package").with_entrypoint("  ")],
+        vec![PluginInstancePlan::new("module", "package").with_entrypoint("  ")],
         vec![],
     )
     .resolve();
     assert_eq!(
         empty_entrypoint,
-        Err(PlanResolutionError::InvalidModuleEntrypoint {
+        Err(PlanResolutionError::InvalidPluginEntrypoint {
             instance_key: "module".to_owned(),
         })
     );
 
     let duplicate_operation = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("provider", "package").with_capability(
+            PluginInstancePlan::new("provider", "package").with_capability(
                 CapabilityEndpointPlan::new("test.echo", "1.0.0", ["echo", "echo"]),
             ),
         ],

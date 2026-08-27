@@ -8,14 +8,14 @@ use std::{
 use futures::future::LocalBoxFuture;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, ModuleCriticality, ModuleInstancePlan, ResolvedAppPlan,
+    CapabilityRequirementPlan, PluginCriticality, PluginInstancePlan, ResolvedAppPlan,
     RestartPolicy,
 };
 use lenso_kernel::{
     DeactivateContext, DeactivationReason, DeterministicDriver, DiagnosticEvent, Kernel,
-    ManagedResource, ModuleFuture, ModuleLifecycle, NativeExecutionAdapter, NativeRequestEndpoint,
-    NoopModuleLifecycle, PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativeModule,
-    RequestCapability, ResourceFuture, RuntimeDriver, RuntimeFailure,
+    ManagedResource, NativeExecutionAdapter, NativeRequestEndpoint, NoopPluginLifecycle,
+    PluginFuture, PluginLifecycle, PrepareContext, PreparedBinding, PreparedNativeApp,
+    PreparedNativePlugin, RequestCapability, ResourceFuture, RuntimeDriver, RuntimeFailure,
 };
 
 const CAPABILITY_ID: &str = "capability.supervision";
@@ -91,7 +91,7 @@ impl NativeRequestEndpoint for SupervisedEndpoint {
         Box::pin(async move {
             invocations.set(invocations.get() + 1);
             if fail {
-                return Err(RuntimeFailure::ModuleFailure {
+                return Err(RuntimeFailure::PluginFailure {
                     detail: "provider generation failed".to_owned(),
                 });
             }
@@ -147,8 +147,8 @@ struct RecordingLifecycle {
     panic_task: bool,
 }
 
-impl ModuleLifecycle for RecordingLifecycle {
-    fn prepare(&self, context: PrepareContext) -> ModuleFuture {
+impl PluginLifecycle for RecordingLifecycle {
+    fn prepare(&self, context: PrepareContext) -> PluginFuture {
         let generation = self.generation;
         let events = self.events.clone();
         let fail_release = self.fail_release;
@@ -168,7 +168,7 @@ impl ModuleLifecycle for RecordingLifecycle {
         })
     }
 
-    fn activate(&self, context: lenso_kernel::ActivateContext) -> ModuleFuture {
+    fn activate(&self, context: lenso_kernel::ActivateContext) -> PluginFuture {
         let generation = self.generation;
         let events = self.events.clone();
         let cancellation = context.cancellation();
@@ -190,7 +190,7 @@ impl ModuleLifecycle for RecordingLifecycle {
         })
     }
 
-    fn deactivate(&self, context: DeactivateContext) -> ModuleFuture {
+    fn deactivate(&self, context: DeactivateContext) -> PluginFuture {
         let generation = self.generation;
         let events = self.events.clone();
         let reason = context.reason();
@@ -260,7 +260,7 @@ impl SupervisionAdapter {
         })
     }
 
-    fn lifecycle(&self, generation: u64, fail_release: bool) -> Rc<dyn ModuleLifecycle> {
+    fn lifecycle(&self, generation: u64, fail_release: bool) -> Rc<dyn PluginLifecycle> {
         Rc::new(RecordingLifecycle {
             generation,
             events: self.events.clone(),
@@ -281,11 +281,11 @@ impl NativeExecutionAdapter for SupervisionAdapter {
         let generations = BTreeMap::from([
             (
                 "consumer".to_owned(),
-                PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+                PreparedNativePlugin::new(Vec::new(), NoopPluginLifecycle),
             ),
             (
                 "provider".to_owned(),
-                PreparedNativeModule::with_lifecycle(
+                PreparedNativePlugin::with_lifecycle(
                     vec![endpoint],
                     self.lifecycle(1, self.fail_initial_release),
                 ),
@@ -298,7 +298,7 @@ impl NativeExecutionAdapter for SupervisionAdapter {
         &self,
         _plan: &ResolvedAppPlan,
         _instance_key: &str,
-    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+    ) -> Result<PreparedNativePlugin, RuntimeFailure> {
         let generation = self.next_generation.get().saturating_add(1);
         self.next_generation.set(generation);
         if self.recreate_failures.get() > 0 {
@@ -308,7 +308,7 @@ impl NativeExecutionAdapter for SupervisionAdapter {
                 detail: "configured recreation failure".to_owned(),
             });
         }
-        Ok(PreparedNativeModule::with_lifecycle(
+        Ok(PreparedNativePlugin::with_lifecycle(
             vec![self.endpoint(generation, false)],
             self.lifecycle(generation, false),
         ))
@@ -320,7 +320,7 @@ fn plan(
     cardinality: Option<CapabilityCardinality>,
     critical: bool,
 ) -> ResolvedAppPlan {
-    let provider = ModuleInstancePlan::new("provider", "package.provider")
+    let provider = PluginInstancePlan::new("provider", "package.provider")
         .with_capability(CapabilityEndpointPlan::new(
             CAPABILITY_ID,
             DESCRIPTOR_VERSION,
@@ -328,11 +328,11 @@ fn plan(
         ))
         .with_restart_policy(policy);
     let provider = if critical {
-        provider.with_criticality(ModuleCriticality::Critical)
+        provider.with_criticality(PluginCriticality::Critical)
     } else {
         provider
     };
-    let mut consumer = ModuleInstancePlan::new("consumer", "package.consumer");
+    let mut consumer = PluginInstancePlan::new("consumer", "package.consumer");
     let mut bindings = Vec::new();
     if let Some(cardinality) = cardinality {
         consumer = consumer.with_requirement(CapabilityRequirementPlan::new(
@@ -428,13 +428,13 @@ fn stable_handle_is_unavailable_during_deterministic_restart_and_reuses_ready_ge
     let handle = app
         .handle::<SupervisedCapability>("consumer")
         .expect("the stable binding should materialize");
-    assert_eq!(app.module_generation("provider"), Some(1));
+    assert_eq!(app.plugin_generation("provider"), Some(1));
     assert_eq!(
         driver.run(handle.invoke(OPERATION, "before".to_owned())),
         Ok(Ok("generation-1:before".to_owned()))
     );
 
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&driver);
 
@@ -448,13 +448,13 @@ fn stable_handle_is_unavailable_during_deterministic_restart_and_reuses_ready_ge
 
     driver.advance(Duration::from_millis(14));
     drive_turn(&driver);
-    assert_eq!(app.module_generation("provider"), None);
+    assert_eq!(app.plugin_generation("provider"), None);
     driver.advance(Duration::from_millis(1));
     for _ in 0..4 {
         drive_turn(&driver);
     }
 
-    assert_eq!(app.module_generation("provider"), Some(2));
+    assert_eq!(app.plugin_generation("provider"), Some(2));
     assert_eq!(
         driver.run(handle.invoke(OPERATION, "after".to_owned())),
         Ok(Ok("generation-2:after".to_owned()))
@@ -506,11 +506,11 @@ fn supervision_diagnostics_report_generation_transitions_without_changing_restar
         .subscribe_all(32)
         .expect("the diagnostics observer should be bounded");
 
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&driver);
 
-    assert_eq!(app.module_generation("provider"), Some(2));
+    assert_eq!(app.plugin_generation("provider"), Some(2));
     let records = std::iter::from_fn(|| observer.try_recv()).collect::<Vec<_>>();
     assert!(records.iter().any(|record| {
         matches!(
@@ -563,7 +563,7 @@ fn provider_failure_does_not_replay_the_in_flight_request() {
 
     assert_eq!(
         driver.run(handle.invoke(OPERATION, "once".to_owned())),
-        Err(RuntimeFailure::ModuleFailure {
+        Err(RuntimeFailure::PluginFailure {
             detail: "provider generation failed".to_owned(),
         })
     );
@@ -602,7 +602,7 @@ fn shutdown_joins_an_in_flight_supervision_episode_before_reporting_clean() {
         .expect("the initial binding should resolve");
     assert!(matches!(
         driver.run(handle.invoke(OPERATION, "trigger".to_owned())),
-        Err(RuntimeFailure::ModuleFailure { .. })
+        Err(RuntimeFailure::PluginFailure { .. })
     ));
 
     let outcome = driver.run(app.shutdown(Duration::from_secs(2)));
@@ -641,15 +641,15 @@ fn a_ready_stability_period_resets_the_finite_attempt_budget() {
         false,
     );
 
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&driver);
-    assert_eq!(app.module_generation("provider"), Some(2));
+    assert_eq!(app.plugin_generation("provider"), Some(2));
     driver.advance(stability);
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&driver);
-    assert_eq!(app.module_generation("provider"), Some(3));
+    assert_eq!(app.plugin_generation("provider"), Some(3));
 }
 
 #[test]
@@ -667,7 +667,7 @@ fn a_backoff_longer_than_the_attempt_window_still_exhausts_finitely() {
         2,
         false,
     );
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&driver);
     driver.advance(Duration::from_millis(10));
@@ -677,7 +677,7 @@ fn a_backoff_longer_than_the_attempt_window_still_exhausts_finitely() {
 
     assert!(app.is_accepting());
     assert!(app.terminal_failure().is_none());
-    assert_eq!(app.module_generation("provider"), None);
+    assert_eq!(app.plugin_generation("provider"), None);
 }
 
 #[test]
@@ -696,11 +696,11 @@ fn cleanup_failure_keeps_the_old_generation_unavailable_and_unpublished() {
         false,
     );
 
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&driver);
     assert!(app.is_accepting());
-    assert_eq!(app.module_generation("provider"), None);
+    assert_eq!(app.plugin_generation("provider"), None);
     assert!(!events.borrow().contains(&Event::Prepare(2)));
 }
 
@@ -723,7 +723,7 @@ fn noncritical_optional_provider_may_remain_unavailable_after_budget_exhaustion(
         .handle::<SupervisedCapability>("consumer")
         .expect("the optional binding should materialize while it is ready");
 
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&driver);
     assert!(app.is_accepting());
@@ -752,14 +752,14 @@ fn required_path_or_explicit_criticality_turns_exhaustion_into_a_terminal_app_fa
         false,
     );
     required_app
-        .report_module_failure("provider")
+        .report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&required_driver);
     assert!(required_app.is_failed());
     assert!(!required_app.is_accepting());
     assert_eq!(
         required_app.terminal_failure(),
-        Some(RuntimeFailure::ModuleRestartExhausted {
+        Some(RuntimeFailure::PluginRestartExhausted {
             instance: "provider".to_owned(),
             attempts: 1,
         })
@@ -779,13 +779,13 @@ fn required_path_or_explicit_criticality_turns_exhaustion_into_a_terminal_app_fa
         false,
     );
     critical_app
-        .report_module_failure("provider")
+        .report_plugin_failure("provider")
         .expect("the deterministic Driver should schedule supervision");
     drive_turn(&critical_driver);
     assert!(critical_app.is_failed());
     assert_eq!(
         critical_app.terminal_failure(),
-        Some(RuntimeFailure::ModuleRestartExhausted {
+        Some(RuntimeFailure::PluginRestartExhausted {
             instance: "provider".to_owned(),
             attempts: 1,
         })
@@ -793,7 +793,7 @@ fn required_path_or_explicit_criticality_turns_exhaustion_into_a_terminal_app_fa
 }
 
 #[test]
-fn managed_task_panic_is_reported_to_module_supervision() {
+fn managed_task_panic_is_reported_to_plugin_supervision() {
     let events = Rc::new(RefCell::new(Vec::new()));
     let invocations = Rc::new(Cell::new(0));
     let adapter = SupervisionAdapter::new(events, invocations, 0, false).with_initial_task_panic();
@@ -819,7 +819,7 @@ fn managed_task_panic_is_reported_to_module_supervision() {
 
     assert!(matches!(
         app.terminal_failure(),
-        Some(RuntimeFailure::ModuleRestartExhausted { instance, attempts: 0 })
+        Some(RuntimeFailure::PluginRestartExhausted { instance, attempts: 0 })
             if instance == "provider"
     ));
 }

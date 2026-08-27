@@ -2,14 +2,14 @@ use super::{
     AppAdmission, AppReadyGate, BTreeMap, CancellationToken, Cell, DiagnosticEvent,
     DiagnosticShutdownOutcome, DiagnosticSource, DriverControl, DriverTask, Duration,
     EventCapability, ExecutionAdapterCatalog, InvocationContext, LocalBoxFuture,
-    ManagedResourceScope, ManagedTask, ManagedTaskScope, ModuleCriticality, ModuleDependencies,
-    ModuleLifecycle, NativeEventBindingTable, NativeEventEndpointStateTable, NativeEventHandle,
-    NativeRequestEndpoint, NativeRequestHandle, NativeStreamBindingTable, NativeStreamEndpoint,
-    NativeStreamEndpointStateTable, NativeStreamHandle, Rc, RefCell, RequestAdmission,
-    RequestCapability, RequestId, ResolvedAppPlan, RestartPolicy, RuntimeDiagnostics,
-    RuntimeFailure, ShutdownOutcome, StreamCapability, begin_module_supervision, event,
-    handle_supervision_schedule_failure, oneshot, schedule_module_supervision,
-    shutdown_native_modules,
+    ManagedResourceScope, ManagedTask, ManagedTaskScope, NativeEventBindingTable,
+    NativeEventEndpointStateTable, NativeEventHandle, NativeRequestEndpoint, NativeRequestHandle,
+    NativeStreamBindingTable, NativeStreamEndpoint, NativeStreamEndpointStateTable,
+    NativeStreamHandle, PluginCriticality, PluginDependencies, PluginLifecycle, Rc, RefCell,
+    RequestAdmission, RequestCapability, RequestId, ResolvedAppPlan, RestartPolicy,
+    RuntimeDiagnostics, RuntimeFailure, ShutdownOutcome, StreamCapability,
+    begin_plugin_supervision, event, handle_supervision_schedule_failure, oneshot,
+    schedule_plugin_supervision, shutdown_native_plugins,
 };
 
 #[derive(Clone, Debug)]
@@ -126,7 +126,7 @@ impl NativeEndpointState {
 
 #[derive(Clone, Debug)]
 pub(super) struct NativeEndpointBinding {
-    pub(super) module_instance: String,
+    pub(super) plugin_instance: String,
     pub(super) state: Rc<NativeEndpointState>,
     pub(super) admissions: BTreeMap<String, RequestAdmission>,
 }
@@ -139,7 +139,7 @@ impl NativeEndpointBinding {
 
 #[derive(Clone, Debug)]
 pub(crate) struct NativeStreamEndpointBinding {
-    pub(crate) module_instance: String,
+    pub(crate) plugin_instance: String,
     pub(crate) state: Rc<NativeStreamEndpointState>,
     pub(super) admissions: BTreeMap<String, RequestAdmission>,
 }
@@ -151,8 +151,8 @@ impl NativeStreamEndpointBinding {
 }
 
 #[derive(Debug)]
-pub(super) struct NativeModuleGeneration {
-    pub(super) lifecycle: Rc<dyn ModuleLifecycle>,
+pub(super) struct NativePluginGeneration {
+    pub(super) lifecycle: Rc<dyn PluginLifecycle>,
     pub(super) tasks: ManagedTaskScope,
     pub(super) resources: ManagedResourceScope,
 }
@@ -163,16 +163,16 @@ pub(super) enum GenerationPreparationFailure {
 }
 
 #[derive(Debug)]
-pub(super) struct NativeModuleRuntime {
-    pub(super) generation: RefCell<Option<NativeModuleGeneration>>,
+pub(super) struct NativePluginRuntime {
+    pub(super) generation: RefCell<Option<NativePluginGeneration>>,
 }
 
-impl NativeModuleRuntime {
-    pub(super) fn take_generation(&self) -> Option<NativeModuleGeneration> {
+impl NativePluginRuntime {
+    pub(super) fn take_generation(&self) -> Option<NativePluginGeneration> {
         self.generation.borrow_mut().take()
     }
 
-    pub(super) fn install_generation(&self, generation: NativeModuleGeneration) {
+    pub(super) fn install_generation(&self, generation: NativePluginGeneration) {
         debug_assert!(self.generation.borrow().is_none());
         self.generation.replace(Some(generation));
     }
@@ -180,7 +180,7 @@ impl NativeModuleRuntime {
     pub(super) fn generation_parts(
         &self,
     ) -> Option<(
-        Rc<dyn ModuleLifecycle>,
+        Rc<dyn PluginLifecycle>,
         ManagedTaskScope,
         ManagedResourceScope,
     )> {
@@ -195,9 +195,9 @@ impl NativeModuleRuntime {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct ModuleSupervision {
+pub(super) struct PluginSupervision {
     pub(super) policy: RestartPolicy,
-    pub(super) criticality: ModuleCriticality,
+    pub(super) criticality: PluginCriticality,
     pub(super) required_path: bool,
     pub(super) generation: u64,
     pub(super) attempts: Vec<Duration>,
@@ -254,12 +254,12 @@ impl ShutdownCoordinator {
 pub(super) struct NativeAppRuntime {
     pub(super) plan: ResolvedAppPlan,
     pub(super) adapters: Rc<ExecutionAdapterCatalog>,
-    pub(super) modules: BTreeMap<String, NativeModuleRuntime>,
-    pub(super) dependencies: BTreeMap<String, ModuleDependencies>,
+    pub(super) plugins: BTreeMap<String, NativePluginRuntime>,
+    pub(super) dependencies: BTreeMap<String, PluginDependencies>,
     pub(super) endpoint_states: BTreeMap<(String, String), Rc<NativeEndpointState>>,
     pub(super) stream_endpoint_states: NativeStreamEndpointStateTable,
     pub(super) event_endpoint_states: NativeEventEndpointStateTable,
-    pub(super) supervision: RefCell<BTreeMap<String, ModuleSupervision>>,
+    pub(super) supervision: RefCell<BTreeMap<String, PluginSupervision>>,
     pub(super) supervision_tasks: RefCell<BTreeMap<String, ManagedTask>>,
     pub(super) activation_order: Vec<String>,
     pub(super) ready_gate: AppReadyGate,
@@ -278,7 +278,7 @@ impl std::fmt::Debug for NativeAppRuntime {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("NativeAppRuntime")
-            .field("module_count", &self.modules.len())
+            .field("plugin_count", &self.plugins.len())
             .field("endpoint_count", &self.endpoint_states.len())
             .field("stream_endpoint_count", &self.stream_endpoint_states.len())
             .field("event_endpoint_count", &self.event_endpoint_states.len())
@@ -313,8 +313,8 @@ impl NativeAppRuntime {
         for endpoint in self.event_endpoint_states.values() {
             endpoint.mark_unavailable();
         }
-        for module in self.modules.values() {
-            if let Some((_, tasks, resources)) = module.generation_parts() {
+        for plugin in self.plugins.values() {
+            if let Some((_, tasks, resources)) = plugin.generation_parts() {
                 tasks.close();
                 resources.close();
             }
@@ -372,7 +372,7 @@ impl NativeApp {
         error: RuntimeFailure,
     ) -> Result<T, RuntimeFailure> {
         let instance_key = instance_key
-            .filter(|instance_key| self.runtime.plan.module_instance(instance_key).is_some());
+            .filter(|instance_key| self.runtime.plan.plugin_instance(instance_key).is_some());
         self.runtime.diagnostics.emit_runtime_failure(
             (self.runtime.driver.now)(),
             instance_key,
@@ -466,12 +466,12 @@ impl NativeApp {
         self.endpoints::<C>(caller_instance).map_or(0, <[_]>::len)
     }
 
-    /// Returns whether every declared Module has completed activation.
+    /// Returns whether every declared Plugin has completed activation.
     pub fn is_ready(&self) -> bool {
         self.runtime.ready_gate.is_open()
     }
 
-    /// Returns the App-wide readiness signal observed by Module tasks.
+    /// Returns the App-wide readiness signal observed by Plugin tasks.
     pub fn ready_gate(&self) -> AppReadyGate {
         self.runtime.ready_gate.clone()
     }
@@ -491,15 +491,15 @@ impl NativeApp {
         self.diagnostics.clone()
     }
 
-    /// Returns the exact resolved Capability dependencies for one Module Instance.
+    /// Returns the exact resolved Capability dependencies for one Plugin Instance.
     ///
     /// Runners use this host-facing view when they must preserve provider identity
-    /// while transferring one binding across an Execution Lane. Ordinary Module
+    /// while transferring one binding across an Execution Lane. Ordinary Plugin
     /// code receives the same Interface through its lifecycle context.
     pub fn dependencies(
         &self,
         caller_instance: &str,
-    ) -> Result<ModuleDependencies, RuntimeFailure> {
+    ) -> Result<PluginDependencies, RuntimeFailure> {
         if self.runtime.admission.is_closed() {
             return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
@@ -509,7 +509,7 @@ impl NativeApp {
             .cloned()
             .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
                 detail: format!(
-                    "Module Instance `{caller_instance}` has no resolved dependency table"
+                    "Plugin Instance `{caller_instance}` has no resolved dependency table"
                 ),
             })
     }
@@ -527,7 +527,7 @@ impl NativeApp {
                     .values()
                     .map(RequestAdmission::queue_depth)
                     .sum::<usize>();
-                *depths.entry(endpoint.module_instance.clone()).or_insert(0) += depth;
+                *depths.entry(endpoint.plugin_instance.clone()).or_insert(0) += depth;
             }
         }
         depths
@@ -543,8 +543,8 @@ impl NativeApp {
         self.runtime.terminal_failure.borrow().is_some()
     }
 
-    /// Returns the current ready generation for one Module Instance, when it is available.
-    pub fn module_generation(&self, instance_key: &str) -> Option<u64> {
+    /// Returns the current ready generation for one Plugin Instance, when it is available.
+    pub fn plugin_generation(&self, instance_key: &str) -> Option<u64> {
         self.runtime
             .supervision
             .borrow()
@@ -554,33 +554,33 @@ impl NativeApp {
                     self.runtime
                         .endpoint_states
                         .iter()
-                        .any(|((module, _), endpoint)| {
-                            module == instance_key && endpoint.is_current(state.generation)
+                        .any(|((plugin, _), endpoint)| {
+                            plugin == instance_key && endpoint.is_current(state.generation)
                         });
                 let stream_current =
                     self.runtime
                         .stream_endpoint_states
                         .iter()
-                        .any(|((module, _), endpoint)| {
-                            module == instance_key && endpoint.is_current(state.generation)
+                        .any(|((plugin, _), endpoint)| {
+                            plugin == instance_key && endpoint.is_current(state.generation)
                         });
                 let event_current =
                     self.runtime
                         .event_endpoint_states
                         .iter()
-                        .any(|((module, _), endpoint)| {
-                            module == instance_key && endpoint.is_current(state.generation)
+                        .any(|((plugin, _), endpoint)| {
+                            plugin == instance_key && endpoint.is_current(state.generation)
                         });
                 (request_current || stream_current || event_current).then_some(state.generation)
             })
     }
 
-    /// Reports a Module Instance failure and schedules its finite supervision policy.
-    pub fn report_module_failure(&self, instance_key: &str) -> Result<(), RuntimeFailure> {
-        if !begin_module_supervision(&self.runtime, instance_key)? {
+    /// Reports a Plugin Instance failure and schedules its finite supervision policy.
+    pub fn report_plugin_failure(&self, instance_key: &str) -> Result<(), RuntimeFailure> {
+        if !begin_plugin_supervision(&self.runtime, instance_key)? {
             return Ok(());
         }
-        schedule_module_supervision(&self.runtime, instance_key).map_err(|error| {
+        schedule_plugin_supervision(&self.runtime, instance_key).map_err(|error| {
             handle_supervision_schedule_failure(&self.runtime, instance_key, error)
         })
     }
@@ -603,7 +603,7 @@ impl NativeApp {
             let runtime = self.runtime.clone();
             let worker_runtime = runtime.clone();
             match (runtime.driver.spawn_local)(Box::pin(async move {
-                let outcome = shutdown_native_modules(&worker_runtime, timeout).await;
+                let outcome = shutdown_native_plugins(&worker_runtime, timeout).await;
                 worker_runtime.complete_shutdown(&outcome);
             })) {
                 Ok(task) => {

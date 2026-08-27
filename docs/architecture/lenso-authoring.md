@@ -1,9 +1,6 @@
 # Lenso authoring tooling
 
-Status: accepted target under
-[Plan 006](../../plans/006-migrate-embedded-behavior-to-plugins.md). Released
-tools may retain compatibility commands until that plan's migration and
-retirement gates close.
+Status: current public authoring contract.
 
 The `lenso-cli` repository owns the executable authoring product and its
 filesystem-facing library under ADR 0064. The public CLI exposes Plugin source
@@ -74,9 +71,8 @@ derived App; `app show` explains Host defaults, explicit Instances,
 replacements, bindings, authority, and provenance.
 
 `lenso.app.json`, `lenso.app.toml`, `--definition`, manual bindings, package
-tables, and lane selections are retired authoring interfaces. `lenso app
-migrate` may consume an old Definition once and remove it only after proving
-the new Plugin Root resolves to equivalent behavior and authority.
+tables, and lane selections are retired authoring interfaces. There is no
+compatibility or migration command in the normal CLI.
 
 See the exact [Plugin Root and App resolution
 contract](plugin-root-resolution.md).

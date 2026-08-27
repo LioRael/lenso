@@ -14,16 +14,16 @@ mod resolution;
 pub use error::PlanResolutionError;
 pub use execution::{ExecutionClassId, ExecutionLaneId, ExecutionLanePlan};
 pub use policy::{
-    CapabilityCardinality, CapabilityOperationKind, EventAdmissionPlan, ModuleCriticality,
+    CapabilityCardinality, CapabilityOperationKind, EventAdmissionPlan, PluginCriticality,
     RequestAdmissionPlan, RestartMode, RestartPolicy,
 };
 use resolution::{
-    activation_order_for, resolve_parts, sort_bindings, sort_module_instances,
+    activation_order_for, resolve_parts, sort_bindings, sort_plugin_instances,
     sorted_execution_lanes, validate_execution_lanes,
 };
 
 /// The Resolved App Plan schema understood by this Kernel version.
-pub const PLAN_SCHEMA_VERSION: u32 = 1;
+pub const PLAN_SCHEMA_VERSION: u32 = 2;
 
 /// Default maximum number of requests waiting for one Operation.
 pub const DEFAULT_REQUEST_QUEUE_CAPACITY: usize = 16;
@@ -38,7 +38,7 @@ fn default_execution_lanes() -> Vec<ExecutionLanePlan> {
     vec![ExecutionLanePlan::new("main")]
 }
 
-/// One Capability required by a Module Instance.
+/// One Capability required by a Plugin Instance.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityRequirementPlan {
     capability_id: String,
@@ -106,7 +106,7 @@ impl CapabilityRequirementPlan {
     }
 }
 
-/// Exact Capability endpoint metadata expected from one Module Instance.
+/// Exact Capability endpoint metadata expected from one Plugin Instance.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CapabilityEndpointPlan {
     capability_id: String,
@@ -311,9 +311,9 @@ impl CapabilityEndpointPlan {
     }
 }
 
-/// One exact App-local Module Instance selected by the resolved Plan.
+/// One exact App-local Plugin Instance selected by the resolved Plan.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ModuleInstancePlan {
+pub struct PluginInstancePlan {
     instance_key: String,
     package_id: String,
     entrypoint: String,
@@ -323,12 +323,12 @@ pub struct ModuleInstancePlan {
     execution_class: ExecutionClassId,
     package_revision: String,
     restart_policy: RestartPolicy,
-    criticality: ModuleCriticality,
+    criticality: PluginCriticality,
     #[serde(default)]
     execution_lane: ExecutionLaneId,
 }
 
-impl ModuleInstancePlan {
+impl PluginInstancePlan {
     /// Selects one statically linked package under an App-local Instance key.
     pub fn new(instance_key: impl Into<String>, package_id: impl Into<String>) -> Self {
         Self {
@@ -341,7 +341,7 @@ impl ModuleInstancePlan {
             execution_class: ExecutionClassId::native_rust(),
             package_revision: String::new(),
             restart_policy: RestartPolicy::default(),
-            criticality: ModuleCriticality::default(),
+            criticality: PluginCriticality::default(),
             execution_lane: ExecutionLaneId::default(),
         }
     }
@@ -353,7 +353,7 @@ impl ModuleInstancePlan {
         self
     }
 
-    /// Supplies opaque, non-secret configuration owned and decoded by the Module.
+    /// Supplies opaque, non-secret configuration owned and decoded by the Plugin.
     #[must_use]
     pub fn with_configuration(mut self, configuration: impl Into<String>) -> Self {
         self.configuration = configuration.into();
@@ -380,14 +380,14 @@ impl ModuleInstancePlan {
         self.with_requirement(requirement)
     }
 
-    /// Selects the host execution class for this Module Instance.
+    /// Selects the host execution class for this Plugin Instance.
     #[must_use]
     pub fn with_execution_class(mut self, execution_class: ExecutionClassId) -> Self {
         self.execution_class = execution_class;
         self
     }
 
-    /// Places this Module Instance on one Plan-declared Execution Lane.
+    /// Places this Plugin Instance on one Plan-declared Execution Lane.
     #[must_use]
     pub fn with_execution_lane(mut self, execution_lane: ExecutionLaneId) -> Self {
         self.execution_lane = execution_lane;
@@ -401,16 +401,16 @@ impl ModuleInstancePlan {
         self
     }
 
-    /// Selects the finite supervision policy for this Module Instance.
+    /// Selects the finite supervision policy for this Plugin Instance.
     #[must_use]
     pub fn with_restart_policy(mut self, restart_policy: RestartPolicy) -> Self {
         self.restart_policy = restart_policy;
         self
     }
 
-    /// Marks this Module Instance critical for supervision exhaustion outcomes.
+    /// Marks this Plugin Instance critical for supervision exhaustion outcomes.
     #[must_use]
-    pub fn with_criticality(mut self, criticality: ModuleCriticality) -> Self {
+    pub fn with_criticality(mut self, criticality: PluginCriticality) -> Self {
         self.criticality = criticality;
         self
     }
@@ -430,7 +430,7 @@ impl ModuleInstancePlan {
         &self.entrypoint
     }
 
-    /// Returns the Module-owned opaque configuration selected before boot.
+    /// Returns the Plugin-owned opaque configuration selected before boot.
     pub fn configuration(&self) -> &str {
         &self.configuration
     }
@@ -466,7 +466,7 @@ impl ModuleInstancePlan {
     }
 
     /// Returns the criticality selected for this Instance.
-    pub const fn criticality(&self) -> ModuleCriticality {
+    pub const fn criticality(&self) -> PluginCriticality {
         self.criticality
     }
 }
@@ -588,20 +588,20 @@ impl CapabilityBinding {
 /// Declarative, language-independent authoring input for one App.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AppComposition {
-    module_instances: Vec<ModuleInstancePlan>,
+    plugin_instances: Vec<PluginInstancePlan>,
     capability_bindings: Vec<CapabilityBinding>,
     #[serde(default = "default_execution_lanes")]
     execution_lanes: Vec<ExecutionLanePlan>,
 }
 
 impl AppComposition {
-    /// Creates an App Composition with explicit Module Instances and bindings.
+    /// Creates an App Composition with explicit Plugin Instances and bindings.
     pub fn new(
-        module_instances: Vec<ModuleInstancePlan>,
+        plugin_instances: Vec<PluginInstancePlan>,
         capability_bindings: Vec<CapabilityBinding>,
     ) -> Self {
         Self {
-            module_instances,
+            plugin_instances,
             capability_bindings,
             execution_lanes: default_execution_lanes(),
         }
@@ -616,20 +616,20 @@ impl AppComposition {
 
     /// Materializes one deterministic, validated Resolved App Plan.
     pub fn resolve(&self) -> Result<ResolvedAppPlan, PlanResolutionError> {
-        validate_execution_lanes(&self.execution_lanes, &self.module_instances)?;
-        resolve_parts(&self.module_instances, &self.capability_bindings).map(
-            |(module_instances, capability_bindings)| ResolvedAppPlan {
+        validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
+        resolve_parts(&self.plugin_instances, &self.capability_bindings).map(
+            |(plugin_instances, capability_bindings)| ResolvedAppPlan {
                 schema_version: PLAN_SCHEMA_VERSION,
-                module_instances,
+                plugin_instances,
                 capability_bindings,
                 execution_lanes: sorted_execution_lanes(&self.execution_lanes),
             },
         )
     }
 
-    /// Returns the authoring Module Instances.
-    pub fn module_instances(&self) -> &[ModuleInstancePlan] {
-        &self.module_instances
+    /// Returns the authoring Plugin Instances.
+    pub fn plugin_instances(&self) -> &[PluginInstancePlan] {
+        &self.plugin_instances
     }
 
     /// Returns the authoring bindings.
@@ -647,18 +647,18 @@ impl AppComposition {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ResolvedAppPlan {
     schema_version: u32,
-    module_instances: Vec<ModuleInstancePlan>,
+    plugin_instances: Vec<PluginInstancePlan>,
     capability_bindings: Vec<CapabilityBinding>,
     #[serde(default = "default_execution_lanes")]
     execution_lanes: Vec<ExecutionLanePlan>,
 }
 
 impl ResolvedAppPlan {
-    /// Creates a valid Plan containing no Module Instances.
+    /// Creates a valid Plan containing no Plugin Instances.
     pub fn empty() -> Self {
         Self {
             schema_version: PLAN_SCHEMA_VERSION,
-            module_instances: Vec::new(),
+            plugin_instances: Vec::new(),
             capability_bindings: Vec::new(),
             execution_lanes: default_execution_lanes(),
         }
@@ -666,14 +666,14 @@ impl ResolvedAppPlan {
 
     /// Creates a Plan with exact entries, retaining invalid entries for later validation.
     pub fn new(
-        mut module_instances: Vec<ModuleInstancePlan>,
+        mut plugin_instances: Vec<PluginInstancePlan>,
         mut capability_bindings: Vec<CapabilityBinding>,
     ) -> Self {
-        sort_module_instances(&mut module_instances);
+        sort_plugin_instances(&mut plugin_instances);
         sort_bindings(&mut capability_bindings);
         Self {
             schema_version: PLAN_SCHEMA_VERSION,
-            module_instances,
+            plugin_instances,
             capability_bindings,
             execution_lanes: default_execution_lanes(),
         }
@@ -685,7 +685,7 @@ impl ResolvedAppPlan {
     pub const fn with_schema_version(schema_version: u32) -> Self {
         Self {
             schema_version,
-            module_instances: Vec::new(),
+            plugin_instances: Vec::new(),
             capability_bindings: Vec::new(),
             execution_lanes: Vec::new(),
         }
@@ -699,8 +699,8 @@ impl ResolvedAppPlan {
                 actual: self.schema_version,
             });
         }
-        validate_execution_lanes(&self.execution_lanes, &self.module_instances)?;
-        resolve_parts(&self.module_instances, &self.capability_bindings).map(|_| ())
+        validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
+        resolve_parts(&self.plugin_instances, &self.capability_bindings).map(|_| ())
     }
 
     /// Returns the deterministic provider-before-consumer lifecycle order.
@@ -714,9 +714,9 @@ impl ResolvedAppPlan {
                 actual: self.schema_version,
             });
         }
-        validate_execution_lanes(&self.execution_lanes, &self.module_instances)?;
+        validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
         let (instances, bindings) =
-            resolve_parts(&self.module_instances, &self.capability_bindings)?;
+            resolve_parts(&self.plugin_instances, &self.capability_bindings)?;
         activation_order_for(&instances, &bindings)
             .map_err(|instances| PlanResolutionError::ActivationCycle { instances })
     }
@@ -726,9 +726,9 @@ impl ResolvedAppPlan {
         self.schema_version
     }
 
-    /// Returns the exact Module Instances in deterministic Plan order.
-    pub fn module_instances(&self) -> &[ModuleInstancePlan] {
-        &self.module_instances
+    /// Returns the exact Plugin Instances in deterministic Plan order.
+    pub fn plugin_instances(&self) -> &[PluginInstancePlan] {
+        &self.plugin_instances
     }
 
     /// Returns the exact Capability bindings in deterministic Plan order.
@@ -751,7 +751,7 @@ impl ResolvedAppPlan {
             return binding.admission();
         }
 
-        self.module_instances
+        self.plugin_instances
             .iter()
             .find(|instance| instance.instance_key() == binding.provider_instance())
             .and_then(|provider| {
@@ -770,7 +770,7 @@ impl ResolvedAppPlan {
             return binding.event_admission();
         }
 
-        self.module_instances
+        self.plugin_instances
             .iter()
             .find(|instance| instance.instance_key() == binding.provider_instance())
             .and_then(|provider| {
@@ -783,31 +783,31 @@ impl ResolvedAppPlan {
             .unwrap_or_else(|| binding.event_admission())
     }
 
-    /// Returns the exact Module Instance selected by its App-local key.
-    pub fn module_instance(&self, instance_key: &str) -> Option<&ModuleInstancePlan> {
-        self.module_instances
+    /// Returns the exact Plugin Instance selected by its App-local key.
+    pub fn plugin_instance(&self, instance_key: &str) -> Option<&PluginInstancePlan> {
+        self.plugin_instances
             .iter()
             .find(|instance| instance.instance_key() == instance_key)
     }
 
-    /// Returns the restart policy materialized for one Module Instance.
+    /// Returns the restart policy materialized for one Plugin Instance.
     pub fn restart_policy_for(&self, instance_key: &str) -> Option<RestartPolicy> {
-        self.module_instance(instance_key)
-            .map(ModuleInstancePlan::restart_policy)
+        self.plugin_instance(instance_key)
+            .map(PluginInstancePlan::restart_policy)
     }
 
-    /// Returns the criticality materialized for one Module Instance.
-    pub fn criticality_for(&self, instance_key: &str) -> Option<ModuleCriticality> {
-        self.module_instance(instance_key)
-            .map(ModuleInstancePlan::criticality)
+    /// Returns the criticality materialized for one Plugin Instance.
+    pub fn criticality_for(&self, instance_key: &str) -> Option<PluginCriticality> {
+        self.plugin_instance(instance_key)
+            .map(PluginInstancePlan::criticality)
     }
 
-    /// Returns whether a Module Instance is directly bound to a required `one` Capability path.
-    pub fn module_instance_is_required(&self, instance_key: &str) -> bool {
+    /// Returns whether a Plugin Instance is directly bound to a required `one` Capability path.
+    pub fn plugin_instance_is_required(&self, instance_key: &str) -> bool {
         self.capability_bindings.iter().any(|binding| {
             binding.provider_instance() == instance_key
                 && self
-                    .module_instance(binding.consumer_instance())
+                    .plugin_instance(binding.consumer_instance())
                     .is_some_and(|consumer| {
                         consumer.required_capabilities().iter().any(|requirement| {
                             requirement.capability_id() == binding.capability_id()

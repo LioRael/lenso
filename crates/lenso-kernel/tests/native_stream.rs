@@ -9,12 +9,12 @@ use std::{
 use futures::future::{LocalBoxFuture, ready};
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    ModuleInstancePlan, ResolvedAppPlan, RestartPolicy,
+    PluginInstancePlan, ResolvedAppPlan, RestartPolicy,
 };
 use lenso_kernel::{
     DeterministicDriver, InvocationContext, NativeExecutionAdapter, NativeStreamEndpoint,
-    NativeStreamItem, NativeStreamSession, NoopModuleLifecycle, PreparedBinding, PreparedNativeApp,
-    PreparedNativeModule, PreparedStreamBinding, RuntimeDriver, RuntimeFailure, StreamCapability,
+    NativeStreamItem, NativeStreamSession, NoopPluginLifecycle, PreparedBinding, PreparedNativeApp,
+    PreparedNativePlugin, PreparedStreamBinding, RuntimeDriver, RuntimeFailure, StreamCapability,
     StreamEvent,
 };
 
@@ -100,7 +100,7 @@ struct CrashSession;
 
 impl NativeStreamSession for CrashSession {
     fn send(&self, _message: Box<dyn Any>) -> LocalBoxFuture<'static, Result<(), RuntimeFailure>> {
-        Box::pin(ready(Err(RuntimeFailure::ModuleFailure {
+        Box::pin(ready(Err(RuntimeFailure::PluginFailure {
             detail: "test provider generation failed".to_owned(),
         })))
     }
@@ -232,13 +232,13 @@ impl NativeExecutionAdapter for StreamAdapter {
             BTreeMap::from([
                 (
                     "consumer".to_owned(),
-                    PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+                    PreparedNativePlugin::new(Vec::new(), NoopPluginLifecycle),
                 ),
                 (
                     "provider".to_owned(),
-                    PreparedNativeModule::with_stream_endpoints(
+                    PreparedNativePlugin::with_stream_endpoints(
                         vec![endpoint.clone()],
-                        NoopModuleLifecycle,
+                        NoopPluginLifecycle,
                     ),
                 ),
             ]),
@@ -252,15 +252,15 @@ impl NativeExecutionAdapter for StreamAdapter {
         &self,
         _plan: &ResolvedAppPlan,
         instance_key: &str,
-    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+    ) -> Result<PreparedNativePlugin, RuntimeFailure> {
         if instance_key != "provider" {
             return Err(RuntimeFailure::InvalidResolvedPlan {
                 detail: format!("unexpected recreation for `{instance_key}`"),
             });
         }
-        Ok(PreparedNativeModule::with_stream_endpoints(
+        Ok(PreparedNativePlugin::with_stream_endpoints(
             vec![self.endpoint.clone()],
-            NoopModuleLifecycle,
+            NoopPluginLifecycle,
         ))
     }
 }
@@ -268,10 +268,10 @@ impl NativeExecutionAdapter for StreamAdapter {
 fn plan(queue_capacity: usize, max_concurrency: usize) -> ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::one(CAPABILITY_ID, DESCRIPTOR_VERSION),
             ),
-            ModuleInstancePlan::new("provider", "package.provider")
+            PluginInstancePlan::new("provider", "package.provider")
                 .with_restart_policy(RestartPolicy::on_failure(
                     2,
                     Duration::from_secs(1),
@@ -521,17 +521,17 @@ fn established_stream_stays_bound_to_its_opening_generation() {
         .expect("crashing stream should open");
     assert!(matches!(
         driver.run(crashing.send("crash".to_owned())),
-        Err(RuntimeFailure::ModuleFailure { .. })
+        Err(RuntimeFailure::PluginFailure { .. })
     ));
     drop(crashing);
 
     for _ in 0..10 {
         driver.run(driver.yield_now());
-        if app.module_generation("provider") == Some(2) {
+        if app.plugin_generation("provider") == Some(2) {
             break;
         }
     }
-    assert_eq!(app.module_generation("provider"), Some(2));
+    assert_eq!(app.plugin_generation("provider"), Some(2));
     assert!(matches!(
         driver.run(existing.receive()),
         Err(RuntimeFailure::Unavailable {
@@ -561,7 +561,7 @@ fn provider_failure_terminates_only_the_nested_stream() {
 
     assert!(matches!(
         driver.run(stream.send("crash".to_owned())),
-        Err(RuntimeFailure::ModuleFailure { .. })
+        Err(RuntimeFailure::PluginFailure { .. })
     ));
     assert!(
         !caller_cancellation.is_cancelled(),
