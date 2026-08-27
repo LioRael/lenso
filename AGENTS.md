@@ -7,8 +7,8 @@ source is retained by the `lenso@0.3.47` tag and Git history.
 
 - Read [`CONTEXT.md`](CONTEXT.md), [`docs/adr/README.md`](docs/adr/README.md),
   [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md), and
-  the relevant ADR 0030–0067 before changing architecture.
-- Route product planning, Capability, Module, App Composition, and host-runtime
+  the relevant ADR 0030–0070 before changing architecture.
+- Route product planning, Capability, Plugin, App Composition, and host-runtime
   work through the canonical [`skills/`](skills/) pack. Use `lenso-start` when
   ownership is unclear; see the [Agents and skills guide](docs/agents/skills.md)
   for installation and maintenance.
@@ -26,18 +26,20 @@ source is retained by the `lenso@0.3.47` tag and Git history.
 - Keep the portable Kernel independent of Tokio, OS APIs, network, filesystem,
   database, process, product, and release concerns.
 - Keep authoring data in `lenso-app-plan`; keep host scheduling in a Runtime
-  Driver; keep host-specific Module execution in an Execution Adapter.
+  Driver; keep host-specific Plugin execution in an Execution Adapter.
 - Keep main-repository product ownership limited to `lenso-app-plan`,
   `lenso-kernel`, and Kernel-owned runtime conformance under ADR 0064. Do not
-  add inward dependencies on a concrete Driver, Adapter, Capability, Module,
+  add inward dependencies on a concrete Driver, Adapter, Capability, Plugin,
   CLI, or example.
 - Kernel executes only immutable, completely resolved Plan Snapshots. It may
   apply only an ADR 0067 validated atomic Plan Transition between adjacent
   snapshots; discovery, installation, version selection, product policy,
   unvalidated graph mutation, and fallback provider behavior remain forbidden.
-- Use the canonical terms App, App Definition, Module, Module Instance,
+- Use the canonical terms Host, Plugin Root, App, Plugin, Plugin Instance,
   Capability, Port, Slot, App Composition, Plan Snapshot, Plan Transition,
   Reconciler, App Generation, Kernel, Runtime Driver, and Execution Adapter.
+  App Definition and Module are retired public terms; existing `Module*` code
+  identifiers are private migration details only.
 - Do not reintroduce Service, Provider, System Plane, Console, Story, Auth,
   PostgreSQL, migration, Outbox, Workflow, release, digest, or compatibility
   crates into the Kernel workspace.
@@ -76,4 +78,4 @@ Do not hand-edit generated lockfiles when Cargo can regenerate them.
 
 Do not add compatibility shims or a `legacy/` directory to make removed
 v0.3.x code compile. If a retained behavior needs a vNext home, first state its
-Interface and owner, then add the smallest deep Module or Adapter seam.
+Interface and owner, then add the smallest deep Plugin or Adapter seam.

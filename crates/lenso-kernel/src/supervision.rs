@@ -1,16 +1,16 @@
 use super::{
     ActivateContext, AppAdmission, BTreeMap, DeactivateContext, DeactivationReason,
     DiagnosticEvent, DiagnosticSource, Duration, Either, FutureExt, GenerationPreparationFailure,
-    ManagedResourceScope, ManagedTask, ManagedTaskScope, ModuleDependencies, ModuleLifecycle,
-    ModuleSupervision, NativeAppRuntime, NativeEventEndpoint, NativeModuleGeneration,
-    NativeModuleRuntime, NativeRequestEndpoint, NativeStreamEndpoint, PrepareContext, Rc,
-    ResolvedAppPlan, RestartMode, RuntimeDiagnostics, RuntimeFailure, ShutdownOutcome,
+    ManagedResourceScope, ManagedTask, ManagedTaskScope, NativeAppRuntime, NativeEventEndpoint,
+    NativePluginGeneration, NativePluginRuntime, NativeRequestEndpoint, NativeStreamEndpoint,
+    PluginDependencies, PluginLifecycle, PluginSupervision, PrepareContext, Rc, ResolvedAppPlan,
+    RestartMode, RuntimeDiagnostics, RuntimeFailure, ShutdownOutcome,
     attach_managed_task_failure_handler, select, wait_until,
 };
 
 pub(super) async fn deactivate_in_reverse(
-    modules: &BTreeMap<String, NativeModuleRuntime>,
-    dependencies: &BTreeMap<String, ModuleDependencies>,
+    plugins: &BTreeMap<String, NativePluginRuntime>,
+    dependencies: &BTreeMap<String, PluginDependencies>,
     activation_order: &[String],
     reason: DeactivationReason,
     admission: &AppAdmission,
@@ -19,10 +19,10 @@ pub(super) async fn deactivate_in_reverse(
 ) -> Option<RuntimeFailure> {
     let mut first_error = None;
     for instance_key in activation_order.iter().rev() {
-        let module = modules
+        let plugin = plugins
             .get(instance_key)
-            .expect("deactivation order only contains planned Module Instances");
-        let Some(generation) = module.take_generation() else {
+            .expect("deactivation order only contains planned Plugin Instances");
+        let Some(generation) = plugin.take_generation() else {
             continue;
         };
         if let Some(error) = cleanup_generation(
@@ -48,7 +48,7 @@ pub(super) async fn deactivate_in_reverse(
     clippy::too_many_lines,
     reason = "shutdown keeps one global deadline and reverse-order cleanup in one sequence"
 )]
-pub(super) async fn shutdown_native_modules(
+pub(super) async fn shutdown_native_plugins(
     runtime: &NativeAppRuntime,
     timeout: Duration,
 ) -> ShutdownOutcome {
@@ -60,8 +60,8 @@ pub(super) async fn shutdown_native_modules(
         return ShutdownOutcome::Timeout;
     }
 
-    for module in runtime.modules.values() {
-        let Some((_, tasks, _)) = module.generation_parts() else {
+    for plugin in runtime.plugins.values() {
+        let Some((_, tasks, _)) = plugin.generation_parts() else {
             continue;
         };
         if !tasks.drain_until(&runtime.driver, deadline).await {
@@ -72,11 +72,11 @@ pub(super) async fn shutdown_native_modules(
 
     let mut first_error = None;
     for instance_key in runtime.activation_order.iter().rev() {
-        let module = runtime
-            .modules
+        let plugin = runtime
+            .plugins
             .get(instance_key)
-            .expect("deactivation order only contains planned Module Instances");
-        let Some((lifecycle, tasks, resources)) = module.generation_parts() else {
+            .expect("deactivation order only contains planned Plugin Instances");
+        let Some((lifecycle, tasks, resources)) = plugin.generation_parts() else {
             continue;
         };
         let cancellation = tasks.cancellation();
@@ -92,7 +92,7 @@ pub(super) async fn shutdown_native_modules(
                 DiagnosticEvent::LifecycleStarted {
                     instance: instance_key.clone(),
                     generation,
-                    phase: super::ModuleLifecyclePhase::Deactivate,
+                    phase: super::PluginLifecyclePhase::Deactivate,
                 }
             });
         let result = wait_until(
@@ -126,7 +126,7 @@ pub(super) async fn shutdown_native_modules(
                 DiagnosticEvent::LifecycleCompleted {
                     instance: instance_key.clone(),
                     generation,
-                    phase: super::ModuleLifecyclePhase::Deactivate,
+                    phase: super::PluginLifecyclePhase::Deactivate,
                     outcome,
                     elapsed: (runtime.driver.now)().saturating_sub(started_at),
                 }
@@ -174,8 +174,8 @@ pub(super) async fn shutdown_native_modules(
 }
 
 pub(super) fn terminate_remaining_cleanup(runtime: &NativeAppRuntime) {
-    for module in runtime.modules.values() {
-        if let Some((_, tasks, _)) = module.generation_parts() {
+    for plugin in runtime.plugins.values() {
+        if let Some((_, tasks, _)) = plugin.generation_parts() {
             tasks.abort_all();
         }
     }
@@ -203,16 +203,16 @@ pub(super) async fn drain_supervision_until(
     true
 }
 
-pub(super) fn module_supervision(plan: &ResolvedAppPlan) -> BTreeMap<String, ModuleSupervision> {
-    plan.module_instances()
+pub(super) fn plugin_supervision(plan: &ResolvedAppPlan) -> BTreeMap<String, PluginSupervision> {
+    plan.plugin_instances()
         .iter()
         .map(|instance| {
             (
                 instance.instance_key().to_owned(),
-                ModuleSupervision {
+                PluginSupervision {
                     policy: instance.restart_policy(),
                     criticality: instance.criticality(),
-                    required_path: plan.module_instance_is_required(instance.instance_key()),
+                    required_path: plan.plugin_instance_is_required(instance.instance_key()),
                     generation: 1,
                     attempts: Vec::new(),
                     stable_since: Some(Duration::ZERO),
@@ -223,22 +223,22 @@ pub(super) fn module_supervision(plan: &ResolvedAppPlan) -> BTreeMap<String, Mod
         .collect()
 }
 
-pub(super) fn begin_module_supervision(
+pub(super) fn begin_plugin_supervision(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
 ) -> Result<bool, RuntimeFailure> {
     if runtime.shutdown_started.get() || runtime.terminal_failure.borrow().is_some() {
         return Err(RuntimeFailure::AdmissionClosed);
     }
-    if !runtime.modules.contains_key(instance_key) {
+    if !runtime.plugins.contains_key(instance_key) {
         return Err(RuntimeFailure::InvalidResolvedPlan {
-            detail: format!("unknown Module Instance `{instance_key}`"),
+            detail: format!("unknown Plugin Instance `{instance_key}`"),
         });
     }
     let mut supervision = runtime.supervision.borrow_mut();
     let state = supervision
         .get_mut(instance_key)
-        .expect("every planned Module Instance has supervision state");
+        .expect("every planned Plugin Instance has supervision state");
     if state.restarting {
         return Ok(false);
     }
@@ -283,21 +283,21 @@ pub(super) fn begin_module_supervision(
     Ok(true)
 }
 
-pub(super) fn schedule_module_supervision(
+pub(super) fn schedule_plugin_supervision(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
 ) -> Result<(), RuntimeFailure> {
     let task_runtime = runtime.clone();
     let task_instance_key = instance_key.to_owned();
     let task = (runtime.driver.spawn_local)(Box::pin(async move {
-        let _ = supervise_module_instance(task_runtime, task_instance_key).await;
+        let _ = supervise_plugin_instance(task_runtime, task_instance_key).await;
     }))
     .map_err(|error| {
         if let Some(state) = runtime.supervision.borrow_mut().get_mut(instance_key) {
             state.restarting = false;
         }
         RuntimeFailure::Internal {
-            detail: format!("failed to schedule Module supervision: {error:?}"),
+            detail: format!("failed to schedule Plugin supervision: {error:?}"),
         }
     })?;
     runtime
@@ -311,7 +311,7 @@ pub(super) fn schedule_module_supervision(
     clippy::too_many_lines,
     reason = "the supervision generation transition remains linear and auditable"
 )]
-pub(super) async fn supervise_module_instance(
+pub(super) async fn supervise_plugin_instance(
     runtime: Rc<NativeAppRuntime>,
     instance_key: String,
 ) -> Result<(), RuntimeFailure> {
@@ -324,9 +324,9 @@ pub(super) async fn supervise_module_instance(
         .get(&instance_key)
         .map_or(1, |state| state.generation);
     let generation = runtime
-        .modules
+        .plugins
         .get(&instance_key)
-        .and_then(NativeModuleRuntime::take_generation);
+        .and_then(NativePluginRuntime::take_generation);
     if let Some(generation) = generation
         && let Some(error) = cleanup_native_generation(
             &runtime,
@@ -337,12 +337,12 @@ pub(super) async fn supervise_module_instance(
         )
         .await
     {
-        return finish_module_cleanup_failure(&runtime, &instance_key, error);
+        return finish_plugin_cleanup_failure(&runtime, &instance_key, error);
     }
 
     loop {
         let Some((attempt, delay)) = next_restart_attempt(&runtime, &instance_key) else {
-            return finish_module_exhaustion(&runtime, &instance_key);
+            return finish_plugin_exhaustion(&runtime, &instance_key);
         };
         runtime.diagnostics.emit(
             DiagnosticSource::Supervision,
@@ -362,12 +362,12 @@ pub(super) async fn supervise_module_instance(
 
         let Some(instance) = runtime
             .plan
-            .module_instances()
+            .plugin_instances()
             .iter()
             .find(|instance| instance.instance_key() == instance_key)
         else {
             return Err(RuntimeFailure::InvalidResolvedPlan {
-                detail: format!("unknown Module Instance `{instance_key}`"),
+                detail: format!("unknown Plugin Instance `{instance_key}`"),
             });
         };
         let Some(adapter) = runtime.adapters.adapter(instance.execution_class()) else {
@@ -424,7 +424,7 @@ pub(super) async fn supervise_module_instance(
             Ok(generation) => generation,
             Err(GenerationPreparationFailure::Lifecycle) => continue,
             Err(GenerationPreparationFailure::Cleanup(error)) => {
-                return finish_module_cleanup_failure(&runtime, &instance_key, error);
+                return finish_plugin_cleanup_failure(&runtime, &instance_key, error);
             }
         };
 
@@ -440,10 +440,10 @@ pub(super) async fn supervise_module_instance(
             return Err(RuntimeFailure::AdmissionClosed);
         }
 
-        if let Some(module) = runtime.modules.get(&instance_key) {
-            module.install_generation(generation);
+        if let Some(plugin) = runtime.plugins.get(&instance_key) {
+            plugin.install_generation(generation);
         }
-        install_module_endpoints(
+        install_plugin_endpoints(
             &runtime,
             &instance_key,
             endpoints.request().to_vec(),
@@ -490,7 +490,7 @@ pub(super) fn next_restart_attempt(
     let mut supervision = runtime.supervision.borrow_mut();
     let state = supervision
         .get_mut(instance_key)
-        .expect("every planned Module Instance has supervision state");
+        .expect("every planned Plugin Instance has supervision state");
     if state.policy.mode() != RestartMode::OnFailure {
         return None;
     }
@@ -508,7 +508,7 @@ pub(super) fn next_restart_attempt(
     Some((attempt, backoff.saturating_add(jitter)))
 }
 
-pub(super) fn finish_module_exhaustion(
+pub(super) fn finish_plugin_exhaustion(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
 ) -> Result<(), RuntimeFailure> {
@@ -516,7 +516,7 @@ pub(super) fn finish_module_exhaustion(
         let mut supervision = runtime.supervision.borrow_mut();
         let state = supervision
             .get_mut(instance_key)
-            .expect("every planned Module Instance has supervision state");
+            .expect("every planned Plugin Instance has supervision state");
         state.restarting = false;
         (
             state.attempts.len(),
@@ -535,7 +535,7 @@ pub(super) fn finish_module_exhaustion(
         );
         return Ok(());
     }
-    let error = RuntimeFailure::ModuleRestartExhausted {
+    let error = RuntimeFailure::PluginRestartExhausted {
         instance: instance_key.to_owned(),
         attempts,
     };
@@ -556,7 +556,7 @@ pub(super) fn finish_module_exhaustion(
     Err(error)
 }
 
-pub(super) fn finish_module_cleanup_failure(
+pub(super) fn finish_plugin_cleanup_failure(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
     error: RuntimeFailure,
@@ -565,7 +565,7 @@ pub(super) fn finish_module_cleanup_failure(
         let mut supervision = runtime.supervision.borrow_mut();
         let state = supervision
             .get_mut(instance_key)
-            .expect("every planned Module Instance has supervision state");
+            .expect("every planned Plugin Instance has supervision state");
         state.restarting = false;
         state.criticality.is_critical() || state.required_path
     };
@@ -586,13 +586,13 @@ pub(super) fn finish_module_cleanup_failure(
 pub(super) async fn prepare_and_activate_generation(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
-    lifecycle: Rc<dyn ModuleLifecycle>,
+    lifecycle: Rc<dyn PluginLifecycle>,
     generation_number: u64,
-) -> Result<NativeModuleGeneration, GenerationPreparationFailure> {
+) -> Result<NativePluginGeneration, GenerationPreparationFailure> {
     let tasks = ManagedTaskScope::new_from_driver_control(&runtime.driver);
     attach_managed_task_failure_handler(runtime, instance_key, &tasks);
     let resources = ManagedResourceScope::new();
-    let prepared = NativeModuleGeneration {
+    let prepared = NativePluginGeneration {
         lifecycle: lifecycle.clone(),
         tasks: tasks.clone(),
         resources: resources.clone(),
@@ -604,10 +604,10 @@ pub(super) async fn prepare_and_activate_generation(
         .unwrap_or_default();
     let instance = runtime
         .plan
-        .module_instances()
+        .plugin_instances()
         .iter()
         .find(|instance| instance.instance_key() == instance_key)
-        .expect("supervision only recreates planned Module Instances");
+        .expect("supervision only recreates planned Plugin Instances");
     let prepare_started_at = (runtime.driver.now)();
     runtime
         .diagnostics
@@ -615,7 +615,7 @@ pub(super) async fn prepare_and_activate_generation(
             DiagnosticEvent::LifecycleStarted {
                 instance: instance_key.to_owned(),
                 generation: generation_number,
-                phase: super::ModuleLifecyclePhase::Prepare,
+                phase: super::PluginLifecyclePhase::Prepare,
             }
         });
     let prepare_result = lifecycle
@@ -639,7 +639,7 @@ pub(super) async fn prepare_and_activate_generation(
             DiagnosticEvent::LifecycleCompleted {
                 instance: instance_key.to_owned(),
                 generation: generation_number,
-                phase: super::ModuleLifecyclePhase::Prepare,
+                phase: super::PluginLifecyclePhase::Prepare,
                 outcome: prepare_outcome,
                 elapsed: (runtime.driver.now)().saturating_sub(prepare_started_at),
             }
@@ -672,7 +672,7 @@ pub(super) async fn prepare_and_activate_generation(
             DiagnosticEvent::LifecycleStarted {
                 instance: instance_key.to_owned(),
                 generation: generation_number,
-                phase: super::ModuleLifecyclePhase::Activate,
+                phase: super::PluginLifecyclePhase::Activate,
             }
         });
     let activate_result = lifecycle
@@ -696,7 +696,7 @@ pub(super) async fn prepare_and_activate_generation(
             DiagnosticEvent::LifecycleCompleted {
                 instance: instance_key.to_owned(),
                 generation: generation_number,
-                phase: super::ModuleLifecyclePhase::Activate,
+                phase: super::PluginLifecyclePhase::Activate,
                 outcome: activate_outcome,
                 elapsed: (runtime.driver.now)().saturating_sub(activate_started_at),
             }
@@ -728,7 +728,7 @@ pub(super) async fn prepare_and_activate_generation(
 pub(super) async fn cleanup_native_generation(
     runtime: &NativeAppRuntime,
     instance_key: &str,
-    generation: NativeModuleGeneration,
+    generation: NativePluginGeneration,
     reason: DeactivationReason,
     generation_number: u64,
 ) -> Option<RuntimeFailure> {
@@ -756,8 +756,8 @@ pub(super) async fn cleanup_native_generation(
 )]
 pub(super) async fn cleanup_generation(
     instance_key: &str,
-    generation: NativeModuleGeneration,
-    dependencies: ModuleDependencies,
+    generation: NativePluginGeneration,
+    dependencies: PluginDependencies,
     reason: DeactivationReason,
     admission: AppAdmission,
     generation_number: u64,
@@ -773,7 +773,7 @@ pub(super) async fn cleanup_generation(
         super::DiagnosticEvent::LifecycleStarted {
             instance: instance_key.to_owned(),
             generation: generation_number,
-            phase: super::ModuleLifecyclePhase::Deactivate,
+            phase: super::PluginLifecyclePhase::Deactivate,
         }
     });
     let deactivate = generation.lifecycle.deactivate(DeactivateContext {
@@ -794,7 +794,7 @@ pub(super) async fn cleanup_generation(
         super::DiagnosticEvent::LifecycleCompleted {
             instance: instance_key.to_owned(),
             generation: generation_number,
-            phase: super::ModuleLifecyclePhase::Deactivate,
+            phase: super::PluginLifecyclePhase::Deactivate,
             outcome,
             elapsed: (driver.now)().saturating_sub(started_at),
         }
@@ -812,7 +812,7 @@ pub(super) async fn cleanup_generation(
     first_error
 }
 
-pub(super) fn install_module_endpoints(
+pub(super) fn install_plugin_endpoints(
     runtime: &NativeAppRuntime,
     instance_key: &str,
     endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
@@ -852,7 +852,7 @@ pub(super) fn install_module_endpoints(
 )]
 pub(super) fn validate_native_endpoint_set(
     instance_key: &str,
-    expected: &lenso_app_plan::ModuleInstancePlan,
+    expected: &lenso_app_plan::PluginInstancePlan,
     actual: &[Rc<dyn NativeRequestEndpoint>],
     actual_streams: &[Rc<dyn NativeStreamEndpoint>],
     actual_events: &[Rc<dyn NativeEventEndpoint>],
@@ -878,7 +878,7 @@ pub(super) fn validate_native_endpoint_set(
     {
         return Err(RuntimeFailure::InvalidResolvedPlan {
             detail: format!(
-                "Module Instance `{instance_key}` prepared {} request, {} stream, and {} Event endpoints; expected {} request, {} stream, and {} Event endpoints",
+                "Plugin Instance `{instance_key}` prepared {} request, {} stream, and {} Event endpoints; expected {} request, {} stream, and {} Event endpoints",
                 actual.len(),
                 actual_streams.len(),
                 actual_events.len(),
@@ -898,7 +898,7 @@ pub(super) fn validate_native_endpoint_set(
             if matching.len() != 1 {
                 return Err(RuntimeFailure::InvalidResolvedPlan {
                     detail: format!(
-                        "Module Instance `{instance_key}` prepared {} request endpoints for Capability `{}`",
+                        "Plugin Instance `{instance_key}` prepared {} request endpoints for Capability `{}`",
                         matching.len(),
                         descriptor.capability_id()
                     ),
@@ -922,7 +922,7 @@ pub(super) fn validate_native_endpoint_set(
             if matching.len() != 1 {
                 return Err(RuntimeFailure::InvalidResolvedPlan {
                     detail: format!(
-                        "Module Instance `{instance_key}` prepared {} stream endpoints for Capability `{}`",
+                        "Plugin Instance `{instance_key}` prepared {} stream endpoints for Capability `{}`",
                         matching.len(),
                         descriptor.capability_id()
                     ),
@@ -946,7 +946,7 @@ pub(super) fn validate_native_endpoint_set(
             if matching.len() != 1 {
                 return Err(RuntimeFailure::InvalidResolvedPlan {
                     detail: format!(
-                        "Module Instance `{instance_key}` prepared {} Event endpoints for Capability `{}`",
+                        "Plugin Instance `{instance_key}` prepared {} Event endpoints for Capability `{}`",
                         matching.len(),
                         descriptor.capability_id()
                     ),
@@ -976,7 +976,7 @@ pub(super) fn validate_endpoint_operations(
     if actual_version != expected_version || actual_operations != expected_operations {
         return Err(RuntimeFailure::InvalidResolvedPlan {
             detail: format!(
-                "Module Instance `{instance_key}` endpoint `{capability_id}` differs from its resolved Descriptor"
+                "Plugin Instance `{instance_key}` endpoint `{capability_id}` differs from its resolved Descriptor"
             ),
         });
     }
@@ -986,7 +986,7 @@ pub(super) fn validate_endpoint_operations(
     if unique.len() != actual_operations.len() {
         return Err(RuntimeFailure::InvalidResolvedPlan {
             detail: format!(
-                "Module Instance `{instance_key}` endpoint `{capability_id}` has duplicate Operations"
+                "Plugin Instance `{instance_key}` endpoint `{capability_id}` has duplicate Operations"
             ),
         });
     }

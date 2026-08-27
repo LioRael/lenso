@@ -96,7 +96,7 @@ lenso-contract-codegen check \
 
 Generate each language projection in the package that distributes it. A native
 Rust Capability package normally owns only its Rust projection. The supported
-Bun SDK owns the TypeScript projection that Bun Modules import; it generates
+Bun SDK owns the TypeScript projection that Bun Plugins import; it generates
 that projection from the same versioned Descriptor and Schemas. A conformance
 fixture may intentionally keep both projections when the cross-language pair
 is the artifact under test.
@@ -142,14 +142,14 @@ impl GreetingProvider for Greeter {
         context: InvocationContext,
         request: GreetRequest,
     ) -> LocalBoxFuture<'static, Result<GreetResponse, GreetingInvocationError>> {
-        // Module-owned behavior; return Domain or Runtime failure explicitly.
+        // Plugin-owned behavior; return Domain or Runtime failure explicitly.
     }
 }
 
 let endpoint = GreetingEndpoint::new(Greeter::new());
 
 // Construct consumers during activation from the resolved dependencies for
-// this Module Instance, not from an InvocationContext or a global registry.
+// this Plugin Instance, not from an InvocationContext or a global registry.
 let client = GreetingClient::from_dependencies(activate_context.dependencies())?;
 let response = client.greet(GreetRequest { name: "Ada".into() }).await?;
 ```
@@ -171,7 +171,7 @@ Use the selected dependency source first. Current complete examples are:
 
 - `LioRael/lenso-protocols/crates/lenso-contract-codegen/tests/fixtures` for
   request, stream, event, value-profile, sensitivity, and compatibility inputs;
-- `LioRael/lenso-secrets-module/crates/lenso-capability-secrets` for a published
+- `LioRael/lenso-secrets-plugin/crates/lenso-capability-secrets` for a published
   contract package with a build-time freshness gate; and
 - `LioRael/lenso-bun-adapter/fixtures/bun` for generated TypeScript Provider
   usage across the process Adapter; and

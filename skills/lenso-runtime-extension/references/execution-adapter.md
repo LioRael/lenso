@@ -1,7 +1,7 @@
 # Execution Adapter recipe
 
 An Execution Adapter owns one open execution class and translates selected
-Module Instances into generation-owned endpoints/lifecycle. It may own process,
+Plugin Instances into generation-owned endpoints/lifecycle. It may own process,
 wire, isolation, codec, and host-failure mechanics. It receives the already
 resolved Plan and cannot acquire packages, select providers, or resolve a
 second graph.
@@ -21,7 +21,7 @@ pub trait ExecutionAdapter: std::fmt::Debug + 'static {
         &self,
         plan: &ResolvedAppPlan,
         instance_key: &str,
-    ) -> Result<PreparedNativeModule, RuntimeFailure>;
+    ) -> Result<PreparedNativePlugin, RuntimeFailure>;
 }
 ```
 
@@ -40,7 +40,7 @@ Implement `prepare` in this order:
 4. load or construct the generated codecs required by each declared endpoint;
 5. verify Capability identity, exact Descriptor version, Operation table, and
    request/stream/event kinds before business dispatch;
-6. create one fresh `PreparedNativeModule` with exact endpoint sets and a
+6. create one fresh `PreparedNativePlugin` with exact endpoint sets and a
    generation-owned lifecycle for every selected Instance;
 7. materialize `PreparedBinding`, `PreparedStreamBinding`, and
    `PreparedEventBinding` only from the Plan's explicit provider keys; and
@@ -63,7 +63,7 @@ For an out-of-process Adapter, keep these inside the Adapter:
 - child exit/stderr and transport error mapping; and
 - shutdown, cleanup, and fresh-process recreation.
 
-The Module package implements generated Providers. It does not parse Lenso wire
+The Plugin package implements generated Providers. It does not parse Lenso wire
 messages or manage Adapter child-process flags.
 
 Current source anchors are the native registry in

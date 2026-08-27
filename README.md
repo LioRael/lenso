@@ -18,7 +18,7 @@ The repository extraction is complete. Its durable product ownership is:
   Capability, or example App.
 
 Runtime Drivers, Execution Adapters, protocol tooling, Capability packages,
-optional Modules, authoring tools, and examples live in the owner repositories
+optional Plugins, authoring tools, and examples live in the owner repositories
 defined by ADR 0064 and are consumed through versioned dependencies.
 
 - [lenso-protocols](https://github.com/LioRael/lenso-protocols) owns portable
@@ -26,23 +26,23 @@ defined by ADR 0064 and are consumed through versioned dependencies.
 - [lenso-runtime-rust](https://github.com/LioRael/lenso-runtime-rust) and
   [lenso-bun-adapter](https://github.com/LioRael/lenso-bun-adapter) own host
   runtimes and Execution Adapters.
-- [lenso-otel-module](https://github.com/LioRael/lenso-otel-module) and
-  [lenso-auth-module](https://github.com/LioRael/lenso-auth-module) own their
-  optional Module contracts and implementations.
+- The observability and authentication owner repositories provide optional
+  Plugin contracts and implementations; their current repository names are
+  compatibility-era names, not public runtime concepts.
 - [lenso-cli](https://github.com/LioRael/lenso-cli) owns authoring, while
   [lenso-examples](https://github.com/LioRael/lenso-examples) owns example
   Capabilities and executable fixtures.
 
 The Kernel has no Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, Outbox, Workflow, migration, release, or discovery implementation.
-Those concerns can return only as ordinary Modules, Execution Adapters,
+Those concerns can return only as ordinary Plugins, Execution Adapters,
 authoring tools, or separate repositories when a vNext decision assigns them an
 owner.
 
 ## Agent skills
 
 The [project skill pack](skills/README.md) turns the vNext architecture into
-cross-repository planning, Capability, Module, composition, and runtime
+cross-repository planning, Capability, Plugin, App configuration, and runtime
 workflows without relocating implementation ownership. List the six workflows
 with:
 

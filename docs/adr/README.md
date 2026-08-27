@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0069 are the accepted, normative architecture decisions for
+ADRs 0030 through 0070 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -52,14 +52,19 @@ totally ordered sequence of immutable Plan Snapshots with one validated atomic
 Transition mechanism, keeping App Generation swaps for structural change.
 
 [`0068-layer-module-configuration-sources.md`](0068-layer-module-configuration-sources.md)
-resolves complete Module configuration from locked package defaults,
-reviewed App values, and explicitly admitted local settings without creating a
-generic overlay authority.
+is superseded by ADR 0070. Its typed, fail-closed configuration constraints are
+retained, while its App Definition and separate local-overlay authorities are
+retired.
 
 [`0069-use-plugin-as-the-only-application-behavior-unit.md`](0069-use-plugin-as-the-only-application-behavior-unit.md)
 supersedes the public authoring split in ADRs 0065 and 0066: embedded, bundled,
 and installed behavior use one Plugin model while compatibility-era `Module*`
 runtime values remain private during migration.
+
+[`0070-resolve-apps-from-plugin-roots.md`](0070-resolve-apps-from-plugin-roots.md)
+retires central App Definitions. A Host supplies defaults, a Plugin Root
+expresses explicit differences, and the resolver derives the App, bindings,
+placement, and immutable Plan without guessing through ambiguity.
 
 ## Legacy decisions
 

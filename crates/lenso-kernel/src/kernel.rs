@@ -1,17 +1,17 @@
 use super::{
     ActivateContext, AppAdmission, AppReadyGate, BTreeMap, CancellationToken, Cell,
     DeactivationReason, DriverControl, ExecutionAdapterCatalog, ManagedResourceScope,
-    ManagedTaskScope, ModuleDependencies, ModuleDependency, ModuleDependencyHandle,
-    ModuleEventDependencyHandle, ModuleStreamDependencyHandle, NativeApp, NativeAppRuntime,
-    NativeBindingTable, NativeEndpointBinding, NativeEndpointState, NativeEndpointStateTable,
-    NativeEventBindingTable, NativeEventEndpointStateTable, NativeExecutionAdapter,
-    NativeModuleGeneration, NativeModuleRuntime, NativeStreamBindingTable,
-    NativeStreamEndpointBinding, NativeStreamEndpointState, NativeStreamEndpointStateTable,
-    PlanResolutionError, PrepareContext, PreparedBinding, PreparedEventBinding, PreparedNativeApp,
-    PreparedNativeModule, PreparedStreamBinding, Rc, RefCell, RequestAdmission, ResolvedAppPlan,
-    RuntimeDiagnostics, RuntimeDriver, RuntimeFailure, ShutdownCoordinator, Weak,
-    begin_module_supervision, deactivate_in_reverse, event, handle_supervision_schedule_failure,
-    module_supervision, schedule_module_supervision, validate_native_endpoint_set,
+    ManagedTaskScope, NativeApp, NativeAppRuntime, NativeBindingTable, NativeEndpointBinding,
+    NativeEndpointState, NativeEndpointStateTable, NativeEventBindingTable,
+    NativeEventEndpointStateTable, NativeExecutionAdapter, NativePluginGeneration,
+    NativePluginRuntime, NativeStreamBindingTable, NativeStreamEndpointBinding,
+    NativeStreamEndpointState, NativeStreamEndpointStateTable, PlanResolutionError,
+    PluginDependencies, PluginDependency, PluginDependencyHandle, PluginEventDependencyHandle,
+    PluginStreamDependencyHandle, PrepareContext, PreparedBinding, PreparedEventBinding,
+    PreparedNativeApp, PreparedNativePlugin, PreparedStreamBinding, Rc, RefCell, RequestAdmission,
+    ResolvedAppPlan, RuntimeDiagnostics, RuntimeDriver, RuntimeFailure, ShutdownCoordinator, Weak,
+    begin_plugin_supervision, deactivate_in_reverse, event, handle_supervision_schedule_failure,
+    plugin_supervision, schedule_plugin_supervision, validate_native_endpoint_set,
 };
 
 /// A reason the Kernel rejected a Resolved App Plan before boot.
@@ -69,7 +69,7 @@ impl Kernel {
         .await
     }
 
-    /// Starts Module Instances through the Adapter catalog assembled by the Runner.
+    /// Starts Plugin Instances through the Adapter catalog assembled by the Runner.
     pub async fn start<D: RuntimeDriver>(
         plan: ResolvedAppPlan,
         driver: D,
@@ -132,7 +132,7 @@ impl Kernel {
         let (event_bindings, event_endpoint_states) =
             native_event_bindings(&plan, &prepared_event_bindings);
         let runtime_link = Rc::new(RefCell::new(Weak::new()));
-        let dependencies = module_dependencies(
+        let dependencies = plugin_dependencies(
             &plan,
             &bindings,
             &stream_bindings,
@@ -141,13 +141,13 @@ impl Kernel {
         );
         let driver_control = DriverControl::new(&driver);
         let admission = AppAdmission::new();
-        let module_runtimes = native_module_runtimes(&plan, &driver, generations);
+        let plugin_runtimes = native_plugin_runtimes(&plan, &driver, generations);
         let ready_gate = AppReadyGate::new();
-        let supervision = module_supervision(&plan);
+        let supervision = plugin_supervision(&plan);
         let runtime = Rc::new(NativeAppRuntime {
             plan,
             adapters,
-            modules: module_runtimes,
+            plugins: plugin_runtimes,
             dependencies,
             endpoint_states,
             stream_endpoint_states,
@@ -172,13 +172,13 @@ impl Kernel {
             super::DiagnosticSource::Lifecycle,
             (runtime.driver.now)(),
             |_| super::DiagnosticEvent::AppStarted {
-                module_count: runtime.plan.module_instances().len(),
+                plugin_count: runtime.plan.plugin_instances().len(),
             },
         );
-        let prepared_instances = prepare_native_modules(&runtime).await?;
-        if let Err(error) = activate_native_modules(&runtime).await {
+        let prepared_instances = prepare_native_plugins(&runtime).await?;
+        if let Err(error) = activate_native_plugins(&runtime).await {
             let _ = deactivate_in_reverse(
-                &runtime.modules,
+                &runtime.plugins,
                 &runtime.dependencies,
                 &prepared_instances,
                 DeactivationReason::StartupRollback,
@@ -204,8 +204,8 @@ impl Kernel {
 }
 
 pub(super) fn attach_managed_task_failure_handlers(runtime: &Rc<NativeAppRuntime>) {
-    for (instance_key, module) in &runtime.modules {
-        let Some((_, tasks, _)) = module.generation_parts() else {
+    for (instance_key, plugin) in &runtime.plugins {
+        let Some((_, tasks, _)) = plugin.generation_parts() else {
             continue;
         };
         attach_managed_task_failure_handler(runtime, instance_key, &tasks);
@@ -223,8 +223,8 @@ pub(super) fn attach_managed_task_failure_handler(
         let Some(runtime) = task_runtime.upgrade() else {
             return;
         };
-        if begin_module_supervision(&runtime, &task_instance_key).unwrap_or(false)
-            && let Err(error) = schedule_module_supervision(&runtime, &task_instance_key)
+        if begin_plugin_supervision(&runtime, &task_instance_key).unwrap_or(false)
+            && let Err(error) = schedule_plugin_supervision(&runtime, &task_instance_key)
         {
             let _ = handle_supervision_schedule_failure(&runtime, &task_instance_key, error);
         }
@@ -247,22 +247,22 @@ pub(super) fn validate_prepared_native_app(
     bindings: &[PreparedBinding],
     stream_bindings: &[PreparedStreamBinding],
     event_bindings: &[PreparedEventBinding],
-    generations: &BTreeMap<String, PreparedNativeModule>,
+    generations: &BTreeMap<String, PreparedNativePlugin>,
 ) -> Result<(), RuntimeFailure> {
-    if generations.len() != plan.module_instances().len() {
+    if generations.len() != plan.plugin_instances().len() {
         return Err(RuntimeFailure::InvalidResolvedPlan {
             detail: format!(
-                "Execution Adapters prepared {} Module generations; expected {}",
+                "Execution Adapters prepared {} Plugin generations; expected {}",
                 generations.len(),
-                plan.module_instances().len()
+                plan.plugin_instances().len()
             ),
         });
     }
-    for instance in plan.module_instances() {
+    for instance in plan.plugin_instances() {
         let generation = generations.get(instance.instance_key()).ok_or_else(|| {
             RuntimeFailure::InvalidResolvedPlan {
                 detail: format!(
-                    "Execution Adapters did not prepare Module Instance `{}`",
+                    "Execution Adapters did not prepare Plugin Instance `{}`",
                     instance.instance_key()
                 ),
             }
@@ -277,12 +277,12 @@ pub(super) fn validate_prepared_native_app(
     }
     if let Some(instance_key) = generations.keys().find(|instance_key| {
         !plan
-            .module_instances()
+            .plugin_instances()
             .iter()
             .any(|instance| instance.instance_key() == instance_key.as_str())
     }) {
         return Err(RuntimeFailure::InvalidResolvedPlan {
-            detail: format!("Execution Adapter prepared unknown Module Instance `{instance_key}`"),
+            detail: format!("Execution Adapter prepared unknown Plugin Instance `{instance_key}`"),
         });
     }
 
@@ -290,7 +290,7 @@ pub(super) fn validate_prepared_native_app(
         .capability_bindings()
         .iter()
         .filter(|binding| {
-            plan.module_instance(binding.provider_instance())
+            plan.plugin_instance(binding.provider_instance())
                 .and_then(|provider| {
                     provider
                         .provided_capabilities()
@@ -304,7 +304,7 @@ pub(super) fn validate_prepared_native_app(
         .capability_bindings()
         .iter()
         .filter(|binding| {
-            plan.module_instance(binding.provider_instance())
+            plan.plugin_instance(binding.provider_instance())
                 .and_then(|provider| {
                     provider
                         .provided_capabilities()
@@ -318,7 +318,7 @@ pub(super) fn validate_prepared_native_app(
         .capability_bindings()
         .iter()
         .filter(|binding| {
-            plan.module_instance(binding.provider_instance())
+            plan.plugin_instance(binding.provider_instance())
                 .and_then(|provider| {
                     provider
                         .provided_capabilities()
@@ -368,7 +368,7 @@ pub(super) fn validate_prepared_native_app(
             .get(planned.provider_instance())
             .expect("the resolved Plan references one validated provider generation");
         let descriptor = plan
-            .module_instance(planned.provider_instance())
+            .plugin_instance(planned.provider_instance())
             .and_then(|provider| {
                 provider
                     .provided_capabilities()
@@ -488,21 +488,21 @@ pub(super) fn validate_prepared_native_app(
     Ok(())
 }
 
-pub(super) fn native_module_runtimes<D: RuntimeDriver>(
+pub(super) fn native_plugin_runtimes<D: RuntimeDriver>(
     plan: &ResolvedAppPlan,
     driver: &D,
-    mut generations: BTreeMap<String, PreparedNativeModule>,
-) -> BTreeMap<String, NativeModuleRuntime> {
+    mut generations: BTreeMap<String, PreparedNativePlugin>,
+) -> BTreeMap<String, NativePluginRuntime> {
     let mut runtimes = BTreeMap::new();
-    for instance in plan.module_instances() {
+    for instance in plan.plugin_instances() {
         let lifecycle = generations
             .remove(instance.instance_key())
             .map(|generation| generation.lifecycle())
             .expect("prepared App validation requires one generation per planned Instance");
         runtimes.insert(
             instance.instance_key().to_owned(),
-            NativeModuleRuntime {
-                generation: RefCell::new(Some(NativeModuleGeneration {
+            NativePluginRuntime {
+                generation: RefCell::new(Some(NativePluginGeneration {
                     lifecycle,
                     tasks: ManagedTaskScope::new(driver),
                     resources: ManagedResourceScope::new(),
@@ -513,24 +513,24 @@ pub(super) fn native_module_runtimes<D: RuntimeDriver>(
     runtimes
 }
 
-pub(super) async fn prepare_native_modules(
+pub(super) async fn prepare_native_plugins(
     runtime: &Rc<NativeAppRuntime>,
 ) -> Result<Vec<String>, RuntimeFailure> {
     let mut prepared_instances = Vec::with_capacity(runtime.activation_order.len());
     for instance_key in &runtime.activation_order {
         let instance = runtime
             .plan
-            .module_instances()
+            .plugin_instances()
             .iter()
             .find(|instance| instance.instance_key() == instance_key)
-            .expect("activation order only contains planned Module Instances");
-        let module = runtime
-            .modules
+            .expect("activation order only contains planned Plugin Instances");
+        let plugin = runtime
+            .plugins
             .get(instance_key)
-            .expect("activation order only contains planned Module Instances");
-        let (lifecycle, tasks, resources) = module
+            .expect("activation order only contains planned Plugin Instances");
+        let (lifecycle, tasks, resources) = plugin
             .generation_parts()
-            .expect("every startup Module Instance has a generation");
+            .expect("every startup Plugin Instance has a generation");
         let cancellation = tasks.cancellation();
         prepared_instances.push(instance_key.clone());
         let started_at = (runtime.driver.now)();
@@ -540,7 +540,7 @@ pub(super) async fn prepare_native_modules(
                 super::DiagnosticEvent::LifecycleStarted {
                     instance: instance_key.clone(),
                     generation: 1,
-                    phase: super::ModuleLifecyclePhase::Prepare,
+                    phase: super::PluginLifecyclePhase::Prepare,
                 }
             });
         let context = PrepareContext {
@@ -567,14 +567,14 @@ pub(super) async fn prepare_native_modules(
             |_| super::DiagnosticEvent::LifecycleCompleted {
                 instance: instance_key.clone(),
                 generation: 1,
-                phase: super::ModuleLifecyclePhase::Prepare,
+                phase: super::PluginLifecyclePhase::Prepare,
                 outcome,
                 elapsed: (runtime.driver.now)().saturating_sub(started_at),
             },
         );
         if let Err(error) = result {
             let _ = deactivate_in_reverse(
-                &runtime.modules,
+                &runtime.plugins,
                 &runtime.dependencies,
                 &prepared_instances,
                 DeactivationReason::StartupRollback,
@@ -594,17 +594,17 @@ pub(super) async fn prepare_native_modules(
     Ok(prepared_instances)
 }
 
-pub(super) async fn activate_native_modules(
+pub(super) async fn activate_native_plugins(
     runtime: &Rc<NativeAppRuntime>,
 ) -> Result<(), RuntimeFailure> {
     for instance_key in &runtime.activation_order {
-        let module = runtime
-            .modules
+        let plugin = runtime
+            .plugins
             .get(instance_key)
-            .expect("activation order only contains planned Module Instances");
-        let (lifecycle, tasks, resources) = module
+            .expect("activation order only contains planned Plugin Instances");
+        let (lifecycle, tasks, resources) = plugin
             .generation_parts()
-            .expect("every startup Module Instance has a generation");
+            .expect("every startup Plugin Instance has a generation");
         let cancellation = tasks.cancellation();
         let started_at = (runtime.driver.now)();
         runtime
@@ -613,7 +613,7 @@ pub(super) async fn activate_native_modules(
                 super::DiagnosticEvent::LifecycleStarted {
                     instance: instance_key.clone(),
                     generation: 1,
-                    phase: super::ModuleLifecyclePhase::Activate,
+                    phase: super::PluginLifecyclePhase::Activate,
                 }
             });
         let context = ActivateContext {
@@ -640,7 +640,7 @@ pub(super) async fn activate_native_modules(
             |_| super::DiagnosticEvent::LifecycleCompleted {
                 instance: instance_key.clone(),
                 generation: 1,
-                phase: super::ModuleLifecyclePhase::Activate,
+                phase: super::PluginLifecyclePhase::Activate,
                 outcome,
                 elapsed: (runtime.driver.now)().saturating_sub(started_at),
             },
@@ -676,7 +676,7 @@ pub(super) fn native_bindings(
     let mut endpoint_states = BTreeMap::new();
     for binding in plan.capability_bindings() {
         let Some(descriptor) =
-            plan.module_instance(binding.provider_instance())
+            plan.plugin_instance(binding.provider_instance())
                 .and_then(|provider| {
                     provider
                         .provided_capabilities()
@@ -721,7 +721,7 @@ pub(super) fn native_bindings(
             ))
             .or_insert_with(Vec::new)
             .push(NativeEndpointBinding {
-                module_instance: binding.provider_instance().to_owned(),
+                plugin_instance: binding.provider_instance().to_owned(),
                 state,
                 admissions,
             });
@@ -737,7 +737,7 @@ pub(super) fn native_stream_bindings(
     let mut endpoint_states = BTreeMap::new();
     for binding in plan.capability_bindings() {
         let Some(descriptor) =
-            plan.module_instance(binding.provider_instance())
+            plan.plugin_instance(binding.provider_instance())
                 .and_then(|provider| {
                     provider
                         .provided_capabilities()
@@ -782,7 +782,7 @@ pub(super) fn native_stream_bindings(
             ))
             .or_insert_with(Vec::new)
             .push(NativeStreamEndpointBinding {
-                module_instance: binding.provider_instance().to_owned(),
+                plugin_instance: binding.provider_instance().to_owned(),
                 state,
                 admissions,
             });
@@ -798,7 +798,7 @@ pub(super) fn native_event_bindings(
     let mut endpoint_states = BTreeMap::new();
     for binding in plan.capability_bindings() {
         let Some(descriptor) =
-            plan.module_instance(binding.provider_instance())
+            plan.plugin_instance(binding.provider_instance())
                 .and_then(|provider| {
                     provider
                         .provided_capabilities()
@@ -835,7 +835,7 @@ pub(super) fn native_event_bindings(
             ))
             .or_insert_with(Vec::new)
             .push(event::NativeEventEndpointBinding {
-                module_instance: binding.provider_instance().to_owned(),
+                plugin_instance: binding.provider_instance().to_owned(),
                 state,
                 queue,
             });
@@ -843,29 +843,29 @@ pub(super) fn native_event_bindings(
     (bindings, endpoint_states)
 }
 
-pub(super) fn module_dependencies(
+pub(super) fn plugin_dependencies(
     plan: &ResolvedAppPlan,
     endpoints: &BTreeMap<(String, &'static str), Vec<NativeEndpointBinding>>,
     stream_endpoints: &NativeStreamBindingTable,
     event_endpoints: &NativeEventBindingTable,
     runtime: &Rc<RefCell<Weak<NativeAppRuntime>>>,
-) -> BTreeMap<String, ModuleDependencies> {
-    let mut dependencies: BTreeMap<String, ModuleDependencies> = plan
-        .module_instances()
+) -> BTreeMap<String, PluginDependencies> {
+    let mut dependencies: BTreeMap<String, PluginDependencies> = plan
+        .plugin_instances()
         .iter()
         .map(|instance| {
             (
                 instance.instance_key().to_owned(),
-                ModuleDependencies::new(instance.instance_key(), runtime.clone()),
+                PluginDependencies::new(instance.instance_key(), runtime.clone()),
             )
         })
         .collect();
     for binding in plan.capability_bindings() {
         dependencies
             .get_mut(binding.consumer_instance())
-            .expect("every resolved binding consumer has Module dependencies")
+            .expect("every resolved binding consumer has Plugin dependencies")
             .bindings
-            .push(ModuleDependency::new(
+            .push(PluginDependency::new(
                 binding.capability_id(),
                 binding.provider_instance(),
                 binding.provider_order(),
@@ -876,7 +876,7 @@ pub(super) fn module_dependencies(
                             && *capability == binding.capability_id()
                     })
                     .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
-                    .map(|endpoint| ModuleDependencyHandle {
+                    .map(|endpoint| PluginDependencyHandle {
                         binding: endpoint.clone(),
                         caller_instance: binding.consumer_instance().to_owned(),
                         runtime: runtime.clone(),
@@ -888,7 +888,7 @@ pub(super) fn module_dependencies(
                             && *capability == binding.capability_id()
                     })
                     .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
-                    .map(|endpoint| ModuleStreamDependencyHandle {
+                    .map(|endpoint| PluginStreamDependencyHandle {
                         binding: endpoint.clone(),
                         caller_instance: binding.consumer_instance().to_owned(),
                         runtime: runtime.clone(),
@@ -900,7 +900,7 @@ pub(super) fn module_dependencies(
                             && *capability == binding.capability_id()
                     })
                     .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
-                    .map(|endpoint| ModuleEventDependencyHandle {
+                    .map(|endpoint| PluginEventDependencyHandle {
                         binding: endpoint.clone(),
                         caller_instance: binding.consumer_instance().to_owned(),
                         runtime: runtime.clone(),

@@ -34,7 +34,7 @@ remote repositories.
 | [003](003-ship-one-plugin-cli-workflow.md) | Ship one end-to-end Plugin CLI workflow | P1 | L | 002 + Runtime release checkpoint | DONE (`174b32d`) |
 | [004](004-migrate-harness-to-one-plugin-unit.md) | Make Harness consume one Plugin as one selectable unit | P1 | L | 003 + CLI release checkpoint | DONE (`4f2a354`) |
 | [005](005-prove-and-retire-the-dual-authoring-path.md) | Prove the clean-room workflow and retire the dual path | P2 | L | 004 + approved releases | DONE (`lenso-cli 0.4.7`, `@lenso/cli 0.14.0`, Harness #78/#79) |
-| [006](006-migrate-embedded-behavior-to-plugins.md) | Make embedded Host behavior use the same Plugin model | P1 | XL | ADR 0069 + 005 | TODO |
+| [006](006-migrate-embedded-behavior-to-plugins.md) | Resolve Apps from Host defaults and Plugin Roots | P1 | XL | ADR 0069 + ADR 0070 + 005 | IN PROGRESS — architecture contract |
 
 Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED` with a one-line reason,
 or `REJECTED` with a one-line rationale.
@@ -73,8 +73,9 @@ lenso architecture decision
 - Plan 005 independently re-verifies the checkpoint releases and performs the
   product proof. Any follow-up compatibility-removal release still requires
   explicit operator approval at each repository.
-- Plan 006 gives embedded Host behavior a Plugin distribution mode before the
-  hidden Module compatibility commands and App Definition fields are deleted.
+- Plan 006 gives embedded Host behavior a Plugin distribution mode, replaces
+  App Definitions with Plugin Roots, and deletes the hidden Module and central
+  composition compatibility paths after first-party migration.
 
 ## Canonical acceptance workflow
 

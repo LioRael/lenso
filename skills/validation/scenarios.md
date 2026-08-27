@@ -24,8 +24,8 @@ create a customer ticket. We may want Bun and a web UI later."
 plan.
 
 **Required observations:** the result owns Ticket facts/policy in a vertical
-Module; treats Bun as an Adapter choice; names Capability edges/cardinality;
-keeps final authorization with the target Module; cuts one success, Domain
+Plugin; treats Bun as an Adapter choice; names Capability edges/cardinality;
+keeps final authorization with the target Plugin; cuts one success, Domain
 Error, Runtime Failure, and observable proof; defers later UI/scale; and hands
 each artifact to one workflow.
 
@@ -44,28 +44,29 @@ and repository gates.
 only portable source; Domain Errors remain separate from Runtime Failures;
 Rust/TypeScript generated Provider and Client paths are concrete; generate,
 check, and stale-output gates are run; Bun/Rust type checks and one cross-runtime
-path are named; cardinality/provider choice is left to Composition.
+path are named; cardinality/provider choice is left to App configuration.
 
-## 3. Native Rust Module
+## 3. Native Rust Plugin
 
-**Skill:** `lenso-module-authoring`
+**Skill:** `lenso-plugin-authoring`
 
 **Prompt:** "Implement the Rust ticket provider from an existing generated
 contract. It owns durable ticket state and must reject invalid configuration."
 
-**Fixture:** the exact generated contract crate, target Module/App repository,
+**Fixture:** the exact generated contract crate, target Plugin/App repository,
 current native Adapter dependencies, and a selected durable test store plus
 migration policy. The evaluator must not invent these inputs.
 
 **Required observations:** the agent finds the selected API versions; uses the
-ordinary Module facade and generated Provider lowering; validates configuration;
+ordinary Plugin facade and generated Provider lowering; validates configuration;
 uses lifecycle phases correctly; keeps persistence private and failure honest;
-selects the package in the App Definition; and proves real invocation,
+registers linked availability in the Host Catalog and configures any App-owned
+difference under `plugins/`; and proves real invocation,
 restart/cleanup, storage failure, and removal.
 
-## 4. Bun Module
+## 4. Bun Plugin
 
-**Skill:** `lenso-module-authoring`
+**Skill:** `lenso-plugin-authoring`
 
 **Prompt:** "Provide the same ticket request Capability from Bun."
 
@@ -74,17 +75,17 @@ restart/cleanup, storage failure, and removal.
 Adapter test harness.
 
 **Required observations:** the official `@lenso/bun` generated Provider is
-used; the Module does not implement wire/process
+used; the Plugin does not implement wire/process
 mechanics; unsupported stream/event authoring fails closed; package lock,
 script entrypoint, Bun execution class, and endpoints are composed explicitly;
 the incomplete source-derived TypeScript packaging path is reported; and a real
 child-process Adapter test crosses the boundary.
 
-## 5. App Composition
+## 5. App configuration
 
-**Skill:** `lenso-app-composition`
+**Skill:** `lenso-app-configuration`
 
-**Prompt:** "Compose one HTTP ticket Module, one Ticket provider, Auth, and Web
+**Prompt:** "Compose one HTTP ticket Plugin, one Ticket provider, Auth, and Web
 Ingress. Add a second independent HTTP endpoint provider."
 
 **Fixture:** a target App project with package manifests/locks, exact
@@ -94,9 +95,9 @@ only, not executable host integration.
 
 **Required observations:** package-manager inputs/locks, stable Instance keys,
 configuration, lanes, and real ambiguity decisions are visible in
-`lenso.app.json`; generated Descriptors carry endpoints and requirements;
+`plugins/`; generated Descriptors carry endpoints and requirements;
 `lenso app check` rejects an intentional missing binding; the derived
-Composition and canonical Plan diff are reviewed; and removing one optional
+App configuration and canonical Plan diff are reviewed; and removing one optional
 endpoint leaves a valid Plan.
 
 ## 6. Execution Adapter
@@ -121,7 +122,7 @@ absent; and product-neutral plus real Python-process conformance is required.
 
 ## 7. Dynamic Plugin transition
 
-**Skill:** `lenso-app-composition` with `lenso-runtime-extension` as the
+**Skill:** `lenso-app-configuration` with `lenso-runtime-extension` as the
 secondary workflow
 
 **Prompt:** "Install a reviewed Tool Plugin into the Agent Harness, upgrade it,
@@ -131,14 +132,14 @@ prove one in-flight Turn is not migrated, then roll back."
 reviewed Tool Bundles, the Plugin Store, durable Generation controller, and a
 real Turn fixture. Do not pre-author the expected lock or Generation records.
 
-**Required observations:** Plugin is treated as Module distribution rather than
+**Required observations:** Plugin is treated as Plugin distribution rather than
 a Kernel type; admission and activation are separate; automatic local
 admission is used only if the exact risk profile qualifies; requested and
 effective grants remain distinct; the candidate closes exact lock/Plan/
 Artifact/Generation authority; readiness precedes switch; a Generation Lease
 pins the in-flight Turn while the predecessor drains; history/provenance names
 exact digests; rollback uses retained authority; and unsupported generic
-Desired State or hot-Transition claims are excluded.
+marketplace, remote-distribution, or hot-Transition claims are excluded.
 
 ## Pass condition
 

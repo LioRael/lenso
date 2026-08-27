@@ -57,7 +57,7 @@ impl ExecutionLanePlan {
     }
 }
 
-/// Stable, open identity of the execution mechanism selected for a Module
+/// Stable, open identity of the execution mechanism selected for a Plugin
 /// Instance.
 ///
 /// Execution Adapter packages own these IDs. The Plan preserves them as opaque

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, ModuleInstancePlan, ResolvedAppPlan,
+    CapabilityRequirementPlan, PluginInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
     DeterministicDriver, DiagnosticEvent, DiagnosticFilter, DiagnosticOutcome, DiagnosticSource,
@@ -23,14 +23,14 @@ use lenso_runtime_conformance::{
 fn probe_plan() -> ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
                     [PROBE_OPERATION],
                 ),
             ),
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,

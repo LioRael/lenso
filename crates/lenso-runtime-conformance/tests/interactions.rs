@@ -1,13 +1,13 @@
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    ModuleInstancePlan,
+    PluginInstancePlan,
 };
 use lenso_kernel::{
     DeterministicDriver, EventAdmission, Kernel, NativeApp, NativeEventHandle, NativeStreamHandle,
-    NoopModuleLifecycle, RuntimeDriver, RuntimeFailure, StreamEvent,
+    NoopPluginLifecycle, RuntimeDriver, RuntimeFailure, StreamEvent,
 };
 use lenso_runtime_conformance::{
-    ConformanceExecutionAdapter, ConformanceModule, ConformanceModuleFactory,
+    ConformanceExecutionAdapter, ConformancePlugin, ConformancePluginFactory,
     EVENT_PROBE_CAPABILITY_ID, EVENT_PROBE_CONSUMER_PACKAGE_ID, EVENT_PROBE_DESCRIPTOR_VERSION,
     EVENT_PROBE_OPERATION, EVENT_PROBE_PROVIDER_PACKAGE_ID, EventProbe, EventProbeProviderFactory,
     EventProbeRecorder, EventProbeValue, STREAM_PROBE_CAPABILITY_ID,
@@ -21,18 +21,18 @@ struct EmptyFactory {
     package_id: &'static str,
 }
 
-impl ConformanceModuleFactory for EmptyFactory {
+impl ConformancePluginFactory for EmptyFactory {
     fn package_id(&self) -> &'static str {
         self.package_id
     }
 
     fn instantiate(
         &self,
-        _instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
-        Ok(ConformanceModule::with_lifecycle(
+        _instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
+        Ok(ConformancePlugin::with_lifecycle(
             Vec::new(),
-            NoopModuleLifecycle,
+            NoopPluginLifecycle,
         ))
     }
 }
@@ -40,12 +40,12 @@ impl ConformanceModuleFactory for EmptyFactory {
 fn interaction_plan() -> lenso_app_plan::ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("stream-consumer", STREAM_PROBE_CONSUMER_PACKAGE_ID)
+            PluginInstancePlan::new("stream-consumer", STREAM_PROBE_CONSUMER_PACKAGE_ID)
                 .with_requirement(CapabilityRequirementPlan::one(
                     STREAM_PROBE_CAPABILITY_ID,
                     STREAM_PROBE_DESCRIPTOR_VERSION,
                 )),
-            ModuleInstancePlan::new("stream-provider", STREAM_PROBE_PROVIDER_PACKAGE_ID)
+            PluginInstancePlan::new("stream-provider", STREAM_PROBE_PROVIDER_PACKAGE_ID)
                 .with_capability(
                     CapabilityEndpointPlan::new(
                         STREAM_PROBE_CAPABILITY_ID,
@@ -55,12 +55,12 @@ fn interaction_plan() -> lenso_app_plan::ResolvedAppPlan {
                     .with_stream_operation(STREAM_PROBE_OPERATION)
                     .with_limits(0, 1),
                 ),
-            ModuleInstancePlan::new("event-consumer", EVENT_PROBE_CONSUMER_PACKAGE_ID)
+            PluginInstancePlan::new("event-consumer", EVENT_PROBE_CONSUMER_PACKAGE_ID)
                 .with_requirement(CapabilityRequirementPlan::many(
                     EVENT_PROBE_CAPABILITY_ID,
                     EVENT_PROBE_DESCRIPTOR_VERSION,
                 )),
-            ModuleInstancePlan::new("event-provider-a", EVENT_PROBE_PROVIDER_PACKAGE_ID)
+            PluginInstancePlan::new("event-provider-a", EVENT_PROBE_PROVIDER_PACKAGE_ID)
                 .with_capability(
                     CapabilityEndpointPlan::new(
                         EVENT_PROBE_CAPABILITY_ID,
@@ -70,7 +70,7 @@ fn interaction_plan() -> lenso_app_plan::ResolvedAppPlan {
                     .with_event_operation(EVENT_PROBE_OPERATION)
                     .with_event_capacity(2),
                 ),
-            ModuleInstancePlan::new("event-provider-b", EVENT_PROBE_PROVIDER_PACKAGE_ID)
+            PluginInstancePlan::new("event-provider-b", EVENT_PROBE_PROVIDER_PACKAGE_ID)
                 .with_capability(
                     CapabilityEndpointPlan::new(
                         EVENT_PROBE_CAPABILITY_ID,

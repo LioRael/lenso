@@ -2,7 +2,7 @@ use std::any::Any;
 
 use super::{
     BTreeMap, BTreeSet, ErasedDomainResult, ErasedValue, ExecutionClassId, InvocationContext,
-    LocalBoxFuture, ModuleLifecycle, NativeEventEndpoint, NativeStreamEndpoint, Rc,
+    LocalBoxFuture, NativeEventEndpoint, NativeStreamEndpoint, PluginLifecycle, Rc,
     ResolvedAppPlan, RuntimeFailure,
 };
 
@@ -30,7 +30,7 @@ pub trait NativeRequestEndpoint: std::fmt::Debug {
     ) -> LocalBoxFuture<'static, Result<ErasedDomainResult, RuntimeFailure>>;
 }
 
-/// The complete native endpoint set owned by one Module generation.
+/// The complete native endpoint set owned by one Plugin generation.
 #[derive(Clone, Debug, Default)]
 pub struct NativeEndpointSet {
     request: Vec<Rc<dyn NativeRequestEndpoint>>,
@@ -68,18 +68,18 @@ impl NativeEndpointSet {
     }
 }
 
-/// One freshly prepared Module Instance generation returned by an Execution Adapter.
+/// One freshly prepared Plugin Instance generation returned by an Execution Adapter.
 #[derive(Debug)]
-pub struct PreparedNativeModule {
+pub struct PreparedNativePlugin {
     pub(super) endpoints: NativeEndpointSet,
-    pub(super) lifecycle: Rc<dyn ModuleLifecycle>,
+    pub(super) lifecycle: Rc<dyn PluginLifecycle>,
 }
 
-impl PreparedNativeModule {
+impl PreparedNativePlugin {
     /// Creates one generation from its exact endpoint set and lifecycle Interface.
     pub fn new(
         endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self {
             endpoints: NativeEndpointSet::new(endpoints, Vec::new(), Vec::new()),
@@ -90,7 +90,7 @@ impl PreparedNativeModule {
     /// Creates one generation from an already shared lifecycle implementation.
     pub fn with_lifecycle(
         endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
-        lifecycle: Rc<dyn ModuleLifecycle>,
+        lifecycle: Rc<dyn PluginLifecycle>,
     ) -> Self {
         Self {
             endpoints: NativeEndpointSet::new(endpoints, Vec::new(), Vec::new()),
@@ -102,7 +102,7 @@ impl PreparedNativeModule {
     pub fn with_endpoints(
         endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
         stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self {
             endpoints: NativeEndpointSet::new(endpoints, stream_endpoints, Vec::new()),
@@ -113,7 +113,7 @@ impl PreparedNativeModule {
     /// Creates a generation from one complete endpoint set and shared lifecycle.
     pub fn with_endpoint_set_lifecycle(
         endpoints: NativeEndpointSet,
-        lifecycle: Rc<dyn ModuleLifecycle>,
+        lifecycle: Rc<dyn PluginLifecycle>,
     ) -> Self {
         Self {
             endpoints,
@@ -124,7 +124,7 @@ impl PreparedNativeModule {
     /// Creates one generation containing only bidirectional stream endpoints.
     pub fn with_stream_endpoints(
         stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self::with_endpoints(Vec::new(), stream_endpoints, lifecycle)
     }
@@ -132,7 +132,7 @@ impl PreparedNativeModule {
     /// Creates one generation containing only ephemeral Event endpoints.
     pub fn with_event_endpoints(
         event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self::with_all_endpoints(Vec::new(), Vec::new(), event_endpoints, lifecycle)
     }
@@ -142,7 +142,7 @@ impl PreparedNativeModule {
         endpoints: Vec<Rc<dyn NativeRequestEndpoint>>,
         stream_endpoints: Vec<Rc<dyn NativeStreamEndpoint>>,
         event_endpoints: Vec<Rc<dyn NativeEventEndpoint>>,
-        lifecycle: impl ModuleLifecycle,
+        lifecycle: impl PluginLifecycle,
     ) -> Self {
         Self {
             endpoints: NativeEndpointSet::new(endpoints, stream_endpoints, event_endpoints),
@@ -166,11 +166,11 @@ impl PreparedNativeModule {
     }
 
     /// Returns the lifecycle Interface prepared for this generation.
-    pub fn lifecycle(&self) -> Rc<dyn ModuleLifecycle> {
+    pub fn lifecycle(&self) -> Rc<dyn PluginLifecycle> {
         self.lifecycle.clone()
     }
 
-    pub(super) fn into_parts(self) -> (NativeEndpointSet, Rc<dyn ModuleLifecycle>) {
+    pub(super) fn into_parts(self) -> (NativeEndpointSet, Rc<dyn PluginLifecycle>) {
         (self.endpoints, self.lifecycle)
     }
 }
@@ -313,14 +313,14 @@ pub struct PreparedNativeApp {
     pub(super) bindings: Vec<PreparedBinding>,
     pub(super) stream_bindings: Vec<PreparedStreamBinding>,
     pub(super) event_bindings: Vec<PreparedEventBinding>,
-    pub(super) generations: BTreeMap<String, PreparedNativeModule>,
+    pub(super) generations: BTreeMap<String, PreparedNativePlugin>,
 }
 
 impl PreparedNativeApp {
     /// Completes Adapter preparation with the full generation and binding tables.
     pub fn new(
         bindings: Vec<PreparedBinding>,
-        generations: BTreeMap<String, PreparedNativeModule>,
+        generations: BTreeMap<String, PreparedNativePlugin>,
     ) -> Self {
         Self {
             bindings,
@@ -409,7 +409,7 @@ impl PreparedNativeApp {
             {
                 return Err(RuntimeFailure::InvalidResolvedPlan {
                     detail: format!(
-                        "multiple Execution Adapters prepared Module Instance generation `{instance_key}`"
+                        "multiple Execution Adapters prepared Plugin Instance generation `{instance_key}`"
                     ),
                 });
             }
@@ -418,7 +418,7 @@ impl PreparedNativeApp {
     }
 }
 
-/// Host-specific seam that instantiates Module generations and prepares endpoints.
+/// Host-specific seam that instantiates Plugin generations and prepares endpoints.
 pub trait ExecutionAdapter: std::fmt::Debug + 'static {
     /// Returns the open execution class implemented by this Adapter package.
     fn execution_class(&self) -> ExecutionClassId;
@@ -426,7 +426,7 @@ pub trait ExecutionAdapter: std::fmt::Debug + 'static {
     /// Instantiates the exact Plan and confirms its endpoint and binding tables.
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
 
-    /// Creates a fresh generation for one selected Module Instance.
+    /// Creates a fresh generation for one selected Plugin Instance.
     ///
     /// Adapters that cannot truthfully recreate a generation retain the default
     /// failure, which lets Kernel apply the selected finite policy without
@@ -435,14 +435,14 @@ pub trait ExecutionAdapter: std::fmt::Debug + 'static {
         &self,
         _plan: &ResolvedAppPlan,
         instance_key: &str,
-    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+    ) -> Result<PreparedNativePlugin, RuntimeFailure> {
         Err(RuntimeFailure::Internal {
-            detail: format!("Execution Adapter cannot recreate Module Instance `{instance_key}`"),
+            detail: format!("Execution Adapter cannot recreate Plugin Instance `{instance_key}`"),
         })
     }
 }
 
-/// Native Rust Adapter Interface for statically linked Module packages.
+/// Native Rust Adapter Interface for statically linked Plugin Releases.
 ///
 /// The blanket implementation below contributes every native Adapter to the
 /// open catalog under the official native execution-class identity.
@@ -450,14 +450,14 @@ pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
     /// Instantiates the exact Plan and confirms its endpoint and binding tables.
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
 
-    /// Creates a fresh generation for one selected native Module Instance.
+    /// Creates a fresh generation for one selected native Plugin Instance.
     fn recreate(
         &self,
         _plan: &ResolvedAppPlan,
         instance_key: &str,
-    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+    ) -> Result<PreparedNativePlugin, RuntimeFailure> {
         Err(RuntimeFailure::Internal {
-            detail: format!("Execution Adapter cannot recreate Module Instance `{instance_key}`"),
+            detail: format!("Execution Adapter cannot recreate Plugin Instance `{instance_key}`"),
         })
     }
 }
@@ -475,7 +475,7 @@ impl<T: NativeExecutionAdapter> ExecutionAdapter for T {
         &self,
         plan: &ResolvedAppPlan,
         instance_key: &str,
-    ) -> Result<PreparedNativeModule, RuntimeFailure> {
+    ) -> Result<PreparedNativePlugin, RuntimeFailure> {
         NativeExecutionAdapter::recreate(self, plan, instance_key)
     }
 }
@@ -523,7 +523,7 @@ pub struct ExecutionAdapterCatalog {
 }
 
 impl ExecutionAdapterCatalog {
-    /// Creates an empty catalog for an App with no Module Instances.
+    /// Creates an empty catalog for an App with no Plugin Instances.
     pub fn new() -> Self {
         Self::default()
     }
@@ -575,7 +575,7 @@ impl ExecutionAdapterCatalog {
         plan: &ResolvedAppPlan,
     ) -> Result<PreparedNativeApp, RuntimeFailure> {
         let mut required_classes = BTreeSet::new();
-        for instance in plan.module_instances() {
+        for instance in plan.plugin_instances() {
             if !self.adapters.contains_key(instance.execution_class()) {
                 return Err(RuntimeFailure::UnavailableExecutionClass {
                     instance_key: instance.instance_key().to_owned(),

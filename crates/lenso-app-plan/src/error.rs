@@ -7,22 +7,22 @@ use super::CapabilityOperationKind;
 pub enum PlanResolutionError {
     /// The Plan schema cannot be executed by this Kernel version.
     UnsupportedSchemaVersion { expected: u32, actual: u32 },
-    /// Two Module Instances use the same App-local key.
-    DuplicateModuleInstance { instance_key: String },
+    /// Two Plugin Instances use the same App-local key.
+    DuplicatePluginInstance { instance_key: String },
     /// Every App must declare at least one Execution Lane.
     MissingExecutionLane,
     /// An Execution Lane identity is empty or whitespace-only.
     InvalidExecutionLane { execution_lane: String },
     /// Two Execution Lanes use the same App-local identity.
     DuplicateExecutionLane { execution_lane: String },
-    /// A Module Instance names an Execution Lane absent from the Plan.
+    /// A Plugin Instance names an Execution Lane absent from the Plan.
     UndeclaredExecutionLane {
         instance_key: String,
         execution_lane: String,
     },
-    /// A Module Instance has no executable entrypoint identity.
-    InvalidModuleEntrypoint { instance_key: String },
-    /// A Module declares the same provided Capability more than once.
+    /// A Plugin Instance has no executable entrypoint identity.
+    InvalidPluginEntrypoint { instance_key: String },
+    /// A Plugin declares the same provided Capability more than once.
     DuplicateProvidedCapability {
         provider_instance: String,
         capability_id: String,
@@ -33,7 +33,7 @@ pub enum PlanResolutionError {
         capability_id: String,
         operation: String,
     },
-    /// A Module declares the same required Capability more than once.
+    /// A Plugin declares the same required Capability more than once.
     DuplicateRequiredCapability {
         consumer_instance: String,
         capability_id: String,
@@ -116,7 +116,7 @@ pub enum PlanResolutionError {
         capability_id: String,
         operation: String,
     },
-    /// A Module Instance selected an unusable finite restart policy.
+    /// A Plugin Instance selected an unusable finite restart policy.
     InvalidRestartPolicy {
         instance_key: String,
         max_attempts: usize,
@@ -134,8 +134,8 @@ impl fmt::Display for PlanResolutionError {
                 formatter,
                 "unsupported Plan schema version {actual}; expected {expected}"
             ),
-            Self::DuplicateModuleInstance { instance_key } => {
-                write!(formatter, "duplicate Module Instance `{instance_key}`")
+            Self::DuplicatePluginInstance { instance_key } => {
+                write!(formatter, "duplicate Plugin Instance `{instance_key}`")
             }
             Self::MissingExecutionLane => {
                 formatter.write_str("Resolved App Plan declares no Execution Lanes")
@@ -151,18 +151,18 @@ impl fmt::Display for PlanResolutionError {
                 execution_lane,
             } => write!(
                 formatter,
-                "Module Instance `{instance_key}` is placed on undeclared Execution Lane `{execution_lane}`"
+                "Plugin Instance `{instance_key}` is placed on undeclared Execution Lane `{execution_lane}`"
             ),
-            Self::InvalidModuleEntrypoint { instance_key } => write!(
+            Self::InvalidPluginEntrypoint { instance_key } => write!(
                 formatter,
-                "Module Instance `{instance_key}` has an empty entrypoint"
+                "Plugin Instance `{instance_key}` has an empty entrypoint"
             ),
             Self::DuplicateProvidedCapability {
                 provider_instance,
                 capability_id,
             } => write!(
                 formatter,
-                "Module Instance `{provider_instance}` provides Capability `{capability_id}` more than once"
+                "Plugin Instance `{provider_instance}` provides Capability `{capability_id}` more than once"
             ),
             Self::DuplicateOperation {
                 provider_instance,
@@ -170,14 +170,14 @@ impl fmt::Display for PlanResolutionError {
                 operation,
             } => write!(
                 formatter,
-                "Module Instance `{provider_instance}` Capability `{capability_id}` declares Operation `{operation}` more than once"
+                "Plugin Instance `{provider_instance}` Capability `{capability_id}` declares Operation `{operation}` more than once"
             ),
             Self::DuplicateRequiredCapability {
                 consumer_instance,
                 capability_id,
             } => write!(
                 formatter,
-                "Module Instance `{consumer_instance}` requires Capability `{capability_id}` more than once"
+                "Plugin Instance `{consumer_instance}` requires Capability `{capability_id}` more than once"
             ),
             Self::InvalidConsumerReference {
                 consumer_instance,
@@ -287,7 +287,7 @@ impl fmt::Display for PlanResolutionError {
                 window,
             } => write!(
                 formatter,
-                "Module Instance `{instance_key}` has invalid restart policy (attempts {max_attempts}, window {window:?})"
+                "Plugin Instance `{instance_key}` has invalid restart policy (attempts {max_attempts}, window {window:?})"
             ),
             Self::ActivationCycle { instances } => write!(
                 formatter,

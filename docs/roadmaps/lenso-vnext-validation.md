@@ -47,7 +47,7 @@ the Resolved App Plan.
 
 Implement the smallest Bun Execution Adapter and compare framed stdio with a
 mature RPC stack against the same logical protocol and conformance cases.
-Keep one process per Module Instance as the initial default while measuring
+Keep one process per Plugin Instance as the initial default while measuring
 startup, steady-state latency, streaming, cancellation, memory, crash recovery,
 and diagnostics.
 
@@ -64,7 +64,7 @@ Domain Errors, invalid wire values, and provider crashes.
 Complete when every supported consumer/provider combination passes one
 transport-independent black-box suite.
 
-## 5. Optional product Modules
+## 5. Optional product Plugins
 
 Create protocol, Auth, stateful, Secrets, OpenTelemetry, and Story examples only
 through ordinary Capabilities. At least one App runs without all of them; one
@@ -72,22 +72,22 @@ stateful fixture owns its schema and explicit migration command; one ingress
 fixture demonstrates protocol-neutral Credential Evidence and target-owned
 authorization.
 
-Complete when deleting any fixture Module requires no Kernel feature flag or
+Complete when deleting any fixture Plugin requires no Kernel feature flag or
 residual product hook.
 
 ## 6. Target-owned App Web UI
 
 Compose an optional Web UI inside one target App from an ordinary Web Shell,
-Browser Adapter, business Module, and custom UI Contribution. Bind the Shell to
+Browser Adapter, business Plugin, and custom UI Contribution. Bind the Shell to
 `many` contribution providers and project generated browser clients only for
 portable requirements declared by each contribution and resolved before boot.
-Prove that one package can publish explicit backend and UI Module entrypoints
-without introducing a Console, Plugin, Surface, or nested-Module runtime type.
+Prove that one package can publish explicit backend and UI Plugin entrypoints
+without introducing a Console, Plugin, Surface, or nested-Plugin runtime type.
 
 Complete when the custom route renders, invokes its App-local business
 Capability through a generated client, preserves target-owned authorization,
 rejects missing or colliding contribution metadata, and can be removed without
-changing Kernel or non-UI Module behavior. The App must also run with no Web UI
+changing Kernel or non-UI Plugin behavior. The App must also run with no Web UI
 selected, and installing or changing UI code must remain a reviewable
 authoring-time Composition and Plan change.
 
@@ -104,9 +104,9 @@ See ADRs [0043](../adr/0043-represent-ui-contributions-as-capabilities.md) and
 ## 7. Migration decisions
 
 Every future retained behavior must map to exactly one of: Kernel mechanism,
-ordinary vNext Module, Execution Adapter, authoring tool, compatibility Adapter,
+ordinary vNext Plugin, Execution Adapter, authoring tool, compatibility Adapter,
 or retirement. Do not mechanically port the old platform crates, Host, Service,
-Provider, Module Release, Surface, Story, migration, Outbox, or System Plane
+Provider, Plugin Release, Surface, Story, migration, Outbox, or System Plane
 abstractions.
 
 The completed classification and staged cutover are maintained in

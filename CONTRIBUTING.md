@@ -7,7 +7,7 @@ by the `lenso@0.3.47` tag and Git history.
 
 1. Read `CONTEXT.md`, the ADR index, and the relevant vNext architecture note.
 2. Create a worktree from the latest `origin/main` with `wt switch --create`.
-3. Keep the change behind a small Interface and an explicit Module, Driver, or
+3. Keep the change behind a small Interface and an explicit Plugin, Driver, or
    Adapter seam.
 4. Run the workspace checks below.
 5. Commit with a Conventional Commit and open a pull request targeting `main`.
@@ -30,7 +30,7 @@ The pull-request workflow also compile-checks the portable plan and Kernel for
 Do not restore v0.3.x Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, migration, or TypeScript Service Kit code to this branch.
 If a feature needs one of those concepts, express it first as a vNext
-Capability, ordinary Module, Execution Adapter, authoring tool, or a separate
+Capability, ordinary Plugin, Execution Adapter, authoring tool, or a separate
 repository.
 
 ## Commits

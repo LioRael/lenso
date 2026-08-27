@@ -1,4 +1,0 @@
-interface:
-  display_name: "Lenso App Composition"
-  short_description: "Select Modules or Plugins and resolve App intent."
-  default_prompt: "Use $lenso-app-composition to select keyed Module or Plugin Instances, make only App-owner decisions, and materialize immutable Plan or Generation intent."

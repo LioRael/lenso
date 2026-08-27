@@ -3,14 +3,14 @@ use std::{rc::Rc, time::Duration};
 use futures::future::LocalBoxFuture;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    ModuleInstancePlan,
+    PluginInstancePlan,
 };
 use lenso_kernel::{
     CancellationToken, DeterministicDriver, InvocationContext, Kernel, RuntimeDriver,
     RuntimeFailure, ShutdownOutcome,
 };
 use lenso_runtime_conformance::{
-    ConformanceExecutionAdapter, ConformanceModule, ConformanceModuleFactory, PROBE_CAPABILITY_ID,
+    ConformanceExecutionAdapter, ConformancePlugin, ConformancePluginFactory, PROBE_CAPABILITY_ID,
     PROBE_CONSUMER_PACKAGE_ID, PROBE_DESCRIPTOR_VERSION, PROBE_OPERATION, Probe,
     ProbeConsumerFactory, ProbeEndpoint, ProbeInvocationError, ProbeProvider, ProbeRequest,
     ProbeResponse,
@@ -24,16 +24,16 @@ struct YieldingProviderFactory {
     yields: usize,
 }
 
-impl ConformanceModuleFactory for YieldingProviderFactory {
+impl ConformancePluginFactory for YieldingProviderFactory {
     fn package_id(&self) -> &'static str {
         YIELDING_PROVIDER_PACKAGE_ID
     }
 
     fn instantiate(
         &self,
-        _instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
-        Ok(ConformanceModule::new(vec![Rc::new(ProbeEndpoint::new(
+        _instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
+        Ok(ConformancePlugin::new(vec![Rc::new(ProbeEndpoint::new(
             YieldingProvider {
                 driver: self.driver.clone(),
                 yields: self.yields,
@@ -70,10 +70,10 @@ impl ProbeProvider for YieldingProvider {
 fn plan() -> lenso_app_plan::ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::one(PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION),
             ),
-            ModuleInstancePlan::new("provider", YIELDING_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider", YIELDING_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,

@@ -6,14 +6,14 @@ use std::{
 };
 
 use futures::future::{LocalBoxFuture, ready};
-use lenso_app_plan::ModuleInstancePlan;
+use lenso_app_plan::PluginInstancePlan;
 use lenso_kernel::{
     EventCapability, InvocationContext, NativeEventEndpoint, NativeStreamEndpoint,
-    NativeStreamHandle, NativeStreamItem, NativeStreamSession, NoopModuleLifecycle, RuntimeFailure,
+    NativeStreamHandle, NativeStreamItem, NativeStreamSession, NoopPluginLifecycle, RuntimeFailure,
     StreamCapability,
 };
 
-use super::{ConformanceModule, ConformanceModuleFactory};
+use super::{ConformancePlugin, ConformancePluginFactory};
 
 /// Stable identity for the bidirectional stream conformance Capability.
 pub const STREAM_PROBE_CAPABILITY_ID: &str = "lenso.runtime.conformance.stream-probe@1";
@@ -72,7 +72,7 @@ impl StreamProbeClient {
     }
 
     pub fn from_dependencies(
-        dependencies: &lenso_kernel::ModuleDependencies,
+        dependencies: &lenso_kernel::PluginDependencies,
     ) -> Result<Self, RuntimeFailure> {
         Ok(Self::new(dependencies.one_stream::<StreamProbe>()?))
     }
@@ -228,7 +228,7 @@ impl NativeStreamSession for EchoStreamSession {
 #[derive(Debug)]
 pub struct StreamProbeProviderFactory;
 
-impl ConformanceModuleFactory for StreamProbeProviderFactory {
+impl ConformancePluginFactory for StreamProbeProviderFactory {
     fn package_id(&self) -> &'static str {
         STREAM_PROBE_PROVIDER_PACKAGE_ID
     }
@@ -239,11 +239,11 @@ impl ConformanceModuleFactory for StreamProbeProviderFactory {
 
     fn instantiate(
         &self,
-        _instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
-        Ok(ConformanceModule::with_stream_endpoints(
+        _instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
+        Ok(ConformancePlugin::with_stream_endpoints(
             vec![Rc::new(StreamProbeEndpoint)],
-            NoopModuleLifecycle,
+            NoopPluginLifecycle,
         ))
     }
 }
@@ -361,7 +361,7 @@ impl EventProbeProviderFactory {
     }
 }
 
-impl ConformanceModuleFactory for EventProbeProviderFactory {
+impl ConformancePluginFactory for EventProbeProviderFactory {
     fn package_id(&self) -> &'static str {
         EVENT_PROBE_PROVIDER_PACKAGE_ID
     }
@@ -372,11 +372,11 @@ impl ConformanceModuleFactory for EventProbeProviderFactory {
 
     fn instantiate(
         &self,
-        _instance: &ModuleInstancePlan,
-    ) -> Result<ConformanceModule, RuntimeFailure> {
-        Ok(ConformanceModule::with_event_endpoints(
+        _instance: &PluginInstancePlan,
+    ) -> Result<ConformancePlugin, RuntimeFailure> {
+        Ok(ConformancePlugin::with_event_endpoints(
             vec![Rc::new(EventProbeEndpoint::new(self.recorder.clone()))],
-            NoopModuleLifecycle,
+            NoopPluginLifecycle,
         ))
     }
 }

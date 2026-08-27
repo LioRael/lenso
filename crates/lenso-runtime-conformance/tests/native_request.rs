@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, ModuleInstancePlan, PlanResolutionError, ResolvedAppPlan,
+    CapabilityRequirementPlan, PlanResolutionError, PluginInstancePlan, ResolvedAppPlan,
     RestartPolicy,
 };
 use lenso_kernel::{DeterministicDriver, Kernel, RuntimeDriver, RuntimeFailure};
@@ -21,14 +21,14 @@ use lenso_runtime_conformance::{
 fn probe_composition(provider_package_id: &str) -> AppComposition {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("provider", provider_package_id).with_capability(
+            PluginInstancePlan::new("provider", provider_package_id).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
                     [lenso_runtime_conformance::PROBE_OPERATION],
                 ),
             ),
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
@@ -139,12 +139,12 @@ fn typed_client_reports_a_missing_binding_as_a_runtime_failure() {
 }
 
 #[test]
-fn kernel_rejects_a_planned_module_without_a_linked_factory() {
+fn kernel_rejects_a_planned_plugin_without_a_linked_factory() {
     let driver = DeterministicDriver::new();
 
     let outcome = driver.run(Kernel::start_native(
         ResolvedAppPlan::new(
-            vec![ModuleInstancePlan::new(
+            vec![PluginInstancePlan::new(
                 "consumer",
                 PROBE_CONSUMER_PACKAGE_ID,
             )],
@@ -156,7 +156,7 @@ fn kernel_rejects_a_planned_module_without_a_linked_factory() {
 
     assert_eq!(
         outcome.unwrap_err(),
-        RuntimeFailure::MissingModuleFactory {
+        RuntimeFailure::MissingPluginFactory {
             instance: "consumer".to_owned(),
             package_id: PROBE_CONSUMER_PACKAGE_ID.to_owned(),
         }
@@ -185,7 +185,7 @@ fn conformance_adapter_rejects_an_operation_table_mismatch_during_preparation() 
     let driver = DeterministicDriver::new();
     let plan = ResolvedAppPlan::new(
         vec![
-            ModuleInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
@@ -213,21 +213,21 @@ fn conformance_adapter_rejects_an_operation_table_mismatch_during_preparation() 
 fn composition_materializes_keyed_instances_requirements_and_deterministic_many_bindings() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
                     CapabilityCardinality::Many,
                 ),
             ),
-            ModuleInstancePlan::new("provider-z", PROBE_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider-z", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
                     [lenso_runtime_conformance::PROBE_OPERATION],
                 ),
             ),
-            ModuleInstancePlan::new("provider-a", PROBE_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider-a", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
@@ -254,13 +254,13 @@ fn composition_materializes_keyed_instances_requirements_and_deterministic_many_
     let plan = composition.resolve().expect("many binding should resolve");
 
     assert_eq!(
-        plan.module_instances()
+        plan.plugin_instances()
             .iter()
-            .map(ModuleInstancePlan::instance_key)
+            .map(PluginInstancePlan::instance_key)
             .collect::<Vec<_>>(),
         ["consumer", "provider-a", "provider-z"]
     );
-    let consumer = &plan.module_instances()[0];
+    let consumer = &plan.plugin_instances()[0];
     assert_eq!(
         consumer.required_capabilities()[0].cardinality(),
         CapabilityCardinality::Many
@@ -278,7 +278,7 @@ fn composition_materializes_keyed_instances_requirements_and_deterministic_many_
 fn missing_one_binding_is_rejected_before_native_boot() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
@@ -303,7 +303,7 @@ fn missing_one_binding_is_rejected_before_the_execution_adapter_runs() {
     let driver = DeterministicDriver::new();
     let plan = ResolvedAppPlan::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::one(PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION),
             ),
         ],
@@ -327,7 +327,7 @@ fn missing_one_binding_is_rejected_before_the_execution_adapter_runs() {
 fn optional_requirement_may_be_unbound() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::optional(PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION),
             ),
         ],
@@ -345,7 +345,7 @@ fn optional_requirement_may_be_unbound() {
 fn many_requirement_may_be_unbound_and_fan_out_to_nothing() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::many(PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION),
             ),
         ],
@@ -382,17 +382,17 @@ fn many_requirement_may_be_unbound_and_fan_out_to_nothing() {
 fn a_singular_client_does_not_fallback_to_the_first_many_provider() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::many(PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION),
             ),
-            ModuleInstancePlan::new("provider-z", PROBE_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider-z", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
                     [lenso_runtime_conformance::PROBE_OPERATION],
                 ),
             ),
-            ModuleInstancePlan::new("provider-a", PROBE_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider-a", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
@@ -470,7 +470,7 @@ fn a_singular_client_does_not_fallback_to_the_first_many_provider() {
 fn ambiguous_one_binding_is_rejected() {
     let composition = probe_composition(PROBE_PROVIDER_PACKAGE_ID);
     let composition = AppComposition::new(
-        composition.module_instances().to_vec(),
+        composition.plugin_instances().to_vec(),
         vec![
             CapabilityBinding::new(
                 "consumer",
@@ -510,10 +510,10 @@ fn required_one_bindings_cannot_form_an_activation_cycle() {
         || CapabilityRequirementPlan::one(PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION);
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("a", PROBE_PROVIDER_PACKAGE_ID)
+            PluginInstancePlan::new("a", PROBE_PROVIDER_PACKAGE_ID)
                 .with_capability(endpoint())
                 .with_requirement(requirement()),
-            ModuleInstancePlan::new("b", PROBE_PROVIDER_PACKAGE_ID)
+            PluginInstancePlan::new("b", PROBE_PROVIDER_PACKAGE_ID)
                 .with_capability(endpoint())
                 .with_requirement(requirement()),
         ],
@@ -535,7 +535,7 @@ fn required_one_bindings_cannot_form_an_activation_cycle() {
 fn invalid_provider_reference_is_rejected() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
@@ -565,14 +565,14 @@ fn invalid_provider_reference_is_rejected() {
 fn incompatible_capability_versions_are_rejected() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::new(
                     PROBE_CAPABILITY_ID,
                     "2.0.0",
                     CapabilityCardinality::One,
                 ),
             ),
-            ModuleInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID).with_capability(
+            PluginInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID).with_capability(
                 CapabilityEndpointPlan::new(
                     PROBE_CAPABILITY_ID,
                     PROBE_DESCRIPTOR_VERSION,
@@ -658,11 +658,11 @@ fn replacing_the_provider_changes_composition_and_plan_but_not_the_consumer_bind
     assert_ne!(first_plan, second_plan);
     assert_eq!(
         first_plan
-            .module_instances()
+            .plugin_instances()
             .iter()
             .find(|instance| instance.instance_key() == "consumer"),
         second_plan
-            .module_instances()
+            .plugin_instances()
             .iter()
             .find(|instance| instance.instance_key() == "consumer")
     );
@@ -698,10 +698,10 @@ fn assert_provider_uses_the_typed_contract(package_id: &str, expected_message: &
 fn conformance_adapter_recreates_a_generation_through_the_supervision_seam() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
+            PluginInstancePlan::new("consumer", PROBE_CONSUMER_PACKAGE_ID).with_requirement(
                 CapabilityRequirementPlan::one(PROBE_CAPABILITY_ID, PROBE_DESCRIPTOR_VERSION),
             ),
-            ModuleInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID)
+            PluginInstancePlan::new("provider", PROBE_PROVIDER_PACKAGE_ID)
                 .with_restart_policy(RestartPolicy::on_failure(
                     1,
                     Duration::from_secs(30),
@@ -733,7 +733,7 @@ fn conformance_adapter_recreates_a_generation_through_the_supervision_seam() {
             .expect("the stable handle should resolve"),
     );
 
-    app.report_module_failure("provider")
+    app.report_plugin_failure("provider")
         .expect("the conformance Adapter should schedule recreation");
     driver.run(async {
         for _ in 0..6 {
@@ -741,7 +741,7 @@ fn conformance_adapter_recreates_a_generation_through_the_supervision_seam() {
         }
     });
 
-    assert_eq!(app.module_generation("provider"), Some(2));
+    assert_eq!(app.plugin_generation("provider"), Some(2));
     assert_eq!(
         driver
             .run(client.probe(ProbeRequest {

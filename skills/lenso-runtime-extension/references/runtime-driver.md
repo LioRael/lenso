@@ -3,7 +3,7 @@
 A Runtime Driver advances the portable single-owner Kernel on one host task
 lane. It provides monotonic time, sleeping, yielding/parking, bounded local task
 scheduling, jitter, and Runner-requested shutdown state. It does not create
-Module factories, endpoints, process protocols, or product policy.
+Plugin factories, endpoints, process protocols, or product policy.
 
 ## 1. Implement the current Interface
 
@@ -32,7 +32,7 @@ completion evidence. A panic/host abnormality becomes `TaskOutcome::Failed`;
 cooperative cancellation becomes `Cancelled`.
 
 The Driver is intentionally `!Send`-friendly and lane-local. Do not add
-thread-safe Module state, work stealing, or cross-lane migration to make one
+thread-safe Plugin state, work stealing, or cross-lane migration to make one
 host runtime convenient.
 
 ## 2. Keep host APIs behind the implementation

@@ -9,12 +9,12 @@ use std::{
 use futures::{FutureExt, channel::oneshot, future::join3};
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
-    CapabilityRequirementPlan, ModuleInstancePlan, RequestAdmissionPlan, ResolvedAppPlan,
+    CapabilityRequirementPlan, PluginInstancePlan, RequestAdmissionPlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
     CancellationToken, DeterministicDriver, InvocationContext, Kernel, NativeExecutionAdapter,
-    NativeRequestEndpoint, NoopModuleLifecycle, PreparedBinding, PreparedNativeApp,
-    PreparedNativeModule, RequestCapability, RuntimeDriver, RuntimeFailure,
+    NativeRequestEndpoint, NoopPluginLifecycle, PreparedBinding, PreparedNativeApp,
+    PreparedNativePlugin, RequestCapability, RuntimeDriver, RuntimeFailure,
     invoke_erased_native_request,
 };
 
@@ -195,11 +195,11 @@ impl NativeExecutionAdapter for EchoAdapter {
             BTreeMap::from([
                 (
                     "consumer".to_owned(),
-                    PreparedNativeModule::new(Vec::new(), NoopModuleLifecycle),
+                    PreparedNativePlugin::new(Vec::new(), NoopPluginLifecycle),
                 ),
                 (
                     "provider".to_owned(),
-                    PreparedNativeModule::new(vec![endpoint], NoopModuleLifecycle),
+                    PreparedNativePlugin::new(vec![endpoint], NoopPluginLifecycle),
                 ),
             ]),
         ))
@@ -209,14 +209,14 @@ impl NativeExecutionAdapter for EchoAdapter {
 fn plan(admission: RequestAdmissionPlan) -> ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::new(
                     CAPABILITY_ID,
                     DESCRIPTOR_VERSION,
                     CapabilityCardinality::One,
                 ),
             ),
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION]),
             ),
         ],

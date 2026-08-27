@@ -20,7 +20,7 @@ honestly."
 - **Honest failures:** invalid subject is a Domain Error; unavailable durable
   state is a Runtime Failure and never falls back to memory.
 
-## Module cards
+## Plugin cards
 
 ### `support-ticket`
 
@@ -32,9 +32,9 @@ honestly."
 - **Requires:** an ActorAssertion supplied in invocation context or one explicit
   Auth role chosen by the contract design; no access to Auth private state.
 - **Execution:** native Rust initially; a later Bun implementation may satisfy
-  the same Capability without changing the Module type.
+  the same Capability without changing the Plugin type.
 - **Proof:** authorized create, invalid-subject Domain Error, store-unavailable
-  Runtime Failure, owner-local restart/recovery, deletion from Composition.
+  Runtime Failure, owner-local restart/recovery, deletion from App configuration.
 
 ### `support-ticket-http`
 
@@ -97,7 +97,7 @@ Observable acceptance:
 | Work | Primary skill | Completion artifact |
 | --- | --- | --- |
 | `support.ticketing@1` source and generated bindings | `lenso-capability-authoring` | Descriptor, Schemas, Rust/TypeScript outputs, compatibility/freshness proof |
-| Ticket factory, storage boundary, policy | `lenso-module-authoring` | Module package plus Capability/lifecycle/removal tests |
-| HTTP endpoint Module | `lenso-module-authoring` | endpoint provider, generated Ticket client, real HTTP proof |
-| package/Instance/configuration/decisions | `lenso-app-composition` | checked `lenso.app.json` and canonical Resolved Plan |
+| Ticket factory, storage boundary, policy | `lenso-plugin-authoring` | Plugin package plus Capability/lifecycle/removal tests |
+| HTTP endpoint Plugin | `lenso-plugin-authoring` | endpoint provider, generated Ticket client, real HTTP proof |
+| package/Instance/configuration/decisions | `lenso-app-configuration` | checked `plugins/` and canonical Resolved Plan |
 | only a missing listener/process/host mechanism | `lenso-runtime-extension` | conformance plus real host smoke; no ticket policy |

@@ -17,16 +17,15 @@ skill owns the work.
    - Capability identity, Operations, Schemas, compatibility, or generated
      consumer/provider bindings -> `lenso-capability-authoring`
    - product behavior implemented as a Rust, Bun, Web, stateful, Auth, Story,
-     Audit, OpenTelemetry, Secrets, or other Module; or packaging that Module
+     Audit, OpenTelemetry, Secrets, or other Plugin; or packaging that Plugin
      as an installable Plugin Release ->
-     `lenso-module-authoring`
-   - package or Plugin selection, keyed Module/Plugin Instances,
-     configuration, Slot choices, bindings, placement, Web profiles, Desired
-     State, or Resolved App Plan ->
-     `lenso-app-composition`
-   - scheduling, clocks, Module generation, Adapter-level endpoint
+     `lenso-plugin-authoring`
+   - Plugin Root configuration, adding/disabling/enabling/removing Plugins, or
+     inspecting the Host-derived App and Resolved App Plan ->
+     `lenso-app-configuration`
+   - scheduling, clocks, Plugin generation, Adapter-level endpoint
      preparation, language-process/wire integration, execution classes,
-     Plugin admission/Store mechanics, Reconciliation, App Generation
+     package admission, reconciliation, App Generation
      stage/switch/drain/rollback, or Runner orchestration ->
      `lenso-runtime-extension`
 3. Treat portable graph, lifecycle, invocation, admission, supervision,
@@ -41,10 +40,11 @@ Examples:
 
 - "Design a support-ticket product" -> planning first.
 - "Add `assign_ticket` to the Ticket contract" -> Capability authoring.
-- "Implement the Rust or Bun Ticket provider" -> Module authoring.
-- "Package the Ticket Module as an installable Plugin" -> Module authoring.
-- "Select two providers and bind one consumer" -> App Composition.
-- "Enable a reviewed Plugin and choose its Slot" -> App Composition.
+- "Implement the Rust or Bun Ticket provider" -> Plugin authoring.
+- "Package the Ticket Plugin as an installable Plugin" -> Plugin authoring.
+- "Configure one optional Plugin Instance" -> App configuration.
+- "Change which provider a Host root Slot selects" -> Runtime extension in the
+  product Host.
 - "Add a Python process execution class" -> Runtime extension.
 - "Implement durable App Generation rollback" -> Runtime extension.
 

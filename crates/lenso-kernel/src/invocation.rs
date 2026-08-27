@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, fmt, rc::Rc};
 
 use super::{RequestId, lifecycle::CancellationToken};
 
-/// An opaque extension supplied by a caller Module.
+/// An opaque extension supplied by a caller Plugin.
 #[derive(Clone, Eq, PartialEq)]
 pub struct InvocationExtension {
     key: String,
@@ -185,7 +185,7 @@ impl InvocationContext {
         }
     }
 
-    /// Attaches the resolved Caller Module Instance to this context.
+    /// Attaches the resolved Caller Plugin Instance to this context.
     #[must_use]
     pub fn with_caller_instance(mut self, caller_instance: impl Into<String>) -> Self {
         self.caller_instance = Some(Rc::from(caller_instance.into()));
@@ -204,7 +204,7 @@ impl InvocationContext {
         self
     }
 
-    /// Returns the Caller Module Instance, when the App attached one.
+    /// Returns the Caller Plugin Instance, when the App attached one.
     pub fn caller_instance(&self) -> Option<&str> {
         self.caller_instance.as_deref()
     }

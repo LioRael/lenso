@@ -1,11 +1,11 @@
 ---
 name: lenso-runtime-extension
-description: Implement or change Lenso host mechanics through a Runtime Driver, Execution Adapter, Runner, App Generation controller, execution class, process/wire or endpoint preparation, or lane integration. Use when the concern exists to execute or switch Module graphs, not when deleting a product feature should remove it.
+description: Implement or change Lenso host mechanics through a Runtime Driver, Execution Adapter, Runner, App Generation controller, execution class, process/wire or endpoint preparation, or lane integration. Use when the concern exists to execute or switch Plugin graphs, not when deleting a product feature should remove it.
 ---
 
 # Lenso Runtime Extension
 
-Extend how Modules run without turning host machinery into product Modules or
+Extend how Plugins run without turning host machinery into product Plugins or
 moving host/product policy into the portable Kernel.
 
 ## Workflow
@@ -14,7 +14,7 @@ moving host/product policy into the portable Kernel.
    [runtime seams](references/runtime-seams.md). Name the host facility being
    adapted, the portable Interface it implements, and why deleting a product
    feature would not remove the facility. Route removable product behavior to
-   `lenso-module-authoring`. Finish when Driver, Adapter, Runner, authoring, or
+   `lenso-plugin-authoring`. Finish when Driver, Adapter, Runner, authoring, or
    Kernel owns the change unambiguously.
 2. **Resolve the live contract.** Find repository instructions, selected core
    package versions, relevant ADRs, owning runtime/Adapter repository,
@@ -24,7 +24,7 @@ moving host/product policy into the portable Kernel.
    error, and execution-class identity comes from current source.
 3. **Read one implementation branch.** Use
    [Runtime Driver](references/runtime-driver.md) for scheduling/time/task-lane
-   work; [Execution Adapter](references/execution-adapter.md) for Module
+   work; [Execution Adapter](references/execution-adapter.md) for Plugin
    generation, endpoints, process/wire, or isolation; and
    [Runner and conformance](references/runner-and-conformance.md) for assembly,
    host shutdown, lanes, terminal outcomes, or cross-implementation proof. Use
@@ -35,7 +35,7 @@ moving host/product policy into the portable Kernel.
 4. **Preserve inward dependencies.** Serializable Plan data and Kernel
    Interfaces stay portable. Drivers/Adapters implement them; Runners assemble
    concrete implementations. Core does not depend on a host runtime, protocol,
-   Module, CLI, or example. Finish when the dependency graph points inward and
+   Plugin, CLI, or example. Finish when the dependency graph points inward and
    every host API remains outside portable core.
 5. **Implement one narrow translation.** Translate the selected host facility
    into the exact portable Interface and map every host outcome to a truthful
@@ -47,7 +47,7 @@ moving host/product policy into the portable Kernel.
    Descriptor mismatches, unsupported interaction kinds, protocol handshake
    mismatches, and incomplete bindings before activation. Bound frames, queues,
    tasks, and cancellation state. Finish when malformed host state cannot reach
-   Module business code.
+   Plugin business code.
 7. **Prove portable and real behavior.** Run product-neutral conformance, the
    owning repository's locked gates, target compile checks, and the branch's
    real host smoke. Exercise startup failure, cancellation/deadline, shutdown,
@@ -57,4 +57,4 @@ moving host/product policy into the portable Kernel.
 
 Return the chosen seam and owner, host facility, core Interface version,
 dependency direction, failure boundary, conformance and host-smoke evidence,
-and any product behavior routed back to a Module.
+and any product behavior routed back to a Plugin.

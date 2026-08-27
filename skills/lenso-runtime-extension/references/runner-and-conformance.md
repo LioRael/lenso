@@ -2,7 +2,7 @@
 
 A Runner chooses concrete Drivers and Execution Adapters, loads an already
 approved Plan, translates host shutdown, drives Kernel, and reports the
-terminal outcome. It is a composition root, not a package manager or product
+terminal outcome. It is a app configuration root, not a package manager or product
 service.
 
 ## Assemble explicitly
@@ -11,7 +11,7 @@ Inspect the selected runtime packages and assemble one unambiguous Adapter per
 execution class:
 
 ```rust,ignore
-let native = NativeModuleRegistry::new().with_linked_factories();
+let native = NativePluginRegistry::new().with_linked_factories();
 
 let adapters = ExecutionAdapterCatalog::new()
     .with_adapter(native)?
@@ -30,7 +30,7 @@ The catalog rejects duplicate execution classes. Kernel rejects an Instance
 whose class is unavailable. The Runner may expose configuration for host paths,
 limits, shutdown timeout, lane count, or Adapter selection, but cannot rewrite
 the Plan or invent bindings. Direct `with_factory(...)` registration remains an
-implementation-level compatibility escape hatch; ordinary Rust Modules use the
+implementation-level compatibility escape hatch; ordinary Rust Plugins use the
 public facade and linked generated registration.
 
 For host shutdown, set Driver shutdown state and wake the lane. Report startup
@@ -44,7 +44,7 @@ place only the Instances assigned to it. Cross-lane request transfer uses the
 explicit transfer catalog and only contracts marked transferable. Preserve
 request identity, deadlines, cancellation, typed Domain Errors/Runtime
 Failures, and diagnostics. No work stealing, live Instance migration, or
-shared mutable Module state is implied.
+shared mutable Plugin state is implied.
 
 Use `LioRael/lenso-runtime-rust/crates/lenso-runner` as the current native and
 replicated-lane source anchor.

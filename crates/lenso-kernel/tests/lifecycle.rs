@@ -3,12 +3,12 @@ use std::{any::Any, cell::RefCell, collections::BTreeMap, rc::Rc};
 use futures::FutureExt;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    ModuleInstancePlan, ResolvedAppPlan,
+    PluginInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
     ActivateContext, DeactivateContext, DeactivationReason, DeterministicDriver, InvocationContext,
-    Kernel, ModuleLifecycle, ModuleLifecyclePhase, NativeExecutionAdapter, NativeRequestEndpoint,
-    PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativeModule, RuntimeFailure,
+    Kernel, NativeExecutionAdapter, NativeRequestEndpoint, PluginLifecycle, PluginLifecyclePhase,
+    PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativePlugin, RuntimeFailure,
 };
 
 #[derive(Debug)]
@@ -70,10 +70,10 @@ struct RecordingLifecycle {
     external_work: ExternalWorkKind,
 }
 
-impl ModuleLifecycle for RecordingLifecycle {
-    fn prepare(&self, context: PrepareContext) -> lenso_kernel::ModuleFuture {
+impl PluginLifecycle for RecordingLifecycle {
+    fn prepare(&self, context: PrepareContext) -> lenso_kernel::PluginFuture {
         assert_eq!(context.instance_key(), self.instance_key);
-        assert_eq!(context.phase(), ModuleLifecyclePhase::Prepare);
+        assert_eq!(context.phase(), PluginLifecyclePhase::Prepare);
         assert_eq!(context.entrypoint(), format!("{}.entry", self.instance_key));
         assert_eq!(
             context.configuration(),
@@ -102,11 +102,11 @@ impl ModuleLifecycle for RecordingLifecycle {
         })
     }
 
-    fn activate(&self, context: ActivateContext) -> lenso_kernel::ModuleFuture {
+    fn activate(&self, context: ActivateContext) -> lenso_kernel::PluginFuture {
         assert_eq!(context.instance_key(), self.instance_key);
-        assert_eq!(context.phase(), ModuleLifecyclePhase::Activate);
+        assert_eq!(context.phase(), PluginLifecyclePhase::Activate);
         assert!(!context.ready_gate().is_open());
-        assert_eq!(context.readiness().phase(), ModuleLifecyclePhase::Ready);
+        assert_eq!(context.readiness().phase(), PluginLifecyclePhase::Ready);
 
         if self.external_work != ExternalWorkKind::None {
             let readiness = context.readiness();
@@ -125,7 +125,7 @@ impl ModuleLifecycle for RecordingLifecycle {
                     observations.borrow_mut().push(readiness.is_open());
                     events.borrow_mut().push(event);
                 }))
-                .expect("the deterministic Driver should accept Module work");
+                .expect("the deterministic Driver should accept Plugin work");
         }
 
         let events = self.events.clone();
@@ -145,9 +145,9 @@ impl ModuleLifecycle for RecordingLifecycle {
         })
     }
 
-    fn deactivate(&self, context: DeactivateContext) -> lenso_kernel::ModuleFuture {
+    fn deactivate(&self, context: DeactivateContext) -> lenso_kernel::PluginFuture {
         assert_eq!(context.instance_key(), self.instance_key);
-        assert_eq!(context.phase(), ModuleLifecyclePhase::Deactivate);
+        assert_eq!(context.phase(), PluginLifecyclePhase::Deactivate);
         assert_eq!(
             context.tasks().task_count(),
             0,
@@ -167,7 +167,7 @@ impl ModuleLifecycle for RecordingLifecycle {
 
 #[derive(Debug)]
 struct RecordingAdapter {
-    modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
+    plugins: BTreeMap<String, Rc<dyn PluginLifecycle>>,
 }
 
 impl NativeExecutionAdapter for RecordingAdapter {
@@ -181,7 +181,7 @@ impl NativeExecutionAdapter for RecordingAdapter {
             operation: &["beta.call"],
         });
         let generations = self
-            .modules
+            .plugins
             .iter()
             .map(|(instance_key, lifecycle)| {
                 let endpoints = match instance_key.as_str() {
@@ -191,7 +191,7 @@ impl NativeExecutionAdapter for RecordingAdapter {
                 };
                 (
                     instance_key.clone(),
-                    PreparedNativeModule::with_lifecycle(endpoints, lifecycle.clone()),
+                    PreparedNativePlugin::with_lifecycle(endpoints, lifecycle.clone()),
                 )
             })
             .collect();
@@ -208,7 +208,7 @@ impl NativeExecutionAdapter for RecordingAdapter {
 fn lifecycle_plan() -> ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("z-provider", "package.z")
+            PluginInstancePlan::new("z-provider", "package.z")
                 .with_entrypoint("z-provider.entry")
                 .with_configuration("config:z-provider")
                 .with_capability(CapabilityEndpointPlan::new(
@@ -216,7 +216,7 @@ fn lifecycle_plan() -> ResolvedAppPlan {
                     "1.0.0",
                     ["alpha.call"],
                 )),
-            ModuleInstancePlan::new("m-provider", "package.m")
+            PluginInstancePlan::new("m-provider", "package.m")
                 .with_entrypoint("m-provider.entry")
                 .with_configuration("config:m-provider")
                 .with_capability(CapabilityEndpointPlan::new(
@@ -225,7 +225,7 @@ fn lifecycle_plan() -> ResolvedAppPlan {
                     ["beta.call"],
                 ))
                 .with_requirement(CapabilityRequirementPlan::one("capability.alpha", "1.0.0")),
-            ModuleInstancePlan::new("a-consumer", "package.a")
+            PluginInstancePlan::new("a-consumer", "package.a")
                 .with_entrypoint("a-consumer.entry")
                 .with_configuration("config:a-consumer")
                 .with_requirement(CapabilityRequirementPlan::one("capability.beta", "1.0.0")),
@@ -247,7 +247,7 @@ fn recording_adapter(
     ingress_instance: Option<&str>,
     background_instance: Option<&str>,
 ) -> RecordingAdapter {
-    let modules = ["z-provider", "m-provider", "a-consumer"]
+    let plugins = ["z-provider", "m-provider", "a-consumer"]
         .into_iter()
         .map(|instance_key| {
             (
@@ -265,11 +265,11 @@ fn recording_adapter(
                     } else {
                         ExternalWorkKind::None
                     },
-                }) as Rc<dyn ModuleLifecycle>,
+                }) as Rc<dyn PluginLifecycle>,
             )
         })
         .collect();
-    RecordingAdapter { modules }
+    RecordingAdapter { plugins }
 }
 
 #[test]
@@ -290,7 +290,7 @@ fn successful_startup_prepares_and_activates_in_dependency_order_and_opens_one_g
                 Some("m-provider"),
             ),
         ))
-        .expect("all Modules should start");
+        .expect("all Plugins should start");
 
     assert!(app.is_ready());
     assert!(app.ready_gate().is_open());

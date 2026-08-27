@@ -9,12 +9,12 @@ use std::{
 use futures::FutureExt;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    ModuleInstancePlan, ResolvedAppPlan,
+    PluginInstancePlan, ResolvedAppPlan,
 };
 use lenso_kernel::{
     ActivateContext, DeactivateContext, DeterministicDriver, InvocationContext, Kernel,
-    ManagedResource, ModuleLifecycle, NativeExecutionAdapter, NativeRequestEndpoint,
-    PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativeModule, ResourceFuture,
+    ManagedResource, NativeExecutionAdapter, NativeRequestEndpoint, PluginLifecycle,
+    PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativePlugin, ResourceFuture,
     RuntimeDriver, RuntimeFailure, ShutdownOutcome,
 };
 
@@ -100,8 +100,8 @@ struct RecordingLifecycle {
     resource_failure: bool,
 }
 
-impl ModuleLifecycle for RecordingLifecycle {
-    fn prepare(&self, _context: PrepareContext) -> lenso_kernel::ModuleFuture {
+impl PluginLifecycle for RecordingLifecycle {
+    fn prepare(&self, _context: PrepareContext) -> lenso_kernel::PluginFuture {
         let fail = self.fail_prepare;
         Box::pin(async move {
             if fail {
@@ -114,7 +114,7 @@ impl ModuleLifecycle for RecordingLifecycle {
         })
     }
 
-    fn activate(&self, context: ActivateContext) -> lenso_kernel::ModuleFuture {
+    fn activate(&self, context: ActivateContext) -> lenso_kernel::PluginFuture {
         let cancellation = context.cancellation();
         let admission = context.admission();
         let events = self.events.clone();
@@ -141,7 +141,7 @@ impl ModuleLifecycle for RecordingLifecycle {
         Box::pin(async { Ok(()) })
     }
 
-    fn deactivate(&self, context: DeactivateContext) -> lenso_kernel::ModuleFuture {
+    fn deactivate(&self, context: DeactivateContext) -> lenso_kernel::PluginFuture {
         assert!(matches!(
             context.reason(),
             lenso_kernel::DeactivationReason::Shutdown
@@ -173,14 +173,14 @@ impl ModuleLifecycle for RecordingLifecycle {
 
 #[derive(Debug)]
 struct RecordingAdapter {
-    modules: BTreeMap<String, Rc<dyn ModuleLifecycle>>,
+    plugins: BTreeMap<String, Rc<dyn PluginLifecycle>>,
 }
 
 impl NativeExecutionAdapter for RecordingAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         let endpoint: Rc<dyn NativeRequestEndpoint> = Rc::new(ShutdownEndpoint);
         let generations = self
-            .modules
+            .plugins
             .iter()
             .map(|(instance_key, lifecycle)| {
                 let endpoints = if instance_key == "provider" {
@@ -190,7 +190,7 @@ impl NativeExecutionAdapter for RecordingAdapter {
                 };
                 (
                     instance_key.clone(),
-                    PreparedNativeModule::with_lifecycle(endpoints, lifecycle.clone()),
+                    PreparedNativePlugin::with_lifecycle(endpoints, lifecycle.clone()),
                 )
             })
             .collect();
@@ -204,8 +204,8 @@ impl NativeExecutionAdapter for RecordingAdapter {
 #[derive(Debug)]
 struct BlockedTaskLifecycle;
 
-impl ModuleLifecycle for BlockedTaskLifecycle {
-    fn activate(&self, context: ActivateContext) -> lenso_kernel::ModuleFuture {
+impl PluginLifecycle for BlockedTaskLifecycle {
+    fn activate(&self, context: ActivateContext) -> lenso_kernel::PluginFuture {
         context
             .tasks()
             .spawn_local(Box::pin(futures::future::pending()))
@@ -217,10 +217,10 @@ impl ModuleLifecycle for BlockedTaskLifecycle {
 fn plan() -> ResolvedAppPlan {
     AppComposition::new(
         vec![
-            ModuleInstancePlan::new("provider", "package.provider").with_capability(
+            PluginInstancePlan::new("provider", "package.provider").with_capability(
                 CapabilityEndpointPlan::new("capability.shutdown", "1.0.0", ["shutdown.call"]),
             ),
-            ModuleInstancePlan::new("consumer", "package.consumer").with_requirement(
+            PluginInstancePlan::new("consumer", "package.consumer").with_requirement(
                 CapabilityRequirementPlan::one("capability.shutdown", "1.0.0"),
             ),
         ],
@@ -242,7 +242,7 @@ fn adapter(
     resource_failure: bool,
     fail_prepare: bool,
 ) -> RecordingAdapter {
-    let modules = ["provider", "consumer"]
+    let plugins = ["provider", "consumer"]
         .into_iter()
         .map(|instance_key| {
             (
@@ -254,11 +254,11 @@ fn adapter(
                     fail_prepare: fail_prepare && instance_key == "provider",
                     deactivation,
                     resource_failure,
-                }) as Rc<dyn ModuleLifecycle>,
+                }) as Rc<dyn PluginLifecycle>,
             )
         })
         .collect();
-    RecordingAdapter { modules }
+    RecordingAdapter { plugins }
 }
 
 #[test]
@@ -463,14 +463,14 @@ fn start_native_preserves_the_startup_failure_classification() {
         false,
         true,
     )
-    .modules;
+    .plugins;
     let driver = DeterministicDriver::new();
 
     let outcome = driver.run(Kernel::start_native(
         plan(),
         driver.clone(),
         RecordingAdapter {
-            modules: failing_modules,
+            plugins: failing_modules,
         },
     ));
 
@@ -484,21 +484,21 @@ fn start_native_preserves_the_startup_failure_classification() {
 fn shutdown_timeout_terminates_a_blocked_managed_task() {
     let events = Rc::new(RefCell::new(Vec::new()));
     let resources_released = Rc::new(Cell::new(0));
-    let mut modules = adapter(
+    let mut plugins = adapter(
         &events,
         &resources_released,
         DeactivationMode::Clean,
         false,
         false,
     )
-    .modules;
-    modules.insert("provider".to_owned(), Rc::new(BlockedTaskLifecycle));
+    .plugins;
+    plugins.insert("provider".to_owned(), Rc::new(BlockedTaskLifecycle));
     let driver = DeterministicDriver::new();
     let app = driver
         .run(Kernel::start_native(
             plan(),
             driver.clone(),
-            RecordingAdapter { modules },
+            RecordingAdapter { plugins },
         ))
         .expect("the App should start");
     let advance_driver = driver.clone();

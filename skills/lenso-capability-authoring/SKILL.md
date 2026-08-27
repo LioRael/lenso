@@ -1,6 +1,6 @@
 ---
 name: lenso-capability-authoring
-description: Create or evolve a Lenso Capability role contract, Descriptor, JSON Schemas, compatibility decision, and generated consumer/provider bindings. Use for explicit Module collaboration Interfaces, not private helpers, Composition bindings, or provider business behavior.
+description: Create or evolve a Lenso Capability role contract, Descriptor, JSON Schemas, compatibility decision, and generated consumer/provider bindings. Use for explicit Plugin collaboration Interfaces, not private helpers, App configuration bindings, or provider business behavior.
 ---
 
 # Lenso Capability Authoring
@@ -32,7 +32,7 @@ provider's package, storage, process, or concrete type.
    [request Capability recipe](references/request-capability.md) for the package
    layout, Descriptor, Schemas, generator commands, freshness gate, generated
    Provider, and generated Client. Keep runtime failures separate from Domain
-   Errors and keep cardinality/bindings in App Composition. Finish when the
+   Errors and keep cardinality/bindings in App configuration. Finish when the
    Descriptor and package-local Schemas contain the entire portable contract.
 5. **Generate and integrate.** Run the installed
    `lenso-contract-codegen --help`, then its generate and check workflows.
@@ -52,9 +52,9 @@ provider's package, storage, process, or concrete type.
    known/unknown Domain Errors, Runtime Failure path, and cross-runtime vectors
    are observable where applicable.
 7. **Hand off ownership.** Route provider/consumer business behavior to
-   `lenso-module-authoring`; route exact requirement cardinality, provider keys,
-   contract inputs, and bindings to `lenso-app-composition`. Finish when no
-   contract decision remains hidden in a Module implementation or Plan edit.
+   `lenso-plugin-authoring`; route exact requirement cardinality, provider keys,
+   contract inputs, and bindings to `lenso-app-configuration`. Finish when no
+   contract decision remains hidden in a Plugin implementation or Plan edit.
 
 Return the role, identity and version, Operations, portability choice, contract
 and Schema paths, generator/freshness commands, compatibility result, consumers

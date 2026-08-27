@@ -6,7 +6,7 @@
 - Additive compatible changes advance the Descriptor minor version only when
   existing consumers and providers remain valid.
 - Breaking role or shape changes create a new major identity.
-- Module package releases do not silently change the Capability identity.
+- Plugin package releases do not silently change the Capability identity.
 
 Run the installed generator's current compatibility workflow against the
 previous accepted Descriptor. With the current CLI the shape is:

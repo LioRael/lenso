@@ -5,7 +5,7 @@ use futures::future::LocalBoxFuture;
 use super::{
     DiagnosticEvent, DiagnosticOutcome, DiagnosticSource, InvocationContext, NativeAppRuntime,
     NativeStreamEndpointBinding, RequestPermit, RuntimeFailure, await_with_generation_context,
-    diagnostics::diagnostic_operation, schedule_module_supervision_after_failure,
+    diagnostics::diagnostic_operation, schedule_plugin_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one stream Capability.
@@ -155,7 +155,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
                     provider_instance: self
                         .endpoints
                         .first()
-                        .map(|endpoint| endpoint.module_instance.clone()),
+                        .map(|endpoint| endpoint.plugin_instance.clone()),
                     capability: C::ID,
                     operation: operation_name,
                 }
@@ -177,7 +177,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
                 provider_instance: self
                     .endpoints
                     .first()
-                    .map(|endpoint| endpoint.module_instance.clone()),
+                    .map(|endpoint| endpoint.plugin_instance.clone()),
                 capability: C::ID,
                 operation: operation_name,
                 outcome,
@@ -189,7 +189,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
                 (self.runtime.driver.now)(),
                 self.endpoints
                     .first()
-                    .map(|endpoint| endpoint.module_instance.as_str()),
+                    .map(|endpoint| endpoint.plugin_instance.as_str()),
                 error,
             );
         }
@@ -246,16 +246,16 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
         )
         .await
         .map_err(|error| {
-            schedule_module_supervision_after_failure(
+            schedule_plugin_supervision_after_failure(
                 &self.runtime,
-                &endpoint.module_instance,
+                &endpoint.plugin_instance,
                 error,
             )
         })?
         .map_err(|error| {
-            schedule_module_supervision_after_failure(
+            schedule_plugin_supervision_after_failure(
                 &self.runtime,
-                &endpoint.module_instance,
+                &endpoint.plugin_instance,
                 error,
             )
         })?;
@@ -264,7 +264,7 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
                 session,
                 self.runtime.clone(),
                 generation_cancellation,
-                endpoint.module_instance.clone(),
+                endpoint.plugin_instance.clone(),
                 context,
                 permit,
             ))),
@@ -297,7 +297,7 @@ pub struct NativeStream<C: StreamCapability> {
     inner: Rc<dyn NativeStreamSession>,
     runtime: Rc<NativeAppRuntime>,
     generation_cancellation: super::CancellationToken,
-    module_instance: String,
+    plugin_instance: String,
     context: InvocationContext,
     _permit: RequestPermit,
     local_half_closed: Cell<bool>,
@@ -312,7 +312,7 @@ impl<C: StreamCapability> NativeStream<C> {
         session: Box<dyn NativeStreamSession>,
         runtime: Rc<NativeAppRuntime>,
         generation_cancellation: super::CancellationToken,
-        module_instance: String,
+        plugin_instance: String,
         context: InvocationContext,
         permit: RequestPermit,
     ) -> Self {
@@ -320,7 +320,7 @@ impl<C: StreamCapability> NativeStream<C> {
             inner: Rc::from(session),
             runtime,
             generation_cancellation,
-            module_instance,
+            plugin_instance,
             context,
             _permit: permit,
             local_half_closed: Cell::new(false),
@@ -463,14 +463,14 @@ impl<C: StreamCapability> NativeStream<C> {
     }
 
     fn schedule_failure(&self, error: RuntimeFailure) -> RuntimeFailure {
-        schedule_module_supervision_after_failure(&self.runtime, &self.module_instance, error)
+        schedule_plugin_supervision_after_failure(&self.runtime, &self.plugin_instance, error)
     }
 
     fn finish_with_error(&self, error: RuntimeFailure) -> RuntimeFailure {
         let error = self.schedule_failure(error);
         self.runtime.diagnostics.emit_runtime_failure(
             (self.runtime.driver.now)(),
-            Some(&self.module_instance),
+            Some(&self.plugin_instance),
             &error,
         );
         if !matches!(error, RuntimeFailure::ResourceExhausted { .. }) {

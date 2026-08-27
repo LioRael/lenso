@@ -1,15 +1,15 @@
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    ExecutionLaneId, ExecutionLanePlan, ModuleInstancePlan, PlanResolutionError,
+    ExecutionLaneId, ExecutionLanePlan, PlanResolutionError, PluginInstancePlan,
 };
 
 #[test]
 fn resolved_plan_preserves_declared_execution_lanes_and_instance_placement() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("provider", "package.provider")
+            PluginInstancePlan::new("provider", "package.provider")
                 .with_execution_lane(ExecutionLaneId::new("lane-b")),
-            ModuleInstancePlan::new("consumer", "package.consumer")
+            PluginInstancePlan::new("consumer", "package.consumer")
                 .with_execution_lane(ExecutionLaneId::new("lane-a")),
         ],
         vec![],
@@ -29,14 +29,14 @@ fn resolved_plan_preserves_declared_execution_lanes_and_instance_placement() {
         vec!["lane-a", "lane-b"]
     );
     assert_eq!(
-        plan.module_instance("consumer")
+        plan.plugin_instance("consumer")
             .expect("consumer should exist")
             .execution_lane()
             .as_str(),
         "lane-a"
     );
     assert_eq!(
-        plan.module_instance("provider")
+        plan.plugin_instance("provider")
             .expect("provider should exist")
             .execution_lane()
             .as_str(),
@@ -48,7 +48,7 @@ fn resolved_plan_preserves_declared_execution_lanes_and_instance_placement() {
 fn placement_rejects_an_instance_on_an_undeclared_lane() {
     let error = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("worker", "package.worker")
+            PluginInstancePlan::new("worker", "package.worker")
                 .with_execution_lane(ExecutionLaneId::new("missing")),
         ],
         vec![],
@@ -112,13 +112,13 @@ fn placement_rejects_an_empty_execution_lane_id() {
 fn placement_rejects_cross_lane_binding_without_contract_transfer_support() {
     let error = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer")
+            PluginInstancePlan::new("consumer", "package.consumer")
                 .with_execution_lane(ExecutionLaneId::new("lane-a"))
                 .with_requirement(CapabilityRequirementPlan::one(
                     "example.greeting@1",
                     "1.0.0",
                 )),
-            ModuleInstancePlan::new("provider", "package.provider")
+            PluginInstancePlan::new("provider", "package.provider")
                 .with_execution_lane(ExecutionLaneId::new("lane-b"))
                 .with_capability(CapabilityEndpointPlan::new(
                     "example.greeting@1",
@@ -154,13 +154,13 @@ fn placement_rejects_cross_lane_binding_without_contract_transfer_support() {
 fn placement_accepts_cross_lane_binding_with_contract_transfer_support() {
     let plan = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer")
+            PluginInstancePlan::new("consumer", "package.consumer")
                 .with_execution_lane(ExecutionLaneId::new("lane-a"))
                 .with_requirement(CapabilityRequirementPlan::one(
                     "example.greeting@1",
                     "1.0.0",
                 )),
-            ModuleInstancePlan::new("provider", "package.provider")
+            PluginInstancePlan::new("provider", "package.provider")
                 .with_execution_lane(ExecutionLaneId::new("lane-b"))
                 .with_capability(
                     CapabilityEndpointPlan::new("example.greeting@1", "1.0.0", ["greet"])
@@ -188,13 +188,13 @@ fn placement_accepts_cross_lane_binding_with_contract_transfer_support() {
 fn placement_accepts_transfer_capable_stream_and_event_interactions() {
     let composition = AppComposition::new(
         vec![
-            ModuleInstancePlan::new("consumer", "package.consumer")
+            PluginInstancePlan::new("consumer", "package.consumer")
                 .with_execution_lane(ExecutionLaneId::new("lane-a"))
                 .with_requirement(CapabilityRequirementPlan::one(
                     "example.greeting@1",
                     "1.0.0",
                 )),
-            ModuleInstancePlan::new("provider", "package.provider")
+            PluginInstancePlan::new("provider", "package.provider")
                 .with_execution_lane(ExecutionLaneId::new("lane-b"))
                 .with_capability(
                     CapabilityEndpointPlan::new("example.greeting@1", "1.0.0", ["watch", "notify"])
