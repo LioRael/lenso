@@ -26,8 +26,8 @@
 - **Category**: migration, tests, docs, release
 - **Planned at**: `lenso` `e457271f`, `lenso-runtime-rust` `b4ec847`,
   `lenso-cli` `38549ab`, and `lenso-agent-harness` `37a70a8`, 2026-08-27
-- **Current result**: BLOCKED — the candidate CLI completes the lifecycle, but
-  released `lenso-cli 0.4.6` generates a Capability shape rejected by Harness.
+- **Current result**: DONE — crates.io `lenso-cli 0.4.7` and npm
+  `@lenso/cli 0.14.0` complete the registry-only lifecycle in Harness.
 
 ## Why this matters
 
@@ -46,9 +46,8 @@ proof before old template and dual-command compatibility paths are retired.
   Manifest template.
 - Existing research correctly notes that mature Plugin systems expose one
   understandable install unit while internal wiring stays behind the host.
-- Candidate clean-room evidence exists in
-  `lenso-agent-harness/docs/evidence/plugin-clean-room-v1.md`; public proof waits
-  for a corrected CLI release.
+- Public clean-room evidence is merged in `lenso-agent-harness` PRs #78 and #79
+  at `docs/evidence/plugin-clean-room-v1.md`.
 
 ## Commands you will need
 
@@ -216,13 +215,18 @@ work. Each needs a user tracer and a separate decision.
 
 ## Done criteria
 
-- [ ] Exact Runtime and CLI public artifacts are registry-verified.
-- [ ] A repository with no sibling checkout completes the canonical workflow.
-- [ ] Authored Plugin source contains none of the forbidden Module/Manifest/Plan terms.
-- [ ] Replacement, corruption rejection, in-flight consistency, and removal are proven.
-- [ ] Compatibility paths are retired only after their documented window.
-- [ ] Evidence separates current shipped behavior from deferred direction.
-- [ ] No publication or remote mutation occurred without explicit approval.
+- [x] Exact Runtime and CLI public artifacts are registry-verified.
+- [x] A repository with no sibling checkout completes the canonical workflow.
+- [x] Authored Plugin source contains none of the forbidden Module/Manifest/Plan terms.
+- [x] Replacement, corruption rejection, in-flight consistency, and removal are proven.
+- [x] Compatibility paths are retired only after their documented window.
+- [x] Evidence separates current shipped behavior from deferred direction.
+- [x] No publication or remote mutation occurred without explicit approval.
+
+The normal CLI and Harness paths now expose only App and Plugin. Hidden
+compatibility parsers remain only where their removal depends on the embedded
+behavior migration and compatibility window in Plan 006; they are not a second
+supported authoring model.
 
 ## STOP conditions
 
