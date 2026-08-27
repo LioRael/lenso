@@ -33,8 +33,8 @@ remote repositories.
 | [002](002-derive-one-plugin-entry-from-source.md) | Derive one Plugin entry from source without executing it | P1 | L | 001 | DONE (`f513184`) |
 | [003](003-ship-one-plugin-cli-workflow.md) | Ship one end-to-end Plugin CLI workflow | P1 | L | 002 + Runtime release checkpoint | DONE (`174b32d`) |
 | [004](004-migrate-harness-to-one-plugin-unit.md) | Make Harness consume one Plugin as one selectable unit | P1 | L | 003 + CLI release checkpoint | DONE (`4f2a354`) |
-| [005](005-prove-and-retire-the-dual-authoring-path.md) | Prove the clean-room workflow and retire the dual path | P2 | L | 004 + approved releases | BLOCKED (candidate passes; corrected CLI release required) |
-| [006](006-migrate-embedded-behavior-to-plugins.md) | Make embedded Host behavior use the same Plugin model | P1 | XL | ADR 0069 + 005 candidate | TODO |
+| [005](005-prove-and-retire-the-dual-authoring-path.md) | Prove the clean-room workflow and retire the dual path | P2 | L | 004 + approved releases | DONE (`lenso-cli 0.4.7`, `@lenso/cli 0.14.0`, Harness #78/#79) |
+| [006](006-migrate-embedded-behavior-to-plugins.md) | Make embedded Host behavior use the same Plugin model | P1 | XL | ADR 0069 + 005 | TODO |
 
 Status values: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED` with a one-line reason,
 or `REJECTED` with a one-line rationale.

@@ -5,7 +5,7 @@
 - **Priority**: P1
 - **Effort**: XL
 - **Risk**: HIGH
-- **Depends on**: ADR 0069 and the Plan 005 candidate proof
+- **Depends on**: ADR 0069 and the completed Plan 005 public proof
 
 ## Goal
 
