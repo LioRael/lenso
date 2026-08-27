@@ -192,9 +192,8 @@ lenso run
 
 Mutation commands first build and Ready-check the complete candidate, then
 commit the smallest Plugin Root change atomically. `app check` and `app show`
-accept no Definition path. An advanced `lenso app resolve --output <path>` may
-export derived evidence for debugging or deployment; its output is never the
-next authoring input.
+accept no Definition path. Hosts may retain exact Plan evidence internally for
+debugging or replay, but App owners do not generate or manage a Plan file.
 
 ## Retirement of App Definitions
 
