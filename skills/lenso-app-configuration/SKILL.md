@@ -31,13 +31,13 @@ bindings and the immutable Plan from those two inputs.
    attachment decision to the product Host; do not add a binding sidecar to
    `plugins/`. Read
    [resolution and generations](references/resolution.md).
-6. **Check and observe.** Run `lenso app check`, use `lenso app show` to review
-   selection and bindings, and use `lenso app resolve` only when exact Plan
-   bytes are needed for diagnostics or replay. A Plan is output, never source.
+6. **Check and observe.** Run `lenso app check` and use `lenso app show` to
+   review selection, bindings, and provenance. Exact Plan bytes are a Host
+   diagnostic/replay seam, not an App-owner file workflow.
 7. **Prove behavior and removal.** Exercise the smallest real consumer path,
-   then disable or remove the Plugin and resolve again. For a live Host, prove
-   the candidate passes readiness before routing switches and that existing
-   Turns retain their Generation lease.
+   then disable or remove the Plugin and check the derived App again. For a
+   live Host, prove the candidate passes readiness before routing switches and
+   that existing Turns retain their Generation lease.
 
 Return the Host and Plugin Root paths, changed Plugin/Instance, configuration
 ownership, exact commands, derived App evidence, behavior proof, removal proof,
