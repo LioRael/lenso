@@ -14,48 +14,43 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 ## Canonical vocabulary
 
 - **App** — one composed runtime process or host instance.
-- **App Definition** — the App-owner-authored intent: selected Modules, Slot
+- **App Definition** — the App-owner-authored intent: selected Plugins, Slot
   choices, product configuration values, admitted local-setting paths, and
   Execution Lane assignments. It is the only
   hand-authored composition input.
-- **Module** — the sole implementation abstraction: product behavior authored
-  in source with explicit execution, lifecycle, failure, state, and placement
-  semantics. Built-in, bundled, and installed behavior all author Modules
-  through one path.
-- **Module Descriptor** — the generated, locked declaration of a Module's
+- **Plugin** — the sole application-behavior abstraction: product behavior
+  authored in source with explicit execution, lifecycle, failure, state, and
+  placement semantics. A Plugin may be embedded in a Host, bundled with a
+  product, or installed later without becoming a different kind of thing.
+- **Plugin Descriptor** — the generated, locked declaration of a Plugin's
   configuration Schema, safe defaults and local-setting comparison rules,
   provided and required Capabilities, and optional durable state Interface. It
-  is derived from Module source and is never hand-authored.
-- **Module Instance** — one keyed App-local instantiation of a Module.
+  is derived from Plugin source and is never hand-authored.
+- **Plugin Instance** — one keyed App-local instantiation of an exact Plugin
+  Release. The App owner may pin it as required or expose it as optional.
 - **Capability** — a versioned deep role Interface exposed or required by a
-  Module; authored as source types whose canonical Schema is generated and
+  Plugin; authored as source types whose canonical Schema is generated and
   locked.
 - **Operation** — one request, stream, or event interaction in a Capability.
-- **Port** — one typed Capability requirement declared in Module source; its
+- **Port** — one typed Capability requirement declared in Plugin source; its
   cardinality and Descriptor requirement are derived, not restated.
 - **Slot** — a product-owned, versioned attachment point with a fixed
   attachment kind (add, provide, intercept, or mount), cardinality, and
-  ordering policy. Modules and data items are offered to Slots.
-- **Slot Entry** — one generated manifest declaration offering a Module or
+  ordering policy. Plugins and data items are offered to Slots.
+- **Slot Entry** — one generated manifest declaration offering a Plugin or
   data item to one Slot.
 - **Slot Catalog** — the immutable product-owned catalog of Slots and their
   deterministic resolution rules.
-- **Plugin** — the installable distribution role of a Module Package: stable
-  identity, immutable versioned Releases, install, permission, configuration,
-  and enablement above Kernel. It is not a runtime type and not a second
-  authoring abstraction.
 - **Plugin Release** — one immutable version of a Plugin and its exact
-  metadata and Artifacts.
-- **Plugin Instance** — one named App-local configuration of an enabled Plugin
-  Release; it has no global active state and resolves to zero or more Module
-  Instances in each Plan Snapshot that selects it.
+  metadata and Artifacts. Embedded, bundled, and installed are distribution
+  modes of the same Release model, not separate authoring abstractions.
 - **Desired State** — App-owner intent: the App Definition plus enabled Plugin
   Releases, Plugin Instances, Slot choices, configuration, and approved
   permission scopes.
 - **Change Proposal** — a deterministic explanation of one Desired State
   change that is ready, needs an App-owner decision, or is rejected; it is not
   runtime authority.
-- **App Composition** — the derived exact logical graph of Module Instances,
+- **App Composition** — the derived exact logical graph of Plugin Instances,
   configuration, and explicit Capability bindings; resolver output, not an
   authoring surface.
 - **Resolved App Plan** — one immutable, complete execution input; one Plan
@@ -72,20 +67,21 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 - **Kernel** — portable graph, lifecycle, invocation, cancellation,
   supervision, readiness, diagnostic, and Plan Transition mechanisms.
 - **Runtime Driver** — host scheduling and monotonic-time implementation.
-- **Execution Adapter** — host-specific Module generation and endpoint
+- **Execution Adapter** — host-specific Plugin generation and endpoint
   implementation.
 - **Execution Lane** — one single-owner Kernel replica on its own host thread
-  together with the Module Instances placed on it.
-- **Placement** — the Plan-declared assignment of Module Instances to
+  together with the Plugin Instances placed on it.
+- **Placement** — the Plan-declared assignment of Plugin Instances to
   Execution Lanes.
 
-`Service`, `Provider`, `Console`, `Story`, and `System Plane` are not peer
-runtime types in vNext. `Plugin Contribution`, `Product Extension Point`,
-`Plugin Runtime Facet`, `Desired Plugin Set`, and `Composition Proposal` are
-retired draft terms: attachment is a Slot concern, shared plugin runtime
-resources are ordinary Modules, and intent plus proposal are Desired State and
-Change Proposal. A separately running program is a host or an Execution
-Adapter concern; a future Wasm source must earn its own reviewed seam.
+`Module`, `Service`, `Provider`, `Console`, `Story`, and `System Plane` are not
+peer product or authoring types in vNext. Existing `Module*` code identifiers
+are compatibility-era private lowering and must not appear in an author,
+operator, or App-owner interface. `Plugin Contribution`, `Product Extension
+Point`, `Plugin Runtime Facet`, `Desired Plugin Set`, and `Composition Proposal`
+are retired draft terms: attachment is a Slot concern, shared runtime resources
+are Plugins, and intent plus proposal are Desired State and Change Proposal. A
+separately running program is a host or an Execution Adapter concern.
 
 ## Hard invariants
 
@@ -102,14 +98,14 @@ Adapter concern; a future Wasm source must earn its own reviewed seam.
   networks, databases, process control, and product policy.
 - Runtime Driver owns scheduling, clocks, cancellation lanes, and host
   shutdown translation.
-- Execution Adapter owns Module generation, endpoint mechanics, isolation, and
+- Execution Adapter owns Plugin generation, endpoint mechanics, isolation, and
   host-specific failure semantics.
 - Stateful behavior, persistence, migrations, Auth, HTTP, Console, Story,
-  Workflow, Outbox, telemetry, and secrets are optional Module or Adapter
+  Workflow, Outbox, telemetry, and secrets are optional Plugin or Adapter
   concerns, never Kernel features.
 - The same portable Kernel must compile for native and supported WebAssembly
   targets without target-specific host services in its core state machine.
-- Parallelism comes from placing Module Instances on more Execution Lanes;
+- Parallelism comes from placing Plugin Instances on more Execution Lanes;
   Kernel correctness never requires work stealing, runtime Instance
   migration, or thread-safe Module state.
 
@@ -118,9 +114,9 @@ Adapter concern; a future Wasm source must earn its own reviewed seam.
 `lenso-app-plan` owns serializable plan data. `lenso-kernel` owns the portable
 runtime and deterministic test Driver. `lenso-runtime-conformance` owns the
 product-neutral executable test surface for Kernel Interfaces. Runtime Drivers,
-Execution Adapters, Modules, authoring tools, and examples have been extracted
+Execution Adapters, Plugins, authoring tools, and examples have been extracted
 to their ADR 0064 owners. New concerns must first identify their
-Capability, Module, Adapter, or authoring seam before adding a crate.
+Capability, Plugin, Adapter, or authoring seam before adding a crate.
 
 ## Delivery
 
@@ -144,7 +140,7 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0068 are normative for vNext. The vNext architecture overview,
+ADRs 0030–0069 are normative for vNext. The vNext architecture overview,
 validation roadmap, and research notes are retained beside them. Accepted
 architecture is not an implementation claim; each contract states its current
 evidence and remaining delivery gates. Removed v0.3.x implementation docs are

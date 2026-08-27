@@ -26,6 +26,8 @@
 - **Category**: migration, tests, docs, release
 - **Planned at**: `lenso` `e457271f`, `lenso-runtime-rust` `b4ec847`,
   `lenso-cli` `38549ab`, and `lenso-agent-harness` `37a70a8`, 2026-08-27
+- **Current result**: BLOCKED — the candidate CLI completes the lifecycle, but
+  released `lenso-cli 0.4.6` generates a Capability shape rejected by Harness.
 
 ## Why this matters
 
@@ -40,12 +42,13 @@ proof before old template and dual-command compatibility paths are retired.
 - Runtime uses release-plz and crates.io Trusted Publishing.
 - CLI publishes Cargo and npm distributions independently; its
   `docs/release-process.md` requires registry verification and changesets.
-- Harness examples currently use workspace paths and a checked-in Manifest
-  template, so they are not clean-room proof.
+- Harness now contains source-derived Plugin examples without a hand-written
+  Manifest template.
 - Existing research correctly notes that mature Plugin systems expose one
   understandable install unit while internal wiring stays behind the host.
-- The repository family has no proven independent third-party Plugin repository
-  at the planned baseline.
+- Candidate clean-room evidence exists in
+  `lenso-agent-harness/docs/evidence/plugin-clean-room-v1.md`; public proof waits
+  for a corrected CLI release.
 
 ## Commands you will need
 
@@ -80,7 +83,7 @@ using floating `latest`.
 
 - Publishing without explicit approval.
 - Creating a public GitHub repository without explicit approval.
-- Removing built-in Module authoring or runtime Module vocabulary.
+- Renaming compatibility-era private runtime structs in the same release.
 - Adding more Plugin shapes before the first proof.
 - Control-plane deepening unrelated to retiring author-visible dual paths.
 

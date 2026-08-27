@@ -18,6 +18,7 @@
   and Runtime releases
 - **Category**: migration, dx, tests, direction
 - **Planned at**: `lenso-agent-harness` commit `37a70a8`, 2026-08-27
+- **Delivered at**: `lenso-agent-harness` commit `4f2a354`, PR #77
 
 ## Why this matters
 
