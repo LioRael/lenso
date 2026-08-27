@@ -243,6 +243,131 @@ fn package_owned_schema_validates_configuration_before_materialization() {
 }
 
 #[test]
+fn package_defaults_complete_an_omitted_app_configuration() {
+    let descriptor = ModuleDescriptor::new("example.configurable", "1.0.0")
+        .with_configuration_schema(json!({
+            "type": "object",
+            "required": ["model", "limits"],
+            "properties": {
+                "model": {"type": "string"},
+                "limits": {
+                    "type": "object",
+                    "required": ["steps", "tools"],
+                    "properties": {
+                        "steps": {"type": "integer"},
+                        "tools": {"type": "integer"}
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        }))
+        .with_configuration_defaults(json!({
+            "model": "fixture",
+            "limits": {"steps": 8, "tools": 4}
+        }));
+    let catalog = ModuleCatalog::new([descriptor]).unwrap();
+    let definition = AppDefinition::new("defaults")
+        .with_module(ModuleSelection::new("configured", "example.configurable"));
+
+    let plan = definition.derive(&catalog).unwrap().resolve().unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(plan.module_instances()[0].configuration())
+            .unwrap(),
+        json!({"model": "fixture", "limits": {"steps": 8, "tools": 4}})
+    );
+}
+
+#[test]
+fn app_configuration_recursively_overrides_package_defaults() {
+    let descriptor = ModuleDescriptor::new("example.configurable", "1.0.0")
+        .with_configuration_schema(json!({
+            "type": "object",
+            "required": ["limits", "modes"],
+            "properties": {
+                "limits": {
+                    "type": "object",
+                    "required": ["steps", "tools"],
+                    "properties": {
+                        "steps": {"type": "integer"},
+                        "tools": {"type": "integer"}
+                    },
+                    "additionalProperties": false
+                },
+                "modes": {"type": "array", "items": {"type": "string"}}
+            },
+            "additionalProperties": false
+        }))
+        .with_configuration_defaults(json!({
+            "limits": {"steps": 8, "tools": 4},
+            "modes": ["read", "search"]
+        }));
+    let catalog = ModuleCatalog::new([descriptor]).unwrap();
+    let definition = AppDefinition::new("override").with_module(
+        ModuleSelection::new("configured", "example.configurable")
+            .with_configuration(json!({"limits": {"steps": 12}, "modes": ["read"]})),
+    );
+
+    let plan = definition.derive(&catalog).unwrap().resolve().unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(plan.module_instances()[0].configuration())
+            .unwrap(),
+        json!({"limits": {"steps": 12, "tools": 4}, "modes": ["read"]})
+    );
+}
+
+#[test]
+fn invalid_effective_configuration_from_package_defaults_fails_closed() {
+    let descriptor = ModuleDescriptor::new("example.configurable", "1.0.0")
+        .with_configuration_schema(json!({
+            "type": "object",
+            "required": ["limit"],
+            "properties": {"limit": {"type": "integer", "minimum": 1}},
+            "additionalProperties": false
+        }))
+        .with_configuration_defaults(json!({"limit": 0}));
+    let catalog = ModuleCatalog::new([descriptor]).unwrap();
+    let definition = AppDefinition::new("invalid-default")
+        .with_module(ModuleSelection::new("configured", "example.configurable"));
+
+    assert_eq!(
+        definition.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidConfiguration {
+            instance_key: "configured".to_owned(),
+            detail: "$.limit: number must be greater than or equal to 1".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn package_configuration_defaults_must_be_an_object() {
+    let descriptor = ModuleDescriptor::new("example.configurable", "1.0.0")
+        .with_configuration_schema(json!({"type": "string"}))
+        .with_configuration_defaults(json!("hidden-default"));
+    let catalog = ModuleCatalog::new([descriptor]).unwrap();
+    let definition = AppDefinition::new("invalid-default")
+        .with_module(ModuleSelection::new("configured", "example.configurable"));
+
+    assert_eq!(
+        definition.derive(&catalog),
+        Err(DefinitionResolutionError::InvalidConfiguration {
+            instance_key: "configured".to_owned(),
+            detail: "$: package configuration defaults must be an object".to_owned(),
+        })
+    );
+}
+
+#[test]
+fn empty_package_defaults_preserve_descriptor_wire_compatibility() {
+    let descriptor = ModuleDescriptor::new("example.compatible", "1.0.0");
+    let encoded = serde_json::to_value(&descriptor).unwrap();
+    assert!(encoded.get("configuration_defaults").is_none());
+
+    let decoded: ModuleDescriptor = serde_json::from_value(encoded).unwrap();
+    assert_eq!(decoded.configuration_defaults(), &json!({}));
+}
+
+#[test]
 fn package_owned_schema_enforces_numeric_minimum() {
     let descriptor =
         ModuleDescriptor::new("example.numeric", "1.0.0").with_configuration_schema(json!({
