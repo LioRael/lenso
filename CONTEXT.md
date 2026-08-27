@@ -15,16 +15,17 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 
 - **App** — one composed runtime process or host instance.
 - **App Definition** — the App-owner-authored intent: selected Modules, Slot
-  choices, configuration, and Execution Lane assignments. It is the only
+  choices, product configuration values, admitted local-setting paths, and
+  Execution Lane assignments. It is the only
   hand-authored composition input.
 - **Module** — the sole implementation abstraction: product behavior authored
   in source with explicit execution, lifecycle, failure, state, and placement
   semantics. Built-in, bundled, and installed behavior all author Modules
   through one path.
 - **Module Descriptor** — the generated, locked declaration of a Module's
-  configuration Schema, provided and required Capabilities, and optional
-  durable state Interface. It is derived from Module source and is never
-  hand-authored.
+  configuration Schema, safe defaults and local-setting comparison rules,
+  provided and required Capabilities, and optional durable state Interface. It
+  is derived from Module source and is never hand-authored.
 - **Module Instance** — one keyed App-local instantiation of a Module.
 - **Capability** — a versioned deep role Interface exposed or required by a
   Module; authored as source types whose canonical Schema is generated and
@@ -143,7 +144,7 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0067 are normative for vNext. The vNext architecture overview,
+ADRs 0030–0068 are normative for vNext. The vNext architecture overview,
 validation roadmap, and research notes are retained beside them. Accepted
 architecture is not an implementation claim; each contract states its current
 evidence and remaining delivery gates. Removed v0.3.x implementation docs are

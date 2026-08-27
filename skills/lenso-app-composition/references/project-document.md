@@ -9,10 +9,10 @@ Descriptors and ordinary package managers own dependency locks.
 
 | Input or artifact | Owner |
 | --- | --- |
-| `lenso.app.json` | App name, selected Module packages, keyed Instances, configuration, lane choices, real ambiguity decisions |
+| `lenso.app.json` | App name, selected Module packages, keyed Instances, product configuration differences, admitted local-setting paths, lane choices, real ambiguity decisions |
 | `Cargo.toml` / package manifest | requested package dependencies |
 | package lock | exact selected releases |
-| Module Descriptor and Schemas | generated from Module source and locked by the Module package |
+| Module Descriptor, defaults, and Schemas | generated from Module source and locked by the Module package |
 | derived App Composition | resolver output, never hand-authored |
 | Resolved App Plan | canonical generated Host input |
 
@@ -73,6 +73,10 @@ lenso app resolve --definition lenso.app.json \
 lenso app remove greeter --definition lenso.app.json --dry-run
 lenso app remove greeter --definition lenso.app.json --uninstall
 ```
+
+Package-owned safe defaults are materialized first, so an App Definition does
+not repeat them. Its `configuration` object contains only App-owned differences
+and must still resolve to a complete Schema-valid value without local settings.
 
 `app add` delegates acquisition and exact selection to Cargo, reads the
 package-owned Descriptor without executing Module code, and applies the App

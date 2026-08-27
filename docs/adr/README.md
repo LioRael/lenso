@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0067 are the accepted, normative architecture decisions for
+ADRs 0030 through 0068 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -50,6 +50,11 @@ and Plans into generated, locked artifacts.
 is the accepted decision that amends ADR 0045 and ADR 0046 so an App executes a
 totally ordered sequence of immutable Plan Snapshots with one validated atomic
 Transition mechanism, keeping App Generation swaps for structural change.
+
+[`0068-layer-module-configuration-sources.md`](0068-layer-module-configuration-sources.md)
+resolves complete Module configuration from locked package defaults,
+reviewed App values, and explicitly admitted local settings without creating a
+generic overlay authority.
 
 ## Legacy decisions
 

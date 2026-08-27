@@ -79,6 +79,13 @@ Its public CLI exposes Module intent through `new`, `check`, `dev`, and
 The App Definition may also set request-admission limits for an exact derived
 binding; this remains App-owner policy and does not move Capability or endpoint
 facts out of Module packages.
+Module packages provide locked, deny-safe configuration defaults. App
+Definitions contain only product-owned differences and explicit local-setting
+admission, while a product Host may supply typed local user settings. The
+resolver validates and materializes one complete canonical configuration per
+Instance before producing the next Plan Snapshot; Kernel never reads or merges
+configuration sources. See ADR
+[0068](../adr/0068-layer-module-configuration-sources.md).
 Resolution, recipe expansion, Adapter assembly, and Plan execution remain
 library or product-Host implementation; Kernel receives only immutable Plan
 bytes.

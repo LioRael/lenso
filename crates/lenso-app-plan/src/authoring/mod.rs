@@ -2,6 +2,7 @@
 
 mod binding_policy;
 mod composition;
+mod configuration;
 mod definition;
 mod package;
 mod project;
