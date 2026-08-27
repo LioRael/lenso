@@ -30,7 +30,7 @@ remote repositories.
 | --- | --- | --- | --- | --- | --- |
 | [001](001-define-one-harness-plugin-authoring-model.md) | Define one Harness Plugin authoring model | P1 | M | — | DONE (`5cd8b04d`) |
 | [002](002-derive-one-plugin-entry-from-source.md) | Derive one Plugin entry from source without executing it | P1 | L | 001 | DONE (`f513184`) |
-| [003](003-ship-one-plugin-cli-workflow.md) | Ship one end-to-end Plugin CLI workflow | P1 | L | 002 + Runtime release checkpoint | TODO |
+| [003](003-ship-one-plugin-cli-workflow.md) | Ship one end-to-end Plugin CLI workflow | P1 | L | 002 + Runtime release checkpoint | DONE (`174b32d`) |
 | [004](004-migrate-harness-to-one-plugin-unit.md) | Make Harness consume one Plugin as one selectable unit | P1 | L | 003 + CLI release checkpoint | TODO |
 | [005](005-prove-and-retire-the-dual-authoring-path.md) | Prove the clean-room workflow and retire the dual path | P2 | L | 004 + approved releases | TODO |
 
