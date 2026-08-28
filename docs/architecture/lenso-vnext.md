@@ -205,7 +205,7 @@ See ADRs [0036](../adr/0036-expose-non-blocking-runtime-diagnostics.md),
 ### Optional OpenTelemetry Plugin
 
 The independently owned
-[`lenso-otel-module`](https://github.com/LioRael/lenso-otel-module/tree/856190e128605479becb484a790368307085428c)
+[`lenso-otel-module`](https://github.com/LioRael/lenso-otel-plugin/tree/856190e128605479becb484a790368307085428c)
 package subscribes to the externally supplied Runtime Diagnostics port and owns
 its bounded asynchronous exporter tasks. It converts structural diagnostics to
 OTel Logs and accepts explicitly authored OTel Span, Metric, and Log signals
