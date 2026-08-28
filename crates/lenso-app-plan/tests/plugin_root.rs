@@ -1,9 +1,9 @@
 use lenso_app_plan::{
-    CapabilityEndpointPlan, CapabilityRequirementPlan,
+    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId,
     authoring::{
         HostBinding, HostCatalog, HostDefaultPlugin, HostPluginConfiguration, HostPluginRelease,
-        HostSlot, PluginDescriptor, PluginInstanceId, PluginInstanceSource, PluginRootInstance,
-        PluginRootResolutionError, PluginRootSnapshot, resolve_plugin_root,
+        HostSlot, PluginDescriptor, PluginImplementation, PluginInstanceId, PluginInstanceSource,
+        PluginRootInstance, PluginRootResolutionError, PluginRootSnapshot, resolve_plugin_root,
     },
 };
 use serde_json::json;
@@ -398,5 +398,35 @@ fn duplicate_root_release_fails_instead_of_using_discovery_order() {
         Err(PluginRootResolutionError::DuplicatePluginRelease(
             "example.model".to_owned()
         ))
+    );
+}
+
+#[test]
+fn one_contract_resolves_to_multiple_runtime_implementations() {
+    let descriptor =
+        model_descriptor("example.model").with_configuration_defaults(json!({"temperature": 0}));
+    let contract = descriptor.contract();
+    let wasm = PluginImplementation::new(
+        "example.model",
+        "sha256:wasm",
+        "plugin",
+        ExecutionClassId::new("lenso.wasm-component@1"),
+    );
+    let process = PluginImplementation::new(
+        "example.model",
+        "sha256:process",
+        "plugin",
+        ExecutionClassId::new("lenso.process@1"),
+    );
+
+    let wasm_descriptor = contract.resolve(&wasm);
+    let process_descriptor = contract.resolve(&process);
+
+    assert_eq!(wasm_descriptor.contract(), process_descriptor.contract());
+    assert_eq!(wasm_descriptor.implementation(), wasm);
+    assert_eq!(process_descriptor.implementation(), process);
+    assert_eq!(
+        wasm_descriptor.configuration_defaults(),
+        &json!({"temperature": 0})
     );
 }

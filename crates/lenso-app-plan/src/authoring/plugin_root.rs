@@ -10,8 +10,10 @@ use crate::{
     PluginCriticality, PluginInstancePlan, RequestAdmissionPlan, ResolvedAppPlan, RestartPolicy,
 };
 
+mod release;
 mod resolution;
 
+pub use release::{PluginContract, PluginImplementation};
 pub use resolution::resolve_plugin_root;
 use resolution::{derive_root_bindings, map_configuration_error};
 

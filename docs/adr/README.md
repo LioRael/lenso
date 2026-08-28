@@ -66,6 +66,10 @@ retires central App Definitions. A Host supplies defaults, a Plugin Root
 expresses explicit differences, and the resolver derives the App, bindings,
 placement, and immutable Plan without guessing through ambiguity.
 
+[`0071-publish-one-plugin-contract-with-multiple-implementations.md`](0071-publish-one-plugin-contract-with-multiple-implementations.md)
+lets one Plugin Release carry multiple exact runtime implementations behind one
+Contract while Host policy selects one before Plan materialization.
+
 ## Legacy decisions
 
 ADRs 0001 through 0029 describe the final v0.3.x Service-oriented

@@ -9,9 +9,10 @@ execution mechanics, not the Plugin's product identity or Capability contract.
 
 ```text
 Plugin Release
-  -> Plugin Descriptor
-  -> exact Artifact or Host-linked factory
-  -> one Execution Class
+  -> one Plugin Contract
+  -> one or more exact implementations
+  -> Host selects one implementation
+  -> resolved Plugin Descriptor
   -> Plugin Instance in the Resolved App Plan
 ```
 
@@ -19,13 +20,17 @@ A native built-in, Wasm Component, embedded JavaScript package, trusted dynamic
 library, or process executable is still a Plugin. Authors do not create a
 second behavior object to reach one of these runtimes.
 
-The generated Plugin Descriptor owns:
+The generated Plugin Contract owns:
 
 - Plugin ID and Release version;
 - configuration Schema and safe package defaults;
 - provided and required Capabilities;
-- entrypoint, restart policy, criticality, and state contract; and
-- the selected Execution Class and exact executable identity.
+- restart policy, criticality, and state contract.
+
+Each generated implementation owns its entrypoint, target, selected Execution
+Class, and exact executable identity. Resolving the Contract with one
+implementation produces the final Plugin Descriptor consumed by App
+resolution.
 
 The Host Catalog decides which Releases and Execution Classes are allowed. The
 resolver selects exact inputs before staging. Runtime never benchmarks,
@@ -65,11 +70,17 @@ recreation contract.
 
 ## Bundle rule
 
-The portable V2 Plugin Bundle has one Plugin entry and one exact main Artifact.
-The receiver verifies the complete bundle before resolution and reopens the
-admitted Artifact by digest and size before execution. Multi-Artifact or
-data-only packages require a future explicit bundle version; they are not
-smuggled in through an internal behavior abstraction.
+A V2 Plugin Bundle is one Contract with one implementation. A multi-
+implementation Bundle carries one canonical Contract plus an ordered,
+uniquely-identified implementation set. The receiver verifies the complete
+closure, proves that every implementation projects the same Contract, and
+selects one implementation through Host policy before Plan materialization.
+The admitted Artifact is reopened by digest and size before execution.
+
+Selection is not runtime fallback. If the selected implementation fails its
+Ready Gate or later invocation, the Generation fails through its ordinary
+supervision policy. Choosing another implementation requires a newly resolved
+Generation.
 
 ## Conformance
 
