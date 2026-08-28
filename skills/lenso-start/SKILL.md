@@ -1,6 +1,7 @@
 ---
 name: lenso-start
 description: Choose one Lenso vNext development workflow.
+disable-model-invocation: true
 ---
 
 # Lenso Start
@@ -16,16 +17,17 @@ skill owns the work.
      `lenso-business-planning`
    - Capability identity, Operations, Schemas, compatibility, or generated
      consumer/provider bindings -> `lenso-capability-authoring`
-   - product behavior implemented as a Rust, Bun, Web, stateful, Auth, Story,
-     Audit, OpenTelemetry, Secrets, or other Plugin; or packaging that Plugin
-     as an installable Plugin Release ->
+   - product behavior implemented as a linked Rust, portable Rust, Bun, Web,
+     stateful, Auth, Story, Audit, OpenTelemetry, Secrets, or other Plugin; one
+     Plugin Contract with one or more executable implementations; or packaging
+     that Plugin as an installable Plugin Release ->
      `lenso-plugin-authoring`
    - Plugin Root configuration, adding/disabling/enabling/removing Plugins, or
      inspecting the Host-derived App and Resolved App Plan ->
      `lenso-app-configuration`
    - scheduling, clocks, Plugin generation, Adapter-level endpoint
-     preparation, language-process/wire integration, execution classes,
-     package admission, reconciliation, App Generation
+     preparation, language-process/wire integration, execution classes, Host
+     implementation-selection policy, package admission, reconciliation, App Generation
      stage/switch/drain/rollback, or Runner orchestration ->
      `lenso-runtime-extension`
 3. Treat portable graph, lifecycle, invocation, admission, supervision,
@@ -41,6 +43,8 @@ Examples:
 - "Design a support-ticket product" -> planning first.
 - "Add `assign_ticket` to the Ticket contract" -> Capability authoring.
 - "Implement the Rust or Bun Ticket provider" -> Plugin authoring.
+- "Publish Wasm and Process implementations of one Plugin Contract" -> Plugin
+  authoring; Runtime extension is secondary only if Host selection changes.
 - "Package the Ticket Plugin as an installable Plugin" -> Plugin authoring.
 - "Configure one optional Plugin Instance" -> App configuration.
 - "Change which provider a Host root Slot selects" -> Runtime extension in the

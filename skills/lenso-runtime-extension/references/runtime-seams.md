@@ -9,8 +9,9 @@ and deleting that selection should remove it, use a Plugin.
 | --- | --- | --- |
 | Runtime Driver | local task lane, scheduling, monotonic time, timers, cooperative cancellation, progress | Plugin factories, endpoints, product policy |
 | Execution Adapter | Plugin generation, endpoint mechanics, execution class, isolation, process or wire translation, host-specific failure semantics | graph resolution, Capability selection, business behavior |
-| Runner/Generation control | Driver and Adapter catalog, root Kernel future, host shutdown, exact Generation stage/switch/drain/rollback, terminal outcome | package acquisition, Plugin Root policy, product Slots/services |
-| Authoring tooling | project files, package-manager inspection, validation, code generation, Plan materialization | running graph mutation, Kernel installation state |
+| Product Host/resolver | Host Catalog, package admission, root Slots, implementation-selection policy, Plugin Root resolution | Plugin behavior, runtime fallback, Kernel graph mutation |
+| Runner/Generation control | Driver and Adapter catalog, root Kernel future, host shutdown, exact Generation stage/switch/drain/rollback, terminal outcome | Plugin Root edits, product behavior, package marketplace |
+| Authoring tooling | project files, package-manager inspection, validation, code generation, resolver invocation | running graph mutation, App-owned Plan files, Kernel installation state |
 | Kernel | portable graph, lifecycle, invocation, admission, readiness, supervision, diagnostics | OS facilities, networks, databases, Auth, UI, transport, product policy |
 
 Apply both tests before editing:
@@ -43,8 +44,9 @@ is not evidence for a new Kernel feature.
 Current ownership is physically split: portable Plan, Kernel, and conformance
 remain in `lenso`; Rust Drivers, native Adapter, and Runner live in
 `lenso-runtime-rust`; Bun integration lives in `lenso-bun-adapter`; protocol
-source and code generation live in `lenso-protocols`; authoring lives in
-`lenso-cli`; optional Plugins live with their product owners. Verify these
+source and code generation live in `lenso-protocols`; CLI authoring lives in
+`lenso-cli`; the framework Host facade lives in `lenso-runtime-rust`; optional
+Plugins live with their product owners. Verify these
 locations before editing because repository ownership may evolve.
 
 Use source search rather than repository names alone: `RuntimeDriver`,
@@ -52,4 +54,6 @@ Use source search rather than repository names alone: `RuntimeDriver`,
 `NativePluginRegistry::with_linked_factories`, `ResolvedGeneration`,
 `GenerationController`, and `lenso-contract-codegen` are reliable current seam
 anchors. `NativePluginFactory` remains an internal/compatibility seam, not the
-ordinary Plugin authoring API.
+ordinary Plugin authoring API. `lenso::host::HostBuilder` is the current
+durable Host lifecycle anchor; product code still owns App resolution and
+Plugin policy.

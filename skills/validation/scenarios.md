@@ -44,7 +44,8 @@ and repository gates.
 only portable source; Domain Errors remain separate from Runtime Failures;
 Rust/TypeScript generated Provider and Client paths are concrete; generate,
 check, and stale-output gates are run; Bun/Rust type checks and one cross-runtime
-path are named; cardinality/provider choice is left to App configuration.
+path are named; requirement cardinality is left to consuming Plugin source and
+provider selection to Host resolution.
 
 ## 3. Native Rust Plugin
 
@@ -57,8 +58,10 @@ contract. It owns durable ticket state and must reject invalid configuration."
 current native Adapter dependencies, and a selected durable test store plus
 migration policy. The evaluator must not invent these inputs.
 
-**Required observations:** the agent finds the selected API versions; uses the
-ordinary Plugin facade and generated Provider lowering; validates configuration;
+**Required observations:** the agent finds the selected API versions; uses
+`#[lenso::plugin]`, `#[lenso::provides]`, `PluginConfig`, typed Ports, and
+linked generated registration rather than compatibility factories; validates
+configuration;
 uses lifecycle phases correctly; keeps persistence private and failure honest;
 registers linked availability in the Host Catalog and configures any App-owned
 difference under `plugins/`; and proves real invocation,
@@ -75,11 +78,12 @@ restart/cleanup, storage failure, and removal.
 Adapter test harness.
 
 **Required observations:** the official `@lenso/bun` generated Provider is
-used; the Plugin does not implement wire/process
-mechanics; unsupported stream/event authoring fails closed; package lock,
-script entrypoint, Bun execution class, and endpoints are composed explicitly;
-the incomplete source-derived TypeScript packaging path is reported; and a real
-child-process Adapter test crosses the boundary.
+used through `definePlugin` and a default export; the generated entrypoint owns
+startup; Plugin code does not call `serve` or implement wire/process mechanics;
+unsupported stream/event authoring fails closed; package lock, selected Adapter,
+and generated endpoints are explicit; unsupported CLI packaging is reported
+rather than invented; and a real `bun_cross_runtime` request test crosses the
+boundary.
 
 ## 5. App configuration
 
@@ -93,12 +97,13 @@ Capability Descriptors/generated artifacts, configuration Schemas, and the
 current authoring CLI. A synthetic package fixture proves authoring/resolution
 only, not executable host integration.
 
-**Required observations:** package-manager inputs/locks, stable Instance keys,
-configuration, lanes, and real ambiguity decisions are visible in
-`plugins/`; generated Descriptors carry endpoints and requirements;
-`lenso app check` rejects an intentional missing binding; the derived
-App configuration and canonical Plan diff are reviewed; and removing one optional
-endpoint leaves a valid Plan.
+**Required observations:** exact package Bundle/locks, stable Instance keys,
+configuration, optional structured files, and disablement are the only visible
+`plugins/` inputs; implementation choice, lanes, endpoints, requirements,
+provider keys, and bindings stay absent; `lenso app check` reports an
+intentional unresolved Host Slot; `lenso app show` explains defaults,
+selection, bindings, and provenance; and removing one optional endpoint leaves
+a valid derived App.
 
 ## 6. Execution Adapter
 
@@ -140,6 +145,29 @@ Artifact/Generation authority; readiness precedes switch; a Generation Lease
 pins the in-flight Turn while the predecessor drains; history/provenance names
 exact digests; rollback uses retained authority; and unsupported generic
 marketplace, remote-distribution, or hot-Transition claims are excluded.
+
+## 8. Multi-implementation Plugin Release
+
+**Skill:** `lenso-plugin-authoring` with `lenso-runtime-extension` as the
+secondary workflow
+
+**Prompt:** "Publish the same Rust Agent Tool as portable Wasm and trusted
+Process implementations, prefer Wasm in this Host, and prove Process is not a
+runtime fallback."
+
+**Fixture:** current `lenso-cli`, `lenso-plugin-sdk`, Wasm and Process Adapters,
+a Host Catalog builder with implementation policy, and a real consumer. A V2
+single-implementation Bundle is insufficient for this scenario.
+
+**Required observations:** one editable Plugin source produces one V3 Release;
+one Plugin Contract owns configuration, Capabilities, restart/criticality, and
+state semantics; implementation records alone own target, entrypoint, exact
+runtime package, and Execution Class; `plugin check`, `plugin dev`, and `plugin
+pack` use their real gates; both implementations pass identical success,
+Domain Error, cancellation, and lifecycle vectors; Host policy selects Wasm
+before Plan resolution; no-match is rejected; a selected Wasm startup failure
+fails the candidate Generation without attempting Process; changing to Process
+creates a separately resolved Generation.
 
 ## Pass condition
 

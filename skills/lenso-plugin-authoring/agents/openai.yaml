@@ -1,4 +1,4 @@
 interface:
   display_name: "Lenso Plugin Authoring"
-  short_description: "Implement one removable Lenso Plugin."
-  default_prompt: "Use $lenso-plugin-authoring to implement one removable Plugin with typed Capability edges and prove behavior plus deletion."
+  short_description: "Implement one removable Plugin Contract."
+  default_prompt: "Use $lenso-plugin-authoring to implement one removable Plugin Contract through a shipped authoring path and prove every published implementation plus deletion."

@@ -10,8 +10,8 @@ concern belongs in an ordinary Plugin.
 | --- | --- |
 | Business behavior, Auth, State, Secrets, Story, Audit, OpenTelemetry, Workflow, target Web UI | Plugin |
 | Stable role between consumers and eligible providers | Capability |
-| Plugin Root package, keyed Instance, and typed configuration differences | App configuration |
-| Default Instances, root Slots, private attachments, execution ceilings | Product Host Catalog |
+| Plugin Root package, keyed Instance, typed configuration, and disablement differences | App configuration |
+| Default Instances, root Slots, private attachments, execution ceilings, implementation policy | Product Host Catalog |
 | Serializable immutable execution input | Resolved App Plan |
 | Scheduling, monotonic time, timers, host cancellation | Runtime Driver |
 | Plugin generation, endpoint mechanics, isolation, wire or process translation | Execution Adapter |
@@ -23,8 +23,8 @@ slogan. A database pool remains a private persistence Adapter unless it
 provides a genuine independently replaceable semantic role. Bun, native, and
 browser-host execution remain Driver/Execution Adapter choices; the Web
 Browser Adapter that projects generated clients into a target UI is itself a
-selected Plugin. Authoring tools edit projects and materialize Plans; they do
-not join the runtime graph.
+selected Plugin. Authoring tools edit projects and validate resolver inputs;
+App owners do not generate or manage Plan files.
 
 ## Fast examples
 
