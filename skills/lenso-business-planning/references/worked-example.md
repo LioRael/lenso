@@ -31,8 +31,10 @@ honestly."
   first slice; `get_ticket` remains deferred until a consumer needs it.
 - **Requires:** an ActorAssertion supplied in invocation context or one explicit
   Auth role chosen by the contract design; no access to Auth private state.
-- **Execution:** native Rust initially; a later Bun implementation may satisfy
-  the same Capability without changing the Plugin type.
+- **Execution:** linked native Rust initially. A later Bun implementation may
+  join the same Plugin Release only after it proves the identical Contract,
+  state compatibility, and observable semantics; otherwise it is a separate
+  Release rather than a hidden runtime variant.
 - **Proof:** authorized create, invalid-subject Domain Error, store-unavailable
   Runtime Failure, owner-local restart/recovery, deletion from App configuration.
 
@@ -89,8 +91,8 @@ Observable acceptance:
 3. invalid credential is rejected before ticket behavior;
 4. unavailable storage yields a Runtime Failure/503-class response without an
    in-memory fallback; and
-5. removing `support-ticket-http` and its binding leaves the non-Web Ticket
-   Capability App valid.
+5. disabling or removing `support-ticket-http` leaves a valid non-Web derived
+   App without an App-authored binding file.
 
 ## Implementation handoff
 
@@ -99,5 +101,6 @@ Observable acceptance:
 | `support.ticketing@1` source and generated bindings | `lenso-capability-authoring` | Descriptor, Schemas, Rust/TypeScript outputs, compatibility/freshness proof |
 | Ticket factory, storage boundary, policy | `lenso-plugin-authoring` | Plugin package plus Capability/lifecycle/removal tests |
 | HTTP endpoint Plugin | `lenso-plugin-authoring` | endpoint provider, generated Ticket client, real HTTP proof |
-| package/Instance/configuration/decisions | `lenso-app-configuration` | checked `plugins/` and canonical Resolved Plan |
+| package/Instance/configuration differences | `lenso-app-configuration` | checked `plugins/` and explained derived App |
+| root Slot or implementation-selection policy, if missing | `lenso-runtime-extension` | generated Host Catalog plus deterministic selection proof |
 | only a missing listener/process/host mechanism | `lenso-runtime-extension` | conformance plus real host smoke; no ticket policy |

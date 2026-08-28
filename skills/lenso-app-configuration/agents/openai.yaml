@@ -1,4 +1,4 @@
 interface:
   display_name: "Lenso App Configuration"
   short_description: "Configure an App through its Plugin Root."
-  default_prompt: "Use $lenso-app-configuration to change only this App's plugins/ directory, inspect the Host-derived App, and prove behavior and removal."
+  default_prompt: "Use $lenso-app-configuration to change only this App's plugins/ differences, inspect the Host-derived App, and prove behavior and removal without authoring bindings or a Plan."

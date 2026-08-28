@@ -15,7 +15,8 @@ For each Plugin, record:
 - responsibility and deletion boundary
 - owned facts and lifecycle
 - provided and required Capabilities
-- execution needs without choosing an unnecessary process boundary
+- runtime-independent Contract invariants
+- supported implementations without choosing an unnecessary process boundary
 
 Also record configuration/resources, final authorization responsibility, first
 slice behavior, and deletion proof.
@@ -25,13 +26,14 @@ slice behavior, and deletion proof.
 For each cross-Plugin edge, record:
 
 - Capability role and owning contract package
-- consumer, eligible providers, and cardinality
+- consumer, eligible providers, and consuming-Plugin cardinality
 - request, stream, or event Operations needed by the first slice
 
 ## First executable slice
 
 - keyed Plugin Instances
 - selected Plugin differences, required Capability roles, and configuration or secret references
+- Host Slot or implementation-policy gaps that prevent deterministic resolution
 - success, failure, and observable evidence
 - primary implementation skill for each remaining owner
 
@@ -40,7 +42,8 @@ For each cross-Plugin edge, record:
 Name the concrete artifact expected from each workflow:
 
 - Capability package/Descriptor/Schemas/generated targets;
-- Plugin package/factory or Bun entrypoint and lifecycle behavior;
+- Plugin Contract plus linked factory, portable Artifact, or generated Bun
+  entrypoint and lifecycle behavior;
 - `plugins/` package/Instance/configuration differences;
 - Host Catalog default, root Slot, attachment, and execution-policy changes when
   the existing Host cannot derive the intended App;

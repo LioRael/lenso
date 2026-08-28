@@ -56,6 +56,8 @@ source, never parallel handwritten contracts.
   request/response/Domain Error Schema paths.
 
 The Descriptor's Operation-array order has no protocol meaning. Never reuse an
-Operation name for a new meaning. Cardinality, provider selection, admission
-limits, and Event mailbox capacity belong to App configuration/Resolved Plan
-rather than the Descriptor.
+Operation name for a new meaning. Requirement cardinality belongs to consuming
+Plugin source. Provider selection and binding come from Host root Slots or
+private attachments plus resolution. Admission limits and Event mailbox
+capacity are resolved Plan or Host runtime concerns. None belongs in the
+Capability Descriptor or App-owned Plugin Root.

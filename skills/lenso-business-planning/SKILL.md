@@ -23,8 +23,11 @@ not a framework diagram.
    Capability, App configuration, Plan, Driver, Adapter, Runner, or Kernel owner.
 3. **Write vertical Plugin cards.** Group behavior while data ownership,
    lifecycle, authorization, failure policy, and change cadence align. Give
-   every mutable fact one Plugin owner. A process split is an Execution Adapter
-   choice, not a new product type. For each Plugin record deletion boundary,
+   every mutable fact one Plugin owner. Multiple executable implementations may
+   share one Plugin Contract only while configuration, Capabilities, lifecycle,
+   state, and failure semantics remain identical. A process split is an
+   Execution Adapter choice, not a new product type. For each Plugin record
+   deletion boundary,
    facts, rules, lifecycle, provided/required roles, configuration/resources,
    and observable proof. Finish when no card needs another Plugin's private
    code or tables.
@@ -32,7 +35,8 @@ not a framework diagram.
    needs a stable role from another. Name its consumer goal, provider
    responsibility, Operations, interaction kinds, and cardinality; leave
    private implementation details inside the Plugin. Finish when every
-   cross-Plugin edge can be implemented as an explicit requirement/binding.
+   cross-Plugin edge can be implemented as an explicit requirement and derived
+   through Host policy without an App-authored binding.
 5. **Cut one tracer slice.** Select the fewest Plugin Instances and Capability
    roles that deliver one useful transition, its authorization, one honest
    failure, and observable evidence. Finish when removing any selected piece

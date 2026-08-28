@@ -1,8 +1,9 @@
 # App Generation control
 
 Use this branch for Host mechanics that replace or recover a complete immutable
-Plan snapshot. Plugin identity, package admission, Plugin Root resolution, and
-product Slot policy stay above portable Kernel; Plugin behavior stays in Plugins.
+Plan snapshot. Plugin identity, package admission, implementation selection,
+Plugin Root resolution, and product Slot policy stay above portable Kernel;
+Plugin behavior stays in Plugins.
 
 ## Current boundary
 
@@ -19,8 +20,9 @@ separate evidence.
 
 ## Preserve the authority chain
 
-One resolved candidate must close exact canonical bytes for the Plan, Artifact
-Set, Effective Host Grants, Host Build, resolution authority, and Generation Spec. Every
+One resolved candidate must close exact canonical bytes for the Plan, selected
+implementation and Artifact Set, Effective Host Grants, Host Build, resolution
+authority, and Generation Spec. Every
 later stage verifies those authorities; it must not execute Plugin code to
 discover metadata, broaden a grant, repair a binding, substitute an Artifact,
 or select a newer Release.
@@ -40,8 +42,9 @@ standby.
 ## Do not mutate Kernel
 
 Kernel executes one immutable Plan Snapshot and validated transitions. It has
-no Plugin registry, downloader, filesystem resolver, Store, Plugin Root, or mutable
-binding graph. A structural change uses a fresh Generation. Use an in-place
+no Plugin registry, downloader, filesystem resolver, Store, Plugin Root, mutable
+binding graph, or implementation fallback. A structural change uses a fresh
+Generation. Use an in-place
 Plan Transition only when the accepted whitelist and conformance prove that the
 change is hot-applicable; Hot Plan Transition remains incomplete today.
 

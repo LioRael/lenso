@@ -1,6 +1,6 @@
 ---
 name: lenso-runtime-extension
-description: Implement or change Lenso host mechanics through a Runtime Driver, Execution Adapter, Runner, App Generation controller, execution class, process/wire or endpoint preparation, or lane integration. Use when the concern exists to execute or switch Plugin graphs, not when deleting a product feature should remove it.
+description: Implement or change Lenso host mechanics through a Runtime Driver, Execution Adapter, Host/Runner, implementation-selection policy, App Generation controller, process/wire boundary, or lane integration. Use when the concern executes or switches Plugin graphs rather than owning removable product behavior.
 ---
 
 # Lenso Runtime Extension
@@ -26,8 +26,9 @@ moving host/product policy into the portable Kernel.
    [Runtime Driver](references/runtime-driver.md) for scheduling/time/task-lane
    work; [Execution Adapter](references/execution-adapter.md) for Plugin
    generation, endpoints, process/wire, or isolation; and
-   [Runner and conformance](references/runner-and-conformance.md) for assembly,
-   host shutdown, lanes, terminal outcomes, or cross-implementation proof. Use
+   [Host, Runner, and conformance](references/runner-and-conformance.md) for
+   Host Catalog construction, implementation selection, assembly, shutdown,
+   lanes, terminal outcomes, or cross-implementation proof. Use
    [App Generation control](references/app-generation-control.md) for durable
    stage/switch/drain/rollback, routing Leases, structural recovery, or Plugin
    control-plane mechanics.

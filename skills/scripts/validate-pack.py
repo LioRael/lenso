@@ -22,6 +22,43 @@ EXPECTED_SKILLS = {
 LINK_PATTERN = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 JSON_BLOCK_PATTERN = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
 IGNORED_INSTALLED_FILES = {".DS_Store"}
+FORBIDDEN_TEXT = {
+    "lenso-module-authoring": "the runtime-neutral authoring package is lenso-plugin-authoring",
+    "lenso_module_authoring": "the Rust package path is lenso_plugin_authoring",
+    "@lenso/bun-module": "the public Bun runtime package is @lenso/bun-plugin",
+    "defineModule": "Bun Plugin authors use definePlugin",
+    "serve(": "the generated Bun Plugin entrypoint owns runtime startup",
+    "lenso.bun-process@1": "skills must read the selected Adapter class from current source",
+    "cardinality/provider choice is left to App configuration": (
+        "Plugin source owns cardinality and Host resolution owns provider selection"
+    ),
+    "configuration, lanes, and real ambiguity decisions are visible in": (
+        "Plugin Root cannot contain lanes or binding decisions"
+    ),
+    "Authoring tools edit projects and materialize Plans": (
+        "App owners do not generate or manage Plan files"
+    ),
+}
+REQUIRED_TEXT = {
+    "lenso-plugin-authoring/SKILL.md": (
+        "one runtime-independent Contract",
+        "Host policy",
+    ),
+    "lenso-plugin-authoring/references/authoring.md": (
+        "--runtime multi",
+        "#[lenso::plugin]",
+        "definePlugin",
+        "V3 `.lenso-plugin` Release",
+    ),
+    "lenso-app-configuration/references/resolution.md": (
+        "Host policy selects one",
+        "never causes runtime fallback",
+    ),
+    "lenso-runtime-extension/references/runner-and-conformance.md": (
+        "lenso::host::HostBuilder",
+        "Select implementations before resolution",
+    ),
+}
 
 
 def frontmatter(path: Path) -> dict[str, str]:
@@ -90,6 +127,11 @@ def validate_pack(root: Path) -> list[str]:
             errors.append(f"{name}: frontmatter name is {metadata.get('name')!r}")
         if not metadata.get("description"):
             errors.append(f"{name}: description is empty")
+        disabled = metadata.get("disable-model-invocation") == "true"
+        if name == "lenso-start" and not disabled:
+            errors.append("lenso-start: router must be user-invoked")
+        if name != "lenso-start" and disabled:
+            errors.append(f"{name}: workflow must remain model-invoked")
 
         openai = directory / "agents/openai.yaml"
         if not openai.is_file():
@@ -120,6 +162,7 @@ def validate_pack(root: Path) -> list[str]:
             errors.append(f"{path.relative_to(root)}: unreachable from SKILL.md")
 
     for document in root.rglob("*.md"):
+        text = document.read_text(encoding="utf-8")
         for target in local_links(document):
             if root.resolve() not in target.parents and target != root.resolve():
                 errors.append(
@@ -130,7 +173,7 @@ def validate_pack(root: Path) -> list[str]:
                     f"{document.relative_to(root)}: broken local link to {target}"
                 )
         for index, block in enumerate(
-            JSON_BLOCK_PATTERN.findall(document.read_text(encoding="utf-8")), start=1
+            JSON_BLOCK_PATTERN.findall(text), start=1
         ):
             try:
                 json.loads(block)
@@ -138,6 +181,21 @@ def validate_pack(root: Path) -> list[str]:
                 errors.append(
                     f"{document.relative_to(root)}: invalid JSON block {index}: {error}"
                 )
+        for stale, replacement in FORBIDDEN_TEXT.items():
+            if stale in text:
+                errors.append(
+                    f"{document.relative_to(root)}: stale `{stale}`; {replacement}"
+                )
+
+    for relative, required_values in REQUIRED_TEXT.items():
+        document = root / relative
+        if not document.is_file():
+            errors.append(f"missing semantic anchor document: {relative}")
+            continue
+        text = document.read_text(encoding="utf-8")
+        for required in required_values:
+            if required not in text:
+                errors.append(f"{relative}: missing semantic anchor `{required}`")
 
     start = skill_dirs.get("lenso-start")
     if start is not None:

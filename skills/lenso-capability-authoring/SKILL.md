@@ -1,6 +1,6 @@
 ---
 name: lenso-capability-authoring
-description: Create or evolve a Lenso Capability role contract, Descriptor, JSON Schemas, compatibility decision, and generated consumer/provider bindings. Use for explicit Plugin collaboration Interfaces, not private helpers, App configuration bindings, or provider business behavior.
+description: Create or evolve a Lenso Capability role contract, Descriptor, JSON Schemas, compatibility decision, and generated consumer/provider projections. Use for explicit cross-Plugin Interfaces; Plugin source owns requirements and Host resolution owns provider selection.
 ---
 
 # Lenso Capability Authoring
@@ -32,7 +32,8 @@ provider's package, storage, process, or concrete type.
    [request Capability recipe](references/request-capability.md) for the package
    layout, Descriptor, Schemas, generator commands, freshness gate, generated
    Provider, and generated Client. Keep runtime failures separate from Domain
-   Errors and keep cardinality/bindings in App configuration. Finish when the
+   Errors. Keep requirement cardinality in consuming Plugin source and provider
+   selection in Host resolution. Finish when the
    Descriptor and package-local Schemas contain the entire portable contract.
 5. **Generate and integrate.** Run the installed
    `lenso-contract-codegen --help`, then its generate and check workflows.
@@ -51,10 +52,11 @@ provider's package, storage, process, or concrete type.
    consumer-provider path. Finish when the version decision, generated diff,
    known/unknown Domain Errors, Runtime Failure path, and cross-runtime vectors
    are observable where applicable.
-7. **Hand off ownership.** Route provider/consumer business behavior to
-   `lenso-plugin-authoring`; route exact requirement cardinality, provider keys,
-   contract inputs, and bindings to `lenso-app-configuration`. Finish when no
-   contract decision remains hidden in a Plugin implementation or Plan edit.
+7. **Hand off ownership.** Route provider/consumer behavior and requirement
+   cardinality to `lenso-plugin-authoring`; route Plugin Instance configuration
+   to `lenso-app-configuration`; route root Slot or implementation-selection
+   policy to the product Host. Finish when the Capability package contains no
+   provider choice and no contract decision is hidden in a Plan edit.
 
 Return the role, identity and version, Operations, portability choice, contract
 and Schema paths, generator/freshness commands, compatibility result, consumers

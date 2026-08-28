@@ -1,11 +1,28 @@
-# Runner and conformance recipe
+# Host, Runner, and conformance recipe
 
-A Runner chooses concrete Drivers and Execution Adapters, loads an already
-approved Plan, translates host shutdown, drives Kernel, and reports the
-terminal outcome. It is a app configuration root, not a package manager or product
-service.
+A product Host owns its generated Host Catalog, exact admitted Plugin Releases,
+root Slots, and implementation-selection policy. Resolution produces an exact
+Plan; a Runner chooses concrete Drivers and Execution Adapters, translates host
+shutdown, drives Kernel, and reports the terminal outcome. Neither surface is
+Plugin behavior or an App-owned Plan-file workflow.
 
-## Assemble explicitly
+## Select implementations before resolution
+
+One Plugin Release has one runtime-independent Contract and one or more exact
+implementations. Host policy filters by target and admitted Execution Classes,
+then selects exactly one implementation before the resolver materializes a
+`PluginDescriptor` and Plan. Reject no-match and ambiguous policy outcomes.
+Ordering may be a deliberate Host preference; filesystem or discovery order is
+never policy.
+
+The selected implementation's entrypoint, target, runtime package identity,
+and Execution Class become immutable Plan input. An Adapter receives that
+selection; it never benchmarks, negotiates, or falls back. Changing the
+selection is a structural App Generation change. Every published
+implementation must pass the same Contract conformance vectors, and a stateful
+switch requires explicit state-compatibility evidence.
+
+## Assemble execution explicitly
 
 Inspect the selected runtime packages and assemble one unambiguous Adapter per
 execution class:
@@ -26,7 +43,14 @@ let outcome = lenso_runner::run(
 ).await?;
 ```
 
-The catalog rejects duplicate execution classes. Kernel rejects an Instance
+The example is an internal Runner assembly shape. Product Hosts use the current
+`lenso::host::HostBuilder` facade for durable Generation control. `HostBuilder`
+takes the exact App identity, `GenerationRuntime`, and `ControlStateStore`;
+product code remains responsible for resolution, Plugin policy, and recovery
+authority. Start it on the same Tokio `LocalSet` as the lane-local Host and
+finish with the exact `suspend` or `shutdown` handshake.
+
+The Adapter catalog rejects duplicate execution classes. Kernel rejects an Instance
 whose class is unavailable. The Runner may expose configuration for host paths,
 limits, shutdown timeout, lane count, or Adapter selection, but cannot rewrite
 the Plan or invent bindings. Direct `with_factory(...)` registration remains an
@@ -57,7 +81,8 @@ Choose evidence by changed seam:
 | --- | --- |
 | Driver | portable lifecycle/invocation/supervision suite plus real timer/task/shutdown smoke |
 | Adapter | endpoint/binding preparation plus real process/wire/isolation and recreation paths |
-| Runner | catalog validation, approved-Plan loading, host shutdown, terminal outcomes |
+| Host policy | deterministic implementation selection, no-match/ambiguity rejection, identical Contract projection, no runtime fallback |
+| Runner/Host | catalog validation, resolved-Plan loading, `HostBuilder` recovery/suspend/shutdown, terminal outcomes |
 | Lane transfer | same-lane and cross-lane request, deadline, cancellation, restart, diagnostics |
 | Portable core | deterministic tests plus every supported target compile and at least two host implementations or equivalent product-neutral evidence |
 
@@ -67,7 +92,8 @@ a skipped process/browser/WASIp2 test is not passing host evidence.
 
 ## Completion
 
-The Runner branch is complete when it loads exact canonical bytes, assembles
-only installed execution classes, translates shutdown without graph mutation,
-returns a truthful terminal outcome, and passes the conformance row for every
-changed seam.
+The branch is complete when Host policy resolves one implementation
+deterministically, the Runner loads exact canonical bytes, only installed
+execution classes are assembled, shutdown does not mutate the graph, every
+terminal outcome is truthful, and the conformance row for each changed seam
+passes.
