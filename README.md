@@ -1,9 +1,82 @@
 # Lenso
 
-Lenso is a local-first, language-independent modular application runtime.
-The `main` branch contains only the vNext runtime and its design evidence. The
-final v0.3.x source remains available from the `lenso@0.3.47` tag and Git
-history.
+**Build products from replaceable Plugins.**
+
+Lenso is a local-first, language-independent runtime for applications whose
+behavior must be added, replaced, and removed without turning composition into
+hidden framework magic.
+
+Define product roles as typed Capabilities, implement them as Plugins, and let
+each Host resolve one exact application before it boots. Humans and coding
+agents work against the same inspectable Plugin Root and the runtime executes
+the resulting immutable Plan with explicit lifecycle and failure semantics.
+
+[Get started](https://lenso.dev/docs/quickstart/) ·
+[Read the documentation](https://lenso.dev/docs/) ·
+[Explore executable examples](https://github.com/LioRael/lenso-examples) ·
+[Install the Agent skills](skills/README.md)
+
+## What Lenso gives you
+
+- **Replaceable product behavior.** Plugins own their configuration, state,
+  lifecycle, failure policy, and provided or required Capabilities.
+- **Typed collaboration.** Capability Interfaces make Plugin relationships
+  explicit across request, stream, and event Operations.
+- **Reviewable composition.** An App owner changes only the visible `plugins/`
+  directory; the Host supplies defaults and rejects ambiguous or incompatible
+  selections.
+- **Deterministic execution.** Every accepted App becomes an immutable Resolved
+  App Plan before the Kernel starts it.
+- **Agent-ready workflows.** Public skills route planning, Capability,
+  Plugin, App configuration, and runtime work to checkable artifacts and
+  evidence.
+
+Lenso is designed for long-lived products with evolving boundaries: business
+systems, developer tools, automation products, and Agent applications. It is
+not a Web framework, a distributed control plane, or a promise that every
+Plugin can run unchanged in every environment.
+
+## Try one Plugin
+
+Install the CLI and exercise a typed Plugin through a real Execution Adapter:
+
+```sh
+npm install -g @lenso/cli
+
+lenso plugin new example.echo
+cd example.echo
+lenso plugin check
+lenso plugin dev \
+  --operation execute \
+  --request-json '{"name":"example.echo","arguments_json":"{\"text\":\"hello\"}"}'
+lenso plugin pack
+```
+
+The generated Rust project produces portable Wasm and trusted Process
+implementations from the same source. `plugin dev` selects the fastest local
+implementation; `plugin pack` builds and verifies the distributable
+`.lenso-plugin` Release. A Bun / TypeScript path is also available with
+`lenso plugin new example.echo --runtime bun`.
+
+Read the [complete quickstart](https://lenso.dev/docs/quickstart/) to understand
+how the verified Bundle connects to a compatible product Host.
+
+## How it works
+
+```text
+Plugin source -> generated Descriptor -> Host + Plugin Root -> Resolved App Plan
+                                                             |
+                                                             v
+Runtime Driver -> portable Kernel -> Execution Adapters -> Plugin Instances
+```
+
+The Plan records exact Plugin identities, Capability bindings, execution
+choices, and policy inputs. The Kernel validates and runs that Plan; it does
+not discover packages, choose versions, or rewrite the application graph while
+booting.
+
+The `main` branch contains the vNext runtime and its design evidence. The final
+v0.3.x source remains available from the `lenso@0.3.47` tag and Git history.
 
 ## Workspace
 
@@ -55,7 +128,7 @@ The [Agents and skills guide](docs/agents/skills.md) documents invocation,
 installation, progressive disclosure, contributor validation, and behavioral
 forward testing.
 
-## Quick start
+## Contributor development
 
 ```sh
 cargo fmt --all -- --check
