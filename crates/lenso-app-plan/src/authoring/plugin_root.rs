@@ -663,7 +663,8 @@ impl PluginRootSnapshot {
 }
 
 /// Provenance of one enabled Plugin Instance in a resolved App.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PluginInstanceSource {
     HostDefault,
     HostDefaultConfiguredByRoot,
