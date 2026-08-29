@@ -265,11 +265,23 @@ pub(super) fn derive_root_bindings(
                             plan_slots.get(provider.instance_key()) == Some(slot)
                         }) && binding.provider_instance.as_ref().is_none_or(|id| {
                             plan_keys_by_id.get(id).copied() == Some(provider.instance_key())
-                        })
+                        }) && (binding.provider_instances.is_empty()
+                            || binding.provider_instances.iter().any(|id| {
+                                plan_keys_by_id.get(id).copied() == Some(provider.instance_key())
+                            }))
                     })
                 })
                 .collect::<Vec<_>>();
             candidates.sort_by_key(|candidate| candidate.instance_key());
+            if let Some(binding) = host_binding
+                && !binding.provider_instances.is_empty()
+                && candidates.len() != binding.provider_instances.len()
+            {
+                return Err(PluginRootResolutionError::InvalidHostBinding(format!(
+                    "attachment for `{consumer_id}` Capability `{}` does not resolve every selected provider Instance",
+                    requirement.capability_id()
+                )));
+            }
             let selected = match requirement.cardinality() {
                 CapabilityCardinality::Many => candidates,
                 CapabilityCardinality::One if candidates.len() == 1 => candidates,
@@ -329,9 +341,24 @@ fn index_host_bindings(
                 binding.consumer, binding.capability_id
             )));
         }
-        if binding.provider_slot.is_some() == binding.provider_instance.is_some() {
+        let selectors = usize::from(binding.provider_slot.is_some())
+            + usize::from(binding.provider_instance.is_some())
+            + usize::from(!binding.provider_instances.is_empty());
+        if selectors != 1 {
             return Err(PluginRootResolutionError::InvalidHostBinding(format!(
-                "attachment for `{}` must select exactly one provider Slot or Instance",
+                "attachment for `{}` must select exactly one provider Slot, Instance, or Instance set",
+                binding.consumer
+            )));
+        }
+        if binding
+            .provider_instances
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != binding.provider_instances.len()
+        {
+            return Err(PluginRootResolutionError::InvalidHostBinding(format!(
+                "attachment for `{}` contains a duplicate provider Instance",
                 binding.consumer
             )));
         }

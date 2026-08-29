@@ -92,6 +92,8 @@ One immutable Host Catalog declares:
   optional linked Instances;
 - whether each default is required, optional, or replaceable;
 - deterministic ordering for `many` and `intercept` Slots;
+- Host-private exact provider selections for Ports whose legal provider set is
+  intentionally narrower than every compatible Instance in a Slot;
 - execution constraints and maximum counts or resource ceilings; and
 - the authority ceiling that an App-owner configuration may not exceed.
 
@@ -123,9 +125,11 @@ secret references, it produces the same result:
    entries join the defaults in Host-defined stable order. Required missing
    Slots fail.
 7. Bind every Plugin Port by exact Capability compatibility. A unique legal
-   provider binds automatically; no provider or multiple providers for a
-   `one` Port fails with the affected Instances and legal remedies. There is no
-   hand-authored binding escape hatch.
+   provider binds automatically; one Host-private attachment may narrow a Port
+   to one provider, one provider Slot, or an exact provider set. A selected
+   Instance that is absent or incompatible fails closed. No provider or
+   multiple providers for a `one` Port fails with the affected Instances and
+   legal remedies. There is no hand-authored binding escape hatch.
 8. Select the one legal execution variant and placement under Host policy,
    derive the App Composition, and validate the complete immutable Plan.
 9. Produce a Change Proposal explaining additions, removals, replacements,
