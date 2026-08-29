@@ -390,6 +390,8 @@ pub struct HostBinding {
     provider_slot: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     provider_instance: Option<PluginInstanceId>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    provider_instances: Vec<PluginInstanceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     admission: Option<RequestAdmissionPlan>,
 }
@@ -405,6 +407,7 @@ impl HostBinding {
             capability_id: capability_id.into(),
             provider_slot: Some(provider_slot.into()),
             provider_instance: None,
+            provider_instances: Vec::new(),
             admission: None,
         }
     }
@@ -419,6 +422,23 @@ impl HostBinding {
             capability_id: capability_id.into(),
             provider_slot: None,
             provider_instance: Some(provider),
+            provider_instances: Vec::new(),
+            admission: None,
+        }
+    }
+
+    /// Selects an exact provider set for one `many` Capability requirement.
+    pub fn to_instances(
+        consumer: PluginInstanceId,
+        capability_id: impl Into<String>,
+        providers: impl IntoIterator<Item = PluginInstanceId>,
+    ) -> Self {
+        Self {
+            consumer,
+            capability_id: capability_id.into(),
+            provider_slot: None,
+            provider_instance: None,
+            provider_instances: providers.into_iter().collect(),
             admission: None,
         }
     }
@@ -443,6 +463,10 @@ impl HostBinding {
 
     pub const fn provider_instance(&self) -> Option<&PluginInstanceId> {
         self.provider_instance.as_ref()
+    }
+
+    pub fn provider_instances(&self) -> &[PluginInstanceId] {
+        &self.provider_instances
     }
 
     pub const fn admission(&self) -> Option<RequestAdmissionPlan> {

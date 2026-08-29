@@ -93,6 +93,116 @@ fn host_binding_scopes_one_requirement_to_the_selected_provider_instance() {
 }
 
 #[test]
+fn host_binding_scopes_many_requirement_to_an_exact_provider_set() {
+    let consumer = PluginDescriptor::new("example.consumer", "1.0.0", "consumer")
+        .with_requirement(CapabilityRequirementPlan::many("example.model@1", "1.0.0"));
+    let providers = [
+        PluginInstanceId::new("example.model.a", "primary"),
+        PluginInstanceId::new("example.model.c", "primary"),
+    ];
+    let host = HostCatalog::new(
+        [HostSlot::one("consumer"), HostSlot::many("model")],
+        [
+            HostPluginRelease::new(consumer),
+            HostPluginRelease::new(model_descriptor("example.model.a")),
+            HostPluginRelease::new(model_descriptor("example.model.b")),
+            HostPluginRelease::new(model_descriptor("example.model.c")),
+        ],
+        [HostDefaultPlugin::new("example.consumer", "default")],
+    )
+    .with_bindings([HostBinding::to_instances(
+        PluginInstanceId::new("example.consumer", "default"),
+        "example.model@1",
+        providers,
+    )]);
+    let root = PluginRootSnapshot::new(
+        [],
+        [
+            PluginRootInstance::new("example.model.a", "primary"),
+            PluginRootInstance::new("example.model.b", "primary"),
+            PluginRootInstance::new("example.model.c", "primary"),
+        ],
+        [],
+    );
+
+    let resolved = resolve_plugin_root(&host, &root).unwrap();
+
+    assert_eq!(
+        resolved
+            .plan()
+            .capability_bindings()
+            .iter()
+            .map(lenso_app_plan::CapabilityBinding::provider_instance)
+            .collect::<Vec<_>>(),
+        ["example.model.a/primary", "example.model.c/primary"]
+    );
+}
+
+#[test]
+fn host_binding_rejects_a_duplicate_provider_in_an_exact_set() {
+    let consumer = PluginDescriptor::new("example.consumer", "1.0.0", "consumer")
+        .with_requirement(CapabilityRequirementPlan::many("example.model@1", "1.0.0"));
+    let provider = PluginInstanceId::new("example.model.a", "primary");
+    let host = HostCatalog::new(
+        [HostSlot::one("consumer"), HostSlot::many("model")],
+        [
+            HostPluginRelease::new(consumer),
+            HostPluginRelease::new(model_descriptor("example.model.a")),
+        ],
+        [HostDefaultPlugin::new("example.consumer", "default")],
+    )
+    .with_bindings([HostBinding::to_instances(
+        PluginInstanceId::new("example.consumer", "default"),
+        "example.model@1",
+        [provider.clone(), provider],
+    )]);
+    let root = PluginRootSnapshot::new(
+        [],
+        [PluginRootInstance::new("example.model.a", "primary")],
+        [],
+    );
+
+    assert!(matches!(
+        resolve_plugin_root(&host, &root),
+        Err(PluginRootResolutionError::InvalidHostBinding(detail))
+            if detail.contains("duplicate provider Instance")
+    ));
+}
+
+#[test]
+fn host_binding_rejects_an_absent_provider_in_an_exact_set() {
+    let consumer = PluginDescriptor::new("example.consumer", "1.0.0", "consumer")
+        .with_requirement(CapabilityRequirementPlan::many("example.model@1", "1.0.0"));
+    let host = HostCatalog::new(
+        [HostSlot::one("consumer"), HostSlot::many("model")],
+        [
+            HostPluginRelease::new(consumer),
+            HostPluginRelease::new(model_descriptor("example.model.a")),
+        ],
+        [HostDefaultPlugin::new("example.consumer", "default")],
+    )
+    .with_bindings([HostBinding::to_instances(
+        PluginInstanceId::new("example.consumer", "default"),
+        "example.model@1",
+        [
+            PluginInstanceId::new("example.model.a", "primary"),
+            PluginInstanceId::new("example.model.missing", "primary"),
+        ],
+    )]);
+    let root = PluginRootSnapshot::new(
+        [],
+        [PluginRootInstance::new("example.model.a", "primary")],
+        [],
+    );
+
+    assert!(matches!(
+        resolve_plugin_root(&host, &root),
+        Err(PluginRootResolutionError::InvalidHostBinding(detail))
+            if detail.contains("does not resolve every selected provider Instance")
+    ));
+}
+
+#[test]
 fn host_binding_for_an_absent_optional_consumer_is_dormant() {
     let optional_consumer = PluginDescriptor::new("example.consumer", "1.0.0", "consumer")
         .with_requirement(CapabilityRequirementPlan::one("example.model@1", "1.0.0"));
