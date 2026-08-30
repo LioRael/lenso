@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0070 are the accepted, normative architecture decisions for
+ADRs 0030 through 0072 are the accepted, normative architecture decisions for
 Lenso vNext. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
@@ -69,6 +69,10 @@ placement, and immutable Plan without guessing through ambiguity.
 [`0071-publish-one-plugin-contract-with-multiple-implementations.md`](0071-publish-one-plugin-contract-with-multiple-implementations.md)
 lets one Plugin Release carry multiple exact runtime implementations behind one
 Contract while Host policy selects one before Plan materialization.
+
+[`0072-separate-access-control-from-organization.md`](0072-separate-access-control-from-organization.md)
+keeps Organization membership facts independent from scoped roles, grants,
+bindings, and role-based decisions owned by an Access Control Plugin.
 
 ## Legacy decisions
 
