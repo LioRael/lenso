@@ -19,7 +19,7 @@ bindings and the immutable Plan from those two inputs.
    Finish when each fact belongs to Host, Plugin package, or App owner.
 2. **Inspect the default App.** Run `lenso app check` and `lenso app show`
    before editing. A missing or empty Plugin Root must resolve to the exact Host
-   defaults. Do not create an App Definition or enabled-list file.
+   defaults. The Plugin Root remains the only App-owner composition surface.
 3. **Change one Plugin entry.** Use `lenso plugins add <bundle>` for an external
    package, `configure <plugin-id> <instance> --file <toml>` for an Instance,
    and `disable|enable|remove` for selection changes. Keep one Plugin directory

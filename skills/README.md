@@ -1,97 +1,97 @@
-# Plugin-first Lenso skills
+# Lenso skills
 
-These public skills follow the vNext product model on `main`: selected product
-behavior is built from ordinary Plugins, while Capabilities, App configuration,
-and the runtime seams each keep one distinct responsibility.
+The canonical pack has two layers:
 
-This catalog is project-level agent documentation. It routes work to the
-repository that owns each implementation; its location does not move CLI,
-protocol, Driver, Adapter, Plugin, or example ownership into the portable core.
+1. `lenso-start` is the task-oriented entrance. It maps a request through the
+   Core, Web, or Agent journey.
+2. Five owner Skills perform the work at one stable Lenso seam.
+
+Product journeys may cross several owners, but they do not create another
+composition model or duplicate the owner rules.
 
 ```text
-product outcome
+observable result
       |
       v
-Plugin map -> Capability contracts -> Plugin Contract + implementations
-                                      |
-                                      +--> optional portable package
-                                      |        |
-                                      v
-                    Host Catalog + plugins/ -> Resolved App Plan
-                                      |
-                                      v
-                    Driver + Adapters + App Generations
+  lenso-start
+  ├── Core task map
+  ├── Web task map
+  `── Agent task map
+      |
+      v
+one primary owner
+  ├── business planning
+  ├── Capability authoring
+  ├── Plugin authoring
+  ├── App configuration
+  `── runtime extension
 ```
 
-“Everything is a Plugin” is the product rule, not a reason to turn every
-technical object into one. A Plugin owns removable product behavior. A
-Capability is its collaboration Interface. One Plugin Contract may have
-several executable implementations with identical product semantics. The Host
-Catalog supplies defaults and implementation policy; App configuration records
-only differences in `plugins/`; resolution selects one exact implementation
-and derives Instances and bindings. Runtime Drivers, Execution Adapters,
-Runners, and the portable Kernel make those Plugins run.
+## Start from the task
 
-| Skill | Use it for |
+| Path | Typical request | First owner |
+| --- | --- | --- |
+| Core | Create a Plugin, evolve a Capability, change an App, or extend execution | The matching owner Skill |
+| Web | Add an endpoint, Auth, upstream call, Ingress behavior, test, or deployment boundary | Usually Plugin authoring or App configuration |
+| Agent | Change a Profile, Tool, Session, child Agent, MCP server, or Agent surface | Usually Plugin authoring or App configuration |
+
+Invoke `$lenso-start` when the owner or sequence is unclear. Its three task maps
+define the observable journey and then route each artifact to one owner.
+
+## Owner Skills
+
+| Skill | Interface |
 | --- | --- |
-| `lenso-start` | Explicitly route a request to one primary vNext workflow. |
-| `lenso-business-planning` | Turn a product outcome into a vertical Plugin map. |
-| `lenso-capability-authoring` | Design or evolve a versioned Capability contract and bindings. |
-| `lenso-plugin-authoring` | Implement one Plugin Contract through a supported linked Rust, portable Rust, or Bun path. |
-| `lenso-app-configuration` | Configure `plugins/`, inspect the Host-derived App, and prove behavior/removal. |
-| `lenso-runtime-extension` | Extend the Driver, Execution Adapter, Runner, App Generation controller, or other host mechanism. |
+| `lenso-business-planning` | Turn an unclear outcome into vertical Plugin cards, Capability edges, and one tracer slice. |
+| `lenso-capability-authoring` | Create or evolve one versioned cross-Plugin role and its generated projections. |
+| `lenso-plugin-authoring` | Implement one removable Plugin Contract through one shipped authoring path. |
+| `lenso-app-configuration` | Change only one App's visible `plugins/` differences and inspect the derived App. |
+| `lenso-runtime-extension` | Extend a Driver, Execution Adapter, Host/Runner, selection policy, or App Generation mechanism. |
 
-## How to use the pack
+Kernel semantics are not a sixth owner Skill. Portable graph, lifecycle,
+invocation, admission, readiness, supervision, and diagnostics begin with the
+core repository's `CONTEXT.md`, relevant ADR, and product-neutral conformance.
 
-Start with `lenso-start` when the owner is unclear. Once routed, load one
-primary workflow and only the branch references that match the task:
+## Directory architecture
+
+Discoverable Skill directories stay flat because installers find
+`skills/<name>/SKILL.md`. Information inside each Skill is hierarchical:
 
 ```text
-unclear outcome/owner
-        |
-        v
-business planning
-        |
-        +--> Capability source + generated bindings
-        +--> Plugin behavior + factory/entrypoint + lifecycle
-        +--> Plugin Root differences + derived Plan
-        `--> Driver/Adapter/Runner host mechanics
+skills/
+├── lenso-start/
+│   ├── SKILL.md                 # choose Core, Web, or Agent
+│   └── references/              # task maps loaded one at a time
+├── lenso-plugin-authoring/
+│   ├── SKILL.md                 # shared owner workflow
+│   └── references/
+│       ├── paths/               # portable Rust, linked Rust, or Bun
+│       ├── contract-and-lifecycle.md
+│       └── verification.md
+├── lenso-<other-owner>/          # same entrypoint/reference pattern
+├── scripts/                      # deterministic pack validation
+└── validation/                   # independent behavioral scenarios
 ```
 
-The entrypoint skills stay short enough to preserve their ordered workflow.
-Detailed branch references contain the package layouts, code/config examples,
-failure cases, verification matrix, and completion evidence needed to perform
-the work. Exact current APIs and commands still come from the selected package
-versions, repository instructions, manifests, `--help`, and CI.
+`SKILL.md` carries the small Interface: purpose, shared ordered work, ownership
+guardrails, completion criteria, and branch pointers. A reference carries only
+one conditional path. Exact APIs remain in current repository source,
+manifests, locks, installed `--help`, and CI rather than being cached at the
+entrypoint.
 
-The support-ticket planning example shows how the workflows hand off to each
-other. Plugin authoring distinguishes the current CLI Rust scaffold, linked
-native Rust facade, and Bun request SDK instead of presenting one fictional
-universal generator. Capability and App configuration document typed contracts
-and the visible Plugin Root.
+This structure keeps the owner Skills deep: callers learn five stable
+Interfaces while path-specific implementation detail stays local and
+disclosed only when needed.
 
-The old Service, Provider, Host, Console Surface, and API-client workflows are
-not peer vNext authoring models. Out-of-process behavior, UI Contributions,
-Auth, State, Story, Audit, OpenTelemetry, Web ingress, and similar product
-concerns route through Plugin authoring. Generated consumers and providers
-route through Capability authoring. Process, transport, and endpoint mechanics
-route through runtime extension.
+## Install
 
-Plugin authoring owns behavior, the runtime-independent Contract, and published
-implementations. App configuration owns only visible `plugins/` differences.
-Host Catalog generation owns product defaults, root Slots, and implementation
-selection policy. Runtime Extension owns that Host machinery plus readiness,
-reconciliation, and App Generation mechanics. Store, Receipt, Controller, and
-Supervisor remain internal implementation concepts rather than additional
-authoring models.
-
-Install this catalog from its owning repository with:
+Inspect the catalog:
 
 ```sh
 npx skills add LioRael/lenso --list
 ```
 
-Install every skill for the detected project agents:
+Install all six Skills:
 
 ```sh
 npx skills add LioRael/lenso --all
@@ -103,28 +103,30 @@ For a user-level Codex installation:
 npx skills add LioRael/lenso --skill '*' --agent codex --global --yes
 ```
 
-Update installed skills later with `npx skills update`; same-named skills are
-refreshed, while unrelated legacy skill names are not deleted automatically.
+Refresh same-named installed copies with `npx skills update`. Installation does
+not remove unrelated legacy names.
 
-## Maintainer validation
+## Validate
 
-Run structural/reference validation and installer discovery from the repository
-root:
+From the repository root:
 
 ```sh
 python3 skills/scripts/validate-pack.py
+python3 -m unittest skills/scripts/test_validate_pack.py
 npx skills add . --list
 ```
 
-Use `--installed-root` to detect a stale installed copy:
+For each changed Skill, also run the active runtime's official validator. Use
+`--installed-root` to compare every canonical payload file with an installed
+copy:
 
 ```sh
 python3 skills/scripts/validate-pack.py \
   --installed-root "$HOME/.agents/skills"
 ```
 
-Structural validation does not prove usefulness. Run the independent prompts
-and evidence checks in [behavioral scenarios](validation/scenarios.md) after a
-substantial workflow change. A skill passes only when the agent reaches the
-expected artifacts and observable completion state without being told the
-intended implementation.
+Structural validation proves packaging and routing invariants, not usefulness.
+Run the independent prompts in [behavioral scenarios](validation/scenarios.md)
+after a substantial change. A scenario passes only when the Agent selects the
+right owner, produces the requested artifacts, and records observable success,
+honest failure, and removal or replacement evidence.
