@@ -1,70 +1,100 @@
 # Lenso agent skills
 
-The canonical skill pack turns Lenso's vNext architecture into repeatable work
-for coding agents. It answers two questions before implementation begins:
+The canonical Skill pack mirrors the public documentation without copying its
+page tree. A user enters through Core, Web, or Agent; the pack then routes the
+first concrete artifact to one stable owner Skill.
 
-1. Which seam owns the requested outcome?
-2. What artifacts and observable evidence complete that work?
+## The two layers
 
-The source lives in [`skills/`](../../skills/). Installed copies are derived
-artifacts. Runtime, authoring, protocol, Driver, Adapter, Capability, and Module
-implementation ownership remains in the repositories assigned by ADR 0064.
+```text
+task-oriented entrance                    owner workflow
 
-## Choose one primary workflow
+Core ─┐
+Web  ─┼─> lenso-start ──────────────────> Planning | Capability | Plugin
+Agent ┘                                      | App configuration | Runtime
+```
 
-| Request | Primary skill | Completion artifact |
+The entrance explains the journey. The owner Skill controls implementation.
+This avoids two failure modes: forcing a new user to understand framework
+ownership before stating a result, and creating separate Web/Agent Skills that
+duplicate Plugin, App, and runtime rules.
+
+## Choose the task map
+
+Invoke `$lenso-start` when the owner or sequence is unclear:
+
+| Path | Use it for | Observable completion |
 | --- | --- | --- |
-| Ownership or product boundary is unclear | `lenso-business-planning` | Module cards, Capability edges, and one executable slice |
-| Capability identity, Operations, Schemas, compatibility, or generated bindings | `lenso-capability-authoring` | Descriptor, Schemas, generated targets, compatibility and behavior proof |
-| Removable Rust, Bun, Web, stateful, or cross-cutting product behavior, including optional Plugin Release packaging | `lenso-module-authoring` | Module behavior/removal proof plus exact Release artifacts when supported |
-| Package or admitted Plugin selection, keyed Instances, configuration, Slots, bindings, profiles, or lanes | `lenso-app-composition` | Checked App intent and immutable Plan/Generation authority |
-| Driver, Execution Adapter, Runner, process/wire, Plugin admission/Store, Reconciler, or App Generation mechanics | `lenso-runtime-extension` | Narrow host implementation plus conformance and real-host evidence |
-| The owner is not yet clear | `lenso-start` | One primary workflow and one observable completion state |
+| Core | Plugins, Capabilities, App changes, composition, runtime, framework semantics | One owned artifact plus success, honest failure, inspection, and removal/replacement proof |
+| Web | Endpoints, Auth, upstream calls, Ingress, socket tests, deployment | One real HTTP path with readiness and removal proof |
+| Agent | Profiles, Tools, Sessions, Memory, child Agents, MCP, surfaces | One real Turn with Session and Tool/Context evidence |
 
-Kernel semantics are not a seventh product workflow. Changes to portable graph,
-lifecycle, invocation, admission, supervision, readiness, or diagnostics begin
-with [`CONTEXT.md`](../../CONTEXT.md) and the relevant ADR.
+The selected map names one primary owner and any later handoffs. It does not
+run several owner workflows in parallel.
+
+## Choose the owner
+
+| Result | Primary Skill | Completion artifact |
+| --- | --- | --- |
+| Ownership or product behavior is unclear | `lenso-business-planning` | Plugin cards, Capability edges, and one tracer slice |
+| Define or evolve a cross-Plugin role | `lenso-capability-authoring` | Descriptor, Schemas, generated projections, compatibility and behavior proof |
+| Implement removable behavior | `lenso-plugin-authoring` | Plugin Contract, selected implementation, real consumer path, and deletion proof |
+| Change one App's visible selection or configuration | `lenso-app-configuration` | Minimal `plugins/` difference plus checked and explained derived App |
+| Add Host execution or Generation mechanics | `lenso-runtime-extension` | Narrow Driver, Adapter, Runner, or Host-policy change with conformance and real-host proof |
+
+Portable Kernel semantics are handled through [`CONTEXT.md`](../../CONTEXT.md),
+the relevant ADR, and product-neutral conformance. Kernel is not a routine
+sixth owner workflow.
 
 ## Invoke the pack
 
-`lenso-start` is an explicit router. Invoke it when a request plausibly fits
-more than one owner:
+`lenso-start` is an explicit human-invoked router:
 
 ```text
-Use $lenso-start to route a request for a durable background notification flow.
+Use $lenso-start to route and complete this Lenso task.
+
+Outcome: [one observable user or Plugin result]
+Authority: [repository, Host, Capability, or unknown]
+Constraints: [language, target, compatibility, security, delivery scope]
+Completion:
+- [success to exercise]
+- [honest failure to preserve]
+- [inspection and removal/replacement proof]
+- [requested commit, PR, or merge boundary]
 ```
 
-The other five skills are discoverable by their descriptions and may also be
-named directly:
+The five owner Skills are model-discoverable and may also be named directly.
+Use one primary Skill. Add a secondary Skill only after an artifact crosses a
+real ownership seam.
 
-```text
-Use $lenso-module-authoring to implement the generated Ticket provider in Bun.
-```
+## How the directory works
 
-```text
-Use $lenso-app-composition to bind two HTTP endpoint providers to Web Ingress.
-```
+Canonical sources live under [`skills/`](../../skills/):
 
-```text
-Use $lenso-app-composition with $lenso-runtime-extension to install a reviewed
-Agent Harness Plugin, stage its candidate Generation, and retain exact rollback
-authority.
-```
+- `SKILL.md` is the small owner Interface and ordered workflow;
+- `references/` contains one conditional task or implementation branch;
+- `agents/openai.yaml` contains discovery metadata and invocation policy;
+- `scripts/` contains deterministic pack checks; and
+- `validation/` contains independent forward scenarios.
 
-Select one primary workflow. Add a secondary workflow only when the request
-crosses a real ownership boundary; for example, change the Capability source
-before implementing its provider, or implement the Module before selecting its
-Instance in App Composition.
+Installers discover `skills/<name>/SKILL.md`, so canonical Skill directories
+remain flat. Conditional detail may nest inside `references/`. For example,
+Plugin authoring loads only one of portable Rust, linked Rust, or Bun before it
+loads shared Contract/lifecycle and verification rules.
+
+Keep each rule in one source of truth. Use current owner source, manifests,
+locks, installed `--help`, and CI for cheap exact lookups; references should
+carry ownership decisions, failure boundaries, implementation shapes, and
+completion criteria that cannot be inferred safely from one command.
 
 ## Install and update
 
-Inspect the public catalog before installing:
-
 ```sh
 npx skills add LioRael/lenso --list
+npx skills add LioRael/lenso --all
 ```
 
-Install all six skills for user-level Codex discovery:
+For user-level Codex discovery:
 
 ```sh
 npx skills add LioRael/lenso \
@@ -74,110 +104,28 @@ npx skills add LioRael/lenso \
   --yes
 ```
 
-Update same-named installed skills later:
+Refresh same-named Skills with `npx skills update`. Installed copies are
+derived artifacts; edit only the canonical repository source.
 
-```sh
-npx skills update
-```
-
-Installation does not remove unrelated legacy skill names automatically. Use
-the canonical six-workflow table above for vNext work. In particular, legacy
-Service-authoring skills are not a parallel vNext model; out-of-process product
-behavior remains a Module and process mechanics remain an Execution Adapter.
-
-For a local checkout, inspect what the installer will discover without
-changing an installed copy:
-
-```sh
-npx skills add . --list
-```
-
-## How an agent executes a skill
-
-1. Read the selected `SKILL.md` completely and finish its shared workflow in
-   order.
-2. Follow only the branch references named by the selected Module shape,
-   interaction kind, authoring profile, or runtime seam.
-3. Resolve exact APIs from the target repository's instructions, selected
-   dependency source, manifests, lockfiles, `--help`, and CI. Examples in the
-   skill teach the implementation shape; they do not pin a future package API.
-4. Hand work to another skill only at an explicit ownership boundary.
-5. Return concrete artifact paths, exact checks, behavior evidence, honest
-   failures or blockers, and the delivery state.
-
-A skill has not completed merely because the architecture nouns are correct.
-The requested artifact and its observable proof must exist. A missing artifact
-that the request claims already exists is a fixture or input blocker; the agent
-should name it rather than inventing package state.
-
-## Canonical source and installed copies
-
-Edit [`skills/`](../../skills/) in this repository. Do not maintain a second
-`SKILL.md` source in `lenso-cli` or an implementation repository. A skill may
-link to those owners and inspect their current source without copying their
-implementation ownership here.
-
-The pack uses progressive disclosure:
-
-- `SKILL.md` contains the shared ordered workflow and branch pointers.
-- `references/` contains branch-specific recipes, examples, and verification.
-- `agents/openai.yaml` contains the discovery metadata and invocation policy.
-- `scripts/` contains deterministic maintenance checks.
-- `validation/` contains independent forward-test scenarios.
-
-Keep exact commands and type names next to the branch that needs them. Keep one
-source of truth for each rule, and prefer live source inspection when a command
-or API is cheap to discover.
-
-## Validate a skill change
-
-From the repository root, validate pack structure, metadata, local links,
-reference reachability, fenced JSON, and router policy:
+## Validate a change
 
 ```sh
 python3 skills/scripts/validate-pack.py
-```
-
-Confirm installer discovery:
-
-```sh
+python3 -m unittest skills/scripts/test_validate_pack.py
 npx skills add . --list
 ```
 
-When validating a copied user installation, compare every canonical payload
-file, not only `SKILL.md`:
+Run the active Agent runtime's official validator for every changed Skill.
+After a substantial routing or workflow change, run the independent prompts in
+[`skills/validation/scenarios.md`](../../skills/validation/scenarios.md) with
+complete fixtures and isolated writable directories.
 
-```sh
-python3 skills/scripts/validate-pack.py \
-  --installed-root "$HOME/.agents/skills"
-```
+A pack change is complete when:
 
-Also run the official skill validator supplied by the active agent runtime for
-each of the six skill directories. Its installation path belongs to that
-runtime and is intentionally not hard-coded in this public repository.
-
-Structural checks do not prove that the instructions change agent behavior.
-After a substantial edit, run the independent prompts in
-[`skills/validation/scenarios.md`](../../skills/validation/scenarios.md):
-
-1. give the evaluator the named skill, realistic prompt, required raw fixture,
-   and an isolated writable directory;
-2. keep the expected observations out of its context;
-3. review actual artifacts and executed evidence;
-4. record a missing claimed fixture as inconclusive; and
-5. patch only failures demonstrated by the run.
-
-## Completion checklist
-
-A skill-pack change is ready when:
-
-- every skill has a discriminating description and reachable branch references;
-- examples agree with current authoritative source or explicitly require live
-  source inspection;
-- all six directories pass structural and official validation;
-- local installer discovery returns exactly the canonical six workflows;
-- any installed copy matches the complete canonical payload;
-- changed workflows pass independent forward testing with adequate fixtures;
-- public documentation contains portable commands rather than contributor-local
-  absolute paths; and
-- the change preserves user approval boundaries and unrelated repository work.
+- installer discovery returns exactly the canonical six Skills;
+- Core, Web, and Agent routes each choose one primary owner;
+- every reference is reachable only through the branch that needs it;
+- current-source inspection precedes implementation;
+- changed scenarios produce artifacts and observable evidence rather than only
+  correct vocabulary; and
+- user approval and delivery boundaries remain explicit.

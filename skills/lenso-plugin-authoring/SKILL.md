@@ -22,19 +22,20 @@ a Host mechanism, not a second product type.
    final authorization, provided and required Capabilities, configuration,
    resources, and first observable behavior. Use `lenso-business-planning` if
    any fact still has two plausible owners.
-3. **Choose one shipped authoring path.** Read
-   [authoring paths](references/authoring.md). Use the CLI scaffold for an
-   ordinary portable Rust tool, the `lenso` facade for a linked native Plugin,
-   or `@lenso/bun` for a Bun request Plugin. If the needed Capability kind,
-   target, packaging path, or SDK is not supported by the selected versions,
-   stop at that prerequisite instead of inventing glue. Finish when one owner
-   repository supplies the API and executable proof path.
-4. **Keep one Contract across implementations.** Configuration Schema/defaults,
-   Capabilities, restart policy, criticality, and state semantics belong to the
-   Plugin Contract. Entrypoint, target, Execution Class, and immutable runtime
-   package identity belong to each implementation. Host policy owns exact
-   implementation selection before Plan resolution. Generated lowering owns
-   descriptors, endpoints, factories, clients, and runtime entrypoints.
+3. **Choose one shipped authoring path.** Read exactly one path first:
+   - [portable Rust Agent Tool](references/paths/portable-rust.md) for the CLI
+     scaffold and Wasm/Process Release;
+   - [linked native Rust](references/paths/linked-rust.md) for a Host-linked
+     Plugin and generated registration; or
+   - [Bun request Plugin](references/paths/bun.md) for a generated TypeScript
+     Provider behind the Bun Adapter.
+   If the needed Capability kind, target, packaging path, or SDK is not
+   supported by the selected versions, stop at that prerequisite instead of
+   inventing glue. Finish when one owner repository supplies the API and real
+   execution proof path.
+4. **Keep one Contract across implementations.** Apply
+   [the shared Contract and lifecycle rules](references/contract-and-lifecycle.md).
+   Host policy owns exact implementation selection before Plan resolution.
    Finish when every implementation projects the same Contract or is split
    into a different Plugin Release.
 5. **Implement explicit edges.** A consumer receives only Plan-bound
@@ -44,7 +45,8 @@ a Host mechanism, not a second product type.
 6. **Own one fresh Instance generation.** Omit configuration when stateless.
    Use lifecycle only for Plugin-owned resources or managed work. External
    ingress waits for App readiness. Restart must not share mutable generation
-   state or leak tasks/resources.
+   state or leak tasks/resources. Finish when preparation, activation,
+   deactivation, cleanup, and recreation evidence match the Contract.
 7. **Expose availability, not activation.** A linked native factory makes the
    Plugin available in the Host Catalog; App configuration determines whether
    an Instance differs from Host defaults. External packages are added under

@@ -1,56 +1,41 @@
 ---
 name: lenso-start
-description: Choose one Lenso vNext development workflow.
-disable-model-invocation: true
+description: Route a Lenso task through the Core, Web, or Agent path to one primary owner workflow.
 ---
 
 # Lenso Start
 
-Route the request by its owner. This is the human-invoked index; the selected
-skill owns the work.
+Start from the result, then choose the product path and owner. This Skill is the
+human-invoked index; it coordinates the work without becoming another owner.
 
 ## Route
 
-1. State the requested outcome without framework nouns.
-2. Choose exactly one primary workflow:
-   - unclear product behavior, ownership, or boundaries ->
-     `lenso-business-planning`
-   - Capability identity, Operations, Schemas, compatibility, or generated
-     consumer/provider bindings -> `lenso-capability-authoring`
-   - product behavior implemented as a linked Rust, portable Rust, Bun, Web,
-     stateful, Auth, Story, Audit, OpenTelemetry, Secrets, or other Plugin; one
-     Plugin Contract with one or more executable implementations; or packaging
-     that Plugin as an installable Plugin Release ->
-     `lenso-plugin-authoring`
-   - Plugin Root configuration, adding/disabling/enabling/removing Plugins, or
-     inspecting the Host-derived App and Resolved App Plan ->
-     `lenso-app-configuration`
-   - scheduling, clocks, Plugin generation, Adapter-level endpoint
-     preparation, language-process/wire integration, execution classes, Host
-     implementation-selection policy, package admission, reconciliation, App Generation
-     stage/switch/drain/rollback, or Runner orchestration ->
-     `lenso-runtime-extension`
-3. Treat portable graph, lifecycle, invocation, admission, supervision,
-   readiness, and diagnostic semantics as Kernel work. Read the core
-   repository's `CONTEXT.md` and relevant ADR rather than routing it through a
-   product skill.
-4. Name a secondary workflow only when the request crosses a real ownership
-   boundary. Continue with the primary skill when it is available; otherwise
-   report the missing catalog entry.
+1. **State the result.** Describe what a person or another Plugin can observe,
+   the authority already supplied, constraints, and the requested delivery
+   level. Finish when the result can be understood without framework nouns.
+2. **Choose one task map.** Read only the matching reference:
+   - [Core framework](references/core.md) for Plugins, Capabilities, App
+     configuration, composition, runtime, or framework semantics;
+   - [Web product](references/web.md) for HTTP endpoints, Auth, upstream calls,
+     Ingress, testing, or deployment; or
+   - [Agent product](references/agent.md) for first Turns, Profiles, Tools,
+     Sessions, Memory, child Agents, MCP, or Agent surfaces.
+3. **Name one primary owner.** Select exactly one of
+   `lenso-business-planning`, `lenso-capability-authoring`,
+   `lenso-plugin-authoring`, `lenso-app-configuration`, or
+   `lenso-runtime-extension`. The chosen task map may define later handoffs;
+   they do not become parallel owners of the first change.
+4. **Ground the route.** Inspect repository instructions, current source,
+   selected package versions, installed `--help`, and the nearest real test.
+   Finish when the proposed artifacts and commands exist in current authority.
+5. **Continue through the primary Skill.** Add a secondary Skill only after an
+   artifact crosses a real ownership seam. Stop at a missing prerequisite only
+   when inventing it would change the requested result or authority.
 
-Examples:
+Portable Kernel graph, lifecycle, invocation, admission, readiness,
+supervision, and diagnostic semantics are not a sixth owner workflow. Route
+those changes through the core repository's `CONTEXT.md`, relevant ADR, and
+product-neutral conformance.
 
-- "Design a support-ticket product" -> planning first.
-- "Add `assign_ticket` to the Ticket contract" -> Capability authoring.
-- "Implement the Rust or Bun Ticket provider" -> Plugin authoring.
-- "Publish Wasm and Process implementations of one Plugin Contract" -> Plugin
-  authoring; Runtime extension is secondary only if Host selection changes.
-- "Package the Ticket Plugin as an installable Plugin" -> Plugin authoring.
-- "Configure one optional Plugin Instance" -> App configuration.
-- "Change which provider a Host root Slot selects" -> Runtime extension in the
-  product Host.
-- "Add a Python process execution class" -> Runtime extension.
-- "Implement durable App Generation rollback" -> Runtime extension.
-
-Routing is complete when one owner and one observable completion state are
-unambiguous. Ask one boundary question only when two owners still fit.
+Return the selected task map, primary Skill, owner repository, first artifact,
+observable completion state, later handoffs, and any missing prerequisite.

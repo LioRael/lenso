@@ -13,6 +13,53 @@ test harness incomplete; an evaluator that stops and names that prerequisite
 has behaved correctly. Record such a run as **inconclusive**, not as a skill
 failure. Keep fixtures free of the expected observations.
 
+## 0. Task-map routing
+
+Run each prompt with `lenso-start`. These scenarios prove the higher-order
+entrance before testing an owner Skill in isolation.
+
+### Core route
+
+**Prompt:** "Create a portable uppercase Tool Plugin, add it to one maintained
+App, invoke it, then remove it."
+
+**Fixture:** current CLI, generated scaffold dependencies, one exact Host and
+Host Catalog, and an isolated App workspace.
+
+**Required observations:** the Core map is selected; Plugin authoring is the
+primary Skill and App configuration is a later handoff; current scaffold help
+is inspected; the first artifact is one Plugin Contract; success, invalid
+arguments, real Host invocation, and removal are completion evidence.
+
+### Web route
+
+**Prompt:** "Add authenticated `POST /tickets`, call the Ticket Capability, and
+prove it through the real Web Host."
+
+**Fixture:** current Web Host, Endpoint/Auth/Ticket Capability projections,
+Host Catalog, Plugin Root fixture, and real socket harness.
+
+**Required observations:** the Web map is selected; Endpoint behavior routes
+to Plugin authoring first; Capability authoring is used only if the Ticket role
+changes; App configuration owns visible Instance differences; final
+authorization stays with Ticket behavior; HTTP success, malformed input,
+authorization failure, route collision/readiness, and removal are required.
+
+### Agent route
+
+**Prompt:** "Connect one MCP server to the coding Profile, use one contributed
+Tool in a durable Session, then remove the server."
+
+**Fixture:** current Agent Harness, exact Profile and Session backend, supported
+MCP transport fixture, Agent Home, Host Catalog, and headless Turn harness.
+
+**Required observations:** the Agent map is selected; App configuration is the
+primary owner when the Host already supports the MCP Plugin path; runtime
+extension is not selected without a missing Host mechanism; the result proves
+effective Tool/Context inventory, provenance, one real Turn, honest transport
+failure, Session durability, and removal without a second composition
+authority.
+
 ## 1. Planning route
 
 **Skill:** `lenso-business-planning`

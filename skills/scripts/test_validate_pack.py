@@ -28,7 +28,7 @@ class ValidatePackTests(unittest.TestCase):
     def test_stale_bun_api_fails(self) -> None:
         temporary, root = self.copy_pack()
         self.addCleanup(temporary.cleanup)
-        document = root / "lenso-plugin-authoring/references/authoring.md"
+        document = root / "lenso-plugin-authoring/references/paths/bun.md"
         document.write_text(
             document.read_text(encoding="utf-8") + "\nUse defineModule here.\n",
             encoding="utf-8",
@@ -37,18 +37,30 @@ class ValidatePackTests(unittest.TestCase):
             any("stale `defineModule`" in error for error in VALIDATOR.validate_pack(root))
         )
 
+    def test_nested_reference_must_be_reachable(self) -> None:
+        temporary, root = self.copy_pack()
+        self.addCleanup(temporary.cleanup)
+        document = root / "lenso-plugin-authoring/references/paths/orphan.md"
+        document.write_text("# Orphan path\n", encoding="utf-8")
+        self.assertTrue(
+            any(
+                "references/paths/orphan.md: unreachable from SKILL.md" in error
+                for error in VALIDATOR.validate_pack(root)
+            )
+        )
+
     def test_router_must_remain_user_invoked(self) -> None:
         temporary, root = self.copy_pack()
         self.addCleanup(temporary.cleanup)
-        document = root / "lenso-start/SKILL.md"
+        document = root / "lenso-start/agents/openai.yaml"
         document.write_text(
             document.read_text(encoding="utf-8").replace(
-                "disable-model-invocation: true\n", ""
+                "policy:\n  allow_implicit_invocation: false\n", ""
             ),
             encoding="utf-8",
         )
         self.assertIn(
-            "lenso-start: router must be user-invoked",
+            "lenso-start: OpenAI policy must disable implicit invocation",
             VALIDATOR.validate_pack(root),
         )
 

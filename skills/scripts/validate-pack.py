@@ -38,17 +38,28 @@ FORBIDDEN_TEXT = {
     "Authoring tools edit projects and materialize Plans": (
         "App owners do not generate or manage Plan files"
     ),
+    "App Definition": "Plugin Root is the only App-owner composition surface",
 }
 REQUIRED_TEXT = {
     "lenso-plugin-authoring/SKILL.md": (
         "one runtime-independent Contract",
         "Host policy",
     ),
-    "lenso-plugin-authoring/references/authoring.md": (
+    "lenso-plugin-authoring/references/paths/portable-rust.md": (
         "--runtime multi",
-        "#[lenso::plugin]",
-        "definePlugin",
         "V3 `.lenso-plugin` Release",
+    ),
+    "lenso-plugin-authoring/references/paths/linked-rust.md": (
+        "#[lenso::plugin]",
+        "NativePluginRegistry::with_linked_factories()",
+    ),
+    "lenso-plugin-authoring/references/paths/bun.md": (
+        "definePlugin",
+        "bun_cross_runtime",
+    ),
+    "lenso-plugin-authoring/references/contract-and-lifecycle.md": (
+        "Host policy selects one",
+        "fails the candidate Generation without trying another",
     ),
     "lenso-app-configuration/references/resolution.md": (
         "Host policy selects one",
@@ -57,6 +68,18 @@ REQUIRED_TEXT = {
     "lenso-runtime-extension/references/runner-and-conformance.md": (
         "lenso::host::HostBuilder",
         "Select implementations before resolution",
+    ),
+    "lenso-start/references/core.md": (
+        "Core task map",
+        "lenso-plugin-authoring",
+    ),
+    "lenso-start/references/web.md": (
+        "Web task map",
+        "real socket",
+    ),
+    "lenso-start/references/agent.md": (
+        "Agent task map",
+        "real Turn",
     ),
 }
 
@@ -127,12 +150,6 @@ def validate_pack(root: Path) -> list[str]:
             errors.append(f"{name}: frontmatter name is {metadata.get('name')!r}")
         if not metadata.get("description"):
             errors.append(f"{name}: description is empty")
-        disabled = metadata.get("disable-model-invocation") == "true"
-        if name == "lenso-start" and not disabled:
-            errors.append("lenso-start: router must be user-invoked")
-        if name != "lenso-start" and disabled:
-            errors.append(f"{name}: workflow must remain model-invoked")
-
         openai = directory / "agents/openai.yaml"
         if not openai.is_file():
             errors.append(f"{name}: missing agents/openai.yaml")
@@ -155,11 +172,13 @@ def validate_pack(root: Path) -> list[str]:
                     queue.append(target)
 
         references = {
-            path.resolve() for path in (directory / "references").glob("*.md")
+            path.resolve() for path in (directory / "references").rglob("*.md")
         }
         unreachable = sorted(references - discovered)
         for path in unreachable:
-            errors.append(f"{path.relative_to(root)}: unreachable from SKILL.md")
+            errors.append(
+                f"{path.relative_to(root.resolve())}: unreachable from SKILL.md"
+            )
 
     for document in root.rglob("*.md"):
         text = document.read_text(encoding="utf-8")
@@ -202,6 +221,18 @@ def validate_pack(root: Path) -> list[str]:
         openai_text = (start / "agents/openai.yaml").read_text(encoding="utf-8")
         if "allow_implicit_invocation: false" not in openai_text:
             errors.append("lenso-start: OpenAI policy must disable implicit invocation")
+
+    guide = root.parent / "docs/agents/skills.md"
+    if guide.is_file():
+        guide_text = guide.read_text(encoding="utf-8")
+        for stale, replacement in FORBIDDEN_TEXT.items():
+            if stale in guide_text:
+                errors.append(
+                    f"docs/agents/skills.md: stale `{stale}`; {replacement}"
+                )
+        for name in sorted(EXPECTED_SKILLS):
+            if name not in guide_text:
+                errors.append(f"docs/agents/skills.md: missing canonical Skill `{name}`")
 
     return errors
 

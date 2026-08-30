@@ -29,6 +29,7 @@ lenso app check
 lenso app show
 ```
 
-There is no central enabled list, binding file, sidecar format, or App Definition.
-`pack` validates created Plugin bytes and `plugins add` validates received bytes,
-so there is no separate `plugin verify` step.
+The Plugin Root is the only App-owner composition surface; bindings and the
+Plan remain derived Host authority. `pack` validates created Plugin bytes and
+`plugins add` validates received bytes, so there is no separate `plugin verify`
+step.
