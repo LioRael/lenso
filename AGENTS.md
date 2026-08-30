@@ -7,7 +7,7 @@ source is retained by the `lenso@0.3.47` tag and Git history.
 
 - Read [`CONTEXT.md`](CONTEXT.md), [`docs/adr/README.md`](docs/adr/README.md),
   [`docs/architecture/lenso-vnext.md`](docs/architecture/lenso-vnext.md), and
-  the relevant ADR 0030–0070 before changing architecture.
+  the relevant ADR 0030–0072 before changing architecture.
 - Route product planning, Capability, Plugin, App Composition, and host-runtime
   work through the canonical [`skills/`](skills/) pack. Use `lenso-start` when
   ownership is unclear; see the [Agents and skills guide](docs/agents/skills.md)
