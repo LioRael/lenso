@@ -135,7 +135,6 @@ Use the smallest meaningful gate during development:
 
 ```sh
 cargo fmt --all -- --check
-cargo xtask check-core-repository-boundary
 cargo check --locked --workspace --all-targets
 cargo test --locked --workspace
 ```

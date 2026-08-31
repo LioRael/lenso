@@ -41,9 +41,9 @@ their executable conformance evidence:
   those Interfaces executable without depending on a concrete Driver,
   Execution Adapter, Capability package, or example App.
 
-Repository-local ADRs, architecture documents, CI, and `xtask` remain here when
-they govern or verify those core Interfaces. They are maintenance artifacts,
-not additional runtime products.
+Repository-local ADRs, architecture documents, CI, and ordinary crate tests
+remain here when they govern or verify those core Interfaces. They are
+maintenance artifacts, not additional runtime products.
 
 The following implementations are outside portable core ownership and will be
 extracted after their release and conformance prerequisites are satisfied:
@@ -190,7 +190,7 @@ leaves one lasting Interface per seam.
 
 Before the first physical extraction is merged:
 
-- `cargo xtask check-core-repository-boundary` passes;
+- the portable-core repository boundary test passes;
 - `lenso-kernel` has no direct or dev-dependency on a concrete Driver,
   Execution Adapter, product Capability, optional Module, CLI, or example;
 - core tests pass through `lenso-runtime-conformance` and the deterministic
