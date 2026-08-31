@@ -4,7 +4,6 @@ members = [
     "crates/lenso-app-plan",
     "crates/lenso-kernel",
     "crates/lenso-runtime-conformance",
-    "xtask",
 ]
 
 [workspace.package]

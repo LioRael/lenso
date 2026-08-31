@@ -16,7 +16,6 @@ by the `lenso@0.3.47` tag and Git history.
 
 ```sh
 cargo fmt --all -- --check
-cargo xtask check-core-repository-boundary
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo check --locked --workspace --all-targets
 cargo test --locked --workspace

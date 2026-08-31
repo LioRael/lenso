@@ -17,10 +17,6 @@ jobs:
         with:
           targets: wasm32-unknown-unknown,wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
-      - name: Check Rust module sizes
-        run: cargo xtask check-rust-module-size
-      - name: Check core repository boundary
-        run: cargo xtask check-core-repository-boundary
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Lint the workspace

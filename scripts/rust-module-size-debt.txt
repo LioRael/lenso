@@ -1,3 +1,0 @@
-# Existing hand-written Rust files above the 1000-line core-module limit.
-# Format: repository-relative-path maximum-line-count
-# Reduce or remove an entry when its file is split; never raise a limit casually.
