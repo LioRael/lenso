@@ -48,6 +48,13 @@ formats and versions remain implementation-specification work.
 [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the owner-local
 delivery tasks, starting with [implementation specification #699](https://github.com/LioRael/lenso/issues/699).
 
+Specification #699 now records the inspected source and exact registry baseline,
+proposed delivery versions, scoped dependency routing, Rust/TS constructor and
+build interfaces, configuration publication/recovery, and execution settlement.
+Its status distinguishes specification review from implemented support. Exact
+versions and owner-local acceptance cases remain in GitHub rather than a second
+repository implementation plan.
+
 The [Rust/TypeScript authoring comparison](proposals/2026-09-04-multilingual-plugin-authoring.md)
 shows one behavior in both languages, with common dependency identities,
 construction/cleanup ownership, generated contracts, and explicit runtime support

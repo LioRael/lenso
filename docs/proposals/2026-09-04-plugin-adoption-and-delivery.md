@@ -178,6 +178,11 @@ Implementation tickets and their dependency order are tracked in
 does not perform a migration or establish a shipped SDK, runtime, or release.
 
 Start with [specification #699](https://github.com/LioRael/lenso/issues/699).
+That issue records the inspected baseline, including the missing outbound-call
+path in the current Rust Process profile and unpublished Agent SDK dependencies.
+It specifies those prerequisites without substituting a native-only proof for
+the approved installable Rust Process and TS Bun targets. Its version table is
+a delivery proposal, not a claim that those packages or profiles have shipped.
 The parent tracks the eight dependent first-slice delivery tasks and the
 independent [ADR 0074 delivery #702](https://github.com/LioRael/lenso/issues/702).
 Ticket bodies and prerequisite evidence live in GitHub, not duplicate local plans.

@@ -16,6 +16,16 @@ child tickets are #578 through #603.
 - Resolve blockers through normal issue and pull-request evidence before
   implementing a child ticket.
 
+## Plugin authoring delivery
+
+[Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the approved
+Plugin authoring design and its owner-local implementation tasks.
+[Specification #699](https://github.com/LioRael/lenso/issues/699) contains the
+source/release baseline, exact proposed interfaces and versions, compatibility
+rules, and acceptance handoff. Its completion does not complete runtime delivery.
+Keep package release evidence and readiness decisions in the owning issues;
+the repository design documents remain the architectural context.
+
 ## Common commands
 
 - Read an issue: `gh issue view <number> --comments`.
