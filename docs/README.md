@@ -32,6 +32,14 @@ This directory contains the design evidence for the vNext `main` branch.
 retains the superseded Module/App Definition design only as migration evidence.
 It is not a current authoring contract.
 
+## Design proposals
+
+[`Plugin authoring, dependency selection, and lifecycle`](proposals/2026-09-04-plugin-authoring-and-lifecycle.md)
+records the approved design direction for Rust-first authoring, named dependency
+choices, stateful updates, and failure scope, together with the remaining
+implementation decisions. Consult it when specifying those changes; it does not
+supersede the accepted contracts or describe shipped APIs.
+
 ## Research
 
 [`research/`](research/) contains dated research and architecture reviews that
