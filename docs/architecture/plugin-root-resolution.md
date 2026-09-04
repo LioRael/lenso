@@ -150,6 +150,17 @@ The Plugin Descriptor owns the typed Schema and safe package defaults. The
 Plugin Root owns explicit App values. Secret material remains outside TOML;
 configuration contains only typed secret references.
 
+Configuration validation supports boolean Schemas, `allOf`, and
+`if`/`then`/`else`. Conditions inspect the effective value after overlays;
+validation never inserts defaults, removes inactive fields, or changes values.
+Every branch is checked for malformed or unsupported Schema syntax before a
+condition is evaluated, including inactive branches. Schema nesting is bounded
+to 64 levels. `required` and `properties` apply only to objects, as in JSON
+Schema; a condition that requires an object must also declare its type.
+Array size and uniqueness, Unicode character length, and inclusive numeric
+bounds are supported. This remains an explicit Schema subset, not a claim of
+full JSON Schema support; references and other unsupported keywords fail closed.
+
 The authored TOML profile has no generic null value. Omitting an optional field
 means no explicit override. A Plugin that needs a meaningful "clear" choice
 models it in its own Schema, for example as `mode = "none"`; the resolver does
