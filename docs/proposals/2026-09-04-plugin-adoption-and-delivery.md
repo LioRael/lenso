@@ -1,13 +1,14 @@
 # Plugin design adoption and delivery boundary
 
-Status: **Proposed design closeout; not approval to implement, merge, or release.**
+Status: **Design approved on 2026-09-04; owner-local specifications and delivery pending.**
 Date: 2026-09-04.
 
 This is the adoption decision for the
 [consolidated authoring review](2026-09-04-plugin-usage-walkthrough.md).
-The design set is ready for a bounded approval review rather than another round
-of language/runtime expansion. Accepted ADRs remain normative until explicitly
-amended. Implementation issues follow the approved semantics and current release
+The repository owner approved the design set, including ADRs 0073 and 0074,
+on 2026-09-04. This approval advances work to concrete implementation
+specifications rather than another round of language/runtime expansion.
+Implementation issues follow the approved semantics and current release
 baseline; the example annotations are not a shipped API specification.
 
 ## Three independent adoption decisions
@@ -108,7 +109,7 @@ initial readiness. Native execution limits still apply.
 
 ## First delivery: one complete Request authoring path
 
-The proposed first deliverable is the document-sync example, not a framework-wide
+The approved first delivery boundary is the document-sync example, not a framework-wide
 API replacement. Keep an official Rust implementation and the TS comparison
 implementation against the same public contract. Use Rust Native Store instances
 in the test Host, an installable Rust Process sync implementation, and a TS Bun
@@ -116,7 +117,7 @@ sync implementation. Exercise each sync implementation against the same named
 `source` and `destination` bindings; mixing languages is ordinary Capability use.
 Select one implementation per instance under existing Host policy, never fallback.
 
-These are proposed proof targets, not claims that all required SDK/profile paths
+These are design proof targets, not claims that all required SDK/profile paths
 exist today. The implementation specification must verify their exact owners and
 baseline and explicitly revise the target if an unavailable Adapter blocks it.
 No dynamic Rust library ABI, new JS engine, or compulsory Wasm variant is needed
@@ -152,7 +153,7 @@ core conformance and real selected Adapter paths; avoid an all-language-by-all-
 runtime matrix. Do not claim new performance gains without measurement; retain
 native typed dispatch where applicable.
 
-## Follow-on work and review closure
+## Follow-on work and implementation handoff
 
 - Expand first-class Stream/Event and managed scheduling authoring using their
   accepted contracts and actual product needs. A Request-only SDK is not the
@@ -160,17 +161,23 @@ native typed dispatch where applicable.
 - Bring new semantics to additional Wasm/other supported profiles with explicit
   host-import, cancellation, resource, and interaction support. Existing Wasm
   functionality is not removed by this sequencing.
-- Review and deliver Host essential-instance failure policy as an independent
+- Deliver accepted ADR 0074 Host essential-instance failure policy as an independent
   architecture change. It need not wait for every language feature, and no SDK
   update silently enables it.
 
-The final design review approves authoring semantics, the bounded product SDK
+The owner approved authoring semantics, the bounded product SDK
 build interface, named-dependency adoption, and the first delivery boundary.
-Fault-scope policy has its own ADR review. New syntax spelling, TS supported
+Fault-scope policy is accepted separately in ADR 0074. New syntax spelling, TS supported
 expression grammar, file representation/transaction details, exact versions,
 and owner-local implementation tickets must be made concrete before their
 respective code changes; they are implementation specifications constrained by
 this design, not reasons to add more framework concepts.
 
-This document performs no migration, creates no implementation tickets, and
-authorizes no release. The current change set remains a design review draft.
+Implementation tickets and their dependency order are tracked in
+[Issue #695](https://github.com/LioRael/lenso/issues/695). This approved design
+does not perform a migration or establish a shipped SDK, runtime, or release.
+
+Start with [specification #699](https://github.com/LioRael/lenso/issues/699).
+The parent tracks the eight dependent first-slice delivery tasks and the
+independent [ADR 0074 delivery #702](https://github.com/LioRael/lenso/issues/702).
+Ticket bodies and prerequisite evidence live in GitHub, not duplicate local plans.

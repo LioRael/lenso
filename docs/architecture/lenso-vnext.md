@@ -116,6 +116,14 @@ Managed tasks and resources belong to one Instance generation; restarts create a
 new generation and preserve stable consumer handles when the Adapter supports
 recreation.
 
+Accepted [ADR 0074](../adr/0074-scope-terminal-failure-to-host-essential-instances.md)
+changes terminal failure impact after readiness on explicit adoption: Host
+essential instances and their transitive required closure determine App failure.
+Strict initial startup is retained. Implementation is pending; existing Plans
+keep their prior supervision semantics until supported adoption. Accepted
+[ADR 0073](../adr/0073-name-and-persist-plugin-dependencies.md) separately adds
+named requirements and preserved selections with its own compatibility boundary.
+
 Native Rust Plugins are statically linked Cargo dependencies in v1. Bun Plugins
 run through the first process Adapter, initially one process per Instance by
 default. That topology is an Adapter choice, not a Kernel contract.

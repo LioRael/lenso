@@ -2,8 +2,10 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0072 are the accepted, normative architecture decisions for
-Lenso vNext. Start with
+ADRs 0030 through 0074 record the accepted architecture decisions for Lenso
+vNext, subject to their supersession and explicit adoption rules. Acceptance is
+not evidence of shipped implementation; 0073 and 0074 still require delivery.
+Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
 routing.
@@ -74,20 +76,19 @@ Contract while Host policy selects one before Plan materialization.
 keeps Organization membership facts independent from scoped roles, grants,
 bindings, and role-based decisions owned by an Access Control Plugin.
 
-## Proposed decisions
-
 [`0073-name-and-persist-plugin-dependencies.md`](0073-name-and-persist-plugin-dependencies.md)
-proposes stable dependency names, Host-permitted instance choices, and durable
-Plugin Root selection. It would amend ADR 0070 if accepted; it is not yet a
-normative contract or a shipped format. Read the
-[consolidated authoring review](../proposals/2026-09-04-plugin-usage-walkthrough.md)
-first; [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the
-remaining design and adoption decisions.
+accepts stable dependency names, Host-permitted instance choices, and durable
+Plugin Root selection. It amends ADR 0070 on explicit adoption; executable
+formats and implementation remain pending.
 
-The [fault-scope companion](../proposals/2026-09-04-plugin-fault-scope.md)
-separately proposes Host-defined terminal failure impact after readiness while
-retaining ADR 0046 strict startup. It requires its own ADR amendment if accepted;
-it is not part of ADR 0073 or an accepted change to supervision.
+[`0074-scope-terminal-failure-to-host-essential-instances.md`](0074-scope-terminal-failure-to-host-essential-instances.md)
+accepts Host-essential instances and their required closure as the terminal
+failure policy after readiness, retaining strict startup. It amends ADRs 0032,
+0046, and 0048 on explicit adoption without silently changing existing Plans.
+
+The [approved authoring baseline](../proposals/2026-09-04-plugin-usage-walkthrough.md)
+is the design entrypoint. [Issue #695](https://github.com/LioRael/lenso/issues/695)
+tracks implementation specifications and delivery across the owning repositories.
 
 ## Legacy decisions
 

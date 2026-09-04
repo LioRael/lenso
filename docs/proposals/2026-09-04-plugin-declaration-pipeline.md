@@ -1,6 +1,6 @@
 # From product SDK declarations to an executable Plugin
 
-Status: **Proposed design; no implementation or format change is approved.**
+Status: **Design approved on 2026-09-04; implementation and exact formats pending.**
 Date: 2026-09-04.
 
 Read the [authoring review](2026-09-04-plugin-usage-walkthrough.md) and
@@ -101,7 +101,7 @@ use the existing trusted build workflow; inspecting a prebuilt Plugin does not
 implicitly opt into a source build.
 
 The exact package export name, structural build types, and supported expression
-grammar belong in the implementation specification. This proposal chooses a
+grammar belong in the implementation specification. This design chooses a
 normal SDK build dependency, not a separately installed build-plugin marketplace,
 general compiler-hook framework, or a promise to understand arbitrary TS.
 An SDK needing no syntax sugar may simply export standard generated bindings
@@ -139,7 +139,7 @@ An unsupported profile is rejected or excluded by explicit Host selection
 before activation; there is no runtime implementation fallback.
 
 Resolution independently selects exact providers for `source` and `destination`
-under the named-dependency proposal. The resulting Plan contains ordinary
+under accepted ADR 0073 on explicit adoption. The resulting Plan contains ordinary
 Capability bindings and the selected execution implementations. The resolver
 does not care that a TS tool calls a Rust store. Generated Store clients retain
 the requirement identity through the actual supported Adapter path.

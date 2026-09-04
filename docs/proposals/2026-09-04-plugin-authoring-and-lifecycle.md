@@ -8,7 +8,9 @@ For the current candidate, read the
 [consolidated authoring review](2026-09-04-plugin-usage-walkthrough.md).
 This document retains the earlier approved direction and exploratory sketches;
 its syntax examples and open questions are not final authoring requirements.
-The consolidated review records later corrections and still awaits final review.
+The consolidated baseline records later corrections and was approved on
+2026-09-04. ADRs 0073 and 0074 record its accepted dependency and fault-policy
+changes; the exploratory examples below remain historical rather than final APIs.
 
 This proposal makes ordinary Plugin development smaller while retaining a
 composable, multi-language runtime. Official Plugins remain Rust-first. A

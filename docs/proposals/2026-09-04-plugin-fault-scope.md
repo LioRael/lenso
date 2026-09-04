@@ -1,14 +1,15 @@
 # Plugin failure scope after readiness
 
-Status: **Proposed for design review; not an accepted runtime contract.**
+Status: **Design approved on 2026-09-04; ADR 0074 is authoritative, implementation pending.**
 Date: 2026-09-04.
 
 This is the fault-scope decision companion to the
 [consolidated authoring review](2026-09-04-plugin-usage-walkthrough.md).
-If accepted, record its amendment to ADRs 0046 and 0048 in a separate ADR.
+[ADR 0074](../adr/0074-scope-terminal-failure-to-host-essential-instances.md)
+records the accepted amendment to ADRs 0032, 0046, and 0048.
 It is independent of named dependency syntax and needs no new Plugin category.
 
-## Decision to review
+## Accepted decision
 
 Keep strict initial startup. After readiness, distinguish dependencies required
 by one consumer from instances necessary for the App's minimum useful operation.
@@ -34,7 +35,7 @@ editor -> document store
 statistics -> metrics store
 ```
 
-Both arrows are required dependencies. Under this proposal the Host marks the
+Both arrows are required dependencies. Under the accepted target the Host marks the
 editor essential, so the document store is essential transitively. Statistics
 still requires its metrics store; that relationship alone does not make either
 one essential to the whole App. If the editor also requires statistics, the
@@ -130,8 +131,8 @@ validation, terminal decisions, and structural diagnostics. Drivers and Runners
 own host scheduling and shutdown; Execution Adapters own physical failure and
 recreation. Product health and recovery of durable effects remain with Plugins.
 
-This proposal is semantically reviewable without selecting new attributes, file
-layouts, status enums, or a generic health framework. Implementation acceptance
+The accepted decision does not select new attributes, file layouts, status
+enums, or a generic health framework. Implementation acceptance
 must demonstrate the scenario table with portable supervision conformance and
 the actual supported Adapter failure scopes. No runtime tests or implementation
-approval are claimed by this design document.
+delivery are claimed by this design document.
