@@ -93,13 +93,18 @@ instance = "archive"
 none = true
 ```
 
-Every entry has exactly one target pair or `none = true`. Absence is legal only
-for an optional requirement. Unknown keys, duplicate IDs, incompatible
-cardinality, malformed instance identities, symlinks, special files, and files
-over 256 KiB fail validation. Choice files refer to a known configured or
-Host-default consumer; a choice file alone does not enable a Plugin. Disabled
-instances retain their choices. A removed requirement must be explicitly
-removed or migrated, rather than silently orphaned.
+Every entry has exactly one target pair or `none = true`. Unknown schema keys,
+duplicate IDs, malformed instance identities, symlinks, special files, and
+files over 256 KiB always fail validation. Choice files refer to a known
+configured or Host-default consumer; a choice file alone does not enable a
+Plugin. Disabled or otherwise unselected consumers retain their choices.
+Their file syntax, schema, and identity encoding are still validated, but
+requirement existence, cardinality, target availability, and current Host
+permission are checked when the consumer is selected again. For selected
+consumers, absence is legal only for optional requirements. Report dormant
+invalid choices during inspection without making them an active dependency
+failure. A removed requirement must be explicitly removed or migrated before
+reactivation, rather than silently orphaned.
 
 This is App intent, not generated code or a disposable cache. Export/copy of
 Plugin Root includes it. There is no second author-maintained binding source
@@ -112,11 +117,37 @@ commit the replacement choice. Ambiguity or an invalid new target leaves the
 old file unchanged. Manual deletion of the file is an explicit loss of saved
 intent and is treated like a fresh selection, not a hidden cache repair.
 
+### Materialize choices before the first activation
+
+Managed startup resolves a candidate and, if it contains new implicit single
+or optional choices, publishes those choices through the authoring authority
+before preparation or activation. It then executes the exact resulting
+snapshot. A startup command authorizes this initialization of App intent;
+inspection and validation commands remain read-only. A publication conflict
+or write failure stops startup before Plugin initialization and asks for repair
+or a retry, rather than executing a selection that was never saved.
+
+A read-only deployment must provision all such choices before launch. A failed
+activation retains the committed choices, reports startup failure, and does
+not claim that the App was ever ready. Future starts use the same choices until
+an explicit change. Selecting an optional absence is also a persisted choice.
+
+An explicit repair transaction may start from an unresolved root: it validates
+the complete repaired candidate, retaining every unaffected valid saved choice.
+Do not require the broken root to become ready before repairing it. A repair
+does not authorize guessing replacement targets for other broken choices.
+
 ### Publish choices consistently with other App changes
 
 Extend the existing Plugin Root revision, lock, and compare-and-swap authority;
-do not create an independent selector service. Revisions cover configuration,
-enablement, package identity, resources, and choice bytes. A stale proposal
+do not create an independent selector service. The existing revision is semantic:
+extend it with parsed choice intent alongside configuration, enablement,
+package identity, and declared resource inputs. Formatting-only edits do not
+change this revision. Preserve source-byte digests separately for files that
+a transaction will replace, so a user's comments or formatting are not lost.
+Mutable Plugin-owned data is not part of the authoring revision. Revalidate the
+Host catalog/policy used to resolve the proposal before publication; a changed
+Host must not inherit approval of a different candidate. A stale proposal
 fails before writing. Adding a provider must first preserve the old valid
 choices of existing consumers, including choices that were previously implicit.
 
@@ -128,15 +159,21 @@ Recovery restores an entirely committed snapshot or its predecessor before
 normal resolution; it never combines half of each. User modifications detected
 outside the expected revision cause a conflict, not an unconditional rollback.
 
-Offline editing publishes a validated configured state and reports that the
-App still needs to start. It cannot claim runtime readiness. For a running
-managed App, changes must go through its Host change authority: stage and check
-the candidate, publish with the expected revision, and switch through the
-existing supported lifecycle. Failure preserves the active routing; recovery
-must reconcile the committed intent and last successful activation without
-overwriting a newer authoring transaction. A Host lacking this coordination
-requires a controlled stop before modification; raw CLI file writes must not
-pretend to perform a live atomic update.
+The first implementation wave publishes changes while the managed App is
+stopped and reports that activation is pending. Host startup and authoring
+mutation must coordinate to exclude a start-versus-write race; merely checking
+whether a PID appears alive is insufficient. This stays within the local Host
+and authoring authority, without a selector daemon or a new public concept.
+
+An existing live-update path may continue only for formats and changes it
+already supports. Live publication of these new named-choice changes is
+deferred until its Host can coordinate staging, publication, activation, and
+recovery. In particular, a stateful replacement must stop the old writer before
+opening the replacement's exclusive resources. After that stop, candidate
+failure means the App remains stopped; restoration is possible only after
+checking data compatibility. The CLI must not promise that the old App remains
+active through a controlled restart, or that reverting a choice file undoes
+external data effects.
 
 ### Version the structural change
 
