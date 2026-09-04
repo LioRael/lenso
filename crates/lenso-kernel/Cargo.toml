@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 publish = true
 repository.workspace = true
-description = "Portable execution Kernel for versioned Lenso application plans."
+description = "Portable Lenso execution Kernel with bounded lifecycle settlement."
 
 [dependencies]
 futures.workspace = true

@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 publish = true
 repository.workspace = true
-description = "Kernel conformance fixtures for Lenso Runtime Drivers and Execution Adapters."
+description = "Portable conformance fixtures for Lenso Runtime Drivers and Execution Adapters."
 
 [dependencies]
 futures.workspace = true
