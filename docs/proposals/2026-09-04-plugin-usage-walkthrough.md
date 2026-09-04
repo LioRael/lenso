@@ -12,6 +12,11 @@ file representation, and exact profile versions still require implementation
 specifications. Approval is not a shipped SDK/runtime claim or a release action.
 [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks delivery.
 
+[Implementation specification #699](https://github.com/LioRael/lenso/issues/699)
+records the concrete interfaces and version boundaries proposed against the
+verified implementation baseline. Its review and delivery status is authoritative
+for those details; the examples below remain the approved design illustrations.
+
 | Review topic | Focused companion |
 | --- | --- |
 | Natural Rust/TS authoring, from minimal to resource-owning Plugins | [Language examples](2026-09-04-multilingual-plugin-authoring.md) |
