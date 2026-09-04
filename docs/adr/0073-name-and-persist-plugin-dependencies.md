@@ -7,6 +7,11 @@ status: proposed
 Date: 2026-09-04.
 Status: proposed; this document does not yet amend ADR 0070 or executable formats.
 
+The [usage walkthrough](../proposals/2026-09-04-plugin-usage-walkthrough.md)
+reopens mandatory explicit dependency IDs, the choice-file layout, and startup
+materialization for usability discussion. The decisions below remain a
+candidate, not implementation approval.
+
 The [approved authoring design](../proposals/2026-09-04-plugin-authoring-and-lifecycle.md)
 requires a Plugin to use two instances of the same Capability without exposing
 Plan construction to its author. This ADR specifies the dependency mechanism;

@@ -46,6 +46,11 @@ and durable named dependency selection. Its structural dependency changes are
 proposed in [ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md); both
 remain under review before implementation.
 
+[`Three Plugin usage walkthroughs`](proposals/2026-09-04-plugin-usage-walkthrough.md)
+examines a small tool, local durable state, and two instances of one dependency
+from creation through removal. Use it to discuss simpler authoring and choice
+persistence before treating Issue #695 or ADR 0073 as implementation-ready.
+
 ## Research
 
 [`research/`](research/) contains dated research and architecture reviews that
