@@ -10,9 +10,11 @@ Status: **Proposed; no executable format or accepted ADR is changed.**
 Read the [consolidated authoring design](../proposals/2026-09-04-plugin-usage-walkthrough.md)
 first. [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks review.
 This ADR narrows the earlier candidate to the dependency semantics that need a
-decision. Per-instance choice files, exact identifier syntax, startup writes,
+decision. Per-instance choice files, exact identifier syntax,
 recovery-journal design, Plan schema 3, and Bundle V4 are no longer selected or
-reserved by this proposal. Earlier details remain in Git history.
+reserved by this proposal. Startup is read-only; configuration materializes
+choices before activation. These are review recommendations, not shipped behavior.
+Earlier details remain in Git history.
 
 ## Problem
 
@@ -60,6 +62,14 @@ For a selectable single or optional requirement:
 4. Pure resolution returns a candidate and any choices to materialize. It does
    not write the Plugin Root.
 
+For optional requirements, saved intent distinguishes an exact target from an
+explicit absence. Explicit absence remains absent after installing a new
+candidate. A saved target that fails validation never becomes absence. Removing
+a saved decision is an explicit request to resolve again, with the resulting
+choice reviewed and materialized before activation. A default cannot override
+a saved decision. Conflicting user intent for a fixed Host attachment is an
+actionable error, not silently ignored input.
+
 Preserve selected intent across restart and unrelated installations. Before a
 managed edit changes candidate membership, preserve valid pre-existing choices
 that the edit would otherwise make ambiguous. Do not infer a replacement from
@@ -72,9 +82,18 @@ silently add a new list-selection interface.
 ### Keep persistence separate from business configuration
 
 Saved choices belong to exportable App intent, not private business data or a
-disposable cache. Prefer writing them during install/configure. The first-start
-policy for a newly hand-authored root and the exact local representation remain
-open; read-only inspection never writes.
+disposable cache. Install/configure validates and materializes selectable
+single/optional decisions, including automatic unique/default choices and
+optional absence. Fixed Host attachments and Host-defined collections need no
+duplicated selections. The exact local representation remains open.
+
+Startup and inspection never write. For a new or explicitly migrated Root using
+this contract, a hand-authored input that still needs choices materialized is
+reported as needing configuration, before any Plugin activation. Inspection
+shows the exact proposed selections; the normal configuration operation saves
+them together with the validated candidate. A fully materialized Root starts
+read-only. This uses the existing authoring path, not a new mandatory setup
+document or interactive startup wizard.
 
 Use the existing authoring authority, semantic revision, and conflict checks.
 Protect source bytes separately when replacing files. Revalidate Host policy
@@ -108,12 +127,36 @@ A unique compatible old-to-new requirement mapping can preserve the exact
 selected provider. Splitting, removing, or changing public identities requires
 explicit migration.
 
+Existing Roots keep their accepted startup behavior until explicit adoption of
+the new selection contract. Migration previews and persists the exact currently
+resolved choices; ambiguous old input requires a decision and is never guessed.
+A disabled consumer's unmatched old intent remains dormant and must be repaired
+before reactivation. Renaming a display label or private Rust field is not a
+public identity migration. Older tools must reject the adopted contract when
+they cannot preserve its choices, including explicit optional absence.
+
 This amends ADR 0070 only if accepted. It retains immutable resolved Plans,
 existing cardinalities, Host authority, and ADR 0071 implementation equivalence.
 App-critical roots and degraded startup are separate architecture proposals,
 not consequences silently introduced by this ADR.
 
+## Review scenarios
+
+| Situation | Required result |
+| --- | --- |
+| `source` and `destination` require the same Capability | Each has its own identity and may select a different instance or the same instance. |
+| A second compatible account is installed | Existing saved choices do not move or become ambiguous. |
+| The selected account is removed, disabled, or forbidden | Configuration validation fails for an active consumer and names the requirement and target; no replacement account is chosen. |
+| An optional dependency was explicitly left absent | New installations do not bind it; bound-but-unavailable is reported separately. |
+| Fresh hand-authored input has one legal candidate | Inspection proposes it; configuration saves it; startup does not silently write or activate an unmaterialized selection. |
+| Two editors race to change a selection | Existing conflict checks reject stale publication; no mixed candidate is published. |
+| A provider is recreated after runtime failure | The existing binding still names that exact logical instance; no selection write or automatic call replay occurs. |
+
 ## Owners and review boundary
+
+The [adoption proposal](../proposals/2026-09-04-plugin-adoption-and-delivery.md)
+defines migration previews, old/new peer support, and staged delivery separately
+from SDK source syntax and Host fault-policy changes.
 
 Core owns requirement/binding identities, pure resolution, and scoped routing.
 Protocols owns generated contract/client projections. Runtime owns execution

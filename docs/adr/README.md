@@ -84,6 +84,11 @@ normative contract or a shipped format. Read the
 first; [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the
 remaining design and adoption decisions.
 
+The [fault-scope companion](../proposals/2026-09-04-plugin-fault-scope.md)
+separately proposes Host-defined terminal failure impact after readiness while
+retaining ADR 0046 strict startup. It requires its own ADR amendment if accepted;
+it is not part of ADR 0073 or an accepted change to supervision.
+
 ## Legacy decisions
 
 ADRs 0001 through 0029 describe the final v0.3.x Service-oriented

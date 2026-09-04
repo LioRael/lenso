@@ -41,9 +41,31 @@ example and distinguishes retained contracts from proposed changes. It is not
 implementation approval or a shipped SDK reference.
 
 [ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md) is the narrower
-named-dependency proposal. File formats, startup materialization, and version
-allocation remain open. [Issue #695](https://github.com/LioRael/lenso/issues/695)
+named-dependency proposal. It recommends configuration-time materialization and
+read-only startup; file formats and version allocation remain open.
+The [fault-scope companion](proposals/2026-09-04-plugin-fault-scope.md) proposes
+Host-defined terminal failure impact after readiness while retaining strict
+startup. Both remain proposed. [Issue #695](https://github.com/LioRael/lenso/issues/695)
 tracks the remaining review decisions before an implementation specification.
+
+The [Rust/TypeScript authoring comparison](proposals/2026-09-04-multilingual-plugin-authoring.md)
+shows one behavior in both languages, with common dependency identities,
+construction/cleanup ownership, generated contracts, and explicit runtime support
+limits. Its code is proposed syntax, not current SDK usage.
+
+The [product declaration pipeline](proposals/2026-09-04-plugin-declaration-pipeline.md)
+specifies SDK build outputs, offline bundle admission, and runtime binding using
+an Agent-owned TS tool calling Rust stores. It distinguishes the proposed
+declaration extraction from the current Bun describe-script implementation.
+
+The [cancellation and cleanup review](proposals/2026-09-04-plugin-cancellation-and-cleanup.md)
+follows construction failure, late completion, invocation cancellation, and safe
+resource release across Rust and TS, with bounded cleanup and Adapter limits.
+
+The [adoption and delivery boundary](proposals/2026-09-04-plugin-adoption-and-delivery.md)
+closes the design set with separate SDK/dependency/fault-policy adoption,
+existing-source compatibility, and a proposed complete Rust/TS Request slice.
+The set is ready for final review; implementation and release remain unapproved.
 
 [`Plugin authoring, dependency selection, and lifecycle`](proposals/2026-09-04-plugin-authoring-and-lifecycle.md)
 retains the earlier approved overall direction and exploratory examples as
