@@ -74,6 +74,14 @@ Contract while Host policy selects one before Plan materialization.
 keeps Organization membership facts independent from scoped roles, grants,
 bindings, and role-based decisions owned by an Access Control Plugin.
 
+## Proposed decisions
+
+[`0073-name-and-persist-plugin-dependencies.md`](0073-name-and-persist-plugin-dependencies.md)
+proposes stable dependency names, Host-permitted instance choices, and durable
+Plugin Root selection. It would amend ADR 0070 if accepted; it is not yet a
+normative contract or a shipped format. The first implementation specification
+is [Issue #695](https://github.com/LioRael/lenso/issues/695).
+
 ## Legacy decisions
 
 ADRs 0001 through 0029 describe the final v0.3.x Service-oriented

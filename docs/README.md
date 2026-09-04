@@ -40,6 +40,12 @@ choices, stateful updates, and failure scope, together with the remaining
 implementation decisions. Consult it when specifying those changes; it does not
 supersede the accepted contracts or describe shipped APIs.
 
+[Issue #695](https://github.com/LioRael/lenso/issues/695) specifies the first
+implementation wave: Rust resource construction, native and Process authoring,
+and durable named dependency selection. Its structural dependency changes are
+proposed in [ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md); both
+remain under review before implementation.
+
 ## Research
 
 [`research/`](research/) contains dated research and architecture reviews that
