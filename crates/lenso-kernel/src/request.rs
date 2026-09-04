@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{any::Any, time::Duration};
 
 use super::{
     CancellationToken, EventCapability, InvocationContext, LocalBoxFuture, NativeAppRuntime,
@@ -396,6 +396,29 @@ impl PluginDependencyHandle {
     /// Returns the exact Operation table implemented by this handle.
     pub fn operations(&self) -> &'static [&'static str] {
         self.binding.state.operations
+    }
+
+    /// Invokes this exact resolved dependency through Kernel admission and supervision.
+    ///
+    /// Language Execution Adapters use this after their generated codec has decoded a
+    /// portable request into the provider's native erased value.
+    pub fn invoke_erased(
+        &self,
+        operation: &str,
+        request: Box<dyn Any>,
+        context: InvocationContext,
+    ) -> LocalBoxFuture<'static, Result<crate::ErasedDomainResult, RuntimeFailure>> {
+        let Some(runtime) = self.runtime.borrow().upgrade() else {
+            return Box::pin(futures::future::ready(Err(RuntimeFailure::AdmissionClosed)));
+        };
+        crate::request_handle::invoke_erased_dependency(
+            self.binding.clone(),
+            runtime,
+            self.caller_instance.clone(),
+            operation.to_owned(),
+            context,
+            request,
+        )
     }
 
     /// Converts this resolved dependency into its generated typed request handle.

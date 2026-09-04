@@ -739,6 +739,11 @@ impl PluginRootSnapshot {
         &self.dependency_choices
     }
 
+    /// Reports whether this Root has adopted persisted named dependency choices.
+    pub const fn dependency_selection_adopted(&self) -> bool {
+        self.dependency_selection_adopted
+    }
+
     pub fn instances(&self) -> &[PluginRootInstance] {
         &self.instances
     }

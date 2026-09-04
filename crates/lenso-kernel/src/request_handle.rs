@@ -1,11 +1,65 @@
-use std::{marker::PhantomData, rc::Rc, time::Duration};
+use std::{any::Any, marker::PhantomData, rc::Rc, time::Duration};
 
 use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticOutcome, DiagnosticSource,
-    InvocationContext, NativeAppRuntime, NativeEndpointBinding, RequestCapability, RequestId,
-    RuntimeFailure, diagnostics::diagnostic_operation, ensure_context_active,
+    ErasedDomainResult, InvocationContext, NativeAppRuntime, NativeEndpointBinding,
+    RequestCapability, RequestId, RuntimeFailure, await_with_generation_context,
+    diagnostics::diagnostic_operation, ensure_context_active,
     schedule_plugin_supervision_after_failure,
 };
+
+pub(crate) fn invoke_erased_dependency(
+    endpoint: NativeEndpointBinding,
+    runtime: Rc<NativeAppRuntime>,
+    caller_instance: String,
+    operation: String,
+    context: InvocationContext,
+    request: Box<dyn Any>,
+) -> super::LocalBoxFuture<'static, Result<ErasedDomainResult, RuntimeFailure>> {
+    Box::pin(async move {
+        let capability = endpoint.state.capability_id;
+        let context = context
+            .for_caller(&caller_instance)
+            .for_target(capability, &operation);
+        runtime
+            .diagnostics
+            .record_invocation(&caller_instance, &endpoint.plugin_instance);
+        let snapshot = endpoint
+            .state
+            .snapshot()
+            .ok_or(RuntimeFailure::Unavailable { capability })?;
+        let admission =
+            endpoint
+                .admission(&operation)
+                .ok_or_else(|| RuntimeFailure::UnknownOperation {
+                    capability,
+                    operation: operation.clone(),
+                })?;
+        let _permit = admission
+            .acquire(capability, &operation, &context, &runtime.driver)
+            .await?;
+        if !endpoint.state.is_current(snapshot.generation) {
+            return Err(RuntimeFailure::Unavailable { capability });
+        }
+        ensure_context_active(&runtime.driver, &context)?;
+        await_with_generation_context(
+            &runtime.driver,
+            &context,
+            snapshot.cancellation,
+            capability,
+            snapshot
+                .endpoint
+                .invoke(&operation, request, context.clone()),
+        )
+        .await
+        .map_err(|error| {
+            schedule_plugin_supervision_after_failure(&runtime, &endpoint.plugin_instance, error)
+        })?
+        .map_err(|error| {
+            schedule_plugin_supervision_after_failure(&runtime, &endpoint.plugin_instance, error)
+        })
+    })
+}
 
 /// Typed, immutable native Capability endpoints materialized before App boot completes.
 #[derive(Debug)]
