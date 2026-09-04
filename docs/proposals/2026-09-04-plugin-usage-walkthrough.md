@@ -1,22 +1,24 @@
-# Plugin authoring design: consolidated review
+# Plugin authoring design: approved baseline
 
-Status: **Consolidated proposal for final design review. Not approved for implementation.**
+Status: **Design approved on 2026-09-04 by the repository owner; implementation pending.**
 Date: 2026-09-04.
 
-This is the current review entrypoint following the
+This is the approved design entrypoint following the
 [approved overall direction](2026-09-04-plugin-authoring-and-lifecycle.md).
-Accepted ADRs remain normative. The design set now includes adoption and delivery
-boundaries and is ready for final review; it does not establish shipped SDK,
-runtime, format, or release changes. [Issue #695](https://github.com/LioRael/lenso/issues/695)
-tracks the design review.
+Accepted ADRs remain normative, including ADRs 0073 and 0074 with explicit
+adoption rules. The owner approved this design set, including lifecycle,
+multilingual authoring, product SDK, and first-delivery boundaries. Macro syntax,
+file representation, and exact profile versions still require implementation
+specifications. Approval is not a shipped SDK/runtime claim or a release action.
+[Issue #695](https://github.com/LioRael/lenso/issues/695) tracks delivery.
 
 | Review topic | Focused companion |
 | --- | --- |
 | Natural Rust/TS authoring, from minimal to resource-owning Plugins | [Language examples](2026-09-04-multilingual-plugin-authoring.md) |
 | Product SDK helpers generating standard Capability declarations and bindings | [Declaration pipeline](2026-09-04-plugin-declaration-pipeline.md) |
 | Constructor failure, late completion, and safe bounded cleanup | [Cancellation and cleanup](2026-09-04-plugin-cancellation-and-cleanup.md) |
-| Stable requirement IDs and saved instance choices | [Proposed ADR 0073](../adr/0073-name-and-persist-plugin-dependencies.md) |
-| Host-owned terminal failure impact after readiness | [Separate fault-scope proposal](2026-09-04-plugin-fault-scope.md) |
+| Stable requirement IDs and saved instance choices | [Accepted ADR 0073](../adr/0073-name-and-persist-plugin-dependencies.md) |
+| Host-owned terminal failure impact after readiness | [Accepted ADR 0074](../adr/0074-scope-terminal-failure-to-host-essential-instances.md), [examples](2026-09-04-plugin-fault-scope.md) |
 | Existing-source adoption and the first delivery boundary | [Adoption and delivery](2026-09-04-plugin-adoption-and-delivery.md) |
 
 ## 1. Keep one Plugin model
@@ -160,9 +162,9 @@ key with no competing external writer. Its mutex protects this instance only.
 Concurrent external writes need a version/conflict policy. `CallContext` is
 injected by the runtime, not exposed as a user-supplied tool argument.
 
-## 4. Proposed default behavior
+## 4. Approved default behavior
 
-| Concern | Review recommendation |
+| Concern | Target behavior |
 | --- | --- |
 | Concurrency | One object per instance, with bounded asynchronous concurrency under Host capacity policy. No implicit object copy, whole-Plugin lock, or movement onto arbitrary threads. Business operations declare or implement necessary mutual exclusion. |
 | Repeated trigger | The example returns `AlreadyRunning` to a competing manual or scheduled invocation. It does not queue another copy. |
@@ -216,11 +218,11 @@ and enforced restrictions must be checked for the exact execution profile.
 
 Dependency injection already exists through typed Ports and clients. Retain
 that model. `Port<T>` need not be removed just to change syntax. The substantive
-proposal is to distinguish two requirements of the same Capability and allow
+decision is to distinguish two requirements of the same Capability and allow
 Host-permitted App selections to persist.
 
 Give public dependencies stable consumer-local identities, independent of
-internal Rust field renaming. Explicit names are the preferred review candidate;
+internal Rust field renaming. Explicit names are the approved direction;
 exact annotation syntax is open. A Capability identifies the interface, while
 a requirement name identifies the consumer's use of it.
 
@@ -247,7 +249,7 @@ representation, and version numbers are not fixed here. Preserve semantic
 revisions, protect source edits separately, and prevent publication from mixing
 inconsistent or unreviewed input.
 
-## 7. Fault scope: proposed architecture change
+## 7. Fault scope: accepted target with explicit adoption
 
 Distinguish a dependency required by one consumer from an instance required
 for the App's minimum useful operation. The Host should declare the latter;
@@ -262,18 +264,19 @@ in-flight calls, or substitute another provider. User disablement is intent,
 not a failure that supervision should undo.
 
 Keep ADR 0046 strict startup: all selected instances must activate before
-readiness. Partial startup is outside this proposal. After readiness, the
-proposed rule makes exhausted recovery terminal only for the Host's essential
+readiness. Partial startup remains excluded. After readiness, the accepted
+rule makes exhausted recovery terminal only for the Host's essential
 instances and their required closure. Other failures remain visible as local
 unavailability, without destroying consumer objects or rewriting bindings.
 
-The [fault-scope companion](2026-09-04-plugin-fault-scope.md) states scenarios,
-ownership, and explicit adoption rules. It needs a separate ADR amendment;
-current supervision can still terminate the App when any consumer's required
+[ADR 0074](../adr/0074-scope-terminal-failure-to-host-essential-instances.md)
+records the accepted amendment; the [companion](2026-09-04-plugin-fault-scope.md)
+illustrates it. Implementation remains pending: current supervision can still
+terminate the App when any consumer's required
 provider exhausts recovery. Native process aborts cannot be contained by a
 logical fault policy. SDK upgrades alone must not change this behavior.
 
-## 8. Compatibility and review closeout
+## 8. Compatibility and implementation handoff
 
 Preserve existing `Port` and lifecycle authoring during an explicit migration.
 New syntax lowers into the same model, not a parallel runtime. Structural
@@ -287,26 +290,27 @@ needs explicit migration. Package version, interface compatibility, configuratio
 compatibility, and data compatibility are separate checks. Structural comparison
 cannot prove unchanged business meaning.
 
-The [adoption and delivery proposal](2026-09-04-plugin-adoption-and-delivery.md)
+The [approved adoption and delivery design](2026-09-04-plugin-adoption-and-delivery.md)
 now states the migration and sequencing decisions. Source syntax adoption,
 named-dependency adoption, and Host fault-policy adoption are independent
 decisions subject to actual peer/profile support. No SDK update changes account
 selection, data compatibility, or terminal failure scope silently.
 
-Final review is bounded to the proposed authoring/default semantics, product SDK
-build interface, explicit dependency migration, and the first complete Request
-delivery slice. Fault scope needs its own ADR decision. The first slice keeps
+Design approval covers authoring/default semantics, the product SDK build
+interface, explicit dependency migration, the first complete Request delivery
+slice, and the separately recorded ADR 0074 fault policy. The first slice keeps
 an official Rust implementation and a TS implementation against the same
 contract, using Rust Native Store instances and Rust Process/TS Bun sync
 implementations as proposed proof targets. Exact versions and availability must
 be established in implementation specifications before code changes.
 
-After approval, write owner-local specifications for syntax, supported TS
+Write owner-local specifications for syntax, supported TS
 declaration expressions, file/transaction formats, version boundaries, and
 focused acceptance cases. These details must preserve this design's semantics;
 new language engines or additional framework abstractions are not prerequisites.
 
 Do not expand the design with mandatory resource categories, generated Inputs
 types, a global service context, automatic state migration, or forced runtime
-matrices. This review authorizes no implementation, release, or runtime validation.
+matrices. Implementation tickets must satisfy their specification and dependency
+gates before runtime changes; this approval records no release or runtime evidence.
 Earlier exploratory examples remain available in Git history.

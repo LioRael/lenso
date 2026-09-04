@@ -1,19 +1,18 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # Name Plugin dependencies and preserve permitted instance choices
 
 Date: 2026-09-04.
-Status: **Proposed; no executable format or accepted ADR is changed.**
+Status: **Accepted on 2026-09-04 by the repository owner; implementation pending.**
 
 Read the [consolidated authoring design](../proposals/2026-09-04-plugin-usage-walkthrough.md)
-first. [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks review.
-This ADR narrows the earlier candidate to the dependency semantics that need a
-decision. Per-instance choice files, exact identifier syntax,
+first. [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks delivery.
+This ADR records the approved dependency semantics. Per-instance choice files, exact identifier syntax,
 recovery-journal design, Plan schema 3, and Bundle V4 are no longer selected or
-reserved by this proposal. Startup is read-only; configuration materializes
-choices before activation. These are review recommendations, not shipped behavior.
+reserved by this decision. Startup is read-only; configuration materializes
+choices before activation. Acceptance defines the target contract, not shipped behavior.
 Earlier details remain in Git history.
 
 ## Problem
@@ -27,14 +26,14 @@ but not a general App-owner selection interface.
 Dependency injection, typed clients, and stable bindings already exist.
 Renaming a Port or adding a field attribute alone does not solve this problem.
 
-## Proposed decision
+## Decision
 
 ### Identify the requirement independently
 
 Each declared dependency has a stable identity local to its consumer Contract.
 Public identity is independent of private Rust field names. Explicit names such
-as source and destination are the preferred authoring candidate; exact syntax
-and encoding follow the authoring review.
+as source and destination are the approved authoring direction; exact syntax
+and encoding follow in the implementation specification.
 
 Requirement metadata carries identity, Capability, resolved Descriptor version,
 and cardinality. Bindings preserve requirement identity alongside consumer,
@@ -135,10 +134,11 @@ before reactivation. Renaming a display label or private Rust field is not a
 public identity migration. Older tools must reject the adopted contract when
 they cannot preserve its choices, including explicit optional absence.
 
-This amends ADR 0070 only if accepted. It retains immutable resolved Plans,
+This amends ADR 0070 on explicit adoption. It retains immutable resolved Plans,
 existing cardinalities, Host authority, and ADR 0071 implementation equivalence.
-App-critical roots and degraded startup are separate architecture proposals,
-not consequences silently introduced by this ADR.
+App-critical roots are governed separately by
+[ADR 0074](0074-scope-terminal-failure-to-host-essential-instances.md).
+Partial startup remains excluded; neither change is silently enabled by this ADR.
 
 ## Review scenarios
 
@@ -152,9 +152,9 @@ not consequences silently introduced by this ADR.
 | Two editors race to change a selection | Existing conflict checks reject stale publication; no mixed candidate is published. |
 | A provider is recreated after runtime failure | The existing binding still names that exact logical instance; no selection write or automatic call replay occurs. |
 
-## Owners and review boundary
+## Owners and delivery boundary
 
-The [adoption proposal](../proposals/2026-09-04-plugin-adoption-and-delivery.md)
+The [approved adoption design](../proposals/2026-09-04-plugin-adoption-and-delivery.md)
 defines migration previews, old/new peer support, and staged delivery separately
 from SDK source syntax and Host fault-policy changes.
 
@@ -164,7 +164,8 @@ lowering and executable bundle/profile support. App authoring in the CLI
 repository owns local persistence; product Hosts own admissibility and runtime
 coordination. Business state and migration remain with their Plugin owners.
 
-Review is complete when equal-Capability requirements have unambiguous
-independent identity, selection authority and persistence semantics are agreed,
-and migration cannot silently redirect calls. Implementation specifications and
-validation evidence follow separately in GitHub Issues.
+Design review is complete. Delivery must demonstrate independent requirement
+identity, permitted durable choices, and migration without silent redirection.
+Exact formats, implementation specifications, and executable validation evidence
+follow separately in GitHub Issues. Existing Roots retain the explicit adoption
+rules above until their supported tooling and runtimes implement this contract.

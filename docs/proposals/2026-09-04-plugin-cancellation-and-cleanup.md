@@ -1,6 +1,6 @@
 # Construction failure, cancellation, and cleanup across languages
 
-Status: **Proposed authoring/runtime clarification; not implementation approval.**
+Status: **Design approved on 2026-09-04; implementation and executable evidence pending.**
 Date: 2026-09-04.
 
 This companion completes the lifecycle portion of the
@@ -182,12 +182,12 @@ The inspected Bun provider loop awaits `invokeRequest`, then checks cancellation
 flags; its context exposes a cancellation getter. That is not evidence that a
 Promise was interrupted or that an AbortSignal authoring interface already
 exists. Rust already exposes managed task scopes. These are useful foundations,
-not proof of the complete ownership and late-completion rules proposed here.
+not proof of the complete ownership and late-completion target rules accepted here.
 
 Keep current wire result categories and accepted lifecycle contracts. SDK owners
 map language mechanisms; Adapters report execution termination; Driver/Runner
 owners enforce available timing/escalation mechanisms; core owns portable
 admission/outcome/cleanup accounting. A release must describe exact supported
 behavior, including gaps, before claiming this authoring contract. Semantic
-changes to accepted shutdown behavior require explicit review rather than an
-unannounced SDK-only change. No runtime tests have been run for this design.
+deviations from the approved shutdown target require explicit review rather than
+an unannounced SDK-only change. No runtime tests have been run for this design.

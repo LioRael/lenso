@@ -97,8 +97,9 @@ separately running program is a host or an Execution Adapter concern.
   Transitions are generated, locked build or resolver artifacts; hand-editing
   them is not an authoring path.
 - A Plugin Root is the only App-owner composition input. The resolver fills
-  Host defaults and unique legal bindings, rejects ambiguity, and never
-  exposes a hand-authored binding or placement escape hatch.
+  Host defaults and unique legal bindings and rejects ambiguity. ADR 0073 adds
+  stable named, Host-permitted saved choices on explicit adoption; arbitrary
+  internal binding and placement escape hatches remain forbidden.
 - Kernel is independent of Tokio, operating-system facilities, filesystems,
   networks, databases, process control, and product policy.
 - Runtime Driver owns scheduling, clocks, cancellation lanes, and host
@@ -144,7 +145,9 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0072 are normative for vNext. The vNext architecture overview,
+ADRs 0030–0074 record normative vNext decisions with their supersession and
+explicit adoption rules. ADRs 0073 and 0074 are accepted targets whose
+implementation and executable format support remain pending. The vNext architecture overview,
 validation roadmap, and research notes are retained beside them. Accepted
 architecture is not an implementation claim; each contract states its current
 evidence and remaining delivery gates. Removed v0.3.x implementation docs are

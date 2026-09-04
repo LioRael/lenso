@@ -144,6 +144,14 @@ bindings are filled in. It never means selecting among multiple valid choices.
 Ambiguity is removed by adding, disabling, or removing the relevant Plugin
 Instance, not by writing internal bindings.
 
+The rules above describe the existing ADR 0070 implementation path. Accepted
+[ADR 0073](../adr/0073-name-and-persist-plugin-dependencies.md) extends it with
+stable named requirements and Host-permitted saved selections on explicit
+adoption. Configuration materializes unique/default single selections and
+optional absence before startup; invalid saved targets fail instead of falling
+back. This accepted target still needs executable format/tooling delivery.
+It does not expose arbitrary internal bindings or change existing Roots silently.
+
 ## Configuration and authority
 
 The Plugin Descriptor owns the typed Schema and safe package defaults. The

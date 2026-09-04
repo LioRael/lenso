@@ -1,6 +1,6 @@
 # Rust and TypeScript Plugin authoring
 
-Status: **Design comparison; proposed syntax, not a shipped SDK or implementation approval.**
+Status: **Design approved on 2026-09-04; syntax illustrative, implementation pending.**
 Date: 2026-09-04.
 
 Read the [consolidated review](2026-09-04-plugin-usage-walkthrough.md) first.
@@ -352,7 +352,7 @@ nor the Plugin. This differs from the current Bun describe-script path.
 | Private resources | Ordinary language libraries remain available under the actual execution profile. Construction receives bounded cancellation through an optional lifecycle context when needed; no arbitrary resource lookup is added. |
 | State | One object per instance; closures and Rust fields have the same ownership duration. Restart constructs fresh state without implicit replay or automatic durable-state migration. |
 | Tasks | SDK-managed work belongs to the instance and cannot outlive its managed scope. Raw timers, detached promises, threads, or external workers do not automatically become managed. |
-| Fault scope | The Host policy is language-independent. The separate fault-scope proposal is not implicitly activated by a new SDK. |
+| Fault scope | The Host policy is language-independent. Accepted ADR 0074 requires supported implementation and explicit adoption; a new SDK does not implicitly activate it. |
 
 Neither finalizers nor Rust destructors replace bounded asynchronous shutdown.
 No mandatory `create` plus `onEnable` pair is added. Ordinary configuration and
@@ -405,9 +405,9 @@ Drivers/Execution Adapters supply actual execution; product SDKs own tools and
 routes. Core does not acquire TS package resolution, Rust reflection, a dynamic
 service registry, or a language-specific schema system.
 
-Before implementation specifications, review these examples for input identity,
+Implementation specifications must preserve the approved input identity,
 constructor failure, cleanup ownership, declaration extraction, and error
-preservation. Later executable acceptance should use the same contract cases in
+semantics. Executable acceptance should use the same contract cases in
 Rust and TS, including mixed-language dependency calls and unsupported-profile
 rejection. This document establishes no compilation, runtime conformance, or
 performance result.

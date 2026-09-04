@@ -7,7 +7,7 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`CONTEXT.md`](../CONTEXT.md) defines vocabulary, ownership, and invariants.
 - [`architecture/lenso-vnext.md`](architecture/lenso-vnext.md) describes the
   runtime shape.
-- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0072 and the
+- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0074 and the
   historical ADRs 0001–0029.
 - [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md)
   defines the implementation evidence sequence.
@@ -32,21 +32,21 @@ This directory contains the design evidence for the vNext `main` branch.
 retains the superseded Module/App Definition design only as migration evidence.
 It is not a current authoring contract.
 
-## Design proposals
+## Approved Plugin authoring design
 
-[`Plugin authoring design: consolidated review`](proposals/2026-09-04-plugin-usage-walkthrough.md)
-is the current review entrypoint for the author interface, default behaviors,
-ownership, fault scope, and adoption boundaries. It includes one integrated
-example and distinguishes retained contracts from proposed changes. It is not
-implementation approval or a shipped SDK reference.
+[`Plugin authoring design: approved baseline`](proposals/2026-09-04-plugin-usage-walkthrough.md)
+records the repository owner's 2026-09-04 approval of the author interface,
+default behavior, ownership, fault scope, and adoption boundaries. Its examples
+remain illustrative; acceptance does not establish shipped SDK/runtime support.
 
-[ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md) is the narrower
-named-dependency proposal. It recommends configuration-time materialization and
-read-only startup; file formats and version allocation remain open.
-The [fault-scope companion](proposals/2026-09-04-plugin-fault-scope.md) proposes
-Host-defined terminal failure impact after readiness while retaining strict
-startup. Both remain proposed. [Issue #695](https://github.com/LioRael/lenso/issues/695)
-tracks the remaining review decisions before an implementation specification.
+[ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md) accepts named
+dependencies, configuration-time choice materialization, and read-only startup.
+[ADR 0074](adr/0074-scope-terminal-failure-to-host-essential-instances.md) accepts
+Host-essential terminal failure scope after readiness while retaining strict
+startup. Both require supported implementation and explicit adoption; exact
+formats and versions remain implementation-specification work.
+[Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the owner-local
+delivery tasks, starting with [implementation specification #699](https://github.com/LioRael/lenso/issues/699).
 
 The [Rust/TypeScript authoring comparison](proposals/2026-09-04-multilingual-plugin-authoring.md)
 shows one behavior in both languages, with common dependency identities,
@@ -55,7 +55,7 @@ limits. Its code is proposed syntax, not current SDK usage.
 
 The [product declaration pipeline](proposals/2026-09-04-plugin-declaration-pipeline.md)
 specifies SDK build outputs, offline bundle admission, and runtime binding using
-an Agent-owned TS tool calling Rust stores. It distinguishes the proposed
+an Agent-owned TS tool calling Rust stores. It distinguishes the accepted target
 declaration extraction from the current Bun describe-script implementation.
 
 The [cancellation and cleanup review](proposals/2026-09-04-plugin-cancellation-and-cleanup.md)
@@ -64,12 +64,13 @@ resource release across Rust and TS, with bounded cleanup and Adapter limits.
 
 The [adoption and delivery boundary](proposals/2026-09-04-plugin-adoption-and-delivery.md)
 closes the design set with separate SDK/dependency/fault-policy adoption,
-existing-source compatibility, and a proposed complete Rust/TS Request slice.
-The set is ready for final review; implementation and release remain unapproved.
+existing-source compatibility, and the approved complete Rust/TS Request slice.
+Implementation must follow each task's specification and prerequisite gates;
+the design approval does not perform a release.
 
 [`Plugin authoring, dependency selection, and lifecycle`](proposals/2026-09-04-plugin-authoring-and-lifecycle.md)
 retains the earlier approved overall direction and exploratory examples as
-design context. Use the consolidated review for the latest candidate semantics;
+design context. Use the approved baseline for current target semantics;
 accepted ADRs continue to define current normative behavior.
 
 ## Research
