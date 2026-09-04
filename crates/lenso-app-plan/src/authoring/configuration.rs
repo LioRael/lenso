@@ -1,5 +1,9 @@
 use serde_json::Value;
 
+mod schema;
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ConfigurationError {
     pub(super) detail: String,
@@ -7,10 +11,20 @@ pub(super) struct ConfigurationError {
 
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",
+    "allOf",
+    "if",
+    "then",
+    "else",
     "const",
     "enum",
     "items",
     "minimum",
+    "maximum",
+    "minLength",
+    "maxLength",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
     "properties",
     "required",
     "type",
@@ -72,7 +86,12 @@ fn validate_configuration(
     instance_key: &str,
 ) -> Result<(), ConfigurationError> {
     match schema {
-        Some(schema) => validate_json_schema(configuration, schema, "$", instance_key),
+        Some(schema) => {
+            // Check every branch before matching: a malformed condition must not
+            // masquerade as a false condition and select a permissive alternative.
+            schema::check(schema, "$", instance_key, 0)?;
+            validate_json_schema(configuration, schema, "$", instance_key)
+        }
         None if configuration
             .as_object()
             .is_some_and(serde_json::Map::is_empty) =>
@@ -93,6 +112,17 @@ fn validate_json_schema(
     path: &str,
     instance_key: &str,
 ) -> Result<(), ConfigurationError> {
+    if let Some(allowed) = schema.as_bool() {
+        return if allowed {
+            Ok(())
+        } else {
+            Err(invalid_configuration(
+                instance_key,
+                path,
+                "value is forbidden by schema",
+            ))
+        };
+    }
     let schema = schema.as_object().ok_or_else(|| {
         invalid_configuration(
             instance_key,
@@ -100,16 +130,7 @@ fn validate_json_schema(
             "configuration schema must be a JSON object",
         )
     })?;
-    if let Some(keyword) = schema.keys().find(|keyword| {
-        !SUPPORTED_SCHEMA_KEYWORDS.contains(&keyword.as_str())
-            && !SCHEMA_METADATA_KEYWORDS.contains(&keyword.as_str())
-    }) {
-        return Err(invalid_configuration(
-            instance_key,
-            path,
-            format!("unsupported JSON Schema keyword `{keyword}`"),
-        ));
-    }
+    validate_combinators(value, schema, path, instance_key)?;
     if schema
         .get("x-lenso-sensitive")
         .and_then(Value::as_bool)
@@ -124,6 +145,7 @@ fn validate_json_schema(
     }
     validate_schema_type(value, schema, path, instance_key)?;
     validate_schema_numeric_constraints(value, schema, path, instance_key)?;
+    validate_collection_constraints(value, schema, path, instance_key)?;
     if let Some(expected) = schema.get("const")
         && value != expected
     {
@@ -150,27 +172,93 @@ fn validate_json_schema(
     validate_items(value, schema, path, instance_key)
 }
 
+fn validate_combinators(
+    value: &Value,
+    schema: &serde_json::Map<String, Value>,
+    path: &str,
+    instance_key: &str,
+) -> Result<(), ConfigurationError> {
+    if let Some(branches) = schema.get("allOf").and_then(Value::as_array) {
+        for branch in branches {
+            validate_json_schema(value, branch, path, instance_key)?;
+        }
+    }
+    if let Some(condition) = schema.get("if") {
+        let selected = if validate_json_schema(value, condition, path, instance_key).is_ok() {
+            "then"
+        } else {
+            "else"
+        };
+        if let Some(branch) = schema.get(selected) {
+            validate_json_schema(value, branch, path, instance_key)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_collection_constraints(
+    value: &Value,
+    schema: &serde_json::Map<String, Value>,
+    path: &str,
+    instance_key: &str,
+) -> Result<(), ConfigurationError> {
+    let size = match value {
+        Value::String(text) => Some((text.chars().count(), "minLength", "maxLength")),
+        Value::Array(items) => Some((items.len(), "minItems", "maxItems")),
+        _ => None,
+    };
+    if let Some((length, minimum, maximum)) = size {
+        for (keyword, too_small) in [(minimum, true), (maximum, false)] {
+            if let Some(limit) = schema.get(keyword).and_then(Value::as_u64)
+                && if too_small {
+                    (length as u64) < limit
+                } else {
+                    (length as u64) > limit
+                }
+            {
+                return Err(invalid_configuration(
+                    instance_key,
+                    path,
+                    format!("value violates {keyword}"),
+                ));
+            }
+        }
+    }
+    if schema.get("uniqueItems") == Some(&Value::Bool(true))
+        && let Some(items) = value.as_array()
+        && items
+            .iter()
+            .enumerate()
+            .any(|(index, item)| items[..index].contains(item))
+    {
+        return Err(invalid_configuration(
+            instance_key,
+            path,
+            "array items must be unique",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_schema_numeric_constraints(
     value: &Value,
     schema: &serde_json::Map<String, Value>,
     path: &str,
     instance_key: &str,
 ) -> Result<(), ConfigurationError> {
-    let Some(minimum) = schema.get("minimum") else {
-        return Ok(());
-    };
-    let minimum = minimum.as_f64().ok_or_else(|| {
-        invalid_configuration(instance_key, path, "schema minimum must be a number")
-    })?;
     let Some(value) = value.as_f64() else {
         return Ok(());
     };
-    if value < minimum {
-        return Err(invalid_configuration(
-            instance_key,
-            path,
-            format!("number must be greater than or equal to {minimum}"),
-        ));
+    for (keyword, lower) in [("minimum", true), ("maximum", false)] {
+        if let Some(limit) = schema.get(keyword).and_then(Value::as_f64)
+            && if lower { value < limit } else { value > limit }
+        {
+            return Err(invalid_configuration(
+                instance_key,
+                path,
+                format!("number violates {keyword}"),
+            ));
+        }
     }
     Ok(())
 }
@@ -231,9 +319,9 @@ fn validate_required(
     let required = required.as_array().ok_or_else(|| {
         invalid_configuration(instance_key, path, "schema required must be an array")
     })?;
-    let object = value.as_object().ok_or_else(|| {
-        invalid_configuration(instance_key, path, "required fields need an object")
-    })?;
+    let Some(object) = value.as_object() else {
+        return Ok(());
+    };
     for name in required {
         let name = name.as_str().ok_or_else(|| {
             invalid_configuration(
@@ -312,7 +400,7 @@ fn validate_items(
     let Some(item_schema) = schema.get("items") else {
         return Ok(());
     };
-    if !item_schema.is_object() {
+    if !item_schema.is_object() && !item_schema.is_boolean() {
         return Err(invalid_configuration(
             instance_key,
             path,
