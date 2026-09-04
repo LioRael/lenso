@@ -46,10 +46,13 @@ and durable named dependency selection. Its structural dependency changes are
 proposed in [ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md); both
 remain under review before implementation.
 
-[`Three Plugin usage walkthroughs`](proposals/2026-09-04-plugin-usage-walkthrough.md)
+[`Plugin usage walkthroughs`](proposals/2026-09-04-plugin-usage-walkthrough.md)
 examines a small tool, local durable state, and two instances of one dependency
 from creation through removal. Use it to discuss simpler authoring and choice
 persistence before treating Issue #695 or ADR 0073 as implementation-ready.
+An integrated scheduled/manual synchronization example examines how dependency
+injection, configuration, owned tasks, and structured errors work together;
+startup failure isolation remains a separate discussion.
 
 ## Research
 

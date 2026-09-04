@@ -1,4 +1,4 @@
-# Three Plugin usage walkthroughs
+# Plugin usage walkthroughs
 
 Status: **Discussion draft. No implementation approval.**
 Date: 2026-09-04.
@@ -291,6 +291,176 @@ stateful code. Compilation catches unsupported dependencies where possible;
 packaging and Host admission check the exact remaining profile/contract needs.
 No silent target fallback, no forced rewrite to TypeScript, and no claim that
 every Rust source compiles unchanged into every runtime.
+
+## Integrated example: scheduled and manual document synchronization
+
+This example combines entrypoint declaration, dependency injection, typed
+configuration, owned background work, and error propagation. It exercises the
+four authoring improvements discussed after the initial walkthrough. Initial
+startup failure isolation is a separate design question; the existing strict
+readiness contract remains unchanged.
+
+The Plugin copies one configured document between two Store instances. It can
+run periodically or be invoked manually as an Agent tool. Store owns its own
+data and credentials. This Plugin needs no private persistent storage, custom
+constructor, or manual lifecycle hook. The single-instance concurrency guard
+is an ordinary Rust field.
+
+The entire block is proposed SDK syntax. Imports and the product-owned Store
+SDK types are omitted. `Mutex` denotes the ordinary `futures::lock::Mutex`;
+the SDK must preserve generated client error categories when converting into
+the illustrative `SyncError` type.
+
+```rust
+#[derive(PluginConfig)]
+struct SyncConfig {
+    #[config(min_length = 1)]
+    document: String,
+
+    #[config(default = 60, min = 1)]
+    interval_seconds: u64,
+}
+
+#[plugin]
+struct DocumentSync {
+    #[config]
+    config: SyncConfig,
+
+    #[dependency(id = "source")]
+    source: StoreClient,
+
+    #[dependency(id = "destination")]
+    destination: StoreClient,
+
+    running: Mutex<()>,
+}
+
+enum SyncOutcome {
+    Updated,
+    AlreadyRunning,
+}
+
+#[agent::tools]
+impl DocumentSync {
+    #[tool(name = "sync_document")]
+    #[schedule(every_seconds = "config.interval_seconds")]
+    async fn sync(&self, call: &CallContext) -> Result<SyncOutcome, SyncError> {
+        let Some(_guard) = self.running.try_lock() else {
+            return Ok(SyncOutcome::AlreadyRunning);
+        };
+
+        let document = self.source.read(call, &self.config.document).await?;
+        self.destination
+            .put(call, &self.config.document, document)
+            .await?;
+
+        Ok(SyncOutcome::Updated)
+    }
+}
+```
+
+`agent` denotes the product tool SDK. The generated Tool contract exposes the
+operation and serializable result; it does not include `CallContext` as a
+user-supplied tool argument. Both registrations invoke the same method on the
+same Plugin object, so they share the lock. A competing call returns
+`AlreadyRunning`; it does not queue, begin a second copy, or silently replace
+the first call. Manual and scheduled invocations observe the same outcome.
+
+The business definition of Store `put` in this example is replacement of the
+document at a key. Append-only destinations or side-effecting operations need
+their own idempotency contract. An exclusive destination key is assumed for
+this example; concurrent external writers require an explicit version or
+conflict policy. The in-memory lock coordinates only this Plugin Instance,
+not other instances, processes, or external writers.
+
+### Construction and input authority
+
+The generated constructor receives validated configuration and the two resolved
+clients, initializes the mutex with its ordinary default, and produces one
+complete instance. There is no author's `create` because no field requires a
+custom construction process. Adding such a field later can introduce a custom
+constructor without changing the Plugin category or starting a second lifecycle.
+
+The proposed flat instance configuration is:
+
+```toml
+document = "price-list"
+interval_seconds = 60
+```
+
+The same Rust configuration declaration supplies its schema, default, and
+constraints. A value of zero fails configuration validation before starting
+the task. Example diagnostic: `DocumentSync/default: interval_seconds must be
+at least 1`. Cross-field business constraints can use an explicit validator.
+The source and destination choices are App-owned dependency settings, kept
+separate from this Plugin's business configuration. Their on-disk format is
+still under discussion.
+
+### Scheduling and cleanup
+
+The schedule annotation requires an actually supported recurring scheduling
+implementation in the target Host. It is not established by the existence of
+`ManagedTasks` or a one-shot Jobs queue. Unsupported scheduling is rejected
+before activation; it is never silently dropped from the installed Plugin.
+
+For this example, the first automatic run starts one interval after readiness;
+each following run waits one interval after the previous scheduled invocation
+finishes. Manual calls do not reset that schedule. The schedule is local to
+the running App, with no offline catch-up or exactly-once guarantee. Failures
+are recorded, and a later scheduled run is a new invocation, not an automatic
+retry hidden inside a client method.
+
+Generated registrations and scheduled work belong to the Plugin Instance.
+Disablement closes its tool admission, stops future scheduled invocations, and
+allows bounded completion/cancellation of in-flight work before releasing the
+instance. A replacement registers its schedule only when eligible to run;
+there must never be an old timer quietly left behind. These guarantees cover
+work created through supported SDK paths, not arbitrary external threads.
+
+### Call context and errors
+
+The Host supplies a bounded invocation context for a manual call; the scheduling
+implementation supplies a fresh bounded context for each automatic invocation.
+Clients explicitly receive it in this sketch so deadlines and cancellation
+propagate across asynchronous and process boundaries without relying on a
+hidden global variable. A downstream call never extends the original deadline.
+The context exposes only invocation information; it cannot discover plugins,
+request arbitrary services, or grant the caller extra authority.
+
+Domain failures (missing document, business rejection) remain distinct from
+runtime failures (unavailable provider, timeout, cancellation). `SyncError`
+preserves the generated client's structured distinction rather than reducing
+everything to a message string. `?` propagates failures; the SDK does not retry
+the write automatically. Diagnostics identify the Plugin Instance, dependency,
+operation, and cause, with sensitive payloads redacted.
+
+Cancellation or loss of the write response does not prove the destination was
+unchanged. Once a write has been sent, an uncertain result must be reported as
+such. Recovery may require reading the destination or using an operation ID
+defined by the Store contract. Lifecycle cleanup cannot undo that write.
+
+### Configuration changes and failure scope
+
+Configuration replacement validates a complete candidate before applying it.
+The Plugin instance observes one coherent configuration value. A successful
+replacement receives the new interval and one new schedule, after the old
+schedule is stopped through the supported update path. A failed candidate
+validation leaves the existing configuration active. Failure after a controlled
+stop must accurately report unavailable/stopped rather than promise recovery.
+
+Initial absence or failure of a required Store still prevents readiness under
+the current contract. Runtime failures remain subject to the existing dependency
+and supervision policy. This example does not introduce partial startup or
+promise that every other Plugin survives an exhausted required dependency.
+Whether optional product features may fail during startup is a separate Host
+policy and architecture discussion.
+
+The combined example supports one useful simplification: most Plugin authors
+should declare their behavior and inputs, while SDK-owned registrations perform
+their matching cleanup. Constructors and lifecycle hooks stay available for
+actual initialization or shutdown work; this Plugin does not need empty ones.
+The additional concepts in the body are ordinary business concurrency and an
+explicit call context with observable deadline/cancellation semantics.
 
 ## Recommended simplifications and remaining discussion
 
