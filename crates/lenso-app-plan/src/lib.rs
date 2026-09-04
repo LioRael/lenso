@@ -6,10 +6,14 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+mod contract;
+pub use contract::{CapabilityBinding, CapabilityRequirementPlan, PluginInstancePlan};
 mod error;
 mod execution;
 mod policy;
 mod resolution;
+mod schema;
+pub use schema::TerminalPolicy;
 
 pub use error::PlanResolutionError;
 pub use execution::{ExecutionClassId, ExecutionLaneId, ExecutionLanePlan};
@@ -23,7 +27,7 @@ use resolution::{
 };
 
 /// The Resolved App Plan schema understood by this Kernel version.
-pub const PLAN_SCHEMA_VERSION: u32 = 2;
+pub const PLAN_SCHEMA_VERSION: u32 = 3;
 
 /// Default maximum number of requests waiting for one Operation.
 pub const DEFAULT_REQUEST_QUEUE_CAPACITY: usize = 16;
@@ -36,74 +40,6 @@ pub const DEFAULT_EVENT_QUEUE_CAPACITY: usize = 16;
 
 fn default_execution_lanes() -> Vec<ExecutionLanePlan> {
     vec![ExecutionLanePlan::new("main")]
-}
-
-/// One Capability required by a Plugin Instance.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct CapabilityRequirementPlan {
-    capability_id: String,
-    descriptor_version: String,
-    cardinality: CapabilityCardinality,
-}
-
-impl CapabilityRequirementPlan {
-    /// Declares one exact Capability Descriptor and its binding cardinality.
-    pub fn new(
-        capability_id: impl Into<String>,
-        descriptor_version: impl Into<String>,
-        cardinality: CapabilityCardinality,
-    ) -> Self {
-        Self {
-            capability_id: capability_id.into(),
-            descriptor_version: descriptor_version.into(),
-            cardinality,
-        }
-    }
-
-    /// Declares a required one-provider Capability.
-    pub fn one(capability_id: impl Into<String>, descriptor_version: impl Into<String>) -> Self {
-        Self::new(
-            capability_id,
-            descriptor_version,
-            CapabilityCardinality::One,
-        )
-    }
-
-    /// Declares an optional zero-or-one-provider Capability.
-    pub fn optional(
-        capability_id: impl Into<String>,
-        descriptor_version: impl Into<String>,
-    ) -> Self {
-        Self::new(
-            capability_id,
-            descriptor_version,
-            CapabilityCardinality::Optional,
-        )
-    }
-
-    /// Declares a many-provider Capability.
-    pub fn many(capability_id: impl Into<String>, descriptor_version: impl Into<String>) -> Self {
-        Self::new(
-            capability_id,
-            descriptor_version,
-            CapabilityCardinality::Many,
-        )
-    }
-
-    /// Returns the Capability series identity.
-    pub fn capability_id(&self) -> &str {
-        &self.capability_id
-    }
-
-    /// Returns the exact Descriptor version selected by Composition.
-    pub fn descriptor_version(&self) -> &str {
-        &self.descriptor_version
-    }
-
-    /// Returns the requirement cardinality.
-    pub const fn cardinality(&self) -> CapabilityCardinality {
-        self.cardinality
-    }
 }
 
 /// Exact Capability endpoint metadata expected from one Plugin Instance.
@@ -311,280 +247,6 @@ impl CapabilityEndpointPlan {
     }
 }
 
-/// One exact App-local Plugin Instance selected by the resolved Plan.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct PluginInstancePlan {
-    instance_key: String,
-    package_id: String,
-    entrypoint: String,
-    configuration: String,
-    provided_capabilities: Vec<CapabilityEndpointPlan>,
-    required_capabilities: Vec<CapabilityRequirementPlan>,
-    execution_class: ExecutionClassId,
-    package_revision: String,
-    restart_policy: RestartPolicy,
-    criticality: PluginCriticality,
-    #[serde(default)]
-    execution_lane: ExecutionLaneId,
-}
-
-impl PluginInstancePlan {
-    /// Selects one statically linked package under an App-local Instance key.
-    pub fn new(instance_key: impl Into<String>, package_id: impl Into<String>) -> Self {
-        Self {
-            instance_key: instance_key.into(),
-            package_id: package_id.into(),
-            entrypoint: "default".to_owned(),
-            configuration: "{}".to_owned(),
-            provided_capabilities: Vec::new(),
-            required_capabilities: Vec::new(),
-            execution_class: ExecutionClassId::native_rust(),
-            package_revision: String::new(),
-            restart_policy: RestartPolicy::default(),
-            criticality: PluginCriticality::default(),
-            execution_lane: ExecutionLaneId::default(),
-        }
-    }
-
-    /// Selects the exact package entrypoint executed for this Instance.
-    #[must_use]
-    pub fn with_entrypoint(mut self, entrypoint: impl Into<String>) -> Self {
-        self.entrypoint = entrypoint.into();
-        self
-    }
-
-    /// Supplies opaque, non-secret configuration owned and decoded by the Plugin.
-    #[must_use]
-    pub fn with_configuration(mut self, configuration: impl Into<String>) -> Self {
-        self.configuration = configuration.into();
-        self
-    }
-
-    /// Declares one exact endpoint this Instance must prepare.
-    #[must_use]
-    pub fn with_capability(mut self, capability: CapabilityEndpointPlan) -> Self {
-        self.provided_capabilities.push(capability);
-        self
-    }
-
-    /// Declares one Capability dependency for this Instance.
-    #[must_use]
-    pub fn with_requirement(mut self, requirement: CapabilityRequirementPlan) -> Self {
-        self.required_capabilities.push(requirement);
-        self
-    }
-
-    /// Alias that makes the authoring direction explicit at the call site.
-    #[must_use]
-    pub fn with_required_capability(self, requirement: CapabilityRequirementPlan) -> Self {
-        self.with_requirement(requirement)
-    }
-
-    /// Selects the host execution class for this Plugin Instance.
-    #[must_use]
-    pub fn with_execution_class(mut self, execution_class: ExecutionClassId) -> Self {
-        self.execution_class = execution_class;
-        self
-    }
-
-    /// Places this Plugin Instance on one Plan-declared Execution Lane.
-    #[must_use]
-    pub fn with_execution_lane(mut self, execution_lane: ExecutionLaneId) -> Self {
-        self.execution_lane = execution_lane;
-        self
-    }
-
-    /// Records the exact opaque package-manager lock selection before boot.
-    #[must_use]
-    pub fn with_package_revision(mut self, revision: impl Into<String>) -> Self {
-        self.package_revision = revision.into();
-        self
-    }
-
-    /// Selects the finite supervision policy for this Plugin Instance.
-    #[must_use]
-    pub fn with_restart_policy(mut self, restart_policy: RestartPolicy) -> Self {
-        self.restart_policy = restart_policy;
-        self
-    }
-
-    /// Marks this Plugin Instance critical for supervision exhaustion outcomes.
-    #[must_use]
-    pub fn with_criticality(mut self, criticality: PluginCriticality) -> Self {
-        self.criticality = criticality;
-        self
-    }
-
-    /// Returns the App-local Instance key.
-    pub fn instance_key(&self) -> &str {
-        &self.instance_key
-    }
-
-    /// Returns the selected package identity.
-    pub fn package_id(&self) -> &str {
-        &self.package_id
-    }
-
-    /// Returns the exact package entrypoint selected before boot.
-    pub fn entrypoint(&self) -> &str {
-        &self.entrypoint
-    }
-
-    /// Returns the Plugin-owned opaque configuration selected before boot.
-    pub fn configuration(&self) -> &str {
-        &self.configuration
-    }
-
-    /// Returns the exact endpoint set this Instance must prepare.
-    pub fn provided_capabilities(&self) -> &[CapabilityEndpointPlan] {
-        &self.provided_capabilities
-    }
-
-    /// Returns the exact Capability requirements this Instance receives.
-    pub fn required_capabilities(&self) -> &[CapabilityRequirementPlan] {
-        &self.required_capabilities
-    }
-
-    /// Returns the host execution class selected for this Instance.
-    pub fn execution_class(&self) -> &ExecutionClassId {
-        &self.execution_class
-    }
-
-    /// Returns the Plan-declared Execution Lane for this Instance.
-    pub const fn execution_lane(&self) -> &ExecutionLaneId {
-        &self.execution_lane
-    }
-
-    /// Returns the exact opaque package-manager lock selection.
-    pub fn package_revision(&self) -> &str {
-        &self.package_revision
-    }
-
-    /// Returns the supervision policy selected for this Instance.
-    pub const fn restart_policy(&self) -> RestartPolicy {
-        self.restart_policy
-    }
-
-    /// Returns the criticality selected for this Instance.
-    pub const fn criticality(&self) -> PluginCriticality {
-        self.criticality
-    }
-}
-
-/// One exact consumer-to-provider Capability binding.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct CapabilityBinding {
-    consumer_instance: String,
-    capability_id: String,
-    descriptor_version: String,
-    provider_instance: String,
-    provider_order: usize,
-    admission: RequestAdmissionPlan,
-    admission_explicit: bool,
-    event_admission: EventAdmissionPlan,
-    event_admission_explicit: bool,
-}
-
-impl CapabilityBinding {
-    /// Binds one consumer to one provider at an exact Descriptor version.
-    pub fn new(
-        consumer_instance: impl Into<String>,
-        capability_id: impl Into<String>,
-        descriptor_version: impl Into<String>,
-        provider_instance: impl Into<String>,
-    ) -> Self {
-        Self {
-            consumer_instance: consumer_instance.into(),
-            capability_id: capability_id.into(),
-            descriptor_version: descriptor_version.into(),
-            provider_instance: provider_instance.into(),
-            provider_order: 0,
-            admission: RequestAdmissionPlan::default(),
-            admission_explicit: false,
-            event_admission: EventAdmissionPlan::default(),
-            event_admission_explicit: false,
-        }
-    }
-
-    /// Overrides the provider Operation admission policy for this binding.
-    #[must_use]
-    pub fn with_admission(mut self, admission: RequestAdmissionPlan) -> Self {
-        self.admission = admission;
-        self.admission_explicit = true;
-        self
-    }
-
-    /// Overrides queue and concurrency limits for this binding.
-    #[must_use]
-    pub fn with_limits(self, queue_capacity: usize, max_concurrency: usize) -> Self {
-        self.with_admission(RequestAdmissionPlan::new(queue_capacity, max_concurrency))
-    }
-
-    /// Overrides the Event mailbox policy for this binding.
-    #[must_use]
-    pub fn with_event_admission(mut self, admission: EventAdmissionPlan) -> Self {
-        self.event_admission = admission;
-        self.event_admission_explicit = true;
-        self
-    }
-
-    /// Overrides the Event mailbox capacity for this binding.
-    #[must_use]
-    pub fn with_event_capacity(self, capacity: usize) -> Self {
-        self.with_event_admission(EventAdmissionPlan::new(capacity))
-    }
-
-    fn with_provider_order(mut self, provider_order: usize) -> Self {
-        self.provider_order = provider_order;
-        self
-    }
-
-    /// Returns the consumer Instance key.
-    pub fn consumer_instance(&self) -> &str {
-        &self.consumer_instance
-    }
-
-    /// Returns the Capability series identity.
-    pub fn capability_id(&self) -> &str {
-        &self.capability_id
-    }
-
-    /// Returns the exact Descriptor version.
-    pub fn descriptor_version(&self) -> &str {
-        &self.descriptor_version
-    }
-
-    /// Returns the provider Instance key.
-    pub fn provider_instance(&self) -> &str {
-        &self.provider_instance
-    }
-
-    /// Returns the deterministic zero-based order within a `many` requirement.
-    pub const fn provider_order(&self) -> usize {
-        self.provider_order
-    }
-
-    /// Returns the binding's effective fallback admission policy.
-    pub const fn admission(&self) -> RequestAdmissionPlan {
-        self.admission
-    }
-
-    /// Returns whether this binding explicitly overrides the provider policy.
-    pub const fn has_explicit_admission(&self) -> bool {
-        self.admission_explicit
-    }
-
-    /// Returns the binding's effective fallback Event mailbox policy.
-    pub const fn event_admission(&self) -> EventAdmissionPlan {
-        self.event_admission
-    }
-
-    /// Returns whether this binding explicitly overrides the provider Event policy.
-    pub const fn has_explicit_event_admission(&self) -> bool {
-        self.event_admission_explicit
-    }
-}
-
 /// Declarative, language-independent authoring input for one App.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AppComposition {
@@ -619,6 +281,7 @@ impl AppComposition {
         validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
         resolve_parts(&self.plugin_instances, &self.capability_bindings).map(
             |(plugin_instances, capability_bindings)| ResolvedAppPlan {
+                terminal_policy: TerminalPolicy::RequiredPath,
                 schema_version: PLAN_SCHEMA_VERSION,
                 plugin_instances,
                 capability_bindings,
@@ -645,7 +308,9 @@ impl AppComposition {
 
 /// Exact, immutable execution input supplied to the Kernel.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(try_from = "schema::PlanWire")]
 pub struct ResolvedAppPlan {
+    terminal_policy: TerminalPolicy,
     schema_version: u32,
     plugin_instances: Vec<PluginInstancePlan>,
     capability_bindings: Vec<CapabilityBinding>,
@@ -657,6 +322,7 @@ impl ResolvedAppPlan {
     /// Creates a valid Plan containing no Plugin Instances.
     pub fn empty() -> Self {
         Self {
+            terminal_policy: TerminalPolicy::RequiredPath,
             schema_version: PLAN_SCHEMA_VERSION,
             plugin_instances: Vec::new(),
             capability_bindings: Vec::new(),
@@ -672,6 +338,7 @@ impl ResolvedAppPlan {
         sort_plugin_instances(&mut plugin_instances);
         sort_bindings(&mut capability_bindings);
         Self {
+            terminal_policy: TerminalPolicy::RequiredPath,
             schema_version: PLAN_SCHEMA_VERSION,
             plugin_instances,
             capability_bindings,
@@ -684,6 +351,7 @@ impl ResolvedAppPlan {
     /// This is primarily useful to decode authoring-tool output before validation.
     pub const fn with_schema_version(schema_version: u32) -> Self {
         Self {
+            terminal_policy: TerminalPolicy::RequiredPath,
             schema_version,
             plugin_instances: Vec::new(),
             capability_bindings: Vec::new(),
@@ -700,7 +368,9 @@ impl ResolvedAppPlan {
             });
         }
         validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
-        resolve_parts(&self.plugin_instances, &self.capability_bindings).map(|_| ())
+        let (instances, bindings) =
+            resolve_parts(&self.plugin_instances, &self.capability_bindings)?;
+        self.terminal_policy.validate(&instances, &bindings)
     }
 
     /// Returns the deterministic provider-before-consumer lifecycle order.
@@ -717,8 +387,21 @@ impl ResolvedAppPlan {
         validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
         let (instances, bindings) =
             resolve_parts(&self.plugin_instances, &self.capability_bindings)?;
+        self.terminal_policy.validate(&instances, &bindings)?;
         activation_order_for(&instances, &bindings)
             .map_err(|instances| PlanResolutionError::ActivationCycle { instances })
+    }
+
+    /// Returns the Plan schema version.
+    pub const fn terminal_policy(&self) -> &TerminalPolicy {
+        &self.terminal_policy
+    }
+
+    /// Selects an explicit terminal policy; unsupported policies fail validation.
+    #[must_use]
+    pub fn with_terminal_policy(mut self, policy: TerminalPolicy) -> Self {
+        self.terminal_policy = policy;
+        self
     }
 
     /// Returns the Plan schema version.
@@ -810,10 +493,21 @@ impl ResolvedAppPlan {
                     .plugin_instance(binding.consumer_instance())
                     .is_some_and(|consumer| {
                         consumer.required_capabilities().iter().any(|requirement| {
-                            requirement.capability_id() == binding.capability_id()
+                            requirement.requirement_id() == binding.requirement_id()
                                 && requirement.cardinality() == CapabilityCardinality::One
                         })
                     })
         })
+    }
+
+    /// Returns whether exhaustion of this Plugin Instance is terminal under
+    /// the Plan-selected failure policy.
+    pub fn plugin_instance_is_terminal(&self, instance_key: &str) -> bool {
+        match &self.terminal_policy {
+            TerminalPolicy::RequiredPath => self.plugin_instance_is_required(instance_key),
+            TerminalPolicy::HostEssential { closure, .. } => closure
+                .binary_search_by(|candidate| candidate.as_str().cmp(instance_key))
+                .is_ok(),
+        }
     }
 }

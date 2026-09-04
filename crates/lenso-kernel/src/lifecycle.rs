@@ -397,6 +397,7 @@ pub struct ManagedTask {
     pub(super) task: Rc<RefCell<Option<DriverTask>>>,
     pub(super) abort: AbortHandle,
     pub(super) failed: Rc<Cell<bool>>,
+    pub(super) completed: Rc<Cell<bool>>,
 }
 
 impl ManagedTask {
@@ -405,6 +406,7 @@ impl ManagedTask {
             abort: task.abort_handle(),
             task: Rc::new(RefCell::new(Some(task))),
             failed: Rc::new(Cell::new(false)),
+            completed: Rc::new(Cell::new(false)),
         }
     }
 
@@ -414,18 +416,24 @@ impl ManagedTask {
     }
 
     pub(super) async fn join(&self) -> TaskOutcome {
-        let task = self.task.borrow_mut().take();
-        if let Some(task) = task {
-            let outcome = task.await;
-            if self.failed.get() {
-                TaskOutcome::Failed
-            } else {
-                outcome
+        let outcome = std::future::poll_fn(|context| {
+            let mut slot = self.task.borrow_mut();
+            let Some(task) = slot.as_mut() else {
+                return Poll::Ready(TaskOutcome::Completed);
+            };
+            match Pin::new(task).poll(context) {
+                Poll::Ready(outcome) => {
+                    slot.take();
+                    Poll::Ready(outcome)
+                }
+                Poll::Pending => Poll::Pending,
             }
-        } else if self.failed.get() {
+        })
+        .await;
+        if self.failed.get() {
             TaskOutcome::Failed
         } else {
-            TaskOutcome::Completed
+            outcome
         }
     }
 }
@@ -516,9 +524,13 @@ impl ManagedTaskScope {
         }
         let failed = Rc::new(Cell::new(false));
         let task_failed = failed.clone();
+        let completed = Rc::new(Cell::new(false));
+        let task_completed = completed.clone();
         let state = self.state.clone();
         let monitored = Box::pin(async move {
-            if AssertUnwindSafe(task).catch_unwind().await.is_err() {
+            let outcome = AssertUnwindSafe(task).catch_unwind().await;
+            task_completed.set(true);
+            if outcome.is_err() {
                 task_failed.set(true);
                 state.report_failure();
             }
@@ -526,15 +538,25 @@ impl ManagedTaskScope {
         let driver_task = (self.spawn)(monitored)?;
         let handle = ManagedTask {
             failed,
+            completed,
             ..ManagedTask::from_driver_task(driver_task)
         };
+        self.state
+            .tasks
+            .borrow_mut()
+            .retain(|task| !task.completed.get());
         self.state.tasks.borrow_mut().push(handle.clone());
         Ok(handle)
     }
 
     /// Returns the number of tasks still tracked by this scope.
     pub fn task_count(&self) -> usize {
-        self.state.tasks.borrow().len()
+        self.state
+            .tasks
+            .borrow()
+            .iter()
+            .filter(|task| !task.completed.get())
+            .count()
     }
 
     /// Returns the cooperative cancellation token for this generation.
@@ -581,6 +603,10 @@ impl ManagedTaskScope {
                 for pending in tasks.iter().skip(index) {
                     pending.cancel();
                 }
+                self.state
+                    .tasks
+                    .borrow_mut()
+                    .extend(tasks.into_iter().skip(index));
                 return false;
             }
         }
@@ -810,6 +836,7 @@ pub struct DeactivateContext {
     pub(super) resources: ManagedResourceScope,
     pub(super) cancellation: CancellationToken,
     pub(super) admission: AppAdmission,
+    pub(super) cleanup: Option<super::cleanup::CleanupBudget>,
 }
 
 impl DeactivateContext {
@@ -845,7 +872,20 @@ impl DeactivateContext {
 
     /// Returns the generation-owned cooperative cancellation token.
     pub fn cancellation(&self) -> CancellationToken {
-        self.cancellation.clone()
+        self.cleanup.as_ref().map_or_else(
+            || self.cancellation.clone(),
+            super::cleanup::CleanupBudget::cancellation,
+        )
+    }
+
+    /// Returns the Host budget remaining for this cleanup phase.
+    ///
+    /// Legacy authoring profiles that do not opt into bounded cleanup return
+    /// `None`.
+    pub fn remaining_budget(&self) -> Option<Duration> {
+        self.cleanup
+            .as_ref()
+            .map(super::cleanup::CleanupBudget::remaining)
     }
 
     /// Returns the App admission state, which is closed during deactivation.
@@ -861,6 +901,13 @@ pub type PluginFuture = LocalBoxFuture<'static, Result<(), RuntimeFailure>>;
 pub trait PluginLifecycle: std::fmt::Debug + 'static {
     /// Reserves reversible resources without exposing external work.
     fn prepare(&self, _context: PrepareContext) -> PluginFuture {
+        Box::pin(futures::future::ready(Ok(())))
+    }
+
+    /// Constructs the complete inert Plugin object for authoring version 2.
+    /// SDKs lower `create` into this hook; ordinary Plugin code does not call it.
+    #[doc(hidden)]
+    fn construct(&self, _context: ActivateContext) -> PluginFuture {
         Box::pin(futures::future::ready(Ok(())))
     }
 

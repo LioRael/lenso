@@ -5,6 +5,22 @@ use super::CapabilityOperationKind;
 /// A reason App Composition could not be materialized into a Plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PlanResolutionError {
+    /// This Kernel does not yet execute the selected terminal policy.
+    UnsupportedTerminalPolicy,
+    /// Host-essential roots or their materialized closure are invalid.
+    InvalidTerminalPolicy { detail: String },
+    /// Contract version or selected runtime profile is invalid.
+    InvalidAuthoring { instance_key: String },
+    /// A requirement identity is invalid for the selected authoring version.
+    InvalidRequirementId {
+        consumer_instance: String,
+        requirement_id: String,
+    },
+    /// Two declarations share one consumer-local identity.
+    DuplicateRequirementId {
+        consumer_instance: String,
+        requirement_id: String,
+    },
     /// The Plan schema cannot be executed by this Kernel version.
     UnsupportedSchemaVersion { expected: u32, actual: u32 },
     /// Two Plugin Instances use the same App-local key.
@@ -130,6 +146,30 @@ impl fmt::Display for PlanResolutionError {
     #[allow(clippy::too_many_lines)]
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedTerminalPolicy => {
+                formatter.write_str("unsupported host_essential terminal policy")
+            }
+            Self::InvalidTerminalPolicy { detail } => {
+                write!(formatter, "invalid terminal policy: {detail}")
+            }
+            Self::InvalidAuthoring { instance_key } => write!(
+                formatter,
+                "invalid authoring version or runtime profile for `{instance_key}`"
+            ),
+            Self::InvalidRequirementId {
+                consumer_instance,
+                requirement_id,
+            } => write!(
+                formatter,
+                "invalid requirement `{requirement_id}` for `{consumer_instance}`"
+            ),
+            Self::DuplicateRequirementId {
+                consumer_instance,
+                requirement_id,
+            } => write!(
+                formatter,
+                "duplicate requirement `{requirement_id}` for `{consumer_instance}`"
+            ),
             Self::UnsupportedSchemaVersion { expected, actual } => write!(
                 formatter,
                 "unsupported Plan schema version {actual}; expected {expected}"

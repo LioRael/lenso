@@ -211,6 +211,7 @@ pub enum DiagnosticEvent {
     },
     /// A typed request or stream operation began.
     InvocationStarted {
+        requirement_id: Option<String>,
         request_id: u64,
         caller_instance: Option<String>,
         provider_instance: Option<String>,
@@ -219,6 +220,7 @@ pub enum DiagnosticEvent {
     },
     /// A typed request or stream operation completed.
     InvocationCompleted {
+        requirement_id: Option<String>,
         request_id: u64,
         caller_instance: Option<String>,
         provider_instance: Option<String>,
@@ -229,6 +231,7 @@ pub enum DiagnosticEvent {
     },
     /// Bounded request admission rejected an operation.
     AdmissionRejected {
+        requirement_id: Option<String>,
         request_id: u64,
         caller_instance: Option<String>,
         provider_instance: Option<String>,
@@ -238,6 +241,7 @@ pub enum DiagnosticEvent {
     },
     /// One Event subscriber received an independent admission outcome.
     EventAdmission {
+        requirement_id: Option<String>,
         request_id: u64,
         publisher_instance: String,
         subscriber_instance: String,

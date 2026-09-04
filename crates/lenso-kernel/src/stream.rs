@@ -1,11 +1,11 @@
 use std::{any::Any, cell::Cell, fmt, marker::PhantomData, rc::Rc};
 
-use futures::future::LocalBoxFuture;
+use futures::{FutureExt, future::LocalBoxFuture};
 
 use super::{
     DiagnosticEvent, DiagnosticOutcome, DiagnosticSource, InvocationContext, NativeAppRuntime,
-    NativeStreamEndpointBinding, RequestPermit, RuntimeFailure, await_with_generation_context,
-    diagnostics::diagnostic_operation, schedule_plugin_supervision_after_failure,
+    NativeStreamEndpointBinding, RequestPermit, RuntimeFailure, diagnostics::diagnostic_operation,
+    schedule_plugin_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one stream Capability.
@@ -150,6 +150,10 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             .diagnostics
             .emit(DiagnosticSource::Invocation, started_at, |_| {
                 DiagnosticEvent::InvocationStarted {
+                    requirement_id: self
+                        .endpoints
+                        .first()
+                        .map(|endpoint| endpoint.requirement_id.clone()),
                     request_id,
                     caller_instance: Some(self.caller_instance.clone()),
                     provider_instance: self
@@ -172,6 +176,10 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             DiagnosticSource::Invocation,
             (self.runtime.driver.now)(),
             |_| DiagnosticEvent::InvocationCompleted {
+                requirement_id: self
+                    .endpoints
+                    .first()
+                    .map(|endpoint| endpoint.requirement_id.clone()),
                 request_id,
                 caller_instance: Some(self.caller_instance.clone()),
                 provider_instance: self
@@ -235,14 +243,25 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             return Err(RuntimeFailure::Unavailable { capability: C::ID });
         }
         let generation_cancellation = snapshot.cancellation.clone();
-        let outcome = await_with_generation_context(
-            &self.runtime.driver,
+        let endpoint_impl = snapshot.endpoint.clone();
+        let operation_name = operation.to_owned();
+        let (outcome, permit) = super::settlement::operation(
+            &self.runtime,
+            &endpoint.plugin_instance,
             &context,
             snapshot.cancellation,
             C::ID,
-            snapshot
-                .endpoint
-                .open(operation, Box::new(request), context.clone()),
+            move |execution_context| {
+                async move {
+                    (
+                        endpoint_impl
+                            .open(&operation_name, Box::new(request), execution_context)
+                            .await,
+                        permit,
+                    )
+                }
+                .boxed_local()
+            },
         )
         .await
         .map_err(|error| {
@@ -251,8 +270,8 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
                 &endpoint.plugin_instance,
                 error,
             )
-        })?
-        .map_err(|error| {
+        })?;
+        let outcome = outcome.map_err(|error| {
             schedule_plugin_supervision_after_failure(
                 &self.runtime,
                 &endpoint.plugin_instance,
@@ -340,12 +359,13 @@ impl<C: StreamCapability> NativeStream<C> {
             return Err(Self::protocol_violation());
         }
         let inner = self.inner.clone();
-        await_with_generation_context(
-            &self.runtime.driver,
+        super::settlement::operation(
+            &self.runtime,
+            &self.plugin_instance,
             &self.context,
             self.generation_cancellation.clone(),
             C::ID,
-            inner.send(Box::new(message)),
+            move |_| inner.send(Box::new(message)),
         )
         .await
         .map_err(|error| self.finish_with_error(error))?
@@ -361,12 +381,13 @@ impl<C: StreamCapability> NativeStream<C> {
             return Err(Self::protocol_violation());
         }
         let inner = self.inner.clone();
-        let item = await_with_generation_context(
-            &self.runtime.driver,
+        let item = super::settlement::operation(
+            &self.runtime,
+            &self.plugin_instance,
             &self.context,
             self.generation_cancellation.clone(),
             C::ID,
-            inner.receive(),
+            move |_| inner.receive(),
         )
         .await
         .map_err(|error| self.finish_with_error(error))?
@@ -412,12 +433,13 @@ impl<C: StreamCapability> NativeStream<C> {
             return Err(Self::protocol_violation());
         }
         let inner = self.inner.clone();
-        let result = await_with_generation_context(
-            &self.runtime.driver,
+        let result = super::settlement::operation(
+            &self.runtime,
+            &self.plugin_instance,
             &self.context,
             self.generation_cancellation.clone(),
             C::ID,
-            inner.close_send(),
+            move |_| inner.close_send(),
         )
         .await
         .map_err(|error| self.finish_with_error(error))?

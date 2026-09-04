@@ -89,6 +89,57 @@ impl Kernel {
         adapters: ExecutionAdapterCatalog,
         diagnostics: RuntimeDiagnostics,
     ) -> Result<NativeApp, RuntimeFailure> {
+        if plan
+            .plugin_instances()
+            .iter()
+            .any(|instance| instance.authoring_version() == 2)
+        {
+            return Self::start_controlled(
+                plan,
+                driver,
+                adapters,
+                diagnostics,
+                super::InvocationContext::new(0, None, CancellationToken::new()),
+                super::startup::DEFAULT_STARTUP_CLEANUP_TIMEOUT,
+            )
+            .await;
+        }
+        Self::start_owned(plan, driver, adapters, diagnostics, None, None).await
+    }
+
+    /// Starts through a Driver-owned attempt with explicit cancellation,
+    /// monotonic startup deadline, and one late-result cleanup budget.
+    pub async fn start_controlled<D: RuntimeDriver>(
+        plan: ResolvedAppPlan,
+        driver: D,
+        adapters: ExecutionAdapterCatalog,
+        diagnostics: RuntimeDiagnostics,
+        context: super::InvocationContext,
+        cleanup_timeout: std::time::Duration,
+    ) -> Result<NativeApp, RuntimeFailure> {
+        super::startup::start(
+            plan,
+            driver,
+            adapters,
+            diagnostics,
+            context,
+            cleanup_timeout,
+        )
+        .await
+    }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "startup remains linear so validation, preparation and activation fail closed"
+    )]
+    pub(super) async fn start_owned<D: RuntimeDriver>(
+        plan: ResolvedAppPlan,
+        driver: D,
+        adapters: ExecutionAdapterCatalog,
+        diagnostics: RuntimeDiagnostics,
+        startup_context: Option<super::InvocationContext>,
+        startup_cleanup: Option<super::cleanup::StartupCleanupBudget>,
+    ) -> Result<NativeApp, RuntimeFailure> {
         if let Err(error) = plan.validate() {
             let error = runtime_plan_error(&error);
             diagnostics.emit_runtime_failure(driver.now(), None, &error);
@@ -144,7 +195,14 @@ impl Kernel {
         let plugin_runtimes = native_plugin_runtimes(&plan, &driver, generations);
         let ready_gate = AppReadyGate::new();
         let supervision = plugin_supervision(&plan);
+        let cleanup_timeout = startup_cleanup
+            .as_ref()
+            .map(super::cleanup::StartupCleanupBudget::timeout);
         let runtime = Rc::new(NativeAppRuntime {
+            startup_context: RefCell::new(startup_context),
+            startup_cleanup,
+            cleanup_timeout,
+            executions: Rc::default(),
             plan,
             adapters,
             plugins: plugin_runtimes,
@@ -176,8 +234,8 @@ impl Kernel {
             },
         );
         let prepared_instances = prepare_native_plugins(&runtime).await?;
-        if let Err(error) = activate_native_plugins(&runtime).await {
-            let _ = deactivate_in_reverse(
+        if let Err(error) = construct_native_plugins(&runtime).await {
+            let cleanup_error = deactivate_in_reverse(
                 &runtime.plugins,
                 &runtime.dependencies,
                 &prepared_instances,
@@ -185,8 +243,34 @@ impl Kernel {
                 &runtime.admission,
                 &runtime.diagnostics,
                 &runtime.driver,
+                runtime
+                    .startup_cleanup
+                    .as_ref()
+                    .map(super::cleanup::StartupCleanupBudget::establish),
             )
             .await;
+            retain_unsafe_startup(&runtime, cleanup_error.as_ref());
+            runtime
+                .diagnostics
+                .emit_runtime_failure((runtime.driver.now)(), None, &error);
+            return Err(error);
+        }
+        if let Err(error) = activate_native_plugins(&runtime).await {
+            let cleanup_error = deactivate_in_reverse(
+                &runtime.plugins,
+                &runtime.dependencies,
+                &prepared_instances,
+                DeactivationReason::StartupRollback,
+                &runtime.admission,
+                &runtime.diagnostics,
+                &runtime.driver,
+                runtime
+                    .startup_cleanup
+                    .as_ref()
+                    .map(super::cleanup::StartupCleanupBudget::establish),
+            )
+            .await;
+            retain_unsafe_startup(&runtime, cleanup_error.as_ref());
             runtime
                 .diagnostics
                 .emit_runtime_failure((runtime.driver.now)(), None, &error);
@@ -210,6 +294,40 @@ pub(super) fn attach_managed_task_failure_handlers(runtime: &Rc<NativeAppRuntime
         };
         attach_managed_task_failure_handler(runtime, instance_key, &tasks);
     }
+}
+
+fn startup_active(runtime: &NativeAppRuntime) -> Result<(), RuntimeFailure> {
+    let result = runtime
+        .startup_context
+        .borrow()
+        .as_ref()
+        .map_or(Ok(()), |context| {
+            super::ensure_context_active(&runtime.driver, context)
+        });
+    if result.is_err()
+        && let Some(cleanup) = &runtime.startup_cleanup
+    {
+        let now = (runtime.driver.now)();
+        let cleanup_started_at = runtime
+            .startup_context
+            .borrow()
+            .as_ref()
+            .and_then(super::InvocationContext::deadline)
+            .filter(|deadline| now >= *deadline)
+            .unwrap_or(now);
+        cleanup.establish_at(cleanup_started_at);
+    }
+    result
+}
+
+fn lifecycle_cancellation(
+    runtime: &NativeAppRuntime,
+    tasks: &ManagedTaskScope,
+) -> CancellationToken {
+    runtime.startup_context.borrow().as_ref().map_or_else(
+        || tasks.cancellation(),
+        super::InvocationContext::cancellation,
+    )
 }
 
 pub(super) fn attach_managed_task_failure_handler(
@@ -380,7 +498,8 @@ pub(super) fn validate_prepared_native_app(
             let matching: Vec<_> = bindings
                 .iter()
                 .filter(|prepared| {
-                    prepared.consumer_instance == planned.consumer_instance()
+                    prepared.requirement_id() == planned.requirement_id()
+                        && prepared.consumer_instance == planned.consumer_instance()
                         && prepared.provider_instance == planned.provider_instance()
                         && prepared.endpoint.capability_id() == planned.capability_id()
                         && prepared.endpoint.descriptor_version() == planned.descriptor_version()
@@ -416,7 +535,8 @@ pub(super) fn validate_prepared_native_app(
             let matching: Vec<_> = stream_bindings
                 .iter()
                 .filter(|prepared| {
-                    prepared.consumer_instance == planned.consumer_instance()
+                    prepared.requirement_id() == planned.requirement_id()
+                        && prepared.consumer_instance == planned.consumer_instance()
                         && prepared.provider_instance == planned.provider_instance()
                         && prepared.endpoint.capability_id() == planned.capability_id()
                         && prepared.endpoint.descriptor_version() == planned.descriptor_version()
@@ -452,7 +572,8 @@ pub(super) fn validate_prepared_native_app(
             let matching: Vec<_> = event_bindings
                 .iter()
                 .filter(|prepared| {
-                    prepared.consumer_instance == planned.consumer_instance()
+                    prepared.requirement_id() == planned.requirement_id()
+                        && prepared.consumer_instance == planned.consumer_instance()
                         && prepared.provider_instance == planned.provider_instance()
                         && prepared.endpoint.capability_id() == planned.capability_id()
                         && prepared.endpoint.descriptor_version() == planned.descriptor_version()
@@ -506,6 +627,8 @@ pub(super) fn native_plugin_runtimes<D: RuntimeDriver>(
                     lifecycle,
                     tasks: ManagedTaskScope::new(driver),
                     resources: ManagedResourceScope::new(),
+                    stop_attempted: false,
+                    cleanup_timed_out: false,
                 })),
             },
         );
@@ -518,6 +641,7 @@ pub(super) async fn prepare_native_plugins(
 ) -> Result<Vec<String>, RuntimeFailure> {
     let mut prepared_instances = Vec::with_capacity(runtime.activation_order.len());
     for instance_key in &runtime.activation_order {
+        startup_active(runtime)?;
         let instance = runtime
             .plan
             .plugin_instances()
@@ -531,7 +655,7 @@ pub(super) async fn prepare_native_plugins(
         let (lifecycle, tasks, resources) = plugin
             .generation_parts()
             .expect("every startup Plugin Instance has a generation");
-        let cancellation = tasks.cancellation();
+        let cancellation = lifecycle_cancellation(runtime, &tasks);
         prepared_instances.push(instance_key.clone());
         let started_at = (runtime.driver.now)();
         runtime
@@ -556,7 +680,10 @@ pub(super) async fn prepare_native_plugins(
             cancellation,
             admission: runtime.admission.clone(),
         };
-        let result = lifecycle.prepare(context).await;
+        let result = lifecycle
+            .prepare(context)
+            .await
+            .and_then(|()| startup_active(runtime));
         let outcome = result.as_ref().map_or_else(
             |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
             |()| super::DiagnosticOutcome::Succeeded,
@@ -573,7 +700,7 @@ pub(super) async fn prepare_native_plugins(
             },
         );
         if let Err(error) = result {
-            let _ = deactivate_in_reverse(
+            let cleanup_error = deactivate_in_reverse(
                 &runtime.plugins,
                 &runtime.dependencies,
                 &prepared_instances,
@@ -581,8 +708,13 @@ pub(super) async fn prepare_native_plugins(
                 &runtime.admission,
                 &runtime.diagnostics,
                 &runtime.driver,
+                runtime
+                    .startup_cleanup
+                    .as_ref()
+                    .map(super::cleanup::StartupCleanupBudget::establish),
             )
             .await;
+            retain_unsafe_startup(runtime, cleanup_error.as_ref());
             runtime.diagnostics.emit_runtime_failure(
                 (runtime.driver.now)(),
                 Some(instance_key),
@@ -594,10 +726,20 @@ pub(super) async fn prepare_native_plugins(
     Ok(prepared_instances)
 }
 
+fn retain_unsafe_startup(runtime: &Rc<NativeAppRuntime>, cleanup_error: Option<&RuntimeFailure>) {
+    if matches!(cleanup_error, Some(RuntimeFailure::DeadlineExceeded { .. })) {
+        // Native code cannot be preempted safely. With no App handle to carry
+        // this failed startup generation, retain ownership until the embedding
+        // Host escalates by terminating the containing process.
+        std::mem::forget(runtime.clone());
+    }
+}
+
 pub(super) async fn activate_native_plugins(
     runtime: &Rc<NativeAppRuntime>,
 ) -> Result<(), RuntimeFailure> {
     for instance_key in &runtime.activation_order {
+        startup_active(runtime)?;
         let plugin = runtime
             .plugins
             .get(instance_key)
@@ -605,7 +747,7 @@ pub(super) async fn activate_native_plugins(
         let (lifecycle, tasks, resources) = plugin
             .generation_parts()
             .expect("every startup Plugin Instance has a generation");
-        let cancellation = tasks.cancellation();
+        let cancellation = lifecycle_cancellation(runtime, &tasks);
         let started_at = (runtime.driver.now)();
         runtime
             .diagnostics
@@ -629,7 +771,10 @@ pub(super) async fn activate_native_plugins(
             cancellation,
             admission: runtime.admission.clone(),
         };
-        let result = lifecycle.activate(context).await;
+        let result = lifecycle
+            .activate(context)
+            .await
+            .and_then(|()| startup_active(runtime));
         let outcome = result.as_ref().map_or_else(
             |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
             |()| super::DiagnosticOutcome::Succeeded,
@@ -657,7 +802,73 @@ pub(super) async fn activate_native_plugins(
     Ok(())
 }
 
+pub(super) async fn construct_native_plugins(
+    runtime: &Rc<NativeAppRuntime>,
+) -> Result<(), RuntimeFailure> {
+    for instance_key in &runtime.activation_order {
+        let instance = runtime
+            .plan
+            .plugin_instance(instance_key)
+            .expect("construction order contains planned Instances");
+        if instance.authoring_version() == 1 {
+            continue;
+        }
+        startup_active(runtime)?;
+        let plugin = runtime
+            .plugins
+            .get(instance_key)
+            .expect("construction order contains planned Instances");
+        let (lifecycle, tasks, resources) = plugin
+            .generation_parts()
+            .expect("startup generation exists");
+        let started_at = (runtime.driver.now)();
+        runtime
+            .diagnostics
+            .emit(super::DiagnosticSource::Lifecycle, started_at, |_| {
+                super::DiagnosticEvent::LifecycleStarted {
+                    instance: instance_key.clone(),
+                    generation: 1,
+                    phase: super::PluginLifecyclePhase::Construct,
+                }
+            });
+        let result = lifecycle
+            .construct(ActivateContext {
+                instance_key: instance_key.clone(),
+                dependencies: runtime
+                    .dependencies
+                    .get(instance_key)
+                    .cloned()
+                    .unwrap_or_default(),
+                ready_gate: runtime.ready_gate.clone(),
+                tasks: tasks.clone(),
+                resources,
+                cancellation: lifecycle_cancellation(runtime, &tasks),
+                admission: runtime.admission.clone(),
+            })
+            .await
+            .and_then(|()| startup_active(runtime));
+        let outcome = result.as_ref().map_or_else(
+            |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+            |()| super::DiagnosticOutcome::Succeeded,
+        );
+        runtime.diagnostics.emit(
+            super::DiagnosticSource::Lifecycle,
+            (runtime.driver.now)(),
+            |_| super::DiagnosticEvent::LifecycleCompleted {
+                instance: instance_key.clone(),
+                generation: 1,
+                phase: super::PluginLifecyclePhase::Construct,
+                outcome,
+                elapsed: (runtime.driver.now)().saturating_sub(started_at),
+            },
+        );
+        result?;
+    }
+    Ok(())
+}
+
 pub(super) async fn open_native_readiness(runtime: &Rc<NativeAppRuntime>) {
+    runtime.startup_context.borrow_mut().take();
     runtime.ready_gate.open();
     runtime.admission.open();
     runtime.diagnostics.emit(
@@ -690,7 +901,8 @@ pub(super) fn native_bindings(
             continue;
         }
         let Some(endpoint) = prepared.iter().find_map(|prepared| {
-            (prepared.consumer_instance == binding.consumer_instance()
+            (prepared.requirement_id() == binding.requirement_id()
+                && prepared.consumer_instance == binding.consumer_instance()
                 && prepared.provider_instance == binding.provider_instance()
                 && prepared.endpoint.capability_id() == binding.capability_id())
             .then_some(&prepared.endpoint)
@@ -721,6 +933,7 @@ pub(super) fn native_bindings(
             ))
             .or_insert_with(Vec::new)
             .push(NativeEndpointBinding {
+                requirement_id: binding.requirement_id().to_owned(),
                 plugin_instance: binding.provider_instance().to_owned(),
                 state,
                 admissions,
@@ -751,7 +964,8 @@ pub(super) fn native_stream_bindings(
             continue;
         }
         let Some(endpoint) = prepared.iter().find_map(|prepared| {
-            (prepared.consumer_instance == binding.consumer_instance()
+            (prepared.requirement_id() == binding.requirement_id()
+                && prepared.consumer_instance == binding.consumer_instance()
                 && prepared.provider_instance == binding.provider_instance()
                 && prepared.endpoint.capability_id() == binding.capability_id())
             .then_some(&prepared.endpoint)
@@ -782,6 +996,7 @@ pub(super) fn native_stream_bindings(
             ))
             .or_insert_with(Vec::new)
             .push(NativeStreamEndpointBinding {
+                requirement_id: binding.requirement_id().to_owned(),
                 plugin_instance: binding.provider_instance().to_owned(),
                 state,
                 admissions,
@@ -812,7 +1027,8 @@ pub(super) fn native_event_bindings(
             continue;
         }
         let Some(endpoint) = prepared.iter().find_map(|prepared| {
-            (prepared.consumer_instance == binding.consumer_instance()
+            (prepared.requirement_id() == binding.requirement_id()
+                && prepared.consumer_instance == binding.consumer_instance()
                 && prepared.provider_instance == binding.provider_instance()
                 && prepared.endpoint.capability_id() == binding.capability_id())
             .then_some(&prepared.endpoint)
@@ -835,6 +1051,7 @@ pub(super) fn native_event_bindings(
             ))
             .or_insert_with(Vec::new)
             .push(event::NativeEventEndpointBinding {
+                requirement_id: binding.requirement_id().to_owned(),
                 plugin_instance: binding.provider_instance().to_owned(),
                 state,
                 queue,
@@ -856,7 +1073,11 @@ pub(super) fn plugin_dependencies(
         .map(|instance| {
             (
                 instance.instance_key().to_owned(),
-                PluginDependencies::new(instance.instance_key(), runtime.clone()),
+                PluginDependencies::new(
+                    instance.instance_key(),
+                    runtime.clone(),
+                    instance.required_capabilities().to_vec(),
+                ),
             )
         })
         .collect();
@@ -866,6 +1087,7 @@ pub(super) fn plugin_dependencies(
             .expect("every resolved binding consumer has Plugin dependencies")
             .bindings
             .push(PluginDependency::new(
+                binding.requirement_id(),
                 binding.capability_id(),
                 binding.provider_instance(),
                 binding.provider_order(),
@@ -875,7 +1097,12 @@ pub(super) fn plugin_dependencies(
                         consumer == binding.consumer_instance()
                             && *capability == binding.capability_id()
                     })
-                    .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
+                    .and_then(|(_, endpoints)| {
+                        endpoints.iter().find(|endpoint| {
+                            endpoint.requirement_id == binding.requirement_id()
+                                && endpoint.plugin_instance == binding.provider_instance()
+                        })
+                    })
                     .map(|endpoint| PluginDependencyHandle {
                         binding: endpoint.clone(),
                         caller_instance: binding.consumer_instance().to_owned(),
@@ -887,7 +1114,12 @@ pub(super) fn plugin_dependencies(
                         consumer == binding.consumer_instance()
                             && *capability == binding.capability_id()
                     })
-                    .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
+                    .and_then(|(_, endpoints)| {
+                        endpoints.iter().find(|endpoint| {
+                            endpoint.requirement_id == binding.requirement_id()
+                                && endpoint.plugin_instance == binding.provider_instance()
+                        })
+                    })
                     .map(|endpoint| PluginStreamDependencyHandle {
                         binding: endpoint.clone(),
                         caller_instance: binding.consumer_instance().to_owned(),
@@ -899,7 +1131,12 @@ pub(super) fn plugin_dependencies(
                         consumer == binding.consumer_instance()
                             && *capability == binding.capability_id()
                     })
-                    .and_then(|(_, endpoints)| endpoints.get(binding.provider_order()))
+                    .and_then(|(_, endpoints)| {
+                        endpoints.iter().find(|endpoint| {
+                            endpoint.requirement_id == binding.requirement_id()
+                                && endpoint.plugin_instance == binding.provider_instance()
+                        })
+                    })
                     .map(|endpoint| PluginEventDependencyHandle {
                         binding: endpoint.clone(),
                         caller_instance: binding.consumer_instance().to_owned(),

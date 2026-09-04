@@ -297,6 +297,13 @@ impl ConformanceExecutionAdapter {
 }
 
 impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
+    fn supports_runtime_profile(&self, authoring_version: u32, profile: &str) -> bool {
+        matches!(
+            (authoring_version, profile),
+            (1, "lenso.native-authoring@1" | "lenso.native-rust@1")
+                | (2, "lenso.native-authoring@2")
+        )
+    }
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         plan.validate()
             .map_err(|error| RuntimeFailure::InvalidResolvedPlan {
@@ -333,27 +340,36 @@ impl lenso_kernel::NativeExecutionAdapter for ConformanceExecutionAdapter {
 
             if !descriptor.request_operations().is_empty() {
                 let endpoint = find_endpoint(plugin.endpoints.request(), binding, "request")?;
-                bindings.push(PreparedBinding::new(
-                    binding.consumer_instance(),
-                    binding.provider_instance(),
-                    endpoint,
-                ));
+                bindings.push(
+                    PreparedBinding::new(
+                        binding.consumer_instance(),
+                        binding.provider_instance(),
+                        endpoint,
+                    )
+                    .with_requirement_id(binding.requirement_id()),
+                );
             }
             if !descriptor.stream_operations().is_empty() {
                 let endpoint = find_endpoint(plugin.endpoints.stream(), binding, "stream")?;
-                stream_bindings.push(PreparedStreamBinding::new(
-                    binding.consumer_instance(),
-                    binding.provider_instance(),
-                    endpoint,
-                ));
+                stream_bindings.push(
+                    PreparedStreamBinding::new(
+                        binding.consumer_instance(),
+                        binding.provider_instance(),
+                        endpoint,
+                    )
+                    .with_requirement_id(binding.requirement_id()),
+                );
             }
             if !descriptor.event_operations().is_empty() {
                 let endpoint = find_endpoint(plugin.endpoints.event(), binding, "Event")?;
-                event_bindings.push(PreparedEventBinding::new(
-                    binding.consumer_instance(),
-                    binding.provider_instance(),
-                    endpoint,
-                ));
+                event_bindings.push(
+                    PreparedEventBinding::new(
+                        binding.consumer_instance(),
+                        binding.provider_instance(),
+                        endpoint,
+                    )
+                    .with_requirement_id(binding.requirement_id()),
+                );
             }
         }
 

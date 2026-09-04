@@ -147,6 +147,10 @@ impl PluginLifecycle for RecordingLifecycle {
             lenso_kernel::DeactivationReason::Shutdown
                 | lenso_kernel::DeactivationReason::StartupRollback
         ));
+        if context.reason() == lenso_kernel::DeactivationReason::Shutdown {
+            assert!(!context.cancellation().is_cancelled());
+            assert!(context.remaining_budget().is_some());
+        }
         let events = self.events.clone();
         let instance_key = self.instance_key.clone();
         let resources_released = self.resources_released.clone();
@@ -514,4 +518,14 @@ fn shutdown_timeout_terminates_a_blocked_managed_task() {
         ShutdownOutcome::Timeout
     );
     assert_eq!(driver.now(), Duration::from_millis(10));
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .all(|event| !matches!(event, Event::Deactivate(_)))
+    );
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(5))),
+        ShutdownOutcome::Timeout
+    );
 }

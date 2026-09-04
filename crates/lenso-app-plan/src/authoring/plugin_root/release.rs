@@ -11,6 +11,8 @@ use crate::{
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginContract {
+    #[serde(default = "crate::schema::old_authoring_version")]
+    authoring_version: u32,
     plugin_id: String,
     release_version: String,
     root_slot: String,
@@ -34,6 +36,7 @@ impl PluginContract {
         root_slot: impl Into<String>,
     ) -> Self {
         Self {
+            authoring_version: 1,
             plugin_id: plugin_id.into(),
             release_version: release_version.into(),
             root_slot: root_slot.into(),
@@ -50,6 +53,16 @@ impl PluginContract {
     pub fn with_configuration_schema(mut self, schema: Value) -> Self {
         self.configuration_schema = Some(schema);
         self
+    }
+
+    #[must_use]
+    pub const fn with_authoring_version(mut self, version: u32) -> Self {
+        self.authoring_version = version;
+        self
+    }
+
+    pub const fn authoring_version(&self) -> u32 {
+        self.authoring_version
     }
 
     #[must_use]
@@ -122,6 +135,7 @@ impl PluginContract {
     pub fn resolve(&self, implementation: &PluginImplementation) -> PluginDescriptor {
         let mut descriptor =
             PluginDescriptor::new(&self.plugin_id, &self.release_version, &self.root_slot)
+                .with_authoring(self.authoring_version, implementation.runtime_profile())
                 .with_runtime_package(
                     &implementation.runtime_package_id,
                     &implementation.runtime_package_revision,
@@ -148,6 +162,8 @@ impl PluginContract {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginImplementation {
+    #[serde(default)]
+    runtime_profile: String,
     runtime_package_id: String,
     runtime_package_revision: String,
     entrypoint: String,
@@ -162,6 +178,7 @@ impl PluginImplementation {
         execution_class: ExecutionClassId,
     ) -> Self {
         Self {
+            runtime_profile: crate::schema::old_runtime_profile(&execution_class),
             runtime_package_id: runtime_package_id.into(),
             runtime_package_revision: runtime_package_revision.into(),
             entrypoint: entrypoint.into(),
@@ -171,6 +188,20 @@ impl PluginImplementation {
 
     pub fn runtime_package_id(&self) -> &str {
         &self.runtime_package_id
+    }
+
+    #[must_use]
+    pub fn with_runtime_profile(mut self, profile: impl Into<String>) -> Self {
+        self.runtime_profile = profile.into();
+        self
+    }
+
+    pub fn runtime_profile(&self) -> &str {
+        if self.runtime_profile.is_empty() {
+            self.execution_class.as_str()
+        } else {
+            &self.runtime_profile
+        }
     }
 
     pub fn runtime_package_revision(&self) -> &str {
@@ -190,6 +221,7 @@ impl PluginDescriptor {
     /// Projects the runtime-independent Contract from this resolved descriptor.
     pub fn contract(&self) -> PluginContract {
         PluginContract {
+            authoring_version: self.authoring_version,
             plugin_id: self.plugin_id.clone(),
             release_version: self.release_version.clone(),
             root_slot: self.root_slot.clone(),
@@ -205,6 +237,7 @@ impl PluginDescriptor {
     /// Projects the exact runtime selection from this resolved descriptor.
     pub fn implementation(&self) -> PluginImplementation {
         PluginImplementation {
+            runtime_profile: self.runtime_profile().to_owned(),
             runtime_package_id: self.runtime_package_id.clone(),
             runtime_package_revision: self.runtime_package_revision.clone(),
             entrypoint: self.entrypoint.clone(),

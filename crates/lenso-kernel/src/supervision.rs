@@ -8,6 +8,10 @@ use super::{
     attach_managed_task_failure_handler, select, wait_until,
 };
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "startup rollback keeps every generation-owned cleanup input explicit"
+)]
 pub(super) async fn deactivate_in_reverse(
     plugins: &BTreeMap<String, NativePluginRuntime>,
     dependencies: &BTreeMap<String, PluginDependencies>,
@@ -16,6 +20,7 @@ pub(super) async fn deactivate_in_reverse(
     admission: &AppAdmission,
     diagnostics: &RuntimeDiagnostics,
     driver: &super::DriverControl,
+    budget: Option<super::cleanup::CleanupBudget>,
 ) -> Option<RuntimeFailure> {
     let mut first_error = None;
     for instance_key in activation_order.iter().rev() {
@@ -25,7 +30,7 @@ pub(super) async fn deactivate_in_reverse(
         let Some(generation) = plugin.take_generation() else {
             continue;
         };
-        if let Some(error) = cleanup_generation(
+        match cleanup_generation(
             instance_key,
             generation,
             dependencies.get(instance_key).cloned().unwrap_or_default(),
@@ -34,11 +39,20 @@ pub(super) async fn deactivate_in_reverse(
             1,
             diagnostics,
             driver,
+            budget.clone(),
         )
         .await
-            && first_error.is_none()
         {
-            first_error = Some(error);
+            GenerationCleanupOutcome::Complete(Some(error)) if first_error.is_none() => {
+                first_error = Some(error);
+            }
+            GenerationCleanupOutcome::TimedOut(generation) => {
+                plugin.install_generation(generation);
+                if first_error.is_none() {
+                    first_error = Some(cleanup_timeout_failure());
+                }
+            }
+            GenerationCleanupOutcome::Complete(_) => {}
         }
     }
     first_error
@@ -50,14 +64,23 @@ pub(super) async fn deactivate_in_reverse(
 )]
 pub(super) async fn shutdown_native_plugins(
     runtime: &NativeAppRuntime,
-    timeout: Duration,
+    budget: super::cleanup::CleanupBudget,
 ) -> ShutdownOutcome {
-    let deadline = (runtime.driver.now)().saturating_add(timeout);
+    let deadline = budget.deadline();
     (runtime.driver.yield_now)().await;
 
     if !drain_supervision_until(runtime, deadline).await {
         terminate_remaining_cleanup(runtime);
         return ShutdownOutcome::Timeout;
+    }
+
+    // Caller cancellation and Adapter acknowledgement do not release execution
+    // ownership. Never run stop against resources still reachable by old work.
+    while !runtime.executions.is_settled(None) {
+        if (runtime.driver.now)() >= deadline {
+            return ShutdownOutcome::Timeout;
+        }
+        (runtime.driver.yield_now)().await;
     }
 
     for plugin in runtime.plugins.values() {
@@ -110,6 +133,7 @@ pub(super) async fn shutdown_native_plugins(
                 resources: resources.clone(),
                 cancellation,
                 admission: runtime.admission.clone(),
+                cleanup: Some(budget.clone()),
             }),
         )
         .await;
@@ -212,7 +236,7 @@ pub(super) fn plugin_supervision(plan: &ResolvedAppPlan) -> BTreeMap<String, Plu
                 PluginSupervision {
                     policy: instance.restart_policy(),
                     criticality: instance.criticality(),
-                    required_path: plan.plugin_instance_is_required(instance.instance_key()),
+                    required_path: plan.plugin_instance_is_terminal(instance.instance_key()),
                     generation: 1,
                     attempts: Vec::new(),
                     stable_since: Some(Duration::ZERO),
@@ -323,17 +347,37 @@ pub(super) async fn supervise_plugin_instance(
         .borrow()
         .get(&instance_key)
         .map_or(1, |state| state.generation);
+    let cleanup_budget = runtime
+        .cleanup_timeout
+        .map(|timeout| super::cleanup::CleanupBudget::after(&runtime.driver, timeout));
+    while !runtime.executions.is_settled(Some(&instance_key)) {
+        if runtime.shutdown_started.get() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
+        if cleanup_budget
+            .as_ref()
+            .is_some_and(|budget| budget.remaining().is_zero())
+        {
+            return finish_plugin_cleanup_failure(
+                &runtime,
+                &instance_key,
+                cleanup_timeout_failure(),
+            );
+        }
+        (runtime.driver.yield_now)().await;
+    }
     let generation = runtime
         .plugins
         .get(&instance_key)
         .and_then(NativePluginRuntime::take_generation);
     if let Some(generation) = generation
-        && let Some(error) = cleanup_native_generation(
+        && let Some(error) = cleanup_native_generation_with_budget(
             &runtime,
             &instance_key,
             generation,
             DeactivationReason::SupervisionRestart,
             current_generation,
+            cleanup_budget,
         )
         .await
     {
@@ -423,8 +467,8 @@ pub(super) async fn supervise_plugin_instance(
         {
             Ok(generation) => generation,
             Err(GenerationPreparationFailure::Lifecycle) => continue,
-            Err(GenerationPreparationFailure::Cleanup(error)) => {
-                return finish_plugin_cleanup_failure(&runtime, &instance_key, error);
+            Err(GenerationPreparationFailure::Cleanup { primary }) => {
+                return finish_plugin_cleanup_failure(&runtime, &instance_key, primary);
             }
         };
 
@@ -596,6 +640,8 @@ pub(super) async fn prepare_and_activate_generation(
         lifecycle: lifecycle.clone(),
         tasks: tasks.clone(),
         resources: resources.clone(),
+        stop_attempted: false,
+        cleanup_timed_out: false,
     };
     let dependencies = runtime
         .dependencies
@@ -650,7 +696,7 @@ pub(super) async fn prepare_and_activate_generation(
             Some(instance_key),
             &error,
         );
-        let failure = if let Some(cleanup_error) = cleanup_native_generation(
+        let failure = if cleanup_native_generation(
             runtime,
             instance_key,
             prepared,
@@ -658,13 +704,25 @@ pub(super) async fn prepare_and_activate_generation(
             generation_number,
         )
         .await
+        .is_some()
         {
-            GenerationPreparationFailure::Cleanup(cleanup_error)
+            GenerationPreparationFailure::Cleanup { primary: error }
         } else {
             GenerationPreparationFailure::Lifecycle
         };
         return Err(failure);
     }
+    let construct_result = run_construction_phase(
+        runtime,
+        instance,
+        instance_key,
+        generation_number,
+        lifecycle.clone(),
+        dependencies.clone(),
+        tasks.clone(),
+        resources.clone(),
+    )
+    .await;
     let activate_started_at = (runtime.driver.now)();
     runtime
         .diagnostics
@@ -675,17 +733,19 @@ pub(super) async fn prepare_and_activate_generation(
                 phase: super::PluginLifecyclePhase::Activate,
             }
         });
-    let activate_result = lifecycle
-        .activate(ActivateContext {
-            instance_key: instance_key.to_owned(),
-            dependencies,
-            ready_gate: runtime.ready_gate.clone(),
-            tasks: tasks.clone(),
-            resources: resources.clone(),
-            cancellation: tasks.cancellation(),
-            admission: runtime.admission.clone(),
-        })
-        .await;
+    let activate_context = ActivateContext {
+        instance_key: instance_key.to_owned(),
+        dependencies,
+        ready_gate: runtime.ready_gate.clone(),
+        tasks: tasks.clone(),
+        resources: resources.clone(),
+        cancellation: tasks.cancellation(),
+        admission: runtime.admission.clone(),
+    };
+    let activate_result = match construct_result {
+        Ok(()) => lifecycle.activate(activate_context).await,
+        Err(error) => Err(error),
+    };
     let activate_outcome = activate_result.as_ref().map_or_else(
         |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
         |()| super::DiagnosticOutcome::Succeeded,
@@ -707,7 +767,7 @@ pub(super) async fn prepare_and_activate_generation(
             Some(instance_key),
             &error,
         );
-        let failure = if let Some(cleanup_error) = cleanup_native_generation(
+        let failure = if cleanup_native_generation(
             runtime,
             instance_key,
             prepared,
@@ -715,14 +775,78 @@ pub(super) async fn prepare_and_activate_generation(
             generation_number,
         )
         .await
+        .is_some()
         {
-            GenerationPreparationFailure::Cleanup(cleanup_error)
+            GenerationPreparationFailure::Cleanup { primary: error }
         } else {
             GenerationPreparationFailure::Lifecycle
         };
         return Err(failure);
     }
     Ok(prepared)
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "construction diagnostics retain exact generation inputs"
+)]
+async fn run_construction_phase(
+    runtime: &NativeAppRuntime,
+    instance: &lenso_app_plan::PluginInstancePlan,
+    instance_key: &str,
+    generation_number: u64,
+    lifecycle: Rc<dyn PluginLifecycle>,
+    dependencies: PluginDependencies,
+    tasks: ManagedTaskScope,
+    resources: ManagedResourceScope,
+) -> Result<(), RuntimeFailure> {
+    if instance.authoring_version() == 1 {
+        return Ok(());
+    }
+    let started_at = (runtime.driver.now)();
+    runtime
+        .diagnostics
+        .emit(DiagnosticSource::Lifecycle, started_at, |_| {
+            DiagnosticEvent::LifecycleStarted {
+                instance: instance_key.to_owned(),
+                generation: generation_number,
+                phase: super::PluginLifecyclePhase::Construct,
+            }
+        });
+    let result = lifecycle
+        .construct(ActivateContext {
+            instance_key: instance_key.to_owned(),
+            dependencies,
+            ready_gate: runtime.ready_gate.clone(),
+            tasks: tasks.clone(),
+            resources,
+            cancellation: tasks.cancellation(),
+            admission: runtime.admission.clone(),
+        })
+        .await
+        .and_then(|()| {
+            if runtime.shutdown_started.get() || tasks.cancellation().is_cancelled() {
+                Err(RuntimeFailure::AdmissionClosed)
+            } else {
+                Ok(())
+            }
+        });
+    let outcome = result.as_ref().map_or_else(
+        |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+        |()| super::DiagnosticOutcome::Succeeded,
+    );
+    runtime
+        .diagnostics
+        .emit(DiagnosticSource::Lifecycle, (runtime.driver.now)(), |_| {
+            DiagnosticEvent::LifecycleCompleted {
+                instance: instance_key.to_owned(),
+                generation: generation_number,
+                phase: super::PluginLifecyclePhase::Construct,
+                outcome,
+                elapsed: (runtime.driver.now)().saturating_sub(started_at),
+            }
+        });
+    result
 }
 
 pub(super) async fn cleanup_native_generation(
@@ -732,12 +856,34 @@ pub(super) async fn cleanup_native_generation(
     reason: DeactivationReason,
     generation_number: u64,
 ) -> Option<RuntimeFailure> {
+    let budget = runtime
+        .cleanup_timeout
+        .map(|timeout| super::cleanup::CleanupBudget::after(&runtime.driver, timeout));
+    cleanup_native_generation_with_budget(
+        runtime,
+        instance_key,
+        generation,
+        reason,
+        generation_number,
+        budget,
+    )
+    .await
+}
+
+async fn cleanup_native_generation_with_budget(
+    runtime: &NativeAppRuntime,
+    instance_key: &str,
+    generation: NativePluginGeneration,
+    reason: DeactivationReason,
+    generation_number: u64,
+    budget: Option<super::cleanup::CleanupBudget>,
+) -> Option<RuntimeFailure> {
     let dependencies = runtime
         .dependencies
         .get(instance_key)
         .cloned()
         .unwrap_or_default();
-    cleanup_generation(
+    match cleanup_generation(
         instance_key,
         generation,
         dependencies,
@@ -746,27 +892,71 @@ pub(super) async fn cleanup_native_generation(
         generation_number,
         &runtime.diagnostics,
         &runtime.driver,
+        budget,
     )
     .await
+    {
+        GenerationCleanupOutcome::Complete(error) => error,
+        GenerationCleanupOutcome::TimedOut(generation) => {
+            let error = cleanup_timeout_failure();
+            runtime.diagnostics.emit_runtime_failure(
+                (runtime.driver.now)(),
+                Some(instance_key),
+                &error,
+            );
+            if let Some(plugin) = runtime.plugins.get(instance_key) {
+                plugin.install_generation(generation);
+            }
+            Some(error)
+        }
+    }
+}
+
+enum GenerationCleanupOutcome {
+    Complete(Option<RuntimeFailure>),
+    TimedOut(NativePluginGeneration),
+}
+
+fn cleanup_timeout_failure() -> RuntimeFailure {
+    RuntimeFailure::DeadlineExceeded { request_id: 0 }
 }
 
 #[allow(
     clippy::too_many_arguments,
     reason = "cleanup spells out every generation-owned input without hidden runtime state"
 )]
-pub(super) async fn cleanup_generation(
+async fn cleanup_generation(
     instance_key: &str,
-    generation: NativePluginGeneration,
+    mut generation: NativePluginGeneration,
     dependencies: PluginDependencies,
     reason: DeactivationReason,
     admission: AppAdmission,
     generation_number: u64,
     diagnostics: &RuntimeDiagnostics,
     driver: &super::DriverControl,
-) -> Option<RuntimeFailure> {
+    budget: Option<super::cleanup::CleanupBudget>,
+) -> GenerationCleanupOutcome {
     generation.tasks.close();
     generation.resources.close();
-    generation.tasks.cancel_all().await;
+    if generation.cleanup_timed_out || generation.stop_attempted {
+        return GenerationCleanupOutcome::TimedOut(generation);
+    }
+    if let Some(budget) = &budget {
+        if !generation
+            .tasks
+            .drain_until(driver, budget.deadline())
+            .await
+        {
+            generation.cleanup_timed_out = true;
+            return GenerationCleanupOutcome::TimedOut(generation);
+        }
+        if budget.remaining().is_zero() {
+            generation.cleanup_timed_out = true;
+            return GenerationCleanupOutcome::TimedOut(generation);
+        }
+    } else {
+        generation.tasks.cancel_all().await;
+    }
     let mut first_error = None;
     let started_at = (driver.now)();
     diagnostics.emit(super::DiagnosticSource::Lifecycle, started_at, |_| {
@@ -776,6 +966,7 @@ pub(super) async fn cleanup_generation(
             phase: super::PluginLifecyclePhase::Deactivate,
         }
     });
+    generation.stop_attempted = true;
     let deactivate = generation.lifecycle.deactivate(DeactivateContext {
         instance_key: instance_key.to_owned(),
         dependencies,
@@ -784,8 +975,18 @@ pub(super) async fn cleanup_generation(
         resources: generation.resources.clone(),
         cancellation: generation.tasks.cancellation(),
         admission,
+        cleanup: budget.clone(),
     });
-    let result = deactivate.await;
+    let result = if let Some(budget) = &budget {
+        if let Some(result) = wait_until(driver, budget.deadline(), deactivate).await {
+            result
+        } else {
+            generation.cleanup_timed_out = true;
+            return GenerationCleanupOutcome::TimedOut(generation);
+        }
+    } else {
+        deactivate.await
+    };
     let outcome = result.as_ref().map_or_else(
         |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
         |()| super::DiagnosticOutcome::Succeeded,
@@ -803,13 +1004,29 @@ pub(super) async fn cleanup_generation(
         diagnostics.emit_runtime_failure((driver.now)(), Some(instance_key), &error);
         first_error = Some(error);
     }
-    if let Some(error) = generation.resources.release_all().await
+    if let Some(budget) = &budget {
+        match generation
+            .resources
+            .release_all_until(driver, budget.deadline())
+            .await
+        {
+            Ok(Some(error)) if first_error.is_none() => {
+                diagnostics.emit_runtime_failure((driver.now)(), Some(instance_key), &error);
+                first_error = Some(error);
+            }
+            Err(()) => {
+                generation.cleanup_timed_out = true;
+                return GenerationCleanupOutcome::TimedOut(generation);
+            }
+            Ok(_) => {}
+        }
+    } else if let Some(error) = generation.resources.release_all().await
         && first_error.is_none()
     {
         diagnostics.emit_runtime_failure((driver.now)(), Some(instance_key), &error);
         first_error = Some(error);
     }
-    first_error
+    GenerationCleanupOutcome::Complete(first_error)
 }
 
 pub(super) fn install_plugin_endpoints(

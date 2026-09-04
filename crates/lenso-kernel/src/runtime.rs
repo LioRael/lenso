@@ -126,6 +126,7 @@ impl NativeEndpointState {
 
 #[derive(Clone, Debug)]
 pub(super) struct NativeEndpointBinding {
+    pub(super) requirement_id: String,
     pub(super) plugin_instance: String,
     pub(super) state: Rc<NativeEndpointState>,
     pub(super) admissions: BTreeMap<String, RequestAdmission>,
@@ -139,6 +140,7 @@ impl NativeEndpointBinding {
 
 #[derive(Clone, Debug)]
 pub(crate) struct NativeStreamEndpointBinding {
+    pub(super) requirement_id: String,
     pub(crate) plugin_instance: String,
     pub(crate) state: Rc<NativeStreamEndpointState>,
     pub(super) admissions: BTreeMap<String, RequestAdmission>,
@@ -155,11 +157,13 @@ pub(super) struct NativePluginGeneration {
     pub(super) lifecycle: Rc<dyn PluginLifecycle>,
     pub(super) tasks: ManagedTaskScope,
     pub(super) resources: ManagedResourceScope,
+    pub(super) stop_attempted: bool,
+    pub(super) cleanup_timed_out: bool,
 }
 
 pub(super) enum GenerationPreparationFailure {
     Lifecycle,
-    Cleanup(RuntimeFailure),
+    Cleanup { primary: RuntimeFailure },
 }
 
 #[derive(Debug)]
@@ -252,6 +256,10 @@ impl ShutdownCoordinator {
 }
 
 pub(super) struct NativeAppRuntime {
+    pub(super) startup_context: RefCell<Option<InvocationContext>>,
+    pub(super) startup_cleanup: Option<super::cleanup::StartupCleanupBudget>,
+    pub(super) cleanup_timeout: Option<Duration>,
+    pub(super) executions: Rc<super::settlement::ExecutionLedger>,
     pub(super) plan: ResolvedAppPlan,
     pub(super) adapters: Rc<ExecutionAdapterCatalog>,
     pub(super) plugins: BTreeMap<String, NativePluginRuntime>,
@@ -406,6 +414,7 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
+        self.validate_requirement_lookup(caller_instance, C::ID)?;
         if self.runtime.admission.is_closed() {
             return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
@@ -431,6 +440,8 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Option<NativeRequestHandle<C>> {
+        self.validate_requirement_lookup(caller_instance, C::ID)
+            .ok()?;
         let caller_instance = caller_instance.to_owned();
         self.endpoints::<C>(&caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
@@ -449,6 +460,7 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
+        self.validate_requirement_lookup(caller_instance, C::ID)?;
         if self.runtime.admission.is_closed() {
             return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
@@ -592,9 +604,21 @@ impl NativeApp {
 
     /// Performs bounded graceful shutdown using one global deadline.
     pub async fn shutdown(&self, timeout: Duration) -> ShutdownOutcome {
+        self.shutdown_with_budget(super::cleanup::CleanupBudget::after(
+            &self.runtime.driver,
+            timeout,
+        ))
+        .await
+    }
+
+    pub(super) async fn shutdown_with_budget(
+        &self,
+        budget: super::cleanup::CleanupBudget,
+    ) -> ShutdownOutcome {
         self.runtime.begin_shutdown();
         let cleanup_started_at = (self.runtime.driver.now)();
         if self.runtime.shutdown.start(cleanup_started_at) {
+            let timeout = budget.remaining();
             self.runtime
                 .diagnostics
                 .emit(DiagnosticSource::Shutdown, cleanup_started_at, |_| {
@@ -603,7 +627,7 @@ impl NativeApp {
             let runtime = self.runtime.clone();
             let worker_runtime = runtime.clone();
             match (runtime.driver.spawn_local)(Box::pin(async move {
-                let outcome = shutdown_native_plugins(&worker_runtime, timeout).await;
+                let outcome = shutdown_native_plugins(&worker_runtime, budget).await;
                 worker_runtime.complete_shutdown(&outcome);
             })) {
                 Ok(task) => {
@@ -675,6 +699,7 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<NativeStreamHandle<C>, RuntimeFailure> {
+        self.validate_requirement_lookup(caller_instance, C::ID)?;
         if self.runtime.admission.is_closed() {
             return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
@@ -700,6 +725,8 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Option<NativeStreamHandle<C>> {
+        self.validate_requirement_lookup(caller_instance, C::ID)
+            .ok()?;
         let caller_instance = caller_instance.to_owned();
         self.stream_endpoints::<C>(&caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
@@ -724,6 +751,7 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        self.validate_requirement_lookup(caller_instance, C::ID)?;
         if self.runtime.admission.is_closed() {
             return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
@@ -749,6 +777,8 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Option<NativeEventHandle<C>> {
+        self.validate_requirement_lookup(caller_instance, C::ID)
+            .ok()?;
         let caller_instance = caller_instance.to_owned();
         self.event_endpoints::<C>(&caller_instance)
             .filter(|endpoints| !endpoints.is_empty())
@@ -767,6 +797,7 @@ impl NativeApp {
         &self,
         caller_instance: &str,
     ) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        self.validate_requirement_lookup(caller_instance, C::ID)?;
         if self.runtime.admission.is_closed() {
             return self.diagnostic_failure(Some(caller_instance), RuntimeFailure::AdmissionClosed);
         }
@@ -783,6 +814,31 @@ impl NativeApp {
     pub fn event_binding_count<C: EventCapability>(&self, caller_instance: &str) -> usize {
         self.event_endpoints::<C>(caller_instance)
             .map_or(0, <[_]>::len)
+    }
+
+    fn validate_requirement_lookup(
+        &self,
+        caller: &str,
+        capability: &'static str,
+    ) -> Result<(), RuntimeFailure> {
+        let declarations = self
+            .runtime
+            .plan
+            .plugin_instance(caller)
+            .map_or(0, |instance| {
+                instance
+                    .required_capabilities()
+                    .iter()
+                    .filter(|requirement| requirement.capability_id() == capability)
+                    .count()
+            });
+        if declarations > 1 {
+            return Err(RuntimeFailure::AmbiguousBinding {
+                capability,
+                providers: declarations,
+            });
+        }
+        Ok(())
     }
 
     pub(super) fn next_request_id(&self) -> RequestId {

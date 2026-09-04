@@ -49,7 +49,7 @@ fn group_bindings(
         grouped_bindings
             .entry((
                 binding.consumer_instance.clone(),
-                binding.capability_id.clone(),
+                binding.requirement_id().to_owned(),
             ))
             .or_insert_with(Vec::new)
             .push(binding.clone());
@@ -69,11 +69,10 @@ fn validate_binding(
         });
     };
     let consumer = &instances[consumer_index];
-    let Some(requirement) = consumer
-        .required_capabilities
-        .iter()
-        .find(|requirement| requirement.capability_id == binding.capability_id)
-    else {
+    let Some(requirement) = consumer.required_capabilities.iter().find(|requirement| {
+        requirement.requirement_id() == binding.requirement_id()
+            && requirement.capability_id == binding.capability_id
+    }) else {
         return Err(PlanResolutionError::UndeclaredCapabilityRequirement {
             consumer_instance: binding.consumer_instance.clone(),
             capability_id: binding.capability_id.clone(),
@@ -146,7 +145,7 @@ fn validate_requirement_cardinality(
         for requirement in &instance.required_capabilities {
             let key = (
                 instance.instance_key.clone(),
-                requirement.capability_id.clone(),
+                requirement.requirement_id().to_owned(),
             );
             let bindings = grouped_bindings.get(&key).map_or(&[][..], Vec::as_slice);
             match (requirement.cardinality, bindings.len()) {
@@ -313,6 +312,7 @@ pub(super) fn activation_order_for(
 fn validate_instance_declarations(
     instance: &PluginInstancePlan,
 ) -> Result<(), PlanResolutionError> {
+    super::schema::validate_authoring(instance)?;
     if instance.entrypoint.trim().is_empty() {
         return Err(PlanResolutionError::InvalidPluginEntrypoint {
             instance_key: instance.instance_key.clone(),
@@ -340,7 +340,13 @@ fn validate_instance_declarations(
 
     let mut required = BTreeSet::new();
     for requirement in &instance.required_capabilities {
-        if !required.insert(requirement.capability_id.as_str()) {
+        if !required.insert(requirement.requirement_id()) {
+            if instance.authoring_version() == 2 {
+                return Err(PlanResolutionError::DuplicateRequirementId {
+                    consumer_instance: instance.instance_key.clone(),
+                    requirement_id: requirement.requirement_id().to_owned(),
+                });
+            }
             return Err(PlanResolutionError::DuplicateRequiredCapability {
                 consumer_instance: instance.instance_key.clone(),
                 capability_id: requirement.capability_id.clone(),
@@ -395,7 +401,7 @@ pub(super) fn sort_bindings(bindings: &mut [CapabilityBinding]) {
     bindings.sort_by(|left, right| {
         left.consumer_instance
             .cmp(&right.consumer_instance)
-            .then_with(|| left.capability_id.cmp(&right.capability_id))
+            .then_with(|| left.requirement_id().cmp(right.requirement_id()))
             .then_with(|| left.provider_instance.cmp(&right.provider_instance))
             .then_with(|| left.provider_order.cmp(&right.provider_order))
     });

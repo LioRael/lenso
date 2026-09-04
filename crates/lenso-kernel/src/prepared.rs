@@ -178,6 +178,7 @@ impl PreparedNativePlugin {
 /// One provider-specific binding prepared by an Execution Adapter.
 #[derive(Clone, Debug)]
 pub struct PreparedBinding {
+    pub(super) requirement_id: String,
     pub(super) consumer_instance: String,
     pub(super) provider_instance: String,
     pub(super) endpoint: Rc<dyn NativeRequestEndpoint>,
@@ -186,6 +187,7 @@ pub struct PreparedBinding {
 /// One provider-specific bidirectional stream binding prepared by an Adapter.
 #[derive(Clone, Debug)]
 pub struct PreparedStreamBinding {
+    pub(super) requirement_id: String,
     pub(super) consumer_instance: String,
     pub(super) provider_instance: String,
     pub(super) endpoint: Rc<dyn NativeStreamEndpoint>,
@@ -194,6 +196,7 @@ pub struct PreparedStreamBinding {
 /// One provider-specific ephemeral Event binding prepared by an Adapter.
 #[derive(Clone, Debug)]
 pub struct PreparedEventBinding {
+    pub(super) requirement_id: String,
     pub(super) consumer_instance: String,
     pub(super) provider_instance: String,
     pub(super) endpoint: Rc<dyn NativeEventEndpoint>,
@@ -207,10 +210,23 @@ impl PreparedEventBinding {
         endpoint: Rc<dyn NativeEventEndpoint>,
     ) -> Self {
         Self {
+            requirement_id: format!("~{}", endpoint.capability_id()),
             consumer_instance: consumer_instance.into(),
             provider_instance: provider_instance.into(),
             endpoint,
         }
+    }
+
+    /// Selects the consumer-local requirement prepared by this Adapter.
+    #[must_use]
+    pub fn with_requirement_id(mut self, id: impl Into<String>) -> Self {
+        self.requirement_id = id.into();
+        self
+    }
+
+    /// Returns the exact consumer-local requirement identity.
+    pub fn requirement_id(&self) -> &str {
+        &self.requirement_id
     }
 
     /// Returns the App-local consumer Instance selected by the Plan.
@@ -229,7 +245,8 @@ impl PreparedEventBinding {
     }
 
     pub(super) fn same_identity(&self, other: &Self) -> bool {
-        self.consumer_instance == other.consumer_instance
+        self.requirement_id == other.requirement_id
+            && self.consumer_instance == other.consumer_instance
             && self.provider_instance == other.provider_instance
             && self.endpoint.capability_id() == other.endpoint.capability_id()
     }
@@ -243,10 +260,23 @@ impl PreparedStreamBinding {
         endpoint: Rc<dyn NativeStreamEndpoint>,
     ) -> Self {
         Self {
+            requirement_id: format!("~{}", endpoint.capability_id()),
             consumer_instance: consumer_instance.into(),
             provider_instance: provider_instance.into(),
             endpoint,
         }
+    }
+
+    /// Selects the consumer-local requirement prepared by this Adapter.
+    #[must_use]
+    pub fn with_requirement_id(mut self, id: impl Into<String>) -> Self {
+        self.requirement_id = id.into();
+        self
+    }
+
+    /// Returns the exact consumer-local requirement identity.
+    pub fn requirement_id(&self) -> &str {
+        &self.requirement_id
     }
 
     /// Returns the App-local consumer Instance selected by the Plan.
@@ -265,7 +295,8 @@ impl PreparedStreamBinding {
     }
 
     pub(super) fn same_identity(&self, other: &Self) -> bool {
-        self.consumer_instance == other.consumer_instance
+        self.requirement_id == other.requirement_id
+            && self.consumer_instance == other.consumer_instance
             && self.provider_instance == other.provider_instance
             && self.endpoint.capability_id() == other.endpoint.capability_id()
     }
@@ -279,10 +310,23 @@ impl PreparedBinding {
         endpoint: Rc<dyn NativeRequestEndpoint>,
     ) -> Self {
         Self {
+            requirement_id: format!("~{}", endpoint.capability_id()),
             consumer_instance: consumer_instance.into(),
             provider_instance: provider_instance.into(),
             endpoint,
         }
+    }
+
+    /// Selects the consumer-local requirement prepared by this Adapter.
+    #[must_use]
+    pub fn with_requirement_id(mut self, id: impl Into<String>) -> Self {
+        self.requirement_id = id.into();
+        self
+    }
+
+    /// Returns the exact consumer-local requirement identity.
+    pub fn requirement_id(&self) -> &str {
+        &self.requirement_id
     }
 
     /// Returns the App-local consumer Instance selected by the Plan.
@@ -301,7 +345,8 @@ impl PreparedBinding {
     }
 
     pub(super) fn same_identity(&self, other: &Self) -> bool {
-        self.consumer_instance == other.consumer_instance
+        self.requirement_id == other.requirement_id
+            && self.consumer_instance == other.consumer_instance
             && self.provider_instance == other.provider_instance
             && self.endpoint.capability_id() == other.endpoint.capability_id()
     }
@@ -420,6 +465,13 @@ impl PreparedNativeApp {
 
 /// Host-specific seam that instantiates Plugin generations and prepares endpoints.
 pub trait ExecutionAdapter: std::fmt::Debug + 'static {
+    /// Confirms a versioned authoring/profile pair before any Plugin is prepared.
+    fn supports_runtime_profile(&self, authoring_version: u32, profile: &str) -> bool {
+        authoring_version == 1
+            && (profile == self.execution_class().as_str()
+                || (self.execution_class() == ExecutionClassId::native_rust()
+                    && profile == "lenso.native-authoring@1"))
+    }
     /// Returns the open execution class implemented by this Adapter package.
     fn execution_class(&self) -> ExecutionClassId;
 
@@ -447,6 +499,11 @@ pub trait ExecutionAdapter: std::fmt::Debug + 'static {
 /// The blanket implementation below contributes every native Adapter to the
 /// open catalog under the official native execution-class identity.
 pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
+    /// Old native Adapters must opt in explicitly before receiving version 2 contracts.
+    fn supports_runtime_profile(&self, authoring_version: u32, profile: &str) -> bool {
+        authoring_version == 1
+            && matches!(profile, "lenso.native-authoring@1" | "lenso.native-rust@1")
+    }
     /// Instantiates the exact Plan and confirms its endpoint and binding tables.
     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure>;
 
@@ -463,6 +520,9 @@ pub trait NativeExecutionAdapter: std::fmt::Debug + 'static {
 }
 
 impl<T: NativeExecutionAdapter> ExecutionAdapter for T {
+    fn supports_runtime_profile(&self, authoring_version: u32, profile: &str) -> bool {
+        NativeExecutionAdapter::supports_runtime_profile(self, authoring_version, profile)
+    }
     fn execution_class(&self) -> ExecutionClassId {
         ExecutionClassId::native_rust()
     }
@@ -583,6 +643,19 @@ impl ExecutionAdapterCatalog {
                 });
             }
             required_classes.insert(instance.execution_class().clone());
+            if !self.adapters[instance.execution_class()]
+                .supports_runtime_profile(instance.authoring_version(), instance.runtime_profile())
+            {
+                return Err(RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!(
+                        "Adapter `{}` does not support authoring {} profile `{}` for `{}`",
+                        instance.execution_class(),
+                        instance.authoring_version(),
+                        instance.runtime_profile(),
+                        instance.instance_key()
+                    ),
+                });
+            }
         }
 
         let mut prepared = PreparedNativeApp::empty();

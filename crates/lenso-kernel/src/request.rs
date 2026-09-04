@@ -187,6 +187,8 @@ pub enum RuntimeFailure {
 pub enum PluginLifecyclePhase {
     /// The Plugin may validate configuration and reserve reversible resources.
     Prepare,
+    /// Adapter lowering constructs the complete inert Plugin object.
+    Construct,
     /// The Plugin may initialize against already prepared dependencies.
     Activate,
     /// The App Ready Gate has opened and externally triggered work may begin.
@@ -263,6 +265,7 @@ mod typed_endpoint_tests {
 /// A deterministic dependency visible to one Plugin Instance.
 #[derive(Clone, Debug)]
 pub struct PluginDependency {
+    pub(super) requirement_id: String,
     pub(super) capability_id: String,
     pub(super) provider_instance: String,
     pub(super) provider_order: usize,
@@ -273,6 +276,7 @@ pub struct PluginDependency {
 
 impl PluginDependency {
     pub(super) fn new(
+        requirement_id: impl Into<String>,
         capability_id: impl Into<String>,
         provider_instance: impl Into<String>,
         provider_order: usize,
@@ -281,6 +285,7 @@ impl PluginDependency {
         event_handle: Option<PluginEventDependencyHandle>,
     ) -> Self {
         Self {
+            requirement_id: requirement_id.into(),
             capability_id: capability_id.into(),
             provider_instance: provider_instance.into(),
             provider_order,
@@ -288,6 +293,11 @@ impl PluginDependency {
             stream_handle,
             event_handle,
         }
+    }
+
+    /// Returns the Capability required by this dependency.
+    pub fn requirement_id(&self) -> &str {
+        &self.requirement_id
     }
 
     /// Returns the Capability required by this dependency.
@@ -410,6 +420,7 @@ impl PluginDependencyHandle {
 /// The explicit Capability dependencies available during Plugin lifecycle.
 #[derive(Clone, Debug, Default)]
 pub struct PluginDependencies {
+    pub(super) requirements: Vec<lenso_app_plan::CapabilityRequirementPlan>,
     pub(super) bindings: Vec<PluginDependency>,
     pub(super) caller_instance: Rc<str>,
     pub(super) runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
@@ -419,11 +430,64 @@ impl PluginDependencies {
     pub(super) fn new(
         caller_instance: impl Into<String>,
         runtime: Rc<RefCell<Weak<NativeAppRuntime>>>,
+        requirements: Vec<lenso_app_plan::CapabilityRequirementPlan>,
     ) -> Self {
         Self {
+            requirements,
             bindings: Vec::new(),
             caller_instance: Rc::from(caller_instance.into()),
             runtime,
+        }
+    }
+
+    /// Returns dependencies in the order materialized by the Resolved App Plan.
+    pub fn requirements(&self) -> &[lenso_app_plan::CapabilityRequirementPlan] {
+        &self.requirements
+    }
+
+    /// Narrows this view to one declared dependency, retaining optional absence.
+    pub fn requirement(&self, id: &str) -> Result<Self, RuntimeFailure> {
+        let requirement = self
+            .requirements
+            .iter()
+            .find(|requirement| requirement.requirement_id() == id)
+            .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                detail: format!(
+                    "consumer `{}` has no requirement `{id}`",
+                    self.caller_instance
+                ),
+            })?;
+        Ok(Self {
+            requirements: vec![requirement.clone()],
+            bindings: self
+                .bindings
+                .iter()
+                .filter(|binding| binding.requirement_id() == id)
+                .cloned()
+                .collect(),
+            caller_instance: self.caller_instance.clone(),
+            runtime: self.runtime.clone(),
+        })
+    }
+
+    fn validate_lookup(
+        &self,
+        capability: &'static str,
+        version: &str,
+    ) -> Result<(), RuntimeFailure> {
+        let declarations = self
+            .requirements
+            .iter()
+            .filter(|requirement| requirement.capability_id() == capability)
+            .collect::<Vec<_>>();
+        match declarations.as_slice() {
+            [] => Err(RuntimeFailure::Unavailable { capability }),
+            [declaration] if declaration.descriptor_version() == version => Ok(()),
+            [_] => Err(RuntimeFailure::ProtocolViolation { capability }),
+            declarations => Err(RuntimeFailure::AmbiguousBinding {
+                capability,
+                providers: declarations.len(),
+            }),
         }
     }
 
@@ -481,6 +545,7 @@ impl PluginDependencies {
 
     /// Returns the one explicitly bound typed dependency.
     pub fn one<C: RequestCapability>(&self) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         let handles: Vec<_> = self
             .bindings
             .iter()
@@ -501,6 +566,7 @@ impl PluginDependencies {
     pub fn optional<C: RequestCapability>(
         &self,
     ) -> Result<Option<NativeRequestHandle<C>>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         match self
             .bindings
             .iter()
@@ -522,6 +588,7 @@ impl PluginDependencies {
     pub fn many<C: RequestCapability>(
         &self,
     ) -> Result<Vec<NativeRequestHandle<C>>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         self.bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
@@ -532,6 +599,7 @@ impl PluginDependencies {
 
     /// Returns the one explicitly bound typed stream dependency.
     pub fn one_stream<C: StreamCapability>(&self) -> Result<NativeStreamHandle<C>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         let handles: Vec<_> = self
             .bindings
             .iter()
@@ -552,6 +620,7 @@ impl PluginDependencies {
     pub fn optional_stream<C: StreamCapability>(
         &self,
     ) -> Result<Option<NativeStreamHandle<C>>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         match self
             .bindings
             .iter()
@@ -573,6 +642,7 @@ impl PluginDependencies {
     pub fn many_stream<C: StreamCapability>(
         &self,
     ) -> Result<Vec<NativeStreamHandle<C>>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         self.bindings
             .iter()
             .filter(|binding| binding.capability_id() == C::ID)
@@ -583,6 +653,7 @@ impl PluginDependencies {
 
     /// Returns one typed Event handle over every explicit binding in Plan order.
     pub fn many_event<C: EventCapability>(&self) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         let handles: Vec<_> = self
             .bindings
             .iter()
@@ -613,6 +684,7 @@ impl PluginDependencies {
 
     /// Returns the one explicitly bound typed Event dependency.
     pub fn one_event<C: EventCapability>(&self) -> Result<NativeEventHandle<C>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         match self
             .bindings
             .iter()
@@ -634,6 +706,7 @@ impl PluginDependencies {
     pub fn optional_event<C: EventCapability>(
         &self,
     ) -> Result<Option<NativeEventHandle<C>>, RuntimeFailure> {
+        self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;
         match self
             .bindings
             .iter()

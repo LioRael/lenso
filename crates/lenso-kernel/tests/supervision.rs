@@ -9,7 +9,7 @@ use futures::future::LocalBoxFuture;
 use lenso_app_plan::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
     CapabilityRequirementPlan, PluginCriticality, PluginInstancePlan, ResolvedAppPlan,
-    RestartPolicy,
+    RestartPolicy, TerminalPolicy,
 };
 use lenso_kernel::{
     DeactivateContext, DeactivationReason, DeterministicDriver, DiagnosticEvent, Kernel,
@@ -785,6 +785,47 @@ fn required_path_or_explicit_criticality_turns_exhaustion_into_a_terminal_app_fa
     assert!(critical_app.is_failed());
     assert_eq!(
         critical_app.terminal_failure(),
+        Some(RuntimeFailure::PluginRestartExhausted {
+            instance: "provider".to_owned(),
+            attempts: 1,
+        })
+    );
+}
+
+#[test]
+fn host_essential_policy_controls_terminal_exhaustion_independently_of_optional_bindings() {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let invocations = Rc::new(Cell::new(0));
+    let driver = DeterministicDriver::new();
+    let policy = RestartPolicy::on_failure(
+        1,
+        Duration::from_secs(60),
+        Duration::ZERO,
+        Duration::ZERO,
+        Duration::ZERO,
+    );
+    let resolved = plan(policy, Some(CapabilityCardinality::Optional), false).with_terminal_policy(
+        TerminalPolicy::HostEssential {
+            roots: vec!["provider".to_owned()],
+            closure: vec!["provider".to_owned()],
+        },
+    );
+    let app = driver
+        .run(Kernel::start_native(
+            resolved,
+            driver.clone(),
+            SupervisionAdapter::new(events, invocations, 1, false),
+        ))
+        .expect("the host-essential App should start");
+
+    app.report_plugin_failure("provider")
+        .expect("the deterministic Driver should schedule supervision");
+    drive_turn(&driver);
+
+    assert!(app.is_failed());
+    assert!(!app.is_accepting());
+    assert_eq!(
+        app.terminal_failure(),
         Some(RuntimeFailure::PluginRestartExhausted {
             instance: "provider".to_owned(),
             attempts: 1,
