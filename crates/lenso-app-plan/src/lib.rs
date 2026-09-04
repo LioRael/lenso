@@ -29,6 +29,9 @@ use resolution::{
 /// The Resolved App Plan schema understood by this Kernel version.
 pub const PLAN_SCHEMA_VERSION: u32 = 3;
 
+/// Portable lifecycle and dependency semantics used by authoring version 2 Plugins.
+pub const PLUGIN_AUTHORING_V2_RUNTIME_PROFILE: &str = "lenso.plugin-authoring@2";
+
 /// Default maximum number of requests waiting for one Operation.
 pub const DEFAULT_REQUEST_QUEUE_CAPACITY: usize = 16;
 

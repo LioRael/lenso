@@ -70,6 +70,8 @@ pub struct AppAdmission {
 #[derive(Debug)]
 pub(super) struct AppAdmissionState {
     pub(super) open: Cell<bool>,
+    pub(super) close_signalled: Cell<bool>,
+    pub(super) close_waiters: RefCell<Vec<oneshot::Sender<()>>>,
 }
 
 impl AppAdmission {
@@ -77,6 +79,8 @@ impl AppAdmission {
         Self {
             state: Rc::new(AppAdmissionState {
                 open: Cell::new(false),
+                close_signalled: Cell::new(false),
+                close_waiters: RefCell::new(Vec::new()),
             }),
         }
     }
@@ -91,12 +95,31 @@ impl AppAdmission {
         !self.is_open()
     }
 
+    /// Waits for final admission closure during shutdown or startup rollback.
+    ///
+    /// Lifecycle tasks may register during construction while admission is still
+    /// initially closed; that initial state is not treated as shutdown.
+    pub fn wait_closed(&self) -> LocalBoxFuture<'static, ()> {
+        if self.state.close_signalled.get() {
+            return Box::pin(futures::future::ready(()));
+        }
+        let (wakeup, waiter) = oneshot::channel();
+        self.state.close_waiters.borrow_mut().push(wakeup);
+        Box::pin(async move {
+            let _ = waiter.await;
+        })
+    }
+
     pub(super) fn open(&self) {
         self.state.open.set(true);
     }
 
     pub(super) fn close(&self) {
         self.state.open.set(false);
+        self.state.close_signalled.set(true);
+        for waiter in self.state.close_waiters.borrow_mut().drain(..) {
+            let _ = waiter.send(());
+        }
     }
 }
 
@@ -927,3 +950,30 @@ pub trait PluginLifecycle: std::fmt::Debug + 'static {
 pub struct NoopPluginLifecycle;
 
 impl PluginLifecycle for NoopPluginLifecycle {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn admission_close_waiter_ignores_the_initial_startup_gate() {
+        let admission = AppAdmission::new();
+        let mut waiting = admission.wait_closed();
+        let mut context = Context::from_waker(futures::task::noop_waker_ref());
+
+        assert!(matches!(waiting.as_mut().poll(&mut context), Poll::Pending));
+        admission.open();
+        assert!(matches!(waiting.as_mut().poll(&mut context), Poll::Pending));
+        admission.close();
+        assert!(matches!(
+            waiting.as_mut().poll(&mut context),
+            Poll::Ready(())
+        ));
+
+        let mut late_waiter = admission.wait_closed();
+        assert!(matches!(
+            late_waiter.as_mut().poll(&mut context),
+            Poll::Ready(())
+        ));
+    }
+}

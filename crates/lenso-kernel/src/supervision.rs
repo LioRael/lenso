@@ -22,6 +22,7 @@ pub(super) async fn deactivate_in_reverse(
     driver: &super::DriverControl,
     budget: Option<super::cleanup::CleanupBudget>,
 ) -> Option<RuntimeFailure> {
+    admission.close();
     let mut first_error = None;
     for instance_key in activation_order.iter().rev() {
         let plugin = plugins
