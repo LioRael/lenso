@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-kernel"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -169,16 +169,12 @@ dependencies = [
 
 [[package]]
 name = "lenso-runtime-conformance"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "futures",
  "lenso-app-plan",
  "lenso-kernel",
 ]
-
-[[package]]
-name = "lenso-xtask"
-version = "0.1.0"
 
 [[package]]
 name = "libc"
