@@ -1,6 +1,6 @@
 [package]
 name = "lenso-kernel"
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 license.workspace = true
 publish = true
@@ -9,7 +9,7 @@ description = "Portable Lenso execution Kernel with bounded lifecycle settlement
 
 [dependencies]
 futures.workspace = true
-lenso-app-plan = { path = "../lenso-app-plan", version = "0.4.0" }
+lenso-app-plan = { path = "../lenso-app-plan", version = "0.4.1" }
 
 [lints]
 workspace = true
