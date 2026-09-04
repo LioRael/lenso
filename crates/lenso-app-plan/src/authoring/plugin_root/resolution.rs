@@ -13,6 +13,23 @@ pub fn resolve_plugin_root(
     host: &HostCatalog,
     root: &PluginRootSnapshot,
 ) -> Result<ResolvedApp, PluginRootResolutionError> {
+    resolve_root(host, root, false)
+}
+
+/// Proposes exact choices without reading or writing Root storage.
+pub fn propose_plugin_root(
+    host: &HostCatalog,
+    root: &PluginRootSnapshot,
+) -> Result<ResolvedApp, PluginRootResolutionError> {
+    resolve_root(host, root, true)
+}
+
+fn resolve_root(
+    host: &HostCatalog,
+    root: &PluginRootSnapshot,
+    propose: bool,
+) -> Result<ResolvedApp, PluginRootResolutionError> {
+    super::selection::validate_choices(root)?;
     let slots = index_slots(&host.slots)?;
     let releases = index_releases(&host.plugins, &root.releases)?;
     validate_release_slots(&releases, &slots)?;
@@ -23,7 +40,13 @@ pub fn resolve_plugin_root(
     validate_disabled(&defaults, &explicit, &disabled)?;
     let candidates = build_candidates(&defaults, &configurations, &explicit, &disabled, &releases)?;
     let selected = select_slot_candidates(&slots, candidates)?;
-    materialize_app(selected, &host.bindings, &host.execution_lanes)
+    materialize_app(
+        selected,
+        &host.bindings,
+        &host.execution_lanes,
+        root,
+        propose,
+    )
 }
 
 fn index_slots(slots: &[HostSlot]) -> Result<BTreeMap<&str, &HostSlot>, PluginRootResolutionError> {
@@ -223,12 +246,18 @@ fn build_candidates<'a>(
     Ok(candidates)
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "resolve constraints, saved intent and exact bindings in one deterministic pass"
+)]
 pub(super) fn derive_root_bindings(
     instances: &[PluginInstancePlan],
     resolved: &[ResolvedPluginInstance],
     plan_slots: &BTreeMap<String, String>,
     host_bindings: &[HostBinding],
-) -> Result<Vec<CapabilityBinding>, PluginRootResolutionError> {
+    root: &PluginRootSnapshot,
+    propose: bool,
+) -> Result<(Vec<CapabilityBinding>, Vec<super::DependencyChoice>), PluginRootResolutionError> {
     let ids_by_plan_key = resolved
         .iter()
         .map(|instance| (instance.plan_key.as_str(), &instance.id))
@@ -240,6 +269,7 @@ pub(super) fn derive_root_bindings(
     let indexed = index_host_bindings(host_bindings)?;
 
     let mut consumed = BTreeSet::new();
+    let mut choices = Vec::new();
     let mut bindings = Vec::new();
     for consumer in instances {
         let Some(consumer_id) = ids_by_plan_key.get(consumer.instance_key()) else {
@@ -249,8 +279,16 @@ pub(super) fn derive_root_bindings(
             )));
         };
         for requirement in consumer.required_capabilities() {
-            let key = (*consumer_id, requirement.capability_id());
+            let key = (*consumer_id, requirement.requirement_id().to_owned());
             let host_binding = indexed.get(&key).copied();
+            if host_binding
+                .is_some_and(|binding| binding.capability_id() != requirement.capability_id())
+            {
+                return Err(PluginRootResolutionError::InvalidHostBinding(format!(
+                    "requirement `{}` Capability mismatch",
+                    requirement.requirement_id()
+                )));
+            }
             if host_binding.is_some() {
                 consumed.insert(key);
             }
@@ -274,6 +312,7 @@ pub(super) fn derive_root_bindings(
                 .collect::<Vec<_>>();
             candidates.sort_by_key(|candidate| candidate.instance_key());
             if let Some(binding) = host_binding
+                && binding.selection == super::DependencySelection::Fixed
                 && !binding.provider_instances.is_empty()
                 && candidates.len() != binding.provider_instances.len()
             {
@@ -282,40 +321,34 @@ pub(super) fn derive_root_bindings(
                     requirement.capability_id()
                 )));
             }
-            let selected = match requirement.cardinality() {
-                CapabilityCardinality::Many => candidates,
-                CapabilityCardinality::One if candidates.len() == 1 => candidates,
-                CapabilityCardinality::Optional if candidates.len() <= 1 => candidates,
-                CapabilityCardinality::One if candidates.is_empty() => {
-                    return Err(PluginRootResolutionError::MissingCapability {
-                        consumer: (*consumer_id).clone(),
-                        capability_id: requirement.capability_id().to_owned(),
-                        descriptor_version: requirement.descriptor_version().to_owned(),
-                    });
-                }
-                CapabilityCardinality::Optional | CapabilityCardinality::One => {
-                    return Err(PluginRootResolutionError::AmbiguousCapability {
-                        consumer: (*consumer_id).clone(),
-                        capability_id: requirement.capability_id().to_owned(),
-                        candidates: candidates
-                            .iter()
-                            .filter_map(|candidate| {
-                                ids_by_plan_key
-                                    .get(candidate.instance_key())
-                                    .copied()
-                                    .cloned()
-                            })
-                            .collect(),
-                    });
-                }
-            };
+            let selected_choice = super::selection::select_requirement(
+                consumer_id,
+                requirement,
+                host_binding,
+                &candidates,
+                &ids_by_plan_key,
+                root,
+                propose,
+            )?;
+            if let Some(choice) = selected_choice {
+                candidates.retain(|candidate| {
+                    choice
+                        .provider
+                        .as_ref()
+                        .is_some_and(|provider| provider.plan_key() == candidate.instance_key())
+                });
+                choices.push(choice);
+            }
+            let selected =
+                select_cardinality(consumer_id, requirement, candidates, &ids_by_plan_key)?;
             for provider in selected {
                 let mut binding = CapabilityBinding::new(
                     consumer.instance_key(),
                     requirement.capability_id(),
                     requirement.descriptor_version(),
                     provider.instance_key(),
-                );
+                )
+                .with_requirement_id(requirement.requirement_id());
                 if let Some(admission) = host_binding.and_then(HostBinding::admission) {
                     binding = binding.with_admission(admission);
                 }
@@ -324,17 +357,48 @@ pub(super) fn derive_root_bindings(
         }
     }
     validate_host_bindings_consumed(host_bindings, &plan_keys_by_id, &consumed)?;
-    Ok(bindings)
+    for choice in &root.dependency_choices {
+        if plan_keys_by_id.contains_key(&choice.consumer)
+            && !choices.iter().any(|selected| {
+                selected.consumer == choice.consumer
+                    && selected.requirement_id == choice.requirement_id
+            })
+        {
+            return Err(PluginRootResolutionError::InvalidHostBinding(format!(
+                "saved choice for `{}` requirement `{}` is not selectable",
+                choice.consumer, choice.requirement_id
+            )));
+        }
+        if !plan_keys_by_id.contains_key(&choice.consumer) {
+            choices.push(choice.clone());
+        }
+    }
+    choices.sort_by(|left, right| {
+        (&left.consumer, &left.requirement_id).cmp(&(&right.consumer, &right.requirement_id))
+    });
+    Ok((bindings, choices))
 }
 
-type IndexedHostBindings<'a> = BTreeMap<(&'a PluginInstanceId, &'a str), &'a HostBinding>;
+type IndexedHostBindings<'a> = BTreeMap<(&'a PluginInstanceId, String), &'a HostBinding>;
 
 fn index_host_bindings(
     host_bindings: &[HostBinding],
 ) -> Result<IndexedHostBindings<'_>, PluginRootResolutionError> {
     let mut indexed = BTreeMap::new();
     for binding in host_bindings {
-        let key = (&binding.consumer, binding.capability_id.as_str());
+        if binding
+            .requirement_id
+            .as_deref()
+            .is_some_and(|id| !crate::schema::valid_requirement_id(id))
+            || (binding.selection == super::DependencySelection::Fixed
+                && binding.default_provider.is_some())
+        {
+            return Err(PluginRootResolutionError::InvalidHostBinding(format!(
+                "invalid selection declaration for `{}`",
+                binding.consumer
+            )));
+        }
+        let key = (&binding.consumer, binding.requirement_id().into_owned());
         if indexed.insert(key, binding).is_some() {
             return Err(PluginRootResolutionError::InvalidHostBinding(format!(
                 "duplicate attachment for `{}` Capability `{}`",
@@ -369,11 +433,11 @@ fn index_host_bindings(
 fn validate_host_bindings_consumed(
     host_bindings: &[HostBinding],
     plan_keys_by_id: &BTreeMap<&PluginInstanceId, &str>,
-    consumed: &BTreeSet<(&PluginInstanceId, &str)>,
+    consumed: &BTreeSet<(&PluginInstanceId, String)>,
 ) -> Result<(), PluginRootResolutionError> {
     let Some(binding) = host_bindings.iter().find(|binding| {
         plan_keys_by_id.contains_key(&binding.consumer)
-            && !consumed.contains(&(&binding.consumer, binding.capability_id.as_str()))
+            && !consumed.contains(&(&binding.consumer, binding.requirement_id().into_owned()))
     }) else {
         return Ok(());
     };
@@ -394,5 +458,40 @@ pub(super) fn map_configuration_error(
     PluginRootResolutionError::InvalidConfiguration {
         instance: instance.clone(),
         detail: error.detail,
+    }
+}
+
+fn select_cardinality<'a>(
+    consumer_id: &PluginInstanceId,
+    requirement: &crate::CapabilityRequirementPlan,
+    candidates: Vec<&'a PluginInstancePlan>,
+    ids_by_plan_key: &BTreeMap<&str, &PluginInstanceId>,
+) -> Result<Vec<&'a PluginInstancePlan>, PluginRootResolutionError> {
+    match requirement.cardinality() {
+        CapabilityCardinality::Many => Ok(candidates),
+        CapabilityCardinality::One if candidates.len() == 1 => Ok(candidates),
+        CapabilityCardinality::Optional if candidates.len() <= 1 => Ok(candidates),
+        CapabilityCardinality::One if candidates.is_empty() => {
+            Err(PluginRootResolutionError::MissingCapability {
+                consumer: consumer_id.clone(),
+                capability_id: requirement.capability_id().to_owned(),
+                descriptor_version: requirement.descriptor_version().to_owned(),
+            })
+        }
+        CapabilityCardinality::Optional | CapabilityCardinality::One => {
+            Err(PluginRootResolutionError::AmbiguousCapability {
+                consumer: consumer_id.clone(),
+                capability_id: requirement.capability_id().to_owned(),
+                candidates: candidates
+                    .iter()
+                    .filter_map(|candidate| {
+                        ids_by_plan_key
+                            .get(candidate.instance_key())
+                            .copied()
+                            .cloned()
+                    })
+                    .collect(),
+            })
+        }
     }
 }

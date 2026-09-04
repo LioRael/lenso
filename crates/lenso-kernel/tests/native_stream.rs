@@ -225,7 +225,11 @@ struct StreamAdapter {
 }
 
 impl NativeExecutionAdapter for StreamAdapter {
-    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+    fn supports_runtime_profile(&self, version: u32, profile: &str) -> bool {
+        version == 1 || (version == 2 && profile == "lenso.native-authoring@2")
+    }
+
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         let endpoint = self.endpoint.clone();
         Ok(PreparedNativeApp::new(
             Vec::<PreparedBinding>::new(),
@@ -243,9 +247,10 @@ impl NativeExecutionAdapter for StreamAdapter {
                 ),
             ]),
         )
-        .with_stream_bindings(vec![PreparedStreamBinding::new(
-            "consumer", "provider", endpoint,
-        )]))
+        .with_stream_bindings(vec![
+            PreparedStreamBinding::new("consumer", "provider", endpoint)
+                .with_requirement_id(plan.capability_bindings()[0].requirement_id()),
+        ]))
     }
 
     fn recreate(
@@ -294,6 +299,32 @@ fn plan(queue_capacity: usize, max_concurrency: usize) -> ResolvedAppPlan {
     )
     .resolve()
     .expect("the stream Composition should resolve")
+}
+
+fn authoring_v2_plan() -> ResolvedAppPlan {
+    AppComposition::new(
+        vec![
+            PluginInstancePlan::new("consumer", "package.consumer")
+                .with_authoring(2, "lenso.native-authoring@2")
+                .with_requirement(
+                    CapabilityRequirementPlan::one(CAPABILITY_ID, DESCRIPTOR_VERSION)
+                        .with_requirement_id("chat"),
+                ),
+            PluginInstancePlan::new("provider", "package.provider")
+                .with_authoring(2, "lenso.native-authoring@2")
+                .with_capability(
+                    CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION])
+                        .with_stream_operation(OPERATION)
+                        .with_limits(0, 1),
+                ),
+        ],
+        vec![
+            CapabilityBinding::new("consumer", CAPABILITY_ID, DESCRIPTOR_VERSION, "provider")
+                .with_requirement_id("chat"),
+        ],
+    )
+    .resolve()
+    .expect("the authoring-v2 stream Composition should resolve")
 }
 
 fn stream_app(
@@ -566,5 +597,42 @@ fn provider_failure_terminates_only_the_nested_stream() {
     assert!(
         !caller_cancellation.is_cancelled(),
         "a nested provider failure must not cancel its caller's shared invocation context"
+    );
+}
+
+#[test]
+fn dropped_authoring_v2_stream_operation_remains_owned_until_settlement() {
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(Kernel::start_native(
+            authoring_v2_plan(),
+            driver.clone(),
+            StreamAdapter {
+                endpoint: Rc::new(BlockingEndpoint),
+            },
+        ))
+        .expect("the authoring-v2 stream App should start");
+    let handle = app
+        .stream_handle::<Chat>("consumer")
+        .expect("the named stream binding should resolve");
+    let stream = driver
+        .run(handle.open(OPERATION, "room".to_owned()))
+        .expect("stream open should succeed")
+        .expect("stream open should not return a Domain Error");
+
+    let mut abandoned = Box::pin(stream.send("abandoned".to_owned()));
+    assert!(futures::FutureExt::now_or_never(abandoned.as_mut()).is_none());
+    drop(abandoned);
+    let advance = driver.clone();
+    driver
+        .spawn_local(Box::pin(async move {
+            advance.yield_now().await;
+            advance.advance(Duration::from_millis(10));
+        }))
+        .expect("the deterministic Driver should accept the clock task");
+
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_millis(10))),
+        lenso_kernel::ShutdownOutcome::Timeout
     );
 }

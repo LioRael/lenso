@@ -160,6 +160,7 @@ impl std::fmt::Display for InvocationContextError {
 /// Kernel-owned context propagated across one native request invocation.
 #[derive(Clone, Debug)]
 pub struct InvocationContext {
+    pub(crate) execution: Option<super::settlement::ExecutionScope>,
     pub(super) caller_instance: Option<Rc<str>>,
     pub(super) request_id: RequestId,
     pub(super) deadline: Option<Duration>,
@@ -169,6 +170,14 @@ pub struct InvocationContext {
 }
 
 impl InvocationContext {
+    /// Retains execution capacity for Adapter-managed work beyond its reply.
+    /// The returned lease must be settled on observed termination, not cancellation acknowledgement.
+    pub fn retain_execution(&self) -> Result<super::ExecutionLease, super::RuntimeFailure> {
+        self.execution
+            .as_ref()
+            .ok_or(super::RuntimeFailure::AdmissionClosed)?
+            .retain()
+    }
     /// Creates an invocation context with an absolute Driver-monotonic deadline.
     pub fn new(
         request_id: RequestId,
@@ -176,6 +185,7 @@ impl InvocationContext {
         cancellation: CancellationToken,
     ) -> Self {
         Self {
+            execution: None,
             caller_instance: None,
             request_id,
             deadline,

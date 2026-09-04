@@ -3,8 +3,8 @@ use std::{marker::PhantomData, rc::Rc, time::Duration};
 use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticOutcome, DiagnosticSource,
     InvocationContext, NativeAppRuntime, NativeEndpointBinding, RequestCapability, RequestId,
-    RuntimeFailure, await_with_generation_context, diagnostics::diagnostic_operation,
-    ensure_context_active, schedule_plugin_supervision_after_failure,
+    RuntimeFailure, diagnostics::diagnostic_operation, ensure_context_active,
+    schedule_plugin_supervision_after_failure,
 };
 
 /// Typed, immutable native Capability endpoints materialized before App boot completes.
@@ -39,6 +39,14 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     /// Returns the number of provider endpoints captured by this handle.
     pub fn binding_count(&self) -> usize {
         self.endpoints.len()
+    }
+
+    fn diagnostic_requirement(&self) -> Option<String> {
+        let first = self.endpoints.first()?;
+        self.endpoints
+            .iter()
+            .all(|endpoint| endpoint.requirement_id == first.requirement_id)
+            .then(|| first.requirement_id.clone())
     }
 
     fn diagnostic_caller_instance(&self) -> Option<String> {
@@ -88,6 +96,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 .diagnostics
                 .emit(DiagnosticSource::Invocation, started_at, |_| {
                     DiagnosticEvent::InvocationStarted {
+                        requirement_id: self.diagnostic_requirement(),
                         request_id: context.request_id(),
                         caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: self
@@ -110,6 +119,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 .diagnostics
                 .emit(DiagnosticSource::Invocation, completed_at, |_| {
                     DiagnosticEvent::InvocationCompleted {
+                        requirement_id: self.diagnostic_requirement(),
                         request_id,
                         caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: self
@@ -136,6 +146,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     DiagnosticSource::Admission,
                     (self.runtime.driver.now)(),
                     |_| DiagnosticEvent::AdmissionRejected {
+                        requirement_id: self.diagnostic_requirement(),
                         request_id,
                         caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: self
@@ -184,24 +195,29 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     capability: C::ID,
                     operation: operation.to_owned(),
                 })?;
-        let _permit = admission
+        let permit = admission
             .acquire(C::ID, operation, &context, &self.runtime.driver)
             .await?;
         if !endpoint.state.is_current(snapshot.generation) {
             return Err(RuntimeFailure::Unavailable { capability: C::ID });
         }
         ensure_context_active(&self.runtime.driver, &context)?;
-        let outcome = await_with_generation_context(
-            &self.runtime.driver,
+        let outcome = super::settlement::request(
+            &self.runtime,
+            &endpoint.plugin_instance,
+            operation,
             &context,
             snapshot.cancellation,
             C::ID,
-            C::invoke_native(
-                snapshot.endpoint.as_ref(),
-                operation,
-                request,
-                context.clone(),
-            ),
+            permit,
+            |context| {
+                C::invoke_native(
+                    snapshot.endpoint.as_ref(),
+                    operation,
+                    request,
+                    context.clone(),
+                )
+            },
         )
         .await
         .map_err(|error| {
@@ -269,6 +285,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 .diagnostics
                 .emit(DiagnosticSource::Invocation, started_at, |_| {
                     DiagnosticEvent::InvocationStarted {
+                        requirement_id: self.diagnostic_requirement(),
                         request_id,
                         caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: None,
@@ -287,6 +304,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 .diagnostics
                 .emit(DiagnosticSource::Invocation, completed_at, |_| {
                     DiagnosticEvent::InvocationCompleted {
+                        requirement_id: self.diagnostic_requirement(),
                         request_id,
                         caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: None,
@@ -306,6 +324,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     DiagnosticSource::Admission,
                     (self.runtime.driver.now)(),
                     |_| DiagnosticEvent::AdmissionRejected {
+                        requirement_id: self.diagnostic_requirement(),
                         request_id,
                         caller_instance: self.diagnostic_caller_instance(),
                         provider_instance: None,
@@ -349,24 +368,29 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                         capability: C::ID,
                         operation: operation.to_owned(),
                     })?;
-            let _permit = admission
+            let permit = admission
                 .acquire(C::ID, operation, &context, &self.runtime.driver)
                 .await?;
             if !endpoint.state.is_current(snapshot.generation) {
                 return Err(RuntimeFailure::Unavailable { capability: C::ID });
             }
             ensure_context_active(&self.runtime.driver, &context)?;
-            let outcome = await_with_generation_context(
-                &self.runtime.driver,
+            let outcome = super::settlement::request(
+                &self.runtime,
+                &endpoint.plugin_instance,
+                operation,
                 &context,
                 snapshot.cancellation,
                 C::ID,
-                C::invoke_native(
-                    snapshot.endpoint.as_ref(),
-                    operation,
-                    request.clone(),
-                    context.clone(),
-                ),
+                permit,
+                |context| {
+                    C::invoke_native(
+                        snapshot.endpoint.as_ref(),
+                        operation,
+                        request.clone(),
+                        context.clone(),
+                    )
+                },
             )
             .await
             .map_err(|error| {

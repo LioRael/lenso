@@ -12,9 +12,8 @@ use futures::{FutureExt, future::LocalBoxFuture};
 
 use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticSource, EventAdmissionPlan,
-    InvocationContext, NativeAppRuntime, RuntimeFailure, await_with_generation_context,
-    diagnostics::diagnostic_operation, ensure_context_active,
-    schedule_plugin_supervision_after_failure,
+    InvocationContext, NativeAppRuntime, RuntimeFailure, diagnostics::diagnostic_operation,
+    ensure_context_active, schedule_plugin_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one ephemeral Event Capability.
@@ -257,6 +256,7 @@ impl NativeEventEndpointState {
 
 #[derive(Clone, Debug)]
 pub(crate) struct NativeEventEndpointBinding {
+    pub(super) requirement_id: String,
     pub(crate) plugin_instance: String,
     pub(crate) state: Rc<NativeEventEndpointState>,
     pub(crate) queue: Rc<NativeEventQueue>,
@@ -385,6 +385,7 @@ impl<C: EventCapability> NativeEventHandle<C> {
             DiagnosticSource::Admission,
             (self.runtime.driver.now)(),
             |_| DiagnosticEvent::EventAdmission {
+                requirement_id: Some(endpoint.requirement_id.clone()),
                 request_id: context.request_id(),
                 publisher_instance: self.caller_instance.clone(),
                 subscriber_instance: endpoint.plugin_instance.clone(),
@@ -396,6 +397,10 @@ impl<C: EventCapability> NativeEventHandle<C> {
         result
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "event admission keeps legacy commit acknowledgement and v2 settlement explicit"
+    )]
     async fn publish_to_endpoint_inner(
         &self,
         endpoint: &NativeEventEndpointBinding,
@@ -428,10 +433,32 @@ impl<C: EventCapability> NativeEventHandle<C> {
             // commit acknowledgement. Racing that acknowledgement against the
             // caller deadline can report unavailable after the subscriber has
             // already accepted the Event.
-            let result = snapshot
-                .endpoint
-                .publish(operation, Box::new(event), context.clone())
-                .await;
+            let result = if self
+                .runtime
+                .plan
+                .plugin_instance(&endpoint.plugin_instance)
+                .is_some_and(|instance| instance.authoring_version() == 2)
+            {
+                let endpoint_impl = snapshot.endpoint.clone();
+                let operation_name = operation.to_owned();
+                super::settlement::operation(
+                    &self.runtime,
+                    &endpoint.plugin_instance,
+                    &context,
+                    snapshot.cancellation,
+                    C::ID,
+                    move |execution_context| {
+                        endpoint_impl.publish(&operation_name, Box::new(event), execution_context)
+                    },
+                )
+                .await
+                .and_then(|result| result)
+            } else {
+                snapshot
+                    .endpoint
+                    .publish(operation, Box::new(event), context.clone())
+                    .await
+            };
             return match result {
                 Ok(()) => EventPublishResult::new(subscriber, EventAdmission::Accepted),
                 Err(error) => {
@@ -506,16 +533,16 @@ async fn drain_event_queue(
     capability: &'static str,
 ) {
     while let Some(queued) = queue.pop() {
-        let result = AssertUnwindSafe(await_with_generation_context(
-            &runtime.driver,
+        let endpoint = queued.snapshot.endpoint.clone();
+        let operation = queued.operation;
+        let event = queued.event;
+        let result = AssertUnwindSafe(super::settlement::operation(
+            &runtime,
+            &plugin_instance,
             &queued.context,
             queued.snapshot.cancellation,
             capability,
-            queued.snapshot.endpoint.publish(
-                &queued.operation,
-                queued.event,
-                queued.context.clone(),
-            ),
+            move |execution_context| endpoint.publish(&operation, event, execution_context),
         ))
         .catch_unwind()
         .await;

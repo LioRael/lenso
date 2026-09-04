@@ -12,10 +12,12 @@ use crate::{
 
 mod release;
 mod resolution;
+mod selection;
+pub use selection::{DependencyChoice, DependencySelection};
 
 pub use release::{PluginContract, PluginImplementation};
-pub use resolution::resolve_plugin_root;
 use resolution::{derive_root_bindings, map_configuration_error};
+pub use resolution::{propose_plugin_root, resolve_plugin_root};
 
 fn empty_configuration() -> Value {
     Value::Object(serde_json::Map::new())
@@ -69,6 +71,10 @@ impl fmt::Display for PluginInstanceId {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PluginDescriptor {
+    #[serde(default = "crate::schema::old_authoring_version")]
+    authoring_version: u32,
+    #[serde(default)]
+    runtime_profile: String,
     plugin_id: String,
     release_version: String,
     root_slot: String,
@@ -99,6 +105,8 @@ impl PluginDescriptor {
         let plugin_id = plugin_id.into();
         let release_version = release_version.into();
         Self {
+            authoring_version: 1,
+            runtime_profile: "lenso.native-authoring@1".to_owned(),
             runtime_package_id: plugin_id.clone(),
             runtime_package_revision: release_version.clone(),
             plugin_id,
@@ -124,6 +132,25 @@ impl PluginDescriptor {
         self.runtime_package_id = package_id.into();
         self.runtime_package_revision = package_revision.into();
         self
+    }
+
+    #[must_use]
+    pub fn with_authoring(mut self, version: u32, runtime_profile: impl Into<String>) -> Self {
+        self.authoring_version = version;
+        self.runtime_profile = runtime_profile.into();
+        self
+    }
+
+    pub const fn authoring_version(&self) -> u32 {
+        self.authoring_version
+    }
+
+    pub fn runtime_profile(&self) -> &str {
+        if self.runtime_profile.is_empty() {
+            self.execution_class.as_str()
+        } else {
+            &self.runtime_profile
+        }
     }
 
     #[must_use]
@@ -158,6 +185,11 @@ impl PluginDescriptor {
 
     #[must_use]
     pub fn with_execution_class(mut self, execution_class: ExecutionClassId) -> Self {
+        if self.authoring_version == 1
+            && self.runtime_profile == crate::schema::old_runtime_profile(&self.execution_class)
+        {
+            self.runtime_profile = crate::schema::old_runtime_profile(&execution_class);
+        }
         self.execution_class = execution_class;
         self
     }
@@ -384,6 +416,12 @@ impl HostPluginConfiguration {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct HostBinding {
+    #[serde(default)]
+    selection: DependencySelection,
+    #[serde(default)]
+    default_provider: Option<PluginInstanceId>,
+    #[serde(default)]
+    requirement_id: Option<String>,
     consumer: PluginInstanceId,
     capability_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -404,6 +442,9 @@ impl HostBinding {
     ) -> Self {
         Self {
             consumer,
+            selection: DependencySelection::Fixed,
+            default_provider: None,
+            requirement_id: None,
             capability_id: capability_id.into(),
             provider_slot: Some(provider_slot.into()),
             provider_instance: None,
@@ -419,6 +460,9 @@ impl HostBinding {
     ) -> Self {
         Self {
             consumer,
+            selection: DependencySelection::Fixed,
+            default_provider: None,
+            requirement_id: None,
             capability_id: capability_id.into(),
             provider_slot: None,
             provider_instance: Some(provider),
@@ -435,6 +479,9 @@ impl HostBinding {
     ) -> Self {
         Self {
             consumer,
+            selection: DependencySelection::Fixed,
+            default_provider: None,
+            requirement_id: None,
             capability_id: capability_id.into(),
             provider_slot: None,
             provider_instance: None,
@@ -447,6 +494,27 @@ impl HostBinding {
     pub const fn with_admission(mut self, admission: RequestAdmissionPlan) -> Self {
         self.admission = Some(admission);
         self
+    }
+
+    #[must_use]
+    pub fn with_requirement_id(mut self, id: impl Into<String>) -> Self {
+        self.requirement_id = Some(id.into());
+        self
+    }
+
+    /// Grants Root selection within this rule's explicit Slot or Instance set.
+    #[must_use]
+    pub fn selectable(mut self, default_provider: Option<PluginInstanceId>) -> Self {
+        self.selection = DependencySelection::Selectable;
+        self.default_provider = default_provider;
+        self
+    }
+
+    pub fn requirement_id(&self) -> std::borrow::Cow<'_, str> {
+        self.requirement_id.as_deref().map_or_else(
+            || std::borrow::Cow::Owned(format!("~{}", self.capability_id)),
+            std::borrow::Cow::Borrowed,
+        )
     }
 
     pub const fn consumer(&self) -> &PluginInstanceId {
@@ -629,6 +697,10 @@ impl PluginRootInstance {
 #[serde(deny_unknown_fields)]
 pub struct PluginRootSnapshot {
     #[serde(default)]
+    dependency_selection_adopted: bool,
+    #[serde(default)]
+    dependency_choices: Vec<DependencyChoice>,
+    #[serde(default)]
     releases: Vec<PluginDescriptor>,
     #[serde(default)]
     instances: Vec<PluginRootInstance>,
@@ -643,6 +715,8 @@ impl PluginRootSnapshot {
         disabled: impl IntoIterator<Item = PluginInstanceId>,
     ) -> Self {
         Self {
+            dependency_selection_adopted: false,
+            dependency_choices: Vec::new(),
             releases: releases.into_iter().collect(),
             instances: instances.into_iter().collect(),
             disabled: disabled.into_iter().collect(),
@@ -651,6 +725,18 @@ impl PluginRootSnapshot {
 
     pub fn releases(&self) -> &[PluginDescriptor] {
         &self.releases
+    }
+
+    /// Adopts named dependency selection with an exact persisted choice set.
+    #[must_use]
+    pub fn with_dependency_choices(mut self, choices: Vec<DependencyChoice>) -> Self {
+        self.dependency_selection_adopted = true;
+        self.dependency_choices = choices;
+        self
+    }
+
+    pub fn dependency_choices(&self) -> &[DependencyChoice] {
+        &self.dependency_choices
     }
 
     pub fn instances(&self) -> &[PluginRootInstance] {
@@ -696,11 +782,16 @@ impl ResolvedPluginInstance {
 /// Complete ready App derived from a Host Catalog and Plugin Root snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolvedApp {
+    dependency_choices: Vec<DependencyChoice>,
     plan: ResolvedAppPlan,
     instances: Vec<ResolvedPluginInstance>,
 }
 
 impl ResolvedApp {
+    /// Exact selectable choices proposed by pure resolution; storage belongs to the CLI.
+    pub fn dependency_choices(&self) -> &[DependencyChoice] {
+        &self.dependency_choices
+    }
     pub const fn plan(&self) -> &ResolvedAppPlan {
         &self.plan
     }
@@ -929,6 +1020,8 @@ fn materialize_app(
     selected: Vec<(CandidateInstance<'_>, &HostSlot)>,
     host_bindings: &[HostBinding],
     lanes: &[ExecutionLanePlan],
+    root: &PluginRootSnapshot,
+    propose: bool,
 ) -> Result<ResolvedApp, PluginRootResolutionError> {
     let mut plan_instances = Vec::with_capacity(selected.len());
     let mut resolved_instances = Vec::with_capacity(selected.len());
@@ -956,6 +1049,7 @@ fn materialize_app(
         })?;
         let descriptor = candidate.descriptor;
         let mut instance = PluginInstancePlan::new(&plan_key, descriptor.runtime_package_id())
+            .with_authoring(descriptor.authoring_version(), descriptor.runtime_profile())
             .with_entrypoint(descriptor.entrypoint())
             .with_package_revision(descriptor.runtime_package_revision())
             .with_configuration(configuration)
@@ -976,11 +1070,13 @@ fn materialize_app(
             source: candidate.source,
         });
     }
-    let bindings = derive_root_bindings(
+    let (bindings, dependency_choices) = derive_root_bindings(
         &plan_instances,
         &resolved_instances,
         &plan_slots,
         host_bindings,
+        root,
+        propose,
     )?;
     let composition =
         AppComposition::new(plan_instances, bindings).with_execution_lanes(lanes.to_vec());
@@ -989,6 +1085,7 @@ fn materialize_app(
         .map_err(|error| PluginRootResolutionError::InvalidResolvedApp(error.to_string()))?;
     resolved_instances.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(ResolvedApp {
+        dependency_choices,
         plan,
         instances: resolved_instances,
     })

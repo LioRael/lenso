@@ -69,6 +69,36 @@ struct AcknowledgedAdmissionEndpoint {
     seen: Rc<RefCell<Vec<u64>>>,
 }
 
+#[derive(Debug)]
+struct BlockingAdmissionEndpoint;
+
+impl NativeEventEndpoint for BlockingAdmissionEndpoint {
+    fn capability_id(&self) -> &'static str {
+        CAPABILITY_ID
+    }
+
+    fn descriptor_version(&self) -> &'static str {
+        DESCRIPTOR_VERSION
+    }
+
+    fn operations(&self) -> &'static [&'static str] {
+        &[OPERATION]
+    }
+
+    fn owns_event_admission(&self) -> bool {
+        true
+    }
+
+    fn publish(
+        &self,
+        _operation: &str,
+        _event: Box<dyn Any>,
+        _context: InvocationContext,
+    ) -> LocalBoxFuture<'static, Result<(), RuntimeFailure>> {
+        Box::pin(futures::future::pending())
+    }
+}
+
 impl NativeEventEndpoint for AcknowledgedAdmissionEndpoint {
     fn capability_id(&self) -> &'static str {
         CAPABILITY_ID
@@ -150,7 +180,11 @@ struct EventAdapter {
 }
 
 impl NativeExecutionAdapter for EventAdapter {
-    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+    fn supports_runtime_profile(&self, version: u32, profile: &str) -> bool {
+        version == 1 || (version == 2 && profile == "lenso.native-authoring@2")
+    }
+
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         let mut generations = BTreeMap::new();
         let mut bindings = Vec::new();
         for (provider, endpoint) in &self.endpoints {
@@ -161,11 +195,20 @@ impl NativeExecutionAdapter for EventAdapter {
                     NoopPluginLifecycle,
                 ),
             );
-            bindings.push(PreparedEventBinding::new(
-                "consumer",
-                provider,
-                endpoint.clone(),
-            ));
+            let requirement_id = plan
+                .capability_bindings()
+                .iter()
+                .find(|binding| {
+                    binding.consumer_instance() == "consumer"
+                        && binding.provider_instance() == provider
+                        && binding.capability_id() == CAPABILITY_ID
+                })
+                .map(lenso_app_plan::CapabilityBinding::requirement_id)
+                .expect("the prepared Event endpoint should have one Plan binding");
+            bindings.push(
+                PreparedEventBinding::new("consumer", provider, endpoint.clone())
+                    .with_requirement_id(requirement_id),
+            );
         }
         generations.insert(
             "consumer".to_owned(),
@@ -202,6 +245,32 @@ fn many_event_plan(provider_count: usize) -> ResolvedAppPlan {
     AppComposition::new(instances, bindings)
         .resolve()
         .expect("the Event Composition should resolve")
+}
+
+fn authoring_v2_event_plan() -> ResolvedAppPlan {
+    AppComposition::new(
+        vec![
+            PluginInstancePlan::new("consumer", "package.consumer")
+                .with_authoring(2, "lenso.native-authoring@2")
+                .with_requirement(
+                    CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION)
+                        .with_requirement_id("notifications"),
+                ),
+            PluginInstancePlan::new("provider", "package.provider")
+                .with_authoring(2, "lenso.native-authoring@2")
+                .with_capability(
+                    CapabilityEndpointPlan::new(CAPABILITY_ID, DESCRIPTOR_VERSION, [OPERATION])
+                        .with_event_operation(OPERATION)
+                        .with_event_capacity(1),
+                ),
+        ],
+        vec![
+            CapabilityBinding::new("consumer", CAPABILITY_ID, DESCRIPTOR_VERSION, "provider")
+                .with_requirement_id("notifications"),
+        ],
+    )
+    .resolve()
+    .expect("the authoring-v2 Event Composition should resolve")
 }
 
 #[test]
@@ -497,5 +566,40 @@ fn one_event_handle_materializes_one_explicit_subscriber() {
     assert!(
         app.optional_event_handle::<Notifications>("consumer")
             .is_some_and(|handle| handle.binding_count() == 1)
+    );
+}
+
+#[test]
+fn dropped_authoring_v2_event_admission_remains_owned_until_settlement() {
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(lenso_kernel::Kernel::start_native(
+            authoring_v2_event_plan(),
+            driver.clone(),
+            EventAdapter {
+                endpoints: BTreeMap::from([(
+                    "provider".to_owned(),
+                    Rc::new(BlockingAdmissionEndpoint) as Rc<dyn NativeEventEndpoint>,
+                )]),
+            },
+        ))
+        .expect("the authoring-v2 Event App should start");
+    let handle = app
+        .many_event_handle::<Notifications>("consumer")
+        .expect("the named Event binding should resolve");
+    let mut abandoned = Box::pin(handle.publish(OPERATION, Notification { sequence: 1 }));
+    assert!(futures::FutureExt::now_or_never(abandoned.as_mut()).is_none());
+    drop(abandoned);
+    let advance = driver.clone();
+    driver
+        .spawn_local(Box::pin(async move {
+            advance.yield_now().await;
+            advance.advance(std::time::Duration::from_millis(10));
+        }))
+        .expect("the deterministic Driver should accept the clock task");
+
+    assert_eq!(
+        driver.run(app.shutdown(std::time::Duration::from_millis(10))),
+        lenso_kernel::ShutdownOutcome::Timeout
     );
 }

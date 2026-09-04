@@ -23,6 +23,7 @@ use lenso_app_plan::{
     RequestAdmissionPlan, ResolvedAppPlan, RestartMode, RestartPolicy,
 };
 
+mod cleanup;
 mod deterministic;
 mod diagnostics;
 mod driver;
@@ -34,6 +35,9 @@ mod prepared;
 mod request;
 mod request_handle;
 mod runtime;
+mod settlement;
+pub use settlement::ExecutionLease;
+mod startup;
 mod stream;
 mod supervision;
 
