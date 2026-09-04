@@ -4,6 +4,12 @@ Status: **Design approved — not yet an accepted ADR or shipped API.**
 Date: 2026-09-04.
 Design approval: 2026-09-04, following repository-owner review.
 
+For the current candidate, read the
+[consolidated authoring review](2026-09-04-plugin-usage-walkthrough.md).
+This document retains the earlier approved direction and exploratory sketches;
+its syntax examples and open questions are not final authoring requirements.
+The consolidated review records later corrections and still awaits final review.
+
 This proposal makes ordinary Plugin development smaller while retaining a
 composable, multi-language runtime. Official Plugins remain Rust-first. A
 simple function can grow into a stateful Plugin without changing its identity,

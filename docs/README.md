@@ -7,7 +7,7 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`CONTEXT.md`](../CONTEXT.md) defines vocabulary, ownership, and invariants.
 - [`architecture/lenso-vnext.md`](architecture/lenso-vnext.md) describes the
   runtime shape.
-- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0070 and the
+- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0072 and the
   historical ADRs 0001–0029.
 - [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md)
   defines the implementation evidence sequence.
@@ -34,11 +34,43 @@ It is not a current authoring contract.
 
 ## Design proposals
 
+[`Plugin authoring design: consolidated review`](proposals/2026-09-04-plugin-usage-walkthrough.md)
+is the current review entrypoint for the author interface, default behaviors,
+ownership, fault scope, and adoption boundaries. It includes one integrated
+example and distinguishes retained contracts from proposed changes. It is not
+implementation approval or a shipped SDK reference.
+
+[ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md) is the narrower
+named-dependency proposal. It recommends configuration-time materialization and
+read-only startup; file formats and version allocation remain open.
+The [fault-scope companion](proposals/2026-09-04-plugin-fault-scope.md) proposes
+Host-defined terminal failure impact after readiness while retaining strict
+startup. Both remain proposed. [Issue #695](https://github.com/LioRael/lenso/issues/695)
+tracks the remaining review decisions before an implementation specification.
+
+The [Rust/TypeScript authoring comparison](proposals/2026-09-04-multilingual-plugin-authoring.md)
+shows one behavior in both languages, with common dependency identities,
+construction/cleanup ownership, generated contracts, and explicit runtime support
+limits. Its code is proposed syntax, not current SDK usage.
+
+The [product declaration pipeline](proposals/2026-09-04-plugin-declaration-pipeline.md)
+specifies SDK build outputs, offline bundle admission, and runtime binding using
+an Agent-owned TS tool calling Rust stores. It distinguishes the proposed
+declaration extraction from the current Bun describe-script implementation.
+
+The [cancellation and cleanup review](proposals/2026-09-04-plugin-cancellation-and-cleanup.md)
+follows construction failure, late completion, invocation cancellation, and safe
+resource release across Rust and TS, with bounded cleanup and Adapter limits.
+
+The [adoption and delivery boundary](proposals/2026-09-04-plugin-adoption-and-delivery.md)
+closes the design set with separate SDK/dependency/fault-policy adoption,
+existing-source compatibility, and a proposed complete Rust/TS Request slice.
+The set is ready for final review; implementation and release remain unapproved.
+
 [`Plugin authoring, dependency selection, and lifecycle`](proposals/2026-09-04-plugin-authoring-and-lifecycle.md)
-records the approved design direction for Rust-first authoring, named dependency
-choices, stateful updates, and failure scope, together with the remaining
-implementation decisions. Consult it when specifying those changes; it does not
-supersede the accepted contracts or describe shipped APIs.
+retains the earlier approved overall direction and exploratory examples as
+design context. Use the consolidated review for the latest candidate semantics;
+accepted ADRs continue to define current normative behavior.
 
 ## Research
 

@@ -74,6 +74,21 @@ Contract while Host policy selects one before Plan materialization.
 keeps Organization membership facts independent from scoped roles, grants,
 bindings, and role-based decisions owned by an Access Control Plugin.
 
+## Proposed decisions
+
+[`0073-name-and-persist-plugin-dependencies.md`](0073-name-and-persist-plugin-dependencies.md)
+proposes stable dependency names, Host-permitted instance choices, and durable
+Plugin Root selection. It would amend ADR 0070 if accepted; it is not yet a
+normative contract or a shipped format. Read the
+[consolidated authoring review](../proposals/2026-09-04-plugin-usage-walkthrough.md)
+first; [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the
+remaining design and adoption decisions.
+
+The [fault-scope companion](../proposals/2026-09-04-plugin-fault-scope.md)
+separately proposes Host-defined terminal failure impact after readiness while
+retaining ADR 0046 strict startup. It requires its own ADR amendment if accepted;
+it is not part of ADR 0073 or an accepted change to supervision.
+
 ## Legacy decisions
 
 ADRs 0001 through 0029 describe the final v0.3.x Service-oriented
