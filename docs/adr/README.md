@@ -79,8 +79,10 @@ bindings, and role-based decisions owned by an Access Control Plugin.
 [`0073-name-and-persist-plugin-dependencies.md`](0073-name-and-persist-plugin-dependencies.md)
 proposes stable dependency names, Host-permitted instance choices, and durable
 Plugin Root selection. It would amend ADR 0070 if accepted; it is not yet a
-normative contract or a shipped format. The first implementation specification
-is [Issue #695](https://github.com/LioRael/lenso/issues/695).
+normative contract or a shipped format. Read the
+[consolidated authoring review](../proposals/2026-09-04-plugin-usage-walkthrough.md)
+first; [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the
+remaining design and adoption decisions.
 
 ## Legacy decisions
 

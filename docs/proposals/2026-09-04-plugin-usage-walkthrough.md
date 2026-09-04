@@ -1,319 +1,69 @@
-# Plugin usage walkthroughs
+# Plugin authoring design: consolidated review
 
-Status: **Discussion draft. No implementation approval.**
+Status: **Consolidated proposal for final design review. Not approved for implementation.**
 Date: 2026-09-04.
 
-Read this before deciding the constructor interface, dependency naming, or
-storage representation in [Issue #695](https://github.com/LioRael/lenso/issues/695)
-and [proposed ADR 0073](../adr/0073-name-and-persist-plugin-dependencies.md).
-Those documents describe an earlier candidate. This walkthrough reopens its
-generated Inputs type, mandatory explicit dependency IDs, per-instance choice
-files, and implicit startup writes. The approved overall direction remains
-[Rust-first Plugin authoring](2026-09-04-plugin-authoring-and-lifecycle.md).
+This is the current review entrypoint. It consolidates the discussion following
+the [approved overall direction](2026-09-04-plugin-authoring-and-lifecycle.md)
+and replaces this file's exploratory sketches. Accepted ADRs remain normative.
+[Issue #695](https://github.com/LioRael/lenso/issues/695) tracks review and later
+specification; [ADR 0073](../adr/0073-name-and-persist-plugin-dependencies.md)
+covers the proposed dependency change. No runtime, format, or release changes
+are established by this document.
 
-All commands, Rust attributes, helper types, and output below are **proposed
-usage**, not a runnable tutorial or evidence of current SDK support. This is a
-paper walkthrough: it examines what a person must do and understand. It is not
-a runtime validation exercise or an implementation checklist.
+## 1. Keep one Plugin model
 
-## The shared path
+A Plugin groups behavior that should be installed, configured, stopped, and
+replaced together. It can own tools, routes, listeners, tasks, caches,
+connections, and persistent data. State does not create another Plugin category.
 
-The developer needs to know which App will consume the Plugin. An Agent tool,
-a Web endpoint, and a new reusable Capability have different consumers. A
-starter can select the appropriate SDK and sample; it cannot make an arbitrary
-function useful in every Host without a consumer contract.
+Official implementations remain Rust-first. Native embedding and independent
+Process installation are delivery choices; an installable Rust Process starter
+is a candidate default, not a requirement for every Host. Wasm and other
+implementations expose only the contracts they actually support. Keep ADR 0071
+implementation equivalence; common source alone does not prove portability.
 
-Proposed command surface for an Agent tool:
+Ordinary authors work with objects, configuration, dependencies, and business
+operations. Plans, Generations, Slots, and execution mechanics remain internal
+or advanced concepts. Their correctness guarantees are retained.
 
-```sh
-lenso plugin new company.text-tools --template agent-tool
-cd company.text-tools
-lenso plugin dev --root /absolute/path/dev-app
-lenso plugin pack
-lenso plugins add /absolute/path/company.text-tools-0.1.0.lenso-plugin \
-  --root /absolute/path/app
-```
+## 2. Construction, lifecycle, and inputs
 
-`new` creates ordinary Cargo source, dependencies, and generated defaults.
-`dev` connects to an explicitly chosen development App, builds, reports errors,
-and reloads through that App's supported restart path. A failed build keeps the
-last working development instance; a failure after stopping it reports that it
-is stopped. It never implies zero-downtime replacement or writes into an
-unrelated production App. The first invocation must identify the development
-App and its data directory so it is not mistaken for disposable state.
+A Plugin object is ordinary Rust state. The generated constructor can supply
+declared configuration, resolved clients, and fields with valid defaults. A
+custom asynchronous constructor returns a fully initialized object when those
+defaults are insufficient. It may create ordinary library resources itself.
+Construction that calls dependencies runs only after those providers are active.
 
-`pack` produces the supported artifact and displays its runtime and compatible
-Host requirements. `add` validates the package, displays proposed instance
-choices and configuration, and applies them through the App's supported
-management path. A required choice can be supplied noninteractively; ambiguity
-must fail in a script rather than waiting indefinitely for input.
+Construction and enablement are distinct semantics. A lifecycle hook operates
+on an existing object; custom construction creates it. Hooks are available with
+no-op defaults. Authors do not write both merely to satisfy the framework.
+Preparation/activation/readiness ordering still governs external admission.
+Existing advanced preparation may reserve reversible resources under ADR 0046.
 
-The default installable Rust starter proposes Process output. Official Plugins
-linked into an App use native Rust. A starter does not ask every author to
-design an artifact matrix. A template selects an example and SDK, not a new
-Plugin kind: changing a stateless Plugin into a stateful one preserves its
-package and installed identity.
+Prefer explicit typed constructor inputs over a mandatory generated
+`MyPluginInputs` type. Mapping from declarations to inputs must be deterministic,
+including two clients of the same type. Wrapper code shares one instance across
+its entrypoints; it does not require an author-provided `Clone` implementation
+or a private-state copy per operation. Supported recreation constructs a fresh
+object for the same logical Instance. A constructed object receives at most one
+stop-hook attempt for its lifetime, subject to the shared cleanup deadline.
 
-## 1. A small text tool
+A small optional `PluginContext` can expose instance identity, scoped logging,
+and owned task facilities. Configuration and business dependencies stay explicit.
+A separate per-invocation `CallContext` carries deadline, cancellation, and
+validated invocation information. Neither context is an arbitrary service
+locator, permission escalation interface, or App configuration editor.
 
-The author edits this business source, with imports supplied by the starter:
+## 3. One integrated author example
 
-```rust
-#[lenso::plugin]
-struct TextTools;
-
-#[agent::tools]
-impl TextTools {
-    #[tool(description = "Convert text to uppercase")]
-    fn uppercase(text: String) -> String {
-        text.to_uppercase()
-    }
-}
-```
-
-`agent` denotes the product-owned tool SDK, not a new universal Kernel module.
-The supplied Tool Capability is generated from that SDK. The author does not
-define a Capability or transport merely to add this tool. A second operation
-adds a method to the same Plugin. The struct keeps one obvious path to adding
-state later; a standalone-function shorthand is optional and need not be a
-second first-page authoring form.
-
-| Stage | What the person does | What should happen |
-| --- | --- | --- |
-| Create | Choose the Agent tool starter and a package ID | Receive source and a working example consumer; no Slot or Descriptor editing |
-| Write | Change the function and description | Generate its tool schema and dispatch from the same source |
-| Try | Run development mode and invoke `uppercase` in the chosen App | See input, output, and errors associated with this tool |
-| Install | Add the packed release | See runtime compatibility; no dependency or state questions for this Plugin |
-| Update | Install the next version through the supported App action | Preserve Plugin identity; report whether restart is needed |
-| Remove | Remove the Plugin | Its tool disappears; no business code remains in the Host |
-
-The source adds two meaningful framework ideas: a Plugin groups behavior, and
-a tool exposes a function to an Agent. No initialization hook, config schema,
-resource field, dependency selection file, Generation, or Plan belongs in this
-starter. Cargo/package metadata still exists; the starter derives mechanical
-facts instead of pretending there are no packaging inputs.
-
-## 2. A counter that survives restart
-
-Grow the tool Plugin into one that owns a small durable counter. Keep storage
-as an ordinary Rust library inside the Plugin:
-
-```rust
-#[lenso::plugin]
-struct Counter {
-    store: CounterStore,
-}
-
-impl Counter {
-    #[lenso::create]
-    async fn create(data: lenso::DataDir) -> Result<Self, CounterError> {
-        Ok(Self { store: CounterStore::open(data.path()).await? })
-    }
-}
-
-#[agent::tools]
-impl Counter {
-    #[tool(description = "Increase the saved counter")]
-    async fn increment(&self) -> Result<u64, CounterError> {
-        self.store.increment_and_commit().await
-    }
-}
-```
-
-`CounterStore` and its error handling are business implementation, not hidden
-framework code. `DataDir` is a candidate narrow SDK handle for an admitted,
-Instance-owned local directory. It supplies a path, not a service registry,
-database, automatic transactions, or access outside the runtime's permissions.
-Its path is stable across compatible code updates, isolated by App and Instance,
-and independent of the shell's current directory. Exact type spelling remains
-open; making every user invent a unique storage path is the less usable option.
-
-The proposed constructor returns a complete Rust value. Its explicitly typed
-parameters receive declared configuration/dependencies or narrow SDK inputs.
-There is no generated `CounterInputs` type to learn. This requires an explicit
-parameter mapping convention and useful diagnostics; it is not arbitrary
-lookup by type. Unknown parameters, duplicate inputs, and ambiguous field
-matches fail at compile time. An optional stop hook can flush a library that
-needs it; successful operations already commit their durable effects.
-
-| Stage | What the person does | What should happen |
-| --- | --- | --- |
-| Create/write | Add a storage library, private field, and constructor | Keep the same Plugin; no storage Plugin or invalid default field required |
-| Try/restart | Increment, stop, and start the development App | Retain the counter in the displayed development data directory |
-| Add another instance | Create a separately named instance | Get separate data by default; never reuse the first instance's file accidentally |
-| Install | Add the package | Allocate its persistent directory; show a useful path/access error if unavailable |
-| Update | Install compatible code and restart | Stop the old writer before opening the new one; retain the same data |
-| Failed update | Inspect the error | Report stopped if old execution already ended; restarting old code requires compatible data |
-| Remove/reinstall | Remove code, later reinstall the same identity | Retain data by default and report that fact; deletion is a distinct action |
-
-The author must understand persistence, concurrency, and recovery because the
-Plugin owns them. The framework can remove lifecycle plumbing, but cannot make
-an acknowledged write durable by flushing only during shutdown. Process crash
-and power loss can skip that hook. Native code also needs cooperative execution
-for timeouts; a stuck synchronous function is not independently preemptible.
-
-This example needs no custom `#[resource]`, `State<T>`, named dependency, or
-public preparation/activation phases. It earns one constructor and a stable
-place to store data. A caller that needs existing advanced lifecycle features
-can use their advanced path, with a clearly defined migration to this syntax.
-
-## 3. Copy from one Store instance to another
-
-Assume a product-owned Store Capability already supplies a typed `StoreClient`.
-Its account or database implementation owns credentials and connection policy.
-The copy Plugin owns transfer rules, retries, and its checkpoint:
-
-```rust
-#[lenso::plugin]
-struct Mirror {
-    #[dependency]
-    source: StoreClient,
-    #[dependency]
-    destination: StoreClient,
-    checkpoint: CheckpointStore,
-}
-
-impl Mirror {
-    #[lenso::create]
-    async fn create(
-        source: StoreClient,
-        destination: StoreClient,
-        data: lenso::DataDir,
-    ) -> Result<Self, CopyError> {
-        Ok(Self {
-            source,
-            destination,
-            checkpoint: CheckpointStore::open(data.path()).await?,
-        })
-    }
-}
-```
-
-The tool method delegates to ordinary transfer code using these three fields.
-No `Port`, binding collection, or runtime lookup is needed in that code.
-Constructor arguments map to the annotated fields by Rust name and type, so
-two clients with the same type remain distinct. The framework must connect
-them by requirement identity, never select the first matching Capability.
-
-For new declarations, propose using the field name as the stable dependency
-ID. Renaming a published field must preserve its old ID explicitly:
-
-```rust
-#[dependency(id = "source")]
-origin: StoreClient,
-```
-
-That removes redundant `id = "source"` from every starter, at the cost of making
-the initial field name part of the public contract. Package comparison must
-diagnose a removed/new dependency and offer this remedy. It must not guess that
-two equal-typed fields were renamed or silently migrate their saved choices.
-Human-readable labels can change without changing identity.
-
-Installation, or the first configuration action, presents a concrete choice:
-
-```text
-Mirror / default
-  Source:       Store / production
-  Destination:  Store / archive
-
-These choices will be saved. Adding another Store will not change them.
-```
-
-| Stage | What the person does | What should happen |
-| --- | --- | --- |
-| Create/write | Declare two clients of the existing Store interface | Generate two distinct named requirements without new Capability IDs |
-| Configure | Select source and destination from permitted instances | Show meaningful labels; explain a missing provider or denied choice |
-| Try | Invoke copy in a development App with disposable datasets | Read source, write destination, and report progress/errors |
-| Add a third Store | Install another provider | Preserve both saved choices |
-| Restart | Start the configured App | Use the same choices; fail visibly if an active dependency's target is missing |
-| Change source | Select a different source explicitly | Check checkpoint/data compatibility before continuing transfer |
-| Update source code | Rename a field while retaining its old ID | Preserve the chosen instance; report incompatible requirement changes |
-| Disable/remove | Stop or remove the copy Plugin | Stop new transfer work, retain its choices/data as appropriate, and show retained data |
-
-Two saved provider Instances are not sufficient to validate a checkpoint.
-An account may be reconfigured in place, or a selection may point to another
-dataset. The Store interface must supply suitable stable dataset identity (or
-the product must require an explicit reset). Transfer code keys checkpoints by
-source dataset, destination dataset, and relevant copy settings. Destination
-effects need idempotency/recovery before the source checkpoint advances; a
-crash between the two calls is not a cross-Plugin transaction. No generic
-binding mechanism can infer these business rules.
-
-Source and destination selecting the same provider can be valid at the
-framework level. This Plugin must reject unsafe self-copy or implement an
-explicit policy. These semantics belong in transfer code, not Kernel routing.
-
-## Where do choices live, and when are they saved?
-
-The three walkthroughs justify durable choices for actual selectable
-dependencies. They do not yet justify a particular file layout or a universal
-multi-file transaction system. The simple tool and local counter need no
-dependency-choice files. Fixed Host attachments already have an authority and
-need not produce a user-owned duplicate unless users can change them.
-
-| Representation | Benefit | Cost |
-| --- | --- | --- |
-| Per-instance `.dependencies` file, as in ADR 0073 | Keeps choices next to an instance; preserves Plugin-owned config schema | More files and potential multi-file publication; older parsers must reject it |
-| One App dependency-choice file | One place to inspect, export, and atomically replace all choices | Central merge contention and references to instance identity; config/package edits are still separate |
-| Reserved envelope around instance config | Config and dependencies can change in one file | Breaks today's flat Plugin config format and adds a wrapper even when unnecessary |
-
-Keep the existing flat business config for now. Compare the first two choices
-using these same operations before selecting a representation. One file alone
-does not make a package/config/choice change transactional; measure the actual
-required operation instead of adding a generic journal by assumption.
-
-Prefer saving selections as part of explicit install/configure. Startup should
-normally consume prepared intent. A hand-edited or freshly copied root may
-still need initialization: compare an explicit setup action with startup
-materialization, including a read-only deployment. Interactive convenience must
-not make read-only inspection write files or make a script guess an account.
-This remains a discussion choice, not an instruction to implement both modes.
-
-## Native, Process, and Wasm must be explained at the right moment
-
-| Delivery route | What the developer is choosing | Implication for these examples |
-| --- | --- | --- |
-| Native Rust | Link trusted code into the App | Suitable for built-in official Plugins; typed local calls can avoid process serialization; updating code normally rebuilds the Host |
-| Rust Process | Install a compatible executable run by the Host | Candidate default for independently installed Rust Plugins; OS-targeted artifact and process-call overhead; separate process is not automatically an OS permission sandbox |
-| Wasm | Build for the Host's admitted Wasm interface | Portable only across compatible Hosts/profiles; imports and supported contracts determine which I/O and lifecycle behavior are available |
-
-This table describes design consequences, not a current SDK support matrix.
-Pure computation in the text tool does not prove its Tool SDK works in every
-Adapter. `DataDir` cannot imply ambient filesystem access in Wasm. The counter
-and copy Plugin would need an admitted storage interface with equivalent
-semantics or must declare that target unsupported. Arbitrary Cargo dependencies
-can introduce OS requirements; source attributes alone cannot discover all of
-them or guarantee portability.
-
-The starter should explain its default runtime immediately. An explicit Wasm
-choice must show relevant limits before the developer writes substantial
-stateful code. Compilation catches unsupported dependencies where possible;
-packaging and Host admission check the exact remaining profile/contract needs.
-No silent target fallback, no forced rewrite to TypeScript, and no claim that
-every Rust source compiles unchanged into every runtime.
-
-## Integrated example: scheduled and manual document synchronization
-
-This example combines entrypoint declaration, dependency injection, typed
-configuration, owned background work, and error propagation. It exercises the
-four authoring improvements discussed after the initial walkthrough. Initial
-startup failure isolation is a separate design question; the existing strict
-readiness contract remains unchanged.
-
-The Plugin copies one configured document between two Store instances. It can
-run periodically or be invoked manually as an Agent tool. Store owns its own
-data and credentials. This Plugin needs no private persistent storage, custom
-constructor, or manual lifecycle hook. The single-instance concurrency guard
-is an ordinary Rust field.
-
-The entire block is proposed SDK syntax. Imports and the product-owned Store
-SDK types are omitted. `Mutex` denotes the ordinary `futures::lock::Mutex`;
-the SDK must preserve generated client error categories when converting into
-the illustrative `SyncError` type.
+This block is **illustrative proposed syntax**, not a compile-ready SDK sample.
+Imports and product-owned error/client types are omitted. `Mutex` is an ordinary
+Rust asynchronous mutex. Macro spelling and exact signatures remain reviewable.
 
 ```rust
 #[derive(PluginConfig)]
-struct SyncConfig {
+struct Config {
     #[config(min_length = 1)]
     document: String,
 
@@ -324,7 +74,7 @@ struct SyncConfig {
 #[plugin]
 struct DocumentSync {
     #[config]
-    config: SyncConfig,
+    config: Config,
 
     #[dependency(id = "source")]
     source: StoreClient,
@@ -340,7 +90,7 @@ enum SyncOutcome {
     AlreadyRunning,
 }
 
-#[agent::tools]
+#[tools]
 impl DocumentSync {
     #[tool(name = "sync_document")]
     #[schedule(every_seconds = "config.interval_seconds")]
@@ -359,125 +109,144 @@ impl DocumentSync {
 }
 ```
 
-`agent` denotes the product tool SDK. The generated Tool contract exposes the
-operation and serializable result; it does not include `CallContext` as a
-user-supplied tool argument. Both registrations invoke the same method on the
-same Plugin object, so they share the lock. A competing call returns
-`AlreadyRunning`; it does not queue, begin a second copy, or silently replace
-the first call. Manual and scheduled invocations observe the same outcome.
+The product tool SDK owns the tool contract and schema. Scheduling requires a
+real supported Host implementation; a one-shot queue does not establish it.
+Both triggers call the same method on the same object. No custom constructor
+or cleanup hook is needed for this example. Configuration defaults, clients,
+and the default mutex suffice; SDK registrations own their cleanup.
 
-The business definition of Store `put` in this example is replacement of the
-document at a key. Append-only destinations or side-effecting operations need
-their own idempotency contract. An exclusive destination key is assumed for
-this example; concurrent external writers require an explicit version or
-conflict policy. The in-memory lock coordinates only this Plugin Instance,
-not other instances, processes, or external writers.
+Store owns storage semantics. This example assumes replacement at a destination
+key with no competing external writer. Its mutex protects this instance only.
+Concurrent external writes need a version/conflict policy. `CallContext` is
+injected by the runtime, not exposed as a user-supplied tool argument.
 
-### Construction and input authority
+## 4. Proposed default behavior
 
-The generated constructor receives validated configuration and the two resolved
-clients, initializes the mutex with its ordinary default, and produces one
-complete instance. There is no author's `create` because no field requires a
-custom construction process. Adding such a field later can introduce a custom
-constructor without changing the Plugin category or starting a second lifecycle.
+| Concern | Review recommendation |
+| --- | --- |
+| Concurrency | One object per instance, with bounded asynchronous concurrency under Host capacity policy. No implicit object copy, whole-Plugin lock, or movement onto arbitrary threads. Business operations declare or implement necessary mutual exclusion. |
+| Repeated trigger | The example returns `AlreadyRunning` to a competing manual or scheduled invocation. It does not queue another copy. |
+| Periodic work | First run one interval after readiness; subsequent scheduled runs wait one interval after completion. Manual calls do not reset the timer. No offline catch-up or exactly-once promise. |
+| Admission and cleanup | Open entrypoints only when ready. Disablement closes new admission, stops future triggers, and bounds in-flight completion/cancellation and cleanup under one App-wide deadline. |
+| Configuration | Derive schema/defaults from the typed declaration, with explicit business validation where needed. Each instance observes a coherent configuration value. Validate a replacement before applying it through a supported update path. |
+| Calls and errors | Preserve domain errors, unavailability, deadline, and cancellation as structured outcomes. Propagate invocation context without extending its deadline. No hidden write retry or replay. |
+| Uncertain effects | Losing a write response or cancelling a call does not prove the write was undone. Report uncertainty; recovery/idempotency belongs to the operation contract. |
+| Updates | Choose a supported replacement strategy from actual compatibility and resource constraints. Stop an exclusive old writer before opening its replacement. Neither always-hot replacement nor unconditional whole-App restart is the universal rule. |
+| Failed replacement | Validation failure preserves the current instance. Failure after stopping it may leave it unavailable. Restoring code requires compatible data; code rollback is not data rollback. |
 
-The proposed flat instance configuration is:
+Managed cleanup covers SDK-owned registrations and work. Arbitrary threads,
+non-cooperative native code, and external side effects do not acquire automatic
+cancellation or reversal guarantees. A required local cleanup operation can use
+an optional stop hook; durable writes cannot rely solely on that hook running.
 
-```toml
-document = "price-list"
-interval_seconds = 60
-```
+Ordinary Event notifications report facts already produced. Keep bounded,
+volatile admission and explicit delivery outcomes unless a particular contract
+provides stronger guarantees. A decision hook must instead name a Host-owned
+extension point with ordering, deadline, and rejection semantics. No universal
+interceptor over arbitrary Capability calls; a "continue" decision does not
+override required authorization.
 
-The same Rust configuration declaration supplies its schema, default, and
-constraints. A value of zero fails configuration validation before starting
-the task. Example diagnostic: `DocumentSync/default: interval_seconds must be
-at least 1`. Cross-field business constraints can use an explicit validator.
-The source and destination choices are App-owned dependency settings, kept
-separate from this Plugin's business configuration. Their on-disk format is
-still under discussion.
+## 5. Host, SDK, and storage ownership
 
-### Scheduling and cleanup
+| Owner | Responsibility |
+| --- | --- |
+| Host/runtime | Instance identity, admitted configuration and bindings, actual execution facilities and limits, readiness, lifecycle supervision, and supported update coordination |
+| SDK | Typed declarations, generated contracts/clients, schema validation plumbing, registration ownership, logging association, and invocation context propagation |
+| Plugin | Business rules, ordinary library resources, private data meaning, transactions, migrations, idempotency, and recovery |
+| Shared service provider | Its explicit cross-Plugin contract, including service-specific authorization, durability, or secret rotation where applicable |
 
-The schedule annotation requires an actually supported recurring scheduling
-implementation in the target Host. It is not established by the existence of
-`ManagedTasks` or a one-shot Jobs queue. Unsupported scheduling is rejected
-before activation; it is never silently dropped from the installed Plugin.
+Keep all existing storage approaches. A Plugin may use an ordinary HTTP or
+database library, its private persistence implementation, or a declared storage
+Capability. It does not have to create another Plugin merely to use a database.
+No universal `DataDir`, `Storage`, or `State<T>` is required. A future optional
+local-directory helper must not become the persistence model. Read-only staged
+resource files are distinct from writable business data.
 
-For this example, the first automatic run starts one interval after readiness;
-each following run waits one interval after the previous scheduled invocation
-finishes. Manual calls do not reset that schedule. The schedule is local to
-the running App, with no offline catch-up or exactly-once guarantee. Failures
-are recorded, and a later scheduled run is a new invocation, not an automatic
-retry hidden inside a client method.
+Configuration may contain a secret reference; a declared provider resolves it
+under applicable authority. A Host can assemble a default provider without
+putting secret storage into Kernel. Secret lifetime/rotation is a service
+contract, not automatic mutation of a resolved configuration value.
 
-Generated registrations and scheduled work belong to the Plugin Instance.
-Disablement closes its tool admission, stops future scheduled invocations, and
-allows bounded completion/cancellation of in-flight work before releasing the
-instance. A replacement registers its schedule only when eligible to run;
-there must never be an old timer quietly left behind. These guarantees cover
-work created through supported SDK paths, not arbitrary external threads.
+A restricted-looking SDK does not sandbox native library access. Process
+separation alone does not enforce filesystem/network permissions. Wasm can
+access only the imports the selected Host actually supplies. Supported APIs
+and enforced restrictions must be checked for the exact execution profile.
 
-### Call context and errors
+## 6. Dependency injection and multiple instances
 
-The Host supplies a bounded invocation context for a manual call; the scheduling
-implementation supplies a fresh bounded context for each automatic invocation.
-Clients explicitly receive it in this sketch so deadlines and cancellation
-propagate across asynchronous and process boundaries without relying on a
-hidden global variable. A downstream call never extends the original deadline.
-The context exposes only invocation information; it cannot discover plugins,
-request arbitrary services, or grant the caller extra authority.
+Dependency injection already exists through typed Ports and clients. Retain
+that model. `Port<T>` need not be removed just to change syntax. The substantive
+proposal is to distinguish two requirements of the same Capability and allow
+Host-permitted App selections to persist.
 
-Domain failures (missing document, business rejection) remain distinct from
-runtime failures (unavailable provider, timeout, cancellation). `SyncError`
-preserves the generated client's structured distinction rather than reducing
-everything to a message string. `?` propagates failures; the SDK does not retry
-the write automatically. Diagnostics identify the Plugin Instance, dependency,
-operation, and cause, with sensitive payloads redacted.
+Give public dependencies stable consumer-local identities, independent of
+internal Rust field renaming. Explicit names are the preferred review candidate;
+exact annotation syntax is open. A Capability identifies the interface, while
+a requirement name identifies the consumer's use of it.
 
-Cancellation or loss of the write response does not prove the destination was
-unchanged. Once a write has been sent, an uncertain result must be reported as
-such. Recovery may require reading the destination or using an operation ID
-defined by the Store contract. Lifecycle cleanup cannot undo that write.
+Keep fixed Host attachments. For selectable requirements, validate choices
+against Host policy and contract compatibility. Preserve valid saved choices
+across restart and unrelated installations. A missing or forbidden saved target
+is an error, not an invitation to select another account. Ordinary required,
+optional, and collection cardinalities retain their distinct meanings.
+An optional absent binding is different from a bound provider that has failed.
 
-### Configuration changes and failure scope
+Installation normally creates one default instance. Additional instances share
+code but keep their own configuration, choices, work, and owned data. Display
+renaming preserves identity. A disabled consumer retains its intent; invalid
+dormant bindings are diagnosed and repaired before reactivation without becoming
+an active dependency failure elsewhere. Structural input validation still applies.
 
-Configuration replacement validates a complete candidate before applying it.
-The Plugin instance observes one coherent configuration value. A successful
-replacement receives the new interval and one new schedule, after the old
-schedule is stopped through the supported update path. A failed candidate
-validation leaves the existing configuration active. Failure after a controlled
-stop must accurately report unavailable/stopped rather than promise recovery.
+Prefer materializing choices through install/configure. The exact treatment of
+a fresh hand-authored root at first startup remains open. Read-only inspection
+never writes. The file layout, transaction representation, and version numbers
+are not fixed here. Preserve semantic revisions, protect source edits separately,
+and prevent publication from mixing inconsistent or unreviewed input.
 
-Initial absence or failure of a required Store still prevents readiness under
-the current contract. Runtime failures remain subject to the existing dependency
-and supervision policy. This example does not introduce partial startup or
-promise that every other Plugin survives an exhausted required dependency.
-Whether optional product features may fail during startup is a separate Host
-policy and architecture discussion.
+## 7. Fault scope: proposed architecture change
 
-The combined example supports one useful simplification: most Plugin authors
-should declare their behavior and inputs, while SDK-owned registrations perform
-their matching cleanup. Constructors and lifecycle hooks stay available for
-actual initialization or shutdown work; this Plugin does not need empty ones.
-The additional concepts in the body are ordinary business concurrency and an
-explicit call context with observable deadline/cancellation semantics.
+Distinguish a dependency required by one consumer from an instance required
+for the App's minimum useful operation. The Host should declare the latter;
+its dependency closure determines App-critical failure impact. A Plugin author
+cannot make an authorization dependency dispensable by calling it optional.
 
-## Recommended simplifications and remaining discussion
+A failed invocation does not itself prove the provider process is unhealthy.
+Use bounded supervision for actual runtime failure, preserving stable bindings
+across supported recreation. Do not automatically destroy all consumers, replay
+in-flight calls, or substitute another provider. User disablement is intent,
+not a failure that supervision should undo.
 
-Keep the struct-based Plugin as the common form. Prefer explicit typed
-constructor parameters over a generated per-Plugin Inputs type. Let dependency
-field names establish IDs initially, with explicit ID preservation on rename.
-Make local private state ordinary Rust code with a narrow admitted directory
-input, rather than requiring another Plugin or a generic state service.
+These are review recommendations, not current startup behavior. ADR 0046 still
+requires all selected instances to activate before readiness, and current
+supervision can terminate the App when a provider on a required path exhausts
+recovery. App-critical roots and degraded startup need an explicit ADR change
+and a complete dependency-consistent active graph, with unavailable desired
+instances and their causes still visible. Native process aborts cannot be
+contained by a logical fault policy.
 
-Keep mandatory internal identities, compatibility checks, and bounded lifecycle
-behavior. Their existence is justified; exposing their construction to every
-author is not. Defer constructor spelling, choice-file layout, startup writes,
-and a generalized transaction design until their user-facing behavior is
-settled. Existing detailed candidates remain discussion material rather than
-implementation authorization.
+## 8. Compatibility and review closeout
 
-The next discussion should decide whether these three workflows feel natural,
-especially typed construction, field-name stability on rename, and whether
-install/configure should finish selection before startup. It should not start
-by splitting implementation tickets or running the illustrative Rust.
+Preserve existing `Port` and lifecycle authoring during an explicit migration.
+New syntax lowers into the same model, not a parallel runtime. Structural
+requirement identity changes need versioned metadata, routing, and peer support;
+unsupported readers reject them before business dispatch. Allocate format
+versions against the actual release baseline, not numbers in an earlier sketch.
+
+Legacy single requirements can preserve their exact provider where a new named
+requirement maps unambiguously. Splitting, removing, or changing public identities
+needs explicit migration. Package version, interface compatibility, configuration
+compatibility, and data compatibility are separate checks. Structural comparison
+cannot prove unchanged business meaning.
+
+Three items close this design review:
+1. Agree on the authoring semantics and deterministic input mapping; final macro
+   spelling can follow without adding new lifecycle systems.
+2. Confirm default behaviors above and review fault-scope changes separately
+   from SDK improvements; no silent weakening of accepted readiness contracts.
+3. Define adoption boundaries for existing source, saved selections, and formats.
+   File layout and implementation details follow those guarantees.
+
+Do not expand the design with mandatory resource categories, generated Inputs
+types, a global service context, automatic state migration, or forced runtime
+matrices. This review authorizes no implementation, release, or runtime validation.
+Earlier exploratory examples remain available in Git history.

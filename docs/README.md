@@ -7,7 +7,7 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`CONTEXT.md`](../CONTEXT.md) defines vocabulary, ownership, and invariants.
 - [`architecture/lenso-vnext.md`](architecture/lenso-vnext.md) describes the
   runtime shape.
-- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0070 and the
+- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0072 and the
   historical ADRs 0001–0029.
 - [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md)
   defines the implementation evidence sequence.
@@ -34,25 +34,21 @@ It is not a current authoring contract.
 
 ## Design proposals
 
+[`Plugin authoring design: consolidated review`](proposals/2026-09-04-plugin-usage-walkthrough.md)
+is the current review entrypoint for the author interface, default behaviors,
+ownership, fault scope, and adoption boundaries. It includes one integrated
+example and distinguishes retained contracts from proposed changes. It is not
+implementation approval or a shipped SDK reference.
+
+[ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md) is the narrower
+named-dependency proposal. File formats, startup materialization, and version
+allocation remain open. [Issue #695](https://github.com/LioRael/lenso/issues/695)
+tracks the remaining review decisions before an implementation specification.
+
 [`Plugin authoring, dependency selection, and lifecycle`](proposals/2026-09-04-plugin-authoring-and-lifecycle.md)
-records the approved design direction for Rust-first authoring, named dependency
-choices, stateful updates, and failure scope, together with the remaining
-implementation decisions. Consult it when specifying those changes; it does not
-supersede the accepted contracts or describe shipped APIs.
-
-[Issue #695](https://github.com/LioRael/lenso/issues/695) specifies the first
-implementation wave: Rust resource construction, native and Process authoring,
-and durable named dependency selection. Its structural dependency changes are
-proposed in [ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md); both
-remain under review before implementation.
-
-[`Plugin usage walkthroughs`](proposals/2026-09-04-plugin-usage-walkthrough.md)
-examines a small tool, local durable state, and two instances of one dependency
-from creation through removal. Use it to discuss simpler authoring and choice
-persistence before treating Issue #695 or ADR 0073 as implementation-ready.
-An integrated scheduled/manual synchronization example examines how dependency
-injection, configuration, owned tasks, and structured errors work together;
-startup failure isolation remains a separate discussion.
+retains the earlier approved overall direction and exploratory examples as
+design context. Use the consolidated review for the latest candidate semantics;
+accepted ADRs continue to define current normative behavior.
 
 ## Research
 
