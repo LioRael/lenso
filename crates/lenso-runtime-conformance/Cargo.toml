@@ -10,7 +10,7 @@ description = "Portable conformance fixtures for Lenso Runtime Drivers and Execu
 [dependencies]
 futures.workspace = true
 lenso-app-plan = { path = "../lenso-app-plan", version = "0.4.0" }
-lenso-kernel = { path = "../lenso-kernel", version = "0.3.0" }
+lenso-kernel = { path = "../lenso-kernel", version = "0.3.1" }
 
 [lints]
 workspace = true

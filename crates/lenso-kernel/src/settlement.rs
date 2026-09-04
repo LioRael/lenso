@@ -251,6 +251,9 @@ pub(super) async fn execute<T: 'static>(
         ledger: ledger.clone(),
         id,
     });
+    execution_context.remaining_budget = context
+        .deadline()
+        .map(|deadline| deadline.saturating_sub((driver.now)()));
     let mut future = invoke(execution_context.clone());
     let ready = poll_fn(|cx| {
         Poll::Ready(match future.as_mut().poll(cx) {
@@ -433,6 +436,31 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn provider_context_carries_a_relative_dispatch_budget() {
+        let driver = DeterministicDriver::new();
+        let control = DriverControl::new(&driver);
+        driver.advance(Duration::from_millis(250));
+        let context =
+            InvocationContext::new(1, Some(Duration::from_secs(1)), CancellationToken::new());
+
+        let remaining = driver
+            .run(execute(
+                Rc::default(),
+                &control,
+                "provider",
+                &context,
+                CancellationToken::new(),
+                "test",
+                vec![],
+                |context| futures::future::ready(context.remaining_budget()).boxed_local(),
+            ))
+            .unwrap();
+
+        assert_eq!(remaining, Some(Duration::from_millis(750)));
+        assert_eq!(context.remaining_budget(), None);
     }
 
     #[test]

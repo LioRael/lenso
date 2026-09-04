@@ -164,6 +164,7 @@ pub struct InvocationContext {
     pub(super) caller_instance: Option<Rc<str>>,
     pub(super) request_id: RequestId,
     pub(super) deadline: Option<Duration>,
+    pub(super) remaining_budget: Option<Duration>,
     pub(super) cancellation: CancellationToken,
     pub(super) extensions: BTreeMap<String, InvocationExtension>,
     pub(super) sealed_extensions: BTreeMap<String, SealedInvocationExtension>,
@@ -189,6 +190,7 @@ impl InvocationContext {
             caller_instance: None,
             request_id,
             deadline,
+            remaining_budget: None,
             cancellation,
             extensions: BTreeMap::new(),
             sealed_extensions: BTreeMap::new(),
@@ -227,6 +229,15 @@ impl InvocationContext {
     /// Returns the absolute Driver-monotonic deadline, when one was supplied.
     pub const fn deadline(&self) -> Option<Duration> {
         self.deadline
+    }
+
+    /// Returns the deadline budget captured immediately before provider dispatch.
+    ///
+    /// A missing value means the invocation has no deadline. Adapter code can
+    /// forward this relative duration across an execution boundary without
+    /// learning or reproducing the Driver's monotonic clock.
+    pub const fn remaining_budget(&self) -> Option<Duration> {
+        self.remaining_budget
     }
 
     /// Returns the caller-owned cooperative cancellation signal.
