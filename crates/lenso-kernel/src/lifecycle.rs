@@ -2,7 +2,7 @@ use super::{
     AbortHandle, AssertUnwindSafe, Cell, Context, DriverControl, DriverTask, Duration, Future,
     FutureExt, InvocationContext, LocalBoxFuture, LocalTask, Pin, PluginDependencies,
     PluginLifecyclePhase, Poll, Rc, RefCell, RuntimeDriver, RuntimeFailure, SpawnError,
-    TaskOutcome, oneshot, wait_until,
+    TaskOutcome, oneshot, select, wait_until,
 };
 
 /// A shared App-wide signal that opens exactly once after every Plugin activates.
@@ -133,6 +133,7 @@ pub struct CancellationToken {
 #[derive(Debug)]
 pub(super) struct CancellationState {
     pub(super) cancelled: Cell<bool>,
+    pub(super) parent: Option<CancellationToken>,
     pub(super) next_waiter_id: Cell<usize>,
     pub(super) waiters: RefCell<Vec<(usize, oneshot::Sender<()>)>>,
 }
@@ -143,6 +144,7 @@ impl CancellationToken {
         Self {
             state: Rc::new(CancellationState {
                 cancelled: Cell::new(false),
+                parent: None,
                 next_waiter_id: Cell::new(0),
                 waiters: RefCell::new(Vec::new()),
             }),
@@ -152,6 +154,25 @@ impl CancellationToken {
     /// Returns whether cancellation has been requested.
     pub fn is_cancelled(&self) -> bool {
         self.state.cancelled.get()
+            || self
+                .state
+                .parent
+                .as_ref()
+                .is_some_and(CancellationToken::is_cancelled)
+    }
+
+    /// Creates a token cancelled by its parent while retaining independent
+    /// child-to-parent cancellation semantics.
+    #[must_use]
+    pub fn child(&self) -> Self {
+        Self {
+            state: Rc::new(CancellationState {
+                cancelled: Cell::new(false),
+                parent: Some(self.clone()),
+                next_waiter_id: Cell::new(0),
+                waiters: RefCell::new(Vec::new()),
+            }),
+        }
     }
 
     /// Waits until cancellation is requested.
@@ -163,11 +184,17 @@ impl CancellationToken {
         let waiter_id = self.state.next_waiter_id.get();
         self.state.next_waiter_id.set(waiter_id.saturating_add(1));
         self.state.waiters.borrow_mut().push((waiter_id, wakeup));
-        Box::pin(CancellationWaiter {
+        let own = Box::pin(CancellationWaiter {
             state: self.state.clone(),
             waiter_id,
             receiver: waiter,
             registered: true,
+        });
+        let Some(parent) = self.state.parent.clone() else {
+            return own;
+        };
+        Box::pin(async move {
+            let _ = select(own, parent.cancelled()).await;
         })
     }
 
@@ -987,6 +1014,26 @@ mod tests {
         let mut late_waiter = admission.wait_closed();
         assert!(matches!(
             late_waiter.as_mut().poll(&mut context),
+            Poll::Ready(())
+        ));
+    }
+
+    #[test]
+    fn child_cancellation_is_one_way() {
+        let parent = CancellationToken::new();
+        let child = parent.child();
+        child.cancel();
+        assert!(child.is_cancelled());
+        assert!(!parent.is_cancelled());
+
+        let second_child = parent.child();
+        let mut waiting = second_child.cancelled();
+        let mut context = Context::from_waker(futures::task::noop_waker_ref());
+        assert!(matches!(waiting.as_mut().poll(&mut context), Poll::Pending));
+        parent.cancel();
+        assert!(second_child.is_cancelled());
+        assert!(matches!(
+            waiting.as_mut().poll(&mut context),
             Poll::Ready(())
         ));
     }

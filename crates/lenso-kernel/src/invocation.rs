@@ -256,6 +256,12 @@ impl InvocationContext {
         self.cancellation.clone()
     }
 
+    pub(crate) fn for_child_request(mut self, request_id: RequestId) -> Self {
+        self.request_id = request_id;
+        self.cancellation = self.cancellation.child();
+        self
+    }
+
     /// Adds one ordinary opaque extension without replacing an existing value.
     pub fn with_extension(
         mut self,
@@ -378,5 +384,25 @@ mod tests {
             context.caller_instance().unwrap().as_ptr(),
             cloned.caller_instance().unwrap().as_ptr()
         );
+    }
+
+    #[test]
+    fn child_request_has_fresh_identity_and_one_way_cancellation() {
+        let parent =
+            InvocationContext::new(7, Some(Duration::from_secs(2)), CancellationToken::new())
+                .with_extension("trace", b"kept".to_vec())
+                .unwrap();
+        let child = parent.clone().for_child_request(8);
+        assert_eq!(child.request_id(), 8);
+        assert_eq!(child.deadline(), parent.deadline());
+        assert_eq!(child.extension("trace"), Some(b"kept".as_slice()));
+
+        child.cancellation().cancel();
+        assert!(child.is_cancelled());
+        assert!(!parent.is_cancelled());
+
+        let second_child = parent.clone().for_child_request(9);
+        parent.cancellation().cancel();
+        assert!(second_child.is_cancelled());
     }
 }

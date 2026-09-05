@@ -363,6 +363,22 @@ impl PluginStreamDependencyHandle {
         self.binding.state.operations
     }
 
+    /// Derives a uniquely identified child context whose cancellation observes
+    /// its parent without allowing the child Stream to cancel that parent.
+    pub fn child_context(
+        &self,
+        context: InvocationContext,
+    ) -> Result<InvocationContext, RuntimeFailure> {
+        let runtime = self
+            .runtime
+            .borrow()
+            .upgrade()
+            .ok_or(RuntimeFailure::AdmissionClosed)?;
+        let request_id = runtime.request_ids.get();
+        runtime.request_ids.set(request_id.saturating_add(1));
+        Ok(context.for_child_request(request_id))
+    }
+
     /// Converts this resolved dependency into its generated typed stream handle.
     pub fn typed<C: StreamCapability>(&self) -> Result<NativeStreamHandle<C>, RuntimeFailure> {
         if self.capability_id() != C::ID || self.descriptor_version() != C::DESCRIPTOR_VERSION {
