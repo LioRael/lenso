@@ -1,7 +1,13 @@
 # Rust and TypeScript Plugin authoring
 
-Status: **Design approved on 2026-09-04; syntax illustrative, implementation pending.**
+Status: **Design approved on 2026-09-04; the first Rust Process and TypeScript
+Bun Request delivery completed on 2026-09-05.**
 Date: 2026-09-04.
+
+Delivery is tracked by [#695](https://github.com/LioRael/lenso/issues/695) and
+specified by [#699](https://github.com/LioRael/lenso/issues/699). The shipped
+scope does not claim TypeScript Stream/Event authoring, another JavaScript
+engine, or automatic support for every language/runtime combination.
 
 Read the [consolidated review](2026-09-04-plugin-usage-walkthrough.md) first.
 This companion applies its construction and dependency rules to two languages.
@@ -89,10 +95,10 @@ owns registration and its cleanup. Package identity/version still come from
 normal scaffolding; omitting them here does not replace packaging conventions.
 
 In TS, `definePlugin` comes from the generic SDK; `tools` and `tool` come from
-the Agent SDK. Package names for the proposed TS helper are not allocated here.
-The Rust attribute is explicitly Agent-owned as well; the sample's plain-string
-result convenience is a proposal, not a claim about its currently shipped return
-signature. A non-Agent Plugin provides its own Capability without either helper.
+the Agent SDK. The Rust attribute is explicitly Agent-owned as well. The exact
+released package interfaces are recorded by the Agent delivery rather than by
+this illustrative snippet. A non-Agent Plugin provides its own Capability
+without either helper.
 
 For these Agent TS handlers, the fixed argument order is `(input, call, instance)`; trailing
 unused arguments may be omitted. `call` is the invocation context; `instance`

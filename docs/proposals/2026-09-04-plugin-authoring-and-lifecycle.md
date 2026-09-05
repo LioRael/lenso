@@ -1,6 +1,7 @@
 # Plugin authoring, dependency selection, and lifecycle
 
-Status: **Design approved — not yet an accepted ADR or shipped API.**
+Status: **Design approved; its first Request authoring slice and ADR 0073/0074
+contracts shipped on 2026-09-05. Broader directions remain explicitly deferred.**
 Date: 2026-09-04.
 Design approval: 2026-09-04, following repository-owner review.
 
@@ -8,6 +9,9 @@ For the current candidate, read the
 [consolidated authoring review](2026-09-04-plugin-usage-walkthrough.md).
 This document retains the earlier approved direction and exploratory sketches;
 its syntax examples and open questions are not final authoring requirements.
+The delivery record in [#695](https://github.com/LioRael/lenso/issues/695) is
+authoritative for shipped support; later sections that discuss pre-implementation
+state remain historical design context.
 The consolidated baseline records later corrections and was approved on
 2026-09-04. ADRs 0073 and 0074 record its accepted dependency and fault-policy
 changes; the exploratory examples below remain historical rather than final APIs.
@@ -406,11 +410,16 @@ durability, and migration rules are coherent.
    users. Keep one shared lowering during migration and make any compatibility
    break explicit; avoid an indefinite legacy subsystem.
 
-Design acceptance is complete. Implementation and release scheduling remain
-separate. The illustrative examples describe the approved authoring direction;
-no executable prototype, runtime test result, or benchmark is claimed.
+Design acceptance is complete. The first Request slice was implemented and
+released separately through #695. The illustrative examples still describe the
+approved direction rather than serving as versioned API reference or benchmark.
 
-## Remaining decisions before implementation
+## Original follow-up decisions
+
+The first delivery resolved construction, dependency choice, supported failure
+scope, and its Rust Process/TS Bun packaging boundary. Background work, decision
+handlers, general state migration, additional targets, and long-term support
+policy remain demand-driven follow-ups rather than incomplete first-slice work.
 
 | Decision | Approved direction | Remaining question |
 | --- | --- | --- |

@@ -5,7 +5,8 @@ status: accepted
 # Scope terminal Plugin failure to Host-essential instances
 
 Date: 2026-09-04.
-Status: **Accepted by the repository owner; implementation pending.**
+Status: **Accepted by the repository owner; implemented for explicitly supported
+Host/executor profiles on 2026-09-05.**
 Amends: ADRs 0032, 0046, and 0048 on explicit Host/profile adoption.
 
 ## Context

@@ -1,15 +1,21 @@
 # Plugin design adoption and delivery boundary
 
-Status: **Design approved on 2026-09-04; owner-local specifications and delivery pending.**
+Status: **Design approved on 2026-09-04; the specified first Request delivery
+completed across owner repositories on 2026-09-05.**
 Date: 2026-09-04.
+
+[Specification #699](https://github.com/LioRael/lenso/issues/699) records the
+accepted formats and owner-local cases. [Delivery tracker #695](https://github.com/LioRael/lenso/issues/695)
+records the released Core, Runtime, Bun, Agent, CLI, and example evidence. Later
+language/runtime expansion remains demand-driven rather than part of this delivery.
 
 This is the adoption decision for the
 [consolidated authoring review](2026-09-04-plugin-usage-walkthrough.md).
 The repository owner approved the design set, including ADRs 0073 and 0074,
-on 2026-09-04. This approval advances work to concrete implementation
-specifications rather than another round of language/runtime expansion.
-Implementation issues follow the approved semantics and current release
-baseline; the example annotations are not a shipped API specification.
+on 2026-09-04. The subsequent implementation specification and owner-local
+issues delivered that first scope without another round of language/runtime
+expansion. The example annotations remain design explanations rather than the
+versioned SDK API reference.
 
 ## Three independent adoption decisions
 
@@ -173,16 +179,13 @@ and owner-local implementation tickets must be made concrete before their
 respective code changes; they are implementation specifications constrained by
 this design, not reasons to add more framework concepts.
 
-Implementation tickets and their dependency order are tracked in
-[Issue #695](https://github.com/LioRael/lenso/issues/695). This approved design
-does not perform a migration or establish a shipped SDK, runtime, or release.
+Implementation tickets and their completed dependency order are recorded in
+[Issue #695](https://github.com/LioRael/lenso/issues/695). Design approval alone
+did not perform a migration or release; the linked owner-local deliveries did.
 
 Start with [specification #699](https://github.com/LioRael/lenso/issues/699).
-That issue records the inspected baseline, including the missing outbound-call
-path in the current Rust Process profile and unpublished Agent SDK dependencies.
-It specifies those prerequisites without substituting a native-only proof for
-the approved installable Rust Process and TS Bun targets. Its version table is
-a delivery proposal, not a claim that those packages or profiles have shipped.
-The parent tracks the eight dependent first-slice delivery tasks and the
-independent [ADR 0074 delivery #702](https://github.com/LioRael/lenso/issues/702).
+That issue records the inspected baseline, resolved prerequisites, and exact
+version table used by the installable Rust Process and TS Bun proof. The parent
+records the eight completed first-slice delivery tasks and the independent
+[ADR 0074 delivery #702](https://github.com/LioRael/lenso/issues/702).
 Ticket bodies and prerequisite evidence live in GitHub, not duplicate local plans.

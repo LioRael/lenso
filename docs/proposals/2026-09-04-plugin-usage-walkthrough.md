@@ -1,16 +1,20 @@
 # Plugin authoring design: approved baseline
 
-Status: **Design approved on 2026-09-04 by the repository owner; implementation pending.**
+Status: **Design approved on 2026-09-04; the specified first Request delivery
+completed and was released on 2026-09-05.**
 Date: 2026-09-04.
 
 This is the approved design entrypoint following the
 [approved overall direction](2026-09-04-plugin-authoring-and-lifecycle.md).
 Accepted ADRs remain normative, including ADRs 0073 and 0074 with explicit
 adoption rules. The owner approved this design set, including lifecycle,
-multilingual authoring, product SDK, and first-delivery boundaries. Macro syntax,
-file representation, and exact profile versions still require implementation
-specifications. Approval is not a shipped SDK/runtime claim or a release action.
-[Issue #695](https://github.com/LioRael/lenso/issues/695) tracks delivery.
+multilingual authoring, product SDK, and first-delivery boundaries. Specification
+#699 subsequently fixed the syntax, representation, and profile versions used
+by the delivered scope. Approval itself was not a release action; the linked
+owner-local implementation and release records are.
+[Issue #695](https://github.com/LioRael/lenso/issues/695) records the completed
+cross-repository delivery. Explicitly deferred runtime, interaction-kind, state,
+and update designs remain future work rather than incomplete first-slice work.
 
 [Implementation specification #699](https://github.com/LioRael/lenso/issues/699)
 records the concrete interfaces and version boundaries proposed against the
@@ -276,10 +280,10 @@ unavailability, without destroying consumer objects or rewriting bindings.
 
 [ADR 0074](../adr/0074-scope-terminal-failure-to-host-essential-instances.md)
 records the accepted amendment; the [companion](2026-09-04-plugin-fault-scope.md)
-illustrates it. Implementation remains pending: current supervision can still
-terminate the App when any consumer's required
-provider exhausts recovery. Native process aborts cannot be contained by a
-logical fault policy. SDK upgrades alone must not change this behavior.
+illustrates it. Supporting executors now apply the explicit Host-essential
+policy; non-adopting or unsupported profiles retain or reject the prior policy
+as specified. Native process aborts still cannot be contained by logical policy
+without physical Adapter isolation. SDK upgrades alone do not change this behavior.
 
 ## 8. Compatibility and implementation handoff
 
@@ -306,8 +310,8 @@ interface, explicit dependency migration, the first complete Request delivery
 slice, and the separately recorded ADR 0074 fault policy. The first slice keeps
 an official Rust implementation and a TS implementation against the same
 contract, using Rust Native Store instances and Rust Process/TS Bun sync
-implementations as proposed proof targets. Exact versions and availability must
-be established in implementation specifications before code changes.
+implementations as proof targets. Specification #699 and the owner-local release
+records establish the exact delivered versions and availability.
 
 Write owner-local specifications for syntax, supported TS
 declaration expressions, file/transaction formats, version boundaries, and
@@ -316,6 +320,6 @@ new language engines or additional framework abstractions are not prerequisites.
 
 Do not expand the design with mandatory resource categories, generated Inputs
 types, a global service context, automatic state migration, or forced runtime
-matrices. Implementation tickets must satisfy their specification and dependency
-gates before runtime changes; this approval records no release or runtime evidence.
+matrices. The completed implementation tickets provide release and runtime
+evidence; this design document does not duplicate those mutable records.
 Earlier exploratory examples remain available in Git history.

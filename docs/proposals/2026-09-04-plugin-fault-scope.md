@@ -1,7 +1,12 @@
 # Plugin failure scope after readiness
 
-Status: **Design approved on 2026-09-04; ADR 0074 is authoritative, implementation pending.**
+Status: **Design approved on 2026-09-04; ADR 0074 and its supported Process
+execution evidence shipped on 2026-09-05.**
 Date: 2026-09-04.
+
+Core [#702](https://github.com/LioRael/lenso/issues/702) records portable
+conformance and the production Process proof. Physical isolation remains an
+Execution Adapter property and unsupported profiles still reject the policy.
 
 This is the fault-scope decision companion to the
 [consolidated authoring review](2026-09-04-plugin-usage-walkthrough.md).
