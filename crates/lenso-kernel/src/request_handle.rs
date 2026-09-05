@@ -80,6 +80,19 @@ pub struct NativeRequestHandle<C: RequestCapability> {
     pub(super) capability: PhantomData<fn() -> C>,
 }
 
+impl<C: RequestCapability> Clone for NativeRequestHandle<C> {
+    fn clone(&self) -> Self {
+        Self {
+            endpoints: self.endpoints.clone(),
+            runtime: self.runtime.clone(),
+            caller_instance: self.caller_instance.clone(),
+            caller_is_planned: self.caller_is_planned,
+            allow_before_ready: self.allow_before_ready,
+            capability: PhantomData,
+        }
+    }
+}
+
 impl<C: RequestCapability> NativeRequestHandle<C> {
     pub(super) fn from_endpoints(
         endpoints: &[NativeEndpointBinding],

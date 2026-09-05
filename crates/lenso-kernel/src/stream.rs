@@ -99,6 +99,18 @@ pub struct NativeStreamHandle<C: StreamCapability> {
     capability: PhantomData<fn() -> C>,
 }
 
+impl<C: StreamCapability> Clone for NativeStreamHandle<C> {
+    fn clone(&self) -> Self {
+        Self {
+            endpoints: self.endpoints.clone(),
+            runtime: self.runtime.clone(),
+            caller_instance: self.caller_instance.clone(),
+            allow_before_ready: self.allow_before_ready,
+            capability: PhantomData,
+        }
+    }
+}
+
 impl<C: StreamCapability> NativeStreamHandle<C> {
     pub(crate) fn from_endpoints(
         endpoints: &[NativeStreamEndpointBinding],

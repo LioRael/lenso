@@ -319,6 +319,18 @@ pub struct NativeEventHandle<C: EventCapability> {
     capability: PhantomData<fn() -> C>,
 }
 
+impl<C: EventCapability> Clone for NativeEventHandle<C> {
+    fn clone(&self) -> Self {
+        Self {
+            endpoints: self.endpoints.clone(),
+            runtime: self.runtime.clone(),
+            caller_instance: self.caller_instance.clone(),
+            allow_before_ready: self.allow_before_ready,
+            capability: PhantomData,
+        }
+    }
+}
+
 impl<C: EventCapability> NativeEventHandle<C> {
     pub(crate) fn from_endpoints(
         endpoints: &[NativeEventEndpointBinding],
