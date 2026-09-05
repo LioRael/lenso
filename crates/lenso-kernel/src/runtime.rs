@@ -74,6 +74,10 @@ impl NativeStreamEndpointState {
         self.endpoint.borrow_mut().take();
     }
 
+    pub(crate) fn cancel(&self) {
+        self.cancellation.borrow().cancel();
+    }
+
     pub(crate) fn install(&self, endpoint: Rc<dyn NativeStreamEndpoint>, generation: u64) {
         self.generation.set(generation);
         self.cancellation.replace(CancellationToken::new());
@@ -111,6 +115,10 @@ impl NativeEndpointState {
     pub(super) fn mark_unavailable(&self) {
         self.cancellation.borrow().cancel();
         self.endpoint.borrow_mut().take();
+    }
+
+    pub(super) fn cancel(&self) {
+        self.cancellation.borrow().cancel();
     }
 
     pub(super) fn install(&self, endpoint: Rc<dyn NativeRequestEndpoint>, generation: u64) {
@@ -305,6 +313,24 @@ impl std::fmt::Debug for NativeAppRuntime {
 }
 
 impl NativeAppRuntime {
+    pub(super) fn mark_plugin_endpoints_unavailable(&self, instance_key: &str) {
+        for ((provider, _), endpoint) in &self.endpoint_states {
+            if provider == instance_key {
+                endpoint.mark_unavailable();
+            }
+        }
+        for ((provider, _), endpoint) in &self.stream_endpoint_states {
+            if provider == instance_key {
+                endpoint.mark_unavailable();
+            }
+        }
+        for ((provider, _), endpoint) in &self.event_endpoint_states {
+            if provider == instance_key {
+                endpoint.mark_unavailable();
+            }
+        }
+    }
+
     pub(super) fn begin_shutdown(&self) {
         let admission_closed_at = (self.driver.now)();
         if self.shutdown_started.replace(true) {
@@ -313,13 +339,13 @@ impl NativeAppRuntime {
         self.admission.close();
         self.supervision_cancellation.cancel();
         for endpoint in self.endpoint_states.values() {
-            endpoint.mark_unavailable();
+            endpoint.cancel();
         }
         for endpoint in self.stream_endpoint_states.values() {
-            endpoint.mark_unavailable();
+            endpoint.cancel();
         }
         for endpoint in self.event_endpoint_states.values() {
-            endpoint.mark_unavailable();
+            endpoint.cancel();
         }
         for plugin in self.plugins.values() {
             if let Some((_, tasks, resources)) = plugin.generation_parts() {

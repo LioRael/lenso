@@ -229,6 +229,10 @@ impl NativeEventEndpointState {
         self.reset_queues();
     }
 
+    pub(crate) fn cancel(&self) {
+        self.cancellation.borrow().cancel();
+    }
+
     pub(crate) fn install(&self, endpoint: Rc<dyn NativeEventEndpoint>, generation: u64) {
         self.generation.set(generation);
         self.cancellation.replace(CancellationToken::new());
