@@ -1,7 +1,14 @@
 # From product SDK declarations to an executable Plugin
 
-Status: **Design approved on 2026-09-04; implementation and exact formats pending.**
+Status: **Design approved on 2026-09-04; the bounded Request declaration pipeline
+and exact first-delivery formats shipped on 2026-09-05.**
 Date: 2026-09-04.
+
+Bun [#20](https://github.com/LioRael/lenso-bun-adapter/issues/20), Agent
+[#182](https://github.com/LioRael/lenso-agent/issues/182), and CLI
+[#312](https://github.com/LioRael/lenso-cli/issues/312) record implementation
+and release evidence. Stream/Event declarations remain outside the shipped
+Authoring V2 subset.
 
 Read the [authoring review](2026-09-04-plugin-usage-walkthrough.md) and
 [Rust/TS examples](2026-09-04-multilingual-plugin-authoring.md) first. This

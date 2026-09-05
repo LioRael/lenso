@@ -5,14 +5,17 @@ status: accepted
 # Name Plugin dependencies and preserve permitted instance choices
 
 Date: 2026-09-04.
-Status: **Accepted on 2026-09-04 by the repository owner; implementation pending.**
+Status: **Accepted on 2026-09-04; implemented and released on 2026-09-05.**
 
 Read the [consolidated authoring design](../proposals/2026-09-04-plugin-usage-walkthrough.md)
-first. [Issue #695](https://github.com/LioRael/lenso/issues/695) tracks delivery.
+first. [Issue #695](https://github.com/LioRael/lenso/issues/695) records delivery.
 This ADR records the approved dependency semantics. Per-instance choice files, exact identifier syntax,
 recovery-journal design, Plan schema 3, and Bundle V4 are no longer selected or
 reserved by this decision. Startup is read-only; configuration materializes
-choices before activation. Acceptance defines the target contract, not shipped behavior.
+choices before activation. The implementation and version evidence lives in
+[#700](https://github.com/LioRael/lenso/issues/700),
+[#699](https://github.com/LioRael/lenso/issues/699), and the owner-local release
+records rather than this ADR.
 Earlier details remain in Git history.
 
 ## Problem

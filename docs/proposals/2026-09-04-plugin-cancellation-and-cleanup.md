@@ -1,7 +1,14 @@
 # Construction failure, cancellation, and cleanup across languages
 
-Status: **Design approved on 2026-09-04; implementation and executable evidence pending.**
+Status: **Design approved on 2026-09-04; portable accounting and supported Rust
+Process/Bun lifecycle evidence completed on 2026-09-05.**
 Date: 2026-09-04.
+
+Core [#701](https://github.com/LioRael/lenso/issues/701), Rust runtime
+[#92](https://github.com/LioRael/lenso-runtime-rust/issues/92), and Bun
+[#20](https://github.com/LioRael/lenso-bun-adapter/issues/20) record the shipped
+scope. Native code that ignores cooperative cancellation retains the physical
+termination limitation described below.
 
 This companion completes the lifecycle portion of the
 [authoring review](2026-09-04-plugin-usage-walkthrough.md) and

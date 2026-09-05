@@ -1,15 +1,18 @@
 # Named Plugin authoring implementation status
 
-This working implementation follows ADR 0073 and the executable specification
-in [#699](https://github.com/LioRael/lenso/issues/699). It does not certify the
-complete authoring V2 runtime profile or close #700 / #701.
+This implementation follows ADRs 0073/0074 and the executable specification in
+[#699](https://github.com/LioRael/lenso/issues/699). The first Rust Process and
+TypeScript Bun Request delivery completed on 2026-09-05; [#695](https://github.com/LioRael/lenso/issues/695)
+records its cross-repository releases and executable evidence. Authoring V2 is
+profile-specific: this delivery does not claim TypeScript Stream/Event authoring
+or support from an Adapter that has not explicitly adopted the profile.
 
 ## Implemented portable paths
 
 - Plan schema 3 carries requirement identity, authoring version, runtime profile,
   and terminal policy. Schema 2 has an explicit decoding path that preserves old
-  semantics and normalizes reserved requirement IDs. `host_essential` is rejected
-  until its runtime implementation lands.
+  semantics and normalizes reserved requirement IDs. Supporting executors apply
+  `host_essential`; other executors reject it before activation.
 - Contracts, Descriptors, Host bindings, prepared endpoint bindings, dependency
   views, and invocation diagnostics preserve consumer-local requirement IDs.
   Existing generated clients accept `dependencies.requirement("source")` without
@@ -41,18 +44,24 @@ complete authoring V2 runtime profile or close #700 / #701.
   only through transitive `one` requirements. Runtime supervision uses that
   closure for terminal exhaustion while still activating every selected Plugin.
 
-Old Adapters must explicitly opt into new authoring/profile pairs. The
-conformance Adapter opts in to exercise these paths; that is not certification
-of a complete production Adapter or SDK. Existing version 1 request cancellation
-semantics remain unchanged.
+Old Adapters must explicitly opt into new authoring/profile pairs. Production
+Rust Process and Bun Request profiles have owner-local execution evidence;
+conformance alone does not certify another Adapter or interaction kind. Existing
+version 1 request cancellation semantics remain unchanged.
 
-## Remaining before the core cohort is releasable
+## Delivery record
 
-- Add explicit acceptance mapping for the remaining Transition/dormant-choice
-  diagnostics and shared physical-process fault-scope boundaries.
-- Add all remaining CORE and LIFE acceptance evidence to #700 / #701. Keep both
-  issues open and do not publish partial authoring V2 guarantees.
+- [#700](https://github.com/LioRael/lenso/issues/700) records named requirement,
+  selection, Transition, dormant-choice, compatibility, and routing evidence.
+- [#701](https://github.com/LioRael/lenso/issues/701) records portable result,
+  settlement, construction, and cleanup evidence.
+- [#702](https://github.com/LioRael/lenso/issues/702) records Host-essential
+  conformance and the supported Process fault-scope boundary.
+- [lenso-examples#69](https://github.com/LioRael/lenso-examples/issues/69)
+  records the installable Rust/TypeScript document-sync proof through Agent
+  ToolProvider, two named Native Store accounts, and normal CLI operations.
 
 Focused tests live in the Plan and runtime-conformance `named_dependencies`
-integration suites and the Kernel `settlement` unit suite. The existing complete
-workspace regression and both portable Wasm target checks remain required.
+integration suites and the Kernel `settlement` unit suite. Owner repositories
+retain their complete workspace, portable Wasm compile, Adapter, package, and
+clean-room release gates.
