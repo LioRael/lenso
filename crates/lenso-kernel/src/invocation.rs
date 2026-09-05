@@ -165,6 +165,7 @@ pub struct InvocationContext {
     pub(super) request_id: RequestId,
     pub(super) deadline: Option<Duration>,
     pub(super) remaining_budget: Option<Duration>,
+    pub(super) shutdown_dependency_call: bool,
     pub(super) cancellation: CancellationToken,
     pub(super) extensions: BTreeMap<String, InvocationExtension>,
     pub(super) sealed_extensions: BTreeMap<String, SealedInvocationExtension>,
@@ -191,6 +192,7 @@ impl InvocationContext {
             request_id,
             deadline,
             remaining_budget: None,
+            shutdown_dependency_call: false,
             cancellation,
             extensions: BTreeMap::new(),
             sealed_extensions: BTreeMap::new(),
@@ -214,6 +216,15 @@ impl InvocationContext {
             self.caller_instance = Some(Rc::from(caller_instance));
         }
         self
+    }
+
+    pub(super) fn for_shutdown_dependency_call(mut self) -> Self {
+        self.shutdown_dependency_call = true;
+        self
+    }
+
+    pub(super) const fn is_shutdown_dependency_call(&self) -> bool {
+        self.shutdown_dependency_call
     }
 
     /// Returns the Caller Plugin Instance, when the App attached one.

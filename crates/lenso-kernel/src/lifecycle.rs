@@ -1,7 +1,8 @@
 use super::{
     AbortHandle, AssertUnwindSafe, Cell, Context, DriverControl, DriverTask, Duration, Future,
-    FutureExt, LocalBoxFuture, LocalTask, Pin, PluginDependencies, PluginLifecyclePhase, Poll, Rc,
-    RefCell, RuntimeDriver, RuntimeFailure, SpawnError, TaskOutcome, oneshot, wait_until,
+    FutureExt, InvocationContext, LocalBoxFuture, LocalTask, Pin, PluginDependencies,
+    PluginLifecyclePhase, Poll, Rc, RefCell, RuntimeDriver, RuntimeFailure, SpawnError,
+    TaskOutcome, oneshot, wait_until,
 };
 
 /// A shared App-wide signal that opens exactly once after every Plugin activates.
@@ -898,6 +899,19 @@ impl DeactivateContext {
         self.cleanup.as_ref().map_or_else(
             || self.cancellation.clone(),
             super::cleanup::CleanupBudget::cancellation,
+        )
+    }
+
+    /// Creates the scoped Invocation Context used for dependency calls during cleanup.
+    ///
+    /// The context inherits the cleanup deadline and cancellation budget. Only a
+    /// dependency handle can use its shutdown authority; App admission remains closed.
+    pub fn dependency_invocation_context(&self) -> Result<InvocationContext, RuntimeFailure> {
+        self.dependencies.shutdown_invocation_context(
+            self.cleanup
+                .as_ref()
+                .map(super::cleanup::CleanupBudget::deadline),
+            self.cancellation(),
         )
     }
 

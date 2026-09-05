@@ -96,6 +96,7 @@ pub(super) async fn shutdown_native_plugins(
 
     let mut first_error = None;
     for instance_key in runtime.activation_order.iter().rev() {
+        runtime.mark_plugin_endpoints_unavailable(instance_key);
         let plugin = runtime
             .plugins
             .get(instance_key)

@@ -3,9 +3,8 @@ use std::{any::Any, marker::PhantomData, rc::Rc, time::Duration};
 use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticOutcome, DiagnosticSource,
     ErasedDomainResult, InvocationContext, NativeAppRuntime, NativeEndpointBinding,
-    RequestCapability, RequestId, RuntimeFailure, await_with_generation_context,
-    diagnostics::diagnostic_operation, ensure_context_active,
-    schedule_plugin_supervision_after_failure,
+    RequestCapability, RequestId, RuntimeFailure, diagnostics::diagnostic_operation,
+    ensure_context_active, schedule_plugin_supervision_after_failure,
 };
 
 pub(crate) fn invoke_erased_dependency(
@@ -21,6 +20,9 @@ pub(crate) fn invoke_erased_dependency(
         let context = context
             .for_caller(&caller_instance)
             .for_target(capability, &operation);
+        if runtime.shutdown_started.get() && !context.is_shutdown_dependency_call() {
+            return Err(RuntimeFailure::AdmissionClosed);
+        }
         runtime
             .diagnostics
             .record_invocation(&caller_instance, &endpoint.plugin_instance);
@@ -35,21 +37,27 @@ pub(crate) fn invoke_erased_dependency(
                     capability,
                     operation: operation.clone(),
                 })?;
-        let _permit = admission
+        let permit = admission
             .acquire(capability, &operation, &context, &runtime.driver)
             .await?;
         if !endpoint.state.is_current(snapshot.generation) {
             return Err(RuntimeFailure::Unavailable { capability });
         }
         ensure_context_active(&runtime.driver, &context)?;
-        await_with_generation_context(
-            &runtime.driver,
+        let generation_cancellation = if context.is_shutdown_dependency_call() {
+            CancellationToken::new()
+        } else {
+            snapshot.cancellation
+        };
+        super::settlement::request(
+            &runtime,
+            &endpoint.plugin_instance,
+            &operation,
             &context,
-            snapshot.cancellation,
+            generation_cancellation,
             capability,
-            snapshot
-                .endpoint
-                .invoke(&operation, request, context.clone()),
+            permit,
+            |context| snapshot.endpoint.invoke(&operation, request, context),
         )
         .await
         .map_err(|error| {
@@ -223,7 +231,8 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
         context: InvocationContext,
         request: C::Request,
     ) -> Result<Result<C::Response, C::DomainError>, RuntimeFailure> {
-        if self.runtime.shutdown_started.get()
+        if (self.runtime.shutdown_started.get()
+            && !(self.allow_before_ready && context.is_shutdown_dependency_call()))
             || (!self.allow_before_ready && self.runtime.admission.is_closed())
         {
             return Err(RuntimeFailure::AdmissionClosed);
@@ -256,12 +265,17 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
             return Err(RuntimeFailure::Unavailable { capability: C::ID });
         }
         ensure_context_active(&self.runtime.driver, &context)?;
+        let generation_cancellation = if context.is_shutdown_dependency_call() {
+            CancellationToken::new()
+        } else {
+            snapshot.cancellation
+        };
         let outcome = super::settlement::request(
             &self.runtime,
             &endpoint.plugin_instance,
             operation,
             &context,
-            snapshot.cancellation,
+            generation_cancellation,
             C::ID,
             permit,
             |context| {
@@ -401,7 +415,8 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
     where
         C::Request: Clone,
     {
-        if self.runtime.shutdown_started.get()
+        if (self.runtime.shutdown_started.get()
+            && !(self.allow_before_ready && context.is_shutdown_dependency_call()))
             || (!self.allow_before_ready && self.runtime.admission.is_closed())
         {
             return Err(RuntimeFailure::AdmissionClosed);
@@ -429,12 +444,17 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 return Err(RuntimeFailure::Unavailable { capability: C::ID });
             }
             ensure_context_active(&self.runtime.driver, &context)?;
+            let generation_cancellation = if context.is_shutdown_dependency_call() {
+                CancellationToken::new()
+            } else {
+                snapshot.cancellation
+            };
             let outcome = super::settlement::request(
                 &self.runtime,
                 &endpoint.plugin_instance,
                 operation,
                 &context,
-                snapshot.cancellation,
+                generation_cancellation,
                 C::ID,
                 permit,
                 |context| {

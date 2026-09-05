@@ -566,6 +566,15 @@ impl PluginDependencies {
         self.invocation_context(Some(deadline), cancellation)
     }
 
+    pub(super) fn shutdown_invocation_context(
+        &self,
+        deadline: Option<Duration>,
+        cancellation: CancellationToken,
+    ) -> Result<InvocationContext, RuntimeFailure> {
+        self.invocation_context(deadline, cancellation)
+            .map(InvocationContext::for_shutdown_dependency_call)
+    }
+
     /// Returns the one explicitly bound typed dependency.
     pub fn one<C: RequestCapability>(&self) -> Result<NativeRequestHandle<C>, RuntimeFailure> {
         self.validate_lookup(C::ID, C::DESCRIPTOR_VERSION)?;

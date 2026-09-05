@@ -13,10 +13,35 @@ use lenso_app_plan::{
 };
 use lenso_kernel::{
     ActivateContext, DeactivateContext, DeterministicDriver, InvocationContext, Kernel,
-    ManagedResource, NativeExecutionAdapter, NativeRequestEndpoint, PluginLifecycle,
-    PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativePlugin, ResourceFuture,
-    RuntimeDriver, RuntimeFailure, ShutdownOutcome,
+    ManagedResource, NativeExecutionAdapter, NativeRequestEndpoint, NoopPluginLifecycle,
+    PluginLifecycle, PrepareContext, PreparedBinding, PreparedNativeApp, PreparedNativePlugin,
+    RequestCapability, ResourceFuture, RuntimeDriver, RuntimeFailure, ShutdownOutcome,
+    invoke_erased_native_request,
 };
+
+#[derive(Debug)]
+struct ShutdownCall;
+
+impl RequestCapability for ShutdownCall {
+    type Request = ();
+    type Response = ();
+    type DomainError = String;
+
+    const ID: &'static str = "capability.shutdown";
+    const DESCRIPTOR_VERSION: &'static str = "1.0.0";
+
+    fn invoke_native(
+        endpoint: &dyn NativeRequestEndpoint,
+        operation: &str,
+        request: Self::Request,
+        context: InvocationContext,
+    ) -> futures::future::LocalBoxFuture<
+        'static,
+        Result<Result<Self::Response, Self::DomainError>, RuntimeFailure>,
+    > {
+        invoke_erased_native_request::<Self>(endpoint, operation, request, context)
+    }
+}
 
 #[derive(Debug)]
 struct ShutdownEndpoint;
@@ -180,6 +205,51 @@ struct RecordingAdapter {
     plugins: BTreeMap<String, Rc<dyn PluginLifecycle>>,
 }
 
+#[derive(Debug)]
+struct CleanupDependencyLifecycle {
+    calls: Rc<Cell<usize>>,
+}
+
+impl PluginLifecycle for CleanupDependencyLifecycle {
+    fn deactivate(&self, context: DeactivateContext) -> lenso_kernel::PluginFuture {
+        let ordinary_invocation = context
+            .dependencies()
+            .invocation_context(None, context.cancellation());
+        let invocation = context.dependency_invocation_context();
+        let dependency = context
+            .dependencies()
+            .bindings()
+            .first()
+            .and_then(lenso_kernel::PluginDependency::handle);
+        let calls = self.calls.clone();
+        Box::pin(async move {
+            let ordinary_invocation = ordinary_invocation?;
+            let invocation = invocation?;
+            let dependency = dependency.ok_or(RuntimeFailure::Unavailable {
+                capability: ShutdownCall::ID,
+            })?;
+            if !matches!(
+                dependency
+                    .invoke_erased("shutdown.call", Box::new(()), ordinary_invocation)
+                    .await,
+                Err(RuntimeFailure::AdmissionClosed)
+            ) {
+                return Err(RuntimeFailure::Internal {
+                    detail: "ordinary dependency context bypassed shutdown admission".to_owned(),
+                });
+            }
+            let outcome = dependency
+                .invoke_erased("shutdown.call", Box::new(()), invocation)
+                .await?;
+            outcome.map_err(|_| RuntimeFailure::ProtocolViolation {
+                capability: ShutdownCall::ID,
+            })?;
+            calls.set(calls.get() + 1);
+            Ok(())
+        })
+    }
+}
+
 impl NativeExecutionAdapter for RecordingAdapter {
     fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
         let endpoint: Rc<dyn NativeRequestEndpoint> = Rc::new(ShutdownEndpoint);
@@ -308,6 +378,43 @@ fn shutdown_cancels_managed_work_releases_resources_once_and_deactivates_in_reve
             Event::ResourceReleased("provider".to_owned()),
         ]
     );
+}
+
+#[test]
+fn shutdown_allows_scoped_cleanup_dependency_calls_while_external_admission_stays_closed() {
+    let calls = Rc::new(Cell::new(0));
+    let adapter = RecordingAdapter {
+        plugins: BTreeMap::from([
+            (
+                "consumer".to_owned(),
+                Rc::new(CleanupDependencyLifecycle {
+                    calls: calls.clone(),
+                }) as Rc<dyn PluginLifecycle>,
+            ),
+            (
+                "provider".to_owned(),
+                Rc::new(NoopPluginLifecycle) as Rc<dyn PluginLifecycle>,
+            ),
+        ]),
+    };
+    let driver = DeterministicDriver::new();
+    let app = driver
+        .run(Kernel::start_native(plan(), driver.clone(), adapter))
+        .expect("the App should start");
+    let external = app
+        .handle::<ShutdownCall>("consumer")
+        .expect("the external handle should materialize before shutdown");
+
+    app.request_shutdown();
+    assert_eq!(
+        driver.run(external.invoke("shutdown.call", ())),
+        Err(RuntimeFailure::AdmissionClosed)
+    );
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        ShutdownOutcome::Clean
+    );
+    assert_eq!(calls.get(), 1);
 }
 
 #[test]
