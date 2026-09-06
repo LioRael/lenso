@@ -552,11 +552,17 @@ impl std::fmt::Debug for ManagedTaskScope {
 }
 
 impl ManagedTaskScope {
-    pub(super) fn new<D: RuntimeDriver>(driver: &D) -> Self {
+    pub(super) fn new_with_cancellation<D: RuntimeDriver>(
+        driver: &D,
+        cancellation: CancellationToken,
+    ) -> Self {
         let spawner = driver.clone();
         Self {
             spawn: Rc::new(move |task| spawner.spawn_local(task)),
-            state: Rc::new(ManagedTaskScopeState::default()),
+            state: Rc::new(ManagedTaskScopeState {
+                cancellation,
+                ..ManagedTaskScopeState::default()
+            }),
         }
     }
 
