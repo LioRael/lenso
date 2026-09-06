@@ -4,7 +4,7 @@ use lenso_kernel::{
     ActivateContext, CancellationToken, DeactivateContext, DeterministicDriver,
     ExecutionAdapterCatalog, InvocationContext, Kernel, NativeExecutionAdapter, PluginFuture,
     PluginLifecycle, PreparedNativeApp, PreparedNativePlugin, RuntimeDiagnostics, RuntimeDriver,
-    RuntimeFailure,
+    RuntimeFailure, ShutdownOutcome,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -251,4 +251,68 @@ fn constructor_returning_after_the_shared_cleanup_deadline_is_retained_without_s
     assert!(!activated.get());
     assert_eq!(stopped.get(), 0);
     assert_eq!(cleanup_remaining.get(), None);
+}
+
+#[derive(Debug)]
+struct ActivationCancellationLifecycle {
+    cancellation: Rc<RefCell<Option<CancellationToken>>>,
+}
+
+impl PluginLifecycle for ActivationCancellationLifecycle {
+    fn activate(&self, context: ActivateContext) -> PluginFuture {
+        self.cancellation.replace(Some(context.cancellation()));
+        Box::pin(futures::future::ready(Ok(())))
+    }
+}
+
+#[derive(Debug)]
+struct ActivationCancellationAdapter {
+    cancellation: Rc<RefCell<Option<CancellationToken>>>,
+}
+
+impl NativeExecutionAdapter for ActivationCancellationAdapter {
+    fn supports_runtime_profile(&self, version: u32, profile: &str) -> bool {
+        version == 2 && profile == "lenso.native-authoring@2"
+    }
+
+    fn prepare(&self, _plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        Ok(PreparedNativeApp::new(
+            vec![],
+            BTreeMap::from([(
+                "plugin".to_owned(),
+                PreparedNativePlugin::new(
+                    vec![],
+                    ActivationCancellationLifecycle {
+                        cancellation: self.cancellation.clone(),
+                    },
+                ),
+            )]),
+        ))
+    }
+}
+
+#[test]
+fn controlled_startup_lifecycle_token_tracks_generation_shutdown() {
+    let driver = DeterministicDriver::new();
+    let cancellation = Rc::new(RefCell::new(None));
+    let adapter = ActivationCancellationAdapter {
+        cancellation: cancellation.clone(),
+    };
+
+    driver.run(async {
+        let app = Kernel::start_native(plan(), driver.clone(), adapter)
+            .await
+            .expect("controlled startup should complete");
+        let lifecycle_token = cancellation
+            .borrow()
+            .clone()
+            .expect("activation should receive cancellation");
+        assert!(!lifecycle_token.is_cancelled());
+
+        assert_eq!(
+            app.shutdown(Duration::from_secs(1)).await,
+            ShutdownOutcome::Clean
+        );
+        assert!(lifecycle_token.is_cancelled());
+    });
 }

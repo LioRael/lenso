@@ -192,7 +192,11 @@ impl Kernel {
         );
         let driver_control = DriverControl::new(&driver);
         let admission = AppAdmission::new();
-        let plugin_runtimes = native_plugin_runtimes(&plan, &driver, generations);
+        let startup_cancellation = startup_context
+            .as_ref()
+            .map(super::InvocationContext::cancellation);
+        let plugin_runtimes =
+            native_plugin_runtimes(&plan, &driver, generations, startup_cancellation.as_ref());
         let ready_gate = AppReadyGate::new();
         let supervision = plugin_supervision(&plan);
         let cleanup_timeout = startup_cleanup
@@ -321,13 +325,10 @@ fn startup_active(runtime: &NativeAppRuntime) -> Result<(), RuntimeFailure> {
 }
 
 fn lifecycle_cancellation(
-    runtime: &NativeAppRuntime,
+    _runtime: &NativeAppRuntime,
     tasks: &ManagedTaskScope,
 ) -> CancellationToken {
-    runtime.startup_context.borrow().as_ref().map_or_else(
-        || tasks.cancellation(),
-        super::InvocationContext::cancellation,
-    )
+    tasks.cancellation()
 }
 
 pub(super) fn attach_managed_task_failure_handler(
@@ -613,6 +614,7 @@ pub(super) fn native_plugin_runtimes<D: RuntimeDriver>(
     plan: &ResolvedAppPlan,
     driver: &D,
     mut generations: BTreeMap<String, PreparedNativePlugin>,
+    startup_cancellation: Option<&CancellationToken>,
 ) -> BTreeMap<String, NativePluginRuntime> {
     let mut runtimes = BTreeMap::new();
     for instance in plan.plugin_instances() {
@@ -620,12 +622,14 @@ pub(super) fn native_plugin_runtimes<D: RuntimeDriver>(
             .remove(instance.instance_key())
             .map(|generation| generation.lifecycle())
             .expect("prepared App validation requires one generation per planned Instance");
+        let cancellation =
+            startup_cancellation.map_or_else(CancellationToken::new, CancellationToken::child);
         runtimes.insert(
             instance.instance_key().to_owned(),
             NativePluginRuntime {
                 generation: RefCell::new(Some(NativePluginGeneration {
                     lifecycle,
-                    tasks: ManagedTaskScope::new(driver),
+                    tasks: ManagedTaskScope::new_with_cancellation(driver, cancellation),
                     resources: ManagedResourceScope::new(),
                     stop_attempted: false,
                     cleanup_timed_out: false,
