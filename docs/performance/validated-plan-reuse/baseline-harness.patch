@@ -1,0 +1,97 @@
+diff --git a/crates/lenso-kernel/benches/startup_attribution.rs b/crates/lenso-kernel/benches/startup_attribution.rs
+index d2033ee0..be4fe9e2 100644
+--- a/crates/lenso-kernel/benches/startup_attribution.rs
++++ b/crates/lenso-kernel/benches/startup_attribution.rs
+@@ -75,6 +75,10 @@ struct BenchmarkAdapter;
+ 
+ impl NativeExecutionAdapter for BenchmarkAdapter {
+     fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
++        plan.validate()
++            .map_err(|error| RuntimeFailure::InvalidResolvedPlan {
++                detail: error.to_string(),
++            })?;
+         let endpoints = plan
+             .plugin_instances()
+             .iter()
+@@ -121,26 +125,57 @@ fn main() {
+ 
+     for &graph_size in &configuration.sizes {
+         let plan = chain_plan(graph_size);
++        // Clone an unchecked snapshot outside each timed interval. Otherwise a
++        // Plan-local memo would turn a cold-start comparison into a warm lookup.
++        let cold_plan = || {
++            ResolvedAppPlan::new(
++                plan.plugin_instances().to_vec(),
++                plan.capability_bindings().to_vec(),
++            )
++        };
++        let checked_plan = cold_plan();
++        checked_plan.validate().expect("valid fixture");
+         let stages = [
+-            measure_stage("resolved_plan_validation", &configuration, || {
+-                let result = black_box(&plan).validate();
++            measure_pre_timed_stage("resolved_plan_validation", &configuration, || {
++                let measured_plan = cold_plan();
++                let started_at = Instant::now();
++                let result = black_box(&measured_plan).validate();
++                let elapsed = started_at.elapsed();
+                 black_box(result).expect("the benchmark Plan must remain valid");
++                elapsed
+             }),
+-            measure_stage("activation_order_derivation", &configuration, || {
+-                let order = black_box(&plan)
++            measure_pre_timed_stage("activation_order_derivation", &configuration, || {
++                let measured_plan = cold_plan();
++                let started_at = Instant::now();
++                let order = black_box(&measured_plan)
+                     .activation_order()
+                     .expect("the benchmark Plan must remain acyclic");
++                let elapsed = started_at.elapsed();
+                 assert_eq!(black_box(order).len(), graph_size);
++                elapsed
+             }),
+-            measure_stage("execution_adapter_preparation", &configuration, || {
++            measure_pre_timed_stage("execution_adapter_preparation", &configuration, || {
++                let measured_plan = cold_plan();
++                let started_at = Instant::now();
+                 let prepared = BenchmarkAdapter
+-                    .prepare(black_box(&plan))
++                    .prepare(black_box(&measured_plan))
+                     .expect("the benchmark Adapter must prepare the valid Plan");
++                let elapsed = started_at.elapsed();
+                 black_box(prepared);
++                elapsed
++            }),
++            measure_stage("checked_plan_validation", &configuration, || {
++                black_box(&checked_plan).validate().expect("valid fixture");
++            }),
++            measure_stage("checked_activation_order", &configuration, || {
++                black_box(checked_plan.activation_order().expect("valid fixture"));
++            }),
++            measure_stage("checked_adapter_preparation", &configuration, || {
++                black_box(BenchmarkAdapter.prepare(&checked_plan).expect("valid fixture"));
+             }),
+             measure_pre_timed_stage("complete_kernel_start", &configuration, || {
+                 let driver = DeterministicDriver::new();
+-                let measured_plan = black_box(plan.clone());
++                let measured_plan = black_box(cold_plan());
+                 let started_at = Instant::now();
+                 let started = driver.run(Kernel::start_native(
+                     measured_plan,
+@@ -164,7 +199,7 @@ fn main() {
+     }
+ 
+     let output = json!({
+-        "schema": "lenso.startup-attribution.v1",
++        "schema": "lenso.startup-attribution.v2",
+         "measurement_kind": "local_characterization_not_production_latency",
+         "metadata": metadata(&configuration),
+         "graphs": graphs,
+@@ -272,6 +307,7 @@ fn metadata(configuration: &Configuration) -> Value {
+     json!({
+         "package": env!("CARGO_PKG_NAME"),
+         "package_version": env!("CARGO_PKG_VERSION"),
++        "build_identity": option_env!("LENSO_STARTUP_BUILD_ID").unwrap_or("unspecified"),
+         "profile": "bench",
+         "debug_assertions": cfg!(debug_assertions),
+         "target_arch": std::env::consts::ARCH,

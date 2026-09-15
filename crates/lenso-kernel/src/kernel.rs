@@ -140,12 +140,8 @@ impl Kernel {
         startup_context: Option<super::InvocationContext>,
         startup_cleanup: Option<super::cleanup::StartupCleanupBudget>,
     ) -> Result<NativeApp, RuntimeFailure> {
-        if let Err(error) = plan.validate() {
-            let error = runtime_plan_error(&error);
-            diagnostics.emit_runtime_failure(driver.now(), None, &error);
-            return Err(error);
-        }
-
+        // This validates the complete immutable snapshot and retains its checked
+        // topology. Adapters keep calling public validate(), reusing that result.
         let activation_order = match plan.activation_order() {
             Ok(order) => order,
             Err(error) => {
