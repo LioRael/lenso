@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-kernel"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runtime-conformance"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "futures",
  "lenso-app-plan",
