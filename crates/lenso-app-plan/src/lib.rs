@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+mod checked;
 mod contract;
 pub use contract::{CapabilityBinding, CapabilityRequirementPlan, PluginInstancePlan};
 mod error;
@@ -22,8 +23,8 @@ pub use policy::{
     RequestAdmissionPlan, RestartMode, RestartPolicy,
 };
 use resolution::{
-    activation_order_for, resolve_parts, sort_bindings, sort_plugin_instances,
-    sorted_execution_lanes, validate_execution_lanes,
+    resolve_parts, sort_bindings, sort_plugin_instances, sorted_execution_lanes,
+    validate_execution_lanes,
 };
 
 /// The Resolved App Plan schema understood by this Kernel version.
@@ -282,15 +283,18 @@ impl AppComposition {
     /// Materializes one deterministic, validated Resolved App Plan.
     pub fn resolve(&self) -> Result<ResolvedAppPlan, PlanResolutionError> {
         validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
-        resolve_parts(&self.plugin_instances, &self.capability_bindings).map(
-            |(plugin_instances, capability_bindings)| ResolvedAppPlan {
+        resolve_parts(&self.plugin_instances, &self.capability_bindings).map(|parts| {
+            ResolvedAppPlan {
                 terminal_policy: TerminalPolicy::RequiredPath,
                 schema_version: PLAN_SCHEMA_VERSION,
-                plugin_instances,
-                capability_bindings,
+                plugin_instances: parts.instances,
+                capability_bindings: parts.bindings,
                 execution_lanes: sorted_execution_lanes(&self.execution_lanes),
-            },
-        )
+                checked: std::sync::OnceLock::from(Ok(checked::CheckedTopology {
+                    activation_order: parts.activation_order,
+                })),
+            }
+        })
     }
 
     /// Returns the authoring Plugin Instances.
@@ -310,7 +314,7 @@ impl AppComposition {
 }
 
 /// Exact, immutable execution input supplied to the Kernel.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(try_from = "schema::PlanWire")]
 pub struct ResolvedAppPlan {
     terminal_policy: TerminalPolicy,
@@ -319,12 +323,16 @@ pub struct ResolvedAppPlan {
     capability_bindings: Vec<CapabilityBinding>,
     #[serde(default = "default_execution_lanes")]
     execution_lanes: Vec<ExecutionLanePlan>,
+    // Derived only from this snapshot; never serialized or compared as Plan data.
+    #[serde(skip)]
+    checked: std::sync::OnceLock<Result<checked::CheckedTopology, PlanResolutionError>>,
 }
 
 impl ResolvedAppPlan {
     /// Creates a valid Plan containing no Plugin Instances.
     pub fn empty() -> Self {
         Self {
+            checked: std::sync::OnceLock::new(),
             terminal_policy: TerminalPolicy::RequiredPath,
             schema_version: PLAN_SCHEMA_VERSION,
             plugin_instances: Vec::new(),
@@ -341,6 +349,7 @@ impl ResolvedAppPlan {
         sort_plugin_instances(&mut plugin_instances);
         sort_bindings(&mut capability_bindings);
         Self {
+            checked: std::sync::OnceLock::new(),
             terminal_policy: TerminalPolicy::RequiredPath,
             schema_version: PLAN_SCHEMA_VERSION,
             plugin_instances,
@@ -354,6 +363,7 @@ impl ResolvedAppPlan {
     /// This is primarily useful to decode authoring-tool output before validation.
     pub const fn with_schema_version(schema_version: u32) -> Self {
         Self {
+            checked: std::sync::OnceLock::new(),
             terminal_policy: TerminalPolicy::RequiredPath,
             schema_version,
             plugin_instances: Vec::new(),
@@ -364,16 +374,7 @@ impl ResolvedAppPlan {
 
     /// Validates the immutable Plan graph before a Runtime Driver or Adapter boots it.
     pub fn validate(&self) -> Result<(), PlanResolutionError> {
-        if self.schema_version != PLAN_SCHEMA_VERSION {
-            return Err(PlanResolutionError::UnsupportedSchemaVersion {
-                expected: PLAN_SCHEMA_VERSION,
-                actual: self.schema_version,
-            });
-        }
-        validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
-        let (instances, bindings) =
-            resolve_parts(&self.plugin_instances, &self.capability_bindings)?;
-        self.terminal_policy.validate(&instances, &bindings)
+        self.checked_topology().map(|_| ())
     }
 
     /// Returns the deterministic provider-before-consumer lifecycle order.
@@ -381,18 +382,8 @@ impl ResolvedAppPlan {
     /// Every explicit binding is an activation dependency, including an
     /// optional or many binding when one is present in the resolved Plan.
     pub fn activation_order(&self) -> Result<Vec<String>, PlanResolutionError> {
-        if self.schema_version != PLAN_SCHEMA_VERSION {
-            return Err(PlanResolutionError::UnsupportedSchemaVersion {
-                expected: PLAN_SCHEMA_VERSION,
-                actual: self.schema_version,
-            });
-        }
-        validate_execution_lanes(&self.execution_lanes, &self.plugin_instances)?;
-        let (instances, bindings) =
-            resolve_parts(&self.plugin_instances, &self.capability_bindings)?;
-        self.terminal_policy.validate(&instances, &bindings)?;
-        activation_order_for(&instances, &bindings)
-            .map_err(|instances| PlanResolutionError::ActivationCycle { instances })
+        self.checked_topology()
+            .map(|checked| checked.activation_order.clone())
     }
 
     /// Returns the Plan schema version.
@@ -403,6 +394,7 @@ impl ResolvedAppPlan {
     /// Selects an explicit terminal policy; unsupported policies fail validation.
     #[must_use]
     pub fn with_terminal_policy(mut self, policy: TerminalPolicy) -> Self {
+        self.checked = std::sync::OnceLock::new();
         self.terminal_policy = policy;
         self
     }

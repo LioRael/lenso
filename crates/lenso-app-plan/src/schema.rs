@@ -221,6 +221,7 @@ impl TryFrom<PlanWire> for ResolvedAppPlan {
             }
         }
         Ok(Self {
+            checked: std::sync::OnceLock::new(),
             schema_version: PLAN_SCHEMA_VERSION,
             terminal_policy: decoded
                 .terminal_policy

@@ -8,12 +8,31 @@ use super::{
 pub(super) fn resolve_parts(
     plugin_instances: &[PluginInstancePlan],
     capability_bindings: &[CapabilityBinding],
-) -> Result<(Vec<PluginInstancePlan>, Vec<CapabilityBinding>), PlanResolutionError> {
+) -> Result<ResolvedParts, PlanResolutionError> {
+    #[cfg(test)]
+    PASS_COUNTS.with(|counts| counts.set((counts.get().0 + 1, counts.get().1)));
     let (instances, instance_indices) = normalize_instances(plugin_instances)?;
     let grouped_bindings = group_bindings(&instances, &instance_indices, capability_bindings)?;
     validate_requirement_cardinality(&instances, &grouped_bindings)?;
-    validate_activation_cycles(&instances, &grouped_bindings)?;
-    Ok((instances, order_bindings(grouped_bindings)))
+    let bindings = order_bindings(grouped_bindings);
+    let activation_order = activation_order_for(&instances, &bindings)
+        .map_err(|instances| PlanResolutionError::ActivationCycle { instances })?;
+    Ok(ResolvedParts {
+        instances,
+        bindings,
+        activation_order,
+    })
+}
+
+pub(super) struct ResolvedParts {
+    pub instances: Vec<PluginInstancePlan>,
+    pub bindings: Vec<CapabilityBinding>,
+    pub activation_order: Vec<String>,
+}
+
+#[cfg(test)]
+std::thread_local! {
+    pub(super) static PASS_COUNTS: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
 }
 
 fn normalize_instances(
@@ -239,24 +258,12 @@ fn order_bindings(
     ordered_bindings
 }
 
-fn validate_activation_cycles(
-    instances: &[PluginInstancePlan],
-    grouped_bindings: &BTreeMap<(String, String), Vec<CapabilityBinding>>,
-) -> Result<(), PlanResolutionError> {
-    let bindings = grouped_bindings
-        .values()
-        .flat_map(|bindings| bindings.iter())
-        .cloned()
-        .collect::<Vec<_>>();
-    activation_order_for(instances, &bindings)
-        .map(|_| ())
-        .map_err(|instances| PlanResolutionError::ActivationCycle { instances })
-}
-
 pub(super) fn activation_order_for(
     instances: &[PluginInstancePlan],
     bindings: &[CapabilityBinding],
 ) -> Result<Vec<String>, Vec<String>> {
+    #[cfg(test)]
+    PASS_COUNTS.with(|counts| counts.set((counts.get().0, counts.get().1 + 1)));
     let mut indegrees: BTreeMap<String, usize> = instances
         .iter()
         .map(|instance| (instance.instance_key.clone(), 0))
