@@ -11,5 +11,12 @@ description = "Portable Lenso execution Kernel with bounded lifecycle settlement
 futures.workspace = true
 lenso-app-plan = { path = "../lenso-app-plan", version = "0.4.1" }
 
+[dev-dependencies]
+serde_json.workspace = true
+
+[[bench]]
+name = "startup_attribution"
+harness = false
+
 [lints]
 workspace = true
