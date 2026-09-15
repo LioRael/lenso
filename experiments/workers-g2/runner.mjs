@@ -8,19 +8,25 @@ import {
 } from "./pkg/lenso_workers_g2_host.js";
 import module from "./pkg/lenso_workers_g2_host_bg.wasm";
 import { clearTimers } from "./clock.mjs";
-import { createEventRunner } from "@lenso/workers-runtime/runner";
-import { createWebSocketTransport } from "@lenso/web-ingress-workers";
+import { createEventRunner } from "../../packages/workers-runtime/runner.mjs";
+import { createWebSocketTransport } from "./fixtures/websocket.mjs";
 import {
   createHttpHandler,
   createStreamingHttpHandler,
-} from "@lenso/workers-runtime/http";
+} from "../../packages/workers-runtime/http.mjs";
 
 const runner = createEventRunner({
   instantiate: () => initSync({ module }),
   resetState: __wbg_reset_state,
   clearTimers,
 });
+// Build-time proof option, never selected by an incoming request. Run the same
+// G2 suites once with the compatibility default and once with explicit opt-in.
+const requestBodyEncoding = typeof G2_REQUEST_BODY_ENCODING === "undefined"
+  ? "numeric-array"
+  : G2_REQUEST_BODY_ENCODING;
 const bridgeOptions = {
+  requestBodyEncoding,
   run: runner.run,
   handleHttp: handle_http,
   maxRequestBodyBytes: 65536,
@@ -69,6 +75,8 @@ export async function recovery(origin) {
 }
 
 export const handleDuplex = createStreamingHttpHandler({
+  requestBodyEncoding,
+  maxRequestBodyBytes: 65536,
   open: runner.open,
   async openHttp(input, scope) {
     const response = await open_http(input, scope);
