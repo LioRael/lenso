@@ -667,6 +667,8 @@ pub struct PluginRootInstance {
     id: PluginInstanceId,
     #[serde(default = "empty_configuration")]
     configuration: Value,
+    #[serde(default = "default_execution_lane")]
+    execution_lane: String,
 }
 
 impl PluginRootInstance {
@@ -674,6 +676,7 @@ impl PluginRootInstance {
         Self {
             id: PluginInstanceId::new(plugin_id, instance_key),
             configuration: empty_configuration(),
+            execution_lane: default_execution_lane(),
         }
     }
 
@@ -683,12 +686,24 @@ impl PluginRootInstance {
         self
     }
 
+    /// Places this explicit Plugin Instance on one declared Execution Lane.
+    #[must_use]
+    pub fn with_execution_lane(mut self, execution_lane: impl Into<String>) -> Self {
+        self.execution_lane = execution_lane.into();
+        self
+    }
+
     pub const fn id(&self) -> &PluginInstanceId {
         &self.id
     }
 
     pub const fn configuration(&self) -> &Value {
         &self.configuration
+    }
+
+    /// Returns the requested Execution Lane for this explicit Instance.
+    pub fn execution_lane(&self) -> &str {
+        &self.execution_lane
     }
 }
 
@@ -812,6 +827,7 @@ struct CandidateInstance<'a> {
     descriptor: &'a PluginDescriptor,
     host_configuration: Option<&'a Value>,
     root_configuration: Option<&'a Value>,
+    execution_lane: Option<ExecutionLaneId>,
     source: PluginInstanceSource,
 }
 
@@ -1061,7 +1077,11 @@ fn materialize_app(
             .with_execution_class(descriptor.execution_class().clone())
             .with_restart_policy(descriptor.restart_policy())
             .with_criticality(descriptor.criticality())
-            .with_execution_lane(ExecutionLaneId::new(&slot.execution_lane));
+            .with_execution_lane(
+                candidate
+                    .execution_lane
+                    .unwrap_or_else(|| ExecutionLaneId::new(&slot.execution_lane)),
+            );
         for capability in descriptor.provided_capabilities() {
             instance = instance.with_capability(capability.clone());
         }

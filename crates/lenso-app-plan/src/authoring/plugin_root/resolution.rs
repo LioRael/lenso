@@ -2,11 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::configuration::ConfigurationError;
 use super::{
-    CandidateInstance, CapabilityBinding, CapabilityCardinality, HostBinding, HostCatalog,
-    HostDefaultPlugin, HostPluginConfiguration, HostPluginRelease, HostSlot, PluginDescriptor,
-    PluginInstanceId, PluginInstancePlan, PluginInstanceSource, PluginRootInstance,
-    PluginRootResolutionError, PluginRootSnapshot, ResolvedApp, ResolvedPluginInstance, Value,
-    materialize_app, select_slot_candidates,
+    CandidateInstance, CapabilityBinding, CapabilityCardinality, ExecutionLaneId, HostBinding,
+    HostCatalog, HostDefaultPlugin, HostPluginConfiguration, HostPluginRelease, HostSlot,
+    PluginDescriptor, PluginInstanceId, PluginInstancePlan, PluginInstanceSource,
+    PluginRootInstance, PluginRootResolutionError, PluginRootSnapshot, ResolvedApp,
+    ResolvedPluginInstance, Value, materialize_app, select_slot_candidates,
 };
 
 pub fn resolve_plugin_root(
@@ -240,6 +240,8 @@ fn build_candidates<'a>(
                 .map(|default| &default.configuration)
                 .or_else(|| configurations.get(id).copied()),
             root_configuration: root_instance.map(|instance| &instance.configuration),
+            execution_lane: root_instance
+                .map(|instance| ExecutionLaneId::new(instance.execution_lane())),
             source,
         });
     }

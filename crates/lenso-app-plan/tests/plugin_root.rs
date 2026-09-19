@@ -1,5 +1,5 @@
 use lenso_app_plan::{
-    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId,
+    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId, ExecutionLanePlan,
     authoring::{
         HostBinding, HostCatalog, HostDefaultPlugin, HostPluginConfiguration, HostPluginRelease,
         HostSlot, PluginDescriptor, PluginImplementation, PluginInstanceId, PluginInstanceSource,
@@ -53,6 +53,39 @@ fn empty_plugin_root_resolves_host_defaults_and_unique_binding() {
     assert_eq!(
         resolved.plan().capability_bindings()[0].provider_instance(),
         "example.model.fixture/default"
+    );
+}
+
+#[test]
+fn explicit_root_instance_selects_declared_execution_lane() {
+    let host = HostCatalog::new(
+        [HostSlot::one("model")],
+        [HostPluginRelease::new(model_descriptor(
+            "example.model.fixture",
+        ))],
+        [],
+    )
+    .with_execution_lanes(vec![
+        ExecutionLanePlan::new("main"),
+        ExecutionLanePlan::new("storage"),
+    ]);
+    let root = PluginRootSnapshot::new(
+        [],
+        [PluginRootInstance::new("example.model.fixture", "primary")
+            .with_execution_lane("storage")],
+        [],
+    );
+
+    let resolved = resolve_plugin_root(&host, &root).unwrap();
+
+    assert_eq!(
+        resolved
+            .plan()
+            .plugin_instance("example.model.fixture/primary")
+            .unwrap()
+            .execution_lane()
+            .as_str(),
+        "storage"
     );
 }
 
