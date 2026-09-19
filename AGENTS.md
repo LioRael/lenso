@@ -65,6 +65,25 @@ Keep hand-written Rust files navigable:
 
 The CI workflow is the source of truth for the portable WebAssembly checks.
 
+## Delta delivery
+
+- Develop, review, and land changes through Delta; the repository's delivery
+  path does not use GitHub pull requests.
+- The detailed landing procedure is
+  [`.agents/skills/land/SKILL.md`](.agents/skills/land/SKILL.md). A final
+  candidate is based on the current `origin/main`, has a recorded full base
+  SHA, and is pushed once to a unique `delta/verify/<task>/<attempt>` ref.
+- Accept candidate CI only when the `CI` workflow was triggered by that
+  candidate ref and its `quality` job succeeded for the exact candidate SHA.
+  The `quality` job includes the native workspace checks and both portable
+  WebAssembly proofs; local results are not substitutes for its GitHub status.
+- Fetch `origin/main` again after candidate CI. If it advanced, integrate the
+  candidate with the new base and repeat review and CI. Otherwise fast-forward
+  the exact verified SHA to `main`, then read the remote SHA back. Use normal
+  pushes only; never force-push or rewrite a verified commit.
+- Landing is separate from publication and deployment. `release-plz` remains
+  paused until a separately authorized release migration.
+
 ## Changes and commits
 
 Use `apply_patch` for focused edits and stage only requested files. Use
