@@ -90,6 +90,38 @@ fn explicit_root_instance_selects_declared_execution_lane() {
 }
 
 #[test]
+fn configured_root_instance_inherits_the_host_slot_execution_lane() {
+    let host = HostCatalog::new(
+        [HostSlot::one("model").with_execution_lane("storage")],
+        [HostPluginRelease::new(model_descriptor(
+            "example.model.fixture",
+        ))],
+        [],
+    )
+    .with_execution_lanes(vec![
+        ExecutionLanePlan::new("main"),
+        ExecutionLanePlan::new("storage"),
+    ]);
+    let root = PluginRootSnapshot::new(
+        [],
+        [PluginRootInstance::new("example.model.fixture", "primary")],
+        [],
+    );
+
+    let resolved = resolve_plugin_root(&host, &root).unwrap();
+
+    assert_eq!(
+        resolved
+            .plan()
+            .plugin_instance("example.model.fixture/primary")
+            .unwrap()
+            .execution_lane()
+            .as_str(),
+        "storage"
+    );
+}
+
+#[test]
 fn host_binding_scopes_one_requirement_to_the_selected_provider_instance() {
     let consumer = PluginDescriptor::new("example.consumer", "1.0.0", "consumer")
         .with_requirement(CapabilityRequirementPlan::one("example.model@1", "1.0.0"));

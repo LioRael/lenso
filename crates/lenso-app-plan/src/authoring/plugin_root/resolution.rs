@@ -241,7 +241,7 @@ fn build_candidates<'a>(
                 .or_else(|| configurations.get(id).copied()),
             root_configuration: root_instance.map(|instance| &instance.configuration),
             execution_lane: root_instance
-                .map(|instance| ExecutionLaneId::new(instance.execution_lane())),
+                .and_then(|instance| instance.execution_lane().map(ExecutionLaneId::new)),
             source,
         });
     }

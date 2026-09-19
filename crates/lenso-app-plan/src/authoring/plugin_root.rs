@@ -667,8 +667,8 @@ pub struct PluginRootInstance {
     id: PluginInstanceId,
     #[serde(default = "empty_configuration")]
     configuration: Value,
-    #[serde(default = "default_execution_lane")]
-    execution_lane: String,
+    #[serde(default)]
+    execution_lane: Option<String>,
 }
 
 impl PluginRootInstance {
@@ -676,7 +676,7 @@ impl PluginRootInstance {
         Self {
             id: PluginInstanceId::new(plugin_id, instance_key),
             configuration: empty_configuration(),
-            execution_lane: default_execution_lane(),
+            execution_lane: None,
         }
     }
 
@@ -689,7 +689,7 @@ impl PluginRootInstance {
     /// Places this explicit Plugin Instance on one declared Execution Lane.
     #[must_use]
     pub fn with_execution_lane(mut self, execution_lane: impl Into<String>) -> Self {
-        self.execution_lane = execution_lane.into();
+        self.execution_lane = Some(execution_lane.into());
         self
     }
 
@@ -702,8 +702,10 @@ impl PluginRootInstance {
     }
 
     /// Returns the requested Execution Lane for this explicit Instance.
-    pub fn execution_lane(&self) -> &str {
-        &self.execution_lane
+    ///
+    /// `None` means that the Instance inherits its Host Slot's lane.
+    pub fn execution_lane(&self) -> Option<&str> {
+        self.execution_lane.as_deref()
     }
 }
 
