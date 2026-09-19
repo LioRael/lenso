@@ -13,6 +13,7 @@ the resulting immutable Plan with explicit lifecycle and failure semantics.
 
 [Get started](https://lenso.dev/docs/quickstart/) ·
 [Read the documentation](https://lenso.dev/docs/) ·
+[Contributing](CONTRIBUTING.md) ·
 [Explore executable examples](https://github.com/LioRael/lenso-examples) ·
 [Install the Agent skills](skills/README.md)
 
@@ -128,18 +129,19 @@ The [Agents and skills guide](docs/agents/skills.md) documents invocation,
 installation, progressive disclosure, contributor validation, and behavioral
 forward testing.
 
-## Contributor development
+## Contributing
 
-```sh
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --all-targets -- -D warnings
-cargo check --locked --workspace --all-targets
-cargo test --locked --workspace
-```
+[`CONTRIBUTING.md`](CONTRIBUTING.md) is the human contribution entry point.
+Delta and AI tools are optional: contributors can use any editor, develop in a
+fork, and submit an immutable commit through a GitHub Issue. Maintainers review
+the pinned revision and run the one necessary upstream candidate gate.
 
-The portable Plan, Kernel, and conformance Interface are compile-checked for
-`wasm32-unknown-unknown` and `wasm32-wasip2` in CI. Host Driver and Adapter
-repositories own their target-specific checks against released core packages.
+Choose focused checks for prose, Rust code, or workflow/build changes rather
+than running every workspace and platform command for every edit. The portable
+Plan, Kernel, and conformance Interface are compile-checked for
+`wasm32-unknown-unknown` and `wasm32-wasip2` when the final candidate requires
+that proof. Host Driver and Adapter repositories own their target-specific
+checks against released core packages.
 
 ## Architecture
 
@@ -157,5 +159,7 @@ repositories own their target-specific checks against released core packages.
 ## Branches
 
 `main` is the vNext integration and release line. Work starts from
-`origin/main` and pull requests target `main`; `next` is retained only as a
+`origin/main`; maintainers integrate reviewed immutable revisions through the
+candidate workflow and normal fast-forward path. Pull requests are not part of
+this repository's current delivery path, and `next` is retained only as a
 pre-cutover integration reference.

@@ -9,16 +9,20 @@ metadata:
 
 This repository uses PR-free delivery. The destination is `origin/main`, and
 the required candidate gate is the `quality` job in `.github/workflows/ci.yml`.
-Use the Delta-managed checkout directly; do not create a nested Worktrunk
-worktree. A Land or delivery request authorizes landing; review or skill
-installation alone does not.
+[`CONTRIBUTING.md`](../../../CONTRIBUTING.md) is the common human and maintainer
+contract; this file is only the optional agent entry point.
+When this skill is invoked in Delta, use the Delta-managed checkout directly;
+do not create a nested Worktrunk worktree. A Land or delivery request
+authorizes landing; review or skill installation alone does not.
 
 ## Prepare
 
 1. Read `AGENTS.md`, status, diff, staged files, and remotes. Preserve
    unrelated work.
-2. Obtain a Delta Review for the final diff and absorb reviewer edits before
-   the final commit.
+2. In a Delta run, obtain a Delta Review for the final diff and absorb reviewer
+   edits before the final commit. Other maintainers may use an Issue review
+   referring to the same immutable revision, as described in
+   `CONTRIBUTING.md`.
 3. Fetch `origin/main` and record its full SHA. Finish review fixes and
    rebasing before candidate CI.
 4. Run only checks relevant to the changed files. Workflow, script, skill, and
@@ -39,7 +43,8 @@ installation alone does not.
    workflow path/name, event, candidate ref, exact `head_sha`, run attempt, and
    `quality` job all match. `quality` must be completed and successful. Local
    checks, manual runs, and another SHA do not substitute for this evidence.
-3. Record the candidate SHA, base SHA, Delta Review link, run URL/attempt, and
+3. Record the candidate SHA, base SHA, review link (Delta Review for Delta
+   runs; immutable-revision Issue review otherwise), run URL/attempt, and
    required job result.
 
 ## Integrate the same SHA

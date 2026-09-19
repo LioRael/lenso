@@ -45,14 +45,11 @@ source is retained by the `lenso@0.3.47` tag and Git history.
 
 ## Validation
 
-Use the narrowest meaningful check, then run the full workspace gate for
-cross-cutting runtime or workspace changes:
-
-```sh
-cargo fmt --all -- --check
-cargo check --locked --workspace --all-targets
-cargo test --locked --workspace
-```
+Use the narrowest meaningful check for the changed behavior. Rust changes may
+need formatting, Clippy, affected package checks, or affected tests; workflow,
+script, Land-skill, and documentation changes use focused syntax, link, and
+configuration checks. The candidate `quality` job remains the authoritative
+native/WASM proof when the final change needs the full workspace gate.
 
 Keep hand-written Rust files navigable:
 
@@ -66,8 +63,10 @@ The CI workflow is the source of truth for the portable WebAssembly checks.
 
 ## Delta delivery
 
-- Develop, review, and land changes through Delta; the repository's delivery
-  path does not use GitHub pull requests.
+- Delta is an optional delivery path. When a task uses Delta, develop, review,
+  and land through its managed checkout; the repository's delivery path does
+  not use GitHub pull requests. Contributors and maintainers using another
+  agent or plain Git follow [`CONTRIBUTING.md`](CONTRIBUTING.md) instead.
 - Use a Delta-managed checkout directly. Do not create a nested Worktrunk
   worktree inside it; Worktrunk instructions apply to Codex-managed workspaces.
 - The detailed landing procedure is
