@@ -22,8 +22,7 @@ one-commit recovery PR, use the same branch prefix and name the commit
 
 The crates.io registry is the source of truth for existing versions. Public
 versions, tags, and the historical `CHANGELOG.md` are not rewritten. Configure
-a crates.io Trusted Publisher for each package (`lenso-cli` and
-`lenso-plugin-catalog`) before its first live publish
+a crates.io Trusted Publisher for each package (`lenso-cli`) before its first live publish
 after this migration; no long-lived `CARGO_REGISTRY_TOKEN` is used.
 
 ## npm distribution
@@ -52,21 +51,15 @@ pnpm changeset status --output /tmp/lenso-cli-changesets.json
 npm run check:npm-shim
 cargo fmt --all -- --check
 cargo test --locked --workspace
-cargo check --locked -p lenso-plugin-catalog --target wasm32-unknown-unknown
 cargo metadata --locked --format-version 1
-cargo package --locked -p lenso-plugin-catalog --allow-dirty
 cargo package --locked --workspace --allow-dirty --no-verify
-cargo publish --dry-run --locked -p lenso-plugin-catalog --allow-dirty
 cargo publish --dry-run --locked --workspace --allow-dirty --no-verify
 ```
 
-The portable catalog package is verified independently. Workspace packaging stages
-local packages in dependency order, so the CLI payload can be inspected before a
-new catalog version exists on crates.io. The workspace test verifies the CLI's
-native Bundle integration; the separate Wasm check verifies the catalog's default
-feature set without that integration. Release-plz publishes changed workspace
-crates in dependency order. The catalog package is new and remains unpublished
-until explicit publication approval and its Trusted Publisher are in place.
+The independent Engine repository owns the portable catalog and its Wasm/package
+verification. CLI packaging requires the Engine dependency versions to exist in
+crates.io. Keep the registry package gate enabled; publishing the CLI does not
+publish its independently owned Engine dependencies.
 
 To inspect an npm archive locally, build the current platform payload first:
 
@@ -114,3 +107,11 @@ gh workflow run release-changesets.yml --ref main
 Inspect the exact `main` commit and public registry state before dispatching.
 The manual entry points run the same jobs, permissions, package checks, and OIDC
 publish steps as the normal push path.
+
+## Engine extraction
+
+Engine owns the portable catalog and its Wasm/package verification. The CLI
+consumes released Engine crates from crates.io. Publish changed Engine dependencies
+before updating the CLI lockfile or releasing the CLI. The CLI's normal Cargo
+package gate validates that this registry dependency closure is available; npm
+binary publication uses the same reviewed source and lockfile.
