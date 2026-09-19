@@ -1,7 +1,6 @@
 [workspace]
-# The release PR is the versioning boundary. The release job publishes only
-# packages that have explicitly opted in with `publish = true`.
-release_always = false
+# Publishing is entered only through the dispatch-only workflow after a landed
+# SHA, exact CI evidence, and an explicit release set have passed its gate.
+release_always = true
 changelog_update = false
 git_tag_name = "{{ package }}-v{{ version }}"
-pr_labels = ["release"]

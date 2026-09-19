@@ -17,9 +17,8 @@ source is retained by the `lenso@0.3.47` tag and Git history.
   worktree is available.
 - Preserve unrelated dirty work. Inspect `git status` and diffs before
   touching an overlapping file.
-- Run Rust commands through
-  `/Users/leosouthey/Projects/framework/.lenso-tools/bin/lenso-cargo` when
-  available so sibling worktrees share the configured target cache.
+- Run Rust commands directly with the repository's configured Cargo toolchain
+  and standard Cargo configuration.
 
 ## Architecture rules
 
@@ -69,6 +68,8 @@ The CI workflow is the source of truth for the portable WebAssembly checks.
 
 - Develop, review, and land changes through Delta; the repository's delivery
   path does not use GitHub pull requests.
+- Use a Delta-managed checkout directly. Do not create a nested Worktrunk
+  worktree inside it; Worktrunk instructions apply to Codex-managed workspaces.
 - The detailed landing procedure is
   [`.agents/skills/land/SKILL.md`](.agents/skills/land/SKILL.md). A final
   candidate is based on the current `origin/main`, has a recorded full base
@@ -77,12 +78,22 @@ The CI workflow is the source of truth for the portable WebAssembly checks.
   candidate ref and its `quality` job succeeded for the exact candidate SHA.
   The `quality` job includes the native workspace checks and both portable
   WebAssembly proofs; local results are not substitutes for its GitHub status.
-- Fetch `origin/main` again after candidate CI. If it advanced, integrate the
-  candidate with the new base and repeat review and CI. Otherwise fast-forward
-  the exact verified SHA to `main`, then read the remote SHA back. Use normal
+- Choose local checks by changed-file class. Workflow, executable-script,
+  Land-skill, build-configuration, and unknown-path changes receive focused
+  syntax/configuration checks plus the final `quality` gate; do not repeat a
+  full workspace gate when the changed behavior does not require it.
+- Fetch `origin/main` again after candidate CI. If it advanced and the
+  candidate is not already reachable from it, integrate the candidate with the
+  new base and repeat review and CI. If the candidate is already reachable,
+  keep its SHA unchanged and record the current remote tip. Otherwise
+  fast-forward the exact verified SHA to `main`, then read the remote SHA back.
+  Verify the candidate remains an ancestor of the remote tip. Use normal
   pushes only; never force-push or rewrite a verified commit.
-- Landing is separate from publication and deployment. `release-plz` remains
-  paused until a separately authorized release migration.
+- Landing is separate from publication and deployment. The
+  `.github/workflows/release-plz.yml` workflow is dispatch-only: its default
+  mode is a read-only dry-run for an explicitly supplied landed SHA and
+  release set. Publishing requires a separate, explicit version authorization;
+  this migration does not publish packages.
 
 ## Changes and commits
 

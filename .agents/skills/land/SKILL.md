@@ -1,117 +1,85 @@
 ---
 name: lenso-land
-description: Land reviewed Lenso core changes through candidate CI and a direct fast-forward to main.
+description: Land reviewed Lenso changes through one candidate CI run and a normal fast-forward.
 metadata:
   delta-action: land
 ---
 
-# Land Lenso core changes
+# Land Lenso changes
 
 This repository uses PR-free delivery. The destination is `origin/main`, and
 the required candidate gate is the `quality` job in `.github/workflows/ci.yml`.
-The workflow runs on `main` and on `delta/verify/**` push refs. Landing this
-pilot does not publish packages or deploy a product; `release-plz` remains
-paused.
+Use the Delta-managed checkout directly; do not create a nested Worktrunk
+worktree. A Land or delivery request authorizes landing; review or skill
+installation alone does not.
 
 ## Prepare
 
-1. Read the repository rules, current diff, staged files, and remotes. Keep
-   unrelated dirty work out of the task-owned tree.
-2. Obtain a Delta Review for the final intended diff. Pull reviewer changes
-   before preparing the final commit; a verdict alone does not incorporate
-   edits. Resolve mechanical conflicts and return unresolved product or
-   migration intent to the owner.
-3. Fetch the destination and record its full base SHA:
+1. Read `AGENTS.md`, status, diff, staged files, and remotes. Preserve
+   unrelated work.
+2. Obtain a Delta Review for the final diff and absorb reviewer edits before
+   the final commit.
+3. Fetch `origin/main` and record its full SHA. Finish review fixes and
+   rebasing before candidate CI.
+4. Run only checks relevant to the changed files. Workflow, script, skill, and
+   configuration changes use focused syntax/configuration checks; Rust changes
+   retain their affected local checks. The candidate `quality` job remains the
+   remote native/WASM proof.
 
-   ```sh
-   git fetch origin main
-   git rev-parse origin/main
-   ```
+## Verify one final candidate
 
-   Finish all review fixes, rebasing, and squashing before candidate CI. Keep
-   the final tree clean and use the repository's Conventional Commit policy.
-4. Run the local checks required by `AGENTS.md`:
-
-   ```sh
-   cargo fmt --all -- --check
-   cargo check --locked --workspace --all-targets
-   cargo test --locked --workspace
-   ```
-
-   Use the shared `lenso-cargo` wrapper when it is available in the local
-   framework checkout.
-
-## Verify the exact candidate
-
-1. Choose a unique task-owned ref such as
-   `delta/verify/lenso-core-pilot/1`. Record the full candidate SHA and its
-   base SHA, then push that commit without rewriting the ref:
+1. Push the final commit once to a unique ref such as
+   `delta/verify/lenso/<attempt>`:
 
    ```sh
    git push origin <candidate-sha>:refs/heads/delta/verify/<task>/<attempt>
    ```
 
-2. Wait for the `CI` workflow created by that `push`. Inspect the run through
-   GitHub CLI and match all of these values before accepting it:
+2. Accept only the `CI` workflow run created by that `push` whose repository,
+   workflow path/name, event, candidate ref, exact `head_sha`, run attempt, and
+   `quality` job all match. `quality` must be completed and successful. Local
+   checks, manual runs, and another SHA do not substitute for this evidence.
+3. Record the candidate SHA, base SHA, Delta Review link, run URL/attempt, and
+   required job result.
 
-   - repository `LioRael/lenso`;
-   - workflow identity `CI` from `.github/workflows/ci.yml`;
-   - event `push`;
-   - candidate branch and exact `head_sha`;
-   - one `quality` job with conclusion `success`, with no missing, skipped,
-     cancelled, timed-out, or failed required job.
+## Integrate the same SHA
 
-   A useful inspection sequence is:
-
-   ```sh
-   gh run list --repo LioRael/lenso --workflow ci.yml \
-     --branch delta/verify/<task>/<attempt> --limit 10
-   gh run view <run-id> --repo LioRael/lenso \
-     --json workflowName,event,headBranch,headSha,status,conclusion,jobs,url
-   ```
-
-   The `quality` job is the proof for native checks and both
-   `wasm32-unknown-unknown` and `wasm32-wasip2` checks. A local pass, a green
-   run for another SHA, or a manually dispatched run for another ref is not
-   candidate evidence.
-3. Treat a failed or incomplete candidate as rejected. Keep its exact SHA and
-   run URL in the review record, and use a fresh candidate attempt after the
-   cause is fixed. Disposable red candidates are valid protection rehearsals;
-   they are never promoted to `main`.
-
-## Integrate
-
-1. After the exact candidate passes, fetch `origin/main` again. If its SHA
-   differs from the recorded base, integrate the change on the new base,
-   obtain the resulting review, and run candidate CI again under a new
-   candidate ref. The old run does not qualify the new commit.
-2. If the destination is unchanged, promote the exact verified commit with a
-   normal fast-forward push:
+1. Fetch `origin/main` again. If it advanced and the candidate is not an
+   ancestor of the remote tip, integrate on the new base, review, and create a
+   new candidate SHA with a new CI run. If the candidate is already reachable,
+   keep its SHA unchanged and record the current remote tip.
+2. If the destination is unchanged, push the exact verified SHA normally:
 
    ```sh
    git push origin <candidate-sha>:refs/heads/main
    ```
 
-   A rejected push means the change has not landed. Fetch, integrate the
-   competing update, and repeat validation; never force-push, amend, squash,
-   or mint a synthetic status after CI.
-3. Read the destination back and require the remote `main` SHA to equal the
-   verified candidate SHA:
+   A rejected push has not landed. Fetch again; accept the candidate only when
+   it is now reachable from remote `main`, otherwise repeat integration and
+   candidate CI. Never force-push or rewrite verified commits.
+3. Read back remote `main` and verify the candidate is an ancestor:
 
    ```sh
-   gh api repos/LioRael/lenso/git/ref/heads/main --jq .object.sha
+   landed_sha="$(gh api repos/LioRael/lenso/git/ref/heads/main --jq .object.sha)"
+   git fetch origin main
+   git merge-base --is-ancestor <candidate-sha> "$landed_sha"
    ```
 
-   Record the base SHA, candidate SHA, landed SHA, Delta Review link, exact
-   workflow run URL and run attempt, required job result, local commands, and
-   remote readback. Report landing, CI verification, publication, and
-   deployment as separate outcomes.
+   Report the landed SHA separately from CI, publication, and deployment.
 
-## Protection checks
+## Release
 
-Use task-owned disposable refs to exercise the boundaries without changing
-`main`: a deliberately failing candidate must produce a failed `quality` run
-and remain unlanded, while an older candidate push after a different verified
-commit has landed must receive a normal non-fast-forward rejection. If the
-destination advances before the requested candidate, follow the integrate
-path instead of reusing stale evidence.
+Prepare versions and changelogs in a Delta thread with `release-plz update`,
+review them, and land that exact source commit; do not create a release PR.
+`.github/workflows/release-plz.yml` is dispatch-only and defaults to read-only
+dry-run. Dispatch from `main` with the full `source_sha`, an exact
+`release_set` JSON array, and `mode=dry-run`. Its read-only gate checks main
+ancestry, the exact successful candidate `quality` run and attempt, the
+`publish=true` allowlist, source versions, and a crates.io-derived unpublished
+version set. Pinned release-plz dry-run is a no-upload check, not a proposed
+release plan. `mode=publish` is separately authorized and retains the existing
+action/tag/OIDC contract; this migration does not select it.
+
+Protection failure/race rehearsals are migration qualification only and repeat
+only when the mechanism changes. The pilot's failed candidate proved CI failure
+and non-promotion, not server rejection of a failed SHA push.
