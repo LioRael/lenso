@@ -6,10 +6,12 @@ authoring layer over the ordinary Host Catalog and Plugin Root.
 
 ## Establish available tooling
 
-Locate the selected CLI help and Engine/Console owner examples. The Engine,
-Console convention and precompiled Console kit are implemented locally as of
-2026-09-20; registry availability must be verified separately. Use an explicitly
-supplied local build when requested. Do not assume an npm upgrade installs them.
+Locate the selected CLI help and Engine/Console owner examples. As of
+2026-09-20, Engine core 0.1.1 and its optional App, Runtime, Authoring, Markdown,
+Worker and Host packages at 0.1.0 are published on crates.io. CLI npm versions
+and Console kit releases are separate delivery streams: inspect their actual
+release assets and the installed command help before claiming availability.
+Use an explicitly supplied local build when requested.
 
 With a matching CLI, `lenso app create my-app --runtime bun`, `app dev`,
 `app build`, and `app start --from dist` form the ordinary source workflow.
@@ -45,5 +47,8 @@ Prove source discovery, a real build/start and one observable operation. Disable
 support and verify its contributions and private compilation disappear. A failed
 development build keeps the previous generation; successful builds restart the
 Host, potentially on a new dynamic port. This is not React Fast Refresh or a
-zero-downtime promise. The local Console kit has macOS ARM64 evidence; Linux
-native validation remains pending and Windows is outside this POSIX package.
+zero-downtime promise. The Console kit has native macOS ARM64 and Linux x64
+CI evidence, including extracted-archive, clean-PATH and real HTTP allow/deny
+checks. Windows is outside this POSIX package. Verify the downloaded archive's
+checksum and preserve executable modes by extracting its tar.gz payload. The
+SDK is bundled with the kit; a kit release does not imply an npm SDK alias.
