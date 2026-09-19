@@ -72,6 +72,12 @@ jobs:
           persist-credentials: false
       - name: Verify checkout identity
         run: test "$(git rev-parse HEAD)" = "${RELEASE_SHA,,}"
+      - name: Prepare release-plz branch identity
+        run: |
+          git fetch origin main --no-tags
+          git switch --force-create main "${RELEASE_SHA,,}"
+          git branch --set-upstream-to=origin/main main
+          test "$(git rev-parse HEAD)" = "${RELEASE_SHA,,}"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
         with:
@@ -118,6 +124,12 @@ jobs:
           persist-credentials: false
       - name: Verify checkout identity
         run: test "$(git rev-parse HEAD)" = "${RELEASE_SHA,,}"
+      - name: Prepare release-plz branch identity
+        run: |
+          git fetch origin main --no-tags
+          git switch --force-create main "${RELEASE_SHA,,}"
+          git branch --set-upstream-to=origin/main main
+          test "$(git rev-parse HEAD)" = "${RELEASE_SHA,,}"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
         with:
