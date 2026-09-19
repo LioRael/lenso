@@ -142,6 +142,48 @@ enumeration. Data schemas are consumer-owned; the core validates carriers and
 bounds, not every domain payload. Rust processors implement the public `Plugin`
 interface (`Send + Sync`) and can construct file carriers with `Resource::file`.
 
+## Published App resources
+
+An optional App Plugin can declare small, immutable data files for a consuming
+Host without teaching Engine what those files mean. In Cargo metadata, use
+`[package.metadata.lenso-cli]`, which is Engine build metadata and stays out of
+the SDK-owned Plugin manifest; in Bun metadata, use the `lenso` object:
+
+```toml
+[package.metadata.lenso-cli]
+outputs = ["wasm", "process"]
+published_resources = [
+  { path = "agent/deployment.json", schema = "example.agent-deployment@1" },
+]
+```
+
+```json
+{
+  "lenso": {
+    "pluginId": "example.orders",
+    "rootSlot": "tool-providers",
+    "runtime": "bun",
+    "published_resources": [
+      {"path": "agent/deployment.json", "schema": "example.agent-deployment@1"}
+    ]
+  }
+}
+```
+
+`app build` accepts only declared regular files beneath the selected Plugin
+project. It copies them to `dist/resources/<plugin-id>/…` and writes
+`dist/resources.json`, including the owner, schema, relative output path,
+SHA-256 digest, and size. It rejects duplicate declarations, links, path
+traversal, invalid resource schemas, more than 64 files, and more than 16 MiB
+per Plugin. The
+resource schema is owned by the consumer: Engine copies and inventories bytes,
+but never activates a Plugin, runs a resource, or interprets its payload.
+
+Consumers should verify both the generic inventory and any related Bundle
+identity before importing a resource. This supports optional conventions from
+multiple languages and Plugin types while keeping `app/` layout out of Engine
+core and runtime authority.
+
 ## Runtime and bootstrap boundary
 
 Official and third-party processor implementations use `RuntimeProcessor`, which

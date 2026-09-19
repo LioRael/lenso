@@ -12,10 +12,20 @@ use lenso_plugin_bundle::{
     verify_bundle_directory,
 };
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
+
+#[derive(Clone, Debug, serde::Serialize)]
+struct PublishedResourceRecord {
+    owner: String,
+    schema: String,
+    path: String,
+    sha256: String,
+    size: u64,
+}
 
 #[derive(Clone, Debug, Args)]
 pub struct AssembleArgs {
@@ -65,6 +75,7 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     }
     let mut inputs = Vec::new();
     let mut inventory = Vec::new();
+    let mut published_resources = Vec::new();
     let mut sources = Vec::new();
     let generated_sources = tempfile::tempdir().context("stage convention sources")?;
     let mut candidates = convention_plan
@@ -165,6 +176,7 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         {
             continue;
         }
+        publish_resources(&candidate, stage.path(), &mut published_resources)?;
         if super::local_host::is_native(&candidate) {
             let descriptor = native
                 .iter()
@@ -287,6 +299,16 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         stage.path().join("bundles.json"),
         serde_json::to_vec_pretty(&inventory)?,
     )?;
+    published_resources.sort_by(|left: &PublishedResourceRecord, right| {
+        (&left.owner, &left.path).cmp(&(&right.owner, &right.path))
+    });
+    fs::write(
+        stage.path().join("resources.json"),
+        serde_json::to_vec_pretty(&json!({
+            "schema": "lenso.app-resources.v1",
+            "resources": &published_resources,
+        }))?,
+    )?;
     let fresh = lenso_app_authoring::discovery::conventions::plan(&discover(&root)?)?;
     if serde_json::to_vec(&fresh)? != selection_bytes {
         bail!("local convention selection changed during build; retry");
@@ -330,7 +352,8 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         println!(
             "{}",
             json!({"schema_version":1, "kind":"lenso.app-assemble", "out":destination,
-            "plugin_instances": resolved.instances().len(), "capability_bindings": resolved.plan().capability_bindings().len(), "executable":executable})
+            "plugin_instances": resolved.instances().len(), "capability_bindings": resolved.plan().capability_bindings().len(), "executable":executable,
+            "published_resources": published_resources.len()})
         );
     } else {
         println!(
@@ -338,6 +361,75 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             resolved.instances().len(),
             destination.display()
         );
+    }
+    Ok(())
+}
+
+fn publish_resources(
+    candidate: &lenso_app_authoring::discovery::Candidate,
+    distribution: &Path,
+    published: &mut Vec<PublishedResourceRecord>,
+) -> anyhow::Result<()> {
+    if candidate.published_resources.is_empty() {
+        return Ok(());
+    }
+    let root = fs::canonicalize(&candidate.project)
+        .with_context(|| format!("resolve Plugin project {}", candidate.project.display()))?;
+    for resource in &candidate.published_resources {
+        let relative = Path::new(&resource.path);
+        let mut source = root.clone();
+        for component in relative.components() {
+            source.push(component.as_os_str());
+            let metadata = fs::symlink_metadata(&source)
+                .with_context(|| format!("inspect published resource {}", source.display()))?;
+            if metadata.file_type().is_symlink() {
+                bail!(
+                    "published resource path cannot traverse a symbolic link: {}",
+                    resource.path
+                );
+            }
+        }
+        let metadata = fs::symlink_metadata(&source)?;
+        if !metadata.file_type().is_file() {
+            bail!(
+                "published resource must remain a regular file: {}",
+                resource.path
+            );
+        }
+        let bytes = fs::read(&source)
+            .with_context(|| format!("read published resource {}", source.display()))?;
+        if bytes.len() as u64 != metadata.len() {
+            bail!(
+                "published resource changed while reading: {}",
+                resource.path
+            );
+        }
+        let output_relative = Path::new("resources")
+            .join(&candidate.plugin_id)
+            .join(relative);
+        let output = distribution.join(&output_relative);
+        let parent = output
+            .parent()
+            .context("published resource has no parent")?;
+        fs::create_dir_all(parent)?;
+        if output.exists() {
+            bail!(
+                "published resource output collides with an existing file: {}",
+                output_relative.display()
+            );
+        }
+        fs::write(&output, &bytes)?;
+        let digest: String = Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        published.push(PublishedResourceRecord {
+            owner: candidate.plugin_id.clone(),
+            schema: resource.schema.clone(),
+            path: output_relative.to_string_lossy().replace('\\', "/"),
+            sha256: format!("sha256:{digest}"),
+            size: metadata.len(),
+        });
     }
     Ok(())
 }
@@ -402,4 +494,53 @@ pub(super) fn copy_root(
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lenso_app_authoring::discovery::{Candidate, PublishedResource, SourceRole};
+
+    #[test]
+    fn publishes_declared_resources_with_an_exact_inventory() {
+        let temporary = tempfile::tempdir().unwrap();
+        let project = temporary.path().join("plugin");
+        fs::create_dir_all(project.join("agent")).unwrap();
+        fs::write(
+            project.join("agent/deployment.json"),
+            "{\"profile\":\"orders\"}",
+        )
+        .unwrap();
+        let candidate = Candidate {
+            surface_owner: Some("example.owner".to_owned()),
+            composite: None,
+            plugin_id: "example.generated".to_owned(),
+            release_version: "1.0.0".to_owned(),
+            project: project.clone(),
+            metadata: project.join("package.json"),
+            format: "bun".to_owned(),
+            role: SourceRole::AppOwned,
+            implementations: Vec::new(),
+            published_resources: vec![PublishedResource {
+                path: "agent/deployment.json".to_owned(),
+                schema: "example.agent-deployment@1".to_owned(),
+            }],
+            evidence: "test".to_owned(),
+        };
+        let distribution = temporary.path().join("dist");
+        fs::create_dir(&distribution).unwrap();
+        let mut published = Vec::new();
+
+        publish_resources(&candidate, &distribution, &mut published).unwrap();
+
+        assert_eq!(published.len(), 1);
+        assert_eq!(published[0].owner, "example.generated");
+        assert_eq!(published[0].schema, "example.agent-deployment@1");
+        assert_eq!(published[0].size, 20);
+        assert!(published[0].sha256.starts_with("sha256:"));
+        assert_eq!(
+            fs::read_to_string(distribution.join(&published[0].path)).unwrap(),
+            "{\"profile\":\"orders\"}"
+        );
+    }
 }

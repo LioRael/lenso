@@ -529,6 +529,7 @@ fn discover_bare_owners(
             format: "convention-owner".into(),
             role: SourceRole::AppOwned,
             implementations: vec![],
+            published_resources: vec![],
             evidence: "bare_app_entries".into(),
             surface_owner: None,
             composite: None,

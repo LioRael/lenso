@@ -58,6 +58,71 @@ fn discovers_multiple_languages_without_configuration_or_executing_code() {
 }
 
 #[test]
+fn discovers_only_declared_regular_published_resources() {
+    let root = tempfile::tempdir().unwrap();
+    bun(root.path(), "app/agent", "example.agent");
+    write(
+        root.path(),
+        "app/agent/agent/deployment.json",
+        "{\"ok\":true}",
+    );
+    let manifest = root.path().join("app/agent/package.json");
+    let mut value: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    value["lenso"]["published_resources"] = serde_json::json!([
+        {"path":"agent/deployment.json", "schema":"example.agent-deployment@1"}
+    ]);
+    fs::write(&manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+
+    let report = discover(root.path()).unwrap();
+    assert_eq!(report.candidates[0].published_resources.len(), 1);
+    assert_eq!(
+        report.candidates[0].published_resources[0].path,
+        "agent/deployment.json"
+    );
+
+    value["lenso"]["published_resources"] = serde_json::json!([
+        {"path":"../outside.json", "schema":"example.agent-deployment@1"}
+    ]);
+    fs::write(&manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(format!("{:#}", discover(root.path()).unwrap_err()).contains("relative"));
+
+    value["lenso"]["published_resources"] = serde_json::json!([
+        {"path":"agent/missing.json", "schema":"example.agent-deployment@1"}
+    ]);
+    fs::write(&manifest, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(discover(root.path()).is_err());
+}
+
+#[test]
+fn discovers_cargo_published_resources_from_engine_metadata() {
+    let root = tempfile::tempdir().unwrap();
+    rust(root.path(), "app/agent", "example.agent");
+    write(
+        root.path(),
+        "app/agent/agent/deployment.json",
+        "{\"ok\":true}",
+    );
+    let manifest = root.path().join("app/agent/Cargo.toml");
+    let source = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        source.replace(
+            "outputs = [\"wasm\", \"process\"]",
+            "outputs = [\"wasm\", \"process\"]\npublished_resources = [{ path = \"agent/deployment.json\", schema = \"example.agent-deployment@1\" }]",
+        ),
+    )
+    .unwrap();
+
+    let report = discover(root.path()).unwrap();
+    assert_eq!(report.candidates[0].published_resources.len(), 1);
+    assert_eq!(
+        report.candidates[0].published_resources[0].schema,
+        "example.agent-deployment@1"
+    );
+}
+
+#[test]
 fn optional_shared_globs_are_relative_to_app_and_remain_candidates() {
     let root = tempfile::tempdir().unwrap();
     rust(root.path(), "shared/a", "example.shared");

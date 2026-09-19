@@ -183,6 +183,7 @@ mod tests {
                 runtime: "native-linked".into(),
                 project: package.clone(),
             }],
+            published_resources: vec![],
             evidence: "test".into(),
         };
         fs::write(

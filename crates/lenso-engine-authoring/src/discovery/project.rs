@@ -1,4 +1,4 @@
-use super::{Candidate, Implementation, SourceRole, read_metadata};
+use super::{Candidate, Implementation, PublishedResource, SourceRole, read_metadata};
 use crate::{
     bundle_archive::with_bundle_directory,
     identity::{classify_existing_plugin_id, validate_release_version},
@@ -146,6 +146,16 @@ pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candi
             }
             vec![implementation("bun", runtime, root)]
         };
+        // Cargo's `package.metadata.lenso` is parsed by the portable SDK while
+        // it packages the Plugin and deliberately rejects unknown runtime
+        // manifest fields. App-only publication declarations therefore live in
+        // Engine's existing `lenso-cli` metadata. Bun has no separate SDK
+        // manifest parser, so its `lenso` object remains the owner.
+        let resource_metadata = if format == "cargo" {
+            value.pointer("/package/metadata/lenso-cli")
+        } else {
+            Some(metadata)
+        };
         found.push(Candidate {
             composite: None,
             surface_owner: None,
@@ -156,6 +166,10 @@ pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candi
             format: format.to_owned(),
             role,
             implementations,
+            published_resources: resource_metadata
+                .map(|metadata| published_resources(root, metadata))
+                .transpose()?
+                .unwrap_or_default(),
             evidence: "source_metadata_only".to_owned(),
         });
     }
@@ -166,6 +180,81 @@ pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candi
         );
     }
     Ok(found.pop())
+}
+
+fn published_resources(root: &Path, metadata: &Value) -> anyhow::Result<Vec<PublishedResource>> {
+    let declared = metadata
+        .get("published_resources")
+        .cloned()
+        .unwrap_or_else(|| Value::Array(Vec::new()));
+    let resources: Vec<PublishedResource> = serde_json::from_value(declared)
+        .context("Plugin published_resources must be an array of resource declarations")?;
+    if resources.len() > 64 {
+        bail!("Plugin declares more than 64 published resources");
+    }
+
+    let canonical_root = fs::canonicalize(root)
+        .with_context(|| format!("resolve Plugin project {}", root.display()))?;
+    let mut paths = BTreeSet::new();
+    let mut total = 0_u64;
+    for resource in &resources {
+        if !paths.insert(resource.path.clone()) {
+            bail!("duplicate published resource path `{}`", resource.path);
+        }
+        if !valid_schema(&resource.schema) {
+            bail!("invalid published resource schema `{}`", resource.schema);
+        }
+        let relative = Path::new(&resource.path);
+        if resource.path.is_empty()
+            || relative.is_absolute()
+            || relative
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            bail!(
+                "published resource path must be a nonempty relative regular-file path: {}",
+                resource.path
+            );
+        }
+
+        let mut current = canonical_root.clone();
+        for component in relative.components() {
+            current.push(component.as_os_str());
+            let metadata = fs::symlink_metadata(&current)
+                .with_context(|| format!("inspect published resource {}", current.display()))?;
+            if metadata.file_type().is_symlink() {
+                bail!(
+                    "published resource path cannot traverse a symbolic link: {}",
+                    resource.path
+                );
+            }
+        }
+        let metadata = fs::symlink_metadata(&current)?;
+        if !metadata.file_type().is_file() {
+            bail!(
+                "published resource must be a regular file: {}",
+                resource.path
+            );
+        }
+        total = total
+            .checked_add(metadata.len())
+            .context("published resource size overflow")?;
+        if total > 16 * 1024 * 1024 {
+            bail!("published resources exceed 16 MiB");
+        }
+    }
+    Ok(resources)
+}
+
+fn valid_schema(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.trim() == value
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || matches!(byte, b'.' | b'-' | b'_' | b'@' | b'/')
+        })
 }
 
 pub(super) fn document(path: &Path) -> anyhow::Result<Value> {
@@ -404,6 +493,7 @@ pub(super) fn bundle(path: &Path, role: SourceRole) -> anyhow::Result<Candidate>
         format: "bundle".to_owned(),
         role,
         implementations,
+        published_resources: Vec::new(),
         evidence: "verified_bundle_not_admitted".to_owned(),
     })
 }

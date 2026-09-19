@@ -66,7 +66,24 @@ pub struct Candidate {
     pub format: String,
     pub role: SourceRole,
     pub implementations: Vec<Implementation>,
+    /// Files declared by this selected Plugin source for publication alongside
+    /// the App distribution. They are data artifacts, never runtime Plugin
+    /// resources or implicit executable entrypoints.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub published_resources: Vec<PublishedResource>,
     pub evidence: String,
+}
+
+/// One bounded, schema-labelled source file that an App build publishes as
+/// immutable distribution data. Consumers select and interpret schemas; the
+/// App preset only copies and hashes the declared bytes.
+#[derive(Clone, Debug, serde::Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublishedResource {
+    /// Relative regular-file path inside the Plugin project.
+    pub path: String,
+    /// Consumer-owned schema identifying the resource payload.
+    pub schema: String,
 }
 
 #[derive(Debug, Serialize)]
