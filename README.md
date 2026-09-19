@@ -3,6 +3,10 @@
 The CLI for authoring Plugins and changing an App through its `plugins/`
 directory.
 
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for fork, Issue, durable patch, review, and candidate-first landing guidance.
+
 ## Install
 
 ```sh

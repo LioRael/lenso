@@ -1,0 +1,3 @@
+# Land Changes
+
+Use [CONTRIBUTING.md](../../../CONTRIBUTING.md) as the human contract. Landing is candidate-first: review the final diff, push one unique `delta/verify/<task>/<attempt>` ref, and accept only the `quality` run triggered by that ref at the exact candidate SHA. Fetch `origin/main` again, then normally fast-forward the exact verified SHA only if the destination is unchanged; otherwise integrate and repeat review and candidate CI. Read back the remote SHA and required status. Never force-push, publish packages, create releases, or treat `/land` as a universal shell command or permission grant.

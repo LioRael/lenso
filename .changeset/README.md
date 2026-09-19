@@ -1,10 +1,10 @@
 # Changesets
 
 Run `pnpm changeset` for every user-facing npm CLI package change. The
-Changesets workflow creates the version pull request; merging it builds the
-four platform binaries and publishes `@lenso/cli` through npm Trusted
-Publishing.
+Changesets workflow is currently dispatch-only: it builds and inspects the four
+platform binaries but does not create a version pull request or publish
+`@lenso/cli`. Publishing requires a separately authorized maintainer change.
 
-Configure the npm Trusted Publisher for `@lenso/cli` before the first live
-publish after this migration. Cargo publication is handled independently by
-Release-plz.
+Configure the npm Trusted Publisher for `@lenso/cli` before any future live
+publish. Cargo publication is handled independently by the read-only Release-plz
+dry-run workflow.

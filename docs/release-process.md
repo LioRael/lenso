@@ -6,24 +6,15 @@ nonce, or receipt channel.
 
 ## Cargo crate
 
-Release-plz runs on pushes to `main`:
-
-1. `release-pr` opens or updates a release pull request for changed workspace crates.
-2. `release` publishes the version from a merged release pull request through
-   crates.io Trusted Publishing and creates a `<package>@<version>` tag.
-
-Merge the generated PR with its `release` label intact, keep its
-`release-plz-` source-branch prefix, and do not customize the final squash
-subject. Release-plz verifies that the `main` commit is associated with a PR
-whose source branch has that prefix; a generic recovery PR can therefore
-produce a successful workflow that correctly skips publication. For a
-one-commit recovery PR, use the same branch prefix and name the commit
-`chore: release` so GitHub preserves the generated release-PR identity.
+Release-plz is currently dispatch-only and read-only. Its workflow runs
+`release --dry-run` to inspect pending workspace releases; it does not open a
+release pull request, publish crates, or create tags. A separately authorized
+maintainer change must restore those operations after this rollout.
 
 The crates.io registry is the source of truth for existing versions. Public
-versions, tags, and the historical `CHANGELOG.md` are not rewritten. Configure
-a crates.io Trusted Publisher for each package (`lenso-cli`) before its first live publish
-after this migration; no long-lived `CARGO_REGISTRY_TOKEN` is used.
+versions, tags, and the historical `CHANGELOG.md` are not rewritten. When live
+publication is explicitly reauthorized, configure a crates.io Trusted Publisher
+for each package (`lenso-cli`) and use no long-lived `CARGO_REGISTRY_TOKEN`.
 
 ## npm distribution
 
@@ -33,7 +24,12 @@ Create a changeset for every user-facing npm distribution change:
 pnpm changeset
 ```
 
-The Changesets workflow creates a version pull request. After it is merged,
+The Changesets workflow is currently dispatch-only and builds/inspects the
+platform payload. It does not create a version pull request or publish. A
+separately authorized maintainer change must restore that release boundary.
+
+Historically, the Changesets workflow created a version pull request. After it
+was merged,
 the workflow builds `darwin-arm64`, `darwin-x64`, `linux-x64`, and `win32-x64`
 artifacts, verifies the npm payload, and publishes `@lenso/cli` through npm
 Trusted Publishing. The Cargo and npm versions are separate streams; the npm
@@ -73,40 +69,13 @@ Cross-repository compatibility is proven by SemVer requirements, contracts,
 and focused integration checks. Do not restore the retired `lenso-release`
 runtime or a shared release channel to coordinate the two package streams.
 
-## Generated release PR checks
+## Release boundary
 
-Release PRs use the repository `GITHUB_TOKEN`; no dedicated Release App or
-central coordinator is required. Keep Actions pull-request creation enabled and
-retain the workflow's scoped `contents: write` and `pull-requests: write` permissions.
-Registry publication continues to use the repository's own OIDC workflow.
-
-GitHub places workflows for `github-actions[bot]` pull requests behind an
-[approval gate](https://github.blog/changelog/2026-06-11-bot-created-pull-requests-can-run-workflows-if-approved/).
-During delivery:
-
-1. Review the generated version/lockfile changes and record the PR's current head SHA.
-2. Open the pending CI run for that same head and use **Approve and run**.
-3. Wait for all required checks on the reviewed head before merging. If the bot
-   updates the PR, review the new head and approve its pending runs again.
-
-`action_required` and an expired approval are delivery blockers, not executed
-test failures. Approving CI does not approve a merge or publication. Do not bypass
-required checks or dispatch a publisher to compensate for a pending PR approval.
-
-## Publication event recovery
-
-If an authorized release merge does not produce the expected `main` publisher
-run, dispatch the same reviewed Trusted Publisher workflow against `main`
-instead of creating an empty commit or using a local registry token:
-
-```sh
-gh workflow run release-plz.yml --ref main
-gh workflow run release-changesets.yml --ref main
-```
-
-Inspect the exact `main` commit and public registry state before dispatching.
-The manual entry points run the same jobs, permissions, package checks, and OIDC
-publish steps as the normal push path.
+The release workflows have no push-to-`main` trigger and no package publication
+path in this rollout. Maintainers may dispatch the read-only inspections after
+review, but dispatching them does not approve a release. Restoring release PR
+creation, registry publication, OIDC/environment identities, or version/tag
+creation requires a separately reviewed and authorized change.
 
 ## Engine extraction
 

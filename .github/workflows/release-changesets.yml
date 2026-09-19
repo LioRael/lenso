@@ -2,25 +2,13 @@ name: Changesets
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".changeset/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "contracts/**"
-      - "docs/migration-plugin-authoring.md"
-      - "src/**"
-      - "templates/**"
-      - "bin/**"
-      - "tsconfig.json"
-      - "scripts/check-npm-publish.mjs"
-      - "scripts/check-npm-shim.mjs"
-      - "scripts/check-shim-generated.mjs"
-      - "scripts/package-npm.mjs"
-      - ".github/workflows/release-changesets.yml"
+    inputs:
+      confirm_build:
+        description: Run the packaging inspection jobs (never publishes)
+        required: true
+        type: boolean
+        default: true
+  # Deliberately no push trigger: this workflow does not publish.
 
 permissions: {}
 
@@ -30,6 +18,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ inputs.confirm_build == true }}
     name: Build ${{ matrix.tag }}
     runs-on: ${{ matrix.os }}
     permissions:
@@ -109,53 +98,3 @@ jobs:
           name: lenso-cli-${{ matrix.tag }}
           path: vendor
           if-no-files-found: error
-
-  release:
-    name: Publish @lenso/cli
-    runs-on: ubuntu-24.04
-    needs: build
-    permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Set up pnpm
-        uses: pnpm/action-setup@f2b2b233b538f500472c7274c7012f57857d8ce0 # v4
-        with:
-          version: 11.7.0
-          run_install: false
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v6
-        with:
-          node-version: 24.18.0
-          cache: pnpm
-      - name: Install npm workspace dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Download npm distribution binaries
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: lenso-cli-*
-          path: vendor
-          merge-multiple: true
-      - name: Verify npm package payload
-        run: |
-          chmod +x vendor/darwin-arm64/lenso vendor/darwin-x64/lenso vendor/linux-x64/lenso
-          npm run check:npm-shim
-          npm run check:npm-publish
-          npm pack --dry-run --ignore-scripts
-      - name: Create version PR or publish merged version
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          publish: pnpm release
-          createGithubReleases: false
-        env:
-          NPM_CONFIG_IGNORE_SCRIPTS: "true"

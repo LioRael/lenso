@@ -2,55 +2,30 @@ name: Release-plz
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
+# This rollout deliberately provides inspection only. Publication and release PR
+# creation require a separately authorized maintainer change.
 permissions: {}
 
 jobs:
-  release-plz-release:
-    name: Release-plz release
+  release-plz-dry-run:
+    name: Release-plz dry run
     if: ${{ github.repository_owner == 'LioRael' }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      pull-requests: read
-      id-token: write
+      contents: read
     steps:
-      - &checkout
-        name: Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
           persist-credentials: false
-      - &install-rust
-        name: Install Rust toolchain
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
           toolchain: 1.94.0
-      - name: Publish released crate
+      - name: Inspect pending releases
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  release-plz-pr:
-    name: Release-plz PR
-    if: ${{ github.repository_owner == 'LioRael' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      pull-requests: write
-    concurrency:
-      group: release-plz-${{ github.ref }}
-      cancel-in-progress: false
-    steps:
-      - *checkout
-      - *install-rust
-      - name: Create release PR
-        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
-        with:
-          command: release-pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          dry_run: true

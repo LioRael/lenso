@@ -1,9 +1,10 @@
 name: quality
 
 on:
-  pull_request:
   push:
-    branches: [main]
+    branches:
+      - "delta/verify/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -57,24 +58,12 @@ jobs:
       - name: Detect CLI crate payload changes
         id: cli-crate
         shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          if git diff --quiet "$BASE_SHA" HEAD -- \
-            Cargo.toml Cargo.lock README.md contracts docs/migration-plugin-authoring.md src crates; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-      # Release PRs run after their pinned provider crates are published.
-      # Ordinary CLI payload changes retain a package-content gate here.
+          # Candidate refs and explicit dispatches are full proofs.
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      # Candidate proofs always retain the package-content gate.
       - name: Package CLI payload
-        if: ${{ steps.cli-crate.outputs.changed == 'true' && !startsWith(github.head_ref, 'release-plz-') }}
+        if: ${{ steps.cli-crate.outputs.changed == 'true'  }}
         run: cargo package --locked --workspace --allow-dirty --no-verify
 
   windows-authoring:
