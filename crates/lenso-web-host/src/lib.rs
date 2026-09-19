@@ -473,6 +473,8 @@ impl NativeWebHost {
     ) -> Self {
         let plugin_id = plugin_id.into();
         let instance_key = instance_key.into();
+        let dependency_selection_adopted = self.root.dependency_selection_adopted();
+        let dependency_choices = self.root.dependency_choices().to_vec();
         let mut instances = self.root.instances().to_vec();
         if let Some(existing) = instances.iter_mut().find(|instance| {
             instance.id().plugin_id() == plugin_id && instance.id().instance_key() == instance_key
@@ -484,11 +486,15 @@ impl NativeWebHost {
                 PluginRootInstance::new(plugin_id, instance_key).with_configuration(configuration),
             );
         }
-        self.root = PluginRootSnapshot::new(
+        let mut root = PluginRootSnapshot::new(
             self.root.releases().to_vec(),
             instances,
             self.root.disabled().to_vec(),
         );
+        if dependency_selection_adopted {
+            root = root.with_dependency_choices(dependency_choices);
+        }
+        self.root = root;
         self
     }
 }
@@ -1050,6 +1056,15 @@ connection: close\r\n\
             running.shutdown().await.unwrap();
         }))
         .await;
+    }
+
+    #[test]
+    fn enabling_a_plugin_preserves_adopted_dependency_selection() {
+        let root = PluginRootSnapshot::new([], [], []).with_dependency_choices(Vec::new());
+        let host = NativeWebHost::new().root(root).plugin::<GreetingsHttp>();
+
+        assert!(host.root.dependency_selection_adopted());
+        assert!(host.root.dependency_choices().is_empty());
     }
 
     #[test]
