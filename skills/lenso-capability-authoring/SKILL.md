@@ -10,6 +10,10 @@ provider's package, storage, process, or concrete type.
 
 ## Workflow
 
+For source-App contract scaffolding and automatic regeneration, read
+[local generation](references/local-generation.md). Keep the role, compatibility
+and generated-projection rules below as the contract authority.
+
 1. **Resolve contract ownership.** Identify the consumer goal, eligible
    providers, every real consumer, current Descriptor or local Interface,
    package owner, generated-file boundary, previously accepted version, and

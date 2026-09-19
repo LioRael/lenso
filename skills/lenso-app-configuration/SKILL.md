@@ -1,6 +1,6 @@
 ---
 name: lenso-app-configuration
-description: Change one Lenso App through its visible plugins/ Plugin Root. Use for adding, configuring, disabling, enabling, or removing Plugin Instances and inspecting the Host-derived App; the App owner never authors bindings, implementation selection, or a Plan.
+description: Create or change a Lenso source App, local Plugin discovery, optional support or precompiled development Host; configure and inspect an existing App through its plugins/ Plugin Root. The App owner never authors bindings, implementation selection, or a Plan.
 ---
 
 # Lenso App Configuration
@@ -11,6 +11,11 @@ The App owner owns one strict `plugins/` directory. Resolution derives all
 bindings and the immutable Plan from those two inputs.
 
 ## Workflow
+
+For a source App, local discovery, optional support or a precompiled development
+Host, first follow [local development](references/local-development.md).
+That branch builds the Host authority before inspecting its distribution.
+Use the workflow below for an existing Host-derived Plugin Root.
 
 1. **Locate both authorities.** Read repository instructions, the generated
    `.lenso/host-catalog.json`, `plugins/`, package manifests and locks, Plugin

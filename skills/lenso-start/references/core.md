@@ -20,6 +20,15 @@ translation of the same portable Interface, use a runtime seam.
 
 ## Common sequences
 
+- **Local source App / no-Rust Console:** App configuration's local development
+  branch first; Plugin authoring's conventions branch for pages, services or
+  commands. Confirm the supplied build/kit because local implementation does
+  not prove registry publication.
+- **Generic file processing:** runtime extension's Engine branch for processing
+  infrastructure; Plugin authoring for an optional processor's behavior.
+- **Local Capability iteration:** Capability authoring's local generation branch,
+  then the provider/consumer workflow.
+
 - **First Plugin:** Plugin authoring, then App configuration when a real Host
   must select it.
 - **New collaboration role:** Capability authoring, then Plugin authoring for

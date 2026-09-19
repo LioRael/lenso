@@ -1,6 +1,6 @@
 ---
 name: lenso-runtime-extension
-description: Implement or change Lenso host mechanics through a Runtime Driver, Execution Adapter, Host/Runner, implementation-selection policy, App Generation controller, process/wire boundary, or lane integration. Use when the concern executes or switches Plugin graphs rather than owning removable product behavior.
+description: Implement Lenso Engine processing and embedding, or host mechanics through a Runtime Driver, Execution Adapter, Host/Runner, App Generation controller, process/wire boundary or lane integration. Use for generic authoring/execution machinery; route removable convention behavior to Plugin authoring.
 ---
 
 # Lenso Runtime Extension
@@ -9,6 +9,10 @@ Extend how Plugins run without turning host machinery into product Plugins or
 moving host/product policy into the portable Kernel.
 
 ## Workflow
+
+For convention processing, authoring sessions or embedding DX outside an App,
+read [the Engine boundary](references/engine.md) first. Engine is an independent
+authoring layer; file conventions do not belong in the CLI or portable Kernel.
 
 1. **Classify the seam.** Apply
    [runtime seams](references/runtime-seams.md). Name the host facility being
