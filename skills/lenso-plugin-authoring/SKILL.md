@@ -1,6 +1,6 @@
 ---
 name: lenso-plugin-authoring
-description: Implement or change removable Lenso product behavior as one Plugin Contract and its supported executable implementations. Use for linked Rust, portable Rust, or Bun Plugin behavior, lifecycle, packaging, conformance, and deletion proof; route App-owned configuration and generic Host mechanics elsewhere.
+description: Implement removable Lenso behavior through linked Rust, portable Rust, Bun, or selected file conventions for CLI commands, App Console pages/services and Agent Tools. Own Plugin contracts, lifecycle, packaging and deletion proof; route App configuration and generic Engine/Host mechanics elsewhere.
 ---
 
 # Lenso Plugin Authoring
@@ -22,7 +22,9 @@ a Host mechanism, not a second product type.
    final authorization, provided and required Capabilities, configuration,
    resources, and first observable behavior. Use `lenso-business-planning` if
    any fact still has two plausible owners.
-3. **Choose one shipped authoring path.** Read exactly one path first:
+3. **Choose one available authoring path.** Read exactly one path first:
+   - [optional file conventions](references/paths/conventions.md) for CLI
+     commands, App Console pages/services, or Agent Tool source entries;
    - [portable Rust Agent Tool](references/paths/portable-rust.md) for the CLI
      scaffold and Wasm/Process Release;
    - [linked native Rust](references/paths/linked-rust.md) for a Host-linked
