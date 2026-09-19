@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0074 record the accepted architecture decisions for Lenso
+ADRs 0030 through 0075 record the accepted architecture decisions for Lenso
 vNext, subject to their supersession and explicit adoption rules. Acceptance is
 not evidence of shipped implementation; 0073 and 0074 still require delivery.
 Start with
@@ -89,6 +89,11 @@ failure policy after readiness, retaining strict startup. It amends ADRs 0032,
 The [approved authoring baseline](../proposals/2026-09-04-plugin-usage-walkthrough.md)
 is the design entrypoint. [Issue #695](https://github.com/LioRael/lenso/issues/695)
 tracks implementation specifications and delivery across the owning repositories.
+
+[`0075-discover-local-sources-as-generated-host-input.md`](0075-discover-local-sources-as-generated-host-input.md)
+adopts local source discovery as generated Host authoring input, with explicit
+shared-source adoption and disableable App-owned defaults. Existing custom Host
+policies remain unchanged; end-to-end delivery is tracked in issue #727.
 
 ## Legacy decisions
 
