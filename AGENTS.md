@@ -1,6 +1,7 @@
 # Agent instructions
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before preparing a contribution. Delta, AI, editor integrations, other agents, and plain Git are optional paths; do not assume `/land` is a shell command or a permission grant. Maintainers review untrusted workflow and executable-script changes before credentials. Candidate CI and a same-SHA normal fast-forward are required for landing; see [.agents/skills/land/SKILL.md](.agents/skills/land/SKILL.md).
+A Delta-managed checkout is used directly; do not create a nested Worktrunk worktree inside it. Worktrunk instructions apply to Codex-managed workspaces, not this checkout.
 
 Before planning or changing a release, read the repository-local
 [`docs/release-process.md`](docs/release-process.md). Registry publication still
