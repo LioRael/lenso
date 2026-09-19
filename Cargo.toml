@@ -9,8 +9,10 @@ members = [
     "crates/lenso-http-egress-plugin",
     "crates/lenso-http-auth",
     "crates/lenso-web-ingress-plugin",
+    "crates/lenso-web-host",
     "crates/lenso-openapi-plugin",
     "examples/greetings-http-plugin",
+    "examples/greetings-web-app",
     "examples/observe-sample-web-app",
     "tests/fixtures/query-endpoint-plugin",
     "tests/fixtures/http-parity-plugin",
@@ -28,13 +30,13 @@ rust-version = "1.94"
 bytes = "1.12"
 futures = "0.3"
 http = "1"
-lenso = { version = "0.5.17" }
+lenso = { version = "0.5.21" }
 lenso-app-plan = { version = "0.4.1" }
 lenso-contract-authoring = { version = "0.1.1" }
 lenso-contract-runtime = { version = "0.2.0" }
 lenso-kernel = { version = "0.3.6" }
-lenso-native-adapter = { version = "0.3.13" }
-lenso-native-adapter-macros = "0.2.4"
+lenso-native-adapter = { version = "0.3.14" }
+lenso-native-adapter-macros = "0.2.5"
 lenso-plugin-authoring = { version = "0.2.0" }
 lenso-runner = { version = "0.2.13" }
 proc-macro2 = "1.0"

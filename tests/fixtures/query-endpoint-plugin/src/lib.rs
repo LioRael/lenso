@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 #[lenso::plugin]
 #[derive(Clone, Debug, Default)]
-struct OrderSearchHttp {}
+pub struct OrderSearchHttp {}
 
 #[derive(Debug, Deserialize)]
 struct SearchFilter {
@@ -11,13 +11,13 @@ struct SearchFilter {
 }
 
 #[endpoint]
+#[allow(clippy::unused_async, clippy::unused_async_trait_impl)]
 impl OrderSearchHttp {
     #[query("orders.search", "/orders/search")]
     async fn search(
         &self,
         Json(filter): Json<SearchFilter>,
     ) -> Result<HandleResponse, EndpointHandleInvocationError> {
-        std::future::ready(()).await;
         Ok(lenso_capability_http_endpoint::response::json(
             lenso_capability_http_endpoint::response::StatusCode::OK,
             &serde_json::json!({ "term": filter.term }),

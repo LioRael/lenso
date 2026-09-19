@@ -92,9 +92,30 @@ impl WebIngressEventFactory {
         self
     }
 
+    /// Shares one Host-owned middleware handle with this factory.
+    ///
+    /// This is used by builders that configure native and event factories from
+    /// one immutable middleware list. The handle remains local to the runtime
+    /// lane and is not a cross-thread transport boundary.
+    #[must_use]
+    pub fn with_shared_middleware(mut self, middleware: Rc<dyn WebIngressMiddleware>) -> Self {
+        self.middleware.push(middleware);
+        self
+    }
+
     #[must_use]
     pub fn with_diagnostics(mut self, diagnostics: impl WebIngressDiagnostics + 'static) -> Self {
         self.diagnostics = Rc::new(diagnostics);
+        self
+    }
+
+    /// Shares one Host-owned diagnostics handle with another Ingress factory.
+    ///
+    /// This keeps native and event Hosts on the same observer without changing
+    /// the diagnostics contract or creating a second observer instance.
+    #[must_use]
+    pub fn with_shared_diagnostics(mut self, diagnostics: Rc<dyn WebIngressDiagnostics>) -> Self {
+        self.diagnostics = diagnostics;
         self
     }
 

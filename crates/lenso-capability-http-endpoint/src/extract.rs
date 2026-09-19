@@ -122,6 +122,80 @@ where
     }
 }
 
+/// The raw request body.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Body(pub crate::Bytes);
+
+impl<P> FromRequest<P> for Body
+where
+    P: ?Sized,
+{
+    fn from_request<'a>(
+        _provider: &'a P,
+        _context: &'a mut InvocationContext,
+        request: &'a HandleRequest,
+    ) -> ExtractorFuture<'a, Self> {
+        Box::pin(futures::future::ready(Ok(Self(request.body.clone()))))
+    }
+}
+
+/// Request headers in arrival order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Headers {
+    values: Vec<(String, String)>,
+}
+
+impl Headers {
+    /// Returns the first header value matching `name`, ignoring ASCII case.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.values
+            .iter()
+            .find(|(header, _)| header.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+}
+
+impl<P> FromRequest<P> for Headers
+where
+    P: ?Sized,
+{
+    fn from_request<'a>(
+        _provider: &'a P,
+        _context: &'a mut InvocationContext,
+        request: &'a HandleRequest,
+    ) -> ExtractorFuture<'a, Self> {
+        Box::pin(futures::future::ready(Ok(Self {
+            values: request
+                .headers
+                .iter()
+                .map(|header| (header.name.clone(), header.value.clone()))
+                .collect(),
+        })))
+    }
+}
+
+impl<P, T> FromRequest<P> for Option<Json<T>>
+where
+    P: ?Sized,
+    T: DeserializeOwned + 'static,
+{
+    fn from_request<'a>(
+        provider: &'a P,
+        context: &'a mut InvocationContext,
+        request: &'a HandleRequest,
+    ) -> ExtractorFuture<'a, Self> {
+        if request.body.as_ref().is_empty() {
+            return Box::pin(futures::future::ready(Ok(None)));
+        }
+        Box::pin(async move {
+            Json::<T>::from_request(provider, context, request)
+                .await
+                .map(Some)
+        })
+    }
+}
+
 fn extract_json<T>(request: &HandleRequest) -> Result<Json<T>, ExtractorRejection>
 where
     T: DeserializeOwned,
@@ -195,4 +269,82 @@ fn invalid_path() -> ExtractorRejection {
         "The route path parameters are not valid for this endpoint.",
     )
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use lenso_kernel::{CancellationToken, InvocationContext};
+    use serde::Deserialize;
+
+    use super::*;
+    use crate::{Bytes, HandleRequest, HandleRequestHeadersItem};
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Payload {
+        name: String,
+    }
+
+    fn context() -> InvocationContext {
+        InvocationContext::new(1, None, CancellationToken::new())
+    }
+
+    fn request(body: &[u8], content_type: Option<&str>) -> HandleRequest {
+        HandleRequest {
+            body: Bytes::from(body.to_vec()),
+            credential: None,
+            headers: content_type
+                .map(|value| {
+                    vec![HandleRequestHeadersItem {
+                        name: "content-type".to_owned(),
+                        value: value.to_owned(),
+                    }]
+                })
+                .unwrap_or_default(),
+            method: "POST".to_owned(),
+            path: "/items".to_owned(),
+            path_parameters: Vec::new(),
+            query: None,
+            request_id: "extract-1".to_owned(),
+            route_id: "items.create".to_owned(),
+        }
+    }
+
+    #[test]
+    fn body_and_headers_copy_the_portable_request() {
+        let request = request(b"raw", Some("text/plain"));
+        let mut context = context();
+        let body =
+            futures::executor::block_on(Body::from_request(&(), &mut context, &request)).unwrap();
+        let headers =
+            futures::executor::block_on(Headers::from_request(&(), &mut context, &request))
+                .unwrap();
+        assert_eq!(body.0.as_ref(), b"raw");
+        assert_eq!(headers.get("Content-Type"), Some("text/plain"));
+    }
+
+    #[test]
+    fn optional_json_treats_an_empty_body_as_absent() {
+        let request = request(b"", None);
+        let mut context = context();
+        let value = futures::executor::block_on(Option::<Json<Payload>>::from_request(
+            &(),
+            &mut context,
+            &request,
+        ))
+        .unwrap();
+        assert_eq!(value, None);
+    }
+
+    #[test]
+    fn optional_json_still_rejects_invalid_payloads() {
+        let request = request(b"{", Some("application/json"));
+        let mut context = context();
+        let error = futures::executor::block_on(Option::<Json<Payload>>::from_request(
+            &(),
+            &mut context,
+            &request,
+        ))
+        .unwrap_err();
+        assert!(matches!(error, ExtractorRejection::Response(_)));
+    }
 }

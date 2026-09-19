@@ -25,6 +25,7 @@ route registry.
 - `lenso-http-egress-plugin`
 - `lenso-openapi-plugin`
 - `lenso-web-ingress-plugin`
+- `lenso-web-host`
 
 `lenso-http-egress-plugin` and `lenso-openapi-plugin` use the ordinary source-first native
 authoring path: struct Plugins declare configuration, typed Capability Ports,
@@ -181,8 +182,10 @@ The supported method attributes are `get`, `post`, `put`, `patch`, `delete`,
 `http_endpoint!` remains available for existing providers and generated source
 that prefers one explicit route table.
 
-Attribute-authored handlers may use `Path<T>`, `QueryParams<T>`, `Json<T>`, and
-`RequestId` extractors. Middleware on the `impl` applies to every route;
+Attribute-authored handlers may use `Path<T>`, `QueryParams<T>`, `Json<T>`,
+`Option<Json<T>>`, `Body`, `Headers`, and `RequestId` extractors. `Body` preserves
+raw bytes, while `Headers::get` performs case-insensitive lookup. Middleware on
+the `impl` applies to every route;
 route-owned middleware follows it, before extraction:
 
 ```rust,ignore
@@ -216,6 +219,65 @@ method/path matching, path-parameter extraction, semantic path-shape and
 cross-provider collision detection, and transport limits. Endpoint handlers
 own authentication orchestration, request decoding, business Capability calls,
 and intentional HTTP responses.
+
+A linked native Host that only needs Ingress plus the Endpoint Plugins in the
+binary can skip a handwritten Plan:
+
+```rust,ignore
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), lenso_web_host::WebHostError> {
+    lenso_web_host::NativeWebHost::new()
+        .plugin::<GreetingsHttp>()
+        .bind("127.0.0.1:8080".parse().unwrap())
+        .run()
+        .await
+}
+```
+
+```sh
+cargo run -p lenso-web-greetings-app-example
+```
+
+`NativeWebHost` is a Web Host preset. Inventory admits linked Factories.
+`.plugin::<T>()` selects a default Instance; `.plugin_with` / `.instance` pass
+configuration; `.factory` installs a hand-written native Factory;
+`.with_ingress_config` supplies limits, deadlines, cookies, and WebSocket policy;
+`.with_middleware` adds one Ingress middleware chain; `.with_diagnostics` adds
+one Host-owned observer for Endpoint failures; `.with_tower_middleware` /
+`.with_tower_layer` adapt a Tower pre-dispatch policy; `.with_adapter` adds
+Bun/WASI/process Adapters. Ingress is a Host default.
+Enabled HTTP, stream, and WebSocket Endpoint providers are bound to it.
+The middleware chain and diagnostics observer are shared by native and
+`start_event` Hosts. Middleware runs after transport normalization and unwinds
+response hooks in reverse order. A diagnostics observer sees only trusted
+request/route/provider identity and the internal Runtime Failure; it cannot
+change routing or the HTTP response. A Tower policy receives a cloned normalized
+request and returns `Continue` or `Respond`;
+it does not replace Ingress's streaming/WebSocket service. Linking a crate
+without `.plugin` does not start it. Unique Capability
+requirements still derive. Call `start` from an existing `LocalSet` when a
+test needs the bound address. For route-contract tests, `start_event` exposes
+the same ingress behavior without opening a TCP socket:
+
+```rust,ignore
+let app = NativeWebHost::new().plugin::<GreetingsHttp>().start_event().await?;
+let response = app.handle(Request::get("/missing").body(Bytes::new())?).await?;
+assert_eq!(response.status(), 404);
+app.shutdown().await?;
+```
+
+`handle_response` is the streaming/WebSocket-capable variant when a test or
+embedded Host must preserve the response body kind instead of buffering it.
+Both running Host handles expose `route_manifest()` after activation, so route
+contract tests can assert the exact immutable dispatch surface.
+
+The Host deliberately inherits Lenso's portable local execution lane: native
+Plugin state and Endpoint futures may be `!Send`/`!Sync`, so `start` runs on a
+Tokio `current_thread` runtime and `LocalSet`. This is not a transport
+limitation to hide with an unsafe wrapper. A future native parallel lane must be
+an explicit Kernel/Driver capability (`spawn_send`) with Plan validation; it
+must not change the portable Plugin contract or force browser/WASI Plugins to
+be thread-safe.
 
 For authenticated HTTP, Ingress selects one `Authorization` credential into
 `HandleRequest::credential`; it does not decide identity or permission. The
@@ -444,6 +506,13 @@ let factories = (0..lane_count)
     }))
     .collect::<Result<Vec<_>, _>>()?;
 ```
+
+The coordinator is only the transport fan-out. The native Runner must start
+`lenso_runner::ReplicatedNativeApp` with one lane-local
+`ExecutionAdapterCatalog` per declared lane and the same resolved Plan.
+`NativeWebHost` is intentionally the single-lane preset; do not call
+`NativeWebHost::start()` once per lane, because that would create independent
+listeners and bypass the Runner's cross-lane Plan validation.
 
 `HttpEgressConfig` requires at least one exact `http` or `https` origin. The
 binding and immutable origin list are the caller's outbound authority. Egress

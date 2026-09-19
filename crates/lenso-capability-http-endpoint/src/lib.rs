@@ -24,7 +24,8 @@ pub use authoring::{EndpointFuture, EndpointRoute, HttpEndpoint, MiddlewareOutco
 )]
 pub use extract::QueryParams as Query;
 pub use extract::{
-    ExtractorFuture, ExtractorRejection, FromRequest, Json, Path, QueryParams, RequestId,
+    Body, ExtractorFuture, ExtractorRejection, FromRequest, Headers, Json, Path, QueryParams,
+    RequestId,
 };
 pub use generated::*;
 pub use lenso_capability_http_endpoint_macros::{endpoint, openapi_operation};
@@ -33,8 +34,8 @@ pub use lenso_capability_http_endpoint_macros::{endpoint, openapi_operation};
 pub mod prelude {
     pub use crate as http_endpoint_contract;
     pub use crate::{
-        EndpointHandleInvocationError, HandleRequest, HandleResponse, Json, MiddlewareOutcome,
-        Path, QueryParams, RequestId, endpoint,
+        Body, EndpointHandleInvocationError, HandleRequest, HandleResponse, Headers, Json,
+        MiddlewareOutcome, Path, QueryParams, RequestId, endpoint,
         response::{IntoResponse, Problem, StatusCode},
     };
 }

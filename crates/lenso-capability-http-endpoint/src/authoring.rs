@@ -115,6 +115,8 @@ pub type EndpointFuture = NativeRequestFuture<EndpointHandle>;
 /// Prefer [`crate::http_endpoint!`] so route identifiers cannot drift between
 /// `describe` and `handle`. Implement this trait directly only when a provider needs
 /// custom dispatch while retaining the generated `EndpointProvider` behavior.
+/// Dispatch clones `Self` into a `'static` future. Shared mutable state must
+/// therefore live behind `Rc` (or another cheap `Clone`) on the Plugin struct.
 pub trait HttpEndpoint: Clone + std::fmt::Debug + 'static {
     /// The complete immutable route table for this provider.
     const ROUTES: &'static [EndpointRoute];

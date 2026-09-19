@@ -935,9 +935,9 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.5.17"
+version = "0.5.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96d775a5597992e8a686be1c68a2d04b9cbb8ad5dc6fa3584d0f207713d58a2c"
+checksum = "24bdf2bfc63312aa92beaa9fb5c50d599f61684b614eb645b475e3112b79ab58"
 dependencies = [
  "futures",
  "lenso-kernel",
@@ -1154,9 +1154,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-native-adapter"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e86e544821007fe7cc687126e7088600bf5e1f7fe8ca627a9c6f56da4bfcdac"
+checksum = "5a16bb1fd1e5da236fb6361b026b79ac11d0674254ef1ff4dfda811aa75c0e8c"
 dependencies = [
  "futures",
  "inventory",
@@ -1170,9 +1170,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-native-adapter-macros"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "556c77b2384c98892bad05f70170b629f25914825807a853d0c803d35d7f0330"
+checksum = "7eb0843f6fa2e7fc23f7d326e82f2603af47b4f0be15a54dec8b06d40d6e6f1c"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1281,13 +1281,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-web-greetings-app-example"
+version = "0.1.0"
+dependencies = [
+ "lenso-web-greetings-plugin-example",
+ "lenso-web-host",
+ "tokio",
+]
+
+[[package]]
 name = "lenso-web-greetings-plugin-example"
 version = "0.1.0"
 dependencies = [
- "futures",
  "lenso",
  "lenso-capability-http-endpoint",
  "serde",
+ "tokio",
+]
+
+[[package]]
+name = "lenso-web-host"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "futures",
+ "http",
+ "lenso-app-plan",
+ "lenso-capability-http-endpoint",
+ "lenso-capability-http-stream-endpoint",
+ "lenso-capability-websocket-endpoint",
+ "lenso-kernel",
+ "lenso-native-adapter",
+ "lenso-runner",
+ "lenso-web-greetings-plugin-example",
+ "lenso-web-ingress-plugin",
+ "lenso-web-query-endpoint-fixture",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
 ]
 
 [[package]]
