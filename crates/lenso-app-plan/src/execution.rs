@@ -1,8 +1,10 @@
 //! Execution Adapter class identities preserved in the Resolved App Plan.
 
-use std::fmt;
+use std::{collections::BTreeSet, fmt};
 
 use serde::{Deserialize, Serialize};
+
+use crate::CapabilityOperationKind;
 
 /// Stable App-local identity of one single-owner Kernel execution lane.
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -90,5 +92,157 @@ impl ExecutionClassId {
 impl fmt::Display for ExecutionClassId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
+    }
+}
+
+/// An execution-target feature that a Host Adapter explicitly declares.
+///
+/// These are target mechanics, not Plugin dependencies and not Infrastructure
+/// selections. A Host uses them while admitting an implementation; the
+/// immutable Plan remains unchanged after the selection succeeds.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ExecutionTargetCapability {
+    /// One request produces one terminal response or domain error.
+    Request,
+    /// A Capability operation opens an ordered bidirectional stream.
+    Stream,
+    /// A Capability operation publishes an ephemeral event.
+    Event,
+    /// A Host ingress can keep a WebSocket session.
+    WebSocket,
+    /// The target can supply explicit Host imports to an admitted Plugin.
+    HostImports,
+    /// The target can own a native child process lifecycle.
+    NativeProcess,
+    /// The target can admit a Wasm Component execution.
+    WasmComponent,
+    /// The target can route a remote Adapter execution.
+    Remote,
+    /// The target runs in a browser execution environment.
+    Browser,
+    /// The target runs in a Cloudflare Workers execution environment.
+    Workers,
+}
+
+impl ExecutionTargetCapability {
+    /// Every feature known to the portable V1 target-profile vocabulary, in
+    /// canonical wire order. Keep this list aligned with
+    /// `lenso.execution-target-capability-profile@1`; an unknown feature must
+    /// be represented by a later version of that contract rather than inferred
+    /// by a Host.
+    pub const ALL: [Self; 10] = [
+        Self::Browser,
+        Self::Event,
+        Self::HostImports,
+        Self::NativeProcess,
+        Self::Remote,
+        Self::Request,
+        Self::Stream,
+        Self::WasmComponent,
+        Self::WebSocket,
+        Self::Workers,
+    ];
+
+    /// Returns the exact portable feature spelling.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Request => "request",
+            Self::Stream => "stream",
+            Self::Event => "event",
+            Self::WebSocket => "websocket",
+            Self::HostImports => "host-imports",
+            Self::NativeProcess => "native-process",
+            Self::WasmComponent => "wasm-component",
+            Self::Remote => "remote",
+            Self::Browser => "browser",
+            Self::Workers => "workers",
+        }
+    }
+
+    /// Maps one portable Capability operation semantics to the required target
+    /// feature. WebSocket is a Web transport feature, so it is requested by a
+    /// Web Host rather than inferred from a generic Capability operation.
+    pub const fn for_operation_kind(kind: CapabilityOperationKind) -> Self {
+        match kind {
+            CapabilityOperationKind::Request => Self::Request,
+            CapabilityOperationKind::Stream => Self::Stream,
+            CapabilityOperationKind::Event => Self::Event,
+        }
+    }
+}
+
+/// Machine-checkable target features declared by exactly one Host Adapter.
+///
+/// An empty set is valid and fails every feature-dependent admission. This is
+/// intentional: an unknown or legacy target must not silently receive a
+/// Request, Stream, Event, or WebSocket assumption.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct ExecutionTargetCapabilities(BTreeSet<ExecutionTargetCapability>);
+
+impl ExecutionTargetCapabilities {
+    /// Creates a target profile from its complete supported feature set.
+    pub fn new(features: impl IntoIterator<Item = ExecutionTargetCapability>) -> Self {
+        Self(features.into_iter().collect())
+    }
+
+    /// Returns a profile that declares no capabilities.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// Returns whether this target explicitly supports a feature.
+    pub fn supports(&self, capability: ExecutionTargetCapability) -> bool {
+        self.0.contains(&capability)
+    }
+
+    /// Returns missing features in the caller's requirement order. This keeps
+    /// Host rejection reports actionable and intentionally retains duplicate
+    /// or future requirements rather than inventing an implicit fallback.
+    pub fn missing(
+        &self,
+        required: impl IntoIterator<Item = ExecutionTargetCapability>,
+    ) -> Vec<ExecutionTargetCapability> {
+        required
+            .into_iter()
+            .filter(|capability| !self.supports(*capability))
+            .collect()
+    }
+
+    /// Returns the complete feature set in canonical wire order.
+    pub fn features(&self) -> Vec<ExecutionTargetCapability> {
+        ExecutionTargetCapability::ALL
+            .into_iter()
+            .filter(|capability| self.supports(*capability))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_target_features_fail_closed_in_stable_order() {
+        let profile = ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]);
+
+        assert!(profile.supports(ExecutionTargetCapability::Request));
+        assert_eq!(
+            profile.missing([
+                ExecutionTargetCapability::Stream,
+                ExecutionTargetCapability::Request,
+                ExecutionTargetCapability::WebSocket,
+            ]),
+            vec![
+                ExecutionTargetCapability::Stream,
+                ExecutionTargetCapability::WebSocket,
+            ]
+        );
+        assert_eq!(
+            serde_json::to_string(&ExecutionTargetCapability::HostImports).unwrap(),
+            "\"host-imports\""
+        );
+        assert_eq!(profile.features(), vec![ExecutionTargetCapability::Request]);
     }
 }

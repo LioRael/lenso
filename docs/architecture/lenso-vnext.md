@@ -75,6 +75,14 @@ retires Module as a public behavior model, and ADR
 [0070](../adr/0070-resolve-apps-from-plugin-roots.md) retires the App Definition
 and derives Apps from Host defaults plus a Plugin Root.
 
+The Host also selects an Environment Profile and authorizes concrete resources
+for its Drivers and Execution Adapters. An Environment admits host mechanics;
+it does not select a Plugin's persistence semantics. The Plugin owns its
+private target-specific adapter, and cross-Plugin business behavior remains an
+explicit Capability binding. [ADR 0076](../adr/0076-separate-execution-environments-from-infrastructure-implementations.md)
+defines this boundary without changing App Composition, the Plan schema, or
+the Kernel input.
+
 See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.md),
 [0034](../adr/0034-make-app-composition-the-capability-binding-authority.md),
 [0045](../adr/0045-materialize-a-resolved-app-plan-before-boot.md), and
@@ -116,13 +124,15 @@ Managed tasks and resources belong to one Instance generation; restarts create a
 new generation and preserve stable consumer handles when the Adapter supports
 recreation.
 
-Accepted [ADR 0074](../adr/0074-scope-terminal-failure-to-host-essential-instances.md)
-changes terminal failure impact after readiness on explicit adoption: Host
+[ADR 0074](../adr/0074-scope-terminal-failure-to-host-essential-instances.md)
+defines terminal failure impact after readiness on explicit adoption: Host
 essential instances and their transitive required closure determine App failure.
-Strict initial startup is retained. Implementation is pending; existing Plans
-keep their prior supervision semantics until supported adoption. Accepted
-[ADR 0073](../adr/0073-name-and-persist-plugin-dependencies.md) separately adds
+Strict initial startup is retained. [ADR
+0073](../adr/0073-name-and-persist-plugin-dependencies.md) separately defines
 named requirements and preserved selections with its own compatibility boundary.
+Current implementation, release, and qualification evidence for these decisions
+is routed through the [qualification ledger](../qualification/README.md);
+acceptance alone does not change an existing Plan.
 
 Native Rust Plugins are statically linked Cargo dependencies in v1. Bun Plugins
 run through the first process Adapter, initially one process per Instance by

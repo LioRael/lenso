@@ -1,6 +1,6 @@
 # Plugin execution classes
 
-Status: current execution contract.
+Status: current execution contract, not a maturity or qualification authority.
 
 An Execution Class selects the Adapter that runs a Plugin Instance. It changes
 execution mechanics, not the Plugin's product identity or Capability contract.
@@ -36,9 +36,9 @@ The Host Catalog decides which Releases and Execution Classes are allowed. The
 resolver selects exact inputs before staging. Runtime never benchmarks,
 negotiates, or falls back to another Artifact after failure.
 
-## Current classes
+## Declared classes
 
-| Execution Class | Input | Isolation | Intended status |
+| Execution Class | Input | Isolation | Intended use |
 | --- | --- | --- | --- |
 | `lenso.native-rust@1` | Exact statically linked factory | In-process | Stable Host-linked Plugins |
 | `lenso.wasm-component@1` | Verified Component Artifact | In-process sandbox | Portable bundled Plugins |
@@ -49,6 +49,11 @@ negotiates, or falls back to another Artifact after failure.
 Support is capability- and interaction-specific. An Adapter must reject a Plan
 before readiness when it cannot implement a declared request, stream, event,
 state, cancellation, or supervision contract.
+
+This table defines contract vocabulary only. Current implementation, release,
+and Environment-plus-Infrastructure qualification evidence is recorded in the
+[qualification ledger](../qualification/README.md); no table cell is a
+standalone claim about a target combination.
 
 ## Adapter boundary
 
@@ -91,4 +96,6 @@ fails closed before the App becomes ready.
 
 See [Plugin Generation control plane](dynamic-plugins.md) for staging and
 routing and [Plugin Root and App resolution](plugin-root-resolution.md) for the
-author-facing model.
+author-facing model. See the
+[execution target capability matrix](execution-target-capability-matrix.md) for
+the owner-maintained admission facts that a selected class must supply.

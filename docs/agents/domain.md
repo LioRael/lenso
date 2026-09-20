@@ -5,7 +5,9 @@ Lenso `main` is the vNext context. Before exploring or changing the code, read:
 - [`CONTEXT.md`](../../CONTEXT.md)
 - [`docs/adr/README.md`](../adr/README.md)
 - [`docs/architecture/lenso-vnext.md`](../architecture/lenso-vnext.md)
-- the relevant ADR 0030–0070
+- the relevant ADR 0030–0076, including ADR 0076 and
+  [`execution-target-capability-matrix.md`](../architecture/execution-target-capability-matrix.md)
+  for Environment, Infrastructure, or target-admission work
 
 Use the canonical terms Host, Plugin Root, App, Plugin, Plugin Instance,
 Capability, Port, Slot, App Composition, Plan Snapshot, Plan Transition,

@@ -2,10 +2,11 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0075 record the accepted architecture decisions for Lenso
+ADRs 0030 through 0076 record the accepted architecture decisions for Lenso
 vNext, subject to their supersession and explicit adoption rules. Acceptance is
-not evidence of shipped implementation; 0073 and 0074 still require delivery.
-Start with
+not evidence of shipped implementation, release, or qualification. The
+[qualification ledger](../qualification/README.md) is the canonical current
+source for those evidence facets. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
 routing.
@@ -78,13 +79,16 @@ bindings, and role-based decisions owned by an Access Control Plugin.
 
 [`0073-name-and-persist-plugin-dependencies.md`](0073-name-and-persist-plugin-dependencies.md)
 accepts stable dependency names, Host-permitted instance choices, and durable
-Plugin Root selection. It amends ADR 0070 on explicit adoption; executable
-formats and implementation remain pending.
+Plugin Root selection. It amends ADR 0070 on explicit adoption. Current
+implementation, release, and qualification evidence is recorded separately in
+the qualification ledger.
 
 [`0074-scope-terminal-failure-to-host-essential-instances.md`](0074-scope-terminal-failure-to-host-essential-instances.md)
 accepts Host-essential instances and their required closure as the terminal
 failure policy after readiness, retaining strict startup. It amends ADRs 0032,
 0046, and 0048 on explicit adoption without silently changing existing Plans.
+Current implementation, release, and qualification evidence is recorded
+separately in the qualification ledger.
 
 The [approved authoring baseline](../proposals/2026-09-04-plugin-usage-walkthrough.md)
 is the design entrypoint. [Issue #695](https://github.com/LioRael/lenso/issues/695)
@@ -94,6 +98,11 @@ tracks implementation specifications and delivery across the owning repositories
 adopts local source discovery as generated Host authoring input, with explicit
 shared-source adoption and disableable App-owned defaults. Existing custom Host
 policies remain unchanged; end-to-end delivery is tracked in issue #727.
+
+[`0076-separate-execution-environments-from-infrastructure-implementations.md`](0076-separate-execution-environments-from-infrastructure-implementations.md)
+separates Host Environment Profiles from Plugin-private Infrastructure
+Implementations and requires qualification evidence for each exact
+Environment-plus-Infrastructure combination.
 
 ## Legacy decisions
 

@@ -17,7 +17,10 @@ mod schema;
 pub use schema::TerminalPolicy;
 
 pub use error::PlanResolutionError;
-pub use execution::{ExecutionClassId, ExecutionLaneId, ExecutionLanePlan};
+pub use execution::{
+    ExecutionClassId, ExecutionLaneId, ExecutionLanePlan, ExecutionTargetCapabilities,
+    ExecutionTargetCapability,
+};
 pub use policy::{
     CapabilityCardinality, CapabilityOperationKind, EventAdmissionPlan, PluginCriticality,
     RequestAdmissionPlan, RestartMode, RestartPolicy,

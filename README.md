@@ -150,7 +150,12 @@ checks against released core packages.
   runtime overview.
 - [`docs/architecture/lenso-authoring.md`](docs/architecture/lenso-authoring.md)
   documents project authoring and Plan resolution.
-- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0067.
+- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0076.
+- [`docs/qualification/README.md`](docs/qualification/README.md) records
+  current implementation, release, and qualification evidence by exact
+  Environment-plus-Infrastructure combination.
+- [`docs/architecture/execution-target-capability-matrix.md`](docs/architecture/execution-target-capability-matrix.md)
+  defines target-admission facts separately from qualification.
 - [`docs/roadmaps/lenso-vnext-validation.md`](docs/roadmaps/lenso-vnext-validation.md)
   records the evidence sequence.
 - [`docs/research/`](docs/research/) contains supporting research, not runtime

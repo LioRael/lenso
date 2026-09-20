@@ -72,6 +72,26 @@ forensics source; no `legacy/` directory is part of the vNext workspace.
 - **Runtime Driver** — host scheduling and monotonic-time implementation.
 - **Execution Adapter** — host-specific Plugin generation and endpoint
   implementation.
+- **Execution Environment** — the Host-selected runtime context in which an
+  Adapter admits a Plugin Instance: Native, Cloudflare Workers, or Simulated.
+  It selects host mechanics; it does not imply a storage implementation.
+- **Host Environment Profile** — the Host-owned, generated or locked selection
+  of one Execution Environment together with admitted Drivers, Adapters,
+  lifecycle, and resource-injection policy. It is a Host assembly input, not
+  App Composition, a Plugin authoring surface, or a Resolved App Plan field; it
+  does not redefine per-Plugin runtime profile or execution class metadata.
+- **Infrastructure Implementation** — a concrete backing resource such as
+  direct PostgreSQL, D1, Hyperdrive transport to PostgreSQL, or a deterministic
+  simulated store, authorized by a Host for a Plugin's private adapter.
+- **Host-authorized Infrastructure Selection** — the Host-owned authorization
+  of concrete resources that a Plugin's private adapter may use. It grants
+  resource availability and security scope, not persistence semantics,
+  Capability bindings, App Composition authority, or a new Plan field.
+- **Private Infrastructure** — target-specific adapter mechanics and backing
+  resources owned by one Plugin rather than a cross-Plugin Capability contract.
+- **Qualified Combination** — one evidence-bound tuple of subject, exact source
+  revision, Execution Environment, Infrastructure Implementation set, evidence,
+  and known limitations.
 - **Execution Lane** — one single-owner Kernel replica on its own host thread
   together with the Plugin Instances placed on it.
 - **Placement** — the Plan-declared assignment of Plugin Instances to
@@ -145,10 +165,11 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0074 record normative vNext decisions with their supersession and
-explicit adoption rules. ADRs 0073 and 0074 are accepted targets whose
-implementation and executable format support remain pending. The vNext architecture overview,
-validation roadmap, and research notes are retained beside them. Accepted
-architecture is not an implementation claim; each contract states its current
-evidence and remaining delivery gates. Removed v0.3.x implementation docs are
-not recreated in this branch.
+ADRs 0030–0076 record normative vNext decisions with their supersession and
+explicit adoption rules. Acceptance records a decision, not an implementation,
+release, or target qualification result. The
+[qualification ledger](docs/qualification/README.md) is the canonical current
+source for those evidence facets and their known limitations. The vNext
+architecture overview, validation roadmap, and research notes are retained
+beside the ADRs as context. Removed v0.3.x implementation docs are not
+recreated in this branch.

@@ -1,0 +1,532 @@
+{
+  "$schema": "./qualification-status.schema.json",
+  "schema_version": 1,
+  "records": {
+    "lenso.core.named-plugin-authoring-v2": {
+      "subject": {
+        "kind": "composition",
+        "id": "lenso.named-plugin-authoring@2",
+        "title": "Named Plugin authoring V2"
+      },
+      "design": {
+        "status": "designed",
+        "decision_refs": [
+          {
+            "repository": "LioRael/lenso",
+            "revision": "a0dcf4e57fb0db7d46f10c9f33bbf5ac8d555cab",
+            "paths": [
+              "docs/adr/0073-name-and-persist-plugin-dependencies.md",
+              "docs/adr/0074-scope-terminal-failure-to-host-essential-instances.md"
+            ]
+          }
+        ]
+      },
+      "implementation": {
+        "status": "conflicted",
+        "source_refs": [
+          {
+            "repository": "LioRael/lenso",
+            "revision": "a0dcf4e57fb0db7d46f10c9f33bbf5ac8d555cab",
+            "paths": [
+              "CONTEXT.md",
+              "docs/adr/README.md",
+              "docs/architecture/lenso-vnext.md",
+              "docs/architecture/plugin-authoring-implementation-status.md"
+            ]
+          }
+        ]
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "The cited pre-ledger core documents contain conflicting historical implementation statements; this record makes no implementation, release, or qualification assertion until an owner attaches immutable evidence."
+      ]
+    },
+    "lenso.runtime.workers-w02": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.workers-session-host@1",
+        "title": "Workers session host profile W02"
+      },
+      "design": {
+        "status": "designed",
+        "decision_refs": [
+          {
+            "repository": "LioRael/lenso-runtime-rust",
+            "revision": "a197ed7cae7fc9d54ca6712b7e1fd0e368784567",
+            "paths": [
+              "docs/design/workers-session-host-profile.md"
+            ]
+          }
+        ]
+      },
+      "implementation": {
+        "status": "implemented",
+        "source_refs": [
+          {
+            "repository": "LioRael/lenso-runtime-rust",
+            "revision": "a197ed7cae7fc9d54ca6712b7e1fd0e368784567",
+            "paths": [
+              "packages/workers-runtime/runner.mjs",
+              "packages/workers-runtime/scope.mjs",
+              "experiments/workers-g2/runner.mjs"
+            ]
+          }
+        ]
+      },
+      "releases": [],
+      "qualifications": [
+        {
+          "level": "local",
+          "combination": {
+            "environment": {
+              "id": "cloudflare-workers",
+              "classification": "local-workerd"
+            },
+            "infrastructure": [
+              {
+                "role": "workers-listener",
+                "implementation": "wrangler-workerd@4.107.0"
+              },
+              {
+                "role": "session-runtime",
+                "implementation": "workers-runtime-w02"
+              }
+            ]
+          },
+          "source_refs": [
+            {
+              "repository": "LioRael/lenso-runtime-rust",
+              "revision": "a197ed7cae7fc9d54ca6712b7e1fd0e368784567",
+              "paths": [
+                "packages/workers-runtime/runner.mjs",
+                "packages/workers-runtime/scope.mjs",
+                "experiments/workers-g2/runner.mjs"
+              ]
+            }
+          ],
+          "evidence": [
+            {
+              "kind": "test",
+              "source_ref": {
+                "repository": "LioRael/lenso-runtime-rust",
+                "revision": "a197ed7cae7fc9d54ca6712b7e1fd0e368784567",
+                "paths": [
+                  "docs/evidence/workers-w02/validation.json"
+                ]
+              },
+              "assertion": "The local-only receipt records 117 runtime tests and an external three-listener workerd matrix with 11 passing cases."
+            },
+            {
+              "kind": "document",
+              "source_ref": {
+                "repository": "LioRael/lenso-runtime-rust",
+                "revision": "a197ed7cae7fc9d54ca6712b7e1fd0e368784567",
+                "paths": [
+                  "docs/evidence/workers-w02/README.md",
+                  "docs/evidence/workers-w02/closeout.json"
+                ]
+              },
+              "assertion": "The closeout preserves the exact base and explicitly limits the result to local qualification."
+            }
+          ],
+          "known_limitations": [
+            "No deployed Cloudflare target, production traffic, external IdP, fleet capacity, physical isolation, throughput, latency, memory peak, or cost result is claimed.",
+            "The evidence applies to the cited source revision, not later runtime revisions."
+          ]
+        }
+      ],
+      "known_limitations": [
+        "This record is a local Workers lifecycle qualification, not a general Cloudflare deployment or production result."
+      ]
+    },
+    "lenso.auth.workers-g4": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.auth-workers-g4@1",
+        "title": "Auth Workers G4 representative profile"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "implemented",
+        "source_refs": [
+          {
+            "repository": "LioRael/lenso-auth-plugin",
+            "revision": "6c9f91a8d3da982970e18ad0e2c1c943d11a1777",
+            "paths": [
+              "crates/lenso-auth-oauth-flow-plugin/src/storage.rs",
+              "experiments/workers-g4/host/src/http_host.rs",
+              "experiments/workers-g4/worker.mjs"
+            ]
+          }
+        ]
+      },
+      "releases": [],
+      "qualifications": [
+        {
+          "level": "target",
+          "combination": {
+            "environment": {
+              "id": "cloudflare-workers",
+              "classification": "deployed-isolated-worker"
+            },
+            "infrastructure": [
+              {
+                "role": "auth-persistence",
+                "implementation": "cloudflare-d1-isolated-proof"
+              },
+              {
+                "role": "identity-provider",
+                "implementation": "task-owned-fixture"
+              }
+            ]
+          },
+          "source_refs": [
+            {
+              "repository": "LioRael/lenso-auth-plugin",
+              "revision": "6c9f91a8d3da982970e18ad0e2c1c943d11a1777",
+              "paths": [
+                "crates/lenso-auth-oauth-flow-plugin/src/storage.rs",
+                "experiments/workers-g4/host/src/http_host.rs",
+                "experiments/workers-g4/worker.mjs"
+              ]
+            }
+          ],
+          "evidence": [
+            {
+              "kind": "deployment",
+              "source_ref": {
+                "repository": "LioRael/lenso-auth-plugin",
+                "revision": "6c9f91a8d3da982970e18ad0e2c1c943d11a1777",
+                "paths": [
+                  "experiments/workers-g4/evidence/qualification.md",
+                  "experiments/workers-g4/evidence/provenance.json"
+                ]
+              },
+              "assertion": "The evidence identifies a deployed task-owned Worker and distinct task-owned D1 resources for the representative G4 slice."
+            },
+            {
+              "kind": "test",
+              "source_ref": {
+                "repository": "LioRael/lenso-auth-plugin",
+                "revision": "6c9f91a8d3da982970e18ad0e2c1c943d11a1777",
+                "paths": [
+                  "experiments/workers-g4/evidence/storage.json",
+                  "experiments/workers-g4/evidence/session.json",
+                  "experiments/workers-g4/evidence/failure.json",
+                  "experiments/workers-g4/evidence/egress.json"
+                ]
+              },
+              "assertion": "The representative slice records storage, session, failure, and egress exercise receipts."
+            }
+          ],
+          "known_limitations": [
+            "The evidence is a representative experimental Auth slice, not qualification for unlisted Plugins.",
+            "No production resource, production traffic, user login, multi-region latency, or capacity result is claimed.",
+            "The evidence applies to the cited proof commit and not automatically to later Auth revisions."
+          ]
+        }
+      ],
+      "known_limitations": [
+        "Target evidence is isolated and task-owned; it does not establish a production Auth rollout."
+      ]
+    },
+    "lenso.web.workers-http": {
+      "subject": {
+        "kind": "capability",
+        "id": "lenso.web-workers-http@1",
+        "title": "Workers HTTP"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Workers HTTP focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.web.workers-stream": {
+      "subject": {
+        "kind": "capability",
+        "id": "lenso.web-workers-stream@1",
+        "title": "Workers Stream"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Workers Stream focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.web.workers-websocket": {
+      "subject": {
+        "kind": "capability",
+        "id": "lenso.web-workers-websocket@1",
+        "title": "Workers WebSocket"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Workers WebSocket focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.runtime.workers-runtime": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.workers-runtime@1",
+        "title": "Workers Runtime"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "The W02 local record is a narrower session-host profile and does not establish the general Workers Runtime focus.",
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact focus."
+      ]
+    },
+    "lenso.runtime.workers-w01": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.workers-http-host@1",
+        "title": "Workers host profile W01"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for the W01 profile.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.auth.d1-storage": {
+      "subject": {
+        "kind": "capability",
+        "id": "lenso.auth-d1-storage@1",
+        "title": "Auth D1 storage"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "The narrow lenso.auth.workers-g4 record does not establish a general Auth D1 storage result.",
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact focus."
+      ]
+    },
+    "lenso.auth.postgresql-storage": {
+      "subject": {
+        "kind": "capability",
+        "id": "lenso.auth-postgresql-storage@1",
+        "title": "Auth PostgreSQL storage"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Auth PostgreSQL focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.auth.workers-d1": {
+      "subject": {
+        "kind": "composition",
+        "id": "lenso.auth-workers-d1@1",
+        "title": "Workers plus D1 Auth composition"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "The target-qualified lenso.auth.workers-g4 record is a representative isolated G4 slice, not a general Workers plus D1 composition result.",
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact general focus."
+      ]
+    },
+    "lenso.auth.workers-hyperdrive-postgresql": {
+      "subject": {
+        "kind": "composition",
+        "id": "lenso.auth-workers-hyperdrive-postgresql@1",
+        "title": "Workers plus Hyperdrive plus PostgreSQL Auth composition"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Workers plus Hyperdrive plus PostgreSQL focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.runtime.browser": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.browser-runtime@1",
+        "title": "Browser Runtime"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Browser Runtime focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.runtime.wasip2": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.wasip2-runtime@1",
+        "title": "WASIp2 Runtime"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact WASIp2 focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.runtime.bun": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.bun-runtime@1",
+        "title": "Bun"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Bun focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.runtime.process": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.process-runtime@1",
+        "title": "Process"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Process focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    },
+    "lenso.runtime.remote-adapter": {
+      "subject": {
+        "kind": "execution-profile",
+        "id": "lenso.remote-adapter@1",
+        "title": "Remote Adapter"
+      },
+      "design": {
+        "status": "not_assessed",
+        "decision_refs": []
+      },
+      "implementation": {
+        "status": "not_assessed",
+        "source_refs": []
+      },
+      "releases": [],
+      "qualifications": [],
+      "known_limitations": [
+        "No immutable owner-supplied decision, implementation, artifact, or Environment-plus-Infrastructure evidence has been attached for this exact Remote Adapter focus.",
+        "This inventory entry asserts no implementation, release, local, target, or production qualification."
+      ]
+    }
+  }
+}

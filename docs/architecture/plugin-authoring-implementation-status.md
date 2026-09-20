@@ -1,11 +1,11 @@
 # Named Plugin authoring implementation status
 
-This implementation follows ADRs 0073/0074 and the executable specification in
-[#699](https://github.com/LioRael/lenso/issues/699). The first Rust Process and
-TypeScript Bun Request delivery completed on 2026-09-05; [#695](https://github.com/LioRael/lenso/issues/695)
-records its cross-repository releases and executable evidence. Authoring V2 is
-profile-specific: this delivery does not claim TypeScript Stream/Event authoring
-or support from an Adapter that has not explicitly adopted the profile.
+This is a historical implementation-evidence companion for ADRs 0073/0074 and
+the executable specification in [#699](https://github.com/LioRael/lenso/issues/699).
+It preserves the source and issue references collected for the 2026-09-05
+authoring slice. The [qualification ledger](../qualification/README.md) is the
+only canonical current source for implementation, release, and target
+qualification claims; this page is not a product-wide maturity assertion.
 
 ## Implemented portable paths
 
@@ -44,12 +44,13 @@ or support from an Adapter that has not explicitly adopted the profile.
   only through transitive `one` requirements. Runtime supervision uses that
   closure for terminal exhaustion while still activating every selected Plugin.
 
-Old Adapters must explicitly opt into new authoring/profile pairs. Production
-Rust Process and Bun Request profiles have owner-local execution evidence;
-conformance alone does not certify another Adapter or interaction kind. Existing
-version 1 request cancellation semantics remain unchanged.
+Old Adapters must explicitly opt into new authoring/profile pairs. The
+historical references below are profile-specific owner evidence; conformance
+alone does not certify another Adapter, interaction kind, source revision, or
+target combination. Existing version 1 request cancellation semantics remain
+unchanged.
 
-## Delivery record
+## Historical delivery references
 
 - [#700](https://github.com/LioRael/lenso/issues/700) records named requirement,
   selection, Transition, dormant-choice, compatibility, and routing evidence.

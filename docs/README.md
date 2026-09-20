@@ -7,8 +7,13 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`CONTEXT.md`](../CONTEXT.md) defines vocabulary, ownership, and invariants.
 - [`architecture/lenso-vnext.md`](architecture/lenso-vnext.md) describes the
   runtime shape.
-- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0074 and the
+- [`adr/README.md`](adr/README.md) indexes normative ADRs 0030–0076 and the
   historical ADRs 0001–0029.
+- [`qualification/README.md`](qualification/README.md) is the canonical
+  current ledger for implementation, release, and qualification evidence.
+- [`qualification/release-cohorts.md`](qualification/release-cohorts.md)
+  defines exact dependency-cohort and real-install evidence without turning a
+  release candidate into a target or production claim.
 - [`roadmaps/lenso-vnext-validation.md`](roadmaps/lenso-vnext-validation.md)
   defines the implementation evidence sequence.
 - [`architecture/future-directions/distributed-plugin-runtime.md`](architecture/future-directions/distributed-plugin-runtime.md)
@@ -25,6 +30,12 @@ This directory contains the design evidence for the vNext `main` branch.
 - [`architecture/plugin-execution-classes.md`](architecture/plugin-execution-classes.md)
   defines how one Plugin model reaches native, Wasm, QuickJS, process, and
   native-library execution.
+- [`architecture/environment-infrastructure-composition.md`](architecture/environment-infrastructure-composition.md)
+  defines the Host Environment Profile and Plugin-private Infrastructure
+  boundary.
+- [`architecture/execution-target-capability-matrix.md`](architecture/execution-target-capability-matrix.md)
+  defines how target owners publish machine-checkable admission facts without
+  turning them into qualification claims.
 
 ## Historical contracts
 
@@ -41,19 +52,17 @@ remain illustrative; acceptance does not establish shipped SDK/runtime support.
 
 [ADR 0073](adr/0073-name-and-persist-plugin-dependencies.md) accepts named
 dependencies, configuration-time choice materialization, and read-only startup.
-[ADR 0074](adr/0074-scope-terminal-failure-to-host-essential-instances.md) accepts
-Host-essential terminal failure scope after readiness while retaining strict
-startup. Both require supported implementation and explicit adoption; exact
-formats and versions remain implementation-specification work.
-[Issue #695](https://github.com/LioRael/lenso/issues/695) tracks the owner-local
-delivery tasks, starting with [implementation specification #699](https://github.com/LioRael/lenso/issues/699).
+[ADR 0074](adr/0074-scope-terminal-failure-to-host-essential-instances.md)
+accepts Host-essential terminal failure scope after readiness while retaining
+strict startup. Their current implementation, release, and qualification facts
+are recorded only in the [qualification ledger](qualification/README.md), not
+in this design index.
 
-Specification #699 now records the inspected source and exact registry baseline,
-proposed delivery versions, scoped dependency routing, Rust/TS constructor and
-build interfaces, configuration publication/recovery, and execution settlement.
-Its status distinguishes specification review from implemented support. Exact
-versions and owner-local acceptance cases remain in GitHub rather than a second
-repository implementation plan.
+[Issue #695](https://github.com/LioRael/lenso/issues/695) and
+[implementation specification #699](https://github.com/LioRael/lenso/issues/699)
+remain historical design and delivery references. They are useful provenance,
+but do not replace an immutable ledger record for a particular source revision
+and target combination.
 
 The [Rust/TypeScript authoring comparison](proposals/2026-09-04-multilingual-plugin-authoring.md)
 shows one behavior in both languages, with common dependency identities,
