@@ -4,8 +4,8 @@ use proc_macro::TokenStream;
 use quote::{ToTokens, quote};
 use serde_json::{Map, Number, Value};
 use syn::{
-    Attribute, Error, FnArg, Ident, ImplItem, ItemImpl, Lit, LitStr, Result, Token, Type, braced,
-    bracketed,
+    Attribute, Error, FnArg, GenericArgument, Ident, ImplItem, ItemImpl, Lit, LitInt, LitStr, Meta,
+    PathArguments, Result, ReturnType, Token, Type, braced, bracketed,
     ext::IdentExt,
     parse::{Parse, ParseStream},
     parse_macro_input,
@@ -19,7 +19,9 @@ use syn::{
 /// `head`, `options`, and `query`. Each accepts a stable route ID and path. One or more
 /// `middleware` attributes may name async provider methods that run before the
 /// handler and its typed request extractors. Middleware on the impl applies to
-/// every route before route-specific middleware.
+/// every route before route-specific middleware. A handler that already has an
+/// `#[openapi(...)]` Operation Object may opt into strict type-derived drift
+/// detection with `#[openapi_contract(...)]`.
 #[proc_macro_attribute]
 pub fn endpoint(arguments: TokenStream, input: TokenStream) -> TokenStream {
     let register_plugin = if arguments.is_empty() {
@@ -61,10 +63,7 @@ fn expand_endpoint(implementation: ItemImpl) -> Result<proc_macro2::TokenStream>
     expand_endpoint_with_registration(implementation, true)
 }
 
-fn expand_endpoint_with_registration(
-    mut implementation: ItemImpl,
-    register_plugin: bool,
-) -> Result<proc_macro2::TokenStream> {
+fn validate_endpoint_implementation(implementation: &ItemImpl) -> Result<()> {
     if implementation.trait_.is_some() {
         return Err(Error::new_spanned(
             implementation.impl_token,
@@ -77,6 +76,14 @@ fn expand_endpoint_with_registration(
             "endpoint does not support generic impl blocks",
         ));
     }
+    Ok(())
+}
+
+fn expand_endpoint_with_registration(
+    mut implementation: ItemImpl,
+    register_plugin: bool,
+) -> Result<proc_macro2::TokenStream> {
+    validate_endpoint_implementation(&implementation)?;
 
     let provider = implementation.self_ty.clone();
     let provider_middlewares = take_provider_middlewares(&mut implementation.attrs)?;
@@ -87,6 +94,17 @@ fn expand_endpoint_with_registration(
         };
         let metadata = take_handler_metadata(&mut method.attrs)?;
         if let Some(mut route) = metadata.route {
+            if metadata.contract.is_some() && metadata.openapi.is_none() {
+                return Err(Error::new_spanned(
+                    &method.sig.ident,
+                    "openapi_contract requires an OpenAPI Operation Object on the same handler",
+                ));
+            }
+            let contract = metadata
+                .contract
+                .as_ref()
+                .map(|contract| derive_endpoint_contract(method, contract))
+                .transpose()?;
             route.openapi = metadata.openapi;
             routes.push(Handler {
                 route,
@@ -97,8 +115,12 @@ fn expand_endpoint_with_registration(
                     .collect(),
                 method: method.sig.ident.clone(),
                 arguments: handler_arguments(method)?,
+                contract,
             });
-        } else if !metadata.middlewares.is_empty() || metadata.openapi.is_some() {
+        } else if !metadata.middlewares.is_empty()
+            || metadata.openapi.is_some()
+            || metadata.contract.is_some()
+        {
             return Err(Error::new_spanned(
                 &method.sig.ident,
                 "endpoint metadata can only be attached to an HTTP handler",
@@ -112,14 +134,23 @@ fn expand_endpoint_with_registration(
         ));
     }
 
-    let const_routes = routes.iter().map(endpoint_route);
-    let implementation_routes = routes.iter().map(endpoint_route);
+    let const_routes = routes
+        .iter()
+        .enumerate()
+        .map(|(index, handler)| endpoint_route(&provider, handler, index));
+    let implementation_routes = routes
+        .iter()
+        .enumerate()
+        .map(|(index, handler)| endpoint_route(&provider, handler, index));
     let dispatch_arms = routes.iter().map(dispatch_arm);
+    let contract_impl = endpoint_contract_impl(&provider, &routes);
     let plugin_registration =
         register_plugin.then(|| quote!(#[lenso::provides(http_endpoint_contract::Endpoint)]));
 
     Ok(quote! {
         #implementation
+
+        #contract_impl
 
         const _: () = {
             const ROUTES: &[::lenso_capability_http_endpoint::EndpointRoute] = &[
@@ -152,7 +183,7 @@ fn expand_endpoint_with_registration(
     })
 }
 
-fn endpoint_route(handler: &Handler) -> proc_macro2::TokenStream {
+fn endpoint_route(provider: &Type, handler: &Handler, index: usize) -> proc_macro2::TokenStream {
     let route_id = &handler.route.id;
     let method = &handler.route.method;
     let path = &handler.route.path;
@@ -161,12 +192,16 @@ fn endpoint_route(handler: &Handler) -> proc_macro2::TokenStream {
         .openapi
         .as_ref()
         .map(|operation| quote!(.with_openapi(#operation)));
+    let contract = handler.contract.as_ref().map(|_| {
+        let factory = contract_factory_name(handler, index);
+        quote!(.with_openapi_contract(<#provider>::#factory))
+    });
     quote! {
         ::lenso_capability_http_endpoint::EndpointRoute::new(
             #route_id,
             #method,
             #path,
-        ) #openapi,
+        ) #openapi #contract,
     }
 }
 
@@ -196,6 +231,7 @@ fn take_handler_metadata(attributes: &mut Vec<Attribute>) -> Result<HandlerMetad
     let mut route = None;
     let mut middlewares = Vec::new();
     let mut openapi = None;
+    let mut contract = None;
     let mut retained = Vec::with_capacity(attributes.len());
     for attribute in attributes.drain(..) {
         if attribute.path().is_ident("middleware") {
@@ -221,6 +257,19 @@ fn take_handler_metadata(attributes: &mut Vec<Attribute>) -> Result<HandlerMetad
             openapi = Some(operation);
             continue;
         }
+        if attribute.path().is_ident("openapi_contract") {
+            if contract.is_some() {
+                return Err(Error::new_spanned(
+                    attribute,
+                    "an endpoint handler may declare only one strict OpenAPI contract",
+                ));
+            }
+            contract = Some(match &attribute.meta {
+                Meta::Path(_) => OpenApiContractMetadata::default(),
+                _ => attribute.parse_args::<OpenApiContractMetadata>()?,
+            });
+            continue;
+        }
         let Some(http_method) = http_method(&attribute) else {
             retained.push(attribute);
             continue;
@@ -244,12 +293,79 @@ fn take_handler_metadata(attributes: &mut Vec<Attribute>) -> Result<HandlerMetad
         route,
         middlewares,
         openapi,
+        contract,
     })
 }
 
 enum OpenApiOperation {
     Json(LitStr),
     Object(OpenApiObject),
+}
+
+#[derive(Default)]
+struct OpenApiContractMetadata {
+    success: Option<LitInt>,
+    errors: Vec<OpenApiContractError>,
+}
+
+impl Parse for OpenApiContractMetadata {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let mut metadata = Self::default();
+        let mut errors_seen = false;
+        while !input.is_empty() {
+            let key = input.parse::<Ident>()?;
+            input.parse::<Token![=]>()?;
+            match key.to_string().as_str() {
+                "success" => {
+                    if metadata.success.is_some() {
+                        return Err(Error::new(key.span(), "duplicate openapi_contract success"));
+                    }
+                    metadata.success = Some(input.parse()?);
+                }
+                "errors" => {
+                    if errors_seen {
+                        return Err(Error::new(key.span(), "duplicate openapi_contract errors"));
+                    }
+                    errors_seen = true;
+                    let content;
+                    bracketed!(content in input);
+                    metadata.errors =
+                        Punctuated::<OpenApiContractError, Token![,]>::parse_terminated(&content)?
+                            .into_iter()
+                            .collect();
+                }
+                _ => {
+                    return Err(Error::new(
+                        key.span(),
+                        "openapi_contract accepts only `success` and `errors`",
+                    ));
+                }
+            }
+            if !input.is_empty() {
+                input.parse::<Token![,]>()?;
+            }
+        }
+        Ok(metadata)
+    }
+}
+
+struct OpenApiContractError {
+    status: LitInt,
+    code: LitStr,
+}
+
+impl Parse for OpenApiContractError {
+    fn parse(input: ParseStream<'_>) -> Result<Self> {
+        let content;
+        syn::parenthesized!(content in input);
+        let status = content.parse()?;
+        content.parse::<Token![,]>()?;
+        let code = content.parse()?;
+        if !content.is_empty() {
+            return Err(content.error("a strict OpenAPI error is `(status, \"code\")`"));
+        }
+        Ok(Self { status, code })
+    }
 }
 
 impl OpenApiOperation {
@@ -393,6 +509,7 @@ fn operation_literal(operation: &OpenApiObject) -> Result<LitStr> {
             "OpenAPI operationId is generated from the stable route ID",
         ));
     }
+    reject_reserved_openapi_keys(&operation.value, operation.span)?;
     let json = serde_json::to_string(&operation.value).map_err(|error| {
         Error::new(
             operation.span,
@@ -421,7 +538,439 @@ fn validate_openapi_operation(operation: &LitStr) -> Result<()> {
             "OpenAPI operationId is generated from the stable route ID",
         ));
     }
+    reject_reserved_openapi_keys(object, operation.span())?;
     Ok(())
+}
+
+fn reject_reserved_openapi_keys(
+    operation: &Map<String, Value>,
+    span: proc_macro2::Span,
+) -> Result<()> {
+    if operation.contains_key("x-lenso-contract") {
+        return Err(Error::new(
+            span,
+            "x-lenso-contract is reserved for generated strict OpenAPI contract checks",
+        ));
+    }
+    Ok(())
+}
+
+fn endpoint_contract_impl(provider: &Type, routes: &[Handler]) -> Option<proc_macro2::TokenStream> {
+    let contract_helpers = routes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, handler)| {
+            handler
+                .contract
+                .as_ref()
+                .map(|contract| contract_factory(handler, contract, index))
+        })
+        .collect::<Vec<_>>();
+    (!contract_helpers.is_empty()).then(|| {
+        quote! {
+            impl #provider {
+                #(#contract_helpers)*
+            }
+        }
+    })
+}
+
+fn contract_factory(
+    handler: &Handler,
+    contract: &EndpointContract,
+    index: usize,
+) -> proc_macro2::TokenStream {
+    let factory = contract_factory_name(handler, index);
+    let route_id = &handler.route.id;
+    let method = &handler.route.method;
+    let path = &handler.route.path;
+    let path_step = contract
+        .path
+        .as_ref()
+        .map(|ty| quote!(contract = contract.path::<#ty>()?;));
+    let query_step = contract
+        .query
+        .as_ref()
+        .map(|ty| quote!(contract = contract.query::<#ty>()?;));
+    let body_step = contract.body.as_ref().map(|body| {
+        let ty = &body.ty;
+        if body.required {
+            quote!(contract = contract.json_body::<#ty>()?;)
+        } else {
+            quote!(contract = contract.optional_json_body::<#ty>()?;)
+        }
+    });
+    let success = &contract.success;
+    let success_status = contract.success_status;
+    let problems = contract.problems.iter().map(|problem| {
+        let status = problem.status;
+        let code = &problem.code;
+        quote!(contract = contract.known_problem(#status, #code)?;)
+    });
+
+    quote! {
+        fn #factory() -> ::lenso_capability_http_endpoint::OpenApiContractResult {
+            let mut contract = ::lenso_capability_http_endpoint::OpenApiContract::new(
+                #route_id,
+                #method,
+                #path,
+            );
+            #path_step
+            #query_step
+            #body_step
+            contract = contract.success_json::<#success>(#success_status)?;
+            #(#problems)*
+            contract.build()
+        }
+    }
+}
+
+fn contract_factory_name(handler: &Handler, index: usize) -> Ident {
+    Ident::new(
+        &format!("__lenso_openapi_contract_{}_{}", handler.method, index),
+        handler.method.span(),
+    )
+}
+
+fn derive_endpoint_contract(
+    method: &syn::ImplItemFn,
+    metadata: &OpenApiContractMetadata,
+) -> Result<EndpointContract> {
+    let RequestContractShape {
+        path,
+        query,
+        body,
+        mut problems,
+    } = derive_strict_request_shape(method)?;
+
+    let (success, error) = endpoint_result_types(method)?;
+    let (success, success_status) = strict_success_type(success, metadata.success.as_ref())?;
+    extend_problem_contract(error, metadata, &mut problems)?;
+
+    Ok(EndpointContract {
+        path,
+        query,
+        body,
+        success,
+        success_status,
+        problems,
+    })
+}
+
+fn derive_strict_request_shape(method: &syn::ImplItemFn) -> Result<RequestContractShape> {
+    let mut path = None;
+    let mut query = None;
+    let mut body = None;
+    let mut problems = Vec::new();
+
+    for input in &method.sig.inputs {
+        let FnArg::Typed(argument) = input else {
+            continue;
+        };
+        let ty = argument.ty.as_ref();
+        match final_type_ident(ty).map(Ident::to_string).as_deref() {
+            Some("InvocationContext" | "RequestId") => {}
+            Some("Path") => {
+                if path.is_some() {
+                    return Err(Error::new_spanned(
+                        ty,
+                        "a strict OpenAPI contract supports one Path<T> extractor",
+                    ));
+                }
+                path = Some(extractor_type_argument(ty, "Path")?);
+                problems.push(ContractProblem::generated(
+                    400,
+                    "invalid_path_parameters",
+                    ty.span(),
+                ));
+            }
+            Some("QueryParams") => {
+                if query.is_some() {
+                    return Err(Error::new_spanned(
+                        ty,
+                        "a strict OpenAPI contract supports one QueryParams<T> extractor",
+                    ));
+                }
+                query = Some(extractor_type_argument(ty, "QueryParams")?);
+                problems.push(ContractProblem::generated(400, "invalid_query", ty.span()));
+            }
+            Some("Json") => {
+                if body.is_some() {
+                    return Err(Error::new_spanned(
+                        ty,
+                        "a strict OpenAPI contract supports one Json<T> request body",
+                    ));
+                }
+                body = Some(ContractBody {
+                    ty: extractor_type_argument(ty, "Json")?,
+                    required: true,
+                });
+                add_json_extractor_problems(&mut problems, ty.span());
+            }
+            Some("Option") => {
+                let inner = extractor_type_argument(ty, "Option")?;
+                if final_type_ident(&inner).is_some_and(|ident| ident == "Json") {
+                    if body.is_some() {
+                        return Err(Error::new_spanned(
+                            ty,
+                            "a strict OpenAPI contract supports one Json<T> request body",
+                        ));
+                    }
+                    body = Some(ContractBody {
+                        ty: extractor_type_argument(&inner, "Json")?,
+                        required: false,
+                    });
+                    add_json_extractor_problems(&mut problems, ty.span());
+                } else {
+                    return Err(Error::new_spanned(
+                        ty,
+                        "strict OpenAPI contracts support Option only around Json<T>",
+                    ));
+                }
+            }
+            Some("Body" | "Headers" | "HandleRequest") => {
+                return Err(Error::new_spanned(
+                    ty,
+                    "strict OpenAPI contracts require typed Path, QueryParams, and Json values instead of raw request data",
+                ));
+            }
+            _ => {
+                return Err(Error::new_spanned(
+                    ty,
+                    "strict OpenAPI contracts support InvocationContext, RequestId, Path<T>, QueryParams<T>, Json<T>, and Option<Json<T>> handler arguments",
+                ));
+            }
+        }
+    }
+
+    Ok(RequestContractShape {
+        path,
+        query,
+        body,
+        problems,
+    })
+}
+
+fn extend_problem_contract(
+    error: &Type,
+    metadata: &OpenApiContractMetadata,
+    problems: &mut Vec<ContractProblem>,
+) -> Result<()> {
+    match final_type_ident(error).map(Ident::to_string).as_deref() {
+        Some("Problem") => {
+            if metadata.errors.is_empty() {
+                return Err(Error::new_spanned(
+                    error,
+                    "a strict OpenAPI contract for Problem errors must enumerate errors = [(status, \"code\")]",
+                ));
+            }
+            for error in &metadata.errors {
+                let status = parse_problem_status(&error.status)?;
+                if error.code.value().trim().is_empty() {
+                    return Err(Error::new_spanned(
+                        &error.code,
+                        "a strict OpenAPI problem code must not be empty",
+                    ));
+                }
+                if problems.iter().any(|problem: &ContractProblem| {
+                    problem.status == status && problem.code.value() == error.code.value()
+                }) {
+                    return Err(Error::new_spanned(
+                        &error.code,
+                        "a strict OpenAPI problem status and code may be declared only once",
+                    ));
+                }
+                problems.push(ContractProblem {
+                    status,
+                    code: error.code.clone(),
+                });
+            }
+        }
+        Some("EndpointHandleInvocationError") => {
+            if !metadata.errors.is_empty() {
+                return Err(Error::new_spanned(
+                    error,
+                    "strict OpenAPI errors require a Problem handler error type",
+                ));
+            }
+        }
+        _ => {
+            return Err(Error::new_spanned(
+                error,
+                "strict OpenAPI contracts support Problem or EndpointHandleInvocationError handler errors",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn add_json_extractor_problems(problems: &mut Vec<ContractProblem>, span: proc_macro2::Span) {
+    problems.push(ContractProblem::generated(400, "invalid_json_body", span));
+    problems.push(ContractProblem::generated(
+        415,
+        "json_content_type_required",
+        span,
+    ));
+}
+
+fn endpoint_result_types(method: &syn::ImplItemFn) -> Result<(&Type, &Type)> {
+    let ReturnType::Type(_, output) = &method.sig.output else {
+        return Err(Error::new_spanned(
+            &method.sig,
+            "a strict OpenAPI handler must return Result<Success, Error>",
+        ));
+    };
+    let Type::Path(path) = output.as_ref() else {
+        return Err(Error::new_spanned(
+            output,
+            "a strict OpenAPI handler must return Result<Success, Error>",
+        ));
+    };
+    let Some(segment) = path.path.segments.last() else {
+        return Err(Error::new_spanned(
+            output,
+            "a strict OpenAPI handler must return Result<Success, Error>",
+        ));
+    };
+    if segment.ident != "Result" {
+        return Err(Error::new_spanned(
+            output,
+            "a strict OpenAPI handler must return Result<Success, Error>",
+        ));
+    }
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Err(Error::new_spanned(
+            output,
+            "a strict OpenAPI handler must return Result<Success, Error>",
+        ));
+    };
+    let types = arguments
+        .args
+        .iter()
+        .filter_map(|argument| match argument {
+            GenericArgument::Type(ty) => Some(ty),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let [success, error] = types.as_slice() else {
+        return Err(Error::new_spanned(
+            output,
+            "a strict OpenAPI handler must return Result<Success, Error>",
+        ));
+    };
+    Ok((success, error))
+}
+
+fn strict_success_type(success: &Type, declared_status: Option<&LitInt>) -> Result<(Type, u16)> {
+    if final_type_ident(success).is_some_and(|ident| ident == "Json") {
+        let status = declared_status
+            .map(parse_success_status)
+            .transpose()?
+            .unwrap_or(200);
+        if status != 200 {
+            return Err(Error::new_spanned(
+                success,
+                "Json<T> always returns status 200; use (StatusCode, Json<T>) for another success status",
+            ));
+        }
+        return Ok((extractor_type_argument(success, "Json")?, status));
+    }
+
+    let Type::Tuple(tuple) = success else {
+        return Err(Error::new_spanned(
+            success,
+            "strict OpenAPI contracts support Json<T> or (StatusCode, Json<T>) success values",
+        ));
+    };
+    let values = tuple.elems.iter().collect::<Vec<_>>();
+    let [status_type, response] = values.as_slice() else {
+        return Err(Error::new_spanned(
+            success,
+            "strict OpenAPI contracts support (StatusCode, Json<T>) success values",
+        ));
+    };
+    if final_type_ident(status_type).is_none_or(|ident| ident != "StatusCode")
+        || final_type_ident(response).is_none_or(|ident| ident != "Json")
+    {
+        return Err(Error::new_spanned(
+            success,
+            "strict OpenAPI contracts support (StatusCode, Json<T>) success values",
+        ));
+    }
+    let Some(status) = declared_status else {
+        return Err(Error::new_spanned(
+            success,
+            "(StatusCode, Json<T>) needs openapi_contract(success = status)",
+        ));
+    };
+    Ok((
+        extractor_type_argument(response, "Json")?,
+        parse_success_status(status)?,
+    ))
+}
+
+fn extractor_type_argument(ty: &Type, expected: &str) -> Result<Type> {
+    let Type::Path(path) = ty else {
+        return Err(Error::new_spanned(
+            ty,
+            format!("strict OpenAPI {expected}<T> needs one type parameter"),
+        ));
+    };
+    let Some(segment) = path.path.segments.last() else {
+        return Err(Error::new_spanned(
+            ty,
+            format!("strict OpenAPI {expected}<T> needs one type parameter"),
+        ));
+    };
+    if segment.ident != expected {
+        return Err(Error::new_spanned(
+            ty,
+            format!("expected strict OpenAPI {expected}<T>"),
+        ));
+    }
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return Err(Error::new_spanned(
+            ty,
+            format!("strict OpenAPI {expected}<T> needs one type parameter"),
+        ));
+    };
+    let types = arguments
+        .args
+        .iter()
+        .filter_map(|argument| match argument {
+            GenericArgument::Type(ty) => Some(ty),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let [inner] = types.as_slice() else {
+        return Err(Error::new_spanned(
+            ty,
+            format!("strict OpenAPI {expected}<T> needs one type parameter"),
+        ));
+    };
+    Ok((*inner).clone())
+}
+
+fn parse_success_status(status: &LitInt) -> Result<u16> {
+    let parsed = status.base10_parse::<u16>()?;
+    if !(200..=299).contains(&parsed) {
+        return Err(Error::new_spanned(
+            status,
+            "strict OpenAPI success status must be between 200 and 299",
+        ));
+    }
+    Ok(parsed)
+}
+
+fn parse_problem_status(status: &LitInt) -> Result<u16> {
+    let parsed = status.base10_parse::<u16>()?;
+    if !(400..=599).contains(&parsed) {
+        return Err(Error::new_spanned(
+            status,
+            "strict OpenAPI problem status must be between 400 and 599",
+        ));
+    }
+    Ok(parsed)
 }
 
 fn handler_arguments(method: &syn::ImplItemFn) -> Result<Vec<HandlerArgument>> {
@@ -586,6 +1135,7 @@ struct HandlerMetadata {
     route: Option<Route>,
     middlewares: Vec<Ident>,
     openapi: Option<LitStr>,
+    contract: Option<OpenApiContractMetadata>,
 }
 
 struct Handler {
@@ -593,6 +1143,42 @@ struct Handler {
     middlewares: Vec<Ident>,
     method: Ident,
     arguments: Vec<HandlerArgument>,
+    contract: Option<EndpointContract>,
+}
+
+struct EndpointContract {
+    path: Option<Type>,
+    query: Option<Type>,
+    body: Option<ContractBody>,
+    success: Type,
+    success_status: u16,
+    problems: Vec<ContractProblem>,
+}
+
+struct ContractBody {
+    ty: Type,
+    required: bool,
+}
+
+struct RequestContractShape {
+    path: Option<Type>,
+    query: Option<Type>,
+    body: Option<ContractBody>,
+    problems: Vec<ContractProblem>,
+}
+
+struct ContractProblem {
+    status: u16,
+    code: LitStr,
+}
+
+impl ContractProblem {
+    fn generated(status: u16, code: &str, span: proc_macro2::Span) -> Self {
+        Self {
+            status,
+            code: LitStr::new(code, span),
+        }
+    }
 }
 
 struct HandlerArgument {
@@ -717,6 +1303,88 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("not valid JSON"));
+    }
+
+    #[test]
+    fn emits_a_strict_contract_factory_from_typed_handler_values() {
+        let expanded = expand_endpoint(parse_quote! {
+            impl OrdersHttp {
+                #[post("orders.create", "/orders/{order_id}")]
+                #[openapi({ responses: { "201": { description: "Created" } } })]
+                #[openapi_contract(
+                    success = 201,
+                    errors = [(422, "invalid_order")]
+                )]
+                async fn create(
+                    &self,
+                    Path(path): Path<OrderPath>,
+                    QueryParams(query): QueryParams<CreateQuery>,
+                    Json(order): Json<CreateOrder>,
+                ) -> Result<(StatusCode, Json<CreatedOrder>), Problem> {
+                    unimplemented!()
+                }
+            }
+        })
+        .unwrap()
+        .to_string();
+
+        assert!(expanded.contains("with_openapi_contract"));
+        assert!(expanded.contains("OpenApiContract"));
+        assert!(expanded.contains("path :: < OrderPath >"));
+        assert!(expanded.contains("query :: < CreateQuery >"));
+        assert!(expanded.contains("json_body :: < CreateOrder >"));
+        assert!(expanded.contains("success_json :: < CreatedOrder > (201"));
+        assert!(expanded.contains("invalid_order"));
+    }
+
+    #[test]
+    fn strict_contract_requires_openapi_and_problem_enumeration() {
+        let missing_openapi = expand_endpoint(parse_quote! {
+            impl OrdersHttp {
+                #[get("orders.read", "/orders/{order_id}")]
+                #[openapi_contract]
+                async fn read(&self) -> Result<Json<Order>, Problem> {
+                    unimplemented!()
+                }
+            }
+        })
+        .unwrap_err();
+        assert!(
+            missing_openapi
+                .to_string()
+                .contains("requires an OpenAPI Operation Object")
+        );
+
+        let missing_problem = expand_endpoint(parse_quote! {
+            impl OrdersHttp {
+                #[get("orders.read", "/orders/{order_id}")]
+                #[openapi({ responses: { "200": { description: "Order" } } })]
+                #[openapi_contract]
+                async fn read(&self) -> Result<Json<Order>, Problem> {
+                    unimplemented!()
+                }
+            }
+        })
+        .unwrap_err();
+        assert!(
+            missing_problem
+                .to_string()
+                .contains("must enumerate errors")
+        );
+    }
+
+    #[test]
+    fn reserves_the_generated_contract_extension() {
+        let error = expand_endpoint(parse_quote! {
+            impl OrdersHttp {
+                #[get("orders.read", "/orders/{order_id}")]
+                #[openapi({ "x-lenso-contract": {} })]
+                async fn read(&self) {}
+            }
+        })
+        .unwrap_err();
+
+        assert!(error.to_string().contains("reserved for generated"));
     }
 
     #[test]

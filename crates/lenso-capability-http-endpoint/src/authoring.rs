@@ -1,8 +1,12 @@
+use std::collections::BTreeMap;
+
 use lenso_kernel::{InvocationContext, NativeRequestFuture};
+use serde_json::Value;
 
 use crate::{
     DescribeRequest, DescribeResponse, DescribeResponseRoutesItem, EndpointDescribe,
-    EndpointHandle, EndpointProvider, HandleRequest, HandleResponse,
+    EndpointHandle, EndpointProvider, HandleRequest, HandleResponse, OPENAPI_CONTRACT_EXTENSION,
+    OpenApiContractFactory,
 };
 
 /// The result of one Endpoint-owned middleware step.
@@ -43,13 +47,26 @@ impl MiddlewareOutcome {
 }
 
 /// One immutable HTTP route owned by an Endpoint provider.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct EndpointRoute {
     route_id: &'static str,
     method: &'static str,
     path: &'static str,
     openapi: Option<&'static str>,
+    openapi_contract: Option<OpenApiContractFactory>,
 }
+
+impl PartialEq for EndpointRoute {
+    fn eq(&self, other: &Self) -> bool {
+        self.route_id == other.route_id
+            && self.method == other.method
+            && self.path == other.path
+            && self.openapi == other.openapi
+            && self.openapi_contract.is_some() == other.openapi_contract.is_some()
+    }
+}
+
+impl Eq for EndpointRoute {}
 
 impl EndpointRoute {
     /// Declares one stable route identifier, canonical HTTP method, and path template.
@@ -60,6 +77,7 @@ impl EndpointRoute {
             method,
             path,
             openapi: None,
+            openapi_contract: None,
         }
     }
 
@@ -71,6 +89,18 @@ impl EndpointRoute {
     #[must_use]
     pub const fn with_openapi(mut self, operation: &'static str) -> Self {
         self.openapi = Some(operation);
+        self
+    }
+
+    /// Adds a strict public-contract fragment derived from the handler's existing
+    /// typed values.
+    ///
+    /// The fragment is carried only to the optional `OpenAPI` Plugin, which checks
+    /// the authored Operation Object and removes it before serving the document.
+    /// `#[endpoint]` emits this automatically for `#[openapi_contract(...)]`.
+    #[must_use]
+    pub const fn with_openapi_contract(mut self, contract: OpenApiContractFactory) -> Self {
+        self.openapi_contract = Some(contract);
         self
     }
 
@@ -93,11 +123,21 @@ impl EndpointRoute {
     }
 
     fn into_description(self) -> Result<DescribeResponseRoutesItem, crate::DescribeError> {
-        let openapi = self
+        let mut openapi: Option<BTreeMap<String, Value>> = self
             .openapi
             .map(serde_json::from_str)
             .transpose()
             .map_err(|_| crate::DescribeError::InvalidConfiguration)?;
+        if let Some(contract) = self.openapi_contract {
+            let contract = contract().map_err(|_| crate::DescribeError::InvalidConfiguration)?;
+            let operation = openapi.get_or_insert_with(BTreeMap::new);
+            if operation
+                .insert(OPENAPI_CONTRACT_EXTENSION.to_owned(), contract)
+                .is_some()
+            {
+                return Err(crate::DescribeError::InvalidConfiguration);
+            }
+        }
         Ok(DescribeResponseRoutesItem {
             method: self.method.to_owned(),
             openapi,

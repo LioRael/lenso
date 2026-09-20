@@ -1,6 +1,6 @@
 [package]
 name = "lenso-openapi-plugin"
-version = "0.2.2"
+version = "0.2.3"
 description = "Optional OpenAPI 3.1 document Plugin for explicitly bound Lenso HTTP Endpoints."
 edition.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ root-slot = "http-endpoints"
 [dependencies]
 futures.workspace = true
 lenso.workspace = true
-lenso-capability-http-endpoint = { version = "0.3.2", path = "../lenso-capability-http-endpoint" }
+lenso-capability-http-endpoint = { version = "0.3.3", path = "../lenso-capability-http-endpoint" }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
 serde.workspace = true
@@ -25,6 +25,7 @@ serde_json.workspace = true
 lenso-app-plan.workspace = true
 lenso-runner.workspace = true
 lenso-web-ingress-plugin = { path = "../lenso-web-ingress-plugin" }
+schemars.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "rt", "time"] }
 
 [lints]

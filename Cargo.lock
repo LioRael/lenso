@@ -1006,16 +1006,18 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "futures",
  "http",
  "lenso",
  "lenso-capability-http-endpoint-macros",
+ "lenso-contract-authoring",
  "lenso-contract-codegen",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
+ "schemars",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -1023,7 +1025,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint-macros"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1106,7 +1108,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-http-auth"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "lenso-auth-sdk",
  "lenso-capability-auth",
@@ -1201,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-openapi-plugin"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "futures",
  "lenso",
@@ -1211,6 +1213,7 @@ dependencies = [
  "lenso-native-adapter",
  "lenso-runner",
  "lenso-web-ingress-plugin",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",
@@ -1301,23 +1304,30 @@ dependencies = [
 
 [[package]]
 name = "lenso-web-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bytes",
  "futures",
  "http",
  "lenso-app-plan",
+ "lenso-auth-sdk",
+ "lenso-capability-auth",
  "lenso-capability-http-endpoint",
  "lenso-capability-http-stream-endpoint",
  "lenso-capability-websocket-endpoint",
+ "lenso-http-auth",
  "lenso-kernel",
  "lenso-native-adapter",
+ "lenso-openapi-plugin",
  "lenso-runner",
+ "lenso-web-duplex-fixture",
  "lenso-web-greetings-plugin-example",
  "lenso-web-ingress-plugin",
  "lenso-web-query-endpoint-fixture",
+ "schemars",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tower",
 ]
@@ -1336,7 +1346,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-web-ingress-plugin"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "axum",
  "base64",

@@ -386,6 +386,68 @@ at compile time and reject a separately declared `operationId`. A route without
 metadata remains valid and receives an `Undocumented response.` fallback only
 when an OpenAPI document is assembled.
 
+### Strict public API contracts
+
+An Endpoint that is deliberately published for generated clients can opt into a
+strict check without changing App Composition or creating a second request/
+response DTO. Add `#[openapi_contract]` beside the existing `#[openapi(...)]`
+metadata. The typed values already used by the handler remain the source of the
+checked representation:
+
+```rust,ignore
+use lenso_capability_http_endpoint::{Json, JsonSchema, Path, endpoint};
+use lenso_capability_http_endpoint::response::{Problem, StatusCode};
+
+#[derive(serde::Deserialize, JsonSchema)]
+struct CreateOrder { id: String }
+
+#[derive(serde::Serialize, JsonSchema)]
+struct CreatedOrder { id: String }
+
+#[endpoint]
+impl OrdersHttp {
+    #[post("orders.create", "/orders/{account_id}")]
+    #[openapi({ /* the complete authored OpenAPI Operation Object */ })]
+    #[openapi_contract(
+        success = 201,
+        errors = [(422, "invalid_order")]
+    )]
+    async fn create(
+        &self,
+        Path(path): Path<OrderPath>,
+        Json(input): Json<CreateOrder>,
+    ) -> Result<(StatusCode, Json<CreatedOrder>), Problem> {
+        # todo!()
+    }
+}
+```
+
+The Plugin package must make the `schemars` derive available (for example,
+`schemars = "1.2"`), then derive `JsonSchema` for each public `Path`,
+`QueryParams`, `Json` request body, and JSON response value. At OpenAPI Plugin
+activation, the existing generated Endpoint description carries a temporary
+type-derived fragment. The document assembler compares it with the author's
+Operation Object and rejects drift in the route ID, method, path, path/query
+parameters, JSON request body, JSON success response, and known RFC 9457
+`Problem` responses. The fragment is removed before `/openapi.json` is served.
+The comparison also rejects non-default path/query serialization settings, so
+the emitted operation remains compatible with an ordinary OpenAPI-generated
+client rather than only looking superficially similar.
+
+`Json<T>` has an implicit `200` success response. For
+`(StatusCode, Json<T>)`, declare the exact `success = 2xx` status. A `Problem`
+handler error must enumerate its stable error codes through
+`errors = [(4xx_or_5xx, "code")]`; JSON, path, and query extractor failures
+are included automatically. Strict contracts intentionally support the typed
+extractors `Path<T>`, `QueryParams<T>`, `Json<T>`, and `Option<Json<T>>`, plus
+`RequestId` and `InvocationContext`. Raw bodies, headers, requests, and custom
+extractors stay outside this first representation-level check rather than being
+silently documented incorrectly.
+
+`#[openapi_contract]` is opt-in. Existing Endpoint providers, private routes,
+and routes with ordinary `#[openapi]` metadata continue to assemble exactly as
+before; they are not forced to supply complete public-client contracts.
+
 The selected `lenso.openapi` Instance uses immutable configuration validated by
 `crates/lenso-openapi-plugin/config.schema.json`:
 

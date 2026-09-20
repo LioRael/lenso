@@ -1,6 +1,6 @@
 [package]
 name = "lenso-web-host"
-version = "0.2.0"
+version = "0.2.1"
 description = "Linked native Host helper that starts Web Ingress and bound HTTP Endpoint Plugins."
 edition.workspace = true
 license.workspace = true
@@ -13,22 +13,29 @@ bytes = "1"
 futures.workspace = true
 http = "1"
 lenso-app-plan.workspace = true
-lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "0.3.2" }
+lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "0.3.3" }
 lenso-capability-http-stream-endpoint = { path = "../lenso-capability-http-stream-endpoint", version = "0.1.1" }
 lenso-capability-websocket-endpoint = { path = "../lenso-capability-websocket-endpoint", version = "0.1.0" }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
 lenso-runner.workspace = true
-lenso-web-ingress-plugin = { path = "../lenso-web-ingress-plugin", version = "0.4.5" }
+lenso-web-ingress-plugin = { path = "../lenso-web-ingress-plugin", version = "0.4.6" }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "signal", "time"] }
 tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
+lenso-auth-sdk = { version = "0.2.3" }
+lenso-capability-auth = { version = "0.2.0" }
+lenso-http-auth = { path = "../lenso-http-auth", version = "0.2.3" }
+lenso-openapi-plugin = { path = "../lenso-openapi-plugin", version = "0.2.3" }
+lenso-web-duplex-fixture = { path = "../../tests/fixtures/duplex-endpoint-plugin" }
 lenso-web-greetings-plugin-example = { path = "../../examples/greetings-http-plugin" }
 lenso-web-query-endpoint-fixture = { path = "../../tests/fixtures/query-endpoint-plugin" }
+schemars.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }
+time = "0.3"
 
 [lints]
 workspace = true

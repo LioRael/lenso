@@ -60,6 +60,12 @@ use serde_json::Value;
 use tokio::task::LocalSet;
 use tower::{Layer, Service};
 
+mod simulated;
+
+pub use simulated::{
+    PreparedSimulatedWebHost, SimulatedWebHost, SimulatedWebRequest, SimulatedWebRequestError,
+};
+
 const INSTANCE_KEY: &str = "default";
 
 type ReplicatedIngressBuilder =
@@ -168,6 +174,13 @@ struct FactoryInstaller {
     package_id: &'static str,
     descriptor: PluginDescriptor,
     install: Box<dyn FnOnce(NativePluginRegistry) -> NativePluginRegistry>,
+}
+
+struct EventHostComponents {
+    plan: lenso_app_plan::ResolvedAppPlan,
+    registry: NativePluginRegistry,
+    ingress: WebIngressEventFactory,
+    extra_adapters: Vec<Rc<dyn ExecutionAdapter>>,
 }
 
 impl fmt::Debug for NativeWebHost {
@@ -524,6 +537,29 @@ impl NativeWebHost {
         )
     }
 
+    fn into_event_components(self) -> Result<EventHostComponents, WebHostError> {
+        let plan = self.resolve_plan()?;
+        let mut ingress = self
+            .middleware
+            .into_iter()
+            .fold(WebIngressEventFactory::new(), |ingress, middleware| {
+                ingress.with_shared_middleware(middleware)
+            });
+        if let Some(diagnostics) = self.diagnostics {
+            ingress = ingress.with_shared_diagnostics(diagnostics);
+        }
+        let mut registry = NativePluginRegistry::new().with_factory(ingress.clone());
+        for installer in self.factory_installers {
+            registry = (installer.install)(registry);
+        }
+        Ok(EventHostComponents {
+            plan,
+            registry: registry.with_linked_factories(),
+            ingress,
+            extra_adapters: self.extra_adapters,
+        })
+    }
+
     /// Starts Ingress and returns after the App is ready.
     ///
     /// Must be polled on a Tokio [`LocalSet`].
@@ -668,29 +704,46 @@ impl NativeWebHost {
         })
     }
 
+    /// Prepares a deterministic Web test App without opening a socket.
+    ///
+    /// The returned parts use the same resolved Plan, event Ingress Factory,
+    /// route manifest, middleware, credential extraction, and response mapping
+    /// as [`Self::start_event`]. Boot the Plan and Registry with the test
+    /// runtime's real native App builder, then use the returned
+    /// [`SimulatedWebHost`] as the socket-free client surface.
+    ///
+    /// This test entrypoint supports native Factories only. A separate
+    /// Execution Adapter is a real execution boundary and must be tested by
+    /// that Adapter's own Host path rather than silently skipped here.
+    pub fn prepare_simulated(self) -> Result<PreparedSimulatedWebHost, WebHostError> {
+        let EventHostComponents {
+            plan,
+            registry,
+            ingress,
+            extra_adapters,
+        } = self.into_event_components()?;
+        if !extra_adapters.is_empty() {
+            return Err(WebHostError::SimulationUnsupported(
+                "additional Execution Adapters require their own simulated Host boundary",
+            ));
+        }
+        Ok(PreparedSimulatedWebHost::new(plan, registry, ingress))
+    }
+
     /// Starts Ingress in event mode and returns a socket-free request harness.
     ///
     /// Event mode executes the same Plan-bound routing, limits, credentials,
     /// middleware, and response mapping as the native listener without binding
     /// a TCP socket. It is intended for contract tests and embedded Hosts.
     pub async fn start_event(self) -> Result<RunningEventWebHost, WebHostError> {
-        let plan = self.resolve_plan()?;
-        let mut ingress = self
-            .middleware
-            .into_iter()
-            .fold(WebIngressEventFactory::new(), |ingress, middleware| {
-                ingress.with_shared_middleware(middleware)
-            });
-        if let Some(diagnostics) = self.diagnostics {
-            ingress = ingress.with_shared_diagnostics(diagnostics);
-        }
-        let mut registry = NativePluginRegistry::new().with_factory(ingress.clone());
-        for installer in self.factory_installers {
-            registry = (installer.install)(registry);
-        }
-        let registry = registry.with_linked_factories();
+        let EventHostComponents {
+            plan,
+            registry,
+            ingress,
+            extra_adapters,
+        } = self.into_event_components()?;
         let mut catalog = ExecutionAdapterCatalog::single(registry);
-        for adapter in self.extra_adapters {
+        for adapter in extra_adapters {
             catalog = catalog
                 .with_shared_adapter(adapter)
                 .map_err(WebHostError::Adapter)?;
@@ -918,6 +971,8 @@ pub enum WebHostError {
     Shutdown(ShutdownOutcome),
     /// A replicated Host cannot safely replay a single-lane runtime value.
     ReplicationUnsupported(&'static str),
+    /// A simulated Host cannot silently omit an execution Adapter boundary.
+    SimulationUnsupported(&'static str),
     /// Replicated Runner startup or shutdown failed.
     Replicated(ReplicatedRunnerError),
 }
@@ -945,6 +1000,12 @@ impl fmt::Display for WebHostError {
                 write!(
                     formatter,
                     "replicated Web Host configuration is unsupported: {detail}"
+                )
+            }
+            Self::SimulationUnsupported(detail) => {
+                write!(
+                    formatter,
+                    "simulated Web Host configuration is unsupported: {detail}"
                 )
             }
             Self::Replicated(error) => write!(formatter, "replicated Web Host failed: {error:?}"),

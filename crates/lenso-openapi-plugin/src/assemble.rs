@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lenso_capability_http_endpoint::DescribeResponse;
+use lenso_capability_http_endpoint::OPENAPI_CONTRACT_EXTENSION;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::OpenApiConfig;
+use crate::contract;
 
 const METHODS: &[&str] = &[
     "delete", "get", "head", "options", "patch", "post", "put", "trace",
@@ -64,6 +66,7 @@ pub(crate) fn assemble(
             .unwrap_or_default()
             .into_iter()
             .collect::<Map<_, _>>();
+        let strict_contract = operation.remove(OPENAPI_CONTRACT_EXTENSION);
         if operation.contains_key("operationId") {
             return Err(format!(
                 "route {} must not override its generated operationId",
@@ -84,6 +87,16 @@ pub(crate) fn assemble(
                     json!({"default": {"description": "Undocumented response."}}),
                 );
             }
+        }
+        if let Some(strict_contract) = strict_contract {
+            contract::validate(
+                config,
+                &route.route_id,
+                &route.method,
+                &route.path,
+                &operation,
+                &strict_contract,
+            )?;
         }
         ensure_path_parameters(&route.route_id, &path_parameters, &mut operation)?;
         operation.insert("operationId".to_owned(), Value::String(route.route_id));
@@ -210,10 +223,14 @@ fn ensure_path_parameters(
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use std::collections::BTreeMap;
 
-    use lenso_capability_http_endpoint::{DescribeResponse, DescribeResponseRoutesItem};
+    use lenso_capability_http_endpoint::{
+        DescribeResponse, DescribeResponseRoutesItem, JsonSchema, OPENAPI_CONTRACT_EXTENSION,
+        OpenApiContract,
+    };
     use serde_json::{Value, json};
 
     use super::assemble;
@@ -277,7 +294,7 @@ mod tests {
     }
 
     #[test]
-    fn routes_without_metadata_receive_a_valid_default_response() {
+    fn routes_without_a_strict_contract_remain_valid_and_receive_a_default_response() {
         let document = assemble(
             &OpenApiConfig::default(),
             vec![description(vec![route(
@@ -386,6 +403,137 @@ mod tests {
         );
     }
 
+    #[derive(JsonSchema)]
+    struct OrderPath {
+        order_id: String,
+    }
+
+    #[derive(JsonSchema)]
+    struct OrderQuery {
+        include: Option<bool>,
+    }
+
+    #[derive(JsonSchema)]
+    struct CreateOrder {
+        id: String,
+    }
+
+    #[derive(JsonSchema)]
+    struct CreatedOrder {
+        id: String,
+    }
+
+    #[test]
+    fn strict_contract_matches_typed_route_and_is_not_emitted() {
+        let contract = strict_contract();
+        let document = assemble(
+            &OpenApiConfig::default(),
+            vec![strict_description(
+                contract.clone(),
+                strict_operation(&contract),
+            )],
+        )
+        .unwrap();
+        let document: Value = serde_json::from_slice(&document).unwrap();
+        let operation = &document["paths"]["/orders/{order_id}"]["post"];
+
+        assert_eq!(operation["operationId"], "orders.create");
+        assert!(operation.get(OPENAPI_CONTRACT_EXTENSION).is_none());
+        assert_eq!(
+            operation["requestBody"]["content"]["application/json"]["schema"]["properties"]["id"]["type"],
+            "string"
+        );
+        assert_eq!(
+            operation["responses"]["422"]["content"]["application/problem+json"]["schema"]["properties"]
+                ["code"]["enum"],
+            json!(["invalid_order"])
+        );
+    }
+
+    #[test]
+    fn strict_contract_rejects_route_identity_method_and_path_drift() {
+        for (field, value) in [
+            ("route_id", json!("orders.changed")),
+            ("method", json!("GET")),
+            ("path", json!("/changed/{order_id}")),
+        ] {
+            let mut contract = strict_contract();
+            contract[field] = value;
+            let error = assemble(
+                &OpenApiConfig::default(),
+                vec![strict_description(
+                    contract.clone(),
+                    strict_operation(&contract),
+                )],
+            )
+            .unwrap_err();
+            assert!(error.contains(&format!("drifted {field}")), "{error}");
+        }
+    }
+
+    #[test]
+    fn strict_contract_rejects_parameter_body_success_and_problem_drift() {
+        let contract = strict_contract();
+
+        let mut path = strict_operation(&contract);
+        path["parameters"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|parameter| parameter["in"] == "path")
+            .unwrap()["name"] = json!("other_id");
+        let error = assemble(
+            &OpenApiConfig::default(),
+            vec![strict_description(contract.clone(), path)],
+        )
+        .unwrap_err();
+        assert!(error.contains("path or query parameters"), "{error}");
+
+        let mut query = strict_operation(&contract);
+        query["parameters"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|parameter| parameter["in"] == "query")
+            .unwrap()["schema"]["type"] = json!("integer");
+        let error = assemble(
+            &OpenApiConfig::default(),
+            vec![strict_description(contract.clone(), query)],
+        )
+        .unwrap_err();
+        assert!(error.contains("query parameter `include`"), "{error}");
+
+        let mut body = strict_operation(&contract);
+        body["requestBody"]["content"]["application/json"]["schema"]["properties"]["id"]["type"] =
+            json!("integer");
+        let error = assemble(
+            &OpenApiConfig::default(),
+            vec![strict_description(contract.clone(), body)],
+        )
+        .unwrap_err();
+        assert!(error.contains("JSON request body"), "{error}");
+
+        let mut success = strict_operation(&contract);
+        success["responses"]["201"]["content"]["application/json"]["schema"]["properties"]["id"]
+            ["type"] = json!("integer");
+        let error = assemble(
+            &OpenApiConfig::default(),
+            vec![strict_description(contract.clone(), success)],
+        )
+        .unwrap_err();
+        assert!(error.contains("response 201"), "{error}");
+
+        let mut problem = strict_operation(&contract);
+        problem["responses"]["422"]["content"]["application/problem+json"]["schema"]["properties"]
+            ["code"]["enum"] = json!(["other_error"]);
+        let error = assemble(
+            &OpenApiConfig::default(),
+            vec![strict_description(contract.clone(), problem)],
+        )
+        .unwrap_err();
+        assert!(error.contains("response 422"), "{error}");
+    }
+
     fn config(value: Value) -> OpenApiConfig {
         serde_json::from_value(value).unwrap()
     }
@@ -413,5 +561,39 @@ mod tests {
             path: path.to_owned(),
             route_id: route_id.to_owned(),
         }
+    }
+
+    fn strict_contract() -> Value {
+        OpenApiContract::new("orders.create", "POST", "/orders/{order_id}")
+            .path::<OrderPath>()
+            .unwrap()
+            .query::<OrderQuery>()
+            .unwrap()
+            .json_body::<CreateOrder>()
+            .unwrap()
+            .success_json::<CreatedOrder>(201)
+            .unwrap()
+            .known_problem(422, "invalid_order")
+            .unwrap()
+            .build()
+            .unwrap()
+    }
+
+    fn strict_operation(contract: &Value) -> Value {
+        contract["operation"].clone()
+    }
+
+    fn strict_description(contract: Value, operation: Value) -> DescribeResponse {
+        let mut operation = operation;
+        operation
+            .as_object_mut()
+            .unwrap()
+            .insert(OPENAPI_CONTRACT_EXTENSION.to_owned(), contract);
+        description(vec![route(
+            "orders.create",
+            "POST",
+            "/orders/{order_id}",
+            Some(operation),
+        )])
     }
 }

@@ -6,7 +6,8 @@ use lenso_app_plan::{
 };
 use lenso_capability_http_endpoint::{
     CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, EndpointEndpoint,
-    EndpointHandleInvocationError, HANDLE_OPERATION, HandleResponse, endpoint,
+    EndpointHandleInvocationError, HANDLE_OPERATION, HandleResponse, Json, JsonSchema, Path,
+    endpoint,
     response::{self, StatusCode},
 };
 use lenso_kernel::{Kernel, NativeRequestEndpoint, RuntimeFailure, ShutdownOutcome};
@@ -177,6 +178,12 @@ impl OrdersHttp {
     #[get("orders.read", "/orders/{order_id}")]
     #[openapi({
         summary: "Read an order",
+        parameters: [{
+            name: "order_id",
+            in: "path",
+            required: true,
+            schema: { "type": "string" }
+        }],
         responses: {
             "200": {
                 description: "Order",
@@ -189,16 +196,49 @@ impl OrdersHttp {
                         }
                     }
                 }
+            },
+            "400": {
+                description: "Invalid path parameter",
+                content: {
+                    "application/problem+json": {
+                        schema: {
+                            "type": "object",
+                            required: ["type", "title", "status", "detail", "code"],
+                            properties: {
+                                "type": { "type": "string" },
+                                title: { "type": "string" },
+                                status: { "const": 400 },
+                                detail: { "type": "string" },
+                                code: {
+                                    "type": "string",
+                                    "enum": ["invalid_path_parameters"]
+                                }
+                            },
+                            additionalProperties: false
+                        }
+                    }
+                }
             }
         }
     })]
-    async fn read(&self) -> Result<HandleResponse, EndpointHandleInvocationError> {
+    #[openapi_contract]
+    async fn read(
+        &self,
+        Path(path): Path<OrderPath>,
+    ) -> Result<Json<Order>, EndpointHandleInvocationError> {
         futures::future::ready(()).await;
-        Ok(response::json(
-            StatusCode::OK,
-            &serde_json::json!({"id": "order-42"}),
-        )?)
+        Ok(Json(Order { id: path.order_id }))
     }
+}
+
+#[derive(serde::Deserialize, JsonSchema)]
+struct OrderPath {
+    order_id: String,
+}
+
+#[derive(JsonSchema, serde::Serialize)]
+struct Order {
+    id: String,
 }
 
 #[derive(Clone, Copy, Debug)]

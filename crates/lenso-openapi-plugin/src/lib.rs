@@ -6,6 +6,7 @@
 
 mod assemble;
 mod config;
+mod contract;
 
 use std::{cell::RefCell, rc::Rc};
 

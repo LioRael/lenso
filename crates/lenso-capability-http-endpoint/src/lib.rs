@@ -1,6 +1,7 @@
 //! Generated bindings for backend-owned HTTP Endpoint providers.
 
 mod authoring;
+mod contract;
 mod extract;
 pub mod response;
 pub mod testing;
@@ -17,6 +18,10 @@ mod generated {
 }
 
 pub use authoring::{EndpointFuture, EndpointRoute, HttpEndpoint, MiddlewareOutcome};
+pub use contract::{
+    OPENAPI_CONTRACT_EXTENSION, OpenApiContract, OpenApiContractError, OpenApiContractFactory,
+    OpenApiContractResult,
+};
 /// Deprecated compatibility name for [`QueryParams`].
 #[deprecated(
     since = "0.3.0",
@@ -29,6 +34,7 @@ pub use extract::{
 };
 pub use generated::*;
 pub use lenso_capability_http_endpoint_macros::{endpoint, openapi_operation};
+pub use schemars::JsonSchema;
 
 /// Common imports for HTTP Endpoint Plugin authors.
 pub mod prelude {
