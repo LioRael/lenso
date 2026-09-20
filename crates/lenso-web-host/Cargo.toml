@@ -32,6 +32,7 @@ lenso-http-auth = { path = "../lenso-http-auth", version = "0.2.3" }
 lenso-openapi-plugin = { path = "../lenso-openapi-plugin", version = "0.2.3" }
 lenso-web-duplex-fixture = { path = "../../tests/fixtures/duplex-endpoint-plugin" }
 lenso-web-greetings-plugin-example = { path = "../../examples/greetings-http-plugin" }
+lenso-web-http-parity-fixture = { path = "../../tests/fixtures/http-parity-plugin" }
 lenso-web-query-endpoint-fixture = { path = "../../tests/fixtures/query-endpoint-plugin" }
 schemars.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }

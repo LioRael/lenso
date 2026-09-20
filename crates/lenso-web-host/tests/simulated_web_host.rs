@@ -4,6 +4,10 @@ use bytes::Bytes;
 use futures::future::LocalBoxFuture;
 use http::{HeaderValue, Request};
 use lenso_app_plan::{CapabilityEndpointPlan, authoring::PluginDescriptor};
+use lenso_capability_http_endpoint::{
+    CAPABILITY_ID as HTTP_CAPABILITY_ID, DESCRIBE_OPERATION as HTTP_DESCRIBE_OPERATION,
+    DESCRIPTOR_VERSION as HTTP_DESCRIPTOR_VERSION, HANDLE_OPERATION as HTTP_HANDLE_OPERATION,
+};
 use lenso_capability_http_stream_endpoint::{
     CAPABILITY_ID as STREAM_CAPABILITY_ID, DESCRIBE_OPERATION as STREAM_DESCRIBE_OPERATION,
     DESCRIPTOR_VERSION as STREAM_DESCRIPTOR_VERSION, HANDLE_OPERATION as STREAM_HANDLE_OPERATION,
@@ -14,13 +18,18 @@ use lenso_capability_websocket_endpoint::{
     ConnectWebsocketResponseKind, DESCRIBE_WEBSOCKET_OPERATION as WEBSOCKET_DESCRIBE_OPERATION,
     DESCRIPTOR_VERSION as WEBSOCKET_DESCRIPTOR_VERSION,
 };
-use lenso_kernel::{DeterministicDriver, Kernel, NativeApp, RuntimeFailure, ShutdownOutcome};
+use lenso_kernel::{
+    DeterministicDriver, Kernel, NativeApp, RuntimeDriver, RuntimeFailure, ShutdownOutcome,
+};
 use lenso_web_duplex_fixture::{DuplexFactory, PACKAGE_ID as DUPLEX_PACKAGE_ID};
 use lenso_web_greetings_plugin_example::GreetingsHttp;
 use lenso_web_host::{NativeWebHost, SimulatedWebHost};
+use lenso_web_http_parity_fixture::{
+    HttpParityEndpointFactory, PACKAGE_ID as HTTP_PARITY_PACKAGE_ID,
+};
 use lenso_web_ingress_plugin::{
-    WebIngressConfig, WebIngressMiddleware, WebIngressMiddlewareOutcome, WebIngressRequest,
-    WebIngressResponse, WebSocketConfig,
+    SessionCookieConfig, WebIngressConfig, WebIngressMiddleware, WebIngressMiddlewareOutcome,
+    WebIngressRequest, WebIngressResponse, WebSocketConfig,
 };
 
 fn start_simulated(host: NativeWebHost) -> (DeterministicDriver, NativeApp, SimulatedWebHost) {
@@ -90,6 +99,16 @@ fn duplex_descriptor() -> PluginDescriptor {
             )
             .with_stream_operation(WEBSOCKET_CONNECT_OPERATION),
         )
+}
+
+fn http_parity_descriptor() -> PluginDescriptor {
+    PluginDescriptor::new(HTTP_PARITY_PACKAGE_ID, "0.0.0", "web").with_capability(
+        CapabilityEndpointPlan::new(
+            HTTP_CAPABILITY_ID,
+            HTTP_DESCRIPTOR_VERSION,
+            [HTTP_DESCRIBE_OPERATION, HTTP_HANDLE_OPERATION],
+        ),
+    )
 }
 
 fn websocket_request() -> Request<Bytes> {
@@ -198,6 +217,103 @@ fn simulated_host_preserves_real_stream_websocket_and_disconnect_cancellation() 
     assert!(disconnected.is_disconnected());
     let response = driver.run(disconnected.send_buffered()).unwrap();
     assert_eq!(response.status(), 503);
+
+    shutdown(&driver, &app);
+}
+
+#[test]
+fn simulated_host_projects_timeout_malformed_response_and_credential_evidence_through_ingress() {
+    let config = WebIngressConfig::default()
+        .with_request_timeout(Duration::from_millis(25))
+        .unwrap()
+        .with_session_cookie(
+            SessionCookieConfig::new("__Host-session", "__Host-csrf", "x-csrf-token").unwrap(),
+        )
+        .unwrap();
+    let (driver, app, simulated) = start_simulated(
+        NativeWebHost::new()
+            .with_ingress_config(config)
+            .plugin::<GreetingsHttp>()
+            .factory(HttpParityEndpointFactory, http_parity_descriptor()),
+    );
+
+    // The parity fixture does not cooperate with cancellation on `/blocked`.
+    // Advancing only the deterministic driver proves the event ingress retains
+    // the real endpoint deadline and projects its safe HTTP failure.
+    let timer_driver = driver.clone();
+    let blocked = simulated.request(Request::get("/blocked").body(Bytes::new()).unwrap());
+    let advance_timeout = async move {
+        timer_driver.yield_now().await;
+        timer_driver.advance(Duration::from_millis(25));
+    };
+    let (blocked, ()) = driver.run(futures::future::join(blocked, advance_timeout));
+    let blocked = blocked.unwrap();
+    assert_eq!(blocked.status(), 504);
+    assert_eq!(blocked.body().as_ref(), br#"{"error":"endpoint_timeout"}"#);
+
+    // This invalid status is emitted by the actual Endpoint Capability fixture,
+    // then rejected by real ingress response normalization.
+    let malformed = driver
+        .run(simulated.request(Request::get("/invalid").body(Bytes::new()).unwrap()))
+        .unwrap();
+    assert_eq!(malformed.status(), 502);
+    assert_eq!(
+        malformed.body().as_ref(),
+        br#"{"error":"invalid_endpoint_response"}"#
+    );
+
+    // Ingress extracts one credential as evidence for the Capability request,
+    // but strips the original sensitive transport headers before dispatch.
+    let bearer = driver
+        .run(
+            simulated.request(
+                Request::get("/echo/bearer")
+                    .header("authorization", "Bearer proof-token")
+                    .body(Bytes::new())
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    let bearer: serde_json::Value = serde_json::from_slice(bearer.body()).unwrap();
+    assert_eq!(bearer["credential"]["scheme"], "bearer");
+    assert_eq!(bearer["credential"]["value"], "proof-token");
+    assert!(
+        bearer["headers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|header| header["name"] != "authorization" && header["name"] != "cookie")
+    );
+
+    let session = driver
+        .run(
+            simulated.request(
+                Request::get("/echo/session")
+                    .header("cookie", "__Host-session=session-token")
+                    .body(Bytes::new())
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    let session: serde_json::Value = serde_json::from_slice(session.body()).unwrap();
+    assert_eq!(session["credential"]["scheme"], "session");
+    assert_eq!(session["credential"]["value"], "session-token");
+
+    // Multiple Authorization fields are rejected before any credential becomes
+    // auth evidence, using the same ingress path as a socket-backed Host.
+    let ambiguous = driver
+        .run(
+            simulated.request(
+                Request::get("/echo/rejected")
+                    .header("authorization", "Bearer first")
+                    .header("authorization", "Bearer second")
+                    .body(Bytes::new())
+                    .unwrap(),
+            ),
+        )
+        .unwrap();
+    assert_eq!(ambiguous.status(), 400);
+    assert_eq!(ambiguous.body().as_ref(), br#"{"error":"bad_request"}"#);
 
     shutdown(&driver, &app);
 }

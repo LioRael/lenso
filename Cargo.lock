@@ -1322,6 +1322,7 @@ dependencies = [
  "lenso-runner",
  "lenso-web-duplex-fixture",
  "lenso-web-greetings-plugin-example",
+ "lenso-web-http-parity-fixture",
  "lenso-web-ingress-plugin",
  "lenso-web-query-endpoint-fixture",
  "schemars",

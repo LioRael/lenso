@@ -136,6 +136,42 @@ async fn native_web_host_golden_path_selects_plan_and_uses_real_ingress() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn strict_openapi_contract_compiles_an_equivalent_typed_client_and_serves_its_request() {
+    LocalSet::new()
+        .run_until(async {
+            let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
+            let issuer = ActorAssertionIssuer::new("golden-web.api-token", b"test-signing-key");
+            let running = golden_host(issuer, now, Rc::new(RefCell::new(None)), true)
+                .start()
+                .await
+                .unwrap();
+
+            // This is a compiled equivalent of generated client code: it accepts
+            // only the typed public surface emitted at `/openapi.json`, then uses
+            // the resulting method/path/response contract for a real request.
+            // It deliberately has no server DTO or direct Endpoint access.
+            let document = request(running.address(), "/openapi.json", &[]).await;
+            assert_eq!(document.status, 200);
+            let client = GeneratedContractOrderClient::compile(
+                running.address(),
+                &serde_json::from_str(&document.body).unwrap(),
+            )
+            .unwrap();
+
+            let order = client.read("order-42").await.unwrap();
+            assert_eq!(
+                order,
+                GeneratedContractOrder {
+                    id: "order-42".into()
+                }
+            );
+
+            running.shutdown().await.unwrap();
+        })
+        .await;
+}
+
 #[test]
 fn native_web_host_fails_closed_when_the_credential_capability_is_not_released() {
     let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
@@ -695,6 +731,158 @@ struct HttpResponse {
     status: u16,
     headers: BTreeMap<String, String>,
     body: String,
+}
+
+/// Test-only output of an ordinary `OpenAPI` client generator for the strict
+/// `golden.orders.contract` operation.
+///
+/// The server's `ContractOrder` remains the sole source DTO. This client-side
+/// representation exists only to prove that the served public document can be
+/// compiled into a separately typed consumer and used against real ingress.
+#[derive(Debug, Deserialize, Eq, PartialEq)]
+struct GeneratedContractOrder {
+    id: String,
+}
+
+/// A minimal compiled representation of the `OpenAPI` operation a client
+/// generator would emit. `compile` fails closed if the served document stops
+/// describing a request that this type can safely make.
+#[derive(Debug)]
+struct GeneratedContractOrderClient {
+    address: SocketAddr,
+    path: String,
+}
+
+impl GeneratedContractOrderClient {
+    fn compile(address: SocketAddr, document: &serde_json::Value) -> Result<Self, String> {
+        if document.get("openapi").and_then(serde_json::Value::as_str) != Some("3.1.0") {
+            return Err("generated client requires an OpenAPI 3.1 document".to_owned());
+        }
+        let path = "/contract/orders/{order_id}";
+        let operation = document
+            .get("paths")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|paths| paths.get(path))
+            .and_then(serde_json::Value::as_object)
+            .and_then(|methods| methods.get("get"))
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| {
+                "generated client requires GET /contract/orders/{order_id}".to_owned()
+            })?;
+        if operation
+            .get("operationId")
+            .and_then(serde_json::Value::as_str)
+            != Some("golden.orders.contract")
+        {
+            return Err("generated client operationId drifted".to_owned());
+        }
+        validate_generated_path_parameter(operation)?;
+        validate_generated_success_response(operation)?;
+        validate_generated_problem_response(operation)?;
+        Ok(Self {
+            address,
+            path: path.to_owned(),
+        })
+    }
+
+    async fn read(&self, order_id: &str) -> Result<GeneratedContractOrder, String> {
+        if order_id.is_empty() || order_id.contains(['/', '{', '}']) {
+            return Err("generated path parameter is invalid".to_owned());
+        }
+        let path = self.path.replace("{order_id}", order_id);
+        let response = request(self.address, &path, &[]).await;
+        if response.status != 200 {
+            return Err(format!(
+                "generated client expected 200, received {}: {}",
+                response.status, response.body
+            ));
+        }
+        if response.headers.get("content-type").map(String::as_str)
+            != Some("application/json; charset=utf-8")
+        {
+            return Err("generated client expected an application/json response".to_owned());
+        }
+        serde_json::from_str(&response.body)
+            .map_err(|error| format!("generated client could not decode ContractOrder: {error}"))
+    }
+}
+
+fn validate_generated_path_parameter(
+    operation: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    let parameters = operation
+        .get("parameters")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "generated client requires path parameters".to_owned())?;
+    let [parameter] = parameters.as_slice() else {
+        return Err("generated client requires exactly one path parameter".to_owned());
+    };
+    if parameter.get("name").and_then(serde_json::Value::as_str) != Some("order_id")
+        || parameter.get("in").and_then(serde_json::Value::as_str) != Some("path")
+        || parameter
+            .get("required")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+        || parameter
+            .pointer("/schema/type")
+            .and_then(serde_json::Value::as_str)
+            != Some("string")
+    {
+        return Err("generated client path parameter contract drifted".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_generated_success_response(
+    operation: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    let operation = serde_json::Value::Object(operation.clone());
+    let schema = operation
+        .pointer("/responses/200/content/application~1json/schema")
+        .ok_or_else(|| "generated client requires a JSON 200 response".to_owned())?;
+    let required_id = schema
+        .get("required")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|fields| fields.iter().any(|field| field == "id"));
+    if schema.get("type").and_then(serde_json::Value::as_str) != Some("object")
+        || !required_id
+        || schema
+            .pointer("/properties/id/type")
+            .and_then(serde_json::Value::as_str)
+            != Some("string")
+    {
+        return Err("generated client success response contract drifted".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_generated_problem_response(
+    operation: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), String> {
+    let operation = serde_json::Value::Object(operation.clone());
+    let schema = operation
+        .pointer("/responses/400/content/application~1problem+json/schema")
+        .ok_or_else(|| "generated client requires a problem+json 400 response".to_owned())?;
+    let required = schema
+        .get("required")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "generated client requires a typed problem response".to_owned())?;
+    let required_fields = ["type", "title", "status", "detail", "code"];
+    if !required_fields
+        .iter()
+        .all(|field| required.iter().any(|actual| actual == field))
+        || schema
+            .pointer("/properties/status/const")
+            .and_then(serde_json::Value::as_u64)
+            != Some(400)
+        || schema
+            .pointer("/properties/code/enum")
+            .and_then(serde_json::Value::as_array)
+            .is_none_or(|codes| codes.iter().all(|code| code != "invalid_path_parameters"))
+    {
+        return Err("generated client problem response contract drifted".to_owned());
+    }
+    Ok(())
 }
 
 async fn request(address: SocketAddr, path: &str, headers: &[(&str, &str)]) -> HttpResponse {
