@@ -189,15 +189,28 @@ fn published_resources(root: &Path, metadata: &Value) -> anyhow::Result<Vec<Publ
         .unwrap_or_else(|| Value::Array(Vec::new()));
     let resources: Vec<PublishedResource> = serde_json::from_value(declared)
         .context("Plugin published_resources must be an array of resource declarations")?;
-    if resources.len() > 64 {
-        bail!("Plugin declares more than 64 published resources");
-    }
+    validate_published_resources(root, &resources, "Plugin")?;
+    Ok(resources)
+}
 
+/// Validate bounded, immutable resource declarations for a source directory.
+///
+/// App Plugin metadata and resource-only convention output use the same file
+/// constraints. The caller supplies its subject solely for an actionable
+/// diagnostic; this routine does not infer any runtime or Plugin authority.
+pub(super) fn validate_published_resources(
+    root: &Path,
+    resources: &[PublishedResource],
+    subject: &str,
+) -> anyhow::Result<()> {
+    if resources.len() > 64 {
+        bail!("{subject} declares more than 64 published resources");
+    }
     let canonical_root = fs::canonicalize(root)
-        .with_context(|| format!("resolve Plugin project {}", root.display()))?;
+        .with_context(|| format!("resolve {subject} resource root {}", root.display()))?;
     let mut paths = BTreeSet::new();
     let mut total = 0_u64;
-    for resource in &resources {
+    for resource in resources {
         if !paths.insert(resource.path.clone()) {
             bail!("duplicate published resource path `{}`", resource.path);
         }
@@ -243,7 +256,7 @@ fn published_resources(root: &Path, metadata: &Value) -> anyhow::Result<Vec<Publ
             bail!("published resources exceed 16 MiB");
         }
     }
-    Ok(resources)
+    Ok(())
 }
 
 fn valid_schema(value: &str) -> bool {

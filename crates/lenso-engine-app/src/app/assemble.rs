@@ -3,7 +3,8 @@ use crate::archive::{archive_bundle, with_bundle_directory};
 use anyhow::{Context, bail};
 use clap::Args;
 use lenso_app_authoring::{
-    discovery::{SourceRole, discover},
+    discovery::conventions::GeneratedResourceContribution,
+    discovery::{PublishedResource, SourceRole, discover},
     host_authoring::{GeneratedHostBuild, LocalPluginInput},
 };
 use lenso_app_plan::ExecutionClassId;
@@ -108,13 +109,14 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         .flat_map(|compilation| [&compilation.owner_project, &compilation.compiler_project])
         .map(|path| Ok((path.clone(), super::local_host::input_digest(path)?)))
         .collect::<anyhow::Result<std::collections::BTreeMap<_, _>>>()?;
-    let generated_candidates =
+    let compiled_conventions =
         super::convention_build::compile(&convention_plan, generated_sources.path())?;
     if let Some(host) = &precompiled {
-        host.admit(&generated_candidates)?;
+        host.admit(&compiled_conventions.candidates)?;
     }
-    super::contracts::synchronize(&root, &generated_candidates)?;
-    candidates.extend(generated_candidates);
+    super::contracts::synchronize(&root, &compiled_conventions.candidates)?;
+    let generated_resources = compiled_conventions.resources;
+    candidates.extend(compiled_conventions.candidates);
     let source_digests = candidates
         .iter()
         .map(|candidate| {
@@ -162,6 +164,9 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     }
     let mut runtime_artifacts = Vec::new();
     let mut runtime_codecs = std::collections::BTreeMap::new();
+    for contribution in &generated_resources {
+        publish_convention_resources(contribution, stage.path(), &mut published_resources)?;
+    }
     for candidate in candidates {
         super::preset::checkpoint()?;
         // Shared sources are not built merely because they can be discovered.
@@ -370,12 +375,42 @@ fn publish_resources(
     distribution: &Path,
     published: &mut Vec<PublishedResourceRecord>,
 ) -> anyhow::Result<()> {
-    if candidate.published_resources.is_empty() {
+    publish_resource_files(
+        &candidate.plugin_id,
+        &candidate.project,
+        &candidate.published_resources,
+        distribution,
+        published,
+    )
+}
+
+fn publish_convention_resources(
+    contribution: &GeneratedResourceContribution,
+    distribution: &Path,
+    published: &mut Vec<PublishedResourceRecord>,
+) -> anyhow::Result<()> {
+    publish_resource_files(
+        &contribution.contribution_id,
+        &contribution.project,
+        &contribution.resources,
+        distribution,
+        published,
+    )
+}
+
+fn publish_resource_files(
+    owner: &str,
+    project: &Path,
+    resources: &[PublishedResource],
+    distribution: &Path,
+    published: &mut Vec<PublishedResourceRecord>,
+) -> anyhow::Result<()> {
+    if resources.is_empty() {
         return Ok(());
     }
-    let root = fs::canonicalize(&candidate.project)
-        .with_context(|| format!("resolve Plugin project {}", candidate.project.display()))?;
-    for resource in &candidate.published_resources {
+    let root = fs::canonicalize(project)
+        .with_context(|| format!("resolve published resource project {}", project.display()))?;
+    for resource in resources {
         let relative = Path::new(&resource.path);
         let mut source = root.clone();
         for component in relative.components() {
@@ -404,9 +439,7 @@ fn publish_resources(
                 resource.path
             );
         }
-        let output_relative = Path::new("resources")
-            .join(&candidate.plugin_id)
-            .join(relative);
+        let output_relative = Path::new("resources").join(owner).join(relative);
         let output = distribution.join(&output_relative);
         let parent = output
             .parent()
@@ -424,7 +457,7 @@ fn publish_resources(
             .map(|byte| format!("{byte:02x}"))
             .collect();
         published.push(PublishedResourceRecord {
-            owner: candidate.plugin_id.clone(),
+            owner: owner.to_owned(),
             schema: resource.schema.clone(),
             path: output_relative.to_string_lossy().replace('\\', "/"),
             sha256: format!("sha256:{digest}"),
@@ -499,7 +532,10 @@ pub(super) fn copy_root(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lenso_app_authoring::discovery::{Candidate, PublishedResource, SourceRole};
+    use lenso_app_authoring::{
+        discovery::conventions::GeneratedResourceContribution,
+        discovery::{Candidate, PublishedResource, SourceRole},
+    };
 
     #[test]
     fn publishes_declared_resources_with_an_exact_inventory() {
@@ -542,5 +578,37 @@ mod tests {
             fs::read_to_string(distribution.join(&published[0].path)).unwrap(),
             "{\"profile\":\"orders\"}"
         );
+    }
+
+    #[test]
+    fn publishes_resource_only_contributions_without_an_implicit_plugin_bundle() {
+        let temporary = tempfile::tempdir().unwrap();
+        let project = temporary.path().join("generated");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(
+            project.join("deployment.json"),
+            "{\"profile\":\"assistant\"}",
+        )
+        .unwrap();
+        let contribution = GeneratedResourceContribution {
+            contribution_id: "example.assistant.surface-123456789abc".to_owned(),
+            project,
+            resources: vec![PublishedResource {
+                path: "deployment.json".to_owned(),
+                schema: "example.agent-deployment@2".to_owned(),
+            }],
+            evidence: "test".to_owned(),
+        };
+        let distribution = temporary.path().join("dist");
+        fs::create_dir(&distribution).unwrap();
+        let mut published = Vec::new();
+
+        publish_convention_resources(&contribution, &distribution, &mut published).unwrap();
+
+        assert_eq!(published.len(), 1);
+        assert_eq!(published[0].owner, contribution.contribution_id);
+        assert_eq!(published[0].schema, "example.agent-deployment@2");
+        assert!(distribution.join("resources").is_dir());
+        assert!(!distribution.join("bundles").exists());
     }
 }

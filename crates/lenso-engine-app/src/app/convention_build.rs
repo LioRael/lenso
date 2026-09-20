@@ -2,13 +2,26 @@
 use anyhow::bail;
 use lenso_app_authoring::discovery::{
     Candidate,
-    conventions::{ConventionPlan, generated_candidate},
+    conventions::{
+        ConventionPlan, GeneratedResourceContribution, generated_candidate,
+        generated_resource_contribution,
+    },
 };
 use std::{fs, path::Path, process::Command, time::Duration};
 
-pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Vec<Candidate>> {
+/// All selected convention results. A convention may produce a normal Plugin
+/// candidate or a resource-only contribution, never an implicit stand-in
+/// Plugin for data that has no runtime behavior.
+#[derive(Debug, Default)]
+pub(super) struct CompiledConventions {
+    pub candidates: Vec<Candidate>,
+    pub resources: Vec<GeneratedResourceContribution>,
+}
+
+pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<CompiledConventions> {
     let compiler_group = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
     let mut candidates = Vec::new();
+    let mut resources = Vec::new();
     for compilation in &plan.compilations {
         let budget = lenso_engine::process::ProcessBudget::new(
             Duration::from_secs(
@@ -54,6 +67,10 @@ pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Ve
         {
             bail!("convention inputs changed during compilation; retry");
         }
+        if let Some(contribution) = generated_resource_contribution(&project, compilation)? {
+            resources.push(contribution);
+            continue;
+        }
         let candidate = generated_candidate(&project, compilation)?;
         if candidate.format == "bun" {
             let status = Command::new("bun")
@@ -75,7 +92,10 @@ pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Ve
         }
         candidates.push(candidate);
     }
-    Ok(candidates)
+    Ok(CompiledConventions {
+        candidates,
+        resources,
+    })
 }
 
 fn validate_tree(

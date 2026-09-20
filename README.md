@@ -184,6 +184,30 @@ identity before importing a resource. This supports optional conventions from
 multiple languages and Plugin types while keeping `app/` layout out of Engine
 core and runtime authority.
 
+### Resource-only convention outputs
+
+A selected convention compiler may contribute only immutable data. It writes
+`lenso.convention-resources.json` into its otherwise bounded compiler output:
+
+```json
+{
+  "schema": "lenso.convention-resources.v1",
+  "resources": [
+    {"path": "deployment.json", "schema": "example.deployment@1"}
+  ]
+}
+```
+
+The file is mutually exclusive with `Cargo.toml`, `package.json`, and a Plugin
+Bundle manifest in that output. The Engine validates the same regular-file,
+path, schema, count, and byte bounds as ordinary published resources, assigns
+the selected convention surface identity as the inventory owner, and copies the
+declared files to `dist/resources/<contribution-id>/…`. It does not install Bun
+or Cargo dependencies, build a Bundle, add a Plugin to the Host, or turn the
+contribution identity into runtime authority. This lets a convention publish a
+Profile, route manifest, schema, or other consumer-owned data without inventing
+an empty executable Plugin.
+
 ## Runtime and bootstrap boundary
 
 Official and third-party processor implementations use `RuntimeProcessor`, which

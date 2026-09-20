@@ -561,6 +561,57 @@ fn convention_outputs_cannot_change_identity_or_activate_more_conventions() {
 }
 
 #[test]
+fn resource_only_convention_output_has_no_plugin_identity_or_runtime_metadata() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "output/lenso-agent-deployment.json",
+        "{\"profile\":\"assistant\"}",
+    );
+    write(
+        root.path(),
+        "output/lenso.convention-resources.json",
+        r#"{"schema":"lenso.convention-resources.v1","resources":[{"path":"lenso-agent-deployment.json","schema":"example.agent-deployment@2"}]}"#,
+    );
+    let compilation = conventions::Compilation {
+        owner: "example.owner".into(),
+        version: "1.0.0".into(),
+        role: SourceRole::AppOwned,
+        owner_project: root.path().into(),
+        entry: root.path().join("agent"),
+        plugin_id: "example.owner.surface-123456789abc".into(),
+        convention: "example.agent".into(),
+        compiler_project: root.path().into(),
+        compiler: conventions::Compiler {
+            program: "never-run".into(),
+            args: vec![],
+            timeout_seconds: None,
+            output_limit_bytes: None,
+        },
+    };
+
+    let contribution =
+        conventions::generated_resource_contribution(&root.path().join("output"), &compilation)
+            .unwrap()
+            .unwrap();
+    assert_eq!(contribution.contribution_id, compilation.plugin_id);
+    assert_eq!(contribution.resources.len(), 1);
+    assert_eq!(
+        contribution.resources[0].schema,
+        "example.agent-deployment@2"
+    );
+    assert!(contribution.evidence.ends_with(":resources"));
+
+    bun(root.path(), "output", "example.fake-plugin");
+    assert!(
+        conventions::generated_resource_contribution(&root.path().join("output"), &compilation)
+            .unwrap_err()
+            .to_string()
+            .contains("cannot also declare a Plugin")
+    );
+}
+
+#[test]
 fn composite_compilers_fingerprint_the_logical_owner_not_only_its_core() {
     let root = tempfile::tempdir().unwrap();
     support(root.path(), "app/support", "example.cli", "cli.ts");

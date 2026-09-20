@@ -1838,6 +1838,7 @@ dependencies = [
  "lenso-engine-app",
  "lenso-engine-authoring",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

@@ -6,6 +6,11 @@ struct Host {
 }
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Create, validate, develop, or package one ordinary Plugin project.
+    Plugin {
+        #[command(subcommand)]
+        command: lenso_engine_app::plugin::PluginCommand,
+    },
     App {
         #[command(subcommand)]
         command: lenso_engine_app::app::AppCommand,
@@ -20,12 +25,14 @@ async fn main() -> anyhow::Result<()> {
         );
         return Ok(());
     }
-    let Command::App { command } = Host::parse().command;
+    let command = Host::parse().command;
     #[cfg(unix)]
     if matches!(
         &command,
-        lenso_engine_app::app::AppCommand::Build(_)
-            | lenso_engine_app::app::AppCommand::Assemble(_)
+        Command::App {
+            command: lenso_engine_app::app::AppCommand::Build(_)
+                | lenso_engine_app::app::AppCommand::Assemble(_)
+        }
     ) {
         let mut interrupt =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
@@ -37,5 +44,8 @@ async fn main() -> anyhow::Result<()> {
             std::process::exit(code);
         });
     }
-    lenso_engine_app::app::app(command).await
+    match command {
+        Command::Plugin { command } => lenso_engine_app::plugin::plugin(command).await,
+        Command::App { command } => lenso_engine_app::app::app(command).await,
+    }
 }

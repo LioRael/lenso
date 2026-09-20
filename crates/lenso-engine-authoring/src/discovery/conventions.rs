@@ -1,5 +1,5 @@
 //! Read-only surface selection. No compiler, package manager or business code runs here.
-use super::{Candidate, DiscoveryReport, SourceRole, project, read_metadata};
+use super::{Candidate, DiscoveryReport, PublishedResource, SourceRole, project, read_metadata};
 use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -7,6 +7,13 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
 };
+
+/// A convention compiler can emit this manifest instead of a Plugin project
+/// when its selected surface contributes immutable distribution data only.
+/// The Engine assigns the contribution identity from the already-selected
+/// surface; it never derives runtime authority from this manifest.
+pub const CONVENTION_RESOURCES_FILE: &str = "lenso.convention-resources.json";
+pub const CONVENTION_RESOURCES_SCHEMA: &str = "lenso.convention-resources.v1";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -60,6 +67,24 @@ pub struct Compilation {
     pub convention: String,
     pub compiler_project: PathBuf,
     pub compiler: Compiler,
+}
+
+/// Immutable data emitted by a selected convention surface without creating a
+/// runtime Plugin. `contribution_id` is the Engine-assigned surface identity,
+/// used only as the generic resource inventory owner.
+#[derive(Clone, Debug)]
+pub struct GeneratedResourceContribution {
+    pub contribution_id: String,
+    pub project: PathBuf,
+    pub resources: Vec<PublishedResource>,
+    pub evidence: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResourceOutputDocument {
+    schema: String,
+    resources: Vec<PublishedResource>,
 }
 
 #[derive(Debug, Serialize)]
@@ -477,6 +502,54 @@ pub fn generated_candidate(project: &Path, compilation: &Compilation) -> anyhow:
     candidate.surface_owner = Some(compilation.owner.clone());
     candidate.evidence = format!("compiler:{}:{}", compilation.owner, compilation.convention);
     Ok(candidate)
+}
+
+/// Read a resource-only compiler output. A compiler chooses this explicit
+/// form when it has data to publish but no runtime Plugin to contribute. It is
+/// intentionally mutually exclusive with Plugin metadata so a convention
+/// cannot make a resource-only result appear to be an executable contribution.
+pub fn generated_resource_contribution(
+    project: &Path,
+    compilation: &Compilation,
+) -> anyhow::Result<Option<GeneratedResourceContribution>> {
+    let project = fs::canonicalize(project)?;
+    let manifest = project.join(CONVENTION_RESOURCES_FILE);
+    if !manifest.try_exists()? {
+        return Ok(None);
+    }
+    let metadata = fs::symlink_metadata(&manifest)?;
+    if !metadata.file_type().is_file() {
+        bail!("convention resource manifest must be a regular file");
+    }
+    for plugin_manifest in [
+        "Cargo.toml",
+        "package.json",
+        lenso_plugin_bundle::MANIFEST_FILE,
+    ] {
+        if project.join(plugin_manifest).try_exists()? {
+            bail!(
+                "resource-only convention output cannot also declare a Plugin: {plugin_manifest}"
+            );
+        }
+    }
+    let document: ResourceOutputDocument = serde_json::from_str(&read_metadata(&manifest)?)
+        .context("parse convention resource output manifest")?;
+    if document.schema != CONVENTION_RESOURCES_SCHEMA {
+        bail!("unsupported convention resource output schema");
+    }
+    if document.resources.is_empty() {
+        bail!("resource-only convention output must declare at least one resource");
+    }
+    project::validate_published_resources(&project, &document.resources, "convention output")?;
+    Ok(Some(GeneratedResourceContribution {
+        contribution_id: compilation.plugin_id.clone(),
+        project,
+        resources: document.resources,
+        evidence: format!(
+            "compiler:{}:{}:resources",
+            compilation.owner, compilation.convention
+        ),
+    }))
 }
 
 fn discover_bare_owners(

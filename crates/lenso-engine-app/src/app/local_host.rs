@@ -27,6 +27,12 @@ pub(super) fn generate(
     let generated = cache.join("source");
     fs::create_dir_all(generated.join("src"))?;
     let mut dependencies = BTreeMap::<String, Value>::new();
+    // Native Plugins can be authored against an in-progress local Lenso
+    // checkout. The generated Host must use the same package identities for
+    // Kernel, Adapter, and codec types; a Cargo version string alone would
+    // otherwise admit a registry copy alongside a path copy and split the
+    // native Plugin registration inventory.
+    let mut local_lenso_patches = BTreeMap::<String, (String, Value)>::new();
     for (name, version) in [
         ("anyhow", "1"),
         ("futures", "0.3"),
@@ -98,7 +104,8 @@ pub(super) fn generate(
                     .is_some_and(|p| Path::new(p) == manifest)
             })
             .context("selected Cargo package is missing")?;
-        if is_native(candidate) {
+        let native = is_native(candidate);
+        if native {
             if !package["targets"]
                 .as_array()
                 .context("Cargo targets")?
@@ -131,6 +138,13 @@ pub(super) fn generate(
                 .to_owned(),
         ];
         while let Some(id) = pending.pop() {
+            if native {
+                let package = packages
+                    .iter()
+                    .find(|p| p["id"] == id)
+                    .context("reachable Cargo package")?;
+                collect_local_lenso_patch(&mut local_lenso_patches, package)?;
+            }
             if !seen_packages.insert(id.clone()) {
                 continue;
             }
@@ -148,7 +162,7 @@ pub(super) fn generate(
                 .iter()
                 .find(|p| p["id"] == id)
                 .context("reachable Cargo package")?;
-            if is_native(candidate) && package["name"] == "lenso-capability-http-endpoint" {
+            if native && package["name"] == "lenso-capability-http-endpoint" {
                 let dependency = dependency(package)?;
                 if web_contract
                     .as_ref()
@@ -353,7 +367,11 @@ pub(super) fn generate(
     source = source.replace("// LENSO_WEB_READY", if web { r#"
             if let Some(address) = ingress.local_address() { eprintln!("Listening on http://{address}"); }
 "# } else { "" });
-    let manifest = json!({"package":{"name":"lenso-generated-local-host", "version":"0.0.0", "edition":"2024"}, "workspace":{}, "dependencies": dependencies});
+    let patches = local_lenso_patches
+        .into_iter()
+        .map(|(name, (_, dependency))| (name, dependency))
+        .collect::<BTreeMap<_, _>>();
+    let manifest = json!({"package":{"name":"lenso-generated-local-host", "version":"0.0.0", "edition":"2024"}, "workspace":{}, "dependencies": dependencies, "patch":{"crates-io":patches}});
     fs::write(
         generated.join("Cargo.toml"),
         toml::to_string_pretty(&manifest)?,
@@ -471,6 +489,31 @@ pub(super) fn dependency(package: &Value) -> anyhow::Result<Value> {
             "unsupported contract registry {source}; use a custom Host for alternate registry dependencies"
         ),
     }
+}
+
+fn collect_local_lenso_patch(
+    patches: &mut BTreeMap<String, (String, Value)>,
+    package: &Value,
+) -> anyhow::Result<()> {
+    if !package["source"].is_null() {
+        return Ok(());
+    }
+    let name = package["name"].as_str().context("Cargo package name")?;
+    if name != "lenso" && !name.starts_with("lenso-") {
+        return Ok(());
+    }
+    let id = package["id"].as_str().context("Cargo package ID")?;
+    let dependency = dependency(package)?;
+    if let Some((previous_id, previous_dependency)) = patches.get(name) {
+        if previous_id != id && previous_dependency != &dependency {
+            bail!(
+                "native Plugins use incompatible local {name} package identities; align their Lenso dependency sources before generating one Host"
+            );
+        }
+        return Ok(());
+    }
+    patches.insert(name.to_owned(), (id.to_owned(), dependency));
+    Ok(())
 }
 
 fn codec_name(capability: &str) -> anyhow::Result<String> {
@@ -720,4 +763,83 @@ pub(super) fn digest_text(value: &str) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use serde_json::json;
+
+    use super::collect_local_lenso_patch;
+
+    fn local_package(name: &str, id: &str, manifest: &str) -> serde_json::Value {
+        json!({
+            "name": name,
+            "id": id,
+            "source": null,
+            "version": "0.3.9",
+            "manifest_path": manifest,
+        })
+    }
+
+    #[test]
+    fn local_lenso_runtime_packages_become_generated_host_patches() {
+        let mut patches = BTreeMap::new();
+        collect_local_lenso_patch(
+            &mut patches,
+            &local_package(
+                "lenso-native-adapter",
+                "path+file:///work/lenso-runtime-rust/crates/lenso-native-adapter#0.3.14",
+                "/work/lenso-runtime-rust/crates/lenso-native-adapter/Cargo.toml",
+            ),
+        )
+        .expect("local Lenso package should be admitted");
+        collect_local_lenso_patch(
+            &mut patches,
+            &local_package(
+                "lenso-kernel",
+                "path+file:///work/lenso/crates/lenso-kernel#0.3.9",
+                "/work/lenso/crates/lenso-kernel/Cargo.toml",
+            ),
+        )
+        .expect("local Kernel should be admitted");
+
+        assert_eq!(patches.len(), 2);
+        assert_eq!(
+            patches["lenso-native-adapter"].1,
+            json!({
+                "package": "lenso-native-adapter",
+                "path": "/work/lenso-runtime-rust/crates/lenso-native-adapter",
+            })
+        );
+    }
+
+    #[test]
+    fn conflicting_local_lenso_sources_are_rejected_before_host_build() {
+        let mut patches = BTreeMap::new();
+        collect_local_lenso_patch(
+            &mut patches,
+            &local_package(
+                "lenso-kernel",
+                "path+file:///first/lenso-kernel#0.3.9",
+                "/first/lenso-kernel/Cargo.toml",
+            ),
+        )
+        .expect("first local Kernel source");
+        let error = collect_local_lenso_patch(
+            &mut patches,
+            &local_package(
+                "lenso-kernel",
+                "path+file:///second/lenso-kernel#0.3.9",
+                "/second/lenso-kernel/Cargo.toml",
+            ),
+        )
+        .expect_err("different local Kernel sources cannot share one generated Host");
+        assert!(
+            error
+                .to_string()
+                .contains("incompatible local lenso-kernel package identities")
+        );
+    }
 }
