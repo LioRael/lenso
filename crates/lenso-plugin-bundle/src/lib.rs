@@ -2043,14 +2043,12 @@ root-slot = "tools"
 
     #[test]
     fn target_capability_profile_is_canonical_and_invalid_profiles_fail_closed() {
-        let profile = ExecutionTargetCapabilityProfile::new(
-            "lenso.bun-authoring@2",
-            [
-                ExecutionTargetCapability::Stream,
-                ExecutionTargetCapability::Request,
-                ExecutionTargetCapability::Event,
-            ],
-        );
+        let profile = ExecutionTargetCapabilities::new([
+            ExecutionTargetCapability::Stream,
+            ExecutionTargetCapability::Request,
+            ExecutionTargetCapability::Event,
+        ])
+        .profile_for("lenso.bun-authoring@2");
         assert_eq!(
             profile.profile,
             EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT
@@ -2063,7 +2061,7 @@ root-slot = "tools"
                 ExecutionTargetCapability::Stream,
             ]
         );
-        assert!(profile.is_valid());
+        assert!(profile.validate().is_ok());
         assert_eq!(
             serde_json::to_value(&profile).unwrap(),
             serde_json::json!({
@@ -2079,7 +2077,7 @@ root-slot = "tools"
             "capabilities": ["stream", "request"],
         }))
         .unwrap();
-        assert!(!invalid.is_valid());
+        assert!(invalid.validate().is_err());
 
         let artifact = PluginArtifactV2 {
             path: "plugin.js".to_owned(),

@@ -53,18 +53,24 @@ CARGO_TARGET_WASM32_WASIP2_RUNNER=wasmtime cargo test --locked -p lenso-wasip2-d
 The Browser command requires `wasm-pack`, Chrome, and a matching ChromeDriver.
 The WASIp2 command requires Wasmtime on `PATH`.
 
-## Host support policy
+## Host boundaries and qualification
 
-- Native Tokio is the supported production host. Its Runner owns replicated
-  lane lifecycle, terminal failure propagation, diagnostics, and zero-copy
-  transfer for registered generated Request, Stream, and Event values.
-- Browser (`wasm32-unknown-unknown`) is a supported Runtime Driver target. CI
-  executes its Kernel lifecycle smoke suite in real headless Chrome; native
-  replicated lanes are not part of the Browser target contract.
-- WASIp2 (`wasm32-wasip2`) is experimental and is not published yet. CI
-  executes its Kernel lifecycle smoke suite as a component in Wasmtime.
-- Native fallback implementations exist to keep host-independent development
-  tests fast. Passing a fallback test is not accepted as target-host evidence.
+This README describes source behavior, not current maturity. The canonical
+implementation, release, and Environment-plus-Infrastructure qualification
+ledger is `LioRael/lenso:docs/qualification/qualification-status.json`. The
+ledger candidate has not been remotely published, so this README intentionally
+does not make a release, target, or production qualification claim.
+
+- The Native Tokio Runner owns replicated lane lifecycle, terminal failure
+  propagation, diagnostics, and zero-copy transfer for registered generated
+  Request, Stream, and Event values.
+- The Browser Driver (`wasm32-unknown-unknown`) executes its Kernel lifecycle
+  smoke suite in real headless Chrome; native replicated lanes are outside the
+  Browser Driver contract.
+- The WASIp2 Driver (`wasm32-wasip2`) executes its Kernel lifecycle smoke suite
+  as a component in Wasmtime.
+- Native fallback implementations keep host-independent development tests fast.
+  Passing a fallback test is not target-host evidence.
 
 ## Byte-oriented guest ABI
 

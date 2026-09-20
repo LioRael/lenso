@@ -285,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.5.20"
+version = "0.5.24"
 dependencies = [
  "futures",
  "lenso-kernel",
@@ -297,9 +297,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-app-plan"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bae6e028eab9a55cd6562e332867c3378a0d97a68cd33d3d28e4a67db100adc3"
+version = "0.4.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -308,17 +306,17 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c711f97b34977521f0614ac45d5f831224a64de73bfc363365350ede56b2d09"
+version = "0.3.3"
 dependencies = [
  "futures",
  "http",
  "lenso-capability-http-endpoint-macros",
+ "lenso-contract-authoring",
  "lenso-contract-codegen",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
+ "schemars",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -326,9 +324,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint-macros"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51ee4bb64f14f7364ee42fe573ae772e84daf6494de87b8efe5474d2dc082f2a"
+version = "0.1.5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -385,9 +381,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-kernel"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c536ea88ba9579dfd31d7074b8758b8a4d90e760cfecf4db22dea2c85425147"
+version = "0.3.10"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -395,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-native-adapter"
-version = "0.3.13"
+version = "0.3.14"
 dependencies = [
  "futures",
  "inventory",
@@ -409,7 +403,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-native-adapter-macros"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -441,9 +435,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runtime-conformance"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "888fbe854b9ffed30d9240b173d5aa64e01bffbdd2725d37b6b357eb331f22e6"
+version = "0.3.9"
 dependencies = [
  "futures",
  "lenso-app-plan",

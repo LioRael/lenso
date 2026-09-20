@@ -4,128 +4,13 @@ use lenso_app_plan::{
     CapabilityOperationKind, ExecutionClassId,
     authoring::{PluginContract, PluginDescriptor, PluginImplementation},
 };
+pub use lenso_process_protocol::{
+    EXECUTION_TARGET_CAPABILITY_PROFILE as EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT,
+    ExecutionTargetCapability, ExecutionTargetCapabilityProfile,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{BundleError, PluginArtifactV2, PluginManifest};
-
-/// Stable, cross-repository contract name for an execution target capability profile.
-///
-/// The profile identifies one concrete adapter/driver identity and its *exact*
-/// capabilities. It intentionally is not inferred from an execution class or
-/// deployment name. The independently published Protocol package owns the same
-/// wire contract; this local representation keeps released Bundle consumers
-/// fail-closed until their dependency cohort can move together.
-pub const EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT: &str =
-    "lenso.execution-target-capability-profile@1";
-
-/// A concrete interaction or platform facility exposed by one execution target.
-///
-/// This list is deliberately closed. A target which has not declared a feature is
-/// treated as not supporting it; Hosts must never infer a capability from an
-/// execution-class name, deployment target, or a best-effort fallback.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ExecutionTargetCapability {
-    Request,
-    Stream,
-    Event,
-    WebSocket,
-    HostImports,
-    NativeProcess,
-    WasmComponent,
-    Remote,
-    Browser,
-    Workers,
-}
-
-impl ExecutionTargetCapability {
-    /// Every currently defined capability, in canonical wire order.
-    pub const ALL: [Self; 10] = [
-        Self::Browser,
-        Self::Event,
-        Self::HostImports,
-        Self::NativeProcess,
-        Self::Remote,
-        Self::Request,
-        Self::Stream,
-        Self::WasmComponent,
-        Self::WebSocket,
-        Self::Workers,
-    ];
-
-    /// Maps the transport-independent Capability operation to its target feature.
-    pub const fn for_operation_kind(kind: CapabilityOperationKind) -> Self {
-        match kind {
-            CapabilityOperationKind::Request => Self::Request,
-            CapabilityOperationKind::Stream => Self::Stream,
-            CapabilityOperationKind::Event => Self::Event,
-        }
-    }
-
-    /// Returns the stable wire/debug spelling used in explanations.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Request => "request",
-            Self::Stream => "stream",
-            Self::Event => "event",
-            Self::WebSocket => "websocket",
-            Self::HostImports => "host-imports",
-            Self::NativeProcess => "native-process",
-            Self::WasmComponent => "wasm-component",
-            Self::Remote => "remote",
-            Self::Browser => "browser",
-            Self::Workers => "workers",
-        }
-    }
-}
-
-/// A serializable, portable declaration for one exact admitted execution target.
-///
-/// `capabilities` must be strictly canonical (sorted, unique, and all known).
-/// Callers should reject an invalid declaration rather than repairing it: doing so
-/// makes source drift and unknown future capabilities visible at the Host boundary.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExecutionTargetCapabilityProfile {
-    pub profile: String,
-    pub target_profile: String,
-    pub capabilities: Vec<ExecutionTargetCapability>,
-}
-
-impl ExecutionTargetCapabilityProfile {
-    /// Creates the canonical profile emitted by current Hosts and adapters.
-    pub fn new(
-        target_profile: impl Into<String>,
-        capabilities: impl IntoIterator<Item = ExecutionTargetCapability>,
-    ) -> Self {
-        let mut capabilities = capabilities.into_iter().collect::<Vec<_>>();
-        capabilities.sort_unstable_by_key(|capability| capability.as_str());
-        capabilities.dedup();
-        Self {
-            profile: EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT.to_owned(),
-            target_profile: target_profile.into(),
-            capabilities,
-        }
-    }
-
-    /// Whether this is a fully explicit, canonical, portable declaration.
-    pub fn is_valid(&self) -> bool {
-        self.profile == EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT
-            && is_profile_token(&self.target_profile)
-            && self
-                .capabilities
-                .windows(2)
-                .all(|pair| pair[0].as_str() < pair[1].as_str())
-    }
-}
-
-fn is_profile_token(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 128
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'@'))
-}
 
 /// An explicit, fail-closed capability profile for one admitted target runtime.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -169,7 +54,13 @@ impl ExecutionTargetCapabilities {
         &self,
         target_profile: impl Into<String>,
     ) -> ExecutionTargetCapabilityProfile {
-        ExecutionTargetCapabilityProfile::new(target_profile, self.features())
+        let mut capabilities = self.features().collect::<Vec<_>>();
+        capabilities.sort_unstable_by_key(|capability| capability.as_str());
+        ExecutionTargetCapabilityProfile {
+            profile: EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT.to_owned(),
+            target_profile: target_profile.into(),
+            capabilities,
+        }
     }
 }
 
@@ -444,7 +335,7 @@ fn candidates_for_admission<'a>(
         .iter()
         .filter(|candidate| candidate_matches_admission(candidate, admission))
     {
-        if !capability_profile.is_valid() {
+        if capability_profile.validate().is_err() {
             rejected.push(rejected_candidate(
                 candidate,
                 ImplementationRejectionReason::InvalidTargetCapabilityProfile {
@@ -543,11 +434,19 @@ fn target_requirements(descriptor: &PluginDescriptor) -> Vec<TargetCapabilityReq
                     .map(|kind| TargetCapabilityRequirement {
                         capability_id: endpoint.capability_id().to_owned(),
                         operation: operation.clone(),
-                        feature: ExecutionTargetCapability::for_operation_kind(kind),
+                        feature: capability_for_operation_kind(kind),
                     })
             })
         })
         .collect()
+}
+
+const fn capability_for_operation_kind(kind: CapabilityOperationKind) -> ExecutionTargetCapability {
+    match kind {
+        CapabilityOperationKind::Request => ExecutionTargetCapability::Request,
+        CapabilityOperationKind::Stream => ExecutionTargetCapability::Stream,
+        CapabilityOperationKind::Event => ExecutionTargetCapability::Event,
+    }
 }
 
 fn rejected_candidate(
