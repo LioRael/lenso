@@ -41,6 +41,12 @@ does **not** accept a hand-supplied result receipt: it requires clean source
 trees, constructs a disposable source-closure build mirror, rebuilds Wasm, and
 runs locked local `workerd` suites itself.
 
+The supplied Runtime G2 and Auth G4 source checkouts need their existing
+lockfile-exact Node tool directories first (`pnpm install --frozen-lockfile`
+inside each experiment). The cohort only reuses their locked `workerd` and
+`esbuild` executables from a disposable mirror; it does not install, relink, or
+write `node_modules` in a candidate checkout.
+
 ```sh
 node experiments/workers-g2/run-local-composition-cohort.mjs \
   --output /tmp/lenso-workers-local-composition.json \

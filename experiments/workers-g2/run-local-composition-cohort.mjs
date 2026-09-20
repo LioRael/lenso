@@ -194,6 +194,23 @@ function mirrorNodePackage(source, destination) {
   copyDirectory(source, destination);
 }
 
+function linkLockedNodeTooling(name, source, destination) {
+  const nodeModules = join(source, "node_modules");
+  const bin = join(nodeModules, ".pnpm/node_modules/.bin");
+  for (const executable of ["esbuild", "workerd"]) {
+    if (!existsSync(join(bin, executable))) {
+      throw Error(
+        `${name} needs locked node tooling; run pnpm install --frozen-lockfile in ${source} first`,
+      );
+    }
+  }
+  mkdirSync(destination, { recursive: true });
+  symlinkSync(join(nodeModules, ".pnpm"), join(destination, ".pnpm"));
+  if (existsSync(join(nodeModules, ".bin")))
+    symlinkSync(join(nodeModules, ".bin"), join(destination, ".bin"));
+  return run(`${name}-workerd-version`, join(bin, "workerd"), ["--version"], source);
+}
+
 const identities = {
   core: sourceIdentity("Core", sourcePaths.core, [
     "crates/lenso-app-plan/Cargo.toml",
@@ -243,7 +260,13 @@ try {
   mkdirSync(join(runtimeMirror, "packages"), { recursive: true });
   copyDirectory(join(sourcePaths.runtime, "packages/workers-runtime"), join(runtimeMirror, "packages/workers-runtime"));
   symlinkSync(join(sourcePaths.runtime, "crates"), join(runtimeMirror, "crates"));
-  commands.push(run("g2-install", "pnpm", ["install", "--frozen-lockfile", "--offline"], g2));
+  commands.push(
+    linkLockedNodeTooling(
+      "g2",
+      join(sourcePaths.runtime, "experiments/workers-g2"),
+      join(g2, "node_modules"),
+    ),
+  );
   mirrorNodePackage(
     join(sourcePaths.runtime, "packages/workers-runtime"),
     join(g2, "node_modules/@lenso/workers-runtime"),
@@ -282,7 +305,13 @@ try {
   copyDirectory(join(sourcePaths.auth, "experiments/workers-g4"), g4);
   symlinkSync(join(sourcePaths.auth, "crates"), join(authMirror, "crates"));
   symlinkSync(join(sourcePaths.auth, "workers"), join(authMirror, "workers"));
-  commands.push(run("auth-install", "pnpm", ["install", "--frozen-lockfile", "--offline"], g4));
+  commands.push(
+    linkLockedNodeTooling(
+      "auth",
+      join(sourcePaths.auth, "experiments/workers-g4"),
+      join(g4, "node_modules"),
+    ),
+  );
   mirrorNodePackage(
     join(sourcePaths.runtime, "packages/workers-runtime"),
     join(g4, "node_modules/@lenso/workers-runtime"),
