@@ -346,21 +346,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lenso-capability-http-stream-endpoint"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54bb37b4d710aba3f9d8e6910cbcd45bf0d162d8319c9379609d045d41ef68e6"
-dependencies = [
- "futures",
- "lenso-contract-codegen",
- "lenso-contract-runtime",
- "lenso-kernel",
- "lenso-plugin-authoring",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "lenso-capability-websocket-endpoint"
 version = "0.1.0"
 dependencies = [
@@ -457,8 +442,6 @@ dependencies = [
 [[package]]
 name = "lenso-plugin-authoring"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f24f444677f5b9857d4aa6f2ca90002243eb756a7f153bb721206f88abe6b07"
 
 [[package]]
 name = "lenso-runtime-codec"
@@ -480,7 +463,7 @@ version = "0.0.0"
 dependencies = [
  "futures",
  "lenso-app-plan",
- "lenso-capability-http-stream-endpoint 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lenso-capability-http-stream-endpoint",
  "lenso-capability-websocket-endpoint",
  "lenso-kernel",
  "lenso-native-adapter",
@@ -509,7 +492,7 @@ dependencies = [
  "lenso",
  "lenso-app-plan",
  "lenso-capability-http-endpoint",
- "lenso-capability-http-stream-endpoint 0.1.1",
+ "lenso-capability-http-stream-endpoint",
  "lenso-capability-websocket-endpoint",
  "lenso-kernel",
  "lenso-native-adapter",
@@ -1060,3 +1043,11 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
+
+[[patch.unused]]
+name = "lenso-capability-http-client"
+version = "0.3.0"
+
+[[patch.unused]]
+name = "lenso-http-egress-plugin"
+version = "0.3.4"
