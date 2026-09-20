@@ -249,7 +249,7 @@ try {
   writeCargoConfig(config);
   writeFileSync(
     cargo,
-    `#!/bin/sh\nunset CARGO\nexec ${JSON.stringify(cargoExecutable)} --config ${JSON.stringify(config)} "$@"\n`,
+    `#!/bin/sh\nunset CARGO\nif [ "\${1#\\+}" != "$1" ]; then\n  toolchain="$1"\n  shift\n  exec ${JSON.stringify(cargoExecutable)} "$toolchain" --config ${JSON.stringify(config)} "$@"\nfi\nexec ${JSON.stringify(cargoExecutable)} --config ${JSON.stringify(config)} "$@"\n`,
   );
   execFileSync("chmod", ["755", cargo]);
 
