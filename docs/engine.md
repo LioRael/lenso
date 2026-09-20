@@ -34,11 +34,15 @@ With the updated precompiled CLI:
 ```sh
 lenso engine inspect --source ./content --markdown
 lenso engine run --source ./content --markdown
+lenso engine explain --source ./content --markdown
 lenso engine dev --source ./content --markdown --output ./dist
 ```
 
-`inspect` returns a read-only plan. `run` returns one complete JSON generation.
-`dev` keeps a session alive and emits structured update/failure events. No App,
+`inspect` returns a read-only plan. `run` returns one complete JSON generation
+with the execution explanation that produced it. `explain` runs the same bounded
+selection once without publishing output and returns the stable
+`lenso.engine-explain.v1` report. `dev` keeps a session alive and emits
+structured update/failure events. No App,
 Host project, Rust toolchain, Cargo or Bun is needed for this Markdown workflow.
 Unrelated files such as `plugin.rs` have no meaning unless support is selected.
 
@@ -197,6 +201,48 @@ a publication lock and never exposes half-written output. Consumers can call
 `publication::verify` and read referenced files after source/plugin deletion.
 The CLI refuses to publish inside its input source directories. Old immutable
 generations are retained; deletion/retention is an explicit host policy.
+
+## Explainability
+
+`lenso engine explain` is a diagnostic execution, not a second planner or a
+claim about a long-lived daemon. It loads the same selected processors and input
+snapshot as `run`, executes one bounded Session without `--output`, and emits:
+
+```json
+{
+  "schema": "lenso.engine-explain.v1",
+  "active_generation": {
+    "steps": [{
+      "step_id": "markdown/readme.md",
+      "plugin": "lenso.markdown",
+      "inputs": ["readme.md"],
+      "dependencies": [],
+      "cache": { "kind": "miss", "reason": { "kind": "cold" } }
+    }]
+  },
+  "last_refresh": { "kind": "activated" }
+}
+```
+
+Each active step includes the declared inputs and predecessor steps, plus one
+of `hit`, `not_cacheable`, or `miss`. A miss is attributed to `cold`, a changed
+step definition, changed input paths, changed dependencies, or bounded-cache
+eviction. This makes a rebuild's affected work explicit without inferring it
+from timestamps or log text.
+
+An in-process `engine dev` Session emits the same report after both successful
+updates and rejected candidates. A rejected candidate carries
+`current_generation_retained`; a true value means the previous successful
+Generation remains active. A short-lived `engine explain` command has no
+earlier process state to invent, so its report only describes that command's
+own Session.
+
+`lenso app explain --json` is intentionally separate. It emits
+`lenso.app-explain.v1` from persisted Host admission, runtime-selection, target
+profile, and Capability-binding evidence. It does not rerun the Engine Session;
+when no live Session report has been supplied by a Host, its `engine_execution`
+field explicitly says that the execution history is unavailable rather than
+guessing a cache or Generation reason.
 
 ## Limits and trust
 

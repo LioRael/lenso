@@ -1,98 +1,64 @@
-# Execution-target preflight
+# Host admission and target explanation
 
-`lenso app explain` is a read-only, machine-readable preflight for the exact
-App derived from the current Host Catalog and Plugin Root. It evaluates the
-selected Plan only. Host policy remains responsible for selecting one Plugin
-implementation before resolution; this command never invents another Resolver,
-changes a selection, starts a Host, or retries an incompatible target.
-
-## Input
-
-Pass one JSON file for every runtime profile selected by the App:
-
-```json
-{
-  "profile": "lenso.execution-target-capability-profile@1",
-  "target_profile": "lenso.native-rust@1",
-  "capabilities": ["host-imports", "request", "stream"]
-}
-```
-
-The contract identifier, field names, and capability vocabulary are shared with
-the target admission contract. `target_profile` is the exact opaque runtime
-profile from the selected Plan—not a deployment label or an execution-class
-guess. It must be 1 through 128 ASCII characters using only letters, digits,
-`.`, `_`, `-`, and `@`.
-
-The capability list is deliberately closed and must be strictly sorted and
-unique. The current vocabulary is:
-
-- `browser`
-- `event`
-- `host-imports`
-- `native-process`
-- `remote`
-- `request`
-- `stream`
-- `wasm-component`
-- `websocket`
-- `workers`
-
-Unknown values, duplicate values, unordered lists, unexpected fields, or an
-incorrect contract identifier are rejected rather than repaired. A missing
-declaration means unsupported.
-
-For an App with more than one selected runtime profile, repeat `--profile`:
+`lenso app explain --json` is the read-only explanation for the exact App
+already materialized by a Host. It reads the Host's persisted admission output,
+Plugin Root, resolved Plan, and generated bundle inventory; it does not choose a
+replacement implementation, run a second dependency resolver, mutate the
+Plugin Root, start a Host, or fall back to another target.
 
 ```sh
-lenso app explain \
-  --root ./my-app \
-  --profile native-target.json \
-  --profile bun-target.json
+lenso app explain --root ./my-app --json
 ```
 
-Use `--require <target-profile>:<capability>` for an additional adapter-specific
-need that is not derivable from the Plan's Capability operation kinds:
+There is deliberately no `--profile` input. An execution-target capability
+profile is emitted by the actual Runtime Driver/Adapter during Host build and
+persisted with the selected implementation. Asking an operator to supply a
+second JSON profile would make the CLI validate a claim rather than the Host
+that will run the App.
 
-```sh
-lenso app explain \
-  --profile native-target.json \
-  --require lenso.native-rust@1:host-imports
-```
+## What it explains
 
-Repeated target profiles and repeated explicit requirements are rejected as
-ambiguous. A supplied profile that does not match a selected target profile is
-also rejected, so CI cannot silently validate an unrelated declaration.
+The stable output schema is `lenso.app-explain.v1`. It has four independent
+evidence groups:
 
-## Output and exit status
+- `target_capability_profiles`: the exact canonical profiles generated for the
+  selected target implementations.
+- `implementation_selection`: the persisted selected implementation and each
+  genuine Runtime rejection, including such reasons as host-target mismatch,
+  missing target capabilities, or runtime non-admission.
+- `consumer_requirements`: each consumer's declared Capability requirement,
+  the resolved provider binding, Host-authorized provider scope, and only the
+  non-selected candidates whose reason can be established from Root or Plan
+  evidence.
+- `engine_execution`: execution/cache/Generation history when an owning Host
+  has supplied it. A static App inspection explicitly reports that this evidence
+  is unavailable; it never guesses why an Engine rebuild occurred.
 
-The command always writes JSON with `kind: "lenso.app-explain"`. It exits zero
-only when every selected operation's interaction kind is supported by its exact
-target profile. Capability operations contribute `request`, `stream`, or
-`event` requirements. A rejected report groups missing features with the Plan
-instances, descriptors, and operations that need them.
+The report is a projection of persisted facts. In particular, a provider that
+is merely absent from a resolved binding is not mislabelled as an explicit
+dependency-choice rejection, and a private Runtime choice is not reconstructed
+from heuristics.
 
-```json
-{
-  "schema_version": 1,
-  "kind": "lenso.app-explain",
-  "status": "rejected",
-  "reasons": [{
-    "kind": "missing_target_capability",
-    "target_profile": "lenso.native-rust@1",
-    "feature": "stream",
-    "requirements": [{
-      "source": "capability_operation",
-      "instance": "orders",
-      "capability_id": "company.orders@1",
-      "operation": "watch",
-      "feature": "stream"
-    }]
-  }]
-}
-```
+## Fail-closed target admission
 
-This is a pre-readiness gate, not a substitute for an Adapter's real target
-qualification. It proves that the declared target profile covers the resolved
-Plan; process, browser, Wasm, Worker, storage, failure, and lifecycle evidence
-remain owned by their respective target/Host qualification suites.
+Target admission happens while the Host is built or assembled, before an
+incompatible implementation can become the selected runtime. For example, a
+Plugin requiring a bidirectional Stream cannot be selected for a target whose
+actual profile lacks `stream`; the build records the rejection or fails before
+publishing a candidate Host. `app explain` then makes that decision inspectable.
+
+The capability vocabulary and profile validation remain owned by
+`lenso-process-protocol`; Runtime/Adapter packages generate the concrete
+profiles. Application Capabilities remain Plan-bound. A private Driver resource
+or infrastructure adapter does not become a second global resolver merely to
+appear in this report.
+
+## Boundaries
+
+This command proves neither a release nor target qualification. It explains the
+Host's selection and compatibility evidence. Real Workers, Browser, process,
+storage, failure, lifecycle, and deployment qualification continue to be owned
+by the applicable target and Environment-plus-Infrastructure cohort. Use
+`lenso engine explain` for a bounded processing Session's cache/rebuild and
+candidate-retention explanation; its `lenso.engine-explain.v1` output is
+separate from this App admission report.

@@ -53,9 +53,12 @@ cargo publish --dry-run --locked --workspace --allow-dirty --no-verify
 ```
 
 The independent Engine repository owns the portable catalog and its Wasm/package
-verification. CLI packaging requires the Engine dependency versions to exist in
-crates.io. Keep the registry package gate enabled; publishing the CLI does not
-publish its independently owned Engine dependencies.
+verification. A **release-ready** cross-repository candidate may use an
+ephemeral, separately recorded source patch map and exact source snapshots to
+prove its local closure; do not commit that patch map. A **published** CLI
+package still requires its Engine, Core, Runtime, and Protocol dependency
+versions to exist in crates.io. Keep the registry package gate enabled;
+publishing the CLI does not publish its independently owned dependencies.
 
 To inspect an npm archive locally, build the current platform payload first:
 
@@ -80,7 +83,8 @@ creation requires a separately reviewed and authorized change.
 ## Engine extraction
 
 Engine owns the portable catalog and its Wasm/package verification. The CLI
-consumes released Engine crates from crates.io. Publish changed Engine dependencies
-before updating the CLI lockfile or releasing the CLI. The CLI's normal Cargo
-package gate validates that this registry dependency closure is available; npm
-binary publication uses the same reviewed source and lockfile.
+consumes released Engine crates from crates.io. Before publication, preserve the
+source-closure lock and exact evidence map with the candidate receipt. Publish
+changed Engine dependencies before regenerating a registry-sourced CLI lockfile
+or releasing the CLI. The normal Cargo package gate then validates that registry
+closure; npm binary publication uses the same reviewed source and lockfile.

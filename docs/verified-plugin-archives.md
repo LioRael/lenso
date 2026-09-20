@@ -118,6 +118,10 @@ No Agent production configuration, public registry or running App was changed.
 
 ## Runtime dependency
 
-Registry builds require `lenso-plugin-bundle >=0.4.2`, which preserves canonical
-manifest identity when other dependencies enable `serde_json/preserve_order`.
-The CLI no longer requires a Git source override or a sibling checkout.
+The release-ready CLI cohort requires exactly `lenso-plugin-bundle 0.5.0`, which
+preserves canonical manifest identity when other dependencies enable
+`serde_json/preserve_order`. Before that cohort is published, source-closure
+evidence uses an ephemeral, recorded patch map plus its exact source snapshots;
+the repository does not retain a sibling checkout or source override. Once the
+cohort is published, regenerate the registry-sourced lock and run the ordinary
+registry package gate before recording a publication receipt.

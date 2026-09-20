@@ -13,6 +13,8 @@ use std::{
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum EngineCommand {
+    /// Execute one bounded Engine session and report its actual cache and lifecycle decisions.
+    Explain(Inputs),
     Inspect(Inputs),
     Run(Inputs),
     Dev(Inputs),
@@ -84,6 +86,10 @@ fn load(inputs: &Inputs, inspect: bool) -> anyhow::Result<(Session, String)> {
     }
     Ok((Session::new(engine, sources)?, revision))
 }
+#[expect(
+    clippy::too_many_lines,
+    reason = "keeps one CLI command dispatch and Engine Session lifecycle boundary"
+)]
 fn execute(
     command: EngineCommand,
     cancelled: &Arc<AtomicBool>,
@@ -96,7 +102,9 @@ fn execute(
     }
     let inspect = matches!(command, EngineCommand::Inspect(_));
     let watch = matches!(command, EngineCommand::Dev(_));
-    let (EngineCommand::Inspect(mut inputs)
+    let explain = matches!(command, EngineCommand::Explain(_));
+    let (EngineCommand::Explain(mut inputs)
+    | EngineCommand::Inspect(mut inputs)
     | EngineCommand::Run(mut inputs)
     | EngineCommand::Dev(mut inputs)) = command
     else {
@@ -104,6 +112,11 @@ fn execute(
     };
     if inputs.workflow.is_none() && inputs.source.is_empty() && Path::new("engine.json").is_file() {
         inputs.workflow = Some("engine.json".into());
+    }
+    if explain && inputs.output.is_some() {
+        anyhow::bail!(
+            "`lenso engine explain` observes one bounded session and never publishes output; use `lenso engine run --output ...` for publication"
+        )
     }
     let (mut session, mut revision) = load(&inputs, inspect)?;
     if inspect {
@@ -124,24 +137,41 @@ fn execute(
                     revision = next;
                 }
             }
-            if let Some(generation) = session.refresh(cancelled)? {
-                let publication = match inputs
-                    .output
-                    .as_ref()
-                    .map(|out| lenso_engine::publication::publish(out, &generation))
-                    .transpose()
-                {
-                    Ok(publication) => publication,
-                    Err(error) => {
-                        session.invalidate();
-                        return Err(error);
+            match session.refresh(cancelled) {
+                Ok(Some(generation)) => {
+                    let explanation = serde_json::to_value(session.explain_report())?;
+                    if explain {
+                        return Ok(Some(explanation));
                     }
-                };
-                return Ok(Some(
-                    serde_json::json!({"outputs":generation.outputs,"cache_hits":generation.cache_hits,"publication":publication}),
-                ));
+                    let publication = match inputs
+                        .output
+                        .as_ref()
+                        .map(|out| lenso_engine::publication::publish(out, &generation))
+                        .transpose()
+                    {
+                        Ok(publication) => publication,
+                        Err(error) => {
+                            session.invalidate();
+                            return Err(error);
+                        }
+                    };
+                    Ok(Some(serde_json::json!({
+                        "outputs": generation.outputs,
+                        "cache_hits": generation.cache_hits,
+                        "publication": publication,
+                        "explanation": explanation,
+                    })))
+                }
+                // A diagnostic invocation deliberately returns the structured
+                // session outcome rather than turning an expected rejected
+                // candidate into an opaque process error. Its report states
+                // whether a prior Generation was retained.
+                Ok(None) | Err(_) if explain => {
+                    Ok(Some(serde_json::to_value(session.explain_report())?))
+                }
+                Ok(None) => Ok(None),
+                Err(error) => Err(error),
             }
-            Ok(None)
         })();
         match update {
             Ok(Some(value)) => {
@@ -161,7 +191,14 @@ fn execute(
                 }
                 let message = format!("{error:#}");
                 if last_error.as_ref() != Some(&message) {
-                    println!("{}", serde_json::json!({"kind":"failed","message":message}));
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "kind": "failed",
+                            "message": message,
+                            "explanation": session.explain_report(),
+                        })
+                    );
                     last_error = Some(message);
                 }
             }

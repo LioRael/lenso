@@ -45,7 +45,7 @@ fn fixture_bundle_bytes(root: &Path, id: &str, consumes_store: bool, bytes: &str
             target: "javascript-bun".into(),
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
-            runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
         }],
         output: root.join(format!("{id}-bundle")),
     })
@@ -140,6 +140,46 @@ fn ts_host_cli_build_check_show_and_rejection_use_the_same_authority() {
     let report: serde_json::Value = serde_json::from_slice(&show.stdout).unwrap();
     assert_eq!(report["instances"].as_array().unwrap().len(), 2);
     assert_eq!(report["bindings"].as_array().unwrap().len(), 1);
+    let explain = cli(
+        root.path(),
+        &["app", "explain", "--root", "build", "--json"],
+    );
+    assert!(
+        explain.status.success(),
+        "{}",
+        String::from_utf8_lossy(&explain.stderr)
+    );
+    let explanation: serde_json::Value = serde_json::from_slice(&explain.stdout).unwrap();
+    assert_eq!(explanation["schema"], "lenso.app-explain.v1");
+    assert_eq!(
+        explanation["implementation_selection"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        explanation["consumer_requirements"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        explanation["consumer_requirements"][0]["selected_providers"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        explanation["engine_execution"]["availability"]["kind"],
+        "unavailable"
+    );
+    assert_eq!(
+        explanation["engine_execution"]["availability"]["reason"],
+        "no_active_engine_session"
+    );
     assert!(
         cli(root.path(), &["app", "check", "--root", "build"])
             .status

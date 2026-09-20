@@ -41,7 +41,7 @@ fn bundle(root: &Path, path: &str, id: &str, consumer: bool) {
             target: "javascript-bun".into(),
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
-            runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
         }],
         output: root.join(path),
     })

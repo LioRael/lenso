@@ -148,7 +148,7 @@ lenso plugins enable company.uppercase default
 lenso plugins remove company.uppercase default
 lenso app check
 lenso app show
-lenso app explain --profile native-target.json
+lenso app explain --json
 lenso sessions list
 lenso run
 ```
@@ -177,19 +177,22 @@ current Host build. It is read-only execution authority, not App intent.
 `app check`, `app show`, and `run` derive the App directly; there is no Plan
 file for an App owner to generate or manage.
 
-## Preflight an execution target
+## Explain Host target admission
 
-Before a Host starts a resolved App, CI or an operator can verify the exact
-target capability declarations that its selected runtime profiles need:
+Before starting an already built App, CI or an operator can inspect the exact
+target capability profile, Runtime selection, rejected implementations, and
+resolved consumer bindings persisted by its Host:
 
 ```sh
-lenso app explain --profile native-target.json
+lenso app explain --root ./my-app --json
 ```
 
-The command is read-only and always emits a stable JSON report. It does not
-select another Plugin implementation, mutate the Plugin Root, start a Host, or
-turn a missing feature into a fallback. See [execution-target preflight](docs/execution-target-preflight.md)
-for the canonical profile input, failure report, and multi-target usage.
+The command is read-only and emits `lenso.app-explain.v1`. It does not select
+another Plugin implementation, mutate the Plugin Root, start a Host, rerun a
+resolver, or turn a missing target feature into a fallback. Target profiles come
+from the actual selected Driver/Adapter rather than a manually supplied JSON
+file. See [Host admission and target explanation](docs/execution-target-preflight.md)
+for the evidence contract and qualification boundary.
 
 Runtime Drivers and Execution Adapters remain separate because they implement
 Host mechanics, not application behavior.

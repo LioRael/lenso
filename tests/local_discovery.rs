@@ -37,7 +37,7 @@ fn discovers_sources_and_verified_archives_without_executing_or_installing() {
             target: "javascript-bun".into(),
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
-            runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
         }],
         output: bundle.clone(),
     })
