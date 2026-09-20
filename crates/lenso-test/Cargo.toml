@@ -1,6 +1,6 @@
 [package]
 name = "lenso-test"
-version = "0.1.1"
+version = "0.1.2"
 description = "Deterministic TestApp harness for native Lenso Plugins."
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ lenso-plugin-authoring.workspace = true
 # Publish against the released Adapter identity. The runtime workspace patches
 # this to its local Adapter source during development, so TestApp's factory
 # registry stays single-identity both in-repo and in cross-repository cohorts.
-lenso-native-adapter = { version = "0.3.14" }
+lenso-native-adapter = { version = "0.3.15" }
 
 [lints]
 workspace = true

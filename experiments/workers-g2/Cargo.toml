@@ -3,8 +3,8 @@ resolver = "2"
 members = ["host", "fixtures/duplex-endpoint-plugin", "fixtures/http-parity-plugin"]
 
 [workspace.dependencies]
-lenso-app-plan = "=0.4.4"
-lenso-kernel = "=0.3.10"
+lenso-app-plan = "=0.4.5"
+lenso-kernel = "=0.3.11"
 lenso-native-adapter = { path = "../../crates/lenso-native-adapter" }
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }

@@ -12,7 +12,7 @@ base64 = "0.22.1"
 js-sys = "=0.3.104"
 lenso-web-duplex-fixture = { path = "../fixtures/duplex-endpoint-plugin" }
 lenso-capability-websocket-endpoint = "=0.1.0"
-lenso-workers-driver = { version = "0.1.0", path = "../../../crates/lenso-workers-driver" }
+lenso-workers-driver = { version = "0.1.1", path = "../../../crates/lenso-workers-driver" }
 bytes = "1"
 http = "1"
 lenso-kernel.workspace = true

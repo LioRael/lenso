@@ -1,7 +1,8 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lenso_app_plan::{
     CapabilityOperationKind, ExecutionClassId,
+    ExecutionTargetCapability as PlanExecutionTargetCapability,
     authoring::{PluginContract, PluginDescriptor, PluginImplementation},
 };
 pub use lenso_process_protocol::{
@@ -83,6 +84,9 @@ pub enum ImplementationRejectionReason {
     RuntimeNotAdmitted,
     MissingTargetCapabilities {
         requirements: Vec<TargetCapabilityRequirement>,
+    },
+    InvalidTargetCapabilityRequirement {
+        feature: String,
     },
     InvalidTargetCapabilityProfile {
         profile: ExecutionTargetCapabilityProfile,
@@ -386,7 +390,16 @@ fn record_capability_match(
     admission: &RuntimeAdmission,
     rejected: &mut Vec<RejectedPluginImplementation>,
 ) -> bool {
-    let requirements = target_requirements(&candidate.descriptor);
+    let requirements = match target_requirements(&candidate.descriptor) {
+        Ok(requirements) => requirements,
+        Err(feature) => {
+            rejected.push(rejected_candidate(
+                candidate,
+                ImplementationRejectionReason::InvalidTargetCapabilityRequirement { feature },
+            ));
+            return false;
+        }
+    };
     let missing = admission
         .capabilities
         .missing(requirements.iter().map(|requirement| requirement.feature));
@@ -423,22 +436,52 @@ fn record_unadmitted_runtimes(
     }
 }
 
-fn target_requirements(descriptor: &PluginDescriptor) -> Vec<TargetCapabilityRequirement> {
-    descriptor
-        .provided_capabilities()
-        .iter()
-        .flat_map(|endpoint| {
-            endpoint.operations().iter().filter_map(|operation| {
-                endpoint
-                    .operation_kind(operation)
-                    .map(|kind| TargetCapabilityRequirement {
-                        capability_id: endpoint.capability_id().to_owned(),
-                        operation: operation.clone(),
-                        feature: capability_for_operation_kind(kind),
-                    })
-            })
-        })
-        .collect()
+fn target_requirements(
+    descriptor: &PluginDescriptor,
+) -> Result<Vec<TargetCapabilityRequirement>, String> {
+    // Explicit implementation requirements cover target mechanics that cannot
+    // be inferred from a Capability operation (for example Workers, a native
+    // process, or Host imports). Capability operation requirements remain
+    // mandatory, so a consumer-only Stream cannot bypass admission either.
+    // One feature is reported once, with an explicit implementation reason
+    // taking precedence over a redundant endpoint-derived reason.
+    let mut requirements = BTreeMap::new();
+    for requirement in descriptor.required_target_capabilities() {
+        let feature = protocol_capability(*requirement)?;
+        requirements.insert(
+            feature,
+            TargetCapabilityRequirement {
+                capability_id: descriptor.plugin_id().to_owned(),
+                operation: "<implementation>".to_owned(),
+                feature,
+            },
+        );
+    }
+    for endpoint in descriptor.provided_capabilities() {
+        for operation in endpoint.operations() {
+            let Some(kind) = endpoint.operation_kind(operation) else {
+                continue;
+            };
+            let feature = capability_for_operation_kind(kind);
+            requirements
+                .entry(feature)
+                .or_insert(TargetCapabilityRequirement {
+                    capability_id: endpoint.capability_id().to_owned(),
+                    operation: operation.clone(),
+                    feature,
+                });
+        }
+    }
+    let mut requirements = requirements.into_values().collect::<Vec<_>>();
+    requirements.sort_unstable_by_key(|requirement| requirement.feature.as_str());
+    Ok(requirements)
+}
+
+fn protocol_capability(
+    capability: PlanExecutionTargetCapability,
+) -> Result<ExecutionTargetCapability, String> {
+    ExecutionTargetCapability::from_name(capability.as_str())
+        .ok_or_else(|| capability.as_str().to_owned())
 }
 
 const fn capability_for_operation_kind(kind: CapabilityOperationKind) -> ExecutionTargetCapability {
@@ -471,15 +514,28 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
             "missing target capabilities {}",
             requirements
                 .iter()
-                .map(|requirement| format!(
-                    "`{}` for {}.{}",
-                    requirement.feature.as_str(),
-                    requirement.capability_id,
-                    requirement.operation
-                ))
+                .map(|requirement| {
+                    if requirement.operation == "<implementation>" {
+                        format!(
+                            "`{}` required by implementation `{}`",
+                            requirement.feature.as_str(),
+                            requirement.capability_id
+                        )
+                    } else {
+                        format!(
+                            "`{}` for {}.{}",
+                            requirement.feature.as_str(),
+                            requirement.capability_id,
+                            requirement.operation
+                        )
+                    }
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        ImplementationRejectionReason::InvalidTargetCapabilityRequirement { feature } => {
+            format!("unknown implementation target capability `{feature}`")
+        }
         ImplementationRejectionReason::InvalidTargetCapabilityProfile { profile } => format!(
             "invalid target capability profile `{}` for `{}`",
             profile.profile, profile.target_profile

@@ -6,7 +6,7 @@ publish = false
 [lib]
 crate-type = ["cdylib"]
 [dependencies]
-lenso-workers-driver = { version = "0.1.0", path = "../../../crates/lenso-workers-driver" }
+lenso-workers-driver = { version = "0.1.1", path = "../../../crates/lenso-workers-driver" }
 lenso-workers-g1-echo = { path = "../echo" }
 lenso-workers-g1-caller = { path = "../caller" }
 lenso-native-adapter.workspace = true
@@ -17,7 +17,7 @@ serde_json.workspace = true
 futures.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
-lenso-runtime-conformance = "=0.3.9"
+lenso-runtime-conformance = "=0.3.10"
 
 [features]
 cpu-probe = []

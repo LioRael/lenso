@@ -12,6 +12,7 @@ use std::{
 
 use lenso_app_plan::{
     CapabilityEndpointPlan, CapabilityOperationKind, CapabilityRequirementPlan, ExecutionClassId,
+    ExecutionTargetCapability as PlanExecutionTargetCapability,
     authoring::{PluginContract, PluginDescriptor, PluginImplementation},
 };
 pub use model::*;
@@ -103,6 +104,12 @@ pub struct SourcePluginImplementation {
     pub entrypoint: String,
     pub execution_class: ExecutionClassId,
     pub runtime_profile: String,
+    /// Explicit target facilities required by this executable implementation.
+    ///
+    /// The V4 builder preserves these immutable Plugin facts in the nested
+    /// runtime selection; Host policy later unions them with Capability
+    /// operation requirements before admitting an Adapter.
+    pub required_target_capabilities: Vec<PlanExecutionTargetCapability>,
 }
 
 #[derive(Clone, Debug)]
@@ -216,6 +223,10 @@ fn validate_profile_wire_shape(value: &Value, require_profiles: bool) -> Result<
             }
         } else if profile.is_some() {
             return invalid_manifest("V3 implementation cannot contain runtime_profile");
+        } else if runtime.get("required_target_capabilities").is_some() {
+            return invalid_manifest(
+                "V3 implementation cannot contain required_target_capabilities",
+            );
         }
     }
     Ok(())
@@ -497,7 +508,8 @@ pub fn build_source_plugin_release_bundle(
                 &source.entrypoint,
                 source.execution_class.clone(),
             )
-            .with_runtime_profile(&source.runtime_profile),
+            .with_runtime_profile(&source.runtime_profile)
+            .with_required_target_capabilities(source.required_target_capabilities.iter().copied()),
         });
         files.push((source, bytes));
     }
@@ -1075,8 +1087,14 @@ fn validate_v3_manifest(manifest: &PluginManifestV3) -> Result<(), BundleError> 
         if implementation.runtime.runtime_package_id() != manifest.contract.plugin_id()
             || implementation.runtime.runtime_package_revision() != implementation.artifact.digest
             || implementation.runtime.entrypoint().is_empty()
+            || !implementation
+                .runtime
+                .required_target_capabilities()
+                .is_empty()
         {
-            return invalid_manifest("V3 implementation does not close Plugin authority");
+            return invalid_manifest(
+                "V3 implementation does not close Plugin authority or carries V4 target requirements",
+            );
         }
     }
     Ok(())
@@ -1787,6 +1805,7 @@ root-slot = "tools"
                     entrypoint: "plugin".to_owned(),
                     execution_class: ExecutionClassId::new("lenso.process@1"),
                     runtime_profile: "lenso.process-authoring@2".to_owned(),
+                    required_target_capabilities: Vec::new(),
                 },
                 SourcePluginImplementation {
                     id: "quickjs".to_owned(),
@@ -1798,6 +1817,7 @@ root-slot = "tools"
                     entrypoint: "plugin.js".to_owned(),
                     execution_class: ExecutionClassId::new("lenso.quickjs@1"),
                     runtime_profile: "lenso.quickjs-authoring@2".to_owned(),
+                    required_target_capabilities: Vec::new(),
                 },
             ],
             output: output.clone(),
@@ -1884,6 +1904,11 @@ root-slot = "tools"
         let parsed = ManifestDocument::parse(&old_wire).unwrap();
 
         assert_eq!(parsed.digest, sha256_digest(&old_wire));
+        assert!(matches!(
+            parsed.value,
+            PluginManifest::V3(PluginManifestV3 { ref implementations, .. })
+                if implementations[0].runtime.required_target_capabilities().is_empty()
+        ));
         assert!(
             !String::from_utf8(old_wire.clone())
                 .unwrap()
@@ -1900,6 +1925,14 @@ root-slot = "tools"
         assert!(matches!(
             ManifestDocument::parse(&serde_json::to_vec(&extended).unwrap()),
             Err(BundleError::InvalidManifest(detail)) if detail.contains("V3 contract")
+        ));
+
+        let mut explicit: Value = serde_json::from_slice(&old_wire).unwrap();
+        explicit["implementations"][0]["runtime"]["required_target_capabilities"] =
+            serde_json::json!(["workers"]);
+        assert!(matches!(
+            ManifestDocument::parse(&serde_json::to_vec(&explicit).unwrap()),
+            Err(BundleError::InvalidManifest(detail)) if detail.contains("required_target_capabilities")
         ));
     }
 
@@ -1935,7 +1968,12 @@ root-slot = "tools"
             }],
         });
         let wire = canonical_manifest_bytes(&manifest).unwrap();
-        ManifestDocument::parse(&wire).unwrap();
+        let parsed = ManifestDocument::parse(&wire).unwrap();
+        assert!(matches!(
+            parsed.value,
+            PluginManifest::V4(PluginManifestV4 { ref implementations, .. })
+                if implementations[0].runtime.required_target_capabilities().is_empty()
+        ));
 
         let unsupported = resolve_implementation(
             &manifest,
@@ -2039,6 +2077,162 @@ root-slot = "tools"
         )
         .unwrap();
         assert_eq!(selected.implementation_id, "quickjs");
+    }
+
+    #[test]
+    fn core_and_protocol_target_capability_vocabularies_have_one_wire_vector() {
+        for capability in PlanExecutionTargetCapability::ALL {
+            let protocol = ExecutionTargetCapability::from_name(capability.as_str())
+                .expect("Core target capability must map to the protocol vocabulary");
+            assert_eq!(protocol.as_str(), capability.as_str());
+            assert_eq!(
+                serde_json::to_string(&protocol).unwrap(),
+                serde_json::to_string(&capability).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn v4_builder_round_trips_explicit_target_requirements_in_canonical_order() {
+        let root = tempfile::tempdir().unwrap();
+        let script = root.path().join("plugin.js");
+        fs::write(&script, b"export default {};\n").unwrap();
+        let output = root.path().join("example.target.lenso-plugin");
+        build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+            contract: PluginContract::new("example.target", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![SourcePluginImplementation {
+                id: "bun".to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact: script,
+                bundle_path: "implementations/bun/plugin.js".to_owned(),
+                media_type: "application/javascript".to_owned(),
+                target: "javascript-bun".to_owned(),
+                entrypoint: "plugin.js".to_owned(),
+                execution_class: ExecutionClassId::new("lenso.bun-process@1"),
+                runtime_profile: "lenso.bun-authoring@2".to_owned(),
+                required_target_capabilities: vec![
+                    PlanExecutionTargetCapability::Workers,
+                    PlanExecutionTargetCapability::WebSocket,
+                    PlanExecutionTargetCapability::Browser,
+                    PlanExecutionTargetCapability::NativeProcess,
+                    PlanExecutionTargetCapability::HostImports,
+                    PlanExecutionTargetCapability::Remote,
+                    PlanExecutionTargetCapability::WasmComponent,
+                    PlanExecutionTargetCapability::Event,
+                    PlanExecutionTargetCapability::Stream,
+                    PlanExecutionTargetCapability::Request,
+                    PlanExecutionTargetCapability::Workers,
+                ],
+            }],
+            output: output.clone(),
+        })
+        .unwrap();
+
+        let manifest = read_bundle_manifest(&output).unwrap();
+        let PluginManifest::V4(manifest) = manifest else {
+            panic!("V4 source builder must emit a V4 manifest");
+        };
+        assert_eq!(
+            manifest.implementations[0]
+                .runtime
+                .required_target_capabilities(),
+            PlanExecutionTargetCapability::ALL
+        );
+        let wire = canonical_manifest_bytes(&PluginManifest::V4(manifest)).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&wire).unwrap()["implementations"][0]["runtime"]["required_target_capabilities"],
+            serde_json::json!([
+                "browser",
+                "event",
+                "host-imports",
+                "native-process",
+                "remote",
+                "request",
+                "stream",
+                "wasm-component",
+                "websocket",
+                "workers",
+            ])
+        );
+    }
+
+    #[test]
+    fn explicit_workers_requirement_rejects_a_bun_target_without_workers() {
+        let artifact = PluginArtifactV2 {
+            path: "plugin.js".to_owned(),
+            digest: sha256_digest(b"plugin"),
+            size: 6,
+            media_type: "application/javascript".to_owned(),
+            target: "javascript-bun".to_owned(),
+        };
+        let manifest = PluginManifest::V4(PluginManifestV4 {
+            schema_version: 4,
+            contract: PluginContract::new("example.bun", "1.0.0", "tools")
+                .with_authoring_version(2)
+                .with_capability(CapabilityEndpointPlan::new(
+                    "example.bun@1",
+                    "1.0.0",
+                    ["echo"],
+                )),
+            implementations: vec![PluginImplementationV4 {
+                id: "bun".to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact,
+                runtime: PluginImplementation::new(
+                    "example.bun",
+                    sha256_digest(b"plugin"),
+                    "plugin.js",
+                    ExecutionClassId::new("lenso.bun-process@1"),
+                )
+                .with_runtime_profile("lenso.bun-authoring@2")
+                .with_required_target_capabilities([PlanExecutionTargetCapability::Workers]),
+            }],
+        });
+        let policy = ImplementationPolicy {
+            host_target: "test-host".to_owned(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.bun-process@1"),
+                "lenso.bun-authoring@2",
+                ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+            )],
+        };
+
+        let explanation = explain_implementation(&manifest, &policy).unwrap();
+        assert!(matches!(
+            explanation.rejected.as_slice(),
+            [RejectedPluginImplementation {
+                implementation_id,
+                reason: ImplementationRejectionReason::MissingTargetCapabilities { requirements },
+                ..
+            }] if implementation_id == "bun"
+                && requirements == &vec![TargetCapabilityRequirement {
+                    capability_id: "example.bun".to_owned(),
+                    operation: "<implementation>".to_owned(),
+                    feature: ExecutionTargetCapability::Workers,
+                }]
+        ));
+        assert!(matches!(
+            resolve_implementation(&manifest, &policy),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("workers")
+        ));
+
+        let selected = resolve_implementation(
+            &manifest,
+            &ImplementationPolicy {
+                host_target: "test-host".to_owned(),
+                runtimes: vec![RuntimeAdmission::new(
+                    ExecutionClassId::new("lenso.bun-process@1"),
+                    "lenso.bun-authoring@2",
+                    ExecutionTargetCapabilities::new([
+                        ExecutionTargetCapability::Request,
+                        ExecutionTargetCapability::Workers,
+                    ]),
+                )],
+            },
+        )
+        .unwrap();
+        assert_eq!(selected.implementation_id, "bun");
     }
 
     #[test]
@@ -2155,6 +2349,7 @@ root-slot = "tools"
                 entrypoint: "plugin.js".to_owned(),
                 execution_class: ExecutionClassId::new("lenso.bun-process@1"),
                 runtime_profile: "lenso.bun-authoring@2".to_owned(),
+                required_target_capabilities: Vec::new(),
             }],
             output: output.clone(),
         })
