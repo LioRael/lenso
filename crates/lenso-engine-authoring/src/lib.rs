@@ -22,14 +22,14 @@ use std::{
 };
 
 use anyhow::{Context, bail};
+use lenso_app_plan::ExecutionClassId;
 use lenso_app_plan::authoring::{
     DependencyChoice, PluginDescriptor, PluginInstanceId, PluginRootInstance, PluginRootSnapshot,
     ResolvedApp,
 };
-use lenso_app_plan::{ExecutionClassId, PLUGIN_AUTHORING_V2_RUNTIME_PROFILE};
 use lenso_plugin_bundle::{
-    ImplementationPolicy, RuntimeAdmission, VerifiedBundle, read_bundle_manifest,
-    resolve_implementation, verify_bundle_directory,
+    ExecutionTargetCapabilities, ExecutionTargetCapability, ImplementationPolicy, RuntimeAdmission,
+    VerifiedBundle, read_bundle_manifest, resolve_implementation, verify_bundle_directory,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -796,20 +796,7 @@ fn read_verified_bundle_descriptor(
         &manifest,
         &ImplementationPolicy {
             host_target: native_host_target().to_owned(),
-            runtimes: [
-                ("lenso.quickjs@1", "lenso.quickjs@1"),
-                ("lenso.process@1", "lenso.process-stdio@2"),
-                ("lenso.process@1", "lenso.process@1"),
-                ("lenso.wasm-component@1", "lenso.wasm-component@1"),
-                ("lenso.bun-process@1", PLUGIN_AUTHORING_V2_RUNTIME_PROFILE),
-                ("lenso.bun-process@1", "lenso.bun-process@1"),
-            ]
-            .into_iter()
-            .map(|(execution_class, runtime_profile)| RuntimeAdmission {
-                execution_class: ExecutionClassId::new(execution_class),
-                runtime_profile: runtime_profile.to_owned(),
-            })
-            .collect(),
+            runtimes: runtimes_for_local_authoring()?,
         },
     )?
     .descriptor;
@@ -819,6 +806,42 @@ fn read_verified_bundle_descriptor(
         bail!("Plugin Descriptor identity does not match the verified Bundle");
     }
     Ok(descriptor)
+}
+
+/// Local authoring validates the Request path it can actually materialize.
+/// The Bun profile identity remains owned by the Adapter, so a generic
+/// App-Plan profile cannot reach a Bun Adapter that would reject it at boot.
+fn runtimes_for_local_authoring() -> anyhow::Result<Vec<RuntimeAdmission>> {
+    let bun_profile = lenso_bun_adapter::bun_authoring_target_capability_profile();
+    bun_profile
+        .validate()
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
+        .context("validate Bun Adapter target capability profile")?;
+    if bun_profile.target_profile != lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE
+        || !bun_profile.supports(ExecutionTargetCapability::Request)
+    {
+        bail!("Bun Adapter did not expose its required Request target profile");
+    }
+    Ok([
+        ("lenso.quickjs@1", "lenso.quickjs@1"),
+        ("lenso.process@1", "lenso.process-stdio@2"),
+        ("lenso.process@1", "lenso.process@1"),
+        ("lenso.wasm-component@1", "lenso.wasm-component@1"),
+    ]
+    .into_iter()
+    .map(|(execution_class, runtime_profile)| {
+        RuntimeAdmission::new(
+            ExecutionClassId::new(execution_class),
+            runtime_profile,
+            ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+        )
+    })
+    .chain(std::iter::once(RuntimeAdmission::new(
+        ExecutionClassId::bun_child_process(),
+        bun_profile.target_profile,
+        ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+    )))
+    .collect())
 }
 
 fn read_configuration(path: &Path) -> anyhow::Result<serde_json::Value> {

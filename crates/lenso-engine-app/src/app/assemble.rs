@@ -7,11 +7,7 @@ use lenso_app_authoring::{
     discovery::{PublishedResource, SourceRole, discover},
     host_authoring::{GeneratedHostBuild, LocalPluginInput},
 };
-use lenso_app_plan::ExecutionClassId;
-use lenso_plugin_bundle::{
-    ImplementationPolicy, RuntimeAdmission, read_bundle_manifest, resolve_implementation,
-    verify_bundle_directory,
-};
+use lenso_plugin_bundle::{ImplementationPolicy, read_bundle_manifest, verify_bundle_directory};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -227,9 +223,9 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         let (verified, selected) = with_bundle_directory(&archive, |directory| {
             Ok((
                 verify_bundle_directory(directory)?,
-                resolve_implementation(
+                crate::target_profile::select_implementation(
                     &read_bundle_manifest(directory)?,
-                    &local_implementation_policy(),
+                    &local_implementation_policy()?,
                 )?,
             ))
         })?;
@@ -246,30 +242,36 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             fs::create_dir_all(stage.path().join("runtime/artifacts"))?;
             with_bundle_directory(&archive, |directory| {
                 fs::copy(
-                    directory.join(&selected.artifact.path),
+                    directory.join(&selected.implementation.artifact.path),
                     stage.path().join(&path),
                 )?;
                 Ok(())
             })?;
             if let Some(evidence) = crate::plugin::local_runtime_descriptor(
                 &stage.path().join(&path),
-                selected.descriptor.execution_class().as_str(),
+                selected
+                    .implementation
+                    .descriptor
+                    .execution_class()
+                    .as_str(),
             )? {
                 runtime_codecs.insert(candidate.plugin_id.clone(), evidence);
             }
             runtime_artifacts.push(json!({"plugin_id": candidate.plugin_id, "path":path,
-                "digest":selected.artifact.digest,"size":selected.artifact.size,
-                "execution_class":selected.descriptor.execution_class().as_str()}));
+                "digest":selected.implementation.artifact.digest,"size":selected.implementation.artifact.size,
+                "execution_class":selected.implementation.descriptor.execution_class().as_str()}));
         }
-        let descriptor = selected.descriptor;
+        let descriptor = selected.implementation.descriptor;
         inventory.push(json!({
             "path": archive_path, "plugin_id": verified.plugin_id,
             "release_version": verified.release_version, "manifest_digest": verified.manifest_digest,
             "execution_class": descriptor.execution_class().as_str(), "runtime_profile": descriptor.runtime_profile(),
-            "target": lenso_app_authoring::native_host_target(), "implementation_id": selected.implementation_id,
-            "artifact_path": selected.artifact.path, "artifact_digest": selected.artifact.digest,
-            "artifact_size": selected.artifact.size, "artifact_media_type": selected.artifact.media_type,
-            "artifact_target": selected.artifact.target,
+            "target": lenso_app_authoring::native_host_target(), "implementation_id": selected.implementation.implementation_id,
+            "artifact_path": selected.implementation.artifact.path, "artifact_digest": selected.implementation.artifact.digest,
+            "artifact_size": selected.implementation.artifact.size, "artifact_media_type": selected.implementation.artifact.media_type,
+            "artifact_target": selected.implementation.artifact.target,
+            "target_capability_profile": selected.target_capability_profile,
+            "selection": selected.evidence,
         }));
         sources.push(candidate.clone());
         inputs.push(LocalPluginInput {
@@ -467,30 +469,30 @@ fn publish_resource_files(
     Ok(())
 }
 
-fn local_implementation_policy() -> ImplementationPolicy {
-    ImplementationPolicy {
+fn local_implementation_policy() -> anyhow::Result<ImplementationPolicy> {
+    Ok(ImplementationPolicy {
         host_target: lenso_app_authoring::native_host_target().to_owned(),
-        runtimes: [
-            ("lenso.process@1", "lenso.process-stdio@2"),
-            ("lenso.process@1", "lenso.process@1"),
-            ("lenso.wasm-component@1", "lenso.wasm-component@1"),
-            (
-                "lenso.bun-process@1",
-                lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE,
+        // The local Host wires Request endpoints for these portable Adapter
+        // paths. Do not advertise Stream/Event until its complete ingress and
+        // codec path is qualified together.
+        runtimes: vec![
+            crate::target_profile::request_only_admission(
+                lenso_app_plan::ExecutionClassId::new(lenso_process_adapter::EXECUTION_CLASS),
+                lenso_process_adapter::RUNTIME_PROFILE_V2,
             ),
-            (
-                "lenso.bun-process@1",
-                lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE,
+            crate::target_profile::request_only_admission(
+                lenso_app_plan::ExecutionClassId::new(lenso_process_adapter::EXECUTION_CLASS),
+                lenso_process_adapter::RUNTIME_PROFILE_V1,
             ),
-            ("lenso.bun-process@1", "lenso.bun-process@1"),
-        ]
-        .into_iter()
-        .map(|(class, profile)| RuntimeAdmission {
-            execution_class: ExecutionClassId::new(class),
-            runtime_profile: profile.to_owned(),
-        })
-        .collect(),
-    }
+            crate::target_profile::request_only_admission(
+                lenso_app_plan::ExecutionClassId::new(
+                    lenso_wasm_component_adapter::EXECUTION_CLASS,
+                ),
+                lenso_wasm_component_adapter::RUNTIME_PROFILE,
+            ),
+            crate::target_profile::bun_request_admission()?,
+        ],
+    })
 }
 
 pub(super) fn copy_root(

@@ -90,7 +90,7 @@ projection = "rust-runtime"
 output = "src/generated.rs"
 [dependencies]
 futures = "0.3"
-lenso-kernel = "0.3.5"
+lenso-kernel = "=0.3.10"
 lenso-contract-runtime = "0.2.0"
 lenso-plugin-authoring = "0.2.0"
 lenso-guest-sdk = "0.5.0"

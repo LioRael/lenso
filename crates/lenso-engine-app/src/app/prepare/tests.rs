@@ -3,9 +3,9 @@ use crate::archive::archive_bundle;
 use lenso_app_authoring::host_authoring::{GeneratedHostBuild, HostPluginInput};
 use lenso_app_plan::{CapabilityEndpointPlan, ExecutionClassId, authoring::PluginContract};
 use lenso_plugin_bundle::{
-    ImplementationPolicy, RuntimeAdmission, SourcePluginImplementation, SourcePluginReleaseBuild,
-    build_source_plugin_release_bundle, read_bundle_manifest, resolve_implementation,
-    verify_bundle_directory,
+    ExecutionTargetCapabilities, ExecutionTargetCapability, ImplementationPolicy, RuntimeAdmission,
+    SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
+    read_bundle_manifest, resolve_implementation, verify_bundle_directory,
 };
 
 fn executable(path: &Path) {
@@ -34,7 +34,7 @@ fn authoring(root: &Path) -> PathBuf {
             target: "javascript-bun".into(),
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
-            runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
         }],
         output: bundle.clone(),
     })
@@ -45,10 +45,11 @@ fn authoring(root: &Path) -> PathBuf {
         &manifest,
         &ImplementationPolicy {
             host_target: "aarch64-apple-darwin".into(),
-            runtimes: vec![RuntimeAdmission {
-                execution_class: ExecutionClassId::bun_child_process(),
-                runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
-            }],
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::bun_child_process(),
+                lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE,
+                ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+            )],
         },
     )
     .unwrap()
@@ -81,14 +82,27 @@ fn authoring(root: &Path) -> PathBuf {
             "release_version": verified.release_version,
             "manifest_digest": verified.manifest_digest,
             "execution_class": "lenso.bun-process@1",
-            "runtime_profile": "lenso.plugin-authoring@2",
+            "runtime_profile": "lenso.bun-authoring@2",
             "target": "aarch64-apple-darwin",
             "implementation_id": "bun",
             "artifact_path": "implementations/bun/plugin.js",
             "artifact_digest": verified.artifact_digests[0],
             "artifact_size": fs::metadata(bundle.join("implementations/bun/plugin.js")).unwrap().len(),
             "artifact_media_type": "application/javascript",
-            "artifact_target": "javascript-bun"
+            "artifact_target": "javascript-bun",
+            "target_capability_profile": {
+                "profile": "lenso.execution-target-capability-profile@1",
+                "target_profile": "lenso.bun-authoring@2",
+                "capabilities": ["request"]
+            },
+            "selection": {
+                "selected": {
+                    "implementation_id": "bun",
+                    "execution_class": "lenso.bun-process@1",
+                    "runtime_profile": "lenso.bun-authoring@2"
+                },
+                "rejected": []
+            }
         }]))
         .unwrap(),
     )
@@ -178,4 +192,34 @@ fn rejects_missing_bun_wrong_targets_and_non_executable_runtime() {
     assert!(format!("{error:#}").contains("supply the exact --bun executable"));
     assert!(!temporary.path().join("out").exists());
     assert!(target_platform("wasm32-wasi").is_err());
+}
+
+#[test]
+fn rejects_tampered_runtime_selection_evidence() {
+    let temporary = tempfile::tempdir().unwrap();
+    let build = authoring(temporary.path());
+    let inventory_path = build.join("bundles.json");
+    let mut inventory: serde_json::Value =
+        serde_json::from_slice(&fs::read(&inventory_path).unwrap()).unwrap();
+    inventory[0]["selection"]["selected"]["implementation_id"] = "tampered".into();
+    fs::write(
+        &inventory_path,
+        serde_json::to_vec_pretty(&inventory).unwrap(),
+    )
+    .unwrap();
+
+    let error = prepare(PrepareArgs {
+        build,
+        target: "aarch64-apple-darwin".into(),
+        runtime: temporary.path().join("runtime"),
+        owner: temporary.path().join("owner"),
+        resolver: temporary.path().join("resolver"),
+        bun: Some(temporary.path().join("bun")),
+        notices: temporary.path().join("notices"),
+        out: temporary.path().join("out"),
+        library: Some(temporary.path().join("library")),
+    })
+    .unwrap_err();
+    assert!(format!("{error:#}").contains("selection evidence differs"));
+    assert!(!temporary.path().join("out").exists());
 }

@@ -10,8 +10,7 @@ use lenso_app_plan::{
     authoring::{HostSlot, PluginInstanceId},
 };
 use lenso_plugin_bundle::{
-    ImplementationPolicy, RuntimeAdmission, read_bundle_manifest, resolve_implementation,
-    verify_bundle_directory,
+    ImplementationPolicy, RuntimeAdmission, read_bundle_manifest, verify_bundle_directory,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -85,20 +84,20 @@ impl Execution {
         })
     }
 
-    fn admissions(self) -> Vec<RuntimeAdmission> {
+    fn admissions(self) -> anyhow::Result<Vec<RuntimeAdmission>> {
         match self {
-            Self::Bun => vec![
-                lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE,
-                "lenso.bun-process@1",
-            ],
-            Self::Process => vec!["lenso.process-stdio@2", "lenso.process@1"],
+            // The TypeScript Host only installs Request codecs/endpoints. Its
+            // admission keeps that Host limit while taking the profile identity
+            // from the concrete Bun Adapter rather than a CLI-owned string.
+            Self::Bun => Ok(vec![crate::target_profile::bun_request_admission()?]),
+            Self::Process => Ok([
+                lenso_process_adapter::RUNTIME_PROFILE_V2,
+                lenso_process_adapter::RUNTIME_PROFILE_V1,
+            ]
+            .into_iter()
+            .map(|profile| crate::target_profile::request_only_admission(self.class(), profile))
+            .collect()),
         }
-        .into_iter()
-        .map(|runtime_profile| RuntimeAdmission {
-            execution_class: self.class(),
-            runtime_profile: runtime_profile.to_owned(),
-        })
-        .collect()
     }
 }
 
@@ -274,14 +273,15 @@ fn materialize(declaration: Declaration, args: &HostBuildArgs) -> anyhow::Result
             with_bundle_directory(&stage.path().join(&archive_path), |directory| {
                 let verified = verify_bundle_directory(directory)?;
                 let manifest = read_bundle_manifest(directory)?;
-                let selected = resolve_implementation(
+                let selected = crate::target_profile::select_implementation(
                     &manifest,
                     &ImplementationPolicy {
                         host_target: args.target.clone(),
-                        runtimes: reference.execution.admissions(),
+                        runtimes: reference.execution.admissions()?,
                     },
                 )?;
                 if selected
+                    .implementation
                     .descriptor
                     .provided_capabilities()
                     .iter()
@@ -305,15 +305,17 @@ fn materialize(declaration: Declaration, args: &HostBuildArgs) -> anyhow::Result
             "path": archive_path, "plugin_id": verified.plugin_id,
             "release_version": verified.release_version, "manifest_digest": verified.manifest_digest,
             "execution_class": reference.execution.class(), "target": args.target,
-            "runtime_profile": selected.descriptor.runtime_profile(),
-            "implementation_id": selected.implementation_id,
-            "artifact_path": selected.artifact.path,
-            "artifact_digest": selected.artifact.digest,
-            "artifact_size": selected.artifact.size,
-            "artifact_media_type": selected.artifact.media_type,
-            "artifact_target": selected.artifact.target,
+            "runtime_profile": selected.implementation.descriptor.runtime_profile(),
+            "implementation_id": selected.implementation.implementation_id,
+            "artifact_path": selected.implementation.artifact.path,
+            "artifact_digest": selected.implementation.artifact.digest,
+            "artifact_size": selected.implementation.artifact.size,
+            "artifact_media_type": selected.implementation.artifact.media_type,
+            "artifact_target": selected.implementation.artifact.target,
+            "target_capability_profile": selected.target_capability_profile,
+            "selection": selected.evidence,
         }));
-        let descriptor = selected.descriptor;
+        let descriptor = selected.implementation.descriptor;
         if let Some((instance, configuration)) = instance {
             inputs.push(HostPluginInput {
                 descriptor,

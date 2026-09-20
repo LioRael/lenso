@@ -1,4 +1,6 @@
-use lenso_engine::{ContextView, Engine, Plugin, Resource, Snapshot, Step};
+use lenso_engine::{
+    CacheDecision, CacheMissReason, ContextView, Engine, Plugin, Resource, Snapshot, Step,
+};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -73,11 +75,36 @@ fn planning_is_read_only_and_dependencies_invalidate_transitively() {
     let first = engine.plan(snapshot("one")).unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     let cancel = std::sync::Arc::new(AtomicBool::new(false));
-    assert_eq!(engine.execute(&first, &cancel).unwrap().cache_hits, 0);
-    assert_eq!(engine.execute(&first, &cancel).unwrap().cache_hits, 2);
+    let initial = engine.execute(&first, &cancel).unwrap();
+    assert_eq!(initial.cache_hits, 0);
+    assert!(matches!(
+        &initial.explanation.steps[0].cache,
+        CacheDecision::Miss {
+            reason: CacheMissReason::Cold
+        }
+    ));
+    let repeated = engine.execute(&first, &cancel).unwrap();
+    assert_eq!(repeated.cache_hits, 2);
+    assert!(
+        repeated
+            .explanation
+            .steps
+            .iter()
+            .all(|step| matches!(&step.cache, CacheDecision::Hit))
+    );
     let changed = engine.plan(snapshot("two")).unwrap();
     let result = engine.execute(&changed, &cancel).unwrap();
     assert_eq!(result.cache_hits, 0);
+    assert!(matches!(
+        &result.explanation.steps[0].cache,
+        CacheDecision::Miss { reason: CacheMissReason::InputChanged { paths } }
+            if paths == &vec!["article.md".to_owned()]
+    ));
+    assert!(matches!(
+        &result.explanation.steps[1].cache,
+        CacheDecision::Miss { reason: CacheMissReason::DependencyChanged { step_ids } }
+            if step_ids == &vec!["read".to_owned()]
+    ));
     assert_eq!(result.outputs["index"]["text"].value, "two");
     assert_eq!(calls.load(Ordering::SeqCst), 4);
     assert!(

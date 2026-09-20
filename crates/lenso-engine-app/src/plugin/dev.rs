@@ -12,14 +12,12 @@ use lenso_app_plan::{
     CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan, PluginInstancePlan,
     ResolvedAppPlan,
 };
-use lenso_bun_adapter::{BUN_AUTHORING_RUNTIME_PROFILE, BunAdapter};
+use lenso_bun_adapter::BunAdapter;
 use lenso_kernel::{
     CancellationToken, ExecutionAdapter, ExecutionAdapterCatalog, Kernel, NoopPluginLifecycle,
     PreparedNativeApp, PreparedNativePlugin, RuntimeFailure, ShutdownOutcome,
 };
-use lenso_plugin_bundle::{
-    ImplementationPolicy, ResolvedPluginImplementation, RuntimeAdmission, resolve_implementation,
-};
+use lenso_plugin_bundle::{ImplementationPolicy, ResolvedPluginImplementation};
 use lenso_process_adapter::ProcessAdapter;
 use lenso_runner::TokioDriver;
 use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle, JsonCapabilityCodec};
@@ -131,32 +129,39 @@ async fn dev_cargo(
     } else {
         WASM_EXECUTION_CLASS
     };
-    let selected = resolve_implementation(
+    let selected = crate::target_profile::select_implementation(
         &read_bundle_manifest(&output)?,
         &ImplementationPolicy {
             host_target: super::rust_host_target(root)?,
             runtimes: match dev_runtime {
                 ProjectRuntime::Process => vec![
-                    RuntimeAdmission {
-                        execution_class: ExecutionClassId::new(dev_class),
-                        runtime_profile: PROCESS_RUNTIME_PROFILE_V2.to_owned(),
-                    },
-                    RuntimeAdmission {
-                        execution_class: ExecutionClassId::new(dev_class),
-                        runtime_profile: PROCESS_RUNTIME_PROFILE_V1.to_owned(),
-                    },
+                    crate::target_profile::request_only_admission(
+                        ExecutionClassId::new(dev_class),
+                        PROCESS_RUNTIME_PROFILE_V2,
+                    ),
+                    crate::target_profile::request_only_admission(
+                        ExecutionClassId::new(dev_class),
+                        PROCESS_RUNTIME_PROFILE_V1,
+                    ),
                 ],
-                ProjectRuntime::Wasm => vec![RuntimeAdmission {
-                    execution_class: ExecutionClassId::new(dev_class),
-                    runtime_profile: "lenso.wasm-component@1".to_owned(),
-                }],
+                ProjectRuntime::Wasm => vec![crate::target_profile::request_only_admission(
+                    ExecutionClassId::new(dev_class),
+                    lenso_wasm_component_adapter::RUNTIME_PROFILE,
+                )],
                 ProjectRuntime::Composite | ProjectRuntime::Multi | ProjectRuntime::Bun => {
                     unreachable!("development resolves to one invocation runtime")
                 }
             },
         },
     )?;
-    invoke_selected_dev(&output, &verified, selected, dev_runtime, args).await
+    invoke_selected_dev(
+        &output,
+        &verified,
+        selected.implementation,
+        dev_runtime,
+        args,
+    )
+    .await
 }
 
 async fn dev_composite(
@@ -212,17 +217,24 @@ async fn dev_composite(
             let output = temporary.path().join("dev.lenso-plugin");
             let verified =
                 materialize_composite(root, &output, package, BuildProfile::Development)?;
-            let selected = resolve_implementation(
+            let selected = crate::target_profile::select_implementation(
                 &read_bundle_manifest(&output)?,
                 &ImplementationPolicy {
                     host_target: super::rust_host_target(root)?,
-                    runtimes: vec![RuntimeAdmission {
-                        execution_class: ExecutionClassId::new(PROCESS_EXECUTION_CLASS),
-                        runtime_profile: PROCESS_RUNTIME_PROFILE_V2.to_owned(),
-                    }],
+                    runtimes: vec![crate::target_profile::request_only_admission(
+                        ExecutionClassId::new(PROCESS_EXECUTION_CLASS),
+                        PROCESS_RUNTIME_PROFILE_V2,
+                    )],
                 },
             )?;
-            invoke_selected_dev(&output, &verified, selected, ProjectRuntime::Process, args).await
+            invoke_selected_dev(
+                &output,
+                &verified,
+                selected.implementation,
+                ProjectRuntime::Process,
+                args,
+            )
+            .await
         }
     }
 }
@@ -626,16 +638,14 @@ async fn dev_bun(root: &Path, package: &BunPackage, args: &PluginDevArgs) -> any
         .context("Plugin development request is not valid JSON")?;
     let configuration: Value = serde_json::from_str(&args.config_json)
         .context("Plugin development configuration is not valid JSON")?;
-    let selected = resolve_implementation(
+    let selected = crate::target_profile::select_implementation(
         &read_bundle_manifest(&output)?,
         &ImplementationPolicy {
             host_target: native_host_target().to_owned(),
-            runtimes: vec![RuntimeAdmission {
-                execution_class: ExecutionClassId::bun_child_process(),
-                runtime_profile: BUN_AUTHORING_RUNTIME_PROFILE.to_owned(),
-            }],
+            runtimes: vec![crate::target_profile::bun_request_admission()?],
         },
     )?;
+    let selected = selected.implementation;
     let artifact_path = output.join(&selected.artifact.path);
     let artifact_bytes = fs::read(&artifact_path)?;
     let artifact = ArtifactHandle::open(
@@ -653,7 +663,7 @@ async fn dev_bun(root: &Path, package: &BunPackage, args: &PluginDevArgs) -> any
     let plan = ResolvedAppPlan::new(
         vec![
             PluginInstancePlan::new("plugin", &verified.plugin_id)
-                .with_authoring(2, BUN_AUTHORING_RUNTIME_PROFILE)
+                .with_authoring(2, lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE)
                 .with_entrypoint(selected.descriptor.entrypoint())
                 .with_configuration(serde_json::to_string(&configuration)?)
                 .with_execution_class(ExecutionClassId::bun_child_process())

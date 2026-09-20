@@ -38,14 +38,14 @@ pub(super) fn generate(
         ("futures", "0.3"),
         ("serde_json", "1"),
         ("sha2", "0.10"),
-        ("lenso-app-plan", "0.4.1"),
-        ("lenso-kernel", "0.3.5"),
+        ("lenso-app-plan", "=0.4.4"),
+        ("lenso-kernel", "=0.3.10"),
         ("lenso-native-adapter", "=0.3.14"),
-        ("lenso-runner", "0.2.14"),
-        ("lenso-bun-adapter", "0.1.7"),
-        ("lenso-process-adapter", "0.3.0"),
-        ("lenso-wasm-component-adapter", "0.2.5"),
-        ("lenso-runtime-codec", "0.3.2"),
+        ("lenso-runner", "=0.2.16"),
+        ("lenso-bun-adapter", "=0.1.13"),
+        ("lenso-process-adapter", "=0.3.11"),
+        ("lenso-wasm-component-adapter", "=0.2.14"),
+        ("lenso-runtime-codec", "=0.4.1"),
     ] {
         dependencies.insert(name.into(), json!(version));
     }
@@ -234,9 +234,9 @@ pub(super) fn generate(
             ("lenso-runtime-codec", "=0.3.4"),
         ],
         "0.4" => [
-            ("lenso-bun-adapter", "=0.1.10"),
+            ("lenso-bun-adapter", "=0.1.13"),
             ("lenso-process-adapter", "=0.3.11"),
-            ("lenso-wasm-component-adapter", "=0.2.13"),
+            ("lenso-wasm-component-adapter", "=0.2.14"),
             ("lenso-runtime-codec", "=0.4.1"),
         ],
         other => bail!("unsupported typed Codec cohort {other}; use a custom Host"),
@@ -327,8 +327,14 @@ pub(super) fn generate(
     }
     let web = web_contract.is_some();
     if let Some(contract) = web_contract {
-        dependencies.insert("local-web-contract".into(), contract);
-        dependencies.insert("lenso-web-ingress-plugin".into(), json!("=0.4.5"));
+        dependencies.insert("local-web-contract".into(), contract.clone());
+        // A Git-pinned Endpoint contract must bring the matching Ingress from
+        // that exact Web source too. Otherwise Cargo may select a registry
+        // Ingress with incompatible Host/Kernel identities.
+        dependencies.insert(
+            "lenso-web-ingress-plugin".into(),
+            web_ingress_dependency(&contract)?,
+        );
     }
     let mut source = (include_str!("local_runtime_template.rs").to_owned()
         + include_str!("local_json_template.rs"))
@@ -514,6 +520,24 @@ fn collect_local_lenso_patch(
     }
     patches.insert(name.to_owned(), (id.to_owned(), dependency));
     Ok(())
+}
+
+fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
+    let mut ingress = contract.clone();
+    let fields = ingress
+        .as_object_mut()
+        .context("Web Endpoint dependency must be a Cargo table")?;
+    if fields.contains_key("git") {
+        fields.insert(
+            "package".into(),
+            Value::String("lenso-web-ingress-plugin".into()),
+        );
+        return Ok(ingress);
+    }
+    // Registry and local-path Endpoint development keep the historical
+    // registry fallback. The generated Cargo lock still records the concrete
+    // identity Cargo selected for that standalone local Host.
+    Ok(json!("=0.4.6"))
 }
 
 fn codec_name(capability: &str) -> anyhow::Result<String> {
@@ -771,7 +795,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::collect_local_lenso_patch;
+    use super::{collect_local_lenso_patch, web_ingress_dependency};
 
     fn local_package(name: &str, id: &str, manifest: &str) -> serde_json::Value {
         json!({
@@ -840,6 +864,22 @@ mod tests {
             error
                 .to_string()
                 .contains("incompatible local lenso-kernel package identities")
+        );
+    }
+
+    #[test]
+    fn git_pinned_endpoint_keeps_the_ingress_on_the_same_web_source() {
+        let dependency = web_ingress_dependency(&json!({
+            "package": "lenso-capability-http-endpoint",
+            "git": "https://github.com/LioRael/lenso-web",
+            "rev": "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28",
+        }))
+        .unwrap();
+        assert_eq!(dependency["package"], "lenso-web-ingress-plugin");
+        assert_eq!(dependency["git"], "https://github.com/LioRael/lenso-web");
+        assert_eq!(
+            dependency["rev"],
+            "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28"
         );
     }
 }

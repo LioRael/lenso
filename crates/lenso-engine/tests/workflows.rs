@@ -2,7 +2,7 @@ use lenso_engine::{
     ContextView, Engine, Generation, Plugin, Resource, Snapshot, Step,
     bootstrap::BootstrapLock,
     publication::{publish, verify},
-    session::Session,
+    session::{RefreshOutcome, Session, SessionExplainReport},
 };
 use std::{
     collections::BTreeMap,
@@ -49,11 +49,52 @@ fn refresh_preserves_success_on_failure_and_removes_disabled_contributions() {
     let cancelled = Arc::new(AtomicBool::new(false));
     let first = session.refresh(&cancelled).unwrap().unwrap();
     assert!(session.refresh(&cancelled).unwrap().is_none());
+    let cold: SessionExplainReport<'_> = session.explain_report();
+    let cold = serde_json::to_value(cold).unwrap();
+    assert_eq!(
+        cold["active_generation"]["steps"][0]["cache"]["kind"],
+        "miss"
+    );
+    assert_eq!(
+        cold["active_generation"]["steps"][0]["cache"]["reason"]["kind"],
+        "cold"
+    );
+    session.invalidate();
+    assert!(session.refresh(&cancelled).unwrap().is_some());
+    let cached = serde_json::to_value(session.explain_report()).unwrap();
+    assert_eq!(
+        cached["active_generation"]["steps"][0]["cache"]["kind"],
+        "hit"
+    );
     fs::write(&file, [255]).unwrap();
     assert!(session.refresh(&cancelled).is_err());
     assert_eq!(session.current().unwrap().outputs, first.outputs);
+    assert!(matches!(
+        session.last_outcome(),
+        Some(RefreshOutcome::CandidateRejected {
+            current_generation_retained: true,
+            ..
+        })
+    ));
+    let explanation = serde_json::to_value(session.explain_report()).unwrap();
+    assert_eq!(explanation["schema"], "lenso.engine-explain.v1");
+    assert_eq!(explanation["last_refresh"]["kind"], "candidate_rejected");
+    assert_eq!(
+        explanation["last_refresh"]["current_generation_retained"],
+        true
+    );
+    assert!(
+        explanation["active_generation"]["steps"]
+            .as_array()
+            .is_some_and(|steps| !steps.is_empty())
+    );
     fs::write(&file, "second").unwrap();
     assert!(session.refresh(&cancelled).unwrap().is_some());
+    let rebuilt = serde_json::to_value(session.explain_report()).unwrap();
+    assert_eq!(
+        rebuilt["active_generation"]["steps"][0]["cache"]["reason"]["kind"],
+        "input_changed"
+    );
     session.replace_engine(Engine::default());
     assert!(
         session

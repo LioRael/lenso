@@ -9,9 +9,9 @@ use lenso_app_authoring::identity::validate_plugin_id_v1;
 
 use super::{PluginNewArgs, PluginRuntimeArg, WASM_TARGET, run_bun, run_cargo};
 
-pub(super) const LENSO_APP_PLAN_REVISION: &str = "8599db7e4a214ed92f32089f81d14c833d4becf6";
-pub(super) const LENSO_NATIVE_REVISION: &str = "89815107385475c8b5be378bdcf5e21aa74e02f0";
-pub(super) const LENSO_WEB_REVISION: &str = "42efe4fe9aa249bdb19ed366b25b8358e30b68ab";
+pub(super) const LENSO_CORE_REVISION: &str = "c81b5c6edc7c237dbbeb92878183baa784c47c4f";
+pub(super) const LENSO_NATIVE_REVISION: &str = "d159f7f06b7c4f689611cdf68125a5d55622dc54";
+pub(super) const LENSO_WEB_REVISION: &str = "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28";
 
 pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
     validate_plugin_id_v1(&args.plugin_id)?;
@@ -120,12 +120,26 @@ plugin-id = "{plugin_id}"
 root-slot = "web"
 
 [dependencies]
-lenso = {{ version = "0.5.0", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-capability-http-endpoint = {{ version = "0.2.8", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso = {{ version = "=0.5.24", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso-capability-http-endpoint = {{ version = "0.3.3", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
 serde = {{ version = "1", features = ["derive"] }}
+schemars = "1.2"
 
 [dev-dependencies]
+bytes = "1"
 futures = "0.3"
+http = "1"
+lenso-app-plan = {{ version = "=0.4.4", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-kernel = {{ version = "=0.3.10", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-test = {{ version = "=0.1.1", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso-web-host = {{ version = "0.2.1", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+
+[patch.crates-io]
+lenso = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso-app-plan = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-kernel = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-native-adapter = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso-test = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
 
 [workspace]
 "#
@@ -139,21 +153,22 @@ futures = "0.3"
 use lenso_capability_http_endpoint::{
     prelude::*,
     response::{Problem, StatusCode},
+    JsonSchema,
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 #[serde(deny_unknown_fields)]
 struct CreateGreeting {
     name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
 struct SearchGreetings {
     term: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 struct Greeting {
     id: String,
     message: String,
@@ -172,6 +187,16 @@ pub const fn link() {}
 #[endpoint]
 impl GreetingsHttp {
     #[post("greetings.create", "/greetings")]
+    #[openapi({
+        summary: "Create a greeting",
+        responses: {
+            "201": { description: "Greeting created" }
+        }
+    })]
+    #[openapi_contract(
+        success = 201,
+        errors = [(400, "invalid_name")]
+    )]
     async fn create(
         &self,
         Json(input): Json<CreateGreeting>,
@@ -275,13 +300,71 @@ mod tests {
 }
 "#
     .to_owned();
+    let simulated_test = format!(
+        concat!(
+            "//! Socket-free Web contract test through the real event Ingress.\n",
+            "//! `SimulatedWebHost` deliberately does not call the handler directly.\n\n",
+            "use std::time::Duration;\n\n",
+            "use bytes::Bytes;\n",
+            "use http::Request;\n",
+            "use lenso_kernel::ShutdownOutcome;\n",
+            "use lenso_test::TestApp;\n",
+            "use lenso_web_host::NativeWebHost;\n\n",
+            "use {crate_name}::GreetingsHttp;\n\n",
+            "#[test]\n",
+            "fn creates_a_greeting_through_real_ingress_without_a_tcp_listener() {{\n",
+            "    let prepared = NativeWebHost::new()\n",
+            "        .plugin::<GreetingsHttp>()\n",
+            "        .prepare_simulated()\n",
+            "        .expect(\"a native Web Plugin can prepare real event ingress\");\n",
+            "    let (plan, registry, web) = prepared.into_parts();\n",
+            "    let app = TestApp::builder(plan).with_registry(registry).start().unwrap();\n\n",
+            "    let response = app.run(web.request(\n",
+            "        Request::builder().method(\"POST\").uri(\"/greetings\")\n",
+            "            .header(\"content-type\", \"application/json\")\n",
+            "            .body(Bytes::from_static(br#\"{{\"name\":\"Lenso\"}}\"#)).unwrap(),\n",
+            "    )).unwrap();\n",
+            "    assert_eq!(response.status(), 201);\n",
+            "    assert!(response.body().starts_with(br#\"{{\"id\":\"greeting-1\"\"#));\n\n",
+            "    assert_eq!(app.shutdown(Duration::from_secs(1)), ShutdownOutcome::Clean);\n",
+            "}}\n",
+        ),
+        crate_name = package_name.replace('-', "_"),
+    );
+    let golden_path = concat!(
+        "# Web Plugin golden path\n\n",
+        "The generated `src/lib.rs` is the normal starting point: typed JSON, a structured `Problem`, an opt-in strict OpenAPI operation, a small unit test, and `lenso plugin dev` for a real loopback request. It deliberately does not require knowing about generations, drivers, adapter catalogs, or factories.\n\n",
+        "## Add an authenticated business endpoint\n\n",
+        "Authentication at the HTTP edge is a typed Capability dependency, not a middleware global. Add the product-owned Auth and business Capability crates, then make their generated clients explicit dependencies of the endpoint Plugin. The native authoring shape is intentionally small:\n\n",
+        "```rust,ignore\n",
+        "#[lenso::plugin]\n",
+        "#[derive(Debug)]\n",
+        "struct OrdersHttp {\n",
+        "    #[dependency(id = \"auth\")]\n",
+        "    auth: lenso_capability_auth::AuthClient,\n",
+        "    #[dependency(id = \"orders\")]\n",
+        "    orders: company_orders::OrdersClient,\n",
+        "}\n",
+        "```\n\n",
+        "The App plan selects the concrete Auth and Orders providers and binds those named requirements. It is the only place that chooses providers. Do not look up a database, an Auth provider, or another Plugin from a global service.\n\n",
+        "For a request actor, use `lenso-http-auth`'s `AuthenticatedHttpActor` and `extract_authenticated_actor`; it turns the already bound Auth client into a typed edge actor. The business Capability still verifies authorization and resource ownership.\n\n",
+        "## Keep public OpenAPI honest\n\n",
+        "`create` is marked with `#[openapi_contract]`. Its request body, success value, and stable `invalid_name` problem code are derived from the same typed handler values. Select and bind the optional OpenAPI Plugin only when this route is a public API; activation then rejects a document that drifts from the handler. Private routes may omit the attribute entirely.\n\n",
+        "## Exercise the real Web path locally\n\n",
+        "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest Git-pins `lenso-web-host@0.2.1`, Endpoint `0.3.3`, `lenso@0.5.24`, `lenso-test@0.1.1`, App Plan `0.4.4`, and Kernel `0.3.10`; its root patch makes the Host, Plugin, adapter, and TestApp share those exact type identities. Run it with `cargo test --locked`. Do not replace those pins with independent registry ranges until the cohort release validation says they are published together.\n\n",
+        "## Add a stream deliberately\n\n",
+        "Buffered HTTP and a long-lived stream are separate public interactions. When a route needs backpressure or a persistent session, add the dedicated `lenso-capability-http-stream-endpoint` contract and test it through `SimulatedWebHost::open_stream`. Keep its route identifier and typed protocol next to the business Capability it invokes; do not turn a buffered `#[endpoint]` handler into an ad-hoc socket loop. The same surface also exposes `open_websocket` when a bidirectional protocol is the actual requirement.\n",
+    )
+    .to_owned();
     let readme = format!(
-        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n"
+        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations and the real event Ingress without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n\nSee [the Web golden path](WEB_GOLDEN_PATH.md) to add an authenticated business Capability, strict public OpenAPI, a simulated Host test, or a streaming endpoint without making the basic route depend on Runtime internals.\n"
     );
 
     BTreeMap::from([
         (PathBuf::from("Cargo.toml"), manifest),
         (PathBuf::from("src/lib.rs"), source),
+        (PathBuf::from("tests/simulated_web.rs"), simulated_test),
+        (PathBuf::from("WEB_GOLDEN_PATH.md"), golden_path),
         (PathBuf::from("README.md"), readme),
     ])
 }

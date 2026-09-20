@@ -17,31 +17,15 @@ use crate::watch::SourceWatcher;
 use super::{
     CargoPackage, DevImplementationArg, PluginDevArgs, cargo_target_directory, project_root,
     read_package,
-    scaffold::{LENSO_APP_PLAN_REVISION, LENSO_NATIVE_REVISION, LENSO_WEB_REVISION},
+    scaffold::{LENSO_CORE_REVISION, LENSO_NATIVE_REVISION, LENSO_WEB_REVISION},
 };
 
-const HOST_SOURCE: &str = r#"use std::time::{Duration, Instant};
-
-use futures::future::LocalBoxFuture;
-use lenso_app_plan::{
-    AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
-    PluginInstancePlan,
-};
-use lenso_capability_http_endpoint::{
-    CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, HANDLE_OPERATION,
-};
-use lenso_kernel::{Kernel, ShutdownOutcome};
-use lenso_native_adapter::NativePluginRegistry;
-use lenso_runner::TokioDriver;
-use lenso_web_ingress_plugin::{
-    PACKAGE_ID as INGRESS_PACKAGE_ID, WebIngressConfig, WebIngressFactory,
-    WebIngressDiagnostics, WebIngressEndpointFailure, WebIngressMiddleware,
-    WebIngressMiddlewareOutcome, WebIngressRequest, WebIngressResponse,
+const HOST_SOURCE: &str = r#"
+use lenso_kernel::RuntimeFailure;
+use lenso_web_host::{
+    NativeWebHost, TowerMiddlewareOutcome, WebIngressDiagnostics, WebIngressEndpointFailure,
 };
 use tokio::task::LocalSet;
-
-#[derive(Debug)]
-struct DevRequestTrace;
 
 #[derive(Debug)]
 struct DevDiagnostics;
@@ -72,62 +56,6 @@ impl WebIngressDiagnostics for DevDiagnostics {
     }
 }
 
-impl WebIngressMiddleware for DevRequestTrace {
-    fn identity(&self) -> &'static str {
-        "lenso.web-dev.request-trace@1"
-    }
-
-    fn before_request<'a>(
-        &'a self,
-        request: &'a mut WebIngressRequest,
-    ) -> LocalBoxFuture<'a, Result<WebIngressMiddlewareOutcome, lenso_kernel::RuntimeFailure>> {
-        request.extensions_mut().insert(Instant::now());
-        Box::pin(futures::future::ready(Ok(
-            WebIngressMiddlewareOutcome::Continue,
-        )))
-    }
-
-    fn after_response<'a>(
-        &'a self,
-        request: &'a WebIngressRequest,
-        response: &'a mut WebIngressResponse,
-    ) -> LocalBoxFuture<'a, Result<(), lenso_kernel::RuntimeFailure>> {
-        let elapsed_ms = request
-            .extensions()
-            .get::<Instant>()
-            .map_or(0, |started| started.elapsed().as_millis());
-        let request_id = request
-            .headers()
-            .get("x-request-id")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or("unknown");
-        if std::env::var_os("LENSO_WEB_DEV_JSON").is_some() {
-            println!(
-                "{}",
-                serde_json::json!({
-                    "schema_version": 1,
-                    "kind": "lenso.web-request",
-                    "request_id": request_id,
-                    "method": request.method().as_str(),
-                    "path": request.uri().path(),
-                    "status": response.status().as_u16(),
-                    "elapsed_ms": elapsed_ms,
-                })
-            );
-        } else {
-            println!(
-                "{} {} -> {} ({} ms, request {})",
-                request.method(),
-                request.uri().path(),
-                response.status().as_u16(),
-                elapsed_ms,
-                request_id,
-            );
-        }
-        Box::pin(futures::future::ready(Ok(())))
-    }
-}
-
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), String> {
     LocalSet::new().run_until(run()).await
@@ -135,46 +63,28 @@ async fn main() -> Result<(), String> {
 
 async fn run() -> Result<(), String> {
     plugin::link();
-    let endpoint = PluginInstancePlan::new("web-plugin", plugin::PACKAGE_ID).with_capability(
-        CapabilityEndpointPlan::new(
-            CAPABILITY_ID,
-            DESCRIPTOR_VERSION,
-            [DESCRIBE_OPERATION, HANDLE_OPERATION],
+    let running = NativeWebHost::new()
+        .bind(
+            "127.0.0.1:0"
+                .parse()
+                .map_err(|error| format!("parse development listener address: {error}"))?,
         )
-        .with_cross_lane_transfer(),
-    );
-    let ingress = WebIngressFactory::new()
         .with_diagnostics(DevDiagnostics)
-        .with_middleware(DevRequestTrace);
-    let ingress_plan = PluginInstancePlan::new("web-ingress", INGRESS_PACKAGE_ID)
-        .with_configuration(
-            serde_json::to_string(&WebIngressConfig::default()).map_err(|error| error.to_string())?,
+        // The Host owns the only ingress middleware adapter. The policy
+        // service intentionally passes requests through so Dev still exercises
+        // the real normalization/credential/route path without wrapping it.
+        .with_tower_middleware(
+            "lenso.web-dev.pass-through@1",
+            tower::service_fn(|_request| async {
+                Ok::<_, RuntimeFailure>(TowerMiddlewareOutcome::Continue)
+            }),
         )
-        .with_requirement(CapabilityRequirementPlan::many(
-            CAPABILITY_ID,
-            DESCRIPTOR_VERSION,
-        ));
-    let plan = AppComposition::new(
-        vec![endpoint, ingress_plan],
-        vec![CapabilityBinding::new(
-            "web-ingress",
-            CAPABILITY_ID,
-            DESCRIPTOR_VERSION,
-            "web-plugin",
-        )],
-    )
-    .resolve()
-    .map_err(|error| format!("resolve Web development App: {error:?}"))?;
-    let registry = NativePluginRegistry::new()
-        .with_linked_factories()
-        .with_factory(ingress.clone());
-    let app = Kernel::start_native(plan, TokioDriver::new(), registry)
+        .enable(plugin::PACKAGE_ID)
+        .start()
         .await
-        .map_err(|error| format!("start Web development App: {error:?}"))?;
-    let address = ingress
-        .local_address()
-        .ok_or_else(|| "Web Ingress did not publish its listener address".to_owned())?;
-    let routes = ingress
+        .map_err(|error| format!("start Web development App: {error}"))?;
+    let address = running.address();
+    let routes = running
         .route_manifest()
         .ok_or_else(|| "Web Ingress did not publish its route manifest".to_owned())?;
 
@@ -204,11 +114,10 @@ async fn run() -> Result<(), String> {
     tokio::signal::ctrl_c()
         .await
         .map_err(|error| format!("listen for Ctrl-C: {error}"))?;
-    let outcome = app.shutdown(Duration::from_secs(3)).await;
-    if outcome != ShutdownOutcome::Clean {
-        return Err(format!("Web development App shutdown was {outcome:?}"));
-    }
-    Ok(())
+    running
+        .shutdown()
+        .await
+        .map_err(|error| format!("shut down Web development App: {error}"))
 }
 "#;
 
@@ -371,15 +280,19 @@ publish = false
 
 [dependencies]
 futures = "0.3"
-lenso-app-plan = {{ version = "0.3.0", git = "https://github.com/LioRael/lenso", rev = "{LENSO_APP_PLAN_REVISION}" }}
-lenso-capability-http-endpoint = {{ version = "0.2.8", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
-lenso-kernel = {{ version = "0.2.0", git = "https://github.com/LioRael/lenso", rev = "{LENSO_APP_PLAN_REVISION}" }}
-lenso-native-adapter = {{ version = "0.3.0", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-runner = {{ version = "0.2.0", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-web-ingress-plugin = {{ version = "0.3.7", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso-app-plan = {{ version = "=0.4.4", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-kernel = {{ version = "=0.3.10", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-web-host = {{ version = "0.2.1", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
 plugin = {{ package = "{}", path = {plugin_path} }}
 serde_json = "1"
 tokio = {{ version = "1.52", features = ["macros", "rt", "signal"] }}
+tower = "0.5"
+
+[patch.crates-io]
+lenso = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso-app-plan = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-kernel = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-native-adapter = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
 
 [workspace]
 "#,
@@ -439,7 +352,10 @@ async fn stop(child: &mut Child) {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_manifest, host_package_name};
+    use super::{
+        LENSO_CORE_REVISION, LENSO_NATIVE_REVISION, LENSO_WEB_REVISION, host_manifest,
+        host_package_name,
+    };
     use crate::plugin::{CargoMetadata, CargoPackage, LensoMetadata};
     use std::path::Path;
 
@@ -461,7 +377,17 @@ mod tests {
         let manifest = host_manifest(root, &package, &name);
 
         assert!(name.starts_with("lenso-web-dev-company-greetings-http-"));
-        assert!(manifest.contains("lenso-web-ingress-plugin"));
+        assert!(manifest.contains("lenso-web-host"));
+        assert!(manifest.contains("version = \"0.2.1\""));
+        assert!(manifest.contains(LENSO_WEB_REVISION));
+        assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.4\""));
+        assert!(manifest.contains("lenso-kernel = { version = \"=0.3.10\""));
+        assert!(manifest.contains(LENSO_CORE_REVISION));
+        assert!(manifest.contains(LENSO_NATIVE_REVISION));
+        assert!(manifest.contains("[patch.crates-io]"));
+        assert!(manifest.contains("lenso-native-adapter"));
+        assert!(manifest.contains("tower = \"0.5\""));
+        assert!(!manifest.contains("lenso-web-ingress-plugin"));
         assert!(manifest.contains("plugin = { package = \"company-greetings-http\""));
     }
 }

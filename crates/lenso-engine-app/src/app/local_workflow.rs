@@ -83,31 +83,34 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
     fs::create_dir(staging.path().join("app"))?;
     fs::create_dir(staging.path().join("plugins"))?;
     if !args.cli && (args.web || !matches!(args.runtime, Starter::Empty)) {
-        let runtime = match args.runtime {
-            Starter::Process => "process",
-            Starter::Bun => "bun",
-            Starter::Wasm => "wasm",
-            Starter::Multi => "multi",
-            Starter::Empty => unreachable!(),
-        };
-        let mut command = Command::new(std::env::current_exe()?);
-        command
-            .args(["plugin", "new", "local.starter", "--repo-root"])
-            .arg(staging.path())
-            .args(["--dir", "app/local.starter"]);
         if args.web {
-            command.arg("--web");
-        } else {
-            command.args(["--runtime", runtime]);
-        }
-        if args.no_install || args.web {
-            command.arg("--no-install");
-        }
-        if !command.status()?.success() {
-            bail!("App starter creation failed");
-        }
-        if args.web {
+            crate::plugin::create_web_scaffold(
+                "local.starter".to_owned(),
+                staging.path().to_path_buf(),
+                PathBuf::from("app/local.starter"),
+                true,
+            )?;
             prepare_web_starter(&staging.path().join("app/local.starter"), args.no_install)?;
+        } else {
+            let runtime = match args.runtime {
+                Starter::Process => "process",
+                Starter::Bun => "bun",
+                Starter::Wasm => "wasm",
+                Starter::Multi => "multi",
+                Starter::Empty => unreachable!(),
+            };
+            let mut command = Command::new(std::env::current_exe()?);
+            command
+                .args(["plugin", "new", "local.starter", "--repo-root"])
+                .arg(staging.path())
+                .args(["--dir", "app/local.starter"])
+                .args(["--runtime", runtime]);
+            if args.no_install {
+                command.arg("--no-install");
+            }
+            if !command.status()?.success() {
+                bail!("App starter creation failed");
+            }
         }
     }
     fs::write(
@@ -186,11 +189,6 @@ pub fn start(args: StartArgs) -> anyhow::Result<()> {
 }
 
 fn prepare_web_starter(root: &std::path::Path, no_install: bool) -> anyhow::Result<()> {
-    let manifest = root.join("Cargo.toml");
-    let mut value: toml::Value = toml::from_str(&fs::read_to_string(&manifest)?)?;
-    value["dependencies"]["lenso"] = toml::Value::String("=0.5.23".into());
-    value["dependencies"]["lenso-capability-http-endpoint"] = toml::Value::String("=0.3.2".into());
-    fs::write(manifest, toml::to_string_pretty(&value)?)?;
     let source = root.join("src/lib.rs");
     let code = fs::read_to_string(&source)?
         .replace("pub const fn link() {}", "pub fn link() { link_plugin(); }")
@@ -261,6 +259,69 @@ pub fn create_empty(directory: PathBuf) -> anyhow::Result<()> {
         cli: false,
         no_install: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::{CreateArgs, Starter, create, prepare_web_starter};
+
+    #[test]
+    fn web_app_create_uses_the_native_web_scaffold() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("starter");
+
+        create(CreateArgs {
+            directory: destination.clone(),
+            runtime: Starter::Process,
+            web: true,
+            cli: false,
+            no_install: true,
+        })
+        .unwrap();
+
+        let plugin = destination.join("app/local.starter");
+        let manifest = fs::read_to_string(plugin.join("Cargo.toml")).unwrap();
+        assert!(manifest.contains("lenso-web-host"));
+        assert!(manifest.contains("lenso-test = { version = \"=0.1.1\""));
+        assert!(plugin.join("tests/simulated_web.rs").is_file());
+        assert!(plugin.join("public/index.html").is_file());
+    }
+
+    #[test]
+    fn web_starter_keeps_the_scaffold_web_cohort_pinned() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("src")).unwrap();
+        fs::write(
+            root.path().join("Cargo.toml"),
+            r#"[package]
+name = "local-starter"
+version = "0.1.0"
+
+[dependencies]
+lenso = { version = "=0.5.24", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "runtime-pin" }
+lenso-capability-http-endpoint = { version = "0.3.3", git = "https://github.com/LioRael/lenso-web", rev = "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28" }
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("src/lib.rs"),
+            "pub const fn link() {}\nimpl GreetingsHttp {\n}\n",
+        )
+        .unwrap();
+
+        prepare_web_starter(root.path(), true).unwrap();
+
+        let manifest = fs::read_to_string(root.path().join("Cargo.toml")).unwrap();
+        assert!(manifest.contains("lenso = { version = \"=0.5.24\""));
+        assert!(manifest.contains("https://github.com/LioRael/lenso-runtime-rust"));
+        assert!(manifest.contains("runtime-pin"));
+        assert!(manifest.contains("lenso-capability-http-endpoint"));
+        assert!(manifest.contains("https://github.com/LioRael/lenso-web"));
+        assert!(manifest.contains("e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28"));
+        assert!(!manifest.contains("0.3.2"));
+    }
 }
 /// Run a source-free distribution from an embedding host.
 pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Result<()> {

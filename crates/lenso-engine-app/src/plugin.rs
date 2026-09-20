@@ -298,6 +298,23 @@ pub async fn plugin(command: PluginCommand) -> anyhow::Result<()> {
     }
 }
 
+pub(crate) fn create_web_scaffold(
+    plugin_id: String,
+    repo_root: PathBuf,
+    dir: PathBuf,
+    no_install: bool,
+) -> anyhow::Result<()> {
+    scaffold::create(PluginNewArgs {
+        plugin_id,
+        repo_root: Some(repo_root),
+        dir: Some(dir),
+        runtime: PluginRuntimeArg::Multi,
+        web: true,
+        no_install,
+        dry_run: false,
+    })
+}
+
 fn check(args: PluginCheckArgs) -> anyhow::Result<()> {
     let root = project_root(args.repo_root)?;
     let temporary = tempfile::tempdir().context("create Plugin check directory")?;

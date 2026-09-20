@@ -1,6 +1,6 @@
 use super::scaffold::{
-    bun_plugin_scaffold, create, multi_plugin_scaffold, plugin_scaffold, process_plugin_scaffold,
-    web_plugin_scaffold,
+    LENSO_CORE_REVISION, LENSO_NATIVE_REVISION, LENSO_WEB_REVISION, bun_plugin_scaffold, create,
+    multi_plugin_scaffold, plugin_scaffold, process_plugin_scaffold, web_plugin_scaffold,
 };
 use super::*;
 
@@ -91,13 +91,36 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(manifest.contains("plugin-id = \"company.greetings-http\""));
     assert!(manifest.contains("root-slot = \"web\""));
     assert!(manifest.contains("lenso-capability-http-endpoint"));
-    assert!(manifest.contains("version = \"0.2.8\""));
+    assert!(manifest.contains("version = \"0.3.3\""));
+    assert!(manifest.contains("lenso = { version = \"=0.5.24\""));
+    assert!(manifest.contains(LENSO_NATIVE_REVISION));
+    assert!(manifest.contains(LENSO_CORE_REVISION));
+    assert!(manifest.contains(LENSO_WEB_REVISION));
+    assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.4\""));
+    assert!(manifest.contains("lenso-kernel = { version = \"=0.3.10\""));
+    assert!(manifest.contains("[patch.crates-io]"));
+    assert!(manifest.contains("lenso-native-adapter"));
+    assert!(manifest.contains("lenso-test = { version = \"=0.1.1\""));
+    assert!(manifest.contains("lenso-web-host"));
+    assert!(manifest.contains("lenso-test"));
+    assert!(manifest.contains("schemars = \"1.2\""));
     assert!(source.contains("#[lenso::plugin]"));
     assert!(source.contains("#[endpoint]"));
+    assert!(source.contains("#[openapi_contract("));
+    assert!(source.contains("JsonSchema"));
     assert!(source.contains("#[query("));
     assert!(source.contains("Result<(StatusCode, Json<Greeting>), Problem>"));
     assert!(source.contains("EndpointTest"));
     assert!(source.contains("pub const fn link()"));
+    let simulated = files.get(Path::new("tests/simulated_web.rs")).unwrap();
+    assert!(simulated.contains("SimulatedWebHost"));
+    assert!(simulated.contains("prepare_simulated"));
+    assert!(simulated.contains(r##"Bytes::from_static(br#"{"name":"Lenso"}"#)"##));
+    let golden_path = files.get(Path::new("WEB_GOLDEN_PATH.md")).unwrap();
+    assert!(golden_path.contains("business Capability"));
+    assert!(golden_path.contains("open_stream"));
+    assert!(golden_path.contains("lenso-test@0.1.1"));
+    assert!(golden_path.contains("root patch"));
     assert!(!source.contains("NativeModuleFactory"));
     assert!(!readme.contains("lenso plugin pack"));
     assert!(readme.contains("lenso plugin dev"));
@@ -118,7 +141,13 @@ fn web_plugin_new_writes_the_complete_project() {
     .unwrap();
 
     let project = root.path().join("company.greetings-http");
-    for path in ["Cargo.toml", "src/lib.rs", "README.md"] {
+    for path in [
+        "Cargo.toml",
+        "src/lib.rs",
+        "tests/simulated_web.rs",
+        "WEB_GOLDEN_PATH.md",
+        "README.md",
+    ] {
         assert!(project.join(path).is_file(), "missing generated {path}");
     }
 }

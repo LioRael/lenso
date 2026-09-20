@@ -6,5 +6,6 @@ mod compiler;
 pub mod doctor;
 pub mod plugin;
 pub mod plugins;
+mod target_profile;
 pub mod watch;
 pub use compiler::ConventionCompiler;

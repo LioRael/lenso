@@ -11,6 +11,7 @@ mod build;
 mod contracts;
 mod convention_authoring;
 mod convention_build;
+mod explain;
 mod local_dev;
 mod local_host;
 mod local_workflow;
@@ -24,6 +25,11 @@ mod preset;
 pub use preset::AppProject;
 #[allow(dead_code)]
 mod terminal;
+
+// Keep the command argument constructible for an embedding CLI.  The command
+// owns the persisted Host inspection; callers should not recreate a profile
+// parser or a second resolver around it.
+pub use explain::ExplainArgs;
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum AppCommand {
@@ -60,6 +66,8 @@ pub enum AppCommand {
     Check(ProjectArgs),
     /// Explain the derived Plugin Instances, provenance, and bindings.
     Show(ShowArgs),
+    /// Explain target admission, selected implementations, and consumer capability demand.
+    Explain(explain::ExplainArgs),
     /// Discover local Plugin source projects and Bundles without building or activating them.
     Discover(ProjectArgs),
     /// Explain local convention support and selected surface packages without executing code.
@@ -126,6 +134,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
         AppCommand::Init(args) => init(args),
         AppCommand::Check(args) => check(args),
         AppCommand::Show(args) => show(args),
+        AppCommand::Explain(args) => explain::run(args),
         AppCommand::Discover(args) => discover(args),
         AppCommand::Inspect(args) => inspect(args),
         AppCommand::Assemble(args) => assemble::assemble(args),

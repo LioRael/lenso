@@ -35,7 +35,7 @@ fn bundle_with_endpoint(
             target: "javascript-bun".into(),
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
-            runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
         }],
         output: bundle.clone(),
     })
@@ -67,7 +67,7 @@ fn named_dependency_bundle(root: &std::path::Path) -> (PathBuf, PathBuf) {
             target: "javascript-bun".into(),
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
-            runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
         }],
         output: store.clone(),
     })
@@ -93,12 +93,56 @@ fn named_dependency_bundle(root: &std::path::Path) -> (PathBuf, PathBuf) {
             target: "javascript-bun".into(),
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
-            runtime_profile: lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE.into(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
         }],
         output: copy.clone(),
     })
     .unwrap();
     (store, copy)
+}
+
+fn target_fallback_bundle(root: &std::path::Path) -> PathBuf {
+    let rejected = root.join("rejected.js");
+    let selected = root.join("selected.js");
+    fs::write(&rejected, "export default {};").unwrap();
+    fs::write(&selected, "export default {};").unwrap();
+    let bundle = root.join("target-fallback-bundle");
+    build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+        contract: PluginContract::new("company.target", "1.0.0", "target")
+            .with_authoring_version(2)
+            .with_capability(lenso_app_plan::CapabilityEndpointPlan::new(
+                "company.target@1",
+                "1.0.0",
+                ["get"],
+            )),
+        implementations: vec![
+            SourcePluginImplementation {
+                id: "wrong-target".into(),
+                host_targets: vec!["unavailable-target".into()],
+                artifact: rejected,
+                bundle_path: "implementations/wrong-target/plugin.js".into(),
+                media_type: "application/javascript".into(),
+                target: "javascript-bun".into(),
+                entrypoint: "plugin.js".into(),
+                execution_class: ExecutionClassId::bun_child_process(),
+                runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            },
+            SourcePluginImplementation {
+                id: "selected-target".into(),
+                host_targets: vec!["javascript-bun".into()],
+                artifact: selected,
+                bundle_path: "implementations/selected-target/plugin.js".into(),
+                media_type: "application/javascript".into(),
+                target: "javascript-bun".into(),
+                entrypoint: "plugin.js".into(),
+                execution_class: ExecutionClassId::bun_child_process(),
+                runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            },
+        ],
+        output: bundle.clone(),
+    })
+    .unwrap();
+    bundle
 }
 
 #[test]
@@ -115,7 +159,11 @@ fn host_build_rejects_stream_profile_and_does_not_replace_a_racing_output() {
         out: root.path().join("output"),
     };
     let error = materialize(declaration(bundle), &args).unwrap_err();
-    assert!(format!("{error:#}").contains("Request Capabilities only"));
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("missing_target_capabilities")
+            || message.contains("Request Capabilities only")
+    );
     assert!(!args.out.exists());
     let stage = root.path().join("stage");
     fs::create_dir(&stage).unwrap();
@@ -195,6 +243,37 @@ fn host_build_rejects_corruption_and_unavailable_implementation_before_publicati
 }
 
 #[test]
+fn host_build_persists_runtime_target_rejection_for_app_explain() {
+    let root = tempfile::tempdir().unwrap();
+    let args = HostBuildArgs {
+        source: root.path().join("app.ts"),
+        target: "javascript-bun".into(),
+        out: root.path().join("output"),
+    };
+    materialize(declaration(target_fallback_bundle(root.path())), &args).unwrap();
+
+    let report = crate::app::explain::report(&args.out).unwrap();
+    assert_eq!(report["schema"], "lenso.app-explain.v1");
+    assert_eq!(report["unmet_consumer_requirements"], serde_json::json!([]));
+    assert_eq!(
+        report["engine_execution"]["availability"]["reason"],
+        "no_active_engine_session"
+    );
+    assert_eq!(
+        report["implementation_selection"][0]["selected"]["implementation_id"],
+        "selected-target"
+    );
+    assert_eq!(
+        report["implementation_selection"][0]["rejected"][0]["reason"]["kind"],
+        "host_target_mismatch"
+    );
+    assert_eq!(
+        report["target_capability_profiles"][0]["target_profile"],
+        lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE
+    );
+}
+
+#[test]
 fn host_build_materializes_only_a_host_authorized_dependency_choice() {
     let root = tempfile::tempdir().unwrap();
     let (store, copy) = named_dependency_bundle(root.path());
@@ -264,5 +343,24 @@ fn host_build_materializes_only_a_host_authorized_dependency_choice() {
             .capability_bindings()
             .len(),
         1
+    );
+    let report = crate::app::explain::report(&args.out).unwrap();
+    let demand = report["consumer_requirements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|demand| {
+            demand["consumer_instance"] == "company.copy/default"
+                && demand["requirement_id"] == "source"
+        })
+        .unwrap();
+    assert_eq!(demand["capability_id"], "company.storage@1");
+    assert_eq!(
+        demand["selected_providers"][0]["provider_instance"],
+        "company.store/source"
+    );
+    assert_eq!(
+        demand["non_selected_host_provider_candidates"][0]["provider_instance"],
+        "company.store/destination"
     );
 }

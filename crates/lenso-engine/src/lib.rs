@@ -145,16 +145,106 @@ impl Plan {
     }
 }
 
+/// The cache decision recorded for one executed processing step.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CacheDecision {
+    Hit,
+    Miss { reason: CacheMissReason },
+    NotCacheable,
+}
+
+/// A stable, non-sensitive explanation for a cache miss.
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CacheMissReason {
+    /// There is no prior successful result for this step in this Engine session.
+    Cold,
+    /// The Plugin identity or declared step changed.
+    StepDefinitionChanged,
+    /// One or more declared source inputs changed.
+    InputChanged { paths: Vec<String> },
+    /// One or more declared prior-step outputs changed.
+    DependencyChanged { step_ids: Vec<String> },
+    /// The semantic input matched a previous result, but its bounded cache entry
+    /// was evicted. Eviction affects performance only.
+    Evicted,
+}
+
+/// Explanation of one exact processing decision in an immutable Generation.
+#[derive(Clone, Debug, Serialize)]
+pub struct StepExecutionExplanation {
+    pub step_id: String,
+    pub plugin: String,
+    pub inputs: Vec<String>,
+    pub dependencies: Vec<String>,
+    pub cache: CacheDecision,
+}
+
+/// The explainable execution trace for one Generation.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct GenerationExplanation {
+    pub steps: Vec<StepExecutionExplanation>,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Generation {
     pub outputs: BTreeMap<String, BTreeMap<String, Resource>>,
     pub cache_hits: usize,
+    pub explanation: GenerationExplanation,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CacheInputs {
+    plugin: String,
+    step: String,
+    input_digests: BTreeMap<String, String>,
+    dependency_digests: BTreeMap<String, String>,
+}
+
+impl CacheInputs {
+    fn from_context(item: &PlannedStep, context: &ContextView<'_>) -> Self {
+        Self {
+            plugin: item.plugin.clone(),
+            step: digest_json(&item.step),
+            input_digests: context
+                .files
+                .iter()
+                .map(|(path, bytes)| (path.clone(), digest_bytes(bytes)))
+                .collect(),
+            dependency_digests: context
+                .dependencies
+                .iter()
+                .map(|(step_id, output)| (step_id.clone(), digest_json(*output)))
+                .collect(),
+        }
+    }
+
+    fn cache_key(&self) -> String {
+        digest_json(self)
+    }
+}
+
+impl Serialize for CacheInputs {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        (
+            &self.plugin,
+            &self.step,
+            &self.input_digests,
+            &self.dependency_digests,
+        )
+            .serialize(serializer)
+    }
 }
 
 #[derive(Debug, Default)]
 pub struct Engine {
     plugins: BTreeMap<String, Box<dyn Plugin>>,
     cache: BTreeMap<String, BTreeMap<String, Resource>>,
+    cache_history: BTreeMap<String, CacheInputs>,
 }
 impl Engine {
     pub fn register(&mut self, plugin: impl Plugin + 'static) -> anyhow::Result<()> {
@@ -245,17 +335,24 @@ impl Engine {
                     .collect(),
                 cancelled,
             };
-            let key = format!(
-                "{:x}",
-                Sha256::digest(serde_json::to_vec(&(
-                    &item,
-                    &context.files,
-                    &context.dependencies
-                ))?)
-            );
-            let output = if let Some(output) = self.cache.get(&key).filter(|_| plugin.cacheable()) {
+            let cache_inputs = CacheInputs::from_context(item, &context);
+            let key = cache_inputs.cache_key();
+            let cache = if plugin.cacheable() {
+                match self.cache.get(&key) {
+                    Some(_) => CacheDecision::Hit,
+                    None => CacheDecision::Miss {
+                        reason: cache_miss_reason(
+                            self.cache_history.get(&item.step.id),
+                            &cache_inputs,
+                        ),
+                    },
+                }
+            } else {
+                CacheDecision::NotCacheable
+            };
+            let output = if matches!(cache, CacheDecision::Hit) {
                 generation.cache_hits += 1;
-                output.clone()
+                self.cache[&key].clone()
             } else {
                 plugin
                     .process(&context)
@@ -287,8 +384,22 @@ impl Engine {
             }
             if plugin.cacheable() {
                 self.cache.insert(key, output.clone());
+                if self.cache_history.len() >= 4096
+                    && !self.cache_history.contains_key(&item.step.id)
+                {
+                    self.cache_history.clear();
+                }
+                self.cache_history
+                    .insert(item.step.id.clone(), cache_inputs);
             }
             generation.outputs.insert(item.step.id.clone(), output);
+            generation.explanation.steps.push(StepExecutionExplanation {
+                step_id: item.step.id.clone(),
+                plugin: item.plugin.clone(),
+                inputs: item.step.inputs.clone(),
+                dependencies: item.step.after.clone(),
+                cache,
+            });
             if serde_json::to_vec(&generation.outputs)?.len() > 16 * 1024 * 1024 {
                 bail!("generation exceeds 16 MiB");
             }
@@ -296,6 +407,55 @@ impl Engine {
         Ok(generation)
     }
 }
+
+fn cache_miss_reason(previous: Option<&CacheInputs>, current: &CacheInputs) -> CacheMissReason {
+    let Some(previous) = previous else {
+        return CacheMissReason::Cold;
+    };
+    if previous.plugin != current.plugin || previous.step != current.step {
+        return CacheMissReason::StepDefinitionChanged;
+    }
+    let changed_inputs = changed_keys(&previous.input_digests, &current.input_digests);
+    if !changed_inputs.is_empty() {
+        return CacheMissReason::InputChanged {
+            paths: changed_inputs,
+        };
+    }
+    let changed_dependencies =
+        changed_keys(&previous.dependency_digests, &current.dependency_digests);
+    if !changed_dependencies.is_empty() {
+        return CacheMissReason::DependencyChanged {
+            step_ids: changed_dependencies,
+        };
+    }
+    CacheMissReason::Evicted
+}
+
+fn changed_keys(
+    previous: &BTreeMap<String, String>,
+    current: &BTreeMap<String, String>,
+) -> Vec<String> {
+    previous
+        .keys()
+        .chain(current.keys())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter(|key| previous.get(*key) != current.get(*key))
+        .cloned()
+        .collect()
+}
+
+fn digest_bytes(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+fn digest_json(value: &impl Serialize) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(value).expect("cache evidence is serializable"))
+    )
+}
+
 fn validate_name(name: &str) -> anyhow::Result<()> {
     if name.is_empty()
         || name.contains(['\\', ':'])

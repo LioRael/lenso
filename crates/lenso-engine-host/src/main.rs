@@ -49,3 +49,16 @@ async fn main() -> anyhow::Result<()> {
         Command::App { command } => lenso_engine_app::app::app(command).await,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use lenso_engine_app::app::{AppCommand, ExplainArgs};
+
+    #[test]
+    fn embedding_cli_can_construct_the_persisted_app_explain_command() {
+        let _ = AppCommand::Explain(ExplainArgs {
+            root: None,
+            json: true,
+        });
+    }
+}

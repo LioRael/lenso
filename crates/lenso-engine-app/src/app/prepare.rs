@@ -8,7 +8,7 @@ use anyhow::{Context, bail};
 use clap::Args;
 use lenso_app_plan::ExecutionClassId;
 use lenso_plugin_bundle::{
-    ImplementationPolicy, RuntimeAdmission, read_bundle_manifest, resolve_implementation,
+    ExecutionTargetCapabilityProfile, ImplementationPolicy, read_bundle_manifest,
     verify_bundle_directory,
 };
 use serde::{Deserialize, Serialize};
@@ -64,6 +64,8 @@ struct BundleInventory {
     artifact_size: u64,
     artifact_media_type: String,
     artifact_target: String,
+    target_capability_profile: ExecutionTargetCapabilityProfile,
+    selection: crate::target_profile::ImplementationSelectionEvidence,
 }
 
 #[derive(Debug, Serialize)]
@@ -358,29 +360,41 @@ fn validate_bundle(
             bail!("bundle inventory identity differs from `{}`", bundle.path);
         }
         let manifest = read_bundle_manifest(directory)?;
-        let selected = resolve_implementation(
+        let selected = crate::target_profile::select_implementation(
             &manifest,
             &ImplementationPolicy {
                 host_target: args.target.clone(),
-                runtimes: vec![RuntimeAdmission {
-                    execution_class: ExecutionClassId::new(&bundle.execution_class),
-                    runtime_profile: bundle.runtime_profile.clone(),
-                }],
+                runtimes: vec![crate::target_profile::admission_from_profile(
+                    ExecutionClassId::new(&bundle.execution_class),
+                    &bundle.runtime_profile,
+                    &bundle.target_capability_profile,
+                )?],
             },
         )?;
-        if selected.implementation_id != bundle.implementation_id
-            || selected.artifact.path != bundle.artifact_path
-            || selected.artifact.digest != bundle.artifact_digest
-            || selected.artifact.size != bundle.artifact_size
-            || selected.artifact.media_type != bundle.artifact_media_type
-            || selected.artifact.target != bundle.artifact_target
+        if selected.implementation.implementation_id != bundle.implementation_id
+            || selected.implementation.artifact.path != bundle.artifact_path
+            || selected.implementation.artifact.digest != bundle.artifact_digest
+            || selected.implementation.artifact.size != bundle.artifact_size
+            || selected.implementation.artifact.media_type != bundle.artifact_media_type
+            || selected.implementation.artifact.target != bundle.artifact_target
         {
             bail!(
                 "selected Artifact differs from bundle inventory `{}`",
                 bundle.path
             );
         }
-        authority.verify_distribution_bundle(&selected.descriptor, &verified.manifest_digest)
+        if selected.target_capability_profile != bundle.target_capability_profile
+            || selected.evidence != bundle.selection
+        {
+            bail!(
+                "selection evidence differs from bundle inventory `{}`",
+                bundle.path
+            );
+        }
+        authority.verify_distribution_bundle(
+            &selected.implementation.descriptor,
+            &verified.manifest_digest,
+        )
     })
     .with_context(|| format!("re-verify distribution bundle {}", bundle.path))?;
     Ok(bundle.execution_class == "lenso.bun-process@1")
