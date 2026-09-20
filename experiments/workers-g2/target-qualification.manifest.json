@@ -1,0 +1,95 @@
+{
+  "schema": "lenso-workers-target-qualification-manifest-v1",
+  "target": "cloudflare-workers",
+  "scope": "The existing G2 generated Rust/Wasm Host, Web ingress and event Runner. This manifest does not add a router, database driver, credential, or production deployment configuration.",
+  "localWorkerd": {
+    "environment": "local-workerd",
+    "commands": [
+      "node run-workerd-qualification.mjs <w02-evidence.json.gz>",
+      "node run-target-local-qualification.mjs <target-evidence.json.gz>"
+    ],
+    "cases": [
+      {
+        "id": "wasm-trap",
+        "evidence": "generated G2 Rust/Wasm trap_probe() abandons the Runner generation"
+      },
+      {
+        "id": "timeout",
+        "evidence": "real ReadableStream body crosses the existing HTTP ingress read deadline and a healthy G2 request follows"
+      },
+      {
+        "id": "generation-abandonment-late-cleanup",
+        "evidence": "event-owned Host callback is fenced, bounded cleanup remains owner-owned, and fresh generated Wasm recovers"
+      },
+      {
+        "id": "host-postgres-callback-failure",
+        "evidence": "an opaque Auth-style callback crosses a real workerd service binding and normalizes failure/timeout without exposing endpoint identity"
+      },
+      {
+        "id": "stream-session-short-request-isolation",
+        "evidence": "the existing W02 matrix holds stream/WebSocket sessions while short requests rotate in separate profile domains"
+      }
+    ],
+    "doesNotProve": [
+      "external client disconnect propagation",
+      "Cloudflare D1 provider behavior",
+      "PostgreSQL or Hyperdrive behavior",
+      "deployed Worker routing or deployment configuration",
+      "production capacity, CPU, memory, fleet, SLO, or resource isolation"
+    ]
+  },
+  "externalReceipts": [
+    {
+      "id": "auth-postgres-composition",
+      "case": "auth-postgres-composition",
+      "environment": "local-workerd",
+      "owner": "lenso-auth-plugin",
+      "required": "A versioned Auth candidate or explicit source snapshot must execute OAuth create/consume/revoke through workers_postgres_factory(execute) using this Host callback seam. Run auth-postgres-cohort.mjs with the Auth source and its actual local-workerd cohort command; the receipt records candidate/source identity and the no-binding/no-secret factory contract without credentials or binding name."
+    },
+    {
+      "id": "d1-failure",
+      "case": "d1-failure",
+      "environment": "deployed-worker",
+      "owner": "lenso-auth-plugin",
+      "required": "A task-owned deployed Worker and real D1 binding must fail a real Auth persistence operation, produce a bounded failure receipt, and prove a clean healthy follow-up. Local service bindings and mocked D1 objects do not satisfy this gate."
+    },
+    {
+      "id": "client-disconnect",
+      "case": "client-disconnect",
+      "environment": "deployed-worker",
+      "owner": "lenso-runtime-rust",
+      "required": "An external client must abort a streaming response and the same-isolate receipt must show request.signal.aborted, cancelled Kernel work, and clean shutdown. Response-write failure alone does not satisfy this gate."
+    },
+    {
+      "id": "postgres-hyperdrive-failure",
+      "case": "postgres-hyperdrive-failure",
+      "environment": "deployed-worker",
+      "owner": "Workers Host and platform operator",
+      "required": "A task-owned deployed Worker must use a real Hyperdrive-backed PostgreSQL connection through the Host callback, exercise failure/timeout/cancellation plus uncertain mutation handling, and prove that no retry occurs after an ambiguous durable write. A callback service fixture does not satisfy this gate."
+    }
+  ],
+  "receiptSchema": {
+    "schema": "lenso-workers-external-receipt-v1",
+    "requiredFields": [
+      "schema",
+      "case",
+      "environment",
+      "passed",
+      "source",
+      "observations"
+    ],
+    "source": {
+      "requiredFields": [
+        "repository",
+        "revision"
+      ]
+    },
+    "credentials": "Receipts must not contain connection strings, binding names, secrets, private URLs, Auth bodies, tokens, or PII."
+  },
+  "classification": [
+    "Miniflare is not local workerd evidence.",
+    "local workerd proves only the local-workerd cases above.",
+    "A deployed Worker receipt proves only its task-owned deployed configuration.",
+    "Production deployment remains a separate rollout, observability, budget, and operations qualification."
+  ]
+}

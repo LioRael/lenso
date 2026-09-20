@@ -10,7 +10,7 @@ const sourceFiles = [];
 function inventory(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (
-      ["node_modules", "pkg", ".w02", ".wrangler", "evidence"].includes(
+      ["node_modules", "pkg", ".w02", ".wrangler", "evidence", "target"].includes(
         entry.name,
       )
     )

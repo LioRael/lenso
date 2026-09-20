@@ -1,0 +1,41 @@
+{
+  "schema": "lenso-auth-workers-postgres-cohort-contract-v1",
+  "purpose": "Temporary cross-repository local-workerd composition of Auth workers_postgres_factory(execute) with the Runtime Host callback seam. It adds no permanent path dependency and is not Hyperdrive qualification.",
+  "input": {
+    "authSource": "An explicit versioned Auth candidate or source snapshot root containing crates/lenso-auth-oauth-flow-plugin/src/lib.rs and src/postgres_transport.rs.",
+    "command": "An Auth-owned command invoked with its working directory set to authSource. It must build/run the real Auth Workers Host composition, not a mocked Rust or JavaScript transport.",
+    "environment": {
+      "LENSO_AUTH_POSTGRES_COHORT_SOURCE_REVISION": "The wrapper supplies the source revision or unversioned-source-snapshot label."
+    }
+  },
+  "stdoutEvidence": {
+    "prefix": "AUTH_POSTGRES_COHORT_EVIDENCE ",
+    "schema": "lenso-auth-workers-postgres-cohort-v1",
+    "environment": "local-workerd",
+    "requiredCases": [
+      "create",
+      "consume",
+      "revoke",
+      "factory-secrecy"
+    ],
+    "requiredFields": [
+      "schema",
+      "environment",
+      "passed",
+      "cases"
+    ]
+  },
+  "factorySecrecy": "The Auth factory must receive only execute. It must not receive a D1/Hyperdrive binding name, connection string, credential, or retry authority.",
+  "output": {
+    "receiptSchema": "lenso-workers-external-receipt-v1",
+    "case": "auth-postgres-composition",
+    "environment": "local-workerd"
+  },
+  "doesNotQualify": [
+    "real Hyperdrive or PostgreSQL provider behavior",
+    "Cloudflare D1 behavior",
+    "external client disconnect propagation",
+    "deployed Worker routing",
+    "production deployment"
+  ]
+}

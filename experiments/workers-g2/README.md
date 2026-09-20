@@ -168,3 +168,68 @@ platform memory peaks. The Node client uses five-second operation deadlines.
 Stop task-owned servers after the run and remove generated `pkg/`, `.w02/`,
 `qualification-identity.json`, `.wrangler/` and installed `node_modules/`.
 See [W02 evidence](../../docs/evidence/workers-w02/README.md) for limitations.
+
+## Target qualification harness
+
+`target-qualification.manifest.json` is the machine-readable boundary for the
+next Workers target cohort. It composes the existing W02 service-binding matrix
+with an additional locked `workerd test` that uses the same generated G2
+Rust/Wasm Host. The added test proves a real Wasm trap, generation abandonment,
+late owner cleanup, a fresh generated instance, a genuine ingress body deadline,
+and a Host-owned opaque callback over a Workerd service binding. It does not add
+an HTTP router or a database implementation.
+
+After the locked install and Wasm build, write a non-source report explicitly:
+
+```sh
+AUTH_SOURCE=/absolute/path/to/versioned-or-explicit-auth-source \
+node run-target-qualification.mjs \
+  --output /tmp/lenso-workers-target-qualification.json \
+  --auth-source "$AUTH_SOURCE"
+```
+
+The successful local status is deliberately
+`local-workerd-passed-external-gates-pending`. It is not a deployment or
+production claim. `workers_postgres_factory(execute)` remains Auth's private
+JSON transport: the Runtime callback forwards opaque strings, tracks only the
+native Promise and cancellation, and does not receive a database binding,
+connection string, credential, or Hyperdrive name.
+
+When the Auth candidate supplies its actual local-workerd composition command,
+wrap it without a permanent path dependency and pass its receipt to the target
+harness:
+
+```sh
+node auth-postgres-cohort.mjs \
+  --auth-source "$AUTH_SOURCE" \
+  --output /tmp/auth-postgres-composition.json \
+  -- auth-owned-local-workerd-cohort-command
+```
+
+That command must emit one `AUTH_POSTGRES_COHORT_EVIDENCE` line proving
+create, consume, revoke and factory secrecy from the exact Auth source snapshot.
+The wrapper refuses a successful receipt otherwise; it does not replace that
+composition with a JavaScript imitation. The exact input/output contract is
+[`auth-postgres-cohort.contract.json`](auth-postgres-cohort.contract.json).
+
+The release/target cohort must supply source-backed, credential-free receipts
+for the manifest's external gates, then fail closed with:
+
+```sh
+node run-target-qualification.mjs \
+  --output /tmp/lenso-workers-target-qualification.json \
+  --auth-postgres-receipt /absolute/path/auth-postgres.json \
+  --d1-receipt /absolute/path/d1.json \
+  --client-disconnect-receipt /absolute/path/disconnect.json \
+  --postgres-hyperdrive-receipt /absolute/path/hyperdrive.json \
+  --require-external
+```
+
+Those receipts must respectively prove: actual Auth
+create/consume/revoke composition through the Host callback; an Auth persistence
+failure against real task-owned D1; an external client abort observed through the
+incoming Worker request signal; and a real Hyperdrive-backed PostgreSQL failure,
+timeout/cancellation and ambiguous-write policy. A local Workerd service binding
+proves callback lifecycle only. It never stands in for D1, PostgreSQL,
+Hyperdrive, external disconnect, deployment routing, platform resources, or a
+production SLO.

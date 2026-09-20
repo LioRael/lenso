@@ -285,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "lenso"
-version = "0.5.21"
+version = "0.5.23"
 dependencies = [
  "futures",
  "lenso-kernel",
