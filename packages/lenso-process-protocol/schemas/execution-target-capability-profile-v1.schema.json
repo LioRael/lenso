@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lenso.dev/schemas/execution-target-capability-profile-v1.schema.json",
+  "title": "Lenso Execution Target Capability Profile V1",
+  "description": "A closed, explicit capability declaration for one Adapter or Driver target profile. Consumers must fail closed when a requested capability is omitted or unknown. Implementations additionally enforce canonical capability ordering, duplicate-key rejection, and exact profile identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile", "target_profile", "capabilities"],
+  "properties": {
+    "profile": {
+      "const": "lenso.execution-target-capability-profile@1"
+    },
+    "target_profile": {
+      "$ref": "#/$defs/token"
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "browser",
+          "event",
+          "host-imports",
+          "native-process",
+          "remote",
+          "request",
+          "stream",
+          "wasm-component",
+          "websocket",
+          "workers"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "token": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._@-]{1,128}$"
+    }
+  }
+}

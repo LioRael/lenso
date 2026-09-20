@@ -1,6 +1,6 @@
 {
   "name": "@lenso/process-protocol",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Language-neutral Process Protocol types and conformance helpers for Lenso Execution Adapters.",
   "type": "module",
   "license": "MIT",
@@ -16,7 +16,9 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
-    }
+    },
+    "./schemas/process-protocol-v1.schema.json": "./schemas/process-protocol-v1.schema.json",
+    "./schemas/execution-target-capability-profile-v1.schema.json": "./schemas/execution-target-capability-profile-v1.schema.json"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

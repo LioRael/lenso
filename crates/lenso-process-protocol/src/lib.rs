@@ -6,6 +6,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+mod execution_target;
 mod proof;
 mod strict_json;
 
@@ -15,6 +16,10 @@ mod strict_json;
 /// wrap these values in their own versioned protocols.
 pub mod authoring;
 
+pub use execution_target::{
+    EXECUTION_TARGET_CAPABILITY_PROFILE, ExecutionTargetCapability,
+    ExecutionTargetCapabilityProfile,
+};
 pub use proof::{
     AuthoringHandshakeProofInput, authoring_callback_proof_message, authoring_child_proof_message,
     authoring_handshake_proof_payload, authoring_host_proof_message, canonicalize_proof_value,

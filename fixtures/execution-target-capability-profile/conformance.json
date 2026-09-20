@@ -1,0 +1,111 @@
+{
+  "valid": [
+    {
+      "name": "every_v1_feature_is_representable",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.execution@1",
+        "capabilities": [
+          "browser",
+          "event",
+          "host-imports",
+          "native-process",
+          "remote",
+          "request",
+          "stream",
+          "wasm-component",
+          "websocket",
+          "workers"
+        ]
+      },
+      "required": ["request", "stream", "event", "websocket", "host-imports"],
+      "missing": []
+    },
+    {
+      "name": "omitted_declared_feature_is_not_inferred",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.request-only@1",
+        "capabilities": ["request"]
+      },
+      "required": ["request", "stream", "workers"],
+      "missing": ["stream", "workers"]
+    },
+    {
+      "name": "empty_profile_explicitly_supports_nothing",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.no-runtime@1",
+        "capabilities": []
+      },
+      "required": ["request"],
+      "missing": ["request"]
+    },
+    {
+      "name": "unknown_required_feature_fails_closed",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.request-only@1",
+        "capabilities": ["request"]
+      },
+      "required": ["request", "future-capability"],
+      "missing": ["future-capability"]
+    }
+  ],
+  "invalid": [
+    {
+      "name": "unknown_declared_feature_is_rejected",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.invalid@1",
+        "capabilities": ["request", "future-capability"]
+      },
+      "error": "unknown execution target capability"
+    },
+    {
+      "name": "missing_capability_list_is_rejected",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.invalid@1"
+      },
+      "error": "capabilities"
+    },
+    {
+      "name": "noncanonical_feature_order_is_rejected",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.invalid@1",
+        "capabilities": ["stream", "request"]
+      },
+      "error": "canonical-sorted"
+    },
+    {
+      "name": "unknown_field_is_rejected",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example.invalid@1",
+        "capabilities": ["request"],
+        "inferred": true
+      },
+      "error": "unknown field"
+    },
+    {
+      "name": "unknown_profile_version_is_rejected",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@2",
+        "target_profile": "example.invalid@1",
+        "capabilities": ["request"]
+      },
+      "error": "unsupported execution target capability profile"
+    },
+    {
+      "name": "target_profile_must_use_the_portable_128_byte_token",
+      "profile": {
+        "profile": "lenso.execution-target-capability-profile@1",
+        "target_profile": "example/not-portable@1",
+        "capabilities": ["request"]
+      },
+      "error": "target_profile"
+    }
+  ]
+}

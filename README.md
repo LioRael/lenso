@@ -20,7 +20,8 @@ retain their relevant Git history.
 - `lenso-plugin-authoring`: provides runtime-neutral typed Ports and generated
   contract references, including source-named requirement connection.
 - `lenso-process-protocol` and `@lenso/process-protocol`: retain the exact
-  HTTP V1 protocol and expose separate transport-neutral Authoring V2 values.
+  HTTP V1 protocol, transport-neutral Authoring V2 values, and the versioned
+  execution-target capability-profile contract.
 - `fixtures/portable-contract`: cross-language value-profile conformance data.
 
 Generated bindings retain contract-specific values, Provider traits, Clients,
