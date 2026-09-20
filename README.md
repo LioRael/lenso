@@ -16,6 +16,11 @@ It does not own portable Kernel semantics, authentication policy, business
 authorization, Console/UI behavior, Web Shell, Browser Adapter, or a global
 route registry.
 
+Qualification status is recorded in the canonical ledger
+`LioRael/lenso:docs/qualification/qualification-status.json`. Its local
+candidate is not remotely published, so this README makes no release, target,
+or production-maturity claim.
+
 ## Current packages
 
 - `lenso-capability-http-endpoint`
