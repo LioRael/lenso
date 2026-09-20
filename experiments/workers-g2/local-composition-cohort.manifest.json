@@ -1,0 +1,49 @@
+{
+  "schema": "lenso-workers-local-composition-cohort-manifest-v1",
+  "environment": "local-workerd",
+  "purpose": "Run exact clean Core, Protocol, Runtime, Web, and Auth candidate sources through the existing G2/W02 and Auth G4 local workerd suites without accepting a hand-supplied target receipt.",
+  "subcohorts": [
+    {
+      "id": "g2-web-ingress",
+      "actualBoundary": "Fetch request -> Workers runtime HTTP handler -> generated G2 Rust/Wasm -> WebIngressEventFactory -> bound HTTP Endpoint Capability",
+      "requiredCases": [
+        "wasm-trap-generation-abandonment-late-cleanup",
+        "actual-generated-ingress-body-timeout-and-recovery"
+      ]
+    },
+    {
+      "id": "w02-stream-session",
+      "actualBoundary": "local workerd stream/WebSocket session leases remain distinct from rotating short-request generations",
+      "requiredCases": [
+        "held-stream",
+        "held-websocket",
+        "cancellation",
+        "quarantine",
+        "late-reject",
+        "cleanup-reject"
+      ]
+    },
+    {
+      "id": "auth-oauth-capability",
+      "actualBoundary": "local workerd test -> generated Auth G4 Rust/Wasm -> Kernel -> OAuth Capability -> Auth private Host callback persistence fixture",
+      "requiredCases": [
+        "create",
+        "consume",
+        "revoke",
+        "expiry",
+        "uncertain-commit-reconciles",
+        "factory-secrecy"
+      ],
+      "transportClassification": "This is a direct generated Wasm OAuth Capability invocation under workerd. It is not an HTTP ingress result."
+    }
+  ],
+  "resultStatus": "local-workerd-cohort-passed-external-gates-pending",
+  "doesNotProve": [
+    "one fused product App containing every listed subcohort",
+    "Cloudflare D1 provider behavior",
+    "real PostgreSQL or Hyperdrive behavior",
+    "external client disconnect propagation",
+    "deployed Worker routing or deployment configuration",
+    "production capacity, CPU, memory, fleet, SLO, resource isolation, or operations readiness"
+  ]
+}

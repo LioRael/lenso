@@ -4,8 +4,19 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 const root = fileURLToPath(new URL(".", import.meta.url));
+const wasmBindgen = process.env.WASM_BINDGEN || "wasm-bindgen";
 const hash = (path) =>
   createHash("sha256").update(readFileSync(path)).digest("hex");
+const sourceRevision = process.env.LENSO_QUALIFICATION_SOURCE_REVISION
+  ? (() => {
+      if (!/^[0-9a-f]{40}$/i.test(process.env.LENSO_QUALIFICATION_SOURCE_REVISION))
+        throw Error("LENSO_QUALIFICATION_SOURCE_REVISION must be a full Git revision");
+      return process.env.LENSO_QUALIFICATION_SOURCE_REVISION;
+    })()
+  : execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: fileURLToPath(new URL(".", import.meta.url)),
+      encoding: "utf8",
+    }).trim();
 const sourceFiles = [];
 function inventory(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -26,10 +37,10 @@ inventory(join(root, "../../packages/workers-runtime"));
 sourceFiles.sort(([a], [b]) => a.localeCompare(b));
 const identity = {
   schema: "w02-local-identity-v1",
-  baseCommit: execFileSync("git", ["rev-parse", "HEAD"], {
-    cwd: root,
-    encoding: "utf8",
-  }).trim(),
+  baseCommit: sourceRevision,
+  sourceRevisionOrigin: process.env.LENSO_QUALIFICATION_SOURCE_REVISION
+    ? "explicit-clean-checkout"
+    : "containing-git-checkout",
   sourceSha256: createHash("sha256")
     .update(JSON.stringify(sourceFiles))
     .digest("hex"),
@@ -41,7 +52,7 @@ const identity = {
   rust: execFileSync("rustc", ["+1.94.0", "--version"], {
     encoding: "utf8",
   }).trim(),
-  bindgen: execFileSync("wasm-bindgen", ["--version"], {
+  bindgen: execFileSync(wasmBindgen, ["--version"], {
     encoding: "utf8",
   }).trim(),
   workerd: execFileSync(
