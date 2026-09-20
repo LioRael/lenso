@@ -1,6 +1,6 @@
 [package]
 name = "lenso-bun-adapter"
-version = "0.1.11"
+version = "0.1.13"
 edition.workspace = true
 license.workspace = true
 publish = true
@@ -18,20 +18,25 @@ getrandom.workspace = true
 hmac.workspace = true
 hex.workspace = true
 jsonrpsee = { version = "0.26", default-features = false, features = ["http-client", "server"] }
-lenso-app-plan = { version = "0.4.1" }
-lenso-kernel = { version = "0.3.3" }
-lenso-process-protocol = { version = "0.2.2" }
+lenso-app-plan = { version = "0.4.4" }
+lenso-kernel = { version = "0.3.10" }
+lenso-process-protocol = { version = "0.2.3" }
 lenso-runtime-codec = { version = "0.4.1" }
 lenso-process-sdk = { version = "0.1.1", optional = true }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tiny_http = "0.12"
 tokio.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+command-fds.workspace = true
+nix = { version = "0.31", features = ["signal"] }
+
 [dev-dependencies]
-lenso-native-adapter = { version = "0.3.3" }
-lenso-process-adapter = { version = "0.3.9" }
+lenso-native-adapter = { version = "0.3.14" }
+lenso-process-adapter = { version = "0.3.11" }
 tempfile = "3"
 time.workspace = true
 

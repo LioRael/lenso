@@ -17,6 +17,7 @@ import type {
 } from "./authoring.js";
 
 export * from "./authoring.js";
+export * from "./process-v1.js";
 export * from "./v2.js";
 
 const PROTOCOL_VERSION = 1;

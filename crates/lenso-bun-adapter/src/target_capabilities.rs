@@ -5,61 +5,13 @@
 //! import bridges; `authoring_v2` owns the supervised Bun child-process
 //! lifecycle. Features absent here are intentionally unsupported.
 
-use serde::Serialize;
+pub use lenso_process_protocol::{
+    EXECUTION_TARGET_CAPABILITY_PROFILE as EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT,
+    ExecutionTargetCapability as BunExecutionTargetCapability,
+    ExecutionTargetCapabilityProfile as BunExecutionTargetCapabilityProfile,
+};
 
 use crate::BUN_AUTHORING_RUNTIME_PROFILE;
-
-/// Stable identity of the protocol contract this profile implements.
-pub const EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT: &str =
-    "lenso.execution-target-capability-profile@1";
-
-/// Target-owned feature declarations for Bun Authoring V2.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum BunExecutionTargetCapability {
-    Request,
-    Stream,
-    Event,
-    HostImports,
-    NativeProcess,
-}
-
-impl BunExecutionTargetCapability {
-    /// Returns the portable profile-contract spelling.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Request => "request",
-            Self::Stream => "stream",
-            Self::Event => "event",
-            Self::HostImports => "host-imports",
-            Self::NativeProcess => "native-process",
-        }
-    }
-}
-
-/// A serializable, fail-closed profile for the actual Bun Adapter surface.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct BunExecutionTargetCapabilityProfile {
-    pub profile: &'static str,
-    pub target_profile: &'static str,
-    pub capabilities: Vec<BunExecutionTargetCapability>,
-}
-
-impl BunExecutionTargetCapabilityProfile {
-    /// Returns whether the Adapter explicitly supports one feature.
-    pub fn supports(&self, capability: BunExecutionTargetCapability) -> bool {
-        self.capabilities.contains(&capability)
-    }
-
-    /// Validates the shared profile wire invariants without granting a fallback.
-    pub fn is_valid(&self) -> bool {
-        self.profile == EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT
-            && self
-                .capabilities
-                .windows(2)
-                .all(|pair| pair[0].as_str() < pair[1].as_str())
-    }
-}
 
 /// Returns the current Bun Authoring V2 capability profile.
 ///
@@ -67,8 +19,8 @@ impl BunExecutionTargetCapabilityProfile {
 /// absent: they have no corresponding Bun Adapter implementation today.
 pub fn bun_authoring_target_capability_profile() -> BunExecutionTargetCapabilityProfile {
     BunExecutionTargetCapabilityProfile {
-        profile: EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT,
-        target_profile: BUN_AUTHORING_RUNTIME_PROFILE,
+        profile: EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT.to_owned(),
+        target_profile: BUN_AUTHORING_RUNTIME_PROFILE.to_owned(),
         capabilities: vec![
             BunExecutionTargetCapability::Event,
             BunExecutionTargetCapability::HostImports,
@@ -91,7 +43,7 @@ mod tests {
             EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT
         );
         assert_eq!(profile.target_profile, BUN_AUTHORING_RUNTIME_PROFILE);
-        assert!(profile.is_valid());
+        assert!(profile.validate().is_ok());
         assert!(profile.supports(BunExecutionTargetCapability::Request));
         assert!(profile.supports(BunExecutionTargetCapability::Stream));
         assert!(profile.supports(BunExecutionTargetCapability::Event));

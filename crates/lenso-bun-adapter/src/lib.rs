@@ -9,6 +9,7 @@ mod adapter;
 mod adapter_v2;
 mod authoring_v2;
 mod host_imports;
+pub mod process_v1;
 mod protocol;
 mod request;
 mod server;

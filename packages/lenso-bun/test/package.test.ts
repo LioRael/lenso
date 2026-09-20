@@ -5,6 +5,8 @@ test("published SDK exports the Bun runtime and official Jobs projection", async
   const jobs = await import("@lenso/bun/capabilities/jobs");
   expect(sdk.definePlugin).toBeFunction();
   expect(sdk.serve).toBeFunction();
+  expect(sdk.startProcessV1).toBeFunction();
+  expect(sdk.serveProcessV1).toBeFunction();
   expect(jobs.bindJobsProvider).toBeFunction();
   expect(jobs.CAPABILITY_ID).toBe("lenso.jobs@1");
   expect(jobs.JOBS_CONTRACT.capability_id).toBe("lenso.jobs@1");

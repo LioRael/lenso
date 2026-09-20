@@ -6,6 +6,8 @@ test("published package exports the Bun Plugin authoring surface", async () => {
   expect(module.definePlugin).toBeFunction();
   expect(module.serve).toBeFunction();
   expect(module.startPlugin).toBeFunction();
+  expect(module.startProcessV1).toBeFunction();
+  expect(module.serveProcessV1).toBeFunction();
 });
 
 test("published package exports build and extraction entrypoints", async () => {
