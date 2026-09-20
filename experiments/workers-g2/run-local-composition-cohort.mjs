@@ -14,7 +14,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
@@ -33,6 +33,7 @@ const optionNames = new Set([
   "--auth-source",
   "--cargo",
   "--wasm-bindgen",
+  "--pnpm",
   "--keep-workdir",
 ]);
 const options = {};
@@ -74,6 +75,20 @@ const cargoExecutable = options["--cargo"]
 const wasmBindgen = options["--wasm-bindgen"]
   ? resolve(options["--wasm-bindgen"])
   : process.env.WASM_BINDGEN || "wasm-bindgen";
+const pnpmExecutable = options["--pnpm"]
+  ? resolve(options["--pnpm"])
+  : process.env.LENSO_PNPM || "pnpm";
+
+function isInside(root, path) {
+  const distance = relative(root, path);
+  return (
+    distance === "" ||
+    (!distance.startsWith(`..${sep}`) && distance !== ".." && !isAbsolute(distance))
+  );
+}
+
+if (Object.values(sourcePaths).some((source) => isInside(source, output)))
+  throw Error("--output must be outside every candidate checkout");
 
 function hash(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -124,7 +139,12 @@ function run(name, command, args, cwd, environment = {}) {
       .slice(-4000);
     throw Object.assign(Error(`${name} failed: ${detail}`), { record });
   }
-  return { ...record, stdout: result.stdout || "" };
+  const stdout = result.stdout || "";
+  return {
+    ...record,
+    stdout,
+    stdoutSha256: createHash("sha256").update(stdout).digest("hex"),
+  };
 }
 
 function copyDirectory(source, destination) {
@@ -206,41 +226,101 @@ function normalizeG2Mirror(g2) {
   if (!nativeAdapterVersion || !workersDriverVersion)
     throw Error("Runtime crate versions are required for the disposable G2 mirror");
   const workspaceManifest = join(g2, "Cargo.toml");
+  const workspaceSource = readFileSync(workspaceManifest, "utf8");
+  const expectedWorkspacePatch =
+    '\n[patch.crates-io]\nlenso = { path = "../../crates/lenso" }\nlenso-native-adapter = { path = "../../crates/lenso-native-adapter" }';
+  if (!workspaceSource.includes(expectedWorkspacePatch))
+    throw Error("G2 disposable mirror has an unexpected Runtime patch block");
+  if (!workspaceSource.includes('lenso-native-adapter = { path = "../../crates/lenso-native-adapter" }'))
+    throw Error("G2 disposable mirror is missing its Runtime native adapter path");
   writeFileSync(
     workspaceManifest,
-    readFileSync(workspaceManifest, "utf8").replace(
-      /\n\[patch\.crates-io\][\s\S]*$/,
-      "\n",
-    ).replace(
+    workspaceSource.replace(expectedWorkspacePatch, "").replace(
       'lenso-native-adapter = { path = "../../crates/lenso-native-adapter" }',
       `lenso-native-adapter = "=${nativeAdapterVersion}"`,
     ),
   );
   const hostManifest = join(g2, "host/Cargo.toml");
+  const hostSource = readFileSync(hostManifest, "utf8");
+  const hostDriverPattern =
+    /lenso-workers-driver = \{ version = "[^"]+", path = "\.\.\/\.\.\/\.\.\/crates\/lenso-workers-driver" \}/;
+  if (!hostDriverPattern.test(hostSource))
+    throw Error("G2 disposable mirror is missing its Runtime Workers driver path");
   writeFileSync(
     hostManifest,
-    readFileSync(hostManifest, "utf8").replace(
-      /lenso-workers-driver = \{ version = "0\.1\.0", path = "\.\.\/\.\.\/\.\.\/crates\/lenso-workers-driver" \}/,
+    hostSource.replace(
+      hostDriverPattern,
       `lenso-workers-driver = "=${workersDriverVersion}"`,
     ),
   );
+  return {
+    sourceWorkspaceManifestSha256: hash(
+      join(sourcePaths.runtime, "experiments/workers-g2/Cargo.toml"),
+    ),
+    effectiveWorkspaceManifestSha256: hash(workspaceManifest),
+    sourceHostManifestSha256: hash(
+      join(sourcePaths.runtime, "experiments/workers-g2/host/Cargo.toml"),
+    ),
+    effectiveHostManifestSha256: hash(hostManifest),
+    transformations: [
+      "replace the local Runtime lenso/native-adapter patch block with the exact candidate source-closure Cargo config",
+      "replace local Runtime native-adapter and Workers-driver paths with exact candidate versions so the source-closure Cargo config supplies the candidate paths",
+    ],
+  };
 }
 
-function linkLockedNodeTooling(name, source, destination) {
+function packageVersion(nodeModules, packageName) {
+  const manifest = join(nodeModules, ".pnpm/node_modules", packageName, "package.json");
+  if (!existsSync(manifest))
+    throw Error(`locked Node install is missing ${packageName} package metadata`);
+  const version = JSON.parse(readFileSync(manifest, "utf8")).version;
+  if (typeof version !== "string" || version.length === 0)
+    throw Error(`locked Node install has no ${packageName} version`);
+  return version;
+}
+
+function installLockedNodeTooling(name, source, commands) {
+  const lockfile = join(source, "pnpm-lock.yaml");
+  if (!existsSync(lockfile)) throw Error(`${name} source is missing pnpm-lock.yaml`);
+  commands.push(run(`${name}-pnpm-version`, pnpmExecutable, ["--version"], source));
+  commands.push(
+    run(
+      `${name}-pnpm-install`,
+      pnpmExecutable,
+      ["install", "--frozen-lockfile", "--ignore-scripts", "--prefer-offline"],
+      source,
+      { CI: "true" },
+    ),
+  );
   const nodeModules = join(source, "node_modules");
   const bin = join(nodeModules, ".pnpm/node_modules/.bin");
   for (const executable of ["esbuild", "workerd"]) {
-    if (!existsSync(join(bin, executable))) {
-      throw Error(
-        `${name} needs locked node tooling; run pnpm install --frozen-lockfile in ${source} first`,
-      );
-    }
+    if (!existsSync(join(bin, executable)))
+      throw Error(`${name} locked Node install is missing ${executable}`);
   }
-  mkdirSync(destination, { recursive: true });
-  symlinkSync(join(nodeModules, ".pnpm"), join(destination, ".pnpm"));
-  if (existsSync(join(nodeModules, ".bin")))
-    symlinkSync(join(nodeModules, ".bin"), join(destination, ".bin"));
-  return run(`${name}-workerd-version`, join(bin, "workerd"), ["--version"], source);
+  const workerd = run(`${name}-workerd-version`, join(bin, "workerd"), ["--version"], source);
+  const esbuild = run(`${name}-esbuild-version`, join(bin, "esbuild"), ["--version"], source);
+  commands.push(workerd, esbuild);
+  const workerdPackageVersion = packageVersion(nodeModules, "workerd");
+  const esbuildPackageVersion = packageVersion(nodeModules, "esbuild");
+  if (esbuild.stdout.trim() !== esbuildPackageVersion)
+    throw Error(`${name} esbuild binary does not match its locked package metadata`);
+  const date = workerdPackageVersion.match(/^1\.(\d{4})(\d{2})(\d{2})\./);
+  if (!date || !workerd.stdout.includes(`${date[1]}-${date[2]}-${date[3]}`))
+    throw Error(`${name} workerd binary does not match its locked package metadata`);
+  return {
+    pnpmLockSha256: hash(lockfile),
+    workerd: {
+      packageVersion: workerdPackageVersion,
+      binarySha256: hash(join(bin, "workerd")),
+      reportedVersion: workerd.stdout.trim(),
+    },
+    esbuild: {
+      packageVersion: esbuildPackageVersion,
+      binarySha256: hash(join(bin, "esbuild")),
+      reportedVersion: esbuild.stdout.trim(),
+    },
+  };
 }
 
 const identities = {
@@ -254,8 +334,13 @@ const identities = {
   ]),
   runtime: sourceIdentity("Runtime", sourcePaths.runtime, [
     "packages/workers-runtime/build.mjs",
+    "experiments/workers-g2/run-local-composition-cohort.mjs",
     "experiments/workers-g2/run-target-local-qualification.mjs",
     "experiments/workers-g2/run-workerd-qualification.mjs",
+    "experiments/workers-g2/target-ingress-service.mjs",
+    "experiments/workers-g2/target-qualification.capnp",
+    "experiments/workers-g2/target-qualification.mjs",
+    "experiments/workers-g2/target-qualification-workerd.mjs",
   ]),
   web: sourceIdentity("Web", sourcePaths.web, [
     "crates/lenso-web-ingress-plugin/Cargo.toml",
@@ -289,16 +374,10 @@ try {
   const g2 = join(runtimeMirror, "experiments/workers-g2");
   mkdirSync(join(runtimeMirror, "experiments"), { recursive: true });
   copyDirectory(join(sourcePaths.runtime, "experiments/workers-g2"), g2);
-  normalizeG2Mirror(g2);
+  const g2Mirror = normalizeG2Mirror(g2);
   mkdirSync(join(runtimeMirror, "packages"), { recursive: true });
   copyDirectory(join(sourcePaths.runtime, "packages/workers-runtime"), join(runtimeMirror, "packages/workers-runtime"));
-  commands.push(
-    linkLockedNodeTooling(
-      "g2",
-      join(sourcePaths.runtime, "experiments/workers-g2"),
-      join(g2, "node_modules"),
-    ),
-  );
+  const g2Tooling = installLockedNodeTooling("g2", g2, commands);
   mirrorNodePackage(
     join(sourcePaths.runtime, "packages/workers-runtime"),
     join(g2, "node_modules/@lenso/workers-runtime"),
@@ -323,8 +402,8 @@ try {
   );
   requirePassingCases(
     target,
-    manifest.subcohorts.find((entry) => entry.id === "g2-web-ingress").requiredCases,
-    "G2 Web ingress local workerd evidence",
+    manifest.subcohorts.find((entry) => entry.id === "g2-worker-fetch-and-lifecycle").requiredCases,
+    "G2 Worker fetch and lifecycle local workerd evidence",
   );
   if (w02.artifact?.wasmSha256 !== target.identity?.wasmSha256)
     throw Error("G2 W02 and target evidence use different Wasm artifacts");
@@ -338,13 +417,7 @@ try {
   symlinkSync(join(sourcePaths.auth, "crates"), join(authMirror, "crates"));
   symlinkSync(join(sourcePaths.auth, "workers"), join(authMirror, "workers"));
   symlinkSync(join(sourcePaths.auth, "Cargo.toml"), join(authMirror, "Cargo.toml"));
-  commands.push(
-    linkLockedNodeTooling(
-      "auth",
-      join(sourcePaths.auth, "experiments/workers-g4"),
-      join(g4, "node_modules"),
-    ),
-  );
+  const authTooling = installLockedNodeTooling("auth", g4, commands);
   mirrorNodePackage(
     join(sourcePaths.runtime, "packages/workers-runtime"),
     join(g4, "node_modules/@lenso/workers-runtime"),
@@ -371,6 +444,10 @@ try {
     manifest.subcohorts.find((entry) => entry.id === "auth-oauth-capability").requiredCases,
     "Auth OAuth Capability local workerd evidence",
   );
+  const authArtifacts = {
+    wasmSha256: hash(join(g4, "pkg/lenso_workers_g4_host_bg.wasm")),
+    glueSha256: hash(join(g4, "pkg/lenso_workers_g4_host.js")),
+  };
 
   const report = {
     schema: "lenso-workers-local-composition-cohort-report-v1",
@@ -382,6 +459,29 @@ try {
     },
     sources: identities,
     commands: commands.map(({ stdout: _stdout, ...record }) => record),
+    sourceClosure: {
+      cargoConfigSha256: hash(config),
+      g2: {
+        disposableMirror: g2Mirror,
+        nodeTooling: g2Tooling,
+        injectedRuntimePackageManifestSha256: hash(
+          join(sourcePaths.runtime, "packages/workers-runtime/package.json"),
+        ),
+      },
+      auth: {
+        copiedExperimentManifestSha256: hash(
+          join(sourcePaths.auth, "experiments/workers-g4/package.json"),
+        ),
+        symlinkedCandidateSources: ["crates", "workers", "Cargo.toml"],
+        nodeTooling: authTooling,
+        injectedRuntimePackageManifestSha256: hash(
+          join(sourcePaths.runtime, "packages/workers-runtime/package.json"),
+        ),
+        injectedWebPackageManifestSha256: hash(
+          join(sourcePaths.web, "crates/lenso-http-egress-plugin/js/package.json"),
+        ),
+      },
+    },
     localWorkerd: {
       g2: {
         artifact: {
@@ -390,11 +490,21 @@ try {
           glueSha256: w02.artifact.glueSha256,
           workerd: w02.artifact.workerd,
         },
-        webIngressCases: target.cases.filter((entry) => entry.passed).map((entry) => entry.name),
+        evidenceSha256: {
+          w02Gzip: hash(w02Path),
+          targetGzip: hash(targetPath),
+        },
+        workerFetchAndLifecycleCases: target.cases
+          .filter((entry) => entry.passed)
+          .map((entry) => entry.name),
         streamSessionCases: w02.cases.filter((entry) => entry.passed).map((entry) => entry.name),
       },
       auth: {
         schema: auth.schema,
+        artifact: authArtifacts,
+        evidenceSha256: createHash("sha256")
+          .update(JSON.stringify(auth))
+          .digest("hex"),
         cases: auth.cases.filter((entry) => entry.passed).map((entry) => entry.name),
         directWasmCapabilityOnly: true,
         assertion: "Auth subcohort uses a real workerd test and generated Auth Wasm, but does not claim HTTP ingress.",

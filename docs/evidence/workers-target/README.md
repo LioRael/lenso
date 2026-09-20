@@ -11,9 +11,11 @@ Rust/Wasm artifact:
   and covers cancellation, quarantine and cleanup failures.
 - The target-local suite traps the generated Wasm module while a Host callback
   remains pending, proves it cannot deliver late into the abandoned generation,
-  then proves a fresh generated instance handles a real ingress request. It also
-  exercises a real `ReadableStream` body deadline and a Workerd service-binding
-  callback's failure/timeout path.
+  then proves a fresh generated instance handles a request through the target
+  Worker's real `fetch` handler. The test Worker reaches that handler through a
+  Workerd service binding, so it also exercises a real `ReadableStream` body
+  deadline and a service-binding callback's failure/timeout path. It has no
+  listening socket or external-client ingress claim.
 
 The service binding is a controlled lifecycle backend, not PostgreSQL or
 Hyperdrive. Runtime deliberately forwards Auth's private callback JSON as opaque
@@ -41,11 +43,13 @@ does **not** accept a hand-supplied result receipt: it requires clean source
 trees, constructs a disposable source-closure build mirror, rebuilds Wasm, and
 runs locked local `workerd` suites itself.
 
-The supplied Runtime G2 and Auth G4 source checkouts need their existing
-lockfile-exact Node tool directories first (`pnpm install --frozen-lockfile`
-inside each experiment). The cohort only reuses their locked `workerd` and
-`esbuild` executables from a disposable mirror; it does not install, relink, or
-write `node_modules` in a candidate checkout.
+The runner invokes `pnpm install --frozen-lockfile --ignore-scripts
+--prefer-offline` in each disposable mirror, then records the lock hash,
+package versions, binary hashes and reported `workerd`/`esbuild` versions. It
+never trusts or writes an ignored `node_modules` directory in a candidate
+checkout. A normal package-cache/network prerequisite may still be needed for
+that lockfile-exact install; it is a tool-resolution prerequisite, not a result
+receipt. It rejects an output path inside any supplied candidate checkout.
 
 ```sh
 node experiments/workers-g2/run-local-composition-cohort.mjs \
@@ -56,17 +60,20 @@ node experiments/workers-g2/run-local-composition-cohort.mjs \
   --web-source /absolute/path/to/lenso-web \
   --auth-source /absolute/path/to/lenso-auth-plugin \
   --cargo /absolute/path/to/cargo \
-  --wasm-bindgen /absolute/path/to/wasm-bindgen
+  --wasm-bindgen /absolute/path/to/wasm-bindgen \
+  --pnpm /absolute/path/to/pnpm
 shasum -a 256 /tmp/lenso-workers-local-composition.json
 ```
 
 The report records every source revision/tree/file snapshot, build and test
 command, generated G2 Wasm hash, and only the bounded assertions below:
 
-- G2 follows an actual Fetch request through the generated Wasm Host,
-  `WebIngressEventFactory`, and a bound HTTP Endpoint Capability. It covers the
-  real request-body timeout/recovery and Wasm-trap generation-abandonment
-  paths.
+- G2 follows an actual Fetch request through a target Worker's `fetch` handler,
+  the generated Wasm Host, `WebIngressEventFactory`, and a bound HTTP Endpoint
+  Capability. The local test Worker reaches the target through a Workerd service
+  binding for the request-body timeout/recovery case. Its Wasm-trap
+  generation-abandonment case is a separate direct generated-Host lifecycle
+  assertion in that same local workerd test; neither case claims external ingress.
 - W02 keeps actual local-workerd stream/WebSocket sessions apart from rotating
   short-request generations and covers cancellation/quarantine/late-cleanup.
 - Auth runs its real generated G4 Wasm, Kernel and OAuth Capability with its
@@ -74,8 +81,9 @@ command, generated G2 Wasm hash, and only the bounded assertions below:
   **direct Wasm Capability invocation**, not an HTTP ingress result.
 
 Those are deliberately separate local Host compositions, so the report does
-not claim one fused product App. It is also not D1, PostgreSQL, Hyperdrive,
-external-disconnect, deployed-Worker, or production evidence. The manifest at
+not claim one fused product App. It is also not an external HTTP listener, D1,
+PostgreSQL, Hyperdrive, external-disconnect, deployed-Worker, or production
+evidence. The manifest at
 [`experiments/workers-g2/local-composition-cohort.manifest.json`](../../../experiments/workers-g2/local-composition-cohort.manifest.json)
 lists the exact pending gates.
 

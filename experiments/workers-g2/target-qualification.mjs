@@ -1,9 +1,9 @@
 // Target-qualification assertions deliberately reuse the generated G2 Host,
-// the shared event scope and the real workerd service-binding runtime. They do
-// not introduce an HTTP router or emulate a database provider.
+// the shared event scope and the real workerd service-binding runtime. The
+// target Worker owns the existing HTTP handler; this test Worker reaches it
+// through a service binding and does not emulate a database provider.
 import assert from "node:assert/strict";
 import { createScopedHostCallback } from "../../packages/workers-runtime/callback.mjs";
-import { createHttpHandler } from "../../packages/workers-runtime/http.mjs";
 import { createEventRunner } from "../../packages/workers-runtime/runner.mjs";
 import { createEventScope } from "../../packages/workers-runtime/scope.mjs";
 
@@ -45,6 +45,7 @@ export function targetQualification(test, {
   module,
   clearTimers,
   callbackService,
+  targetService,
 }) {
   const runner = createEventRunner({
     instantiate: () => bindings.initSync({ module }),
@@ -89,18 +90,8 @@ export function targetQualification(test, {
     assert.equal(recovered.shutdown, "clean");
   });
 
-  test("actual-generated-ingress-body-timeout-and-recovery", async () => {
-    const handler = createHttpHandler({
-      run: runner.run,
-      handleHttp: bindings.handle_http,
-      maxRequestBodyBytes: 65536,
-      maxResponseBodyBytes: 65536,
-      maxRequestHeadBytes: 16384,
-      bodyReadTimeoutMs: 5,
-      onReceipt(result, response) {
-        response.headers.set("x-g2-shutdown", result.shutdown);
-      },
-    });
+  test("actual-generated-worker-fetch-body-timeout-and-recovery", async () => {
+    assert.ok(targetService, "qualification Worker requires the G2 target service binding");
     let timer;
     const body = new ReadableStream({
       start(controller) {
@@ -114,7 +105,7 @@ export function targetQualification(test, {
         clearTimeout(timer);
       },
     });
-    const timeout = await handler(
+    const timeout = await targetService.fetch(
       new Request("https://target.invalid/bytes", {
         method: "POST",
         body,
@@ -123,7 +114,9 @@ export function targetQualification(test, {
     );
     assert.equal(timeout.status, 408);
     assert.deepEqual(await timeout.json(), { error: "request_body_timeout" });
-    const healthy = await handler(new Request("https://target.invalid/method"));
+    const healthy = await targetService.fetch(
+      new Request("https://target.invalid/method"),
+    );
     assert.equal(healthy.status, 200);
     assert.equal(healthy.headers.get("x-g2-shutdown"), "clean");
   });

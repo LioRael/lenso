@@ -174,10 +174,13 @@ See [W02 evidence](../../docs/evidence/workers-w02/README.md) for limitations.
 `target-qualification.manifest.json` is the machine-readable boundary for the
 next Workers target cohort. It composes the existing W02 service-binding matrix
 with an additional locked `workerd test` that uses the same generated G2
-Rust/Wasm Host. The added test proves a real Wasm trap, generation abandonment,
-late owner cleanup, a fresh generated instance, a genuine ingress body deadline,
-and a Host-owned opaque callback over a Workerd service binding. It does not add
-an HTTP router or a database implementation.
+Rust/Wasm Host. Its test Worker reaches a target Worker's real `fetch` handler
+through a Workerd service binding for the request-body deadline and recovery.
+The real Wasm trap, generation abandonment, late owner cleanup and fresh
+instance checks are separate direct generated-Host lifecycle assertions in the
+same local workerd test; the callback remains service-bound. It adds no
+listening socket or database implementation, and is not proof of external
+ingress routing.
 
 After the locked install and Wasm build, write a non-source report explicitly:
 

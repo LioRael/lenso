@@ -26,6 +26,18 @@ execFileSync(
   ],
   { cwd: root, stdio: "inherit" },
 );
+execFileSync(
+  bin + "esbuild",
+  [
+    "target-ingress-service.mjs",
+    "--bundle",
+    "--format=esm",
+    "--external:*.wasm",
+    "--external:node:*",
+    "--outfile=.w02/target-ingress-service.mjs",
+  ],
+  { cwd: root, stdio: "inherit" },
+);
 const args = [
   "test",
   "-I",

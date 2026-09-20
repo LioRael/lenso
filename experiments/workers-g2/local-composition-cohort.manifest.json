@@ -4,11 +4,11 @@
   "purpose": "Run exact clean Core, Protocol, Runtime, Web, and Auth candidate sources through the existing G2/W02 and Auth G4 local workerd suites without accepting a hand-supplied target receipt.",
   "subcohorts": [
     {
-      "id": "g2-web-ingress",
-      "actualBoundary": "Fetch request -> Workers runtime HTTP handler -> generated G2 Rust/Wasm -> WebIngressEventFactory -> bound HTTP Endpoint Capability",
+      "id": "g2-worker-fetch-and-lifecycle",
+      "actualBoundary": "local workerd qualification Worker service binding -> target Worker's fetch handler -> Workers runtime HTTP handler -> generated G2 Rust/Wasm -> WebIngressEventFactory -> bound HTTP Endpoint Capability; the Wasm-trap lifecycle assertion remains a separate direct generated-Host call inside the same local workerd test",
       "requiredCases": [
         "wasm-trap-generation-abandonment-late-cleanup",
-        "actual-generated-ingress-body-timeout-and-recovery"
+        "actual-generated-worker-fetch-body-timeout-and-recovery"
       ]
     },
     {
@@ -42,6 +42,7 @@
     "one fused product App containing every listed subcohort",
     "Cloudflare D1 provider behavior",
     "real PostgreSQL or Hyperdrive behavior",
+    "external network ingress or a listening HTTP socket",
     "external client disconnect propagation",
     "deployed Worker routing or deployment configuration",
     "production capacity, CPU, memory, fleet, SLO, resource isolation, or operations readiness"

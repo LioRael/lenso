@@ -146,7 +146,7 @@ requiredCases(
   local,
   [
     "wasm-trap-generation-abandonment-late-cleanup",
-    "actual-generated-ingress-body-timeout-and-recovery",
+    "actual-generated-worker-fetch-body-timeout-and-recovery",
     "workerd-service-host-callback-failure-is-opaque-to-auth",
     "workerd-service-host-callback-timeout-cancels-the-owner-operation",
   ],

@@ -1,7 +1,7 @@
 {
   "schema": "lenso-workers-target-qualification-manifest-v1",
   "target": "cloudflare-workers",
-  "scope": "The existing G2 generated Rust/Wasm Host, Web ingress and event Runner. This manifest does not add a router, database driver, credential, or production deployment configuration.",
+  "scope": "The existing G2 generated Rust/Wasm Host, target Worker fetch handler, Web ingress adapter and event Runner. The local test Worker reaches that handler through a Workerd service binding; this manifest adds no external listener, database driver, credential, or production deployment configuration.",
   "localWorkerd": {
     "environment": "local-workerd",
     "commands": [
@@ -15,7 +15,7 @@
       },
       {
         "id": "timeout",
-        "evidence": "real ReadableStream body crosses the existing HTTP ingress read deadline and a healthy G2 request follows"
+        "evidence": "a real ReadableStream body crosses the target Worker's existing HTTP handler read deadline through a Workerd service-binding fetch call, and a healthy G2 request follows"
       },
       {
         "id": "generation-abandonment-late-cleanup",
@@ -31,6 +31,7 @@
       }
     ],
     "doesNotProve": [
+      "external network ingress or a listening HTTP socket",
       "external client disconnect propagation",
       "Cloudflare D1 provider behavior",
       "PostgreSQL or Hyperdrive behavior",
