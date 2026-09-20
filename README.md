@@ -148,6 +148,7 @@ lenso plugins enable company.uppercase default
 lenso plugins remove company.uppercase default
 lenso app check
 lenso app show
+lenso app explain --profile native-target.json
 lenso sessions list
 lenso run
 ```
@@ -175,6 +176,20 @@ The Host Catalog at `.lenso/host-catalog.json` is generated and locked to the
 current Host build. It is read-only execution authority, not App intent.
 `app check`, `app show`, and `run` derive the App directly; there is no Plan
 file for an App owner to generate or manage.
+
+## Preflight an execution target
+
+Before a Host starts a resolved App, CI or an operator can verify the exact
+target capability declarations that its selected runtime profiles need:
+
+```sh
+lenso app explain --profile native-target.json
+```
+
+The command is read-only and always emits a stable JSON report. It does not
+select another Plugin implementation, mutate the Plugin Root, start a Host, or
+turn a missing feature into a fallback. See [execution-target preflight](docs/execution-target-preflight.md)
+for the canonical profile input, failure report, and multi-target usage.
 
 Runtime Drivers and Execution Adapters remain separate because they implement
 Host mechanics, not application behavior.

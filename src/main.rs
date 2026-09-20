@@ -1,5 +1,6 @@
 use lenso_engine_app::app;
 use lenso_engine_app::doctor;
+mod app_explain;
 mod engine;
 use lenso_engine_app::plugin;
 use lenso_engine_app::plugins;
@@ -15,7 +16,7 @@ use clap::{Args, Parser, Subcommand};
     name = "lenso",
     version,
     about = "Create and run Lenso Apps made only from Plugins",
-    after_help = "Other root commands are delegated to the current Host's terminal Plugins.",
+    after_help = "Other root commands are delegated to the current Host's terminal Plugins. Run `lenso app explain --help` to preflight explicit execution-target capability profiles without starting an App.",
     propagate_version = true
 )]
 struct Cli {
@@ -70,6 +71,9 @@ async fn main() -> anyhow::Result<()> {
             serde_json::json!({"schema":"lenso.engine-host.v1","target":lenso_app_authoring::native_host_target()})
         );
         return Ok(());
+    }
+    if app_explain::is_invocation(&arguments) {
+        return app_explain::run_from(arguments);
     }
     reject_retired_invocation(&arguments)?;
     if should_delegate_to_host(&arguments) {
@@ -275,6 +279,19 @@ mod tests {
             "project".to_owned(),
             "status".to_owned(),
             "--json".to_owned(),
+        ]));
+    }
+
+    #[test]
+    fn app_explain_is_reserved_for_the_local_preflight_before_clap_delegation() {
+        assert!(app_explain::is_invocation(&[
+            "app".to_owned(),
+            "explain".to_owned(),
+            "--help".to_owned(),
+        ]));
+        assert!(!app_explain::is_invocation(&[
+            "app".to_owned(),
+            "show".to_owned(),
         ]));
     }
 
