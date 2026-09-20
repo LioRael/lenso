@@ -36,8 +36,8 @@ base64 = "0.22"
 futures = "0.3"
 hex = "0.4"
 inventory = "0.3"
-lenso-app-plan = { version = "0.4.1" }
-lenso-kernel = { version = "0.3.5" }
+lenso-app-plan = { version = "0.4.3" }
+lenso-kernel = { version = "0.3.6" }
 lenso-runtime-conformance = { version = "0.3.2" }
 lenso-plugin-authoring = { version = "0.2.0" }
 serde = { version = "1", features = ["derive"] }
@@ -47,6 +47,12 @@ reqwest = { version = "0.13.4", default-features = false, features = ["blocking"
 schemars = "1"
 tokio = { version = "1.52", features = ["io-util", "macros", "net", "rt", "signal", "sync", "time"] }
 uuid = { version = "1", features = ["v4"] }
+
+# Keep local runtime development on one Adapter type identity while preserving
+# registry dependencies in published package manifests. Consumer cohorts that
+# exercise unpublished runtime code apply the same temporary patch explicitly.
+[patch.crates-io]
+lenso-native-adapter = { path = "crates/lenso-native-adapter" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

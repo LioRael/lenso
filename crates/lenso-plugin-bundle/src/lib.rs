@@ -1810,14 +1810,16 @@ root-slot = "tools"
             &ImplementationPolicy {
                 host_target: "test-host".to_owned(),
                 runtimes: vec![
-                    RuntimeAdmission {
-                        execution_class: ExecutionClassId::new("lenso.quickjs@1"),
-                        runtime_profile: "lenso.quickjs-authoring@2".to_owned(),
-                    },
-                    RuntimeAdmission {
-                        execution_class: ExecutionClassId::new("lenso.process@1"),
-                        runtime_profile: "lenso.process-authoring@2".to_owned(),
-                    },
+                    RuntimeAdmission::new(
+                        ExecutionClassId::new("lenso.quickjs@1"),
+                        "lenso.quickjs-authoring@2",
+                        ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+                    ),
+                    RuntimeAdmission::new(
+                        ExecutionClassId::new("lenso.process@1"),
+                        "lenso.process-authoring@2",
+                        ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+                    ),
                 ],
             },
         )
@@ -1939,10 +1941,11 @@ root-slot = "tools"
             &manifest,
             &ImplementationPolicy {
                 host_target: "test-host".to_owned(),
-                runtimes: vec![RuntimeAdmission {
-                    execution_class: ExecutionClassId::new("lenso.quickjs@1"),
-                    runtime_profile: "lenso.quickjs-authoring@1".to_owned(),
-                }],
+                runtimes: vec![RuntimeAdmission::new(
+                    ExecutionClassId::new("lenso.quickjs@1"),
+                    "lenso.quickjs-authoring@1",
+                    ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+                )],
             },
         );
         assert!(matches!(
@@ -1959,6 +1962,174 @@ root-slot = "tools"
             ManifestDocument::parse(&serde_json::to_vec(&missing_profile).unwrap()),
             Err(BundleError::InvalidManifest(detail)) if detail.contains("runtime_profile")
         ));
+    }
+
+    #[test]
+    fn target_capability_admission_rejects_streams_without_silent_fallback() {
+        let artifact = PluginArtifactV2 {
+            path: "plugin.js".to_owned(),
+            digest: sha256_digest(b"plugin"),
+            size: 6,
+            media_type: "application/javascript".to_owned(),
+            target: "javascript-es2023".to_owned(),
+        };
+        let manifest = PluginManifest::V4(PluginManifestV4 {
+            schema_version: 4,
+            contract: PluginContract::new("example.stream", "1.0.0", "tools")
+                .with_authoring_version(2)
+                .with_capability(
+                    CapabilityEndpointPlan::new("example.stream@1", "1.0.0", ["open"])
+                        .with_stream_operation("open"),
+                ),
+            implementations: vec![PluginImplementationV4 {
+                id: "quickjs".to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact,
+                runtime: PluginImplementation::new(
+                    "example.stream",
+                    sha256_digest(b"plugin"),
+                    "plugin.js",
+                    ExecutionClassId::new("lenso.quickjs@1"),
+                )
+                .with_runtime_profile("lenso.quickjs-authoring@2"),
+            }],
+        });
+        let policy = ImplementationPolicy {
+            host_target: "test-host".to_owned(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.quickjs@1"),
+                "lenso.quickjs-authoring@2",
+                ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+            )],
+        };
+
+        let explanation = explain_implementation(&manifest, &policy).unwrap();
+        assert!(!explanation.is_selected());
+        assert!(matches!(
+            explanation.rejected.as_slice(),
+            [RejectedPluginImplementation {
+                implementation_id,
+                reason: ImplementationRejectionReason::MissingTargetCapabilities { requirements },
+                ..
+            }] if implementation_id == "quickjs"
+                && requirements == &vec![TargetCapabilityRequirement {
+                    capability_id: "example.stream@1".to_owned(),
+                    operation: "open".to_owned(),
+                    feature: ExecutionTargetCapability::Stream,
+                }]
+        ));
+        assert!(matches!(
+            resolve_implementation(&manifest, &policy),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("stream")
+        ));
+
+        let selected = resolve_implementation(
+            &manifest,
+            &ImplementationPolicy {
+                host_target: "test-host".to_owned(),
+                runtimes: vec![RuntimeAdmission::new(
+                    ExecutionClassId::new("lenso.quickjs@1"),
+                    "lenso.quickjs-authoring@2",
+                    ExecutionTargetCapabilities::new([
+                        ExecutionTargetCapability::Request,
+                        ExecutionTargetCapability::Stream,
+                    ]),
+                )],
+            },
+        )
+        .unwrap();
+        assert_eq!(selected.implementation_id, "quickjs");
+    }
+
+    #[test]
+    fn target_capability_profile_is_canonical_and_invalid_profiles_fail_closed() {
+        let profile = ExecutionTargetCapabilityProfile::new(
+            "lenso.bun-authoring@2",
+            [
+                ExecutionTargetCapability::Stream,
+                ExecutionTargetCapability::Request,
+                ExecutionTargetCapability::Event,
+            ],
+        );
+        assert_eq!(
+            profile.profile,
+            EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT
+        );
+        assert_eq!(
+            profile.capabilities,
+            vec![
+                ExecutionTargetCapability::Event,
+                ExecutionTargetCapability::Request,
+                ExecutionTargetCapability::Stream,
+            ]
+        );
+        assert!(profile.is_valid());
+        assert_eq!(
+            serde_json::to_value(&profile).unwrap(),
+            serde_json::json!({
+                "profile": "lenso.execution-target-capability-profile@1",
+                "target_profile": "lenso.bun-authoring@2",
+                "capabilities": ["event", "request", "stream"],
+            })
+        );
+
+        let invalid: ExecutionTargetCapabilityProfile = serde_json::from_value(serde_json::json!({
+            "profile": "lenso.execution-target-capability-profile@1",
+            "target_profile": "lenso.bun-authoring@2",
+            "capabilities": ["stream", "request"],
+        }))
+        .unwrap();
+        assert!(!invalid.is_valid());
+
+        let artifact = PluginArtifactV2 {
+            path: "plugin.js".to_owned(),
+            digest: sha256_digest(b"plugin"),
+            size: 6,
+            media_type: "application/javascript".to_owned(),
+            target: "javascript-es2023".to_owned(),
+        };
+        let manifest = PluginManifest::V4(PluginManifestV4 {
+            schema_version: 4,
+            contract: PluginContract::new("example.invalid-profile", "1.0.0", "tools")
+                .with_authoring_version(2)
+                .with_capability(CapabilityEndpointPlan::new(
+                    "example.echo@1",
+                    "1.0.0",
+                    ["echo"],
+                )),
+            implementations: vec![PluginImplementationV4 {
+                id: "quickjs".to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact,
+                runtime: PluginImplementation::new(
+                    "example.invalid-profile",
+                    sha256_digest(b"plugin"),
+                    "plugin.js",
+                    ExecutionClassId::new("lenso.quickjs@1"),
+                )
+                .with_runtime_profile("bad profile"),
+            }],
+        });
+        let explanation = explain_implementation(
+            &manifest,
+            &ImplementationPolicy {
+                host_target: "test-host".to_owned(),
+                runtimes: vec![RuntimeAdmission::new(
+                    ExecutionClassId::new("lenso.quickjs@1"),
+                    "bad profile",
+                    ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+                )],
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            explanation.rejected.as_slice(),
+            [RejectedPluginImplementation {
+                reason: ImplementationRejectionReason::InvalidTargetCapabilityProfile { .. },
+                ..
+            }]
+        ));
+        assert!(!explanation.is_selected());
     }
 
     #[test]
@@ -1997,10 +2168,11 @@ root-slot = "tools"
             &manifest,
             &ImplementationPolicy {
                 host_target: "test-host".to_owned(),
-                runtimes: vec![RuntimeAdmission {
-                    execution_class: ExecutionClassId::new("lenso.bun-process@1"),
-                    runtime_profile: "lenso.bun-authoring@2".to_owned(),
-                }],
+                runtimes: vec![RuntimeAdmission::new(
+                    ExecutionClassId::new("lenso.bun-process@1"),
+                    "lenso.bun-authoring@2",
+                    ExecutionTargetCapabilities::none(),
+                )],
             },
         )
         .unwrap();

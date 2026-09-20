@@ -1029,9 +1029,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-app-plan"
-version = "0.4.1"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bae6e028eab9a55cd6562e332867c3378a0d97a68cd33d3d28e4a67db100adc3"
+checksum = "e04794ca68019a2506cafd82de0dbea7c1048f7cc61c0356edfc6ee62081bfba"
 dependencies = [
  "serde",
  "serde_json",
@@ -1090,9 +1090,9 @@ dependencies = [
 
 [[package]]
 name = "lenso-kernel"
-version = "0.3.5"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c1f6d9a2c1c02a91dfac235ad5ba53e3154d71d1401865150f3b2f14888ac89"
+checksum = "5c536ea88ba9579dfd31d7074b8758b8a4d90e760cfecf4db22dea2c85425147"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -1315,10 +1315,12 @@ dependencies = [
 name = "lenso-test"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "lenso-app-plan",
  "lenso-kernel",
  "lenso-native-adapter",
  "lenso-plugin-authoring",
+ "sha2",
 ]
 
 [[package]]
