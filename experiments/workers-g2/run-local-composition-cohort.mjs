@@ -260,6 +260,7 @@ try {
   mkdirSync(join(runtimeMirror, "packages"), { recursive: true });
   copyDirectory(join(sourcePaths.runtime, "packages/workers-runtime"), join(runtimeMirror, "packages/workers-runtime"));
   symlinkSync(join(sourcePaths.runtime, "crates"), join(runtimeMirror, "crates"));
+  symlinkSync(join(sourcePaths.runtime, "Cargo.toml"), join(runtimeMirror, "Cargo.toml"));
   commands.push(
     linkLockedNodeTooling(
       "g2",
@@ -305,6 +306,7 @@ try {
   copyDirectory(join(sourcePaths.auth, "experiments/workers-g4"), g4);
   symlinkSync(join(sourcePaths.auth, "crates"), join(authMirror, "crates"));
   symlinkSync(join(sourcePaths.auth, "workers"), join(authMirror, "workers"));
+  symlinkSync(join(sourcePaths.auth, "Cargo.toml"), join(authMirror, "Cargo.toml"));
   commands.push(
     linkLockedNodeTooling(
       "auth",
