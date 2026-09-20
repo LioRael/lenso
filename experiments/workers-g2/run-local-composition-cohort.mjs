@@ -194,6 +194,25 @@ function mirrorNodePackage(source, destination) {
   copyDirectory(source, destination);
 }
 
+function normalizeG2Mirror(g2) {
+  const workspaceManifest = join(g2, "Cargo.toml");
+  writeFileSync(
+    workspaceManifest,
+    readFileSync(workspaceManifest, "utf8").replace(
+      /\n\[patch\.crates-io\][\s\S]*$/,
+      "\n",
+    ),
+  );
+  const hostManifest = join(g2, "host/Cargo.toml");
+  writeFileSync(
+    hostManifest,
+    readFileSync(hostManifest, "utf8").replace(
+      /lenso-workers-driver = \{ version = "0\.1\.0", path = "\.\.\/\.\.\/\.\.\/crates\/lenso-workers-driver" \}/,
+      'lenso-workers-driver = "0.1.0"',
+    ),
+  );
+}
+
 function linkLockedNodeTooling(name, source, destination) {
   const nodeModules = join(source, "node_modules");
   const bin = join(nodeModules, ".pnpm/node_modules/.bin");
@@ -257,10 +276,9 @@ try {
   const g2 = join(runtimeMirror, "experiments/workers-g2");
   mkdirSync(join(runtimeMirror, "experiments"), { recursive: true });
   copyDirectory(join(sourcePaths.runtime, "experiments/workers-g2"), g2);
+  normalizeG2Mirror(g2);
   mkdirSync(join(runtimeMirror, "packages"), { recursive: true });
   copyDirectory(join(sourcePaths.runtime, "packages/workers-runtime"), join(runtimeMirror, "packages/workers-runtime"));
-  symlinkSync(join(sourcePaths.runtime, "crates"), join(runtimeMirror, "crates"));
-  symlinkSync(join(sourcePaths.runtime, "Cargo.toml"), join(runtimeMirror, "Cargo.toml"));
   commands.push(
     linkLockedNodeTooling(
       "g2",
