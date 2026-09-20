@@ -25,6 +25,17 @@ prebuilt Rust Process provider.
 This repository consumes released Lenso core packages and does not own Kernel
 semantics or product Plugins.
 
+## Execution target capability profile
+
+`lenso_bun_adapter::bun_authoring_target_capability_profile()` exports the
+canonical `lenso.execution-target-capability-profile@1` evidence for the
+actual Bun Authoring V2 Adapter. It declares Request, bidirectional Stream,
+Event, Host Imports, and Native Process support. A Host uses that exact
+profile during `RuntimeAdmission`, before the Bundle resolver constructs a
+Plan; it must reject an implementation that additionally requires Workers,
+WebSocket, Wasm Component, Remote, or Browser support. The Adapter never
+selects a fallback at invocation time.
+
 ## Author a Bun Plugin
 
 Install one SDK, implement an official generated Provider interface, and export

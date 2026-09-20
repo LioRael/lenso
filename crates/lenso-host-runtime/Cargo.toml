@@ -1,6 +1,6 @@
 [package]
 name = "lenso-host-runtime"
-version = "0.1.8"
+version = "0.1.9"
 edition.workspace = true
 license.workspace = true
 publish = true
@@ -8,18 +8,18 @@ repository.workspace = true
 description = "Prepared-distribution runtime for TypeScript-authored Lenso Hosts."
 
 [dependencies]
-lenso = { version = "0.5.24", features = ["host"] }
-lenso-bun-adapter = { version = "0.1.13", path = "../lenso-bun-adapter" }
-lenso-host-distribution = "0.1.22"
-lenso-kernel = "0.3.10"
-lenso-plugin-control-plane = "0.4.23"
-lenso-process-adapter = "0.3.11"
-lenso-runtime-codec = "0.4.1"
+lenso = { version = "=0.5.25", features = ["host"] }
+lenso-bun-adapter = { version = "=0.1.14", path = "../lenso-bun-adapter" }
+lenso-host-distribution = "=0.1.23"
+lenso-kernel = "=0.3.11"
+lenso-plugin-control-plane = "=0.4.24"
+lenso-process-adapter = "=0.3.12"
+lenso-runtime-codec = "=0.4.2"
 serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-lenso-app-plan = "0.4.4"
+lenso-app-plan = "=0.4.5"
 sha2.workspace = true
 tempfile = "3"
 
