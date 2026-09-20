@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeSet, fmt};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::CapabilityOperationKind;
 
@@ -110,6 +110,7 @@ pub enum ExecutionTargetCapability {
     /// A Capability operation publishes an ephemeral event.
     Event,
     /// A Host ingress can keep a WebSocket session.
+    #[serde(rename = "websocket")]
     WebSocket,
     /// The target can supply explicit Host imports to an admitted Plugin.
     HostImports,
@@ -170,6 +171,36 @@ impl ExecutionTargetCapability {
             CapabilityOperationKind::Event => Self::Event,
         }
     }
+}
+
+/// Returns a canonical, duplicate-free target-requirement list.
+///
+/// Runtime profiles are an Adapter concern, but an implementation's required
+/// target facilities are immutable Plugin selection data. Keeping the list in
+/// canonical wire order makes independently produced Descriptors and Plans
+/// compare byte-for-byte without relying on authoring input order.
+pub(crate) fn normalize_target_capabilities(
+    capabilities: impl IntoIterator<Item = ExecutionTargetCapability>,
+) -> Vec<ExecutionTargetCapability> {
+    let mut capabilities = capabilities.into_iter().collect::<Vec<_>>();
+    capabilities.sort_unstable_by_key(|capability| capability.as_str());
+    capabilities.dedup();
+    capabilities
+}
+
+/// Decodes an optional target-requirement list into its canonical form.
+///
+/// V2 and V3 Plans intentionally omit this V4 field. `#[serde(default)]` on
+/// the owning field supplies an empty, fail-closed requirement set for those
+/// historic snapshots; when the field is present, duplicate and unordered
+/// authoring input is normalized before it can enter a Plan.
+pub(crate) fn deserialize_normalized_target_capabilities<'de, D>(
+    deserializer: D,
+) -> Result<Vec<ExecutionTargetCapability>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Vec::<ExecutionTargetCapability>::deserialize(deserializer).map(normalize_target_capabilities)
 }
 
 /// Machine-checkable target features declared by exactly one Host Adapter.
@@ -244,5 +275,30 @@ mod tests {
             "\"host-imports\""
         );
         assert_eq!(profile.features(), vec![ExecutionTargetCapability::Request]);
+    }
+
+    #[test]
+    fn target_capability_vocabulary_and_normalization_are_canonical() {
+        for capability in ExecutionTargetCapability::ALL {
+            let wire = serde_json::to_string(&capability).unwrap();
+            assert_eq!(
+                serde_json::from_str::<ExecutionTargetCapability>(&wire).unwrap(),
+                capability
+            );
+        }
+
+        assert_eq!(
+            normalize_target_capabilities([
+                ExecutionTargetCapability::Workers,
+                ExecutionTargetCapability::Browser,
+                ExecutionTargetCapability::Workers,
+                ExecutionTargetCapability::HostImports,
+            ]),
+            vec![
+                ExecutionTargetCapability::Browser,
+                ExecutionTargetCapability::HostImports,
+                ExecutionTargetCapability::Workers,
+            ]
+        );
     }
 }

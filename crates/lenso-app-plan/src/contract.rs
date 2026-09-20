@@ -2,7 +2,8 @@
 
 use super::{
     CapabilityCardinality, CapabilityEndpointPlan, EventAdmissionPlan, ExecutionClassId,
-    ExecutionLaneId, PluginCriticality, RequestAdmissionPlan, RestartPolicy, schema,
+    ExecutionLaneId, ExecutionTargetCapability, PluginCriticality, RequestAdmissionPlan,
+    RestartPolicy, schema,
 };
 use serde::{Deserialize, Serialize};
 
@@ -104,6 +105,12 @@ pub struct PluginInstancePlan {
     pub(super) configuration: String,
     pub(super) provided_capabilities: Vec<CapabilityEndpointPlan>,
     pub(super) required_capabilities: Vec<CapabilityRequirementPlan>,
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "crate::execution::deserialize_normalized_target_capabilities"
+    )]
+    pub(super) required_target_capabilities: Vec<ExecutionTargetCapability>,
     pub(super) execution_class: ExecutionClassId,
     pub(super) package_revision: String,
     pub(super) restart_policy: RestartPolicy,
@@ -124,6 +131,7 @@ impl PluginInstancePlan {
             configuration: "{}".to_owned(),
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
+            required_target_capabilities: Vec::new(),
             execution_class: ExecutionClassId::native_rust(),
             package_revision: String::new(),
             restart_policy: RestartPolicy::default(),
@@ -182,6 +190,18 @@ impl PluginInstancePlan {
     #[must_use]
     pub fn with_required_capability(self, requirement: CapabilityRequirementPlan) -> Self {
         self.with_requirement(requirement)
+    }
+
+    /// Declares immutable target facilities required by the selected Plugin
+    /// implementation. The list is canonicalized before it reaches a Plan.
+    #[must_use]
+    pub fn with_required_target_capabilities(
+        mut self,
+        capabilities: impl IntoIterator<Item = ExecutionTargetCapability>,
+    ) -> Self {
+        self.required_target_capabilities =
+            crate::execution::normalize_target_capabilities(capabilities);
+        self
     }
 
     /// Selects the host execution class for this Plugin Instance.
@@ -252,6 +272,11 @@ impl PluginInstancePlan {
     /// Returns the exact Capability requirements this Instance receives.
     pub fn required_capabilities(&self) -> &[CapabilityRequirementPlan] {
         &self.required_capabilities
+    }
+
+    /// Returns the canonical target facilities this implementation requires.
+    pub fn required_target_capabilities(&self) -> &[ExecutionTargetCapability] {
+        &self.required_target_capabilities
     }
 
     /// Returns the host execution class selected for this Instance.

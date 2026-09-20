@@ -181,10 +181,10 @@ impl TryFrom<PlanWire> for ResolvedAppPlan {
             .get("schema_version")
             .and_then(Value::as_u64)
             .ok_or("missing Plan schema_version")?;
-        if version != 2 && version != u64::from(PLAN_SCHEMA_VERSION) {
+        if !matches!(version, 2 | 3) && version != u64::from(PLAN_SCHEMA_VERSION) {
             return Err(format!("unsupported Plan schema version {version}"));
         }
-        let modern = version == u64::from(PLAN_SCHEMA_VERSION);
+        let modern = version >= 3;
         check_field(&wire.0, "terminal_policy", modern)?;
         for instance in wire
             .0

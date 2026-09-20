@@ -7,7 +7,8 @@ use super::configuration::resolve_configuration_layers;
 use crate::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
     CapabilityRequirementPlan, ExecutionClassId, ExecutionLaneId, ExecutionLanePlan,
-    PluginCriticality, PluginInstancePlan, RequestAdmissionPlan, ResolvedAppPlan, RestartPolicy,
+    ExecutionTargetCapability, PluginCriticality, PluginInstancePlan, RequestAdmissionPlan,
+    ResolvedAppPlan, RestartPolicy,
 };
 
 mod release;
@@ -91,6 +92,12 @@ pub struct PluginDescriptor {
     configuration_defaults: Value,
     provided_capabilities: Vec<CapabilityEndpointPlan>,
     required_capabilities: Vec<CapabilityRequirementPlan>,
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "crate::execution::deserialize_normalized_target_capabilities"
+    )]
+    required_target_capabilities: Vec<ExecutionTargetCapability>,
     execution_class: ExecutionClassId,
     restart_policy: RestartPolicy,
     criticality: PluginCriticality,
@@ -117,6 +124,7 @@ impl PluginDescriptor {
             configuration_defaults: empty_configuration(),
             provided_capabilities: Vec::new(),
             required_capabilities: Vec::new(),
+            required_target_capabilities: Vec::new(),
             execution_class: ExecutionClassId::native_rust(),
             restart_policy: RestartPolicy::default(),
             criticality: PluginCriticality::default(),
@@ -183,6 +191,17 @@ impl PluginDescriptor {
         self
     }
 
+    /// Declares immutable target facilities required by this implementation.
+    #[must_use]
+    pub fn with_required_target_capabilities(
+        mut self,
+        capabilities: impl IntoIterator<Item = ExecutionTargetCapability>,
+    ) -> Self {
+        self.required_target_capabilities =
+            crate::execution::normalize_target_capabilities(capabilities);
+        self
+    }
+
     #[must_use]
     pub fn with_execution_class(mut self, execution_class: ExecutionClassId) -> Self {
         if self.authoring_version == 1
@@ -244,6 +263,11 @@ impl PluginDescriptor {
 
     pub fn required_capabilities(&self) -> &[CapabilityRequirementPlan] {
         &self.required_capabilities
+    }
+
+    /// Returns the canonical target facilities this implementation requires.
+    pub fn required_target_capabilities(&self) -> &[ExecutionTargetCapability] {
+        &self.required_target_capabilities
     }
 
     pub fn execution_class(&self) -> &ExecutionClassId {
@@ -1077,6 +1101,9 @@ fn materialize_app(
             .with_package_revision(descriptor.runtime_package_revision())
             .with_configuration(configuration)
             .with_execution_class(descriptor.execution_class().clone())
+            .with_required_target_capabilities(
+                descriptor.required_target_capabilities().iter().copied(),
+            )
             .with_restart_policy(descriptor.restart_policy())
             .with_criticality(descriptor.criticality())
             .with_execution_lane(
