@@ -195,12 +195,25 @@ function mirrorNodePackage(source, destination) {
 }
 
 function normalizeG2Mirror(g2) {
+  const nativeAdapterVersion = readFileSync(
+    join(sourcePaths.runtime, "crates/lenso-native-adapter/Cargo.toml"),
+    "utf8",
+  ).match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+  const workersDriverVersion = readFileSync(
+    join(sourcePaths.runtime, "crates/lenso-workers-driver/Cargo.toml"),
+    "utf8",
+  ).match(/^version\s*=\s*"([^"]+)"/m)?.[1];
+  if (!nativeAdapterVersion || !workersDriverVersion)
+    throw Error("Runtime crate versions are required for the disposable G2 mirror");
   const workspaceManifest = join(g2, "Cargo.toml");
   writeFileSync(
     workspaceManifest,
     readFileSync(workspaceManifest, "utf8").replace(
       /\n\[patch\.crates-io\][\s\S]*$/,
       "\n",
+    ).replace(
+      'lenso-native-adapter = { path = "../../crates/lenso-native-adapter" }',
+      `lenso-native-adapter = "=${nativeAdapterVersion}"`,
     ),
   );
   const hostManifest = join(g2, "host/Cargo.toml");
@@ -208,7 +221,7 @@ function normalizeG2Mirror(g2) {
     hostManifest,
     readFileSync(hostManifest, "utf8").replace(
       /lenso-workers-driver = \{ version = "0\.1\.0", path = "\.\.\/\.\.\/\.\.\/crates\/lenso-workers-driver" \}/,
-      'lenso-workers-driver = "0.1.0"',
+      `lenso-workers-driver = "=${workersDriverVersion}"`,
     ),
   );
 }
