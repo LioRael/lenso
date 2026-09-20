@@ -12,6 +12,7 @@ mod host_imports;
 mod protocol;
 mod request;
 mod server;
+mod target_capabilities;
 mod transport;
 
 pub use adapter::{BunAdapter, BunAdapterConfig, BunCapabilityCodec, BunWire};
@@ -27,4 +28,8 @@ pub use server::{
     BunEventAction, BunEventBinding, BunProviderDescriptor, BunProviderHandler, BunProviderServer,
     BunProviderStream, BunRequest, BunResponse, BunStreamAction, BunStreamEvent,
     BunStreamOpenResponse, BunStreamReceive,
+};
+pub use target_capabilities::{
+    BunExecutionTargetCapability, BunExecutionTargetCapabilityProfile,
+    EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT, bun_authoring_target_capability_profile,
 };
