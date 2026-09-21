@@ -36,8 +36,9 @@ sha256_file() {
   fi
 }
 
-# Cargo obtains the crates.io publishing credential through GitHub Actions OIDC
-# when this job has id-token: write. Do not configure a long-lived token here.
+# The workflow exchanges its GitHub Actions OIDC identity for a short-lived
+# crates.io token and injects it as CARGO_REGISTRY_TOKEN. Do not configure a
+# long-lived token here.
 registry_checksum() {
   local package="$1"
   local version="$2"
@@ -76,8 +77,15 @@ wait_for_registry_checksum() {
     if observed="$(registry_checksum "$package" "$version")"; then
       [[ "$observed" == "$expected_checksum" ]] ||
         fail "crates.io already has a different artifact for ${package}@${version}"
-      printf 'Registry visibility confirmed for %s@%s after attempt %s\n' "$package" "$version" "$attempt"
-      return 0
+      # The REST API can expose a version before Cargo can resolve it through
+      # the registry index. Probe Cargo itself before a dependent upload.
+      if (cd "$scratch" && cargo info --registry crates-io "${package}@${version}" >/dev/null); then
+        printf 'Registry and Cargo-index visibility confirmed for %s@%s after attempt %s\n' \
+          "$package" "$version" "$attempt"
+        return 0
+      fi
+      printf 'crates.io REST API is visible but Cargo cannot yet resolve %s@%s (attempt %s)\n' \
+        "$package" "$version" "$attempt" >&2
     fi
     (( attempt == attempts )) && break
     sleep "$delay"
@@ -98,10 +106,25 @@ expected="$(release_set_canonical "$EXPECTED_RELEASE_SET")" ||
 release_sha="$(printf '%s' "$RELEASE_SHA" | tr '[:upper:]' '[:lower:]')"
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] ||
   fail "RELEASE_SHA must be a full 40-character hexadecimal commit SHA"
-[[ "$(git -C "$ROOT" rev-parse HEAD)" == "$release_sha" ]] ||
-  fail "checked-out source does not match RELEASE_SHA"
+git -C "$ROOT" cat-file -e "$release_sha^{commit}" ||
+  fail "RELEASE_SHA is not an available commit"
 
-metadata="$(cd "$ROOT" && cargo metadata --locked --no-deps --format-version 1)" ||
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/lenso-runtime-publish.XXXXXX")" ||
+  fail "could not create a temporary package directory"
+scratch="$(cd -- "$scratch" && pwd -P)"
+cleanup() {
+  rm -rf -- "$scratch"
+}
+trap cleanup EXIT
+
+source_root="$scratch/source"
+mkdir -p "$source_root"
+git -C "$ROOT" archive --format=tar "$release_sha" | tar -x -C "$source_root"
+source_root="$(cd -- "$source_root" && pwd -P)"
+[[ -f "$source_root/Cargo.lock" ]] ||
+  fail "the release source does not contain Cargo.lock"
+
+metadata="$(cd "$source_root" && cargo metadata --locked --no-deps --format-version 1)" ||
   fail "cargo metadata failed for the release source"
 publishable_filter='(.publish == null or ((.publish | type) == "array" and (.publish | index("crates-io") != null)))'
 
@@ -126,7 +149,7 @@ if (( ${#packages[@]} == 0 )); then
   exit 0
 fi
 
-(cd "$ROOT" && cargo fetch --locked) ||
+(cd "$source_root" && cargo fetch --locked) ||
   fail "could not fetch the locked non-cohort dependencies"
 
 source_dependencies() {
@@ -152,14 +175,6 @@ package_index() {
   return 1
 }
 
-scratch="$(mktemp -d "${TMPDIR:-/tmp}/lenso-runtime-publish.XXXXXX")" ||
-  fail "could not create a temporary package directory"
-scratch="$(cd -- "$scratch" && pwd -P)"
-cleanup() {
-  rm -rf -- "$scratch"
-}
-trap cleanup EXIT
-
 completed_packages=()
 published_records='[]'
 while (( ${#completed_packages[@]} < ${#packages[@]} )); do
@@ -181,8 +196,8 @@ while (( ${#completed_packages[@]} < ${#packages[@]} )); do
     version="${versions[$index]}"
     package_target="$scratch/$package"
     (
-      cd "$ROOT"
-      cargo package --locked --no-verify --target-dir "$package_target" -p "$package"
+      cd "$source_root"
+      cargo package --no-verify --registry crates-io --target-dir "$package_target" -p "$package"
     ) || fail "could not package ${package}@${version} from the exact release source"
     artifact="$package_target/package/$package-$version.crate"
     [[ -f "$artifact" ]] || fail "cargo package did not produce $package-$version.crate"
@@ -194,7 +209,7 @@ while (( ${#completed_packages[@]} < ${#packages[@]} )); do
         fail "crates.io already has a different artifact for ${package}@${version}"
       printf 'Already visible with matching checksum: %s@%s\n' "$package" "$version"
     else
-      if ! (cd "$ROOT" && cargo publish --locked --no-verify -p "$package"); then
+      if ! (cd "$source_root" && cargo publish --no-verify --registry crates-io -p "$package"); then
         # A failed command can still represent an unknown external mutation.
         wait_for_registry_checksum "$package" "$version" "$digest"
       else

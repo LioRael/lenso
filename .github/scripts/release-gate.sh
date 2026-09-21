@@ -52,14 +52,30 @@ local_main_sha="$(git rev-parse refs/remotes/origin/main 2>/dev/null)" ||
 [[ "$local_main_sha" == "$main_sha" ]] ||
   fail "local origin/main does not match the remote main readback"
 
-[[ "$(git rev-parse HEAD)" == "$source_sha" ]] ||
-  fail "checked-out source does not match source_sha"
+guard_sha="$(git rev-parse HEAD)"
+git merge-base --is-ancestor "$guard_sha" "$main_sha" ||
+  fail "the checked-out release guard is not reachable from the current origin/main"
 git cat-file -e "$source_sha^{commit}" ||
   fail "source_sha is not a commit available to the checkout"
 git merge-base --is-ancestor "$source_sha" "$main_sha" ||
   fail "source_sha is not reachable from the current origin/main"
 
-metadata="$(cargo metadata --locked --no-deps --format-version 1)" ||
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/lenso-runtime-release-gate.XXXXXX")" ||
+  fail "could not create a temporary source directory"
+scratch="$(cd -- "$scratch" && pwd -P)"
+cleanup() {
+  rm -rf -- "$scratch"
+}
+trap cleanup EXIT
+
+source_root="$scratch/source"
+mkdir -p "$source_root"
+git archive --format=tar "$source_sha" | tar -x -C "$source_root"
+source_root="$(cd -- "$source_root" && pwd -P)"
+[[ -f "$source_root/Cargo.lock" ]] ||
+  fail "the release source does not contain Cargo.lock"
+
+metadata="$(cd "$source_root" && cargo metadata --locked --no-deps --format-version 1)" ||
   fail "cargo metadata failed for source_sha"
 publishable_filter='(.publish == null or ((.publish | type) == "array" and (.publish | index("crates-io") != null)))'
 while IFS=$'\t' read -r package expected_version; do

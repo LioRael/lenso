@@ -2,10 +2,11 @@
 
 ## Configured baseline
 
-All 12 publishable workspace crates were configured on 2026-08-26 with the
-GitHub publisher identity documented below. The optional crates.io setting
-that rejects all API-token publication remains disabled, preserving the
-existing emergency publication path.
+Twelve baseline publishable workspace crates were configured on 2026-08-26
+with the GitHub publisher identity documented below. Packages added after that
+baseline require the same per-crate configuration before a cohort can publish.
+The optional crates.io setting that rejects all API-token publication remains
+disabled, preserving the existing emergency publication path.
 
 After configuration, retry attempt 2 of
 [release run 32911438140](https://github.com/LioRael/lenso-runtime-rust/actions/runs/32911438140)
@@ -38,11 +39,11 @@ The later upload failed with `The provided access token is not valid for crate
 authorization, rather than GitHub's `id-token` permission or OIDC token
 exchange.
 
-Release-plz implements the same crates.io token exchange as
-`rust-lang/crates-io-auth-action`, so this workflow should not add that action.
-It does, however, require Trusted Publishing to be configured for **all** crates
-that release-plz may publish. See the [release-plz trusted-publishing
-instructions](https://release-plz.dev/docs/github/quickstart#2-set-the-cargo_registry_token-secret).
+The workflow now performs direct Cargo publishing. Before an upload it invokes
+`rust-lang/crates-io-auth-action` and passes its short-lived output as
+`CARGO_REGISTRY_TOKEN`; `id-token: write` alone is not a Cargo credential. It
+still requires Trusted Publishing to be configured for **every** crate in the
+approved cohort. See the [crates.io trusted-publishing guide](https://crates.io/docs/trusted-publishing).
 
 ## Exact configuration for this repository
 
@@ -67,14 +68,21 @@ Create the configuration separately for every publishable workspace crate:
 - `lenso-browser-driver`
 - `lenso-dylib-adapter`
 - `lenso-guest-sdk`
+- `lenso-host-distribution`
 - `lenso-native-adapter`
 - `lenso-native-adapter-macros`
 - `lenso-plugin-bundle`
 - `lenso-plugin-control-plane`
+- `lenso-plugin-sdk`
+- `lenso-plugin-sdk-macros`
+- `lenso-process-adapter`
+- `lenso-process-sdk`
 - `lenso-quickjs-adapter`
+- `lenso-remote-adapter`
 - `lenso-runner`
 - `lenso-runtime-codec`
 - `lenso-wasm-component-adapter`
+- `lenso-workers-driver`
 
 Do not configure `lenso-test`, `lenso-wasip2-driver`, or fixture packages while
 their manifests have `publish = false`.

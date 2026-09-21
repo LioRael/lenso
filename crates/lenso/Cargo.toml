@@ -33,7 +33,7 @@ required-features = ["host"]
 [dev-dependencies]
 lenso-app-plan.workspace = true
 lenso-runtime-codec = { path = "../lenso-runtime-codec" }
-lenso-test = { version = "0.1.2", path = "../lenso-test" }
+lenso-test = { path = "../lenso-test" }
 
 [lints]
 workspace = true
