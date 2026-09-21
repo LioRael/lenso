@@ -13,24 +13,33 @@ on:
         description: Exact reviewed package version
         required: true
         type: string
-      commit:
-        description: Exact reviewed main commit SHA
+      source_sha:
+        description: Full SHA of the landed source commit to verify and release
         required: true
         type: string
-      publish:
-        description: Publish using the configured npm Trusted Publisher
-        type: boolean
-        default: false
+      mode:
+        description: Read-only by default; publish requires separate authorization
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - publish
+      publish_confirmation:
+        description: Enter publish only when mode is publish
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: workers-npm-${{ inputs.package }}
+  group: workers-npm-${{ inputs.package }}-${{ inputs.source_sha }}
   cancel-in-progress: false
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -38,17 +47,29 @@ jobs:
     env:
       PACKAGE_PATH: ${{ inputs.package }}
       RELEASE_VERSION: ${{ inputs.version }}
-      RELEASE_COMMIT: ${{ inputs.commit }}
+      RELEASE_SHA: ${{ inputs.source_sha }}
+      RELEASE_MODE: ${{ inputs.mode }}
+      RELEASE_CONFIRMATION: ${{ inputs.publish_confirmation }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Checkout requested source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-      - name: Verify exact version and source
+      - name: Verify exact version and landed source
         run: |
-          test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+          test "$RELEASE_MODE" = dry-run || test "$RELEASE_MODE" = publish
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$RELEASE_MODE" == publish ]]; then
+            test "$RELEASE_CONFIRMATION" = publish
+          fi
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           node --input-type=module -e 'import fs from "node:fs"; const p = JSON.parse(fs.readFileSync(process.env.PACKAGE_PATH + "/package.json")); if (p.version !== process.env.RELEASE_VERSION || p.private) process.exit(1);'
       - name: Install test dependencies
         run: npm install --prefix "$PACKAGE_PATH" --ignore-scripts --package-lock=false
@@ -62,5 +83,5 @@ jobs:
       - name: Verify npm artifact resolution
         run: npm publish ./release-artifacts/*.tgz --dry-run --access public --provenance=false
       - name: Publish verified artifact
-        if: inputs.publish
+        if: ${{ inputs.mode == 'publish' && inputs.publish_confirmation == 'publish' }}
         run: npm publish ./release-artifacts/*.tgz --access public --provenance
