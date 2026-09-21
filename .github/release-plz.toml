@@ -1,7 +1,7 @@
 [workspace]
-# The release PR is the versioning boundary. The release job publishes only
-# packages that have explicitly opted in with `publish = true`.
-release_always = false
+# The dispatch-only release gate is the versioning boundary. It verifies an
+# exact landed SHA, candidate CI evidence, and the complete registry-derived
+# package/version set before release-plz can publish opted-in crates.
+release_always = true
 changelog_update = false
 git_tag_name = "{{ package }}-v{{ version }}"
-pr_labels = ["release"]
