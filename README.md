@@ -270,6 +270,39 @@ a publication lock and never exposes half-written output. Consumers can call
 The CLI refuses to publish inside its input source directories. Old immutable
 generations are retained; deletion/retention is an explicit host policy.
 
+## Versioned external configuration snapshots
+
+`lenso-engine-authoring` accepts explicitly scoped external configuration
+snapshots without adding a second App graph. The Host supplies both the source
+identity and an object/top-level-field authorization; the document cannot
+authorize itself. `FilePluginConfigurationSnapshotSource` reads a bounded
+regular JSON file without following symlinks on Unix or reparse points on Windows.
+`propose_versioned_plugin_configuration_snapshot` routes every authorized entry
+through the existing typed Plugin Root proposal, Host admission, and revision
+checks without mutating the Root.
+Authorized field updates merge into the current instance source, preserving
+fields owned by other authorities.
+
+Persist the returned `PluginConfigurationSnapshotIntent` before publishing its
+paired proposal. The intent records both base and candidate Root revisions, so
+recovery can distinguish not-yet-published from crash-after-publication. Promote
+it to active Host state only after the resulting App Generation becomes active.
+An external revision whose merged values already match the Root is reported as
+`NoRootChange` and needs no Root publication.
+Older revisions, reused revision numbers with different content, changed sources,
+invalid Plugin values,
+and local Root drift fail closed. Package fields marked `x-lenso-sensitive`
+accept only `{ secret_ref = "..." }`; secret material remains with the Host's
+secret provider and is not echoed by rejection diagnostics. File publication,
+App Generation switching, and upstream source acknowledgement are separate
+operations rather than a cross-system atomic write.
+
+This first source adapter is deliberately single-source and upsert-only: a
+missing object does not delete prior local configuration, and a Root intent is
+not shared across independently versioned sources. Multi-source ownership,
+explicit removal, remote polling/subscription, and active-generation state are
+separate lifecycle work rather than implied by this API.
+
 ## Limits and trust
 
 - Native extensions and subprocess tools are trusted code, not OS sandboxes.

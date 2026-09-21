@@ -50,6 +50,7 @@ pub const fn native_host_target() -> &'static str {
 }
 
 mod configuration_authority;
+mod configuration_snapshot;
 mod root_transaction;
 mod selection_authority;
 
@@ -62,6 +63,13 @@ pub use configuration_authority::{
     PluginRootConfigurationChange, PluginRootRevision, PluginRootRevisionConflict,
     PluginRootRevisionParseError, PluginRootSourceDigest, propose_instance_configuration,
     propose_plugin_root_changes, publish_instance_configuration, publish_plugin_root_changes,
+};
+pub use configuration_snapshot::{
+    FilePluginConfigurationSnapshotSource, PluginConfigurationSnapshotAuthorization,
+    PluginConfigurationSnapshotIntent, PluginConfigurationSnapshotObjectScope,
+    PluginConfigurationSnapshotPublicationState, PluginConfigurationSnapshotReconciliation,
+    VersionedPluginConfiguration, VersionedPluginConfigurationSnapshot,
+    propose_versioned_plugin_configuration_snapshot,
 };
 pub use selection_authority::{
     PluginSelectionAuthority, PluginSelectionPublication, set_instance_enabled_fenced,
