@@ -73,6 +73,12 @@ jobs:
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
         with:
           toolchain: 1.94.0
+      - name: Prepare release-plz branch identity
+        run: |
+          git fetch origin main --no-tags
+          git switch --force-create main "${{ needs.release-gate.outputs.source_sha }}"
+          git branch --set-upstream-to=origin/main main
+          test "$(git rev-parse HEAD)" = "${{ needs.release-gate.outputs.source_sha }}"
       - id: release_plz
         name: Dry-run release-plz
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
@@ -109,6 +115,12 @@ jobs:
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
         with:
           toolchain: 1.94.0
+      - name: Prepare release-plz branch identity
+        run: |
+          git fetch origin main --no-tags
+          git switch --force-create main "${{ needs.release-gate.outputs.source_sha }}"
+          git branch --set-upstream-to=origin/main main
+          test "$(git rev-parse HEAD)" = "${{ needs.release-gate.outputs.source_sha }}"
       - id: release_plz
         name: Publish release-plz set
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
