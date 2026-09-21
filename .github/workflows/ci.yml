@@ -58,17 +58,13 @@ jobs:
       - name: Package Capability crates
         run: |
           cargo package --locked --manifest-path crates/lenso-capability-http-client/Cargo.toml
-          cargo package --locked --manifest-path crates/lenso-capability-http-endpoint-macros/Cargo.toml
-          # The endpoint and its macro are released as one cohort. Before the
-          # macro reaches crates.io, package the endpoint archive without the
-          # redundant isolated compile; the workspace check and tests above
-          # already compile the exact pair. Once the macro is visible, retain
-          # Cargo's full standalone package verification.
-          if cargo info --registry crates-io lenso-capability-http-endpoint-macros@0.1.5 >/dev/null 2>&1; then
-            cargo package --locked --manifest-path crates/lenso-capability-http-endpoint/Cargo.toml
-          else
-            cargo package --locked --no-verify --manifest-path crates/lenso-capability-http-endpoint/Cargo.toml
-          fi
+          # Package the unpublished macro and its consumer as one Cargo
+          # cohort. Workspace checks and tests above compile the exact pair;
+          # once released, the release workflow performs the clean consumer
+          # verification against registry identities.
+          cargo package --locked --no-verify \
+            -p lenso-capability-http-endpoint-macros \
+            -p lenso-capability-http-endpoint
           cargo package --locked --manifest-path crates/lenso-capability-http-stream-endpoint/Cargo.toml
           cargo package --locked --manifest-path crates/lenso-http-auth/Cargo.toml
           cargo package --locked --manifest-path crates/lenso-openapi-plugin/Cargo.toml
