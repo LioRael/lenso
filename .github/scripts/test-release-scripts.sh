@@ -7,8 +7,12 @@ PLAN="$ROOT/.github/scripts/release-plan.sh"
 current_sha="$(git -C "$ROOT" rev-parse HEAD)"
 mock_dir="$(mktemp -d)"
 test_dir="$(mktemp -d)"
+test_remote="$test_dir/origin.git"
 test_repo="$test_dir/repo"
-git clone --no-local "$ROOT" "$test_repo" >/dev/null
+git init --bare "$test_remote" >/dev/null
+git -C "$ROOT" push "$test_remote" "$current_sha:refs/heads/main" >/dev/null
+git -C "$test_remote" symbolic-ref HEAD refs/heads/main
+git clone "$test_remote" "$test_repo" >/dev/null
 trap 'rm -rf "$mock_dir" "$test_dir"' EXIT
 
 base_env=(
@@ -107,7 +111,10 @@ expect_failure "CI job from a different attempt" \
   run_gate "${base_env[@]}" RELEASE_SHA="$current_sha" PATH="$mock_dir:$PATH" \
   MOCK_SHA="$current_sha" MOCK_RUN_CONCLUSION=success MOCK_JOB_CONCLUSION=success MOCK_JOB_ATTEMPT=2
 
-all_packages='[{"package_name":"lenso-app-plan","version":"0.4.3"},{"package_name":"lenso-kernel","version":"0.3.9"},{"package_name":"lenso-runtime-conformance","version":"0.3.8"}]'
+all_packages="$(
+  cargo metadata --manifest-path "$ROOT/Cargo.toml" --locked --no-deps --format-version 1 |
+    jq -c '[.packages[] | {package_name: .name, version: .version}] | sort_by(.package_name)'
+)"
 expect_failure "registry release-set mismatch" "read-only crates.io plan" \
   run_gate "${base_env[@]}" RELEASE_SHA="$current_sha" RELEASE_SET="$all_packages" \
   PATH="$mock_dir:$PATH" MOCK_SHA="$current_sha"
@@ -116,11 +123,9 @@ expect_failure "registry error is not treated as absence" "unexpected crates.io 
   run_gate "${base_env[@]}" RELEASE_SHA="$current_sha" PATH="$mock_dir:$PATH" \
   MOCK_SHA="$current_sha" MOCK_CURL_STATUS=500
 
-env EXPECTED_RELEASE_SET='[{"package_name":"lenso-kernel","version":"0.3.10"}]' \
-  ACTUAL_RELEASES=null bash "$PLAN"
-expect_failure "dry-run release record mismatch" "unexpected release set" \
-  env EXPECTED_RELEASE_SET='[]' \
-    ACTUAL_RELEASES='[{"package_name":"lenso-kernel","version":"0.3.9"}]' \
-    bash "$PLAN"
+env EXPECTED_RELEASE_SET='[]' RELEASE_SHA="$current_sha" bash "$PLAN"
+expect_failure "cohort artifact set version mismatch" "source has" \
+  env EXPECTED_RELEASE_SET='[{"package_name":"lenso-kernel","version":"0.0.0"}]' \
+    RELEASE_SHA="$current_sha" bash "$PLAN"
 
-printf '%s\n' 'release script negative and dry-run plan tests passed'
+printf '%s\n' 'release script negative and cohort-plan tests passed'
