@@ -30,15 +30,15 @@ rust-version = "1.94"
 bytes = "1.12"
 futures = "0.3"
 http = "1"
-lenso = { version = "0.5.21" }
-lenso-app-plan = { version = "0.4.3" }
+lenso = { version = "=0.5.25" }
+lenso-app-plan = { version = "=0.4.5" }
 lenso-contract-authoring = { version = "0.1.1" }
 lenso-contract-runtime = { version = "0.2.0" }
-lenso-kernel = { version = "0.3.6" }
-lenso-native-adapter = { version = "0.3.14" }
+lenso-kernel = { version = "=0.3.11" }
+lenso-native-adapter = { version = "=0.3.15" }
 lenso-native-adapter-macros = "0.2.5"
 lenso-plugin-authoring = { version = "0.2.0" }
-lenso-runner = { version = "0.2.16" }
+lenso-runner = { version = "=0.2.17" }
 proc-macro2 = "1.0"
 quote = "1.0"
 reqwest = { version = "0.13.4", default-features = false, features = ["http2", "rustls"] }

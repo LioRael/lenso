@@ -1,6 +1,6 @@
 [package]
 name = "lenso-web-ingress-plugin"
-version = "0.4.6"
+version = "0.4.7"
 description = "General-purpose linked Rust HTTP Ingress Plugin for Lenso backends."
 edition.workspace = true
 license.workspace = true
@@ -29,9 +29,9 @@ hyper = { version = "1", optional = true, features = ["http1", "http2", "server"
 hyper-util = { version = "0.1", optional = true, features = ["server-auto", "tokio"] }
 lenso.workspace = true
 lenso-app-plan.workspace = true
-lenso-capability-http-endpoint = { version = "0.3.3", path = "../lenso-capability-http-endpoint" }
-lenso-capability-http-stream-endpoint = { version = "0.1.1", path = "../lenso-capability-http-stream-endpoint" }
-lenso-capability-websocket-endpoint = { version = "0.1.0", path = "../lenso-capability-websocket-endpoint" }
+lenso-capability-http-endpoint = { version = "0.3.4", path = "../lenso-capability-http-endpoint" }
+lenso-capability-http-stream-endpoint = { version = "0.1.2", path = "../lenso-capability-http-stream-endpoint" }
+lenso-capability-websocket-endpoint = { version = "0.1.1", path = "../lenso-capability-websocket-endpoint" }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
 matchit = "0.8"
@@ -46,7 +46,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 hyper = { version = "1", features = ["client", "http2"] }
 lenso-auth-sdk = { version = "0.2.3" }
 lenso-capability-auth = { version = "0.2.0" }
-lenso-http-auth = { path = "../lenso-http-auth" }
+lenso-http-auth = { path = "../lenso-http-auth", version = "0.2.4" }
 lenso-web-query-endpoint-fixture = { path = "../../tests/fixtures/query-endpoint-plugin" }
 lenso-runner.workspace = true
 serde_json.workspace = true

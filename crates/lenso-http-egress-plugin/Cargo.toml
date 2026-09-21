@@ -1,6 +1,6 @@
 [package]
 name = "lenso-http-egress-plugin"
-version = "0.3.4"
+version = "0.3.5"
 description = "Policy-bounded linked Rust HTTP Egress Plugin for Lenso backends."
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,7 @@ lenso-app-plan.workspace = true
 bytes.workspace = true
 futures.workspace = true
 lenso.workspace = true
-lenso-capability-http-client = { version = "0.3.0", path = "../lenso-capability-http-client" }
+lenso-capability-http-client = { version = "0.3.1", path = "../lenso-capability-http-client" }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
 lenso-native-adapter-macros.workspace = true
