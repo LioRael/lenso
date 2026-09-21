@@ -27,5 +27,12 @@ Canonical Plugin identity and exact release-version validators are exposed in
 `identity` and reexported by the CLI's existing `identity` module. Existing CLI
 catalog imports continue through `lenso_app_authoring::signed_plugin_catalog`.
 
+`ReleaseDetailsSnapshot` is an additive, separately signed document keyed by an
+exact existing `plugin_id@version`. It describes portable Bundles, exact
+Cargo/npm packages, target filters, and digest-bound Markdown documentation
+without changing the v1 `Snapshot` or `Release` API. Its distinct signature
+context and checkpoint prevent replay as a base catalog. Details remain data;
+the Host still owns compatibility, permission, trust and installation admission.
+
 This new package is prepared for local review. It has not been published; registry
 release requires the repository's Trusted Publisher workflow and explicit approval.
