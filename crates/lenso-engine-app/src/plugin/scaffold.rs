@@ -9,9 +9,9 @@ use lenso_app_authoring::identity::validate_plugin_id_v1;
 
 use super::{PluginNewArgs, PluginRuntimeArg, WASM_TARGET, run_bun, run_cargo};
 
-pub(super) const LENSO_CORE_REVISION: &str = "c81b5c6edc7c237dbbeb92878183baa784c47c4f";
-pub(super) const LENSO_NATIVE_REVISION: &str = "d159f7f06b7c4f689611cdf68125a5d55622dc54";
-pub(super) const LENSO_WEB_REVISION: &str = "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28";
+pub(super) const LENSO_CORE_REVISION: &str = "c3dae3c7f03d80918a30b18c9df59ed808251a56";
+pub(super) const LENSO_NATIVE_REVISION: &str = "1b1c3f564dc473d4278798cb17066763b3c4b389";
+pub(super) const LENSO_WEB_REVISION: &str = "c9cd15629b7d65d6f6cdc12113234acd85c89a89";
 
 pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
     validate_plugin_id_v1(&args.plugin_id)?;
@@ -120,8 +120,8 @@ plugin-id = "{plugin_id}"
 root-slot = "web"
 
 [dependencies]
-lenso = {{ version = "=0.5.24", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-capability-http-endpoint = {{ version = "0.3.3", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso = {{ version = "=0.5.25", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso-capability-http-endpoint = {{ version = "0.3.4", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
 serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
 
@@ -129,10 +129,10 @@ schemars = "1.2"
 bytes = "1"
 futures = "0.3"
 http = "1"
-lenso-app-plan = {{ version = "=0.4.4", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-kernel = {{ version = "=0.3.10", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-test = {{ version = "=0.1.1", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-web-host = {{ version = "0.2.1", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso-app-plan = {{ version = "=0.4.5", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-kernel = {{ version = "=0.3.11", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-test = {{ version = "=0.1.2", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso-web-host = {{ version = "0.2.2", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
 
 [patch.crates-io]
 lenso = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
@@ -351,7 +351,7 @@ mod tests {
         "## Keep public OpenAPI honest\n\n",
         "`create` is marked with `#[openapi_contract]`. Its request body, success value, and stable `invalid_name` problem code are derived from the same typed handler values. Select and bind the optional OpenAPI Plugin only when this route is a public API; activation then rejects a document that drifts from the handler. Private routes may omit the attribute entirely.\n\n",
         "## Exercise the real Web path locally\n\n",
-        "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest Git-pins `lenso-web-host@0.2.1`, Endpoint `0.3.3`, `lenso@0.5.24`, `lenso-test@0.1.1`, App Plan `0.4.4`, and Kernel `0.3.10`; its root patch makes the Host, Plugin, adapter, and TestApp share those exact type identities. Run it with `cargo test --locked`. Do not replace those pins with independent registry ranges until the cohort release validation says they are published together.\n\n",
+        "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest Git-pins `lenso-web-host@0.2.2`, Endpoint `0.3.4`, `lenso@0.5.25`, `lenso-test@0.1.2`, App Plan `0.4.5`, and Kernel `0.3.11`; its root patch makes the Host, Plugin, adapter, and TestApp share those exact type identities. Run it with `cargo test --locked`. Do not replace those pins with independent registry ranges until the cohort release validation says they are published together.\n\n",
         "## Add a stream deliberately\n\n",
         "Buffered HTTP and a long-lived stream are separate public interactions. When a route needs backpressure or a persistent session, add the dedicated `lenso-capability-http-stream-endpoint` contract and test it through `SimulatedWebHost::open_stream`. Keep its route identifier and typed protocol next to the business Capability it invokes; do not turn a buffered `#[endpoint]` handler into an ad-hoc socket loop. The same surface also exposes `open_websocket` when a bidirectional protocol is the actual requirement.\n",
     )

@@ -294,7 +294,7 @@ mod tests {
         let plugin = destination.join("app/local.starter");
         let manifest = fs::read_to_string(plugin.join("Cargo.toml")).unwrap();
         assert!(manifest.contains("lenso-web-host"));
-        assert!(manifest.contains("lenso-test = { version = \"=0.1.1\""));
+        assert!(manifest.contains("lenso-test = { version = \"=0.1.2\""));
         assert!(plugin.join("tests/simulated_web.rs").is_file());
         assert!(plugin.join("public/index.html").is_file());
     }
@@ -310,8 +310,8 @@ name = "local-starter"
 version = "0.1.0"
 
 [dependencies]
-lenso = { version = "=0.5.24", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "runtime-pin" }
-lenso-capability-http-endpoint = { version = "0.3.3", git = "https://github.com/LioRael/lenso-web", rev = "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28" }
+lenso = { version = "=0.5.25", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "runtime-pin" }
+lenso-capability-http-endpoint = { version = "0.3.4", git = "https://github.com/LioRael/lenso-web", rev = "c9cd15629b7d65d6f6cdc12113234acd85c89a89" }
 "#,
         )
         .unwrap();
@@ -324,12 +324,12 @@ lenso-capability-http-endpoint = { version = "0.3.3", git = "https://github.com/
         prepare_web_starter(root.path(), true).unwrap();
 
         let manifest = fs::read_to_string(root.path().join("Cargo.toml")).unwrap();
-        assert!(manifest.contains("lenso = { version = \"=0.5.24\""));
+        assert!(manifest.contains("lenso = { version = \"=0.5.25\""));
         assert!(manifest.contains("https://github.com/LioRael/lenso-runtime-rust"));
         assert!(manifest.contains("runtime-pin"));
         assert!(manifest.contains("lenso-capability-http-endpoint"));
         assert!(manifest.contains("https://github.com/LioRael/lenso-web"));
-        assert!(manifest.contains("e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28"));
+        assert!(manifest.contains("c9cd15629b7d65d6f6cdc12113234acd85c89a89"));
         assert!(!manifest.contains("0.3.2"));
     }
 }

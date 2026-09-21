@@ -280,9 +280,9 @@ publish = false
 
 [dependencies]
 futures = "0.3"
-lenso-app-plan = {{ version = "=0.4.4", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-kernel = {{ version = "=0.3.10", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-web-host = {{ version = "0.2.1", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso-app-plan = {{ version = "=0.4.5", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-kernel = {{ version = "=0.3.11", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
+lenso-web-host = {{ version = "0.2.2", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
 plugin = {{ package = "{}", path = {plugin_path} }}
 serde_json = "1"
 tokio = {{ version = "1.52", features = ["macros", "rt", "signal"] }}
@@ -378,10 +378,10 @@ mod tests {
 
         assert!(name.starts_with("lenso-web-dev-company-greetings-http-"));
         assert!(manifest.contains("lenso-web-host"));
-        assert!(manifest.contains("version = \"0.2.1\""));
+        assert!(manifest.contains("version = \"0.2.2\""));
         assert!(manifest.contains(LENSO_WEB_REVISION));
-        assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.4\""));
-        assert!(manifest.contains("lenso-kernel = { version = \"=0.3.10\""));
+        assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.5\""));
+        assert!(manifest.contains("lenso-kernel = { version = \"=0.3.11\""));
         assert!(manifest.contains(LENSO_CORE_REVISION));
         assert!(manifest.contains(LENSO_NATIVE_REVISION));
         assert!(manifest.contains("[patch.crates-io]"));

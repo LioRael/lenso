@@ -38,14 +38,14 @@ pub(super) fn generate(
         ("futures", "0.3"),
         ("serde_json", "1"),
         ("sha2", "0.10"),
-        ("lenso-app-plan", "=0.4.4"),
-        ("lenso-kernel", "=0.3.10"),
-        ("lenso-native-adapter", "=0.3.14"),
-        ("lenso-runner", "=0.2.16"),
-        ("lenso-bun-adapter", "=0.1.13"),
-        ("lenso-process-adapter", "=0.3.11"),
-        ("lenso-wasm-component-adapter", "=0.2.14"),
-        ("lenso-runtime-codec", "=0.4.1"),
+        ("lenso-app-plan", "=0.4.5"),
+        ("lenso-kernel", "=0.3.11"),
+        ("lenso-native-adapter", "=0.3.15"),
+        ("lenso-runner", "=0.2.17"),
+        ("lenso-bun-adapter", "=0.1.14"),
+        ("lenso-process-adapter", "=0.3.12"),
+        ("lenso-wasm-component-adapter", "=0.2.15"),
+        ("lenso-runtime-codec", "=0.4.2"),
     ] {
         dependencies.insert(name.into(), json!(version));
     }
@@ -234,10 +234,10 @@ pub(super) fn generate(
             ("lenso-runtime-codec", "=0.3.4"),
         ],
         "0.4" => [
-            ("lenso-bun-adapter", "=0.1.13"),
-            ("lenso-process-adapter", "=0.3.11"),
-            ("lenso-wasm-component-adapter", "=0.2.14"),
-            ("lenso-runtime-codec", "=0.4.1"),
+            ("lenso-bun-adapter", "=0.1.14"),
+            ("lenso-process-adapter", "=0.3.12"),
+            ("lenso-wasm-component-adapter", "=0.2.15"),
+            ("lenso-runtime-codec", "=0.4.2"),
         ],
         other => bail!("unsupported typed Codec cohort {other}; use a custom Host"),
     };
@@ -247,7 +247,7 @@ pub(super) fn generate(
     if cohort == "0.3" {
         dependencies.insert(
             "native-resources".into(),
-            json!({"package":"lenso-runtime-codec","version":"=0.4.1"}),
+            json!({"package":"lenso-runtime-codec","version":"=0.4.2"}),
         );
     }
     fs::write(
@@ -872,14 +872,14 @@ mod tests {
         let dependency = web_ingress_dependency(&json!({
             "package": "lenso-capability-http-endpoint",
             "git": "https://github.com/LioRael/lenso-web",
-            "rev": "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28",
+            "rev": "c9cd15629b7d65d6f6cdc12113234acd85c89a89",
         }))
         .unwrap();
         assert_eq!(dependency["package"], "lenso-web-ingress-plugin");
         assert_eq!(dependency["git"], "https://github.com/LioRael/lenso-web");
         assert_eq!(
             dependency["rev"],
-            "e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28"
+            "c9cd15629b7d65d6f6cdc12113234acd85c89a89"
         );
     }
 }
