@@ -1046,8 +1046,8 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[patch.unused]]
 name = "lenso-capability-http-client"
-version = "0.3.0"
+version = "0.3.1"
 
 [[patch.unused]]
 name = "lenso-http-egress-plugin"
-version = "0.3.4"
+version = "0.3.5"
