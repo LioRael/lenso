@@ -1,22 +1,51 @@
 name: Release npm package
 
 on:
-  push:
-    tags:
-      - "lenso-bun-plugin-ts-v*"
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full SHA of the landed source commit to verify and release
+        required: true
+        type: string
+      version:
+        description: Exact reviewed @lenso/bun-plugin version
+        required: true
+        type: string
+      mode:
+        description: Read-only by default; publish requires separate authorization
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - publish
+      publish_confirmation:
+        description: Enter publish only when mode is publish
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
 jobs:
   publish:
-    name: Publish @lenso/bun-plugin
+    if: ${{ github.ref == 'refs/heads/main' }}
+    name: Verify @lenso/bun-plugin release
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
+    env:
+      PACKAGE_PATH: packages/lenso-bun-plugin
+      RELEASE_SHA: ${{ inputs.source_sha }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_MODE: ${{ inputs.mode }}
+      RELEASE_CONFIRMATION: ${{ inputs.publish_confirmation }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -24,10 +53,18 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24
-      - name: Verify release tag
+      - name: Verify exact version and landed source
         run: |
+          test "$RELEASE_MODE" = dry-run || test "$RELEASE_MODE" = publish
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$RELEASE_MODE" == publish ]]; then
+            test "$RELEASE_CONFIRMATION" = publish
+          fi
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin main --no-tags
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           package_version="$(node -p "require('./packages/lenso-bun-plugin/package.json').version")"
-          test "$GITHUB_REF_NAME" = "lenso-bun-plugin-ts-v${package_version}"
+          test "$package_version" = "$RELEASE_VERSION"
       - name: Install workspace
         run: bun install --frozen-lockfile
       - name: Verify package
@@ -36,6 +73,9 @@ jobs:
           bun run typecheck
           bun run test:typescript
           bun run package-smoke
-          npm pack --dry-run ./packages/lenso-bun-plugin
+          npm pack --dry-run "./$PACKAGE_PATH"
+      - name: Verify npm artifact resolution
+        run: npm publish "./$PACKAGE_PATH" --dry-run --access public --provenance=false
       - name: Publish package
-        run: npm publish ./packages/lenso-bun-plugin --access public --provenance
+        if: ${{ inputs.mode == 'publish' && inputs.publish_confirmation == 'publish' }}
+        run: npm publish "./$PACKAGE_PATH" --access public --provenance
