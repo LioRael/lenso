@@ -306,7 +306,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "futures",
  "http",
@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-stream-endpoint"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures",
  "lenso-contract-codegen",
@@ -347,7 +347,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-websocket-endpoint"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures",
  "lenso-contract-codegen",
@@ -483,7 +483,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-web-ingress-plugin"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "base64",
  "bytes",

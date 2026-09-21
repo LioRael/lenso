@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 base64 = "0.22.1"
 js-sys = "=0.3.104"
 lenso-web-duplex-fixture = { path = "../fixtures/duplex-endpoint-plugin" }
-lenso-capability-websocket-endpoint = "=0.1.0"
+lenso-capability-websocket-endpoint = "=0.1.1"
 lenso-workers-driver = { version = "0.1.1", path = "../../../crates/lenso-workers-driver" }
 bytes = "1"
 http = "1"
@@ -22,5 +22,5 @@ serde.workspace = true
 serde_json.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
-lenso-web-ingress-plugin = { version = "=0.4.6", default-features = false }
+lenso-web-ingress-plugin = { version = "=0.4.7", default-features = false }
 lenso-web-http-parity-fixture = { path = "../fixtures/http-parity-plugin" }
