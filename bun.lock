@@ -46,7 +46,7 @@
 
     "@lenso/contract-runtime": ["@lenso/contract-runtime@0.3.0", "", {}, "sha512-3JGwX4fCsHBsP49arxbHKys91f+3AKKN8+Vsn9J4yyXn2oHUDoAlq67yU5ABc1WzchTEYmgki7GmnQx60XkRvQ=="],
 
-    "@lenso/process-protocol": ["@lenso/process-protocol@0.2.3", "", {}, "sha512-OdzTgc1Do2qYSQBSY/W9SSUm7D5rGvTUHcTmIMZPxDTNqZqBWXwK8k9LLoex72aSs9F1TEw7DFXdOO0sXSJyEQ=="],
+    "@lenso/process-protocol": ["@lenso/process-protocol@0.2.3", "", {}, "sha512-r3xiN0epKoccLq6jFLOa5dmo06rDbWdi1loX8zZpUP2R/H2iiqMvm1aoGmXpNod1KOTF6SlGxPhrjX2M2KbmWQ=="],
 
     "@types/bun": ["@types/bun@1.4.0", "", { "dependencies": { "bun-types": "1.4.0" } }, "sha512-K+lZULY23vRgK/CfTjFIV+tyifaNdSMlPh9j+6mQ/cLfpOznLyAuzgV/JQysyECpkBQLVMSyvjlr2fBUSA9wFQ=="],
 
