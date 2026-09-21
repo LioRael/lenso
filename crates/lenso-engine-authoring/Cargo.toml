@@ -1,16 +1,16 @@
 [package]
 name = "lenso-engine-authoring"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 license = "MIT"
 description = "Lenso App discovery, composition and authoring authority"
 
 [dependencies]
 anyhow = "1.0"
-lenso-app-plan = { version = "=0.4.4" }
-lenso-bun-adapter = { version = "=0.1.13" }
-lenso-plugin-bundle = { version = "=0.5.0" }
-lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.1", features = ["bundle-verification"] }
+lenso-app-plan = { version = "=0.4.5" }
+lenso-bun-adapter = { version = "=0.1.14" }
+lenso-plugin-bundle = { version = "=0.5.1" }
+lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.2", features = ["bundle-verification"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.11"

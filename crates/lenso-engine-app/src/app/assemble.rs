@@ -476,21 +476,21 @@ fn local_implementation_policy() -> anyhow::Result<ImplementationPolicy> {
         // paths. Do not advertise Stream/Event until its complete ingress and
         // codec path is qualified together.
         runtimes: vec![
-            crate::target_profile::request_only_admission(
+            crate::target_profile::request_native_process_admission(
                 lenso_app_plan::ExecutionClassId::new(lenso_process_adapter::EXECUTION_CLASS),
                 lenso_process_adapter::RUNTIME_PROFILE_V2,
             ),
-            crate::target_profile::request_only_admission(
+            crate::target_profile::request_native_process_admission(
                 lenso_app_plan::ExecutionClassId::new(lenso_process_adapter::EXECUTION_CLASS),
                 lenso_process_adapter::RUNTIME_PROFILE_V1,
             ),
-            crate::target_profile::request_only_admission(
+            crate::target_profile::request_wasm_component_admission(
                 lenso_app_plan::ExecutionClassId::new(
                     lenso_wasm_component_adapter::EXECUTION_CLASS,
                 ),
                 lenso_wasm_component_adapter::RUNTIME_PROFILE,
             ),
-            crate::target_profile::bun_request_admission()?,
+            crate::target_profile::bun_admission()?,
         ],
     })
 }

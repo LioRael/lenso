@@ -261,6 +261,16 @@ pub fn create_empty(directory: PathBuf) -> anyhow::Result<()> {
     })
 }
 
+/// Run a source-free distribution from an embedding host.
+pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Result<()> {
+    start(StartArgs {
+        from,
+        root: None,
+        check: false,
+        args: arguments,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -322,13 +332,4 @@ lenso-capability-http-endpoint = { version = "0.3.3", git = "https://github.com/
         assert!(manifest.contains("e7b0d629ede9154a8ec136d8c78cbe9b37e5cf28"));
         assert!(!manifest.contains("0.3.2"));
     }
-}
-/// Run a source-free distribution from an embedding host.
-pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Result<()> {
-    start(StartArgs {
-        from,
-        root: None,
-        check: false,
-        args: arguments,
-    })
 }

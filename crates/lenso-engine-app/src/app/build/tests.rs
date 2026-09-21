@@ -1,5 +1,7 @@
 use super::*;
-use lenso_app_plan::{CapabilityRequirementPlan, authoring::PluginContract};
+use lenso_app_plan::{
+    CapabilityRequirementPlan, ExecutionTargetCapability, authoring::PluginContract,
+};
 use lenso_plugin_bundle::{
     SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
 };
@@ -36,6 +38,7 @@ fn bundle_with_endpoint(
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
         }],
         output: bundle.clone(),
     })
@@ -68,6 +71,7 @@ fn named_dependency_bundle(root: &std::path::Path) -> (PathBuf, PathBuf) {
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
         }],
         output: store.clone(),
     })
@@ -94,6 +98,7 @@ fn named_dependency_bundle(root: &std::path::Path) -> (PathBuf, PathBuf) {
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
         }],
         output: copy.clone(),
     })
@@ -126,6 +131,7 @@ fn target_fallback_bundle(root: &std::path::Path) -> PathBuf {
                 entrypoint: "plugin.js".into(),
                 execution_class: ExecutionClassId::bun_child_process(),
                 runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+                required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
             },
             SourcePluginImplementation {
                 id: "selected-target".into(),
@@ -137,8 +143,42 @@ fn target_fallback_bundle(root: &std::path::Path) -> PathBuf {
                 entrypoint: "plugin.js".into(),
                 execution_class: ExecutionClassId::bun_child_process(),
                 runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+                required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
             },
         ],
+        output: bundle.clone(),
+    })
+    .unwrap();
+    bundle
+}
+
+fn workers_required_bundle(root: &std::path::Path) -> PathBuf {
+    let artifact = root.join("workers-required.js");
+    fs::write(&artifact, "export default {};\n").unwrap();
+    let bundle = root.join("workers-required-bundle");
+    build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+        contract: PluginContract::new("company.workers-required", "1.0.0", "workers required")
+            .with_authoring_version(2)
+            .with_capability(lenso_app_plan::CapabilityEndpointPlan::new(
+                "company.workers-required@1",
+                "1.0.0",
+                ["get"],
+            )),
+        implementations: vec![SourcePluginImplementation {
+            id: "bun".into(),
+            host_targets: vec!["*".into()],
+            artifact,
+            bundle_path: "implementations/bun/plugin.js".into(),
+            media_type: "application/javascript".into(),
+            target: "javascript-bun".into(),
+            entrypoint: "plugin.js".into(),
+            execution_class: ExecutionClassId::bun_child_process(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![
+                ExecutionTargetCapability::NativeProcess,
+                ExecutionTargetCapability::Workers,
+            ],
+        }],
         output: bundle.clone(),
     })
     .unwrap();
@@ -171,6 +211,22 @@ fn host_build_rejects_stream_profile_and_does_not_replace_a_racing_output() {
     assert!(publish_new_output(&stage, &args.out).is_err());
     assert!(stage.is_dir());
     assert!(args.out.is_dir());
+}
+
+#[test]
+fn host_build_rejects_a_bun_implementation_that_requires_workers() {
+    let root = tempfile::tempdir().unwrap();
+    let bundle = workers_required_bundle(root.path());
+    let args = HostBuildArgs {
+        source: root.path().join("app.ts"),
+        target: "javascript-bun".into(),
+        out: root.path().join("output"),
+    };
+    let error = materialize(declaration(bundle), &args).unwrap_err();
+    let message = format!("{error:#}");
+    assert!(message.contains("missing_target_capabilities"));
+    assert!(message.contains("workers"));
+    assert!(!args.out.exists());
 }
 
 fn declaration(bundle: PathBuf) -> Declaration {

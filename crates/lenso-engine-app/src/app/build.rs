@@ -86,16 +86,19 @@ impl Execution {
 
     fn admissions(self) -> anyhow::Result<Vec<RuntimeAdmission>> {
         match self {
-            // The TypeScript Host only installs Request codecs/endpoints. Its
-            // admission keeps that Host limit while taking the profile identity
-            // from the concrete Bun Adapter rather than a CLI-owned string.
-            Self::Bun => Ok(vec![crate::target_profile::bun_request_admission()?]),
+            // The TypeScript Host installs Request codecs/endpoints and owns
+            // the trusted Bun child process. Its admission takes the profile
+            // identity from the concrete Adapter rather than a CLI-owned
+            // string, without claiming unrelated Adapter facilities.
+            Self::Bun => Ok(vec![crate::target_profile::bun_admission()?]),
             Self::Process => Ok([
                 lenso_process_adapter::RUNTIME_PROFILE_V2,
                 lenso_process_adapter::RUNTIME_PROFILE_V1,
             ]
             .into_iter()
-            .map(|profile| crate::target_profile::request_only_admission(self.class(), profile))
+            .map(|profile| {
+                crate::target_profile::request_native_process_admission(self.class(), profile)
+            })
             .collect()),
         }
     }

@@ -8,7 +8,8 @@ use std::{
 use anyhow::{Context, bail};
 use clap::{Args, Subcommand, ValueEnum};
 use lenso_app_plan::{
-    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId, authoring::PluginContract,
+    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId, ExecutionTargetCapability,
+    authoring::PluginContract,
 };
 use lenso_plugin_bundle::{
     PluginManifest, SourcePluginBuild, SourcePluginImplementation, SourcePluginReleaseBuild,
@@ -532,6 +533,7 @@ fn materialize_bun(
             entrypoint: "plugin.js".to_owned(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: "lenso.bun-authoring@2".to_owned(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
         }],
         output: output.to_path_buf(),
     })?;
@@ -787,6 +789,7 @@ fn materialize_multi(
                     entrypoint: "plugin".to_owned(),
                     execution_class: ExecutionClassId::new(WASM_EXECUTION_CLASS),
                     runtime_profile: wasm_descriptor.runtime_profile().to_owned(),
+                    required_target_capabilities: vec![ExecutionTargetCapability::WasmComponent],
                 },
                 SourcePluginImplementation {
                     id: "process".to_owned(),
@@ -798,6 +801,7 @@ fn materialize_multi(
                     entrypoint: "plugin".to_owned(),
                     execution_class: ExecutionClassId::new(PROCESS_EXECUTION_CLASS),
                     runtime_profile: process_descriptor.runtime_profile().to_owned(),
+                    required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
                 },
             ],
             output: output.to_path_buf(),
@@ -892,6 +896,7 @@ fn materialize_declared_implementation(
                 entrypoint: descriptor.implementation().entrypoint().to_owned(),
                 execution_class: descriptor.implementation().execution_class().clone(),
                 runtime_profile: descriptor.runtime_profile().to_owned(),
+                required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
             };
             Ok((descriptor.contract(), source))
         }
@@ -918,6 +923,11 @@ fn materialize_declared_implementation(
                 .ok_or_else(|| {
                     anyhow::anyhow!("implementation artifact has no portable filename")
                 })?;
+            let mut required_target_capabilities = implementation
+                .runtime
+                .required_target_capabilities()
+                .to_vec();
+            required_target_capabilities.push(ExecutionTargetCapability::NativeProcess);
             let source = SourcePluginImplementation {
                 id: declaration.id.clone(),
                 host_targets: implementation.host_targets.clone(),
@@ -928,6 +938,7 @@ fn materialize_declared_implementation(
                 entrypoint: implementation.runtime.entrypoint().to_owned(),
                 execution_class: implementation.runtime.execution_class().clone(),
                 runtime_profile: implementation.runtime.runtime_profile().to_owned(),
+                required_target_capabilities,
             };
             Ok((manifest.contract, source))
         }

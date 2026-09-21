@@ -43,25 +43,43 @@ pub(crate) struct SelectedImplementation {
     pub(crate) evidence: ImplementationSelectionEvidence,
 }
 
-/// Admits precisely Request operations for a concrete Host/Adapter pairing.
-///
-/// This is intentionally not a claim about every operation an Adapter could
-/// theoretically support. Callers use it where their Host only registers
-/// request ingress/endpoints today.
-pub(crate) fn request_only_admission(
+/// Admits a concrete child-process target that wires request dispatch and owns
+/// the child process lifecycle.
+pub(crate) fn request_native_process_admission(
     execution_class: ExecutionClassId,
     runtime_profile: impl Into<String>,
 ) -> RuntimeAdmission {
     RuntimeAdmission::new(
         execution_class,
         runtime_profile,
-        ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+        ExecutionTargetCapabilities::new([
+            ExecutionTargetCapability::Request,
+            ExecutionTargetCapability::NativeProcess,
+        ]),
+    )
+}
+
+/// Admits a concrete Wasm Component target that wires request dispatch and
+/// owns Component execution.
+pub(crate) fn request_wasm_component_admission(
+    execution_class: ExecutionClassId,
+    runtime_profile: impl Into<String>,
+) -> RuntimeAdmission {
+    RuntimeAdmission::new(
+        execution_class,
+        runtime_profile,
+        ExecutionTargetCapabilities::new([
+            ExecutionTargetCapability::Request,
+            ExecutionTargetCapability::WasmComponent,
+        ]),
     )
 }
 
 /// The TypeScript Host uses the Bun Adapter's owned profile identity while
-/// deliberately exposing only its verified Request path.
-pub(crate) fn bun_request_admission() -> anyhow::Result<RuntimeAdmission> {
+/// declaring the two mechanisms it actually wires: Request dispatch and the
+/// trusted Bun child-process lifecycle. It does not advertise other Adapter
+/// facilities until this Host owns and qualifies them end to end.
+pub(crate) fn bun_admission() -> anyhow::Result<RuntimeAdmission> {
     let adapter_profile = lenso_bun_adapter::bun_authoring_target_capability_profile();
     adapter_profile
         .validate()
@@ -69,10 +87,11 @@ pub(crate) fn bun_request_admission() -> anyhow::Result<RuntimeAdmission> {
         .context("validate Bun Adapter target capability profile")?;
     if adapter_profile.target_profile != lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE
         || !adapter_profile.supports(ExecutionTargetCapability::Request)
+        || !adapter_profile.supports(ExecutionTargetCapability::NativeProcess)
     {
-        bail!("Bun Adapter did not expose its required Request target profile");
+        bail!("Bun Adapter did not expose its required Request and NativeProcess target profile");
     }
-    Ok(request_only_admission(
+    Ok(request_native_process_admission(
         ExecutionClassId::bun_child_process(),
         adapter_profile.target_profile,
     ))

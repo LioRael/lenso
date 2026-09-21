@@ -135,19 +135,21 @@ async fn dev_cargo(
             host_target: super::rust_host_target(root)?,
             runtimes: match dev_runtime {
                 ProjectRuntime::Process => vec![
-                    crate::target_profile::request_only_admission(
+                    crate::target_profile::request_native_process_admission(
                         ExecutionClassId::new(dev_class),
                         PROCESS_RUNTIME_PROFILE_V2,
                     ),
-                    crate::target_profile::request_only_admission(
+                    crate::target_profile::request_native_process_admission(
                         ExecutionClassId::new(dev_class),
                         PROCESS_RUNTIME_PROFILE_V1,
                     ),
                 ],
-                ProjectRuntime::Wasm => vec![crate::target_profile::request_only_admission(
-                    ExecutionClassId::new(dev_class),
-                    lenso_wasm_component_adapter::RUNTIME_PROFILE,
-                )],
+                ProjectRuntime::Wasm => {
+                    vec![crate::target_profile::request_wasm_component_admission(
+                        ExecutionClassId::new(dev_class),
+                        lenso_wasm_component_adapter::RUNTIME_PROFILE,
+                    )]
+                }
                 ProjectRuntime::Composite | ProjectRuntime::Multi | ProjectRuntime::Bun => {
                     unreachable!("development resolves to one invocation runtime")
                 }
@@ -221,7 +223,7 @@ async fn dev_composite(
                 &read_bundle_manifest(&output)?,
                 &ImplementationPolicy {
                     host_target: super::rust_host_target(root)?,
-                    runtimes: vec![crate::target_profile::request_only_admission(
+                    runtimes: vec![crate::target_profile::request_native_process_admission(
                         ExecutionClassId::new(PROCESS_EXECUTION_CLASS),
                         PROCESS_RUNTIME_PROFILE_V2,
                     )],
@@ -642,7 +644,7 @@ async fn dev_bun(root: &Path, package: &BunPackage, args: &PluginDevArgs) -> any
         &read_bundle_manifest(&output)?,
         &ImplementationPolicy {
             host_target: native_host_target().to_owned(),
-            runtimes: vec![crate::target_profile::bun_request_admission()?],
+            runtimes: vec![crate::target_profile::bun_admission()?],
         },
     )?;
     let selected = selected.implementation;

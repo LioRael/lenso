@@ -1,7 +1,10 @@
 use super::*;
 use crate::archive::archive_bundle;
 use lenso_app_authoring::host_authoring::{GeneratedHostBuild, HostPluginInput};
-use lenso_app_plan::{CapabilityEndpointPlan, ExecutionClassId, authoring::PluginContract};
+use lenso_app_plan::{
+    CapabilityEndpointPlan, ExecutionClassId,
+    ExecutionTargetCapability as PlanExecutionTargetCapability, authoring::PluginContract,
+};
 use lenso_plugin_bundle::{
     ExecutionTargetCapabilities, ExecutionTargetCapability, ImplementationPolicy, RuntimeAdmission,
     SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
@@ -35,6 +38,7 @@ fn authoring(root: &Path) -> PathBuf {
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![PlanExecutionTargetCapability::NativeProcess],
         }],
         output: bundle.clone(),
     })
@@ -48,7 +52,10 @@ fn authoring(root: &Path) -> PathBuf {
             runtimes: vec![RuntimeAdmission::new(
                 ExecutionClassId::bun_child_process(),
                 lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE,
-                ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+                ExecutionTargetCapabilities::new([
+                    ExecutionTargetCapability::Request,
+                    ExecutionTargetCapability::NativeProcess,
+                ]),
             )],
         },
     )
@@ -93,7 +100,7 @@ fn authoring(root: &Path) -> PathBuf {
             "target_capability_profile": {
                 "profile": "lenso.execution-target-capability-profile@1",
                 "target_profile": "lenso.bun-authoring@2",
-                "capabilities": ["request"]
+                "capabilities": ["native-process", "request"]
             },
             "selection": {
                 "selected": {
