@@ -41,6 +41,17 @@ Existing App commands continue to work. `app build` and `app dev` select the
 optional `AppProject` processor. Its App-specific discovery and assembly live in
 this repository, not in the CLI. Lower-level App APIs remain public:
 
+```sh
+lenso app facts --root ./my-app --json
+```
+
+`app facts` is the read-only Agent/tooling projection. It reports exact adopted
+Plugin versions, resolved execution and Capability metadata, source locations,
+Plugin Root revision, discovered-but-not-adopted source candidates, and stable
+diagnostic codes. It deliberately reports runtime state as `not_observed` until
+a runtime control surface supplies evidence; build artifacts are not treated as
+proof that an App is running. Configuration values are not included.
+
 ```rust,ignore
 lenso_engine_app::app::create_empty(project.clone())?;
 lenso_engine_app::app::adopt(project.clone(), "@lenso/cli".into(), true)?;

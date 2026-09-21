@@ -12,6 +12,8 @@ mod contracts;
 mod convention_authoring;
 mod convention_build;
 mod explain;
+pub mod facts;
+pub use facts::{ProjectFacts, inspect_project_facts};
 mod local_dev;
 mod local_host;
 mod local_workflow;
@@ -72,6 +74,8 @@ pub enum AppCommand {
     Discover(ProjectArgs),
     /// Explain local convention support and selected surface packages without executing code.
     Inspect(ProjectArgs),
+    /// Report resolved project facts for agents and other development tools.
+    Facts(ProjectArgs),
     /// Build local Plugin sources into a validated Host authoring directory.
     Assemble(assemble::AssembleArgs),
 }
@@ -137,6 +141,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
         AppCommand::Explain(args) => explain::run(args),
         AppCommand::Discover(args) => discover(args),
         AppCommand::Inspect(args) => inspect(args),
+        AppCommand::Facts(args) => facts::facts(args),
         AppCommand::Assemble(args) => assemble::assemble(args),
     }
 }
@@ -343,6 +348,7 @@ fn inspect(args: ProjectArgs) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
     use lenso_app_plan::authoring::{
         HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
     };
@@ -376,5 +382,25 @@ mod tests {
         assert!(root.join(".lenso/host").is_file());
         assert!(root.join("plugins").is_dir());
         assert_eq!(load_resolved_app(&root).unwrap().instances().len(), 1);
+    }
+
+    #[derive(Debug, Parser)]
+    struct TestCli {
+        #[command(subcommand)]
+        command: AppCommand,
+    }
+
+    #[test]
+    fn facts_is_available_through_the_shared_app_command_parser() {
+        let parsed =
+            TestCli::try_parse_from(["lenso", "facts", "--root", "app", "--json"]).unwrap();
+
+        assert!(matches!(
+            parsed.command,
+            AppCommand::Facts(ProjectArgs {
+                root: Some(root),
+                json: true,
+            }) if root.as_path() == std::path::Path::new("app")
+        ));
     }
 }
