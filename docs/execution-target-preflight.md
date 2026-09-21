@@ -47,6 +47,17 @@ Plugin requiring a bidirectional Stream cannot be selected for a target whose
 actual profile lacks `stream`; the build records the rejection or fails before
 publishing a candidate Host. `app explain` then makes that decision inspectable.
 
+An implementation can also declare target mechanics that are not inferable from
+a Capability operation. The standard builders record `native-process` for Bun
+and Process implementations, and `wasm-component` for a Wasm Component. A
+Workers implementation must declare `workers`. These are immutable Bundle facts:
+the Host combines them with Request/Stream/Event operation requirements and
+fails closed. If an App includes an ordinary Bun candidate and a Workers-only
+candidate, `app build` can select the former; `app explain --json` retains the
+latter as a `missing_target_capabilities` rejection with a `workers`
+requirement. It never upgrades a local Bun Host into a Workers target merely
+because the alternate artifact exists.
+
 The capability vocabulary and profile validation remain owned by
 `lenso-process-protocol`; Runtime/Adapter packages generate the concrete
 profiles. Application Capabilities remain Plan-bound. A private Driver resource

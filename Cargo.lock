@@ -770,7 +770,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1601,7 +1601,7 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "lenso-app-plan"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1610,7 +1610,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-bun-adapter"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1635,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-cli"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1716,7 +1716,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-app"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1759,7 +1759,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-authoring"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "glob",
@@ -1792,7 +1792,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-runtime"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "futures",
@@ -1813,6 +1813,8 @@ dependencies = [
 [[package]]
 name = "lenso-guest-sdk"
 version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21d60509d1827d3a384473ac8c1493432b8ddd1ad2a74a3b21aa52daa8fb52dd"
 dependencies = [
  "serde",
  "serde_json",
@@ -1820,7 +1822,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-kernel"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -1828,7 +1830,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-native-adapter"
-version = "0.3.14"
+version = "0.3.15"
 dependencies = [
  "futures",
  "inventory",
@@ -1855,12 +1857,10 @@ dependencies = [
 [[package]]
 name = "lenso-plugin-authoring"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f24f444677f5b9857d4aa6f2ca90002243eb756a7f153bb721206f88abe6b07"
 
 [[package]]
 name = "lenso-plugin-bundle"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "hex",
  "lenso-app-plan",
@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-plugin-catalog"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1893,7 +1893,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-process-adapter"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -1929,7 +1929,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runner"
-version = "0.2.16"
+version = "0.2.17"
 dependencies = [
  "cpu-time",
  "futures",
@@ -1940,7 +1940,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runtime-codec"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "futures",
  "hex",
@@ -1954,7 +1954,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-wasm-component-adapter"
-version = "0.2.14"
+version = "0.2.15"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -2607,7 +2607,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2664,7 +2664,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs 0.26.11",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3074,10 +3074,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3870,7 +3870,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3899,6 +3899,15 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

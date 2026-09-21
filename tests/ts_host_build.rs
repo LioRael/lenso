@@ -2,7 +2,8 @@
 //! Requires the repository's `pnpm install` and `pnpm build:shim` prerequisites.
 
 use lenso_app_plan::{
-    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId, authoring::PluginContract,
+    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId, ExecutionTargetCapability,
+    authoring::PluginContract,
 };
 use lenso_plugin_bundle::{
     SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
@@ -46,7 +47,73 @@ fn fixture_bundle_bytes(root: &Path, id: &str, consumes_store: bool, bytes: &str
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
         }],
+        output: root.join(format!("{id}-bundle")),
+    })
+    .unwrap();
+}
+
+/// Builds a real archive with one target-ineligible Workers candidate and one
+/// ordinary Bun fallback. `app build` must persist the rejected candidate, so
+/// `app explain --json` can show why the selected Host did not admit it.
+fn fixture_bundle_with_workers_fallback(root: &Path, id: &str, consumes_store: bool) {
+    let selected = root.join(format!("{id}-selected.js"));
+    let workers = root.join(format!("{id}-workers.js"));
+    fs::write(
+        &selected,
+        "throw new Error('authoring must not execute this Plugin');",
+    )
+    .unwrap();
+    fs::write(
+        &workers,
+        "throw new Error('authoring must not execute this Plugin');",
+    )
+    .unwrap();
+    let mut contract = PluginContract::new(format!("company.{id}"), "1.0.0", id)
+        .with_authoring_version(2)
+        .with_configuration_schema(serde_json::json!({"type":"object"}))
+        .with_capability(CapabilityEndpointPlan::new(
+            format!("company.{id}@1"),
+            "1",
+            ["get"],
+        ));
+    if consumes_store {
+        contract = contract.with_requirement(
+            CapabilityRequirementPlan::one("company.store@1", "1").with_requirement_id("store"),
+        );
+    }
+    build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+        contract,
+        implementations: vec![
+            SourcePluginImplementation {
+                id: "bun".into(),
+                host_targets: vec!["*".into()],
+                artifact: selected,
+                bundle_path: "implementations/bun/plugin.js".into(),
+                media_type: "application/javascript".into(),
+                target: "javascript-bun".into(),
+                entrypoint: "plugin.js".into(),
+                execution_class: ExecutionClassId::bun_child_process(),
+                runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+                required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
+            },
+            SourcePluginImplementation {
+                id: "bun-workers".into(),
+                host_targets: vec!["*".into()],
+                artifact: workers,
+                bundle_path: "implementations/bun-workers/plugin.js".into(),
+                media_type: "application/javascript".into(),
+                target: "javascript-bun".into(),
+                entrypoint: "plugin.js".into(),
+                execution_class: ExecutionClassId::bun_child_process(),
+                runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+                required_target_capabilities: vec![
+                    ExecutionTargetCapability::NativeProcess,
+                    ExecutionTargetCapability::Workers,
+                ],
+            },
+        ],
         output: root.join(format!("{id}-bundle")),
     })
     .unwrap();
@@ -85,7 +152,7 @@ fn distribution_target() -> &'static str {
 fn ts_host_cli_build_check_show_and_rejection_use_the_same_authority() {
     let root = tempfile::tempdir().unwrap();
     fixture_bundle(root.path(), "store", false);
-    fixture_bundle(root.path(), "notes", true);
+    fixture_bundle_with_workers_fallback(root.path(), "notes", true);
     fs::write(root.path().join("store.ts"), "import { pluginBundle } from '@lenso/cli/host'; export default pluginBundle('./store-bundle');").unwrap();
     fs::write(root.path().join("app.ts"), "import { defineHost, pluginBundle } from '@lenso/cli/host'; import store from './store'; export default defineHost({ id: 'company.app', plugins: [store, pluginBundle('./notes-bundle')] });").unwrap();
     let built = cli(
@@ -157,6 +224,30 @@ fn ts_host_cli_build_check_show_and_rejection_use_the_same_authority() {
             .unwrap()
             .len(),
         2
+    );
+    let notes_selection = explanation["implementation_selection"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|selection| selection["plugin_id"] == "company.notes")
+        .unwrap();
+    assert_eq!(notes_selection["selected"]["implementation_id"], "bun");
+    assert!(
+        notes_selection["rejected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|rejection| {
+                rejection["reason"]["kind"] == "missing_target_capabilities"
+                    && rejection["reason"]["requirements"]
+                        .as_array()
+                        .is_some_and(|requirements| {
+                            requirements
+                                .iter()
+                                .any(|requirement| requirement["feature"] == "workers")
+                        })
+            }),
+        "{notes_selection}"
     );
     assert_eq!(
         explanation["consumer_requirements"]

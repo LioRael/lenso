@@ -1,5 +1,6 @@
 use lenso_app_plan::{
-    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId, authoring::PluginContract,
+    CapabilityEndpointPlan, CapabilityRequirementPlan, ExecutionClassId, ExecutionTargetCapability,
+    authoring::PluginContract,
 };
 use lenso_plugin_bundle::{
     SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
@@ -42,6 +43,7 @@ fn bundle(root: &Path, path: &str, id: &str, consumer: bool) {
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
         }],
         output: root.join(path),
     })

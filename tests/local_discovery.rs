@@ -1,5 +1,7 @@
 //! Real CLI discovery: no Host installation or execution is needed.
-use lenso_app_plan::{CapabilityEndpointPlan, ExecutionClassId, authoring::PluginContract};
+use lenso_app_plan::{
+    CapabilityEndpointPlan, ExecutionClassId, ExecutionTargetCapability, authoring::PluginContract,
+};
 use lenso_plugin_bundle::{
     SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
 };
@@ -38,6 +40,7 @@ fn discovers_sources_and_verified_archives_without_executing_or_installing() {
             entrypoint: "plugin.js".into(),
             execution_class: ExecutionClassId::bun_child_process(),
             runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
         }],
         output: bundle.clone(),
     })
