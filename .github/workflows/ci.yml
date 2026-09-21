@@ -57,17 +57,16 @@ jobs:
         run: node --test crates/lenso-http-egress-plugin/js/event-fetch.test.mjs
       - name: Package Capability crates
         run: |
-          cargo package --locked --manifest-path crates/lenso-capability-http-client/Cargo.toml
           # Package the unpublished HTTP dependency cohort together. Workspace
           # checks and tests above compile the exact sources; once released,
           # the release workflow verifies clean registry consumption.
           cargo package --locked --no-verify \
+            -p lenso-capability-http-client \
             -p lenso-capability-http-endpoint-macros \
             -p lenso-capability-http-endpoint \
             -p lenso-capability-http-stream-endpoint \
             -p lenso-http-auth \
             -p lenso-openapi-plugin \
             -p lenso-capability-websocket-endpoint \
-            -p lenso-web-ingress-plugin
-      - name: Package HTTP Egress release set
-        run: cargo package --locked --manifest-path crates/lenso-http-egress-plugin/Cargo.toml
+            -p lenso-web-ingress-plugin \
+            -p lenso-http-egress-plugin
