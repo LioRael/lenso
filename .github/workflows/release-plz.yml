@@ -1,66 +1,122 @@
 name: Release-plz
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full 40-character commit SHA already reachable from main.
+        required: true
+        type: string
+      release_set:
+        description: Exact JSON array of cargo package_name/version entries to release.
+        required: true
+        type: string
+      mode:
+        description: Validate the exact release plan, or publish it after validation.
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - publish
 
 permissions: {}
 
-jobs:
-  release-pr:
-    name: Release-plz PR
-    if: ${{ github.repository_owner == 'LioRael' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-      pull-requests: write
-    concurrency:
-      group: release-plz-pr-${{ github.ref }}
-      cancel-in-progress: false
-    env:
-      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || github.token }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
-        with:
-          toolchain: 1.94.0
-      - name: Create release PR
-        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
-        with:
-          command: release-pr
-          config: .github/release-plz.toml
+concurrency:
+  group: release-plz-${{ inputs.source_sha }}
+  cancel-in-progress: false
 
-  release:
-    name: Release-plz release
+jobs:
+  release-gate:
+    name: Verify landed release source
     if: ${{ github.repository_owner == 'LioRael' }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
-      pull-requests: read
-      id-token: write
-    concurrency:
-      group: release-plz-release-${{ github.ref }}
-      cancel-in-progress: false
+      contents: read
+    outputs:
+      source_sha: ${{ steps.gate.outputs.source_sha }}
+      release_set: ${{ steps.gate.outputs.release_set }}
+    steps:
+      - name: Checkout requested source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: gate
+        name: Verify exact landed source and release set
+        env:
+          RELEASE_SHA: ${{ inputs.source_sha }}
+          RELEASE_SET: ${{ inputs.release_set }}
+          RELEASE_MODE: ${{ inputs.mode }}
+          RELEASE_KIND: cargo
+        run: .github/scripts/release-gate.sh
+
+  release-plan:
+    name: Validate exact cargo release plan
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      releases: ${{ steps.release_plz.outputs.releases }}
     env:
       GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || github.token }}
     steps:
-      - name: Checkout repository
+      - name: Checkout verified source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: ${{ needs.release-gate.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
         with:
           toolchain: 1.94.0
-      - name: Release published packages
+      - id: release_plz
+        name: Dry-run release-plz
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release
           config: .github/release-plz.toml
+          dry_run: true
+      - name: Verify exact release-plz output
+        env:
+          EXPECTED_RELEASE_SET: ${{ needs.release-gate.outputs.release_set }}
+          ACTUAL_RELEASES: ${{ steps.release_plz.outputs.releases }}
+        run: .github/scripts/release-plan.sh
+
+  publish:
+    name: Publish validated cargo release set
+    needs:
+      - release-gate
+      - release-plan
+    if: ${{ inputs.mode == 'publish' && github.repository_owner == 'LioRael' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN || github.token }}
+    steps:
+      - name: Checkout verified source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.release-gate.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
+        with:
+          toolchain: 1.94.0
+      - id: release_plz
+        name: Publish release-plz set
+        uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
+        with:
+          command: release
+          config: .github/release-plz.toml
+      - name: Verify published release set
+        env:
+          EXPECTED_RELEASE_SET: ${{ needs.release-gate.outputs.release_set }}
+          ACTUAL_RELEASES: ${{ steps.release_plz.outputs.releases }}
+        run: .github/scripts/release-plan.sh

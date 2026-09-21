@@ -1,53 +1,119 @@
 name: Release npm package
 
 on:
-  push:
-    tags:
-      - "lenso-contract-runtime-ts-v*"
-      - "lenso-process-protocol-ts-v*"
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full 40-character commit SHA already reachable from main.
+        required: true
+        type: string
+      package_name:
+        description: npm package to release.
+        required: true
+        type: choice
+        options:
+          - '@lenso/contract-runtime'
+          - '@lenso/process-protocol'
+      package_version:
+        description: Exact package version at source_sha.
+        required: true
+        type: string
+      mode:
+        description: Package and simulate the release, or publish it.
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - publish
 
 permissions: {}
 
+concurrency:
+  group: release-npm-${{ inputs.source_sha }}-${{ inputs.package_name }}
+  cancel-in-progress: false
+
 jobs:
-  publish:
-    name: Publish selected npm package
+  release-gate:
+    name: Verify landed npm release source
+    if: ${{ github.repository_owner == 'LioRael' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      id-token: write
+    outputs:
+      source_sha: ${{ steps.gate.outputs.source_sha }}
+      release_set: ${{ steps.gate.outputs.release_set }}
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout requested source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - uses: oven-sh/setup-bun@v2
+      - id: release_set
+        name: Build exact npm release set
+        env:
+          PACKAGE_NAME: ${{ inputs.package_name }}
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+        run: |
+          release_set="$(jq -cn --arg package_name "$PACKAGE_NAME" --arg version "$PACKAGE_VERSION" '[{package_name: $package_name, version: $version}]')"
+          printf 'release_set=%s\n' "$release_set" >> "$GITHUB_OUTPUT"
+      - id: gate
+        name: Verify exact landed source and package version
+        env:
+          RELEASE_SHA: ${{ inputs.source_sha }}
+          RELEASE_SET: ${{ steps.release_set.outputs.release_set }}
+          RELEASE_MODE: ${{ inputs.mode }}
+          RELEASE_KIND: npm
+        run: .github/scripts/release-gate.sh
+
+  verify:
+    name: Package selected npm release
+    needs: release-gate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout verified source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.release-gate.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
-      - uses: actions/setup-node@v6
+      - name: Install Node.js
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - name: Select package from release tag
+      - name: Select verified package
+        env:
+          PACKAGE_NAME: ${{ inputs.package_name }}
         run: |
-          case "$GITHUB_REF_NAME" in
-            lenso-contract-runtime-ts-v*)
-              echo "PACKAGE_DIR=packages/lenso-contract-runtime" >> "$GITHUB_ENV"
-              echo "TAG_PREFIX=lenso-contract-runtime-ts-v" >> "$GITHUB_ENV"
+          case "$PACKAGE_NAME" in
+            @lenso/contract-runtime)
+              echo 'PACKAGE_DIR=packages/lenso-contract-runtime' >> "$GITHUB_ENV"
               ;;
-            lenso-process-protocol-ts-v*)
-              echo "PACKAGE_DIR=packages/lenso-process-protocol" >> "$GITHUB_ENV"
-              echo "TAG_PREFIX=lenso-process-protocol-ts-v" >> "$GITHUB_ENV"
+            @lenso/process-protocol)
+              echo 'PACKAGE_DIR=packages/lenso-process-protocol' >> "$GITHUB_ENV"
               ;;
-            *) exit 1 ;;
+            *)
+              echo "unsupported package: $PACKAGE_NAME" >&2
+              exit 1
+              ;;
           esac
-      - name: Verify release tag
-        run: |
-          package_version="$(node -p "require('./${PACKAGE_DIR}/package.json').version")"
-          test "$GITHUB_REF_NAME" = "${TAG_PREFIX}${package_version}"
       - name: Install workspace
         run: bun install --frozen-lockfile
-      - name: Verify package
+      - name: Verify selected package
+        env:
+          PACKAGE_VERSION: ${{ inputs.package_version }}
         run: |
+          actual_version="$(node -p "require('./${PACKAGE_DIR}/package.json').version")"
+          test "$actual_version" = "$PACKAGE_VERSION"
           bun run build
           bun run typecheck
           bun run package-smoke
@@ -56,5 +122,64 @@ jobs:
           test -n "$package_tarball"
           test -f "$RUNNER_TEMP/$package_tarball"
           echo "PACKAGE_TARBALL=$RUNNER_TEMP/$package_tarball" >> "$GITHUB_ENV"
-      - name: Publish package
+      - name: Simulate npm publish
+        if: ${{ inputs.mode == 'dry-run' }}
+        run: npm publish "$PACKAGE_TARBALL" --access public --dry-run
+
+  publish:
+    name: Publish validated npm package
+    needs:
+      - release-gate
+      - verify
+    if: ${{ inputs.mode == 'publish' && github.repository_owner == 'LioRael' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout verified source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ needs.release-gate.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Select verified package
+        env:
+          PACKAGE_NAME: ${{ inputs.package_name }}
+        run: |
+          case "$PACKAGE_NAME" in
+            @lenso/contract-runtime)
+              echo 'PACKAGE_DIR=packages/lenso-contract-runtime' >> "$GITHUB_ENV"
+              ;;
+            @lenso/process-protocol)
+              echo 'PACKAGE_DIR=packages/lenso-process-protocol' >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "unsupported package: $PACKAGE_NAME" >&2
+              exit 1
+              ;;
+          esac
+      - name: Package verified source
+        env:
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+        run: |
+          actual_version="$(node -p "require('./${PACKAGE_DIR}/package.json').version")"
+          test "$actual_version" = "$PACKAGE_VERSION"
+          bun install --frozen-lockfile
+          bun run build
+          package_tarball="$(npm pack --json --ignore-scripts "./${PACKAGE_DIR}" --pack-destination "$RUNNER_TEMP" | jq -r '.[0].filename')"
+          test -n "$package_tarball"
+          test -f "$RUNNER_TEMP/$package_tarball"
+          echo "PACKAGE_TARBALL=$RUNNER_TEMP/$package_tarball" >> "$GITHUB_ENV"
+      - name: Publish npm package
         run: npm publish "$PACKAGE_TARBALL" --access public --provenance
