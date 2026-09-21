@@ -137,6 +137,19 @@ jobs_payload="$(
   gh api --paginate --slurp \
     "repos/${GITHUB_REPOSITORY}/actions/runs/${ci_run_id}/attempts/${ci_run_attempt}/jobs?per_page=100"
 )" || fail "could not read jobs for CI run ${ci_run_id}"
+quality_count="$(
+  jq --arg sha "$source_sha" --argjson attempt "$ci_run_attempt" '
+    [
+      .[]?.jobs[]?
+      | select(
+          .name == "quality"
+          and .head_sha == $sha
+          and .run_attempt == $attempt
+        )
+    ]
+    | length
+  ' <<<"$jobs_payload"
+)"
 quality_success="$(
   jq --arg sha "$source_sha" --argjson attempt "$ci_run_attempt" '
     [
@@ -152,7 +165,7 @@ quality_success="$(
     | length
   ' <<<"$jobs_payload"
 )"
-[[ "$quality_success" == "1" ]] ||
+[[ "$quality_count" == "1" && "$quality_success" == "1" ]] ||
   fail "exact CI run ${ci_run_id} attempt ${ci_run_attempt} does not contain one successful quality job for source_sha"
 
 printf 'Release gate passed for %s\n' "$source_sha"
