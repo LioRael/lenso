@@ -197,6 +197,9 @@ while (( ${#completed_packages[@]} < ${#packages[@]} )); do
     package_target="$scratch/$package"
     (
       cd "$source_root"
+      # The archived source lock was validated before this loop. Publishing
+      # rewrites path dependencies to registry identities as predecessors
+      # become visible, so this disposable package step must not freeze it.
       cargo package --no-verify --registry crates-io --target-dir "$package_target" -p "$package"
     ) || fail "could not package ${package}@${version} from the exact release source"
     artifact="$package_target/package/$package-$version.crate"

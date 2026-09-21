@@ -109,7 +109,7 @@ for package in "${packages[@]}"; do
 done
 (
   cd "$source_root"
-  cargo package --no-verify --registry crates-io --target-dir "$package_target" "${package_args[@]}"
+  cargo package --locked --no-verify --registry crates-io --target-dir "$package_target" "${package_args[@]}"
 ) || fail "could not package the exact cohort for crates.io"
 
 for index in "${!packages[@]}"; do
