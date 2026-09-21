@@ -65,11 +65,12 @@ pub use configuration_authority::{
     propose_plugin_root_changes, publish_instance_configuration, publish_plugin_root_changes,
 };
 pub use configuration_snapshot::{
-    FilePluginConfigurationSnapshotSource, PluginConfigurationSnapshotAuthorization,
+    FilePluginConfigurationSnapshotSource, HttpsPluginConfigurationSnapshotSource,
+    PluginConfigurationSnapshotAuthorization, PluginConfigurationSnapshotCursor,
     PluginConfigurationSnapshotIntent, PluginConfigurationSnapshotObjectScope,
-    PluginConfigurationSnapshotPublicationState, PluginConfigurationSnapshotReconciliation,
-    VersionedPluginConfiguration, VersionedPluginConfigurationSnapshot,
-    propose_versioned_plugin_configuration_snapshot,
+    PluginConfigurationSnapshotPoll, PluginConfigurationSnapshotPublicationState,
+    PluginConfigurationSnapshotReconciliation, VersionedPluginConfiguration,
+    VersionedPluginConfigurationSnapshot, propose_versioned_plugin_configuration_snapshot,
 };
 pub use selection_authority::{
     PluginSelectionAuthority, PluginSelectionPublication, set_instance_enabled_fenced,

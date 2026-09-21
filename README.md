@@ -277,6 +277,11 @@ snapshots without adding a second App graph. The Host supplies both the source
 identity and an object/top-level-field authorization; the document cannot
 authorize itself. `FilePluginConfigurationSnapshotSource` reads a bounded
 regular JSON file without following symlinks on Unix or reparse points on Windows.
+`HttpsPluginConfigurationSnapshotSource` polls one Host-admitted HTTPS origin
+with public-DNS enforcement, redirects and environment proxies disabled,
+bounded identity responses, and optional ETag/HTTP 304 revalidation. Its cursor
+binds the ETag to the exact endpoint and Host source identity; it cannot be
+reused for another source.
 `propose_versioned_plugin_configuration_snapshot` routes every authorized entry
 through the existing typed Plugin Root proposal, Host admission, and revision
 checks without mutating the Root.
@@ -289,19 +294,22 @@ recovery can distinguish not-yet-published from crash-after-publication. Promote
 it to active Host state only after the resulting App Generation becomes active.
 An external revision whose merged values already match the Root is reported as
 `NoRootChange` and needs no Root publication.
-Older revisions, reused revision numbers with different content, changed sources,
-invalid Plugin values,
-and local Root drift fail closed. Package fields marked `x-lenso-sensitive`
+Older revisions, reused revision numbers with different content, changed
+sources, invalid Plugin values, and local Root drift fail closed. Package fields
+marked `x-lenso-sensitive`
 accept only `{ secret_ref = "..." }`; secret material remains with the Host's
 secret provider and is not echoed by rejection diagnostics. File publication,
 App Generation switching, and upstream source acknowledgement are separate
 operations rather than a cross-system atomic write.
+Transport failure returns no snapshot or acknowledgement and never mutates the
+Root. The Host retains the last accepted intent/active Generation and may retry
+the same source-bound cursor after connectivity returns.
 
 This first source adapter is deliberately single-source and upsert-only: a
 missing object does not delete prior local configuration, and a Root intent is
 not shared across independently versioned sources. Multi-source ownership,
-explicit removal, remote polling/subscription, and active-generation state are
-separate lifecycle work rather than implied by this API.
+explicit removal, push subscriptions, and active-generation state are separate
+lifecycle work rather than implied by this API.
 
 ## Limits and trust
 

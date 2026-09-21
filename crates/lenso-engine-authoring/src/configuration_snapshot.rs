@@ -11,12 +11,15 @@ use std::{
 use anyhow::{Context as _, bail, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
+use url::Url;
 
 use crate::{
     MAX_CONFIGURATION_BYTES, PluginConfigurationApplication, PluginConfigurationAuthority,
     PluginConfigurationAuthoritySource, PluginConfigurationProposalStatus,
     PluginRootChangeProposal, PluginRootChangeSet, PluginRootConfigurationChange,
-    PluginRootRevision, validate_existing_plugin_id, validate_instance_filename,
+    PluginRootRevision,
+    archive_download::{checked_url, public_resolve, restricted_https_agent_builder},
+    validate_existing_plugin_id, validate_instance_filename,
 };
 
 const SNAPSHOT_SCHEMA: &str = "lenso.plugin-configuration-snapshot.v1";
@@ -319,16 +322,19 @@ impl FilePluginConfigurationSnapshotSource {
         );
         let document: FileSnapshotDocument =
             serde_json::from_slice(&bytes).context("parse configuration snapshot JSON")?;
-        ensure!(
-            document.schema == SNAPSHOT_SCHEMA,
-            "unsupported configuration snapshot schema"
-        );
-        VersionedPluginConfigurationSnapshot::new(
-            self.source.clone(),
-            document.revision,
-            document.configurations,
-        )
+        snapshot_from_document(self.source.clone(), document)
     }
+}
+
+fn snapshot_from_document(
+    source: PluginConfigurationAuthoritySource,
+    document: FileSnapshotDocument,
+) -> anyhow::Result<VersionedPluginConfigurationSnapshot> {
+    ensure!(
+        document.schema == SNAPSHOT_SCHEMA,
+        "unsupported configuration snapshot schema"
+    );
+    VersionedPluginConfigurationSnapshot::new(source, document.revision, document.configurations)
 }
 
 #[cfg(unix)]
@@ -348,6 +354,248 @@ fn open_regular_snapshot(path: &Path) -> anyhow::Result<fs::File> {
         path.display()
     );
     Ok(file)
+}
+
+/// One explicitly admitted HTTPS endpoint for polling versioned snapshots.
+///
+/// Production polling rejects redirects, proxies, credentials, non-HTTPS URLs,
+/// and private or ambiguous DNS results. The document still passes through the
+/// same Host authorization and proposal path as file snapshots.
+#[derive(Clone, Debug)]
+pub struct HttpsPluginConfigurationSnapshotSource {
+    url: Url,
+    source: PluginConfigurationAuthoritySource,
+    admitted_origins: BTreeSet<String>,
+}
+
+impl HttpsPluginConfigurationSnapshotSource {
+    pub fn new(
+        url: &str,
+        source: PluginConfigurationAuthoritySource,
+        admitted_origins: &[String],
+    ) -> anyhow::Result<Self> {
+        ensure!(
+            !admitted_origins.is_empty() && admitted_origins.len() <= 16,
+            "expected 1 to 16 configuration snapshot origins"
+        );
+        let mut origins = BTreeSet::new();
+        for origin in admitted_origins {
+            let origin = checked_url(origin, "configuration snapshot")?;
+            ensure!(
+                origin.path() == "/" && origin.query().is_none(),
+                "configuration snapshot policy requires an origin, not a path or query"
+            );
+            origins.insert(origin.origin().ascii_serialization());
+        }
+        let url = checked_url(url, "configuration snapshot")?;
+        ensure!(
+            origins.contains(&url.origin().ascii_serialization()),
+            "configuration snapshot origin is not admitted by the Host"
+        );
+        Ok(Self {
+            url,
+            source,
+            admitted_origins: origins,
+        })
+    }
+
+    pub fn url(&self) -> &Url {
+        &self.url
+    }
+
+    pub const fn source(&self) -> &PluginConfigurationAuthoritySource {
+        &self.source
+    }
+
+    pub fn poll(
+        &self,
+        previous: Option<&PluginConfigurationSnapshotCursor>,
+    ) -> anyhow::Result<PluginConfigurationSnapshotPoll> {
+        let agent = restricted_https_agent_builder()
+            .resolver(public_resolve)
+            .build();
+        self.poll_with_agent(previous, &agent)
+    }
+
+    fn poll_with_agent(
+        &self,
+        previous: Option<&PluginConfigurationSnapshotCursor>,
+        agent: &ureq::Agent,
+    ) -> anyhow::Result<PluginConfigurationSnapshotPoll> {
+        ensure!(
+            self.admitted_origins
+                .contains(&self.url.origin().ascii_serialization()),
+            "configuration snapshot origin is not admitted by the Host"
+        );
+        if let Some(cursor) = previous {
+            cursor.validate_for(self)?;
+        }
+        let mut request = agent
+            .get(self.url.as_str())
+            .set("Accept", "application/json")
+            .set("Accept-Encoding", "identity");
+        if let Some(cursor) = previous {
+            request = request.set("If-None-Match", cursor.etag());
+        }
+        let response = match request.call() {
+            Ok(response) if response.status() == 304 => {
+                return not_modified_poll(previous, &response);
+            }
+            Ok(response) => response,
+            Err(ureq::Error::Status(304, response)) => {
+                return not_modified_poll(previous, &response);
+            }
+            Err(_) => bail!("configuration snapshot HTTPS request failed"),
+        };
+        ensure!(
+            response.status() == 200,
+            "configuration snapshot response must be HTTP 200 or 304"
+        );
+        ensure!(
+            response
+                .header("Content-Encoding")
+                .is_none_or(|value| value.eq_ignore_ascii_case("identity")),
+            "encoded configuration snapshot responses are not accepted"
+        );
+        if let Some(length) = response.header("Content-Length") {
+            ensure!(
+                length
+                    .parse::<u64>()
+                    .is_ok_and(|length| length <= MAX_SNAPSHOT_BYTES),
+                "configuration snapshot response length exceeds its bound"
+            );
+        }
+        let cursor = response
+            .header("ETag")
+            .map(|value| {
+                validate_etag(value)?;
+                Ok::<_, anyhow::Error>(PluginConfigurationSnapshotCursor {
+                    endpoint: self.url.as_str().to_owned(),
+                    source_kind: self.source.kind().to_owned(),
+                    source_reference: self.source.reference().to_owned(),
+                    etag: value.to_owned(),
+                })
+            })
+            .transpose()?;
+        let mut bytes = Vec::new();
+        response
+            .into_reader()
+            .take(MAX_SNAPSHOT_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .context("read configuration snapshot HTTPS response")?;
+        ensure!(
+            u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_SNAPSHOT_BYTES,
+            "configuration snapshot response exceeds {MAX_SNAPSHOT_BYTES} bytes"
+        );
+        let document: FileSnapshotDocument = serde_json::from_slice(&bytes)
+            .context("parse configuration snapshot HTTPS response")?;
+        Ok(PluginConfigurationSnapshotPoll::Updated {
+            snapshot: snapshot_from_document(self.source.clone(), document)?,
+            cursor,
+        })
+    }
+}
+
+fn not_modified_poll(
+    previous: Option<&PluginConfigurationSnapshotCursor>,
+    response: &ureq::Response,
+) -> anyhow::Result<PluginConfigurationSnapshotPoll> {
+    let previous =
+        previous.context("configuration snapshot returned HTTP 304 without a previous ETag")?;
+    if let Some(returned) = response.header("ETag") {
+        validate_etag(returned)?;
+        ensure!(
+            returned == previous.etag,
+            "configuration snapshot HTTP 304 changed its ETag"
+        );
+    }
+    Ok(PluginConfigurationSnapshotPoll::NotModified {
+        cursor: previous.clone(),
+    })
+}
+
+/// Revalidation cursor bound to one exact endpoint and Host source identity.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginConfigurationSnapshotCursor {
+    endpoint: String,
+    source_kind: String,
+    source_reference: String,
+    etag: String,
+}
+
+impl PluginConfigurationSnapshotCursor {
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    pub fn source(&self) -> anyhow::Result<PluginConfigurationAuthoritySource> {
+        PluginConfigurationAuthoritySource::new(&self.source_kind, &self.source_reference)
+    }
+
+    pub fn etag(&self) -> &str {
+        &self.etag
+    }
+
+    fn validate_for(&self, source: &HttpsPluginConfigurationSnapshotSource) -> anyhow::Result<()> {
+        validate_etag(&self.etag)?;
+        ensure!(
+            self.endpoint == source.url.as_str()
+                && self.source_kind == source.source.kind()
+                && self.source_reference == source.source.reference(),
+            "configuration snapshot cursor belongs to a different source"
+        );
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum PluginConfigurationSnapshotPoll {
+    NotModified {
+        cursor: PluginConfigurationSnapshotCursor,
+    },
+    Updated {
+        snapshot: VersionedPluginConfigurationSnapshot,
+        cursor: Option<PluginConfigurationSnapshotCursor>,
+    },
+}
+
+impl PluginConfigurationSnapshotPoll {
+    pub fn etag(&self) -> Option<&str> {
+        self.cursor().map(PluginConfigurationSnapshotCursor::etag)
+    }
+
+    pub const fn cursor(&self) -> Option<&PluginConfigurationSnapshotCursor> {
+        match self {
+            Self::NotModified { cursor } => Some(cursor),
+            Self::Updated { cursor, .. } => cursor.as_ref(),
+        }
+    }
+
+    pub const fn snapshot(&self) -> Option<&VersionedPluginConfigurationSnapshot> {
+        match self {
+            Self::NotModified { .. } => None,
+            Self::Updated { snapshot, .. } => Some(snapshot),
+        }
+    }
+}
+
+fn validate_etag(etag: &str) -> anyhow::Result<()> {
+    ensure!(
+        !etag.is_empty() && etag.len() <= 512 && !etag.chars().any(char::is_control),
+        "configuration snapshot ETag is invalid"
+    );
+    let opaque = etag.strip_prefix("W/").unwrap_or(etag);
+    ensure!(
+        opaque.len() >= 2
+            && opaque.starts_with('"')
+            && opaque.ends_with('"')
+            && opaque[1..opaque.len() - 1]
+                .bytes()
+                .all(|byte| byte == 0x21 || (0x23..=0x7e).contains(&byte)),
+        "configuration snapshot ETag is invalid"
+    );
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -631,7 +879,14 @@ fn validate_sha256(value: &str, subject: &str) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{
+        fs,
+        io::Write as _,
+        net::TcpListener,
+        sync::{Arc, Mutex},
+        thread,
+        time::Duration,
+    };
 
     use lenso_app_plan::authoring::{
         HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
@@ -701,6 +956,96 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
+    }
+
+    struct PollServer {
+        url: String,
+        agent: ureq::Agent,
+        requests: Arc<Mutex<Vec<String>>>,
+        worker: thread::JoinHandle<()>,
+    }
+
+    fn serve_snapshot_poll(bytes: Vec<u8>) -> PollServer {
+        let certificate =
+            rcgen::generate_simple_self_signed(vec!["configuration.example".into()]).unwrap();
+        let cert = certificate.cert.der().clone();
+        let key =
+            rustls::pki_types::PrivatePkcs8KeyDer::from(certificate.signing_key.serialize_der());
+        let server_config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert.clone()], key.into())
+        .unwrap();
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(cert).unwrap();
+        let client_config = rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let url = format!("https://configuration.example:{}/snapshot", address.port());
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let captured = Arc::clone(&requests);
+        let worker = thread::spawn(move || {
+            for request_index in 0..2 {
+                let (socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                socket
+                    .set_write_timeout(Some(Duration::from_secs(2)))
+                    .unwrap();
+                let mut stream = rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(Arc::new(server_config.clone())).unwrap(),
+                    socket,
+                );
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n") && request.len() < 8_192 {
+                    let mut byte = [0];
+                    stream.read_exact(&mut byte).unwrap();
+                    request.push(byte[0]);
+                }
+                captured
+                    .lock()
+                    .unwrap()
+                    .push(String::from_utf8(request).unwrap());
+                if request_index == 0 {
+                    write!(
+                        stream,
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nETag: \"revision-7\"\r\nConnection: close\r\n\r\n",
+                        bytes.len()
+                    )
+                    .unwrap();
+                    stream.write_all(&bytes).unwrap();
+                } else {
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 304 Not Modified\r\nETag: \"revision-7\"\r\nConnection: close\r\n\r\n",
+                        )
+                        .unwrap();
+                }
+                stream.flush().unwrap();
+                stream.conn.send_close_notify();
+                let _ = stream.flush();
+            }
+        });
+        let agent = restricted_https_agent_builder()
+            .resolver(move |_: &str| Ok(vec![address]))
+            .tls_config(Arc::new(client_config))
+            .build();
+        PollServer {
+            url,
+            agent,
+            requests,
+            worker,
+        }
     }
 
     fn publish_snapshot(
@@ -813,6 +1158,123 @@ mod tests {
                 .publication_state(authority.inspect().unwrap().revision())
                 .unwrap(),
             PluginConfigurationSnapshotPublicationState::NoRootChange
+        );
+    }
+
+    #[test]
+    fn https_poll_fetches_one_version_and_uses_etag_for_not_modified() {
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema": SNAPSHOT_SCHEMA,
+            "revision": 7,
+            "configurations": [{
+                "plugin_id": "example.agent",
+                "instance_key": "default",
+                "toml": "greeting = \"remote\"\n"
+            }]
+        }))
+        .unwrap();
+        let server = serve_snapshot_poll(bytes);
+        let origin = Url::parse(&server.url)
+            .unwrap()
+            .origin()
+            .ascii_serialization();
+        let source = HttpsPluginConfigurationSnapshotSource::new(
+            &server.url,
+            PluginConfigurationAuthoritySource::new("https_poll", "production").unwrap(),
+            &[origin],
+        )
+        .unwrap();
+
+        let root = fixture_root();
+        let authority = LocalPluginRootAuthority::new(root.path());
+        let initial_root_revision = authority.inspect().unwrap().revision().as_str().to_owned();
+        let closed_listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let closed_address = closed_listener.local_addr().unwrap();
+        drop(closed_listener);
+        let failing_agent = restricted_https_agent_builder()
+            .resolver(move |_: &str| Ok(vec![closed_address]))
+            .timeout(Duration::from_millis(100))
+            .build();
+        assert!(source.poll_with_agent(None, &failing_agent).is_err());
+        assert_eq!(
+            authority.inspect().unwrap().revision().as_str(),
+            initial_root_revision
+        );
+
+        let updated = source.poll_with_agent(None, &server.agent).unwrap();
+        assert_eq!(updated.etag(), Some("\"revision-7\""));
+        assert_eq!(updated.snapshot().unwrap().revision(), 7);
+        let remote_authorization =
+            PluginConfigurationSnapshotAuthorization::new(
+                source.source().clone(),
+                [PluginConfigurationSnapshotObjectScope::new(
+                    "example.agent",
+                    "default",
+                    ["greeting"],
+                )
+                .unwrap()],
+            )
+            .unwrap();
+        let reviewed = propose_versioned_plugin_configuration_snapshot(
+            &authority,
+            &remote_authorization,
+            None,
+            updated.snapshot().unwrap(),
+        )
+        .unwrap();
+        let intent = reviewed.intent().clone();
+        authority
+            .publish_changes(reviewed.proposal().unwrap())
+            .unwrap();
+        assert_eq!(
+            intent
+                .publication_state(authority.inspect().unwrap().revision())
+                .unwrap(),
+            PluginConfigurationSnapshotPublicationState::Published
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("plugins/example.agent/default.toml")).unwrap(),
+            "greeting = \"remote\"\n"
+        );
+        let published_root_revision = authority.inspect().unwrap().revision().as_str().to_owned();
+        assert!(
+            source
+                .poll_with_agent(updated.cursor(), &failing_agent)
+                .is_err()
+        );
+        assert_eq!(
+            authority.inspect().unwrap().revision().as_str(),
+            published_root_revision
+        );
+        let other_source = HttpsPluginConfigurationSnapshotSource::new(
+            &server.url,
+            PluginConfigurationAuthoritySource::new("https_poll", "other").unwrap(),
+            &[Url::parse(&server.url)
+                .unwrap()
+                .origin()
+                .ascii_serialization()],
+        )
+        .unwrap();
+        assert!(
+            other_source
+                .poll_with_agent(updated.cursor(), &failing_agent)
+                .unwrap_err()
+                .to_string()
+                .contains("different source")
+        );
+        let unchanged = source
+            .poll_with_agent(updated.cursor(), &server.agent)
+            .unwrap();
+        assert!(unchanged.snapshot().is_none());
+        assert_eq!(unchanged.etag(), Some("\"revision-7\""));
+
+        server.worker.join().unwrap();
+        let requests = server.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests[1]
+                .to_ascii_lowercase()
+                .contains("if-none-match: \"revision-7\"")
         );
     }
 

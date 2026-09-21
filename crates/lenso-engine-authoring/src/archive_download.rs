@@ -24,7 +24,7 @@ impl PluginArchiveDownloadPolicy {
         );
         let mut allowed = BTreeSet::new();
         for origin in origins {
-            let url = checked_url(origin)?;
+            let url = checked_url(origin, "archive")?;
             ensure!(
                 url.path() == "/" && url.query().is_none(),
                 "archive policy requires an origin, not a path or query"
@@ -43,7 +43,9 @@ impl PluginArchiveDownloadPolicy {
         transport: &PluginArchiveIdentity,
         release: &PluginReleaseIdentity,
     ) -> anyhow::Result<VerifiedPluginArchive> {
-        let agent = agent_builder().resolver(public_resolve).build();
+        let agent = restricted_https_agent_builder()
+            .resolver(public_resolve)
+            .build();
         self.download_with_agent(url, transport, release, &agent)
     }
 
@@ -54,7 +56,7 @@ impl PluginArchiveDownloadPolicy {
         release: &PluginReleaseIdentity,
         agent: &ureq::Agent,
     ) -> anyhow::Result<VerifiedPluginArchive> {
-        let url = checked_url(input)?;
+        let url = checked_url(input, "archive")?;
         ensure!(
             self.origins.contains(&url.origin().ascii_serialization()),
             "archive origin is not admitted by the target"
@@ -101,7 +103,7 @@ impl PluginArchiveDownloadPolicy {
     }
 }
 
-fn agent_builder() -> ureq::AgentBuilder {
+pub(crate) fn restricted_https_agent_builder() -> ureq::AgentBuilder {
     ureq::AgentBuilder::new()
         .https_only(true)
         .redirects(0)
@@ -112,10 +114,10 @@ fn agent_builder() -> ureq::AgentBuilder {
         .timeout(Duration::from_secs(60))
 }
 
-fn checked_url(input: &str) -> anyhow::Result<Url> {
+pub(crate) fn checked_url(input: &str, subject: &str) -> anyhow::Result<Url> {
     ensure!(
         input.len() <= 2048 && !input.chars().any(char::is_control),
-        "archive URL exceeds bounds or contains controls"
+        "{subject} URL exceeds bounds or contains controls"
     );
     let url = Url::parse(input).context("invalid archive URL")?;
     ensure!(
@@ -124,7 +126,7 @@ fn checked_url(input: &str) -> anyhow::Result<Url> {
             && url.username().is_empty()
             && url.password().is_none()
             && url.fragment().is_none(),
-        "expected credential-free HTTPS archive URL"
+        "expected credential-free HTTPS {subject} URL"
     );
     if let Some(host) = url.host() {
         let address = match host {
@@ -133,13 +135,13 @@ fn checked_url(input: &str) -> anyhow::Result<Url> {
             url::Host::Domain(_) => None,
         };
         if address.is_some_and(|ip| !public_address(ip)) {
-            bail!("archive URL names a non-public network address");
+            bail!("{subject} URL names a non-public network address");
         }
     }
     Ok(url)
 }
 
-fn public_resolve(netloc: &str) -> io::Result<Vec<SocketAddr>> {
+pub(crate) fn public_resolve(netloc: &str) -> io::Result<Vec<SocketAddr>> {
     let addresses: Vec<_> = netloc.to_socket_addrs()?.take(65).collect();
     checked_addresses(addresses)
 }
@@ -354,7 +356,7 @@ mod tests {
         });
         Server {
             url,
-            agent: agent_builder()
+            agent: restricted_https_agent_builder()
                 .resolver(move |_: &str| Ok(vec![addr]))
                 .tls_config(Arc::new(client))
                 .timeout(Duration::from_millis(300))
@@ -414,7 +416,7 @@ mod tests {
         // the ephemeral test CA merely because its origin was allowlisted.
         let server = serve("200 OK", "", b"archive".to_vec(), Duration::ZERO);
         let port = Url::parse(&server.url).unwrap().port().unwrap();
-        let untrusted_agent = agent_builder()
+        let untrusted_agent = restricted_https_agent_builder()
             .resolver(move |_: &str| Ok(vec![SocketAddr::from(([127, 0, 0, 1], port))]))
             .build();
         assert!(
