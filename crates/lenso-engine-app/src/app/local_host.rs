@@ -537,7 +537,7 @@ fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
     // Registry and local-path Endpoint development keep the historical
     // registry fallback. The generated Cargo lock still records the concrete
     // identity Cargo selected for that standalone local Host.
-    Ok(json!("=0.4.6"))
+    Ok(json!("=0.4.5"))
 }
 
 fn codec_name(capability: &str) -> anyhow::Result<String> {
@@ -881,5 +881,15 @@ mod tests {
             dependency["rev"],
             "c9cd15629b7d65d6f6cdc12113234acd85c89a89"
         );
+    }
+
+    #[test]
+    fn registry_endpoint_uses_the_published_ingress_release() {
+        let dependency = web_ingress_dependency(&json!({
+            "package": "lenso-capability-http-endpoint",
+            "version": "=0.3.2",
+        }))
+        .unwrap();
+        assert_eq!(dependency, json!("=0.4.5"));
     }
 }
