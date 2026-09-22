@@ -1,0 +1,143 @@
+{
+  "initialize": {
+    "api_version": 2,
+    "identity": {
+      "session": "session-1",
+      "plugin_instance": "consumer",
+      "plugin_generation": "7",
+      "artifact_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "contract_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "runtime_profile": "lenso.process-stdio@2",
+      "value_profile": "lenso-json-value-v1"
+    },
+    "config": { "locale": "en-US" },
+    "required_declarations": [
+      {
+        "requirement_id": "primary_store",
+        "capability_id": "example.store@1",
+        "descriptor_version": "1.0.0",
+        "descriptor_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cardinality": "one"
+      },
+      {
+        "requirement_id": "secondary_store",
+        "capability_id": "example.store@1",
+        "descriptor_version": "1.0.0",
+        "descriptor_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "cardinality": "optional"
+      }
+    ],
+    "routes": [
+      {
+        "route_id": "route-primary",
+        "requirement_id": "primary_store",
+        "capability_id": "example.store@1",
+        "descriptor_version": "1.0.0",
+        "descriptor_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "provider_instance": "store-a",
+        "provider_order": 0
+      },
+      {
+        "route_id": "route-secondary",
+        "requirement_id": "secondary_store",
+        "capability_id": "example.store@1",
+        "descriptor_version": "1.0.0",
+        "descriptor_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "provider_instance": "store-b",
+        "provider_order": 0
+      }
+    ],
+    "provided_endpoints": [
+      {
+        "endpoint_id": "echo",
+        "capability_id": "example.echo@1",
+        "descriptor_version": "1.0.0",
+        "descriptor_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    ],
+    "limits": {
+      "max_frame_bytes": 1048576,
+      "max_active_invocations": 32,
+      "max_active_outbound_calls": 32,
+      "max_queued_calls": 32,
+      "max_unfinished_executions": 32,
+      "max_retired_ids": 1024
+    }
+  },
+  "construct": {
+    "session": "session-1",
+    "lifecycle_scope_id": "lifecycle-1",
+    "remaining_budget_nanos": "1000000"
+  },
+  "constructed": {
+    "session": "session-1",
+    "lifecycle_scope_id": "lifecycle-1",
+    "outcome": { "kind": "constructed" }
+  },
+  "invoke": {
+    "session": "session-1",
+    "correlation_id": "1",
+    "endpoint_id": "echo",
+    "capability_id": "example.echo@1",
+    "descriptor_version": "1.0.0",
+    "descriptor_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "operation": "round_trip",
+    "scope": {
+      "scope_id": "scope-1",
+      "parent_scope_id": null,
+      "remaining_budget_nanos": "900000",
+      "permissions": ["data.read"],
+      "extensions": []
+    },
+    "payload": { "text": "hello" }
+  },
+  "result": {
+    "session": "session-1",
+    "correlation_id": "1",
+    "outcome": { "kind": "success", "value": { "text": "hello" } }
+  },
+  "outbound_call": {
+    "session": "session-1",
+    "correlation_id": "2",
+    "requirement_id": "primary_store",
+    "route_id": "route-primary",
+    "operation": "get",
+    "scope": {
+      "scope_id": "scope-2",
+      "parent_scope_id": "scope-1",
+      "remaining_budget_nanos": "800000",
+      "permissions": ["data.read"],
+      "extensions": []
+    },
+    "payload": { "key": "a" }
+  },
+  "cancel": {
+    "session": "session-1",
+    "scope_id": "scope-1",
+    "correlation_id": "1",
+    "reason": "caller cancelled"
+  },
+  "cancel_ack": {
+    "session": "session-1",
+    "scope_id": "scope-1",
+    "correlation_id": "1",
+    "accepted": true
+  },
+  "settlement": {
+    "session": "session-1",
+    "scope_id": "scope-1",
+    "correlation_id": "1",
+    "state": "cancelled"
+  },
+  "stop": {
+    "session": "session-1",
+    "cleanup_scope_id": "cleanup-1",
+    "remaining_budget_nanos": "500000"
+  },
+  "stopped": {
+    "session": "session-1",
+    "cleanup_scope_id": "cleanup-1",
+    "hook": "completed",
+    "diagnostics": []
+  }
+}

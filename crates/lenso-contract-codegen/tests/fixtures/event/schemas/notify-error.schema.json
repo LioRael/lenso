@@ -1,0 +1,19 @@
+{
+  "oneOf": [
+    { "const": "subscriber_failed" },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "const": "subscriber_rejected" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason"],
+          "properties": { "reason": { "type": "string" } }
+        }
+      }
+    }
+  ]
+}

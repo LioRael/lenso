@@ -1,0 +1,19 @@
+{
+  "oneOf": [
+    { "const": "room_closed" },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "const": "rate_limited" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["retry_after_ms"],
+          "properties": { "retry_after_ms": { "type": "integer" } }
+        }
+      }
+    }
+  ]
+}

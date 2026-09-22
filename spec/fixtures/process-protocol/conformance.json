@@ -1,0 +1,36 @@
+{
+  "secret_hex": "0101010101010101010101010101010101010101010101010101010101010101",
+  "identity": {
+    "protocol_profile": "lenso-process-jsonrpc-http-v1",
+    "value_profile": "lenso-json-value-v1",
+    "plugin_instance": "tool-provider",
+    "plugin_generation": "7",
+    "generation_spec_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "effective_host_grant_set_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "interaction_profiles": ["provide-request-v1"],
+    "provided_capabilities": [{
+      "capability_id": "lenso.agent.tool-provider@1",
+      "descriptor_version": "1.0.0",
+      "descriptor_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "operations": [{ "operation": "catalog", "interaction": "request" }]
+    }],
+    "outbound_bindings": [],
+    "peer_limits": {
+      "max_http_body_bytes": 65536,
+      "max_control_http_body_bytes": 16384,
+      "max_concurrent_requests": 32,
+      "child_request_queue_capacity": 32,
+      "max_retired_correlation_ids": 65536,
+      "control_queue_capacity": 32
+    }
+  },
+  "host_nonce": "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+  "session": "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+  "canonical_payload": "{\"host_nonce\":\"AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI\",\"identity\":{\"artifact_digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"effective_host_grant_set_digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"generation_spec_digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"interaction_profiles\":[\"provide-request-v1\"],\"outbound_bindings\":[],\"peer_limits\":{\"child_request_queue_capacity\":32,\"control_queue_capacity\":32,\"max_concurrent_requests\":32,\"max_control_http_body_bytes\":16384,\"max_http_body_bytes\":65536,\"max_retired_correlation_ids\":65536},\"plugin_generation\":\"7\",\"plugin_instance\":\"tool-provider\",\"protocol_profile\":\"lenso-process-jsonrpc-http-v1\",\"provided_capabilities\":[{\"capability_id\":\"lenso.agent.tool-provider@1\",\"descriptor_digest\":\"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"descriptor_version\":\"1.0.0\",\"operations\":[{\"interaction\":\"request\",\"operation\":\"catalog\"}]}],\"value_profile\":\"lenso-json-value-v1\"}}",
+  "handshake_digest_hex": "17c2f52ad8dd8f9688d402b15a5a8adf385a05d77086a70f99bc6fc74868e53a",
+  "host_message_hex": "6c656e736f2d70726f636573732d686f73742d76310017c2f52ad8dd8f9688d402b15a5a8adf385a05d77086a70f99bc6fc74868e53a",
+  "child_message_hex": "6c656e736f2d70726f636573732d6368696c642d76310017c2f52ad8dd8f9688d402b15a5a8adf385a05d77086a70f99bc6fc74868e53a0303030303030303030303030303030303030303030303030303030303030303",
+  "host_proof": "UOywt3k_UzcvdUBkoSzvSpJuGksLeGKH8-8F-d4Zp6g",
+  "child_proof": "eZNKOEItNaUr5l5Vx7W97PIwNer7J7Q_Gmuy0dbbdEM"
+}

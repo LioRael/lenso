@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["message", "sequence"],
+  "properties": {
+    "message": { "type": "string" },
+    "sequence": { "type": "integer" }
+  }
+}

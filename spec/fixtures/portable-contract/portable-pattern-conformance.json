@@ -1,0 +1,149 @@
+[
+  {
+    "name": "digest",
+    "pattern": "^sha256:[0-9a-f]{64}$",
+    "sample": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "accepted": true
+  },
+  { "name": "decimal", "pattern": "^(0|[1-9][0-9]*)$", "sample": "10", "accepted": true },
+  {
+    "name": "token",
+    "pattern": "^[A-Za-z0-9._@/:-]{1,256}$",
+    "sample": "plugin/example:1",
+    "accepted": true
+  },
+  {
+    "name": "base64url-32",
+    "pattern": "^[A-Za-z0-9_-]{43}$",
+    "sample": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "accepted": true
+  },
+  {
+    "name": "request-id",
+    "pattern": "^[A-Za-z0-9._:-]+$",
+    "sample": "request:1",
+    "accepted": true
+  },
+  {
+    "name": "unicode-letters",
+    "pattern": "^\\p{Letter}+$",
+    "sample": "Καλημέρα",
+    "accepted": true
+  },
+  { "name": "path-prefix", "pattern": "^/", "sample": "/health", "accepted": true },
+  {
+    "name": "simple-repeated-group",
+    "pattern": "^(ab)+$",
+    "sample": "abab",
+    "accepted": true
+  },
+  {
+    "name": "fixed-inner-repetition",
+    "pattern": "^(a{2})+$",
+    "sample": "aaaa",
+    "accepted": true
+  },
+  {
+    "name": "branch-local-repetitions",
+    "pattern": "^(a+|b+)$",
+    "sample": "aaaa",
+    "accepted": true
+  },
+  {
+    "name": "anchored-group-alternation",
+    "pattern": "^(a|b)$",
+    "sample": "a",
+    "accepted": true
+  },
+  {
+    "name": "escaped-dollar-before-end-anchor",
+    "pattern": "^price:\\$$",
+    "sample": "price:$",
+    "accepted": true
+  },
+  {
+    "name": "empty-fixed-repetition",
+    "pattern": "^a{0}$",
+    "sample": "",
+    "accepted": false
+  },
+  {
+    "name": "nested-one-or-more",
+    "pattern": "^(a+)+$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "nested-zero-or-more",
+    "pattern": "^(a*)+$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "nested-variable-bounds",
+    "pattern": "^(a{1,3})+$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "nested-optional",
+    "pattern": "^(a?)+$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "repeated-ambiguous-alternation",
+    "pattern": "^(a|aa)+$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "adjacent-zero-or-more",
+    "pattern": "^a*a*$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "adjacent-one-or-more",
+    "pattern": "^a+a+$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "adjacent-hidden-repetitions",
+    "pattern": "^(?:a+)(?:a+)$",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "separated-variable-repetitions",
+    "pattern": "^a+ba+$",
+    "sample": "abaa",
+    "accepted": false
+  },
+  {
+    "name": "unanchored-repetition",
+    "pattern": "a+b",
+    "sample": "aaab",
+    "accepted": false
+  },
+  {
+    "name": "prefix-variable-repetition",
+    "pattern": "^a+",
+    "sample": "aaaa",
+    "accepted": false
+  },
+  {
+    "name": "top-level-alternation",
+    "pattern": "^a|b$",
+    "sample": "a",
+    "accepted": false
+  },
+  {
+    "name": "literal-dollar-prefix",
+    "pattern": "^price:\\$",
+    "sample": "price:$",
+    "accepted": true
+  },
+  { "name": "internal-anchor", "pattern": "^a$b", "sample": "ab", "accepted": false }
+]

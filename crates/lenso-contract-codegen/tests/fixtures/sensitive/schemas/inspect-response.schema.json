@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["assertion"],"properties":{"assertion":{"type":["object","null"],"properties":{"subject":{"type":"string"},"proof":{"type":"string","x-lenso-sensitive":true}},"required":["subject","proof"],"additionalProperties":false}},"additionalProperties":false}

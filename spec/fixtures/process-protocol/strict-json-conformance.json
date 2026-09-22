@@ -1,0 +1,56 @@
+[
+  {
+    "name": "duplicate-object-keys",
+    "wire": "{\"private-document-key\":1,\"private-document-key\":2}",
+    "accepted": false,
+    "forbidden_error_fragment": "private-document-key"
+  },
+  {
+    "name": "lone-high-surrogate",
+    "wire": "\"\\uD800\"",
+    "accepted": false,
+    "forbidden_error_fragment": "D800"
+  },
+  {
+    "name": "lone-low-surrogate",
+    "wire": "\"\\uDC00\"",
+    "accepted": false,
+    "forbidden_error_fragment": "DC00"
+  },
+  {
+    "name": "valid-surrogate-pair",
+    "wire": "\"\\uD83D\\uDE00\"",
+    "accepted": true,
+    "forbidden_error_fragment": null
+  },
+  {
+    "name": "positive-number-overflow",
+    "wire": "1e999",
+    "accepted": false,
+    "forbidden_error_fragment": null
+  },
+  {
+    "name": "negative-number-overflow",
+    "wire": "-1e999",
+    "accepted": false,
+    "forbidden_error_fragment": null
+  },
+  {
+    "name": "nesting-127-containers",
+    "wire": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+    "accepted": true,
+    "forbidden_error_fragment": null
+  },
+  {
+    "name": "nesting-128-containers",
+    "wire": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+    "accepted": false,
+    "forbidden_error_fragment": null
+  },
+  {
+    "name": "nesting-129-containers",
+    "wire": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[0]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+    "accepted": false,
+    "forbidden_error_fragment": null
+  }
+]
