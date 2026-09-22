@@ -1,0 +1,71 @@
+[package]
+name = "lenso-cli"
+version = "0.6.3"
+edition = "2024"
+license = "MIT"
+description = "Authoring CLI for Lenso Plugins and App intent."
+repository = "https://github.com/LioRael/lenso"
+homepage = "https://github.com/LioRael/lenso"
+rust-version = "1.94"
+categories = ["command-line-utilities", "development-tools"]
+keywords = ["cli", "authoring", "plugins", "app-plan"]
+include = [
+    "/src/**/*.rs",
+    "/contracts/*.json",
+    "/docs/migration-plugin-authoring.md",
+    "/docs/typescript-host-authoring.md",
+    "/docs/verified-plugin-archives.md",
+    "/docs/local-plugin-discovery.md",
+    "/docs/capability-authoring.md",
+    "/docs/convention-authoring.md",
+    "/docs/engine.md",
+    "/docs/execution-target-preflight.md",
+    "/README.md",
+    "/Cargo.toml",
+]
+
+[[bin]]
+name = "lenso"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[lib]
+name = "lenso_app_authoring"
+path = "src/lib.rs"
+
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:tokio", "dep:lenso-engine", "dep:lenso-engine-app", "dep:lenso-engine-markdown", "dep:lenso-engine-runtime"]
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4", features = ["derive", "string"], optional = true }
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "signal"], optional = true }
+lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.5" }
+lenso-engine-authoring = { path = "../lenso-engine-authoring", version = "=0.2.2" }
+lenso-engine = { path = "../lenso-engine", version = "=0.1.2", optional = true }
+lenso-engine-app = { path = "../lenso-engine-app", version = "=0.2.3", optional = true }
+lenso-engine-markdown = { path = "../lenso-engine-markdown", version = "=0.1.0", optional = true }
+lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "=0.1.2", optional = true }
+
+[dev-dependencies]
+lenso-bun-adapter = "=0.1.14"
+lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.5.1" }
+tempfile = "3.23"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+
+[target.'cfg(unix)'.dev-dependencies]
+nix = { version = "0.30", features = ["signal"] }

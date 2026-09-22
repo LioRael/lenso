@@ -1,0 +1,217 @@
+# lenso-cli
+
+The CLI for authoring Plugins and changing an App through its `plugins/`
+directory.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for fork, Issue, durable patch, review, and candidate-first landing guidance.
+
+## Install
+
+```sh
+npm install -g @lenso/cli
+# or
+cargo install lenso-cli
+```
+
+The Cargo and npm packages use independent version lines.
+
+## Process documents without an App
+
+The workspace implementation includes an embeddable convention Engine and
+optional processors:
+
+```sh
+lenso engine inspect --source ./content --markdown
+lenso engine run --source ./content --markdown
+```
+
+Adopt a local processor with `--plugin ./tools/engine-plugin.json`. See the
+[Engine guide](docs/engine.md) for the language-neutral protocol, library API,
+App compatibility, and the remaining self-hosting work. The implementation now lives in the independent `lenso-engine` repository;
+this checkout uses local path dependencies pending an authorized coordinated release.
+
+## Author one Plugin
+
+```sh
+lenso plugin new company.uppercase
+cd company.uppercase
+lenso plugin check
+lenso plugin dev --operation execute \
+  --request-json '{"name":"company.uppercase","arguments_json":"{\"text\":\"hello\"}"}'
+lenso plugin dev --watch --operation execute \
+  --request-json '{"name":"company.uppercase","arguments_json":"{\"text\":\"hello\"}"}'
+lenso plugin pack
+```
+
+The generated project is ordinary typed Rust in `src/lib.rs`. The portable SDK
+owns Wasm Component lowering, WIT, Capability descriptors, schema projection,
+and Process wire dispatch at compile time; target-specific generated files are
+not checked into the Plugin project.
+
+By default, one editable `src/lib.rs` produces both portable Wasm and trusted
+Process implementations. `dev` builds only the fastest declared local
+implementation (`Process` for a multi-output Rust project); use
+`--implementation wasm|process|all` when selecting or comparing a path.
+File notifications with debounce drive `--watch`, with bounded polling only as
+a platform fallback. `check` and `pack` still build every declared
+implementation, and `pack` places both in
+one V3 `.lenso-plugin` Release; the Host selects one implementation before Plan
+resolution and never falls back after startup. Legacy single-output projects
+remain readable.
+
+## Author one Web Plugin
+
+```sh
+lenso plugin new company.greetings-http --web
+cd company.greetings-http
+cargo test --locked
+lenso plugin dev
+# In another terminal, call one of the printed HTTP routes.
+```
+
+This path generates a linked native Rust Plugin with `#[lenso::plugin]` and a
+typed `#[endpoint]` implementation. Its starter operations demonstrate both
+`#[post]` and body-carrying `#[query]` requests, typed success responses, and
+RFC 9457 Problem responses. The generated test uses `EndpointTest`, so the
+Plugin is exercised without opening a socket.
+
+`lenso plugin dev` builds a temporary native Host, mounts the generated Plugin
+through Web Ingress, prints its real listener address and route table, and emits
+request ID, method, path, status, and latency for each request. Add `--watch` to
+rebuild and restart after source changes.
+
+Web Plugins are linked into a Host and mounted through its `web` root slot;
+they are not portable Agent Tool bundles, so the generated README does not
+direct users to `lenso plugin pack`.
+
+`pack` writes one portable `.lenso-plugin` archive, then extracts, validates,
+and reopens its exact contents. `plugins add` accepts that archive and legacy
+Bundle directories. A
+receiving Host independently validates those bytes again during installation.
+`check` and `dev` use development artifacts; `pack` is the
+release-profile proof and remains the only distribution build.
+
+New Plugins and catalog Releases use the canonical namespaced Plugin ID v1
+grammar (`company.uppercase`) and exact Semantic Versions. Existing
+unnamespaced projects remain readable with an explicit migration warning; see
+[`docs/migration-plugin-authoring.md`](docs/migration-plugin-authoring.md).
+
+## Author a Host in TypeScript
+
+The initial [TypeScript Host authoring path](docs/typescript-host-authoring.md)
+adds `lenso app build` for static `defineHost` declarations and verified Plugin
+bundles. Hosts stay closed unless exact extension releases are admitted, with
+Instance limits and optional effective-configuration ceilings. The same authority
+is consumed by check, configure, and installation. `lenso app prepare` turns that
+output plus explicit precompiled target artifacts and notices into a new,
+digest-locked directory with a generated `host.js`, same-cohort resolver, and
+Instance-addressed selected Plugin artifacts. The coordinated Bun runtime branch
+assembles and recovers the admitted Generation and preserves named dependency
+imports; released artifact cohorts are not included yet.
+
+## Change an App
+
+For local Apps, `lenso app create my-app --runtime bun`, `lenso app dev`,
+`lenso app build`, and `lenso app start --from dist` provide a convention-based
+workflow over `app/`. No Host or configuration file is required. Optional local
+`plugin_sources` expands discovery; shared Plugins still need explicit Root intent.
+Native Rust, Bun, Process, and Wasm reuse the existing Plugin builders and runtime
+adapters. See [local App development](docs/local-plugin-discovery.md) for the
+supported platform/interaction profile and offline distribution contract.
+
+For CLI Apps, `lenso app create my-app --cli` installs bundled local convention
+support. Write `cli.ts` or `cli.rs`, then run `lenso app dev -- hello --name Ada`.
+TypeScript authoring needs Bun but no Rust environment. Support Plugins can add
+other filenames through compiler extensions, and unselected surface packages
+stay outside the build. See [extensible file conventions](docs/convention-authoring.md)
+for scaffolds, local support adoption, and dependency isolation.
+
+The current Host supplies useful defaults and a generated Host Catalog. An App
+owner writes only differences under `plugins/`:
+
+```sh
+lenso plugins list
+lenso plugins add dist/company.uppercase-0.1.0.lenso-plugin
+lenso plugins search uppercase
+lenso plugins install company.uppercase --version 1.2.3
+lenso plugins update company.uppercase --version 1.3.0
+lenso plugins history company.uppercase
+lenso plugins rollback company.uppercase --version 1.2.3
+lenso plugins configure company.uppercase default --file uppercase.toml
+lenso plugins bind company.copy source company.store --provider-instance source
+lenso plugins bind company.copy cache --absent
+lenso plugins bind --file dependency-choices.json --preview
+lenso plugins disable company.uppercase default
+lenso plugins enable company.uppercase default
+lenso plugins remove company.uppercase default
+lenso app check
+lenso app show
+lenso app explain --json
+lenso sessions list
+lenso run
+```
+
+Configuration lives at `plugins/<plugin-id>/<instance>.toml`; an empty file
+enables package defaults. `<instance>.disabled` is the explicit absence marker.
+Optional structured files live beside it under
+`plugins/<plugin-id>/<instance>/`; `app check` validates the bounded regular-file
+tree before the Host snapshots it into a Generation.
+Named single-dependency choices live in `plugins/.dependencies.json` and are
+changed through `plugins bind`. They preserve exact provider intent, including
+explicit absence for optional requirements, across unrelated installations.
+Use `plugins bind --file ... --preview` to validate and display a complete
+migration before publishing it atomically.
+Installed non-embedded behavior carries one exact `plugin.lenso-plugin` Bundle
+inside its Plugin directory.
+
+Catalog installation always requires an exact version. Downloaded archive and
+manifest digests are checked before candidate resolution; admitted archives are
+retained under `.lenso/plugin-store/` so update and rollback never depend on a
+mutable remote. There is no implicit latest-version selection or runtime
+fallback.
+
+The Host Catalog at `.lenso/host-catalog.json` is generated and locked to the
+current Host build. It is read-only execution authority, not App intent.
+`app check`, `app show`, and `run` derive the App directly; there is no Plan
+file for an App owner to generate or manage.
+
+## Explain Host target admission
+
+Before starting an already built App, CI or an operator can inspect the exact
+target capability profile, Runtime selection, rejected implementations, and
+resolved consumer bindings persisted by its Host:
+
+```sh
+lenso app explain --root ./my-app --json
+```
+
+The command is read-only and emits `lenso.app-explain.v1`. It does not select
+another Plugin implementation, mutate the Plugin Root, start a Host, rerun a
+resolver, or turn a missing target feature into a fallback. Target profiles come
+from the actual selected Driver/Adapter rather than a manually supplied JSON
+file. See [Host admission and target explanation](docs/execution-target-preflight.md)
+for the evidence contract and qualification boundary.
+
+Runtime Drivers and Execution Adapters remain separate because they implement
+Host mechanics, not application behavior.
+
+### App commands
+
+The CLI keeps its authoring and maintenance roots static: `plugin`, `plugins`,
+`app`, `run`, and `doctor`. Any other root command is validated against the
+current App and forwarded unchanged to `.lenso/host`. The Host's selected
+`lenso.terminal.command` aggregate and `lenso.terminal.cli` surface own dynamic
+catalog discovery, help, argument parsing, execution, and the Generation lease.
+
+For example, a Host with a selected Session command provider may expose
+`lenso sessions list` and `lenso sessions show --help`. Removing that provider
+removes those paths without changing this CLI. Static maintenance roots remain
+reserved and cannot be shadowed by App commands.
+
+Local Capability authoring is integrated into `app dev/build`.
+`lenso app contract new example.text` creates a schema-first contract;
+`--source rust` creates a source-first Rust contract. Generated typed clients and
+providers remove manual cross-language JSON plumbing. See
+[Capability authoring](docs/capability-authoring.md).
