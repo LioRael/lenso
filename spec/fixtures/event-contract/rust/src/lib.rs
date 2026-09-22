@@ -1,4 +1,5 @@
 #![allow(
+    unknown_lints,
     dead_code,
     clippy::single_match_else,
     clippy::unused_async,

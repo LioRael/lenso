@@ -957,9 +957,11 @@ fn expand_provides(
     let v2_endpoint_contributions = endpoint_contributions.clone();
 
     let mut implementation = implementation.clone();
-    implementation
-        .attrs
-        .push(syn::parse_quote!(#[allow(clippy::unused_async, clippy::unused_async_trait_impl)]));
+    implementation.attrs.push(syn::parse_quote!(#[allow(
+        unknown_lints,
+        clippy::unused_async,
+        clippy::unused_async_trait_impl
+    )]));
 
     Ok(quote! {
         #implementation

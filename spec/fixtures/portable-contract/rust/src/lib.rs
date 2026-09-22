@@ -1,3 +1,5 @@
+#![allow(clippy::unused_async)]
+
 include!("../../generated/profile.rs");
 
 #[doc(hidden)]
