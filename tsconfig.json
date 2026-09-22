@@ -16,9 +16,13 @@
     "packages/lenso-bun/src/**/*.ts",
     "packages/lenso-bun/test/**/*.ts",
     "packages/lenso-bun-plugin/src/**/*.ts",
-    "packages/lenso-bun-plugin/test/**/*.ts"
+    "packages/lenso-bun-plugin/test/**/*.ts",
+    "packages/lenso-web-client/src/**/*.ts",
+    "packages/lenso-web-client/test/**/*.ts"
   ],
   "exclude": [
-    "packages/lenso-bun-plugin/test/fixtures/extraction/**/*.ts"
+    "packages/lenso-bun-plugin/test/fixtures/extraction/**/*.ts",
+    "packages/lenso-web-client/src/cli.ts",
+    "packages/lenso-web-client/src/generate.ts"
   ]
 }

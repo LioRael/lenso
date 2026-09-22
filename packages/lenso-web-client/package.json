@@ -1,0 +1,55 @@
+{
+  "name": "@lenso/web-client",
+  "version": "0.1.0",
+  "description": "Typed browser client foundation for explicitly public Lenso Web APIs.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso-bun-adapter.git",
+    "directory": "packages/lenso-web-client"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./generate": {
+      "types": "./dist/generate.d.ts",
+      "import": "./dist/generate.js",
+      "default": "./dist/generate.js"
+    }
+  },
+  "bin": {
+    "lenso-web-client": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/clean-dist.mjs && bun scripts/build.ts && tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
+    "smoke": "bun test test/package.test.ts",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.0",
+    "openapi-typescript": "7.13.0",
+    "typescript-5": "npm:typescript@5.9.3",
+    "typescript": "7.0.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

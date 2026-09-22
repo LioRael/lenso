@@ -7,10 +7,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "bun run --filter '@lenso/bun-plugin' build && bun run --filter '@lenso/bun' build",
-    "package-smoke": "bun run --filter '@lenso/bun-plugin' smoke && bun run --filter '@lenso/bun' smoke",
+    "build": "bun run --filter '@lenso/bun-plugin' build && bun run --filter '@lenso/bun' build && bun run --filter '@lenso/web-client' build",
+    "package-smoke": "bun run --filter '@lenso/bun-plugin' smoke && bun run --filter '@lenso/bun' smoke && bun run --filter '@lenso/web-client' smoke",
     "typecheck": "tsc -p tsconfig.json",
-    "test:typescript": "bun test packages/lenso-bun-plugin/test packages/lenso-bun/test"
+    "test:typescript": "bun test packages/lenso-bun-plugin/test packages/lenso-bun/test packages/lenso-web-client/test"
   },
   "dependencies": {
     "@lenso/bun": "workspace:*",
