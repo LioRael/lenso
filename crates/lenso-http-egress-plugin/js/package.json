@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LioRael/lenso-web.git",
+    "url": "git+https://github.com/LioRael/lenso.git",
     "directory": "crates/lenso-http-egress-plugin/js"
   },
   "publishConfig": {

@@ -10,8 +10,9 @@ application project is needed to consume prebuilt bundles.
 ## Declare the Host
 
 The build-time helpers currently live in the CLI's authoring export,
-`@lenso/cli/host`. This avoids a new package/repository before the standalone Host
-SDK and lifecycle implementation exist. Product helpers remain in product SDKs.
+`@lenso/cli/host`. The TypeScript implementation is owned by the `lenso-js`
+workspace while the native commands and authoring authority remain in this Rust
+workspace. Product helpers remain in their product SDKs.
 
 ```ts
 // store.ts — a reference to an already packed Plugin, not a live instance.
@@ -347,7 +348,7 @@ typechecking or compiling all application business code.
 ### Native ownership transport (private)
 
 `src/host-owner.ts` now connects to the native `lenso-process-owner` helper from
-`lenso-runtime-rust` using bounded, versioned JSON frames. Node and Bun use the
+the Lenso Rust workspace using bounded, versioned JSON frames. Node and Bun use the
 same implementation. It validates the ownership handshake, joins repeated stop
 requests, and returns confirmed or unconfirmed physical termination. The helper
 continues cleanup after the launcher disappears.

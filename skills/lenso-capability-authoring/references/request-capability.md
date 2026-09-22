@@ -169,14 +169,14 @@ guest registry or ambient Host API would bypass Plan authority.
 
 Use the selected dependency source first. Current complete examples are:
 
-- `LioRael/lenso-protocols/crates/lenso-contract-codegen/tests/fixtures` for
+- `LioRael/lenso/crates/lenso-contract-codegen/tests/fixtures` for
   request, stream, event, value-profile, sensitivity, and compatibility inputs;
 - `LioRael/lenso-secrets-plugin/crates/lenso-capability-secrets` for a published
   contract package with a build-time freshness gate; and
-- `LioRael/lenso-bun-adapter/fixtures/bun` for generated TypeScript Provider
+- `LioRael/lenso-js/fixtures/bun` for generated TypeScript Provider
   usage across the process Adapter; and
-- current `LioRael/lenso-protocols` guest-import fixtures plus
-  `LioRael/lenso-runtime-rust` Adapter tests for generated guest Host bridges.
+- current `LioRael/lenso` guest-import fixtures and Adapter tests for generated
+  guest Host bridges.
 
 ## Completion
 

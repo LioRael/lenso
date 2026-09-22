@@ -165,11 +165,9 @@ The CI workflow additionally compile-checks the portable plan and Kernel for
 
 ## Documentation routing
 
-ADRs 0030–0076 record normative vNext decisions with their supersession and
+ADRs 0030–0077 record normative vNext decisions with their supersession and
 explicit adoption rules. Acceptance records a decision, not an implementation,
-release, or target qualification result. The
-[qualification ledger](docs/qualification/README.md) is the canonical current
-source for those evidence facets and their known limitations. The vNext
-architecture overview, validation roadmap, and research notes are retained
-beside the ADRs as context. Removed v0.3.x implementation docs are not
-recreated in this branch.
+release, target qualification, or deployment result. Current proof belongs in
+tests, CI, package registries, and deployment systems rather than a duplicated
+source-tree ledger. Removed v0.3.x and transition documentation is not recreated
+on this branch.

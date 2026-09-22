@@ -41,13 +41,10 @@ is not evidence for a new Kernel feature.
   browser host scheduling needed to run the portable Kernel remains a Driver
   concern.
 
-Current ownership is physically split: portable Plan, Kernel, and conformance
-remain in `lenso`; Rust Drivers, native Adapter, and Runner live in
-`lenso-runtime-rust`; Bun integration lives in `lenso-bun-adapter`; protocol
-source and code generation live in `lenso-protocols`; CLI authoring lives in
-`lenso-cli`; the framework Host facade lives in `lenso-runtime-rust`; optional
-Plugins live with their product owners. Verify these
-locations before editing because repository ownership may evolve.
+Portable Plan, Kernel, conformance, Rust Drivers, Adapters, Runner, protocol
+tooling, CLI authoring, and the framework Host facade live in `lenso`.
+JavaScript and TypeScript SDKs and fixtures live in `lenso-js`; optional product
+Plugins live with their product owners.
 
 Use source search rather than repository names alone: `RuntimeDriver`,
 `ExecutionAdapter`, `ExecutionAdapterCatalog`, `PreparedNativeApp`,

@@ -9,9 +9,7 @@ use lenso_app_authoring::identity::validate_plugin_id_v1;
 
 use super::{PluginNewArgs, PluginRuntimeArg, WASM_TARGET, run_bun, run_cargo};
 
-pub(super) const LENSO_CORE_REVISION: &str = "c3dae3c7f03d80918a30b18c9df59ed808251a56";
-pub(super) const LENSO_NATIVE_REVISION: &str = "1b1c3f564dc473d4278798cb17066763b3c4b389";
-pub(super) const LENSO_WEB_REVISION: &str = "c9cd15629b7d65d6f6cdc12113234acd85c89a89";
+pub(super) const LENSO_FRAMEWORK_REVISION: &str = "c2e77e3ccc4b7dabe2e1596f6c513641798330f8";
 
 pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
     validate_plugin_id_v1(&args.plugin_id)?;
@@ -120,8 +118,8 @@ plugin-id = "{plugin_id}"
 root-slot = "web"
 
 [dependencies]
-lenso = {{ version = "=0.5.25", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-capability-http-endpoint = {{ version = "0.3.4", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso = {{ version = "=0.5.25", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-capability-http-endpoint = {{ version = "0.3.4", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
 serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
 
@@ -129,17 +127,17 @@ schemars = "1.2"
 bytes = "1"
 futures = "0.3"
 http = "1"
-lenso-app-plan = {{ version = "=0.4.5", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-kernel = {{ version = "=0.3.11", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-test = {{ version = "=0.1.2", git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-web-host = {{ version = "0.2.2", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso-app-plan = {{ version = "=0.4.5", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-kernel = {{ version = "=0.3.11", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-test = {{ version = "=0.1.2", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-web-host = {{ version = "0.2.2", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
 
 [patch.crates-io]
-lenso = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-app-plan = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-kernel = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-native-adapter = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-test = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-app-plan = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-kernel = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-native-adapter = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-test = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
 
 [workspace]
 "#

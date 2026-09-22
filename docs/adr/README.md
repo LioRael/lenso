@@ -2,11 +2,10 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0076 record the accepted architecture decisions for Lenso
+ADRs 0030 through 0077 record the accepted architecture decisions for Lenso
 vNext, subject to their supersession and explicit adoption rules. Acceptance is
-not evidence of shipped implementation, release, or qualification. The
-[qualification ledger](../qualification/README.md) is the canonical current
-source for those evidence facets. Start with
+not evidence of shipped implementation, release, target qualification, or
+deployment. Start with
 [`0030-rebuild-lenso-as-a-local-first-modular-runtime.md`](0030-rebuild-lenso-as-a-local-first-modular-runtime.md)
 and use [`../../CONTEXT.md`](../../CONTEXT.md) for canonical vocabulary and
 routing.
@@ -35,9 +34,8 @@ Execution Lanes and rejects work stealing, runtime Instance migration, and
 handler-level thread-pool offloading.
 
 [`0064-keep-only-portable-core-ownership-in-the-main-repository.md`](0064-keep-only-portable-core-ownership-in-the-main-repository.md)
-keeps only Plan, Kernel, and core conformance ownership in this repository and
-defines the one-way extraction path for runtimes, protocols, Modules, tooling,
-and examples.
+is superseded by ADR 0077. It remains the historical extraction decision and
+the source of retained portable dependency-direction constraints.
 
 [`0065-govern-dynamic-plugins-above-the-kernel.md`](0065-govern-dynamic-plugins-above-the-kernel.md)
 is the accepted decision that makes Plugin the installable distribution role of
@@ -80,19 +78,13 @@ bindings, and role-based decisions owned by an Access Control Plugin.
 [`0073-name-and-persist-plugin-dependencies.md`](0073-name-and-persist-plugin-dependencies.md)
 accepts stable dependency names, Host-permitted instance choices, and durable
 Plugin Root selection. It amends ADR 0070 on explicit adoption. Current
-implementation, release, and qualification evidence is recorded separately in
-the qualification ledger.
+implementation, release, and target qualification remain separate facts.
 
 [`0074-scope-terminal-failure-to-host-essential-instances.md`](0074-scope-terminal-failure-to-host-essential-instances.md)
 accepts Host-essential instances and their required closure as the terminal
 failure policy after readiness, retaining strict startup. It amends ADRs 0032,
 0046, and 0048 on explicit adoption without silently changing existing Plans.
-Current implementation, release, and qualification evidence is recorded
-separately in the qualification ledger.
-
-The [approved authoring baseline](../proposals/2026-09-04-plugin-usage-walkthrough.md)
-is the design entrypoint. [Issue #695](https://github.com/LioRael/lenso/issues/695)
-tracks implementation specifications and delivery across the owning repositories.
+Implementation, release, and target qualification remain separate facts.
 
 [`0075-discover-local-sources-as-generated-host-input.md`](0075-discover-local-sources-as-generated-host-input.md)
 adopts local source discovery as generated Host authoring input, with explicit
@@ -103,6 +95,11 @@ policies remain unchanged; end-to-end delivery is tracked in issue #727.
 separates Host Environment Profiles from Plugin-private Infrastructure
 Implementations and requires qualification evidence for each exact
 Environment-plus-Infrastructure combination.
+
+[`0077-consolidate-the-rust-main-chain-by-language-and-product.md`](0077-consolidate-the-rust-main-chain-by-language-and-product.md)
+supersedes ADR 0064's physical repository split. The Rust main chain is one
+workspace, JavaScript and TypeScript tooling live in `lenso-js`, and genuine
+products retain independent ownership.
 
 ## Legacy decisions
 

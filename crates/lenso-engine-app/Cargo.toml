@@ -13,21 +13,21 @@ anyhow = "1.0"
 futures = { version = "0.3" }
 shell-words = { version = "1.1" }
 clap = { version = "4", features = ["derive", "string"] }
-lenso-app-plan = { version = "=0.4.5" }
-lenso-bun-adapter = { version = "=0.1.14" }
-lenso-contract-authoring-next = { package = "lenso-contract-authoring", version = "0.1.1" }
-lenso-contract-codegen-next = { package = "lenso-contract-codegen", version = "0.9.0" }
-lenso-contract-runtime = { version = "0.2.0" }
-lenso-plugin-authoring = { version = "0.2.0" }
-lenso-guest-sdk = { version = "0.5.0" }
-lenso-kernel = { version = "=0.3.11" }
-lenso-plugin-bundle = { version = "=0.5.1" }
+lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.5" }
+lenso-bun-adapter = { path = "../lenso-bun-adapter", version = "=0.1.14" }
+lenso-contract-authoring-next = { package = "lenso-contract-authoring", path = "../lenso-contract-authoring", version = "0.1.1" }
+lenso-contract-codegen-next = { package = "lenso-contract-codegen", path = "../lenso-contract-codegen", version = "0.9.0" }
+lenso-contract-runtime = { path = "../lenso-contract-runtime", version = "0.2.0" }
+lenso-plugin-authoring = { path = "../lenso-plugin-authoring", version = "0.2.0" }
+lenso-guest-sdk = { path = "../lenso-guest-sdk", version = "0.5.0" }
+lenso-kernel = { path = "../lenso-kernel", version = "=0.3.11" }
+lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.5.1" }
 lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.2", features = ["bundle-verification"] }
-lenso-process-adapter = { version = "=0.3.12" }
-lenso-process-protocol = { version = "=0.2.3" }
-lenso-runner = { version = "=0.2.17" }
-lenso-runtime-codec = { version = "=0.4.2" }
-lenso-wasm-component-adapter = { version = "=0.2.15" }
+lenso-process-adapter = { path = "../lenso-process-adapter", version = "=0.3.12" }
+lenso-process-protocol = { path = "../lenso-process-protocol", version = "=0.2.3" }
+lenso-runner = { path = "../lenso-runner", version = "=0.2.17" }
+lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.2" }
+lenso-wasm-component-adapter = { path = "../lenso-wasm-component-adapter", version = "=0.2.15" }
 notify = { version = "8.2" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

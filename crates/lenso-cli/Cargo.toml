@@ -36,6 +36,11 @@ path = "src/lib.rs"
 [features]
 default = ["cli"]
 cli = ["dep:clap", "dep:tokio", "dep:lenso-engine", "dep:lenso-engine-app", "dep:lenso-engine-markdown", "dep:lenso-engine-runtime"]
+js-integration = []
+
+[[test]]
+name = "ts_host_build"
+required-features = ["js-integration"]
 
 [dependencies]
 anyhow = "1.0"
@@ -51,7 +56,7 @@ lenso-engine-markdown = { path = "../lenso-engine-markdown", version = "=0.1.0",
 lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "=0.1.2", optional = true }
 
 [dev-dependencies]
-lenso-bun-adapter = "=0.1.14"
+lenso-bun-adapter = { version = "=0.1.14", path = "../lenso-bun-adapter" }
 lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.5.1" }
 tempfile = "3.23"
 

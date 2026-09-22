@@ -29,7 +29,7 @@ struct InvalidVector {
 #[test]
 fn execution_target_capability_profiles_match_shared_conformance_vectors() {
     let fixture: Fixture = serde_json::from_str(include_str!(
-        "../../../fixtures/execution-target-capability-profile/conformance.json"
+        "../../../spec/fixtures/execution-target-capability-profile/conformance.json"
     ))
     .expect("the shared execution target capability fixture should be valid JSON");
 

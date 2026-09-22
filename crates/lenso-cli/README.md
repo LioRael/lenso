@@ -29,8 +29,8 @@ lenso engine run --source ./content --markdown
 
 Adopt a local processor with `--plugin ./tools/engine-plugin.json`. See the
 [Engine guide](docs/engine.md) for the language-neutral protocol, library API,
-App compatibility, and the remaining self-hosting work. The implementation now lives in the independent `lenso-engine` repository;
-this checkout uses local path dependencies pending an authorized coordinated release.
+App compatibility, and the remaining self-hosting work. Engine and CLI now
+share this Rust workspace while retaining independent crate APIs.
 
 ## Author one Plugin
 

@@ -17,9 +17,12 @@ repository = "https://github.com/LioRael/lenso"
 rust-version = "1.94"
 
 [workspace.dependencies]
+axum = "0.8"
 base64 = "0.22"
 bytes = "1.12"
+command-fds = "0.3.3"
 futures = "0.3"
+getrandom = "0.3"
 hex = "0.4"
 hmac = "0.12"
 inventory = "0.3"
@@ -30,7 +33,7 @@ lenso-contract-runtime = { path = "crates/lenso-contract-runtime", version = "=0
 lenso-kernel = { path = "crates/lenso-kernel", version = "=0.3.11" }
 lenso-native-adapter = { path = "crates/lenso-native-adapter", version = "=0.3.15" }
 lenso-native-adapter-macros = { path = "crates/lenso-native-adapter-macros", version = "=0.2.5" }
-lenso-plugin-authoring = "0.2.0"
+lenso-plugin-authoring = { path = "crates/lenso-plugin-authoring", version = "=0.2.0" }
 lenso-runner = { path = "crates/lenso-runner", version = "=0.2.17" }
 lenso-runtime-conformance = { path = "crates/lenso-runtime-conformance", version = "=0.3.10" }
 http = "1"
@@ -45,6 +48,7 @@ serde_urlencoded = "0.7"
 semver = "1.0"
 sha2 = "0.10"
 tempfile = "3.23"
+time = { version = "0.3", features = ["formatting", "parsing"] }
 tokio = { version = "1.52", features = ["io-util", "macros", "net", "process", "rt", "signal", "sync", "time"] }
 toml = "0.9"
 uuid = { version = "1", features = ["v4"] }
@@ -61,3 +65,17 @@ module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
+
+# Downstream product crates may still arrive from crates.io, but their shared
+# framework types must resolve to this workspace while developing the monorepo.
+[patch.crates-io]
+lenso-app-plan = { path = "crates/lenso-app-plan" }
+lenso-contract-authoring = { path = "crates/lenso-contract-authoring" }
+lenso-contract-authoring-macros = { path = "crates/lenso-contract-authoring-macros" }
+lenso-contract-codegen = { path = "crates/lenso-contract-codegen" }
+lenso-contract-runtime = { path = "crates/lenso-contract-runtime" }
+lenso-kernel = { path = "crates/lenso-kernel" }
+lenso-native-adapter = { path = "crates/lenso-native-adapter" }
+lenso-native-adapter-macros = { path = "crates/lenso-native-adapter-macros" }
+lenso-plugin-authoring = { path = "crates/lenso-plugin-authoring" }
+lenso-runtime-codec = { path = "crates/lenso-runtime-codec" }

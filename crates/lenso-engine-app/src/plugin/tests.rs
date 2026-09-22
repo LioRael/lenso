@@ -1,6 +1,6 @@
 use super::scaffold::{
-    LENSO_CORE_REVISION, LENSO_NATIVE_REVISION, LENSO_WEB_REVISION, bun_plugin_scaffold, create,
-    multi_plugin_scaffold, plugin_scaffold, process_plugin_scaffold, web_plugin_scaffold,
+    LENSO_FRAMEWORK_REVISION, bun_plugin_scaffold, create, multi_plugin_scaffold, plugin_scaffold,
+    process_plugin_scaffold, web_plugin_scaffold,
 };
 use super::*;
 
@@ -126,9 +126,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(manifest.contains("lenso-capability-http-endpoint"));
     assert!(manifest.contains("version = \"0.3.4\""));
     assert!(manifest.contains("lenso = { version = \"=0.5.25\""));
-    assert!(manifest.contains(LENSO_NATIVE_REVISION));
-    assert!(manifest.contains(LENSO_CORE_REVISION));
-    assert!(manifest.contains(LENSO_WEB_REVISION));
+    assert!(manifest.contains(LENSO_FRAMEWORK_REVISION));
     assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.5\""));
     assert!(manifest.contains("lenso-kernel = { version = \"=0.3.11\""));
     assert!(manifest.contains("[patch.crates-io]"));

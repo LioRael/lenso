@@ -70,7 +70,7 @@ request identity, deadlines, cancellation, typed Domain Errors/Runtime
 Failures, and diagnostics. No work stealing, live Instance migration, or
 shared mutable Plugin state is implied.
 
-Use `LioRael/lenso-runtime-rust/crates/lenso-runner` as the current native and
+Use `LioRael/lenso/crates/lenso-runner` as the current native and
 replicated-lane source anchor.
 
 ## Conformance matrix

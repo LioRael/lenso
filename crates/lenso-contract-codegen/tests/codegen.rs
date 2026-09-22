@@ -968,7 +968,7 @@ fn descriptor_validation_keeps_capability_major_independent_from_semver() {
 #[test]
 fn shared_conformance_values_round_trip_without_precision_loss() {
     let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../fixtures/portable-contract/conformance.json"
+        "../../../spec/fixtures/portable-contract/conformance.json"
     ))
     .expect("the shared conformance corpus should be valid JSON");
 
@@ -1137,7 +1137,7 @@ fn schema_profile_rejects_cross_engine_regex_syntax() {
 #[test]
 fn rust_matches_the_shared_portable_pattern_safety_corpus() {
     let vectors: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../fixtures/portable-contract/portable-pattern-conformance.json"
+        "../../../spec/fixtures/portable-contract/portable-pattern-conformance.json"
     ))
     .expect("the shared portable pattern corpus should be valid JSON");
 
@@ -1440,8 +1440,8 @@ fn language_projections_write_and_check_independently() {
 fn checked_in_profile_artifacts_are_current() {
     check_generated(
         Path::new(FIXTURE),
-        Path::new("../../fixtures/portable-contract/generated/profile.rs"),
-        Path::new("../../fixtures/portable-contract/generated/profile.ts"),
+        Path::new("../../spec/fixtures/portable-contract/generated/profile.rs"),
+        Path::new("../../spec/fixtures/portable-contract/generated/profile.ts"),
     )
     .expect("checked-in profile bindings should be generated from the fixture");
 }

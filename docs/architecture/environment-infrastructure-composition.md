@@ -95,8 +95,7 @@ contact a network, or infer a business dependency.
 
 ## Evidence and status
 
-Use the [qualification ledger](../qualification/README.md) for current
-evidence. Each qualification contains this tuple:
+Each external runtime qualification receipt contains this tuple:
 
     subject + source revision + environment + infrastructure + evidence
     + known limitations

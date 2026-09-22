@@ -1,6 +1,6 @@
 # ADR 0064: Keep only portable core ownership in the main repository
 
-- Status: accepted
+- Status: superseded by ADR 0077
 - Date: 2026-08-22
 - Extends: ADR 0030, ADR 0031, ADR 0050, ADR 0053, ADR 0054, ADR 0055,
   ADR 0057

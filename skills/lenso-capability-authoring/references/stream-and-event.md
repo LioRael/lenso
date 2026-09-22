@@ -70,6 +70,5 @@ For every selected runtime combination, prove:
 | Event | zero subscribers, all admitted, partial admission, all rejected/resource exhausted, cancellation, deterministic provider order |
 
 Use the current stream/event fixtures and cross-runtime tests in
-`LioRael/lenso-protocols`, `LioRael/lenso`, and
-`LioRael/lenso-bun-adapter`. If an SDK rejects the interaction, record that as
+`LioRael/lenso` and `LioRael/lenso-js`. If an SDK rejects the interaction, record that as
 the supported boundary rather than bypassing it with handwritten wire code.

@@ -22,7 +22,7 @@ retain their relevant Git history.
 - `lenso-process-protocol` and `@lenso/process-protocol`: retain the exact
   HTTP V1 protocol, transport-neutral Authoring V2 values, and the versioned
   execution-target capability-profile contract.
-- `fixtures/portable-contract`: cross-language value-profile conformance data.
+- `spec/fixtures/portable-contract`: cross-language value-profile conformance data.
 
 Generated bindings retain contract-specific values, Provider traits, Clients,
 Endpoints, and operation dispatch. The runtime owns only reusable wire behavior;

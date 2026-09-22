@@ -33,7 +33,7 @@ struct StrictJsonVector {
 #[test]
 fn rust_matches_process_protocol_v1_proof_vectors() {
     let fixture: Fixture = serde_json::from_str(include_str!(
-        "../../../fixtures/process-protocol/conformance.json"
+        "../../../spec/fixtures/process-protocol/conformance.json"
     ))
     .unwrap();
     fixture.identity.validate().unwrap();
@@ -71,7 +71,7 @@ fn rust_matches_process_protocol_v1_proof_vectors() {
 #[test]
 fn rust_matches_the_shared_strict_json_conformance_corpus() {
     let vectors: Vec<StrictJsonVector> = serde_json::from_str(include_str!(
-        "../../../fixtures/process-protocol/strict-json-conformance.json"
+        "../../../spec/fixtures/process-protocol/strict-json-conformance.json"
     ))
     .expect("the shared strict JSON corpus should be valid JSON");
 

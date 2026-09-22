@@ -8,7 +8,18 @@ use lenso_app_plan::{
 use lenso_plugin_bundle::{
     SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
 };
-use std::{fs, path::Path, process::Command};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
+fn js_cli_root() -> PathBuf {
+    env::var_os("LENSO_JS_ROOT")
+        .map(PathBuf::from)
+        .expect("set LENSO_JS_ROOT to a built lenso-js checkout")
+        .join("packages/lenso-cli")
+}
 
 fn fixture_bundle(root: &Path, id: &str, consumes_store: bool) {
     fixture_bundle_bytes(
@@ -125,12 +136,9 @@ fn cli(root: &Path, arguments: &[&str]) -> std::process::Output {
         .env("LENSO_HOST_JS_RUNTIME", "node")
         .env(
             "LENSO_HOST_EXTRACTOR",
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("bin/host-extract.js"),
+            js_cli_root().join("bin/host-extract.js"),
         )
-        .env(
-            "LENSO_HOST_DISTRIBUTION_LIB",
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("bin"),
-        )
+        .env("LENSO_HOST_DISTRIBUTION_LIB", js_cli_root().join("bin"))
         .args(arguments)
         .output()
         .unwrap()
@@ -179,7 +187,7 @@ fn ts_host_cli_build_check_show_and_rejection_use_the_same_authority() {
         .env("LENSO_HOST_JS_RUNTIME", "bun")
         .env(
             "LENSO_HOST_EXTRACTOR",
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("bin/host-extract.js"),
+            js_cli_root().join("bin/host-extract.js"),
         )
         .args([
             "app",

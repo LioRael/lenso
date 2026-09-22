@@ -50,10 +50,9 @@ Support is capability- and interaction-specific. An Adapter must reject a Plan
 before readiness when it cannot implement a declared request, stream, event,
 state, cancellation, or supervision contract.
 
-This table defines contract vocabulary only. Current implementation, release,
-and Environment-plus-Infrastructure qualification evidence is recorded in the
-[qualification ledger](../qualification/README.md); no table cell is a
-standalone claim about a target combination.
+This table defines contract vocabulary only. Implementation, release, and
+Environment-plus-Infrastructure qualification are separate facts; no table cell
+is a standalone claim about a target combination.
 
 ## Adapter boundary
 

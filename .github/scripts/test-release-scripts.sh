@@ -84,7 +84,7 @@ elif [[ "$args" == *"/jobs?"* ]]; then
   printf '[{"jobs":[{"name":"quality","head_sha":"%s","run_attempt":%s,"status":"completed","conclusion":"%s"}]}]\n' \
     "$job_sha" "$job_attempt" "$job_conclusion"
 elif [[ "$args" == *"actions/runs?head_sha="* ]]; then
-  printf '[{"workflow_runs":[{"id":999,"workflow_id":294726715,"name":"CI","path":".github/workflows/ci.yml","event":"push","status":"completed","conclusion":"%s","head_branch":"delta/verify/test/1","head_sha":"%s","run_attempt":1,"html_url":"https://example.invalid/run/999"}]}]\n' \
+  printf '[{"workflow_runs":[{"id":999,"workflow_id":294726715,"name":"CI","path":".github/workflows/ci.yml","event":"push","status":"completed","conclusion":"%s","head_branch":"candidate/test/1","head_sha":"%s","run_attempt":1,"html_url":"https://example.invalid/run/999"}]}]\n' \
     "$run_conclusion" "$sha"
 else
   printf 'unexpected gh api request: %s\n' "$args" >&2

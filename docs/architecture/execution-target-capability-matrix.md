@@ -15,8 +15,7 @@ The matrix answers the admission question:
 
     Can this exact execution target admit the required interaction and facility?
 
-The [qualification ledger](../qualification/README.md) answers the separate
-evidence question:
+Runtime and deployment receipts answer the separate evidence question:
 
     Which exact Environment and Infrastructure combination has been exercised?
 
@@ -71,12 +70,8 @@ documentation table, release note, or example may display the view but cannot
 invent a cell. Changing an admitted cell requires changing the descriptor and
 its target conformance evidence in the owning repository.
 
-The initial implementation belongs with the target owners:
-
-- LioRael/lenso-runtime-rust for Drivers and native or Workers host mechanics;
-- LioRael/lenso-protocols for interaction and contract vocabulary;
-- LioRael/lenso-bun-adapter for Bun execution mechanics; and
-- LioRael/lenso-cli for user-facing preflight and explanation.
+The Rust implementations, interaction vocabulary, and CLI explanation live in
+this workspace. The JavaScript fixture and SDK side lives in `lenso-js`.
 
 The portable core does not become the owner of target implementations or their
 operational facts.
@@ -118,9 +113,7 @@ input, not a new App Composition type or global service lookup.
 
 ## Delivery boundary
 
-Phase A defines this contract and routes target claims through the ledger. It
-does not add a runtime registry, change Plan schema, populate guessed target
-cells, or claim that the listed owner repositories already emit descriptors.
-The first owner implementation must include descriptor generation or
-maintenance, a focused conformance proof, resolver or CLI preflight evidence,
-and a ledger record for any qualification claim.
+This contract does not add a runtime registry, populate guessed target cells,
+or turn admission into a deployment claim. A target change includes descriptor
+generation or maintenance, focused conformance, and resolver or CLI preflight;
+environment qualification remains an external runtime receipt.

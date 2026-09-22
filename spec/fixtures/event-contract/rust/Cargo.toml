@@ -3,12 +3,12 @@ name = "lenso-event-contract-fixture"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
+publish = false
 build = "build.rs"
 
 [dependencies]
 futures.workspace = true
-lenso-kernel = "0.3.0"
+lenso-kernel = { path = "../../../../crates/lenso-kernel", version = "0.3.0" }
 lenso-plugin-authoring = { path = "../../../../crates/lenso-plugin-authoring", version = "0.2.0" }
 lenso-contract-runtime = { path = "../../../../crates/lenso-contract-runtime", version = "0.2.0" }
 serde.workspace = true

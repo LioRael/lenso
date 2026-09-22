@@ -67,9 +67,8 @@ The Plugin package implements generated Providers. It does not parse Lenso wire
 messages or manage Adapter child-process flags.
 
 Current source anchors are the native registry in
-`LioRael/lenso-runtime-rust/crates/lenso-native-adapter` and the production
-process implementation in
-`LioRael/lenso-bun-adapter/crates/lenso-bun-adapter/src/adapter.rs`.
+`LioRael/lenso/crates/lenso-native-adapter` and the production process
+implementation in `LioRael/lenso/crates/lenso-bun-adapter/src/adapter.rs`.
 
 ## 4. Prove the boundary
 

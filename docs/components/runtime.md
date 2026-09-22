@@ -55,11 +55,9 @@ The WASIp2 command requires Wasmtime on `PATH`.
 
 ## Host boundaries and qualification
 
-This README describes source behavior, not current maturity. The canonical
-implementation, release, and Environment-plus-Infrastructure qualification
-ledger is `LioRael/lenso:docs/qualification/qualification-status.json`. The
-ledger candidate has not been remotely published, so this README intentionally
-does not make a release, target, or production qualification claim.
+This document describes source behavior, not release, target, or production
+qualification. Those claims require their exact CI, registry, or deployment
+receipts and are not duplicated in the source tree.
 
 - The Native Tokio Runner owns replicated lane lifecycle, terminal failure
   propagation, diagnostics, and zero-copy transfer for registered generated
@@ -161,8 +159,8 @@ remain SDK-owned implementation details rather than files in each Plugin project
 
 ## Releases
 
-Published crates use release PRs and crates.io Trusted Publishing through
+Published crates use crates.io Trusted Publishing through
 `.github/workflows/release-plz.yml`. Each published package must allow the
-`LioRael/lenso-runtime-rust` repository and that exact workflow basename in its
-crates.io Trusted Publisher settings. The workflow requests GitHub OIDC only at
-release time and does not use a long-lived Cargo registry token.
+`LioRael/lenso` repository and that exact workflow basename in its crates.io
+Trusted Publisher settings. The workflow requests GitHub OIDC only at release
+time and does not use a long-lived Cargo registry token.

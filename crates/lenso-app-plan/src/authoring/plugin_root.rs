@@ -28,6 +28,25 @@ fn is_empty_configuration(configuration: &Value) -> bool {
     configuration == &empty_configuration()
 }
 
+fn canonicalize_configuration(value: Value) -> Value {
+    match value {
+        Value::Array(values) => {
+            Value::Array(values.into_iter().map(canonicalize_configuration).collect())
+        }
+        Value::Object(values) => {
+            let mut entries = values.into_iter().collect::<Vec<_>>();
+            entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key, canonicalize_configuration(value)))
+                    .collect(),
+            )
+        }
+        scalar => scalar,
+    }
+}
+
 fn default_entrypoint() -> String {
     "default".to_owned()
 }
@@ -1088,12 +1107,11 @@ fn materialize_app(
             &plan_key,
         )
         .map_err(|error| map_configuration_error(&candidate.id, error))?;
-        let configuration = serde_json::to_string(&configuration).map_err(|error| {
-            PluginRootResolutionError::InvalidConfiguration {
+        let configuration = serde_json::to_string(&canonicalize_configuration(configuration))
+            .map_err(|error| PluginRootResolutionError::InvalidConfiguration {
                 instance: candidate.id.clone(),
                 detail: error.to_string(),
-            }
-        })?;
+            })?;
         let descriptor = candidate.descriptor;
         let mut instance = PluginInstancePlan::new(&plan_key, descriptor.runtime_package_id())
             .with_authoring(descriptor.authoring_version(), descriptor.runtime_profile())

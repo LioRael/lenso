@@ -63,18 +63,12 @@ Keep hand-written Rust files navigable:
 
 The CI workflow is the source of truth for the portable WebAssembly checks.
 
-## Delta delivery
+## Candidate delivery
 
-- Delta is an optional delivery path. When a task uses Delta, develop, review,
-  and land through its managed checkout; the repository's delivery path does
-  not use GitHub pull requests. Contributors and maintainers using another
-  agent or plain Git follow [`CONTRIBUTING.md`](CONTRIBUTING.md) instead.
-- Use a Delta-managed checkout directly. Do not create a nested Worktrunk
-  worktree inside it; Worktrunk instructions apply to Codex-managed workspaces.
-- The detailed landing procedure is
-  [`.agents/skills/land/SKILL.md`](.agents/skills/land/SKILL.md). A final
-  candidate is based on the current `origin/main`, has a recorded full base
-  SHA, and is pushed once to a unique `delta/verify/<task>/<attempt>` ref.
+- The repository's delivery path does not require GitHub pull requests or a
+  particular editor or agent. Follow [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- A final candidate is based on the current `origin/main`, has a recorded full
+  base SHA, and is pushed once to a unique `candidate/<task>/<attempt>` ref.
 - Accept candidate CI only when the `CI` workflow was triggered by that
   candidate ref and its `quality` job succeeded for the exact candidate SHA.
   The `quality` job includes the native workspace checks and both portable

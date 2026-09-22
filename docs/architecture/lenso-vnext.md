@@ -130,8 +130,7 @@ essential instances and their transitive required closure determine App failure.
 Strict initial startup is retained. [ADR
 0073](../adr/0073-name-and-persist-plugin-dependencies.md) separately defines
 named requirements and preserved selections with its own compatibility boundary.
-Current implementation, release, and qualification evidence for these decisions
-is routed through the [qualification ledger](../qualification/README.md);
+Current implementation, release, and qualification remain separate facts;
 acceptance alone does not change an existing Plan.
 
 Native Rust Plugins are statically linked Cargo dependencies in v1. Bun Plugins
@@ -151,8 +150,7 @@ kinds. Portable contracts use JSON Schema 2020-12 plus a minimal value profile
 and generate Rust and TypeScript clients and providers. Native Rust dispatch can
 remain typed and direct; cross-runtime Adapters validate their wire boundary.
 
-The [`lenso-contract-codegen`](https://github.com/LioRael/lenso-protocols/tree/f8575ab93a6442dca96e02d4785db6f25f70846b/crates/lenso-contract-codegen)
-authoring tool, now owned by `lenso-protocols`, treats the Descriptor and
+The workspace's `lenso-contract-codegen` authoring tool treats the Descriptor and
 resolved package-local Schemas as one source. It emits deterministic Rust,
 TypeScript, Component Model WIT, and byte-Adapter Rust codec artifacts, checks
 the decimal-string/base64/time/missing-value

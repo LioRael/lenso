@@ -814,8 +814,8 @@ mod tests {
             &mut patches,
             &local_package(
                 "lenso-native-adapter",
-                "path+file:///work/lenso-runtime-rust/crates/lenso-native-adapter#0.3.14",
-                "/work/lenso-runtime-rust/crates/lenso-native-adapter/Cargo.toml",
+                "path+file:///work/lenso/crates/lenso-native-adapter#0.3.14",
+                "/work/lenso/crates/lenso-native-adapter/Cargo.toml",
             ),
         )
         .expect("local Lenso package should be admitted");
@@ -834,7 +834,7 @@ mod tests {
             patches["lenso-native-adapter"].1,
             json!({
                 "package": "lenso-native-adapter",
-                "path": "/work/lenso-runtime-rust/crates/lenso-native-adapter",
+                "path": "/work/lenso/crates/lenso-native-adapter",
             })
         );
     }
@@ -871,12 +871,12 @@ mod tests {
     fn git_pinned_endpoint_keeps_the_ingress_on_the_same_web_source() {
         let dependency = web_ingress_dependency(&json!({
             "package": "lenso-capability-http-endpoint",
-            "git": "https://github.com/LioRael/lenso-web",
+            "git": "https://github.com/LioRael/lenso",
             "rev": "c9cd15629b7d65d6f6cdc12113234acd85c89a89",
         }))
         .unwrap();
         assert_eq!(dependency["package"], "lenso-web-ingress-plugin");
-        assert_eq!(dependency["git"], "https://github.com/LioRael/lenso-web");
+        assert_eq!(dependency["git"], "https://github.com/LioRael/lenso");
         assert_eq!(
             dependency["rev"],
             "c9cd15629b7d65d6f6cdc12113234acd85c89a89"

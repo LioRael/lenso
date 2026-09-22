@@ -10,7 +10,7 @@ use sha2::{Digest as _, Sha256};
 
 fn fixture() -> Value {
     decode_strict(include_bytes!(
-        "../../../fixtures/process-protocol/authoring-v2-conformance.json"
+        "../../../spec/fixtures/process-protocol/authoring-v2-conformance.json"
     ))
     .expect("shared Authoring V2 fixture must be strict JSON")
 }

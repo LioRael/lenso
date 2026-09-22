@@ -86,25 +86,3 @@ fn portable_http_capabilities_do_not_own_native_transports() {
         }
     }
 }
-
-#[test]
-fn portable_core_is_not_consumed_through_path_dependencies() {
-    let mut manifests = Vec::new();
-    cargo_manifests(&repository_root(), &mut manifests);
-    for manifest in manifests {
-        let contents = fs::read_to_string(&manifest).expect("read Cargo manifest");
-        for package in [
-            "lenso-app-plan",
-            "lenso-kernel",
-            "lenso-runtime-conformance",
-        ] {
-            assert!(
-                !contents
-                    .lines()
-                    .any(|line| line.contains(package) && line.contains("path")),
-                "{} consumes {package} through a path dependency",
-                manifest.display()
-            );
-        }
-    }
-}

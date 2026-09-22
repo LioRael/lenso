@@ -81,31 +81,27 @@ v0.3.x source remains available from the `lenso@0.3.47` tag and Git history.
 
 ## Workspace
 
-The repository extraction is complete. Its durable product ownership is:
+The Rust workspace is the shared home for the framework's frequently co-evolving
+main chain:
 
-- `crates/lenso-app-plan` — immutable, language-independent Plan Snapshots and
-  validated Plan Transition data.
-- `crates/lenso-kernel` — portable Kernel state machine and Runtime Driver
-  interface, with a deterministic Driver for conformance tests.
-- `crates/lenso-runtime-conformance` — product-neutral fixtures that make the
-  Kernel Interface executable without a concrete Driver, Adapter, product
-  Capability, or example App.
+- Plan, Kernel, Runtime Driver interfaces, and deterministic conformance;
+- native, Process, Wasm, QuickJS, Bun, and remote Execution Adapters;
+- Engine authoring, configuration, resolution, and embedding APIs;
+- the `lenso` CLI and Rust Plugin authoring SDKs;
+- portable contract tooling plus language-neutral fixtures under `spec/`; and
+- optional Rust Web packages and focused executable examples.
 
-Runtime Drivers, Execution Adapters, protocol tooling, Capability packages,
-optional Plugins, authoring tools, and examples live in the owner repositories
-defined by ADR 0064 and are consumed through versioned dependencies.
+Internal crates use workspace or path dependencies so a framework change can be
+validated atomically without publishing temporary versions. Public crate names
+and versions remain stable, and packaged-consumer validation remains a separate
+release gate.
 
-- [lenso-protocols](https://github.com/LioRael/lenso-protocols) owns portable
-  contract tooling and conformance vectors.
-- [lenso-runtime-rust](https://github.com/LioRael/lenso-runtime-rust) and
-  [lenso-bun-adapter](https://github.com/LioRael/lenso-bun-adapter) own host
-  runtimes and Execution Adapters.
-- The observability and authentication owner repositories provide optional
-  Plugin contracts and implementations; their current repository names are
-  compatibility-era names, not public runtime concepts.
-- [lenso-cli](https://github.com/LioRael/lenso-cli) owns authoring, while
-  [lenso-examples](https://github.com/LioRael/lenso-examples) owns example
-  Capabilities and executable fixtures.
+The repository boundary follows language and product ownership rather than
+runtime mechanics. JavaScript and TypeScript SDKs, Bun fixtures, and browser
+integration live in `lenso-js`. The Site, Lenso UI, Marketplace backend, and
+downstream products remain independent. Optional product Plugins such as Auth
+stay with their product owner unless frequent shared Rust evolution provides a
+concrete reason to move them here. See ADR 0077.
 
 The Kernel has no Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, Outbox, Workflow, migration, release, or discovery implementation.
@@ -132,9 +128,9 @@ forward testing.
 ## Contributing
 
 [`CONTRIBUTING.md`](CONTRIBUTING.md) is the human contribution entry point.
-Delta and AI tools are optional: contributors can use any editor, develop in a
-fork, and submit an immutable commit through a GitHub Issue. Maintainers review
-the pinned revision and run the one necessary upstream candidate gate.
+Editors and AI tools are optional: contributors can use any development setup
+that produces a reviewable immutable commit. Maintainers run the one necessary
+upstream candidate gate before fast-forward integration.
 
 Choose focused checks for prose, Rust code, or workflow/build changes rather
 than running every workspace and platform command for every edit. The portable
@@ -150,21 +146,13 @@ checks against released core packages.
   runtime overview.
 - [`docs/architecture/lenso-authoring.md`](docs/architecture/lenso-authoring.md)
   documents project authoring and Plan resolution.
-- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0076.
-- [`docs/qualification/README.md`](docs/qualification/README.md) records
-  current implementation, release, and qualification evidence by exact
-  Environment-plus-Infrastructure combination.
+- [`docs/adr/README.md`](docs/adr/README.md) routes the normative ADRs 0030–0077.
 - [`docs/architecture/execution-target-capability-matrix.md`](docs/architecture/execution-target-capability-matrix.md)
   defines target-admission facts separately from qualification.
-- [`docs/roadmaps/lenso-vnext-validation.md`](docs/roadmaps/lenso-vnext-validation.md)
-  records the evidence sequence.
-- [`docs/research/`](docs/research/) contains supporting research, not runtime
-  requirements.
 
 ## Branches
 
 `main` is the vNext integration and release line. Work starts from
-`origin/main`; maintainers integrate reviewed immutable revisions through the
-candidate workflow and normal fast-forward path. Pull requests are not part of
-this repository's current delivery path, and `next` is retained only as a
-pre-cutover integration reference.
+`origin/main`; maintainers validate an immutable candidate and fast-forward that
+exact revision. Landing, CI, package publication, and deployment remain
+separate operations.

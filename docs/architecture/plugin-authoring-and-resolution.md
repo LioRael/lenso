@@ -20,10 +20,10 @@ admission, exact authority documents, App Generation staging, routing, drain,
 and rollback. [Plugin execution classes](plugin-execution-classes.md)
 continues to own execution mechanics.
 
-`lenso-module-authoring` in `lenso-protocols` owns the portable
+The workspace's `lenso-module-authoring` crate owns the portable
 `CapabilityClient` and lifecycle-bound `Port<C>` foundation. Generated
 Capability bindings now also emit hidden requirement, provider, and native
-endpoint metadata. `lenso-runtime-rust` lowers a named-field Module struct and
+endpoint metadata. The Rust authoring layer lowers a named-field Module struct and
 one annotated generated Provider implementation into configuration decoding,
 a type-derived configuration Schema, Port requirements and activation,
 endpoint construction, a complete static Descriptor artifact, factory, and
@@ -32,8 +32,8 @@ resolves to the previously reviewed Plan byte-for-byte without its former raw
 Descriptor, Schema file, factory, endpoint construction, or connection
 lifecycle glue.
 
-The first public Rust authoring facade now lives in `lenso-runtime-rust` as the
-`lenso` crate. Agent Loop consumes `lenso::prelude`, `lenso::module`,
+The public Rust authoring facade lives in this workspace as the `lenso` crate.
+Agent Loop consumes `lenso::prelude`, `lenso::module`,
 `lenso::provides`, and `lenso::ModuleConfig` without direct dependencies on
 `lenso-module-authoring` or `lenso-native-adapter`; macro expansion keeps the
 Adapter, Kernel, inventory, and endpoint glue behind a hidden support seam.

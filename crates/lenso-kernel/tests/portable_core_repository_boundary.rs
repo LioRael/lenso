@@ -5,12 +5,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const CORE_DIRECTORIES: &[&str] = &[
-    "lenso-app-plan",
-    "lenso-kernel",
-    "lenso-runtime-conformance",
-];
-
 const CORE_PACKAGE_RULES: &[CorePackageRule] = &[
     CorePackageRule {
         directory: "crates/lenso-app-plan",
@@ -53,30 +47,12 @@ struct CorePackageRule {
 }
 
 #[test]
-fn repository_contains_only_portable_core_packages() {
+fn portable_core_packages_keep_their_dependency_boundary() {
     let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2)
         .expect("Kernel crate must live below the repository root");
     let mut failures = Vec::new();
-
-    let crates_root = repository_root.join("crates");
-    let mut actual_directories = fs::read_dir(&crates_root)
-        .expect("read crates directory")
-        .map(|entry| entry.expect("inspect crate entry"))
-        .filter(|entry| entry.file_type().expect("inspect crate type").is_dir())
-        .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .collect::<Vec<_>>();
-    actual_directories.sort();
-
-    if actual_directories != CORE_DIRECTORIES {
-        failures.push(format!(
-            "crates/ must contain only portable core packages; expected {CORE_DIRECTORIES:?}, found {actual_directories:?}"
-        ));
-    }
-    if repository_root.join("fixtures").exists() {
-        failures.push("fixtures/ is owned by outer repositories".to_owned());
-    }
 
     for rule in CORE_PACKAGE_RULES {
         let package_root = repository_root.join(rule.directory);
@@ -117,7 +93,7 @@ fn repository_contains_only_portable_core_packages() {
     failures.dedup();
     assert!(
         failures.is_empty(),
-        "portable-core repository boundary failed:\n{}",
+        "portable-core dependency boundary failed:\n{}",
         failures.join("\n")
     );
 }

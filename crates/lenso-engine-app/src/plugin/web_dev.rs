@@ -16,8 +16,7 @@ use crate::watch::SourceWatcher;
 
 use super::{
     CargoPackage, DevImplementationArg, PluginDevArgs, cargo_target_directory, project_root,
-    read_package,
-    scaffold::{LENSO_CORE_REVISION, LENSO_NATIVE_REVISION, LENSO_WEB_REVISION},
+    read_package, scaffold::LENSO_FRAMEWORK_REVISION,
 };
 
 const HOST_SOURCE: &str = r#"
@@ -280,19 +279,19 @@ publish = false
 
 [dependencies]
 futures = "0.3"
-lenso-app-plan = {{ version = "=0.4.5", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-kernel = {{ version = "=0.3.11", git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-web-host = {{ version = "0.2.2", git = "https://github.com/LioRael/lenso-web", rev = "{LENSO_WEB_REVISION}" }}
+lenso-app-plan = {{ version = "=0.4.5", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-kernel = {{ version = "=0.3.11", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-web-host = {{ version = "0.2.2", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
 plugin = {{ package = "{}", path = {plugin_path} }}
 serde_json = "1"
 tokio = {{ version = "1.52", features = ["macros", "rt", "signal"] }}
 tower = "0.5"
 
 [patch.crates-io]
-lenso = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
-lenso-app-plan = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-kernel = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_CORE_REVISION}" }}
-lenso-native-adapter = {{ git = "https://github.com/LioRael/lenso-runtime-rust", rev = "{LENSO_NATIVE_REVISION}" }}
+lenso = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-app-plan = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-kernel = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-native-adapter = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
 
 [workspace]
 "#,
@@ -352,10 +351,7 @@ async fn stop(child: &mut Child) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        LENSO_CORE_REVISION, LENSO_NATIVE_REVISION, LENSO_WEB_REVISION, host_manifest,
-        host_package_name,
-    };
+    use super::{LENSO_FRAMEWORK_REVISION, host_manifest, host_package_name};
     use crate::plugin::{CargoMetadata, CargoPackage, LensoMetadata};
     use std::path::Path;
 
@@ -379,11 +375,9 @@ mod tests {
         assert!(name.starts_with("lenso-web-dev-company-greetings-http-"));
         assert!(manifest.contains("lenso-web-host"));
         assert!(manifest.contains("version = \"0.2.2\""));
-        assert!(manifest.contains(LENSO_WEB_REVISION));
+        assert!(manifest.contains(LENSO_FRAMEWORK_REVISION));
         assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.5\""));
         assert!(manifest.contains("lenso-kernel = { version = \"=0.3.11\""));
-        assert!(manifest.contains(LENSO_CORE_REVISION));
-        assert!(manifest.contains(LENSO_NATIVE_REVISION));
         assert!(manifest.contains("[patch.crates-io]"));
         assert!(manifest.contains("lenso-native-adapter"));
         assert!(manifest.contains("tower = \"0.5\""));

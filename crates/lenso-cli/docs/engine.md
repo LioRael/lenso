@@ -1,7 +1,7 @@
 # Engine integration
 
-The implementation is owned by the independent `lenso-engine` repository.
-The following guide describes its integration and public interfaces.
+The implementation is owned by the Engine crates in this Rust workspace. The
+following guide describes their integration and public interfaces.
 
 # Lenso Engine
 

@@ -46,7 +46,7 @@ must not make unavailable host behavior appear supported.
 Current source anchors:
 
 - `LioRael/lenso/crates/lenso-kernel/src/driver.rs` for the Interface;
-- `LioRael/lenso-runtime-rust/crates/lenso-runner/src/lib.rs` for Tokio;
+- `LioRael/lenso/crates/lenso-runner/src/lib.rs` for Tokio;
 - `crates/lenso-browser-driver` and `crates/lenso-wasip2-driver` in that runtime
   repository for WebAssembly host examples; and
 - the deterministic Driver in `LioRael/lenso` for exact time/control tests.

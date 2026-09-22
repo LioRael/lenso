@@ -4,8 +4,8 @@ Lenso is a local-first runtime built from replaceable Plugins, typed
 Capabilities, Runtime Drivers, and Execution Adapters. Read [`CONTEXT.md`](CONTEXT.md)
 for the vocabulary and invariants before changing framework behavior.
 
-Delta, AI tools, and any particular editor are optional. A contributor needs
-only Git, a fork, and the tools required by the part they change.
+AI tools and any particular editor are optional. A contributor needs only Git,
+a fork, and the tools required by the part they change.
 
 ## Propose a contribution
 
@@ -71,15 +71,9 @@ is useful context but does not replace the upstream candidate result. The
 maintainer preserves contributor authorship and links the Issue and final
 commit.
 
-Delta and agent paths are optional:
-
-- **Delta Land Changes** opens a dedicated Land subthread.
-- **`/land`** is an optional agent invocation in the current task, not a
-  general shell command and not a GitHub permission grant.
-- Other agents may explicitly read
-  [`.agents/skills/land/SKILL.md`](.agents/skills/land/SKILL.md) or use their
-  supported skill mechanism. The skill does not grant write access.
-- Plain Git maintainers can follow the short path below without an agent.
+Editors and agents are optional. They do not grant GitHub write, landing,
+publication, or deployment authority. Plain Git maintainers can follow the
+same immutable-candidate path.
 
 ## Maintainer Git landing
 
@@ -87,9 +81,9 @@ Delta and agent paths are optional:
 git fetch origin main
 git switch -c land/<topic> origin/main
 # import and review the contributor's immutable SHA
-git push origin HEAD:refs/heads/delta/verify/<task>/<attempt>
+git push origin HEAD:refs/heads/candidate/<task>/<attempt>
 gh run list --repo LioRael/lenso --workflow ci.yml \
-  --branch delta/verify/<task>/<attempt>
+  --branch candidate/<task>/<attempt>
 gh run view <run-id> --repo LioRael/lenso \
   --json workflowName,event,headBranch,headSha,jobs,url
 git fetch origin main

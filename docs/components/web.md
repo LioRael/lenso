@@ -16,10 +16,8 @@ It does not own portable Kernel semantics, authentication policy, business
 authorization, Console/UI behavior, Web Shell, Browser Adapter, or a global
 route registry.
 
-Qualification status is recorded in the canonical ledger
-`LioRael/lenso:docs/qualification/qualification-status.json`. Its local
-candidate is not remotely published, so this README makes no release, target,
-or production-maturity claim.
+This document makes no release, target, or production-maturity claim. Those
+facts require their exact CI, registry, or deployment receipts.
 
 ## Current packages
 
@@ -655,8 +653,9 @@ cargo test --locked --workspace
 cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
-Release-plz opens release PRs from `main` and publishes the public crates through
-the configured crates.io Trusted Publishers and GitHub OIDC. Dependency-aware
+The dispatch-only release workflow publishes an explicitly authorized package
+set from a landed `main` SHA through configured crates.io Trusted Publishers
+and GitHub OIDC. Dependency-aware
 publication releases the Capability crates before the dependent
 `lenso-web-ingress-plugin` and `lenso-http-egress-plugin` Plugins, and workspace CI fully
 verifies every package archive.
