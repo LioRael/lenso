@@ -1,0 +1,26 @@
+[package]
+name = "lenso-engine-runtime"
+version = "0.1.2"
+edition = "2024"
+license = "MIT"
+description = "Plan-bound processor capability and native runtime lowering for Lenso Engine"
+repository.workspace = true
+
+[dependencies]
+lenso-engine = { path = "../lenso-engine", version = "0.1.2" }
+lenso-app-plan = "=0.4.5"
+lenso-kernel = "=0.3.11"
+lenso-native-adapter = "=0.3.15"
+lenso-runner = "=0.2.17"
+lenso-plugin-authoring = "0.2.0"
+lenso-contract-runtime = "0.2.0"
+futures = "0.3"
+tokio = { version = "1.52", features = ["rt-multi-thread", "time", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+lenso-guest-sdk = "0.5.0"
+lenso-runtime-codec = "=0.4.2"
+
+[dev-dependencies]
+lenso-contract-codegen = "0.9.0"
