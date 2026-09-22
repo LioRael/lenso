@@ -4,7 +4,7 @@ version = "0.3.1"
 description = "Portable outbound HTTP Client Capability contract for Lenso Plugins."
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
+publish = true
 repository.workspace = true
 rust-version.workspace = true
 

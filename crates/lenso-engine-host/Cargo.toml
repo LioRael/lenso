@@ -1,6 +1,7 @@
 [package]
 name = "lenso-engine-host"
 version = "0.2.3"
+publish = true
 edition = "2024"
 license = "MIT"
 description = "Standalone precompiled App Host and resolver for Lenso Engine embeddings"

@@ -111,12 +111,12 @@ expect_failure "CI job from a different attempt" \
   run_gate "${base_env[@]}" RELEASE_SHA="$current_sha" PATH="$mock_dir:$PATH" \
   MOCK_SHA="$current_sha" MOCK_RUN_CONCLUSION=success MOCK_JOB_CONCLUSION=success MOCK_JOB_ATTEMPT=2
 
-all_packages="$(
+mismatched_release_set="$(
   cargo metadata --manifest-path "$ROOT/Cargo.toml" --locked --no-deps --format-version 1 |
-    jq -c '[.packages[] | {package_name: .name, version: .version}] | sort_by(.package_name)'
+    jq -c '[.packages[] | select(.name == "lenso-kernel") | {package_name: .name, version: .version}]'
 )"
 expect_failure "registry release-set mismatch" "read-only crates.io plan" \
-  run_gate "${base_env[@]}" RELEASE_SHA="$current_sha" RELEASE_SET="$all_packages" \
+  run_gate "${base_env[@]}" RELEASE_SHA="$current_sha" RELEASE_SET="$mismatched_release_set" \
   PATH="$mock_dir:$PATH" MOCK_SHA="$current_sha"
 
 expect_failure "registry error is not treated as absence" "unexpected crates.io response 500" \

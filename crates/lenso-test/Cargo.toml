@@ -4,7 +4,7 @@ version = "0.1.2"
 description = "Deterministic TestApp harness for native Lenso Plugins."
 edition.workspace = true
 license.workspace = true
-publish.workspace = true
+publish = true
 repository.workspace = true
 rust-version.workspace = true
 

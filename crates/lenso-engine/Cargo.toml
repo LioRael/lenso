@@ -1,6 +1,7 @@
 [package]
 name = "lenso-engine"
 version = "0.1.2"
+publish = true
 edition = "2024"
 license = "MIT"
 description = "Embeddable convention processing engine"
