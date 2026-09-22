@@ -287,6 +287,14 @@ struct PluginRequirement {
     requirement_id: String,
     capability_id: String,
     descriptor_version: String,
+    #[serde(default)]
+    descriptor_digest: Option<String>,
+    #[serde(default)]
+    request_operations: Vec<String>,
+    #[serde(default)]
+    stream_operations: Vec<String>,
+    #[serde(default)]
+    event_operations: Vec<String>,
     cardinality: String,
 }
 
@@ -507,6 +515,27 @@ fn materialize_bun(
             bail!(
                 "Bun Plugin Capability `{}` has an invalid Descriptor digest",
                 capability.capability_id
+            );
+        }
+    }
+    for requirement in &descriptor.required_capabilities {
+        if !requirement
+            .descriptor_digest
+            .as_deref()
+            .is_some_and(is_sha256_digest)
+        {
+            bail!(
+                "Bun Plugin requirement `{}` has an invalid Descriptor digest",
+                requirement.requirement_id
+            );
+        }
+        let operation_count = requirement.request_operations.len()
+            + requirement.stream_operations.len()
+            + requirement.event_operations.len();
+        if operation_count == 0 {
+            bail!(
+                "Bun Plugin requirement `{}` has no generated operations",
+                requirement.requirement_id
             );
         }
     }

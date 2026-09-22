@@ -333,10 +333,20 @@ const requiredCapabilities = Object.entries(definition.dependencies ?? {}).map((
   if (!isRecord(contract) || contract.kind !== "contract") {
     throw new Error(`${value.span.file}: dependency ${name} requires one generated *_CONTRACT reference`);
   }
+  const descriptor = generatedProviderDescriptors.get(
+    `${contract.generated_module}#${contract.generated_export}`,
+  );
+  if (!descriptor) {
+    throw new Error(`${value.span.file}: dependency ${name} requires one generated Capability descriptor`);
+  }
   return {
     requirement_id: id,
     capability_id: contract.capability_id,
     descriptor_version: contract.descriptor_version,
+    descriptor_digest: contract.descriptor_digest,
+    request_operations: descriptor.request_operations,
+    stream_operations: descriptor.stream_operations,
+    event_operations: descriptor.event_operations,
     cardinality,
   };
 });

@@ -171,6 +171,66 @@ fn portable_codecs(
                 );
             }
         }
+        for requirement in instance.required_capabilities() {
+            if typed.contains(requirement.capability_id()) {
+                continue;
+            }
+            let metadata = evidence
+                .get(instance.package_id())
+                .and_then(|d| d["required_capabilities"].as_array())
+                .and_then(|requirements| {
+                    requirements.iter().find(|candidate| {
+                        candidate["requirement_id"] == requirement.requirement_id()
+                            && candidate["capability_id"] == requirement.capability_id()
+                            && candidate["descriptor_version"] == requirement.descriptor_version()
+                    })
+                });
+            let digest = metadata
+                .and_then(|candidate| candidate["descriptor_digest"].as_str())
+                .unwrap_or("");
+            let operations = metadata
+                .and_then(|candidate| candidate["request_operations"].as_array())
+                .and_then(|operations| {
+                    operations
+                        .iter()
+                        .map(|operation| operation.as_str().map(str::to_owned))
+                        .collect::<Option<Vec<_>>>()
+                })
+                .unwrap_or_default();
+            let has_other_interactions = metadata.is_some_and(|candidate| {
+                ["stream_operations", "event_operations"].iter().any(|key| {
+                    candidate[*key]
+                        .as_array()
+                        .is_some_and(|operations| !operations.is_empty())
+                })
+            });
+            if instance.authoring_version() == 2 && (digest.is_empty() || operations.is_empty()) {
+                bail!(
+                    "Capability {} needs generated Descriptor evidence for its guest import; rebuild/repack this Plugin with the current source compiler",
+                    requirement.capability_id()
+                );
+            }
+            if has_other_interactions {
+                bail!(
+                    "Capability {} needs a typed codec for Stream/Event interaction",
+                    requirement.capability_id()
+                );
+            }
+            let identity = (
+                requirement.descriptor_version().to_owned(),
+                operations,
+                digest.to_owned(),
+            );
+            if endpoints
+                .insert(requirement.capability_id().to_owned(), identity.clone())
+                .is_some_and(|old| old != identity)
+            {
+                bail!(
+                    "conflicting portable Capability {}",
+                    requirement.capability_id()
+                );
+            }
+        }
     }
     // One bounded immutable codec table per process, never per invocation.
     Ok(endpoints

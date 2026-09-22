@@ -46,6 +46,39 @@ fn bun_descriptor_lowers_named_dependencies_into_the_plugin_contract() {
 }
 
 #[test]
+fn bun_descriptor_preserves_guest_import_codec_evidence() {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let descriptor = parse_descriptor_bytes(
+        serde_json::to_vec(&serde_json::json!({
+            "abi":"lenso.json-host-imports@2",
+            "capabilities":[],
+            "required_capabilities":[{
+                "requirement_id":"jobs",
+                "capability_id":"lenso.jobs@1",
+                "descriptor_version":"1.0.0",
+                "descriptor_digest":digest,
+                "request_operations":["enqueue", "claim"],
+                "stream_operations":[],
+                "event_operations":[],
+                "cardinality":"optional"
+            }]
+        }))
+        .unwrap()
+        .as_slice(),
+    )
+    .unwrap();
+
+    let requirement = &descriptor.required_capabilities[0];
+    assert_eq!(
+        requirement.descriptor_digest.as_deref(),
+        Some(digest.as_str())
+    );
+    assert_eq!(requirement.request_operations, ["enqueue", "claim"]);
+    assert!(requirement.stream_operations.is_empty());
+    assert!(requirement.event_operations.is_empty());
+}
+
+#[test]
 fn bun_descriptor_accepts_a_providerless_lifecycle_plugin() {
     let descriptor = parse_descriptor_bytes(
         br#"{
