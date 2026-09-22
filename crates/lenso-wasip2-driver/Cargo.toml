@@ -1,0 +1,16 @@
+[package]
+name = "lenso-wasip2-driver"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+futures.workspace = true
+lenso-kernel.workspace = true
+
+[dev-dependencies]
+lenso-app-plan.workspace = true
+
+[lints]
+workspace = true

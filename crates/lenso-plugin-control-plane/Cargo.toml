@@ -1,0 +1,35 @@
+[package]
+name = "lenso-plugin-control-plane"
+version = "0.4.24"
+edition.workspace = true
+license.workspace = true
+publish = true
+repository.workspace = true
+description = "Dynamic Plugin admission, resolution, and App Generation supervision for Lenso."
+
+[dependencies]
+hex.workspace = true
+lenso-app-plan.workspace = true
+lenso-plugin-bundle = { version = "0.5.1", path = "../lenso-plugin-bundle" }
+lenso-kernel.workspace = true
+lenso-dylib-adapter = { version = "0.2.9", path = "../lenso-dylib-adapter" }
+lenso-process-adapter = { version = "0.3.12", path = "../lenso-process-adapter" }
+lenso-quickjs-adapter = { version = "0.2.9", path = "../lenso-quickjs-adapter" }
+lenso-remote-adapter = { version = "0.1.8", path = "../lenso-remote-adapter" }
+lenso-runner = { version = "0.2.17", path = "../lenso-runner" }
+lenso-runtime-codec = { version = "0.4.2", path = "../lenso-runtime-codec" }
+lenso-wasm-component-adapter = { version = "0.2.15", path = "../lenso-wasm-component-adapter" }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+futures.workspace = true
+fs2 = "0.4"
+tokio.workspace = true
+
+[dev-dependencies]
+lenso-native-adapter = { version = "0.3.15", path = "../lenso-native-adapter" }
+tempfile = "3"
+
+[lints]
+workspace = true

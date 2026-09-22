@@ -1,0 +1,15 @@
+[package]
+name = "lenso-guest-sdk"
+version = "0.5.0"
+edition.workspace = true
+license.workspace = true
+publish = true
+repository.workspace = true
+description = "Typed Plan-bound Capability imports for Lenso guest Plugins."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

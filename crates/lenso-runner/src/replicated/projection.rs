@@ -1,0 +1,441 @@
+use std::{collections::BTreeMap, rc::Rc, sync::Arc, time::Instant};
+
+use lenso_app_plan::{
+    AppComposition, CapabilityBinding, ExecutionClassId, ExecutionLaneId, ExecutionLanePlan,
+    PluginInstancePlan, ResolvedAppPlan,
+};
+use lenso_kernel::{
+    ExecutionAdapter, NativeEventEndpoint, NativeRequestEndpoint, NativeStreamEndpoint,
+    NoopPluginLifecycle, PreparedBinding, PreparedEventBinding, PreparedNativeApp,
+    PreparedNativePlugin, PreparedStreamBinding, RuntimeFailure,
+};
+
+use super::{
+    CrossLaneTransferCatalog, LANE_PROXY_EXECUTION_CLASS, LaneRoute,
+    NATIVE_AUTHORING_V2_RUNTIME_PROFILE,
+};
+
+pub(super) fn project_lane(
+    plan: &ResolvedAppPlan,
+    lane: &ExecutionLaneId,
+) -> Result<ResolvedAppPlan, super::ReplicatedRunnerError> {
+    let bindings = plan
+        .capability_bindings()
+        .iter()
+        .filter(|binding| binding_touches_lane(plan, binding, lane))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut instances = plan
+        .plugin_instances()
+        .iter()
+        .filter(|instance| instance.execution_lane() == lane)
+        .map(|instance| clone_instance(instance, lane))
+        .collect::<BTreeMap<_, _>>();
+
+    for binding in &bindings {
+        let consumer = plan
+            .plugin_instance(binding.consumer_instance())
+            .expect("validated binding consumer should exist");
+        let provider = plan
+            .plugin_instance(binding.provider_instance())
+            .expect("validated binding provider should exist");
+        if consumer.execution_lane() == lane && provider.execution_lane() != lane {
+            add_provider_proxy(&mut instances, provider, binding, lane);
+        }
+        if provider.execution_lane() == lane && consumer.execution_lane() != lane {
+            add_consumer_proxy(&mut instances, consumer, binding, lane);
+        }
+    }
+
+    AppComposition::new(instances.into_values().collect(), bindings)
+        .with_execution_lanes(vec![ExecutionLanePlan::new(lane.as_str())])
+        .resolve()
+        .map_err(|error| super::ReplicatedRunnerError::InvalidPlan {
+            detail: format!("lane `{lane}` projection failed: {error}"),
+        })
+}
+
+fn binding_touches_lane(
+    plan: &ResolvedAppPlan,
+    binding: &CapabilityBinding,
+    lane: &ExecutionLaneId,
+) -> bool {
+    [binding.consumer_instance(), binding.provider_instance()]
+        .into_iter()
+        .filter_map(|instance| plan.plugin_instance(instance))
+        .any(|instance| instance.execution_lane() == lane)
+}
+
+fn clone_instance(
+    source: &PluginInstancePlan,
+    lane: &ExecutionLaneId,
+) -> (String, PluginInstancePlan) {
+    let mut instance = clone_instance_identity(source, lane, source.execution_class().clone());
+    for capability in source.provided_capabilities() {
+        instance = instance.with_capability(capability.clone());
+    }
+    for requirement in source.required_capabilities() {
+        instance = instance.with_requirement(requirement.clone());
+    }
+    (source.instance_key().to_owned(), instance)
+}
+
+fn clone_instance_identity(
+    source: &PluginInstancePlan,
+    lane: &ExecutionLaneId,
+    execution_class: ExecutionClassId,
+) -> PluginInstancePlan {
+    let proxy = PluginInstancePlan::new(source.instance_key(), source.package_id())
+        .with_entrypoint(source.entrypoint())
+        .with_configuration(source.configuration())
+        .with_execution_class(execution_class)
+        .with_execution_lane(lane.clone())
+        .with_package_revision(source.package_revision())
+        .with_restart_policy(source.restart_policy())
+        .with_criticality(source.criticality());
+    if source.authoring_version() == 2 {
+        proxy.with_authoring(source.authoring_version(), source.runtime_profile())
+    } else {
+        proxy
+    }
+}
+
+fn add_provider_proxy(
+    instances: &mut BTreeMap<String, PluginInstancePlan>,
+    source: &PluginInstancePlan,
+    binding: &CapabilityBinding,
+    lane: &ExecutionLaneId,
+) {
+    let instance = instances
+        .entry(source.instance_key().to_owned())
+        .or_insert_with(|| {
+            clone_instance_identity(
+                source,
+                lane,
+                ExecutionClassId::new(LANE_PROXY_EXECUTION_CLASS),
+            )
+        });
+    if instance
+        .provided_capabilities()
+        .iter()
+        .all(|endpoint| endpoint.capability_id() != binding.capability_id())
+    {
+        let endpoint = source
+            .provided_capabilities()
+            .iter()
+            .find(|endpoint| endpoint.capability_id() == binding.capability_id())
+            .expect("validated provider endpoint should exist")
+            .clone();
+        *instance = instance.clone().with_capability(endpoint);
+    }
+}
+
+fn add_consumer_proxy(
+    instances: &mut BTreeMap<String, PluginInstancePlan>,
+    source: &PluginInstancePlan,
+    binding: &CapabilityBinding,
+    lane: &ExecutionLaneId,
+) {
+    let instance = instances
+        .entry(source.instance_key().to_owned())
+        .or_insert_with(|| {
+            clone_instance_identity(
+                source,
+                lane,
+                ExecutionClassId::new(LANE_PROXY_EXECUTION_CLASS),
+            )
+        });
+    if instance
+        .required_capabilities()
+        .iter()
+        .all(|requirement| requirement.requirement_id() != binding.requirement_id())
+    {
+        let requirement = source
+            .required_capabilities()
+            .iter()
+            .find(|requirement| {
+                requirement.requirement_id() == binding.requirement_id()
+                    && requirement.capability_id() == binding.capability_id()
+            })
+            .expect("validated consumer requirement should exist")
+            .clone();
+        *instance = instance.clone().with_requirement(requirement);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lenso_app_plan::{CapabilityEndpointPlan, CapabilityRequirementPlan};
+
+    use super::*;
+
+    #[test]
+    fn lane_projection_preserves_two_named_requirements_for_one_capability() {
+        let capability = "example.store@1";
+        let version = "1.0.0";
+        let endpoint =
+            || CapabilityEndpointPlan::new(capability, version, ["get"]).with_cross_lane_transfer();
+        let plan = AppComposition::new(
+            vec![
+                PluginInstancePlan::new("source-store", "example.store")
+                    .with_execution_lane(ExecutionLaneId::new("storage"))
+                    .with_capability(endpoint()),
+                PluginInstancePlan::new("destination-store", "example.store")
+                    .with_execution_lane(ExecutionLaneId::new("storage"))
+                    .with_capability(endpoint()),
+                PluginInstancePlan::new("copy", "example.copy")
+                    .with_authoring(2, lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE)
+                    .with_execution_lane(ExecutionLaneId::new("application"))
+                    .with_requirement(
+                        CapabilityRequirementPlan::one(capability, version)
+                            .with_requirement_id("source"),
+                    )
+                    .with_requirement(
+                        CapabilityRequirementPlan::one(capability, version)
+                            .with_requirement_id("destination"),
+                    ),
+            ],
+            vec![
+                CapabilityBinding::new("copy", capability, version, "source-store")
+                    .with_requirement_id("source"),
+                CapabilityBinding::new("copy", capability, version, "destination-store")
+                    .with_requirement_id("destination"),
+            ],
+        )
+        .with_execution_lanes(vec![
+            ExecutionLanePlan::new("storage"),
+            ExecutionLanePlan::new("application"),
+        ])
+        .resolve()
+        .unwrap();
+
+        let projected = project_lane(&plan, &ExecutionLaneId::new("storage")).unwrap();
+        let proxy = projected.plugin_instance("copy").unwrap();
+        let requirements = proxy
+            .required_capabilities()
+            .iter()
+            .map(lenso_app_plan::CapabilityRequirementPlan::requirement_id)
+            .collect::<Vec<_>>();
+
+        assert_eq!(requirements, ["destination", "source"]);
+    }
+
+    #[test]
+    fn lane_proxy_accepts_both_v2_native_profiles() {
+        assert!(supports_lane_proxy_runtime_profile(
+            2,
+            NATIVE_AUTHORING_V2_RUNTIME_PROFILE,
+        ));
+        assert!(supports_lane_proxy_runtime_profile(
+            2,
+            lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE,
+        ));
+        assert!(!supports_lane_proxy_runtime_profile(2, "lenso.unknown@2"));
+        assert!(!supports_lane_proxy_runtime_profile(
+            1,
+            NATIVE_AUTHORING_V2_RUNTIME_PROFILE
+        ));
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct LaneProxyAdapter {
+    full_plan: Arc<ResolvedAppPlan>,
+    transfers: CrossLaneTransferCatalog,
+    routes: Arc<BTreeMap<ExecutionLaneId, LaneRoute>>,
+    epoch: Instant,
+}
+
+impl LaneProxyAdapter {
+    pub(super) fn new(
+        full_plan: Arc<ResolvedAppPlan>,
+        transfers: CrossLaneTransferCatalog,
+        routes: Arc<BTreeMap<ExecutionLaneId, LaneRoute>>,
+        epoch: Instant,
+    ) -> Self {
+        Self {
+            full_plan,
+            transfers,
+            routes,
+            epoch,
+        }
+    }
+}
+
+fn supports_lane_proxy_runtime_profile(authoring_version: u32, profile: &str) -> bool {
+    (authoring_version == 1 && profile == LANE_PROXY_EXECUTION_CLASS)
+        || (authoring_version == 2
+            && matches!(
+                profile,
+                lenso_app_plan::PLUGIN_AUTHORING_V2_RUNTIME_PROFILE
+                    | NATIVE_AUTHORING_V2_RUNTIME_PROFILE
+            ))
+}
+
+impl ExecutionAdapter for LaneProxyAdapter {
+    fn supports_runtime_profile(&self, authoring_version: u32, profile: &str) -> bool {
+        supports_lane_proxy_runtime_profile(authoring_version, profile)
+    }
+
+    fn execution_class(&self) -> ExecutionClassId {
+        ExecutionClassId::new(LANE_PROXY_EXECUTION_CLASS)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn prepare(&self, plan: &ResolvedAppPlan) -> Result<PreparedNativeApp, RuntimeFailure> {
+        let mut generations = BTreeMap::new();
+        let mut request_endpoints: BTreeMap<_, Rc<dyn NativeRequestEndpoint>> = BTreeMap::new();
+        let mut stream_endpoints: BTreeMap<_, Rc<dyn NativeStreamEndpoint>> = BTreeMap::new();
+        let mut event_endpoints: BTreeMap<_, Rc<dyn NativeEventEndpoint>> = BTreeMap::new();
+        for instance in plan
+            .plugin_instances()
+            .iter()
+            .filter(|instance| instance.execution_class().as_str() == LANE_PROXY_EXECUTION_CLASS)
+        {
+            let mut generation_request_endpoints = Vec::new();
+            let mut generation_stream_endpoints = Vec::new();
+            let mut generation_event_endpoints = Vec::new();
+            for descriptor in instance.provided_capabilities() {
+                let source = self
+                    .full_plan
+                    .plugin_instance(instance.instance_key())
+                    .expect("proxy provider exists in the full Plan");
+                let sender = self
+                    .routes
+                    .get(source.execution_lane())
+                    .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                        detail: format!(
+                            "provider lane `{}` is absent for `{}`",
+                            source.execution_lane(),
+                            instance.instance_key()
+                        ),
+                    })?
+                    .clone();
+                let endpoint_key = (
+                    instance.instance_key().to_owned(),
+                    descriptor.capability_id().to_owned(),
+                );
+                if !descriptor.request_operations().is_empty() {
+                    let endpoint = self
+                        .transfers
+                        .requests
+                        .endpoint(descriptor.capability_id(), &sender, self.epoch)
+                        .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                            detail: format!(
+                                "Capability `{}` has no registered native cross-lane request transfer",
+                                descriptor.capability_id()
+                            ),
+                        })?;
+                    request_endpoints.insert(endpoint_key.clone(), Rc::clone(&endpoint));
+                    generation_request_endpoints.push(endpoint);
+                }
+                if !descriptor.stream_operations().is_empty() {
+                    let endpoint = self
+                        .transfers
+                        .interactions
+                        .stream_endpoint(
+                            descriptor.capability_id(),
+                            instance.instance_key().to_owned(),
+                            sender.clone(),
+                            self.epoch,
+                        )
+                        .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                            detail: format!(
+                                "Capability `{}` has no registered native cross-lane stream transfer",
+                                descriptor.capability_id()
+                            ),
+                        })?;
+                    stream_endpoints.insert(endpoint_key.clone(), Rc::clone(&endpoint));
+                    generation_stream_endpoints.push(endpoint);
+                }
+                if !descriptor.event_operations().is_empty() {
+                    let endpoint = self
+                        .transfers
+                        .interactions
+                        .event_endpoint(
+                            descriptor.capability_id(),
+                            instance.instance_key().to_owned(),
+                            sender,
+                        )
+                        .ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                            detail: format!(
+                                "Capability `{}` has no registered native cross-lane Event transfer",
+                                descriptor.capability_id()
+                            ),
+                        })?;
+                    event_endpoints.insert(endpoint_key, Rc::clone(&endpoint));
+                    generation_event_endpoints.push(endpoint);
+                }
+            }
+            generations.insert(
+                instance.instance_key().to_owned(),
+                PreparedNativePlugin::with_all_endpoints(
+                    generation_request_endpoints,
+                    generation_stream_endpoints,
+                    generation_event_endpoints,
+                    NoopPluginLifecycle,
+                ),
+            );
+        }
+        let bindings = plan
+            .capability_bindings()
+            .iter()
+            .filter_map(|binding| {
+                request_endpoints
+                    .get(&(
+                        binding.provider_instance().to_owned(),
+                        binding.capability_id().to_owned(),
+                    ))
+                    .map(|endpoint| {
+                        PreparedBinding::new(
+                            binding.consumer_instance(),
+                            binding.provider_instance(),
+                            Rc::clone(endpoint),
+                        )
+                        .with_requirement_id(binding.requirement_id())
+                    })
+            })
+            .collect();
+        let stream_bindings = plan
+            .capability_bindings()
+            .iter()
+            .filter_map(|binding| {
+                stream_endpoints
+                    .get(&(
+                        binding.provider_instance().to_owned(),
+                        binding.capability_id().to_owned(),
+                    ))
+                    .map(|endpoint| {
+                        PreparedStreamBinding::new(
+                            binding.consumer_instance(),
+                            binding.provider_instance(),
+                            Rc::clone(endpoint),
+                        )
+                        .with_requirement_id(binding.requirement_id())
+                    })
+            })
+            .collect();
+        let event_bindings = plan
+            .capability_bindings()
+            .iter()
+            .filter_map(|binding| {
+                event_endpoints
+                    .get(&(
+                        binding.provider_instance().to_owned(),
+                        binding.capability_id().to_owned(),
+                    ))
+                    .map(|endpoint| {
+                        PreparedEventBinding::new(
+                            binding.consumer_instance(),
+                            binding.provider_instance(),
+                            Rc::clone(endpoint),
+                        )
+                        .with_requirement_id(binding.requirement_id())
+                    })
+            })
+            .collect();
+        Ok(PreparedNativeApp::new(bindings, generations)
+            .with_stream_bindings(stream_bindings)
+            .with_event_bindings(event_bindings))
+    }
+}
