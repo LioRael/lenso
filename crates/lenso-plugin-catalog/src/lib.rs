@@ -240,7 +240,7 @@ impl BrowseSnapshot {
             .find(|release| release.plugin_id == plugin_id && release.version == version)
             .context("exact release is not in this catalog")?;
         let selected = details.find(plugin_id, version)?;
-        selected.validate_base(release)?;
+        selected.validate_against(release)?;
         Ok(selected)
     }
 }
@@ -315,7 +315,7 @@ impl VerifiedSnapshot {
         );
         details.ensure_current(now)?;
         let selected = details.find(plugin_id, version)?;
-        selected.validate_base(release)?;
+        selected.validate_against(release)?;
         Ok(selected)
     }
 }
@@ -542,7 +542,16 @@ impl ReleaseDetails {
         Ok(())
     }
 
-    fn validate_base(&self, release: &Release) -> Result<()> {
+    /// Validate this additive document against the exact immutable v1 release.
+    /// Publishers use this before accepting details; consumers repeat it after
+    /// independently verifying both signed documents.
+    pub fn validate_against(&self, release: &Release) -> Result<()> {
+        self.validate()?;
+        release.validate()?;
+        ensure!(
+            self.plugin_id == release.plugin_id && self.version == release.version,
+            "release details identity does not match the base release"
+        );
         ensure!(
             self.base_release_identity == release.immutable_identity()?,
             "release details do not match the immutable base release"
