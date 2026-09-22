@@ -16,6 +16,7 @@ export async function generateClientTypes(options: GenerateClientOptions): Promi
   const source = await readFile(input);
   const document = parsePublicDocument(source, input);
   rejectExternalReferences(document);
+  normalizeLocalAnchors(document);
   const operationCount = validatePublicDocument(document);
   const digest = createHash('sha256').update(source).digest('hex');
   const ast = await openapiTS(document, { alphabetize: true, pathParamsAsTypes: true });
@@ -53,10 +54,40 @@ function rejectExternalReferences(value: unknown): void {
   }
   if (typeof value !== 'object' || value === null) return;
   for (const [key, child] of Object.entries(value)) {
-    if (key === '$ref' && (typeof child !== 'string' || !child.startsWith('#/'))) {
+    if (key === '$ref' && (typeof child !== 'string' || !child.startsWith('#'))) {
       throw new Error('OpenAPI input must be self-contained; external $ref values are not allowed');
     }
     rejectExternalReferences(child);
+  }
+}
+
+function normalizeLocalAnchors(document: OpenAPI3): void {
+  const anchors = new Map<string, string>();
+  walk(document, '#', (value, pointer) => {
+    const anchor = value.$anchor;
+    if (typeof anchor !== 'string') return;
+    if (anchors.has(anchor)) throw new Error(`OpenAPI input defines duplicate local anchor #${anchor}`);
+    anchors.set(anchor, pointer);
+  });
+  walk(document, '#', (value) => {
+    const reference = value.$ref;
+    if (typeof reference !== 'string' || reference === '#' || reference.startsWith('#/')) return;
+    const pointer = anchors.get(reference.slice(1));
+    if (pointer === undefined) throw new Error(`OpenAPI input references unknown local anchor ${reference}`);
+    value.$ref = pointer;
+  });
+}
+
+function walk(value: unknown, pointer: string, visit: (value: Record<string, unknown>, pointer: string) => void): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => walk(item, `${pointer}/${index}`, visit));
+    return;
+  }
+  if (typeof value !== 'object' || value === null) return;
+  const record = value as Record<string, unknown>;
+  visit(record, pointer);
+  for (const [key, child] of Object.entries(record)) {
+    walk(child, `${pointer}/${key.replaceAll('~', '~0').replaceAll('/', '~1')}`, visit);
   }
 }
 

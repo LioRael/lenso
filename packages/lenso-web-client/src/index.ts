@@ -62,12 +62,12 @@ export const browserSupport = Object.freeze({
 });
 
 export function createLensoWebClient<Paths extends {}>(options: LensoWebClientOptions): Client<Paths> {
-  const { authentication, ...clientOptions } = options;
+  const { authentication, fetch: configuredFetch, ...clientOptions } = options;
   const authenticatedOrigin = authentication === undefined ? undefined : configuredOrigin(options.baseUrl);
   const client = createClient<Paths>(authentication?.kind === 'session'
-    ? { ...clientOptions, credentials: 'include' }
-    : clientOptions);
-  client.use(authenticationMiddleware(authentication, authenticatedOrigin), transportErrorMiddleware);
+    ? { ...clientOptions, credentials: 'include', fetch: securedFetch(configuredFetch, authentication, authenticatedOrigin) }
+    : { ...clientOptions, fetch: securedFetch(configuredFetch, authentication, authenticatedOrigin) });
+  client.use(transportErrorMiddleware);
   return client;
 }
 
@@ -82,24 +82,27 @@ export function unwrapStream(result: LensoResult<ReadableStream<Uint8Array> | nu
   return stream;
 }
 
-function authenticationMiddleware(authentication: BrowserAuthentication | undefined, authenticatedOrigin: string | undefined): Middleware {
-  return {
-    async onRequest({ request }) {
-      if (authenticatedOrigin !== undefined && new URL(request.url).origin !== authenticatedOrigin) {
-        throw new Error('Authenticated Lenso Web requests cannot override the configured origin');
+function securedFetch(
+  configuredFetch: ClientOptions['fetch'],
+  authentication: BrowserAuthentication | undefined,
+  authenticatedOrigin: string | undefined,
+): NonNullable<ClientOptions['fetch']> {
+  const transport = configuredFetch ?? globalThis.fetch;
+  return async (request) => {
+    if (authenticatedOrigin !== undefined && new URL(request.url).origin !== authenticatedOrigin) {
+      throw new Error('Authenticated Lenso Web requests cannot override the configured origin');
+    }
+    if (authentication?.kind === 'bearer') {
+      const token = await authentication.accessToken();
+      if (token !== undefined) request.headers.set('authorization', `Bearer ${token}`);
+    } else if (authentication?.kind === 'session' && isUnsafeMethod(request.method)) {
+      const token = await authentication.csrfToken();
+      if (token === undefined || token.length === 0) {
+        throw new Error('Session-authenticated mutation requires a CSRF token');
       }
-      if (authentication?.kind === 'bearer') {
-        const token = await authentication.accessToken();
-        if (token !== undefined) request.headers.set('authorization', `Bearer ${token}`);
-      } else if (authentication?.kind === 'session' && isUnsafeMethod(request.method)) {
-        const token = await authentication.csrfToken();
-        if (token === undefined || token.length === 0) {
-          throw new Error('Session-authenticated mutation requires a CSRF token');
-        }
-        request.headers.set(authentication.csrfHeader ?? 'x-csrf-token', token);
-      }
-      return request;
-    },
+      request.headers.set(authentication.csrfHeader ?? 'x-csrf-token', token);
+    }
+    return transport(request);
   };
 }
 

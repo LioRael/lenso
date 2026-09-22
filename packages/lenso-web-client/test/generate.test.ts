@@ -54,6 +54,19 @@ describe('client generation', () => {
     await writeFile(input, JSON.stringify(document));
     await expect(generateClientTypes({ input, output })).rejects.toThrow('self-contained');
   });
+
+  test('accepts self-contained OpenAPI 3.1 anchor references', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'lenso-web-client-'));
+    temporaryDirectories.push(directory);
+    const input = join(directory, 'openapi.json');
+    const output = join(directory, 'api.ts');
+    const document: any = publicDocument();
+    document.components = { schemas: { Note: { $anchor: 'Note', type: 'object' } } };
+    document.paths['/notes'].get.responses['200'].content['application/json'].schema = { $ref: '#Note' };
+    await writeFile(input, JSON.stringify(document));
+
+    await expect(generateClientTypes({ input, output })).resolves.toMatchObject({ operationCount: 2 });
+  });
 });
 
 function publicDocument() {
