@@ -1,0 +1,29 @@
+[package]
+name = "lenso-capability-http-client"
+version = "0.3.1"
+description = "Portable outbound HTTP Client Capability contract for Lenso Plugins."
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[package.metadata.lenso.contract]
+descriptor = "capability.json"
+projection = "rust"
+output = "src/generated.rs"
+
+[dependencies]
+futures.workspace = true
+lenso-contract-runtime = "0.2.0"
+lenso-kernel = "=0.3.11"
+lenso-plugin-authoring = "0.2.0"
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+lenso-contract-codegen = "=0.9.0"
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[lints]
+workspace = true

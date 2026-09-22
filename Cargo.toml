@@ -1,11 +1,18 @@
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = [
+    "crates/*",
+    "examples/greetings-http-plugin",
+    "examples/greetings-web-app",
+    "examples/observe-sample-web-app",
+    "spec/fixtures/*/rust",
+    "tests/fixtures/*",
+]
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
-publish = false
+publish = true
 repository = "https://github.com/LioRael/lenso"
 rust-version = "1.94"
 
@@ -16,21 +23,32 @@ futures = "0.3"
 hex = "0.4"
 hmac = "0.12"
 inventory = "0.3"
+lenso = { path = "crates/lenso", version = "=0.5.25" }
 lenso-app-plan = { path = "crates/lenso-app-plan", version = "=0.4.5" }
+lenso-contract-authoring = { path = "crates/lenso-contract-authoring", version = "=0.1.1" }
+lenso-contract-runtime = { path = "crates/lenso-contract-runtime", version = "=0.2.0" }
 lenso-kernel = { path = "crates/lenso-kernel", version = "=0.3.11" }
+lenso-native-adapter = { path = "crates/lenso-native-adapter", version = "=0.3.15" }
+lenso-native-adapter-macros = { path = "crates/lenso-native-adapter-macros", version = "=0.2.5" }
 lenso-plugin-authoring = "0.2.0"
+lenso-runner = { path = "crates/lenso-runner", version = "=0.2.17" }
 lenso-runtime-conformance = { path = "crates/lenso-runtime-conformance", version = "=0.3.10" }
+http = "1"
+proc-macro2 = "1.0"
+quote = "1.0"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "http2", "json", "rustls"] }
 regex = "1.12"
 schemars = "1.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order", "raw_value"] }
+serde_urlencoded = "0.7"
 semver = "1.0"
 sha2 = "0.10"
 tempfile = "3.23"
 tokio = { version = "1.52", features = ["io-util", "macros", "net", "process", "rt", "signal", "sync", "time"] }
 toml = "0.9"
 uuid = { version = "1", features = ["v4"] }
+syn = { version = "2.0", features = ["full"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

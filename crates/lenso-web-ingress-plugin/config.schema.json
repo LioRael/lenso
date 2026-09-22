@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "bind_address": {
+      "type": "string"
+    },
+    "max_request_body_bytes": {
+      "type": "integer"
+    },
+    "max_request_head_bytes": {
+      "type": "integer"
+    },
+    "max_concurrent_requests": {
+      "type": "integer"
+    },
+    "max_connections": {
+      "type": "integer"
+    },
+    "request_head_timeout_millis": {
+      "type": "integer"
+    },
+    "request_body_timeout_millis": {
+      "type": "integer"
+    },
+    "connection_idle_timeout_millis": {
+      "type": "integer"
+    },
+    "shutdown_grace_timeout_millis": {
+      "type": "integer"
+    },
+    "request_timeout_millis": {
+      "type": "integer"
+    },
+    "session_cookie": {
+      "type": "object",
+      "required": [
+        "name",
+        "csrf_cookie_name",
+        "csrf_header_name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "csrf_cookie_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "csrf_header_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "websocket": {
+      "type": "object",
+      "required": [
+        "allowed_origins",
+        "max_message_bytes",
+        "max_session_bytes"
+      ],
+      "properties": {
+        "allowed_origins": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        },
+        "max_message_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "max_session_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

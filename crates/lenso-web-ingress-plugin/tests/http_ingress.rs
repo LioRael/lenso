@@ -1,0 +1,1841 @@
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+    fmt::Write as _,
+    net::SocketAddr,
+    rc::Rc,
+    time::Duration,
+};
+
+use futures::future::{LocalBoxFuture, join_all, pending};
+use http_body_util::{BodyExt as _, Full};
+use hyper::{Request, Version, client::conn::http2};
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use lenso_app_plan::{
+    AppComposition, CapabilityBinding, CapabilityEndpointPlan, CapabilityRequirementPlan,
+    PluginInstancePlan, RequestAdmissionPlan, ResolvedAppPlan,
+    authoring::{
+        HostBinding, HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
+        PluginInstanceId, PluginRootInstance, PluginRootSnapshot, resolve_plugin_root,
+    },
+};
+use lenso_capability_http_endpoint::{
+    Bytes as ContractBytes, CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, DescribeRequest,
+    DescribeResponse, DescribeResponseRoutesItem, EndpointDescribe, EndpointEndpoint,
+    EndpointHandle, EndpointHandleInvocationError, EndpointProvider, HANDLE_OPERATION, HandleError,
+    HandleRequest, HandleResponse, HandleResponseHeadersItem, endpoint,
+};
+use lenso_kernel::{
+    InvocationContext, Kernel, NativeApp, NativeRequestFuture, RuntimeFailure, ShutdownOutcome,
+};
+use lenso_native_adapter::{
+    NativePluginFactory, NativePluginFactoryContext, NativePluginInstance, NativePluginRegistry,
+};
+use lenso_runner::TokioDriver;
+use lenso_web_ingress_plugin::{
+    PACKAGE_ID, PACKAGE_VERSION, SessionCookieConfig, WebIngressConfig, WebIngressDiagnostics,
+    WebIngressEndpointFailure, WebIngressFactory, WebIngressListenerCoordinator,
+    WebIngressMiddleware, WebIngressMiddlewareOutcome, WebIngressRequest, WebIngressResponse,
+};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    task::LocalSet,
+};
+
+const ORDERS_PACKAGE_ID: &str = "fixture.orders-http";
+const STATUS_PACKAGE_ID: &str = "fixture.status-http";
+const SDK_PACKAGE_ID: &str = "fixture.sdk-orders-http";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DiagnosticEvent {
+    request_id: String,
+    route_id: String,
+    provider_index: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+struct RecordingDiagnostics {
+    events: Rc<RefCell<Vec<DiagnosticEvent>>>,
+}
+
+impl WebIngressDiagnostics for RecordingDiagnostics {
+    fn endpoint_runtime_failure(&self, event: WebIngressEndpointFailure<'_>) {
+        self.events.borrow_mut().push(DiagnosticEvent {
+            request_id: event.request_id().to_owned(),
+            route_id: event.route_id().to_owned(),
+            provider_index: event.provider_index(),
+        });
+        assert!(matches!(
+            event.failure(),
+            RuntimeFailure::PluginFailure { .. }
+        ));
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct GlobalMiddleware {
+    events: Rc<RefCell<Vec<String>>>,
+}
+
+impl WebIngressMiddleware for GlobalMiddleware {
+    fn identity(&self) -> &'static str {
+        "fixture.global:v1"
+    }
+
+    fn before_request<'a>(
+        &'a self,
+        request: &'a mut WebIngressRequest,
+    ) -> LocalBoxFuture<'a, Result<WebIngressMiddlewareOutcome, RuntimeFailure>> {
+        self.events
+            .borrow_mut()
+            .push(format!("before:{}", request.uri().path()));
+        request
+            .headers_mut()
+            .insert("x-global-before", http::HeaderValue::from_static("present"));
+        request.headers_mut().insert(
+            http::header::AUTHORIZATION,
+            http::HeaderValue::from_static("Bearer middleware-must-not-smuggle-this"),
+        );
+        request.headers_mut().insert(
+            "x-request-id",
+            http::HeaderValue::from_static("middleware-controlled"),
+        );
+        if request.uri().path() == "/middleware-error" {
+            return Box::pin(futures::future::ready(Err(RuntimeFailure::PluginFailure {
+                detail: "fixture middleware failed".to_owned(),
+            })));
+        }
+        let outcome = if request.uri().path() == "/blocked" {
+            let mut response = WebIngressResponse::new(bytes::Bytes::from_static(b"blocked"));
+            *response.status_mut() = http::StatusCode::IM_A_TEAPOT;
+            WebIngressMiddlewareOutcome::Respond(response)
+        } else {
+            WebIngressMiddlewareOutcome::Continue
+        };
+        Box::pin(futures::future::ready(Ok(outcome)))
+    }
+
+    fn after_response<'a>(
+        &'a self,
+        request: &'a WebIngressRequest,
+        response: &'a mut WebIngressResponse,
+    ) -> LocalBoxFuture<'a, Result<(), RuntimeFailure>> {
+        self.events
+            .borrow_mut()
+            .push(format!("after:{}", request.uri().path()));
+        response
+            .headers_mut()
+            .insert("x-global-after", http::HeaderValue::from_static("present"));
+        response.headers_mut().insert(
+            "x-request-id",
+            http::HeaderValue::from_static("middleware-controlled"),
+        );
+        response.headers_mut().insert(
+            "x-content-type-options",
+            http::HeaderValue::from_static("middleware-controlled"),
+        );
+        Box::pin(futures::future::ready(Ok(())))
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn global_middleware_wraps_routes_and_can_short_circuit() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let middleware = GlobalMiddleware::default();
+            let events = middleware.events.clone();
+            let ingress = WebIngressFactory::default().with_middleware(middleware);
+            let app = start(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+
+            let accepted = request(address, "GET", "/orders/42", &[], "").await;
+            assert_eq!(accepted.status, 200);
+            assert_eq!(
+                accepted.headers.get("x-global-after").map(String::as_str),
+                Some("present")
+            );
+            assert_ne!(
+                accepted.headers.get("x-request-id").map(String::as_str),
+                Some("middleware-controlled")
+            );
+            assert_eq!(
+                accepted
+                    .headers
+                    .get("x-content-type-options")
+                    .map(String::as_str),
+                Some("nosniff")
+            );
+            let observed = endpoint.observed().unwrap();
+            assert!(
+                observed.headers.iter().any(|header| {
+                    header.name == "x-global-before" && header.value == "present"
+                })
+            );
+            assert!(
+                observed.headers.iter().all(|header| {
+                    header.name != "authorization" && header.name != "x-request-id"
+                }),
+                "middleware must not reintroduce Ingress-owned evidence"
+            );
+            assert_ne!(observed.request_id, "middleware-controlled");
+
+            let blocked = request(address, "GET", "/blocked", &[], "").await;
+            assert_eq!(blocked.status, 418);
+            assert_eq!(blocked.body, "blocked");
+            assert_eq!(
+                blocked.headers.get("x-global-after").map(String::as_str),
+                Some("present")
+            );
+
+            let failed = request(address, "GET", "/middleware-error", &[], "").await;
+            assert_error(&failed, 503, "endpoint_unavailable");
+            assert_eq!(
+                *events.borrow(),
+                [
+                    "before:/orders/42",
+                    "after:/orders/42",
+                    "before:/blocked",
+                    "after:/blocked",
+                    "before:/middleware-error",
+                ]
+            );
+
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn host_diagnostics_observe_runtime_failures_without_changing_http_errors() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint =
+                FixtureEndpointFactory::new(ORDERS_PACKAGE_ID, [("orders.fail", "GET", "/fail")]);
+            let diagnostics = RecordingDiagnostics::default();
+            let events = diagnostics.events.clone();
+            let ingress = WebIngressFactory::default().with_diagnostics(diagnostics);
+            let app = start(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                &ingress,
+                [endpoint],
+            )
+            .await
+            .unwrap();
+
+            let response = request(ingress.local_address().unwrap(), "GET", "/fail", &[], "").await;
+            assert_error(&response, 503, "endpoint_unavailable");
+            assert_eq!(
+                events.borrow().as_slice(),
+                [DiagnosticEvent {
+                    request_id: "lenso-0".to_owned(),
+                    route_id: "orders.fail".to_owned(),
+                    provider_index: 0,
+                }]
+            );
+
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn equivalent_replicas_share_one_listener_and_receive_connections() {
+    LocalSet::new()
+        .run_until(async {
+            let coordinator = WebIngressListenerCoordinator::bind(WebIngressConfig::default(), 2)
+                .await
+                .expect("coordinator should bind once");
+            let first_ingress = WebIngressFactory::replicated(&coordinator).unwrap();
+            let second_ingress = WebIngressFactory::replicated(&coordinator).unwrap();
+            let first_endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let second_endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let first = start(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                &first_ingress,
+                [first_endpoint.clone()],
+            )
+            .await
+            .unwrap();
+            let second = start(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                &second_ingress,
+                [second_endpoint.clone()],
+            )
+            .await
+            .unwrap();
+
+            let address = coordinator.local_address();
+            let first_response = request(address, "GET", "/orders/1", &[], "").await;
+            let second_response = request(address, "GET", "/orders/2", &[], "").await;
+            assert_eq!(first_response.status, 200);
+            assert_eq!(second_response.status, 200);
+            assert_ne!(
+                first_response.headers.get("x-request-id"),
+                second_response.headers.get("x-request-id")
+            );
+            assert!(first_endpoint.observed().is_some());
+            assert!(second_endpoint.observed().is_some());
+
+            first.shutdown(Duration::from_secs(1)).await;
+            second.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn ingress_accepts_http2_prior_knowledge() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                &ingress,
+                [endpoint],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+            let stream = TcpStream::connect(address).await.unwrap();
+            let (mut sender, connection) =
+                http2::handshake(TokioExecutor::new(), TokioIo::new(stream))
+                    .await
+                    .expect("HTTP/2 handshake should succeed");
+            tokio::task::spawn_local(async move {
+                connection
+                    .await
+                    .expect("HTTP/2 connection should stay valid");
+            });
+            let request = Request::builder()
+                .version(Version::HTTP_2)
+                .method("GET")
+                .uri(format!("http://{address}/orders/42"))
+                .body(Full::new(bytes::Bytes::new()))
+                .unwrap();
+            let response = sender.send_request(request).await.unwrap();
+            assert_eq!(response.status(), 200);
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            assert!(body.starts_with(br#"{"provider""#));
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn one_http2_connection_obeys_the_ingress_stream_ceiling() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.slow", "GET", "/orders-slow")],
+            );
+            let config = WebIngressConfig::default()
+                .with_max_concurrent_requests(2)
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+            let stream = TcpStream::connect(address).await.unwrap();
+            let (mut sender, connection) =
+                http2::handshake(TokioExecutor::new(), TokioIo::new(stream))
+                    .await
+                    .expect("HTTP/2 handshake should succeed");
+            tokio::task::spawn_local(async move {
+                connection
+                    .await
+                    .expect("HTTP/2 connection should stay valid");
+            });
+
+            let responses = join_all((0..16).map(|_| {
+                let mut sender = sender.clone();
+                async move {
+                    let request = Request::builder()
+                        .version(Version::HTTP_2)
+                        .method("GET")
+                        .uri(format!("http://{address}/orders-slow"))
+                        .body(Full::new(bytes::Bytes::new()))
+                        .unwrap();
+                    sender.send_request(request).await
+                }
+            }))
+            .await;
+
+            let success_count = responses
+                .iter()
+                .filter(|response| {
+                    response
+                        .as_ref()
+                        .is_ok_and(|response| response.status() == 200)
+                })
+                .count();
+            let refused_count = responses
+                .iter()
+                .filter(|response| {
+                    response
+                        .as_ref()
+                        .is_err_and(|error| format!("{error:?}").contains("REFUSED_STREAM"))
+                })
+                .count();
+            assert!((1..=2).contains(&success_count));
+            assert_eq!(success_count + refused_count, responses.len());
+            assert_eq!(endpoint.max_active_calls(), 2);
+
+            let request = Request::builder()
+                .version(Version::HTTP_2)
+                .method("GET")
+                .uri(format!("http://{address}/orders-slow"))
+                .body(Full::new(bytes::Bytes::new()))
+                .unwrap();
+            let response = sender.send_request(request).await.unwrap();
+            assert_eq!(response.status(), 200);
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[allow(clippy::too_many_lines)]
+async fn routes_bound_backend_plugins_and_preserves_http_evidence() {
+    LocalSet::new()
+        .run_until(async {
+            let active_calls = Rc::new(Cell::new(0));
+            let max_active_calls = Rc::new(Cell::new(0));
+            let orders = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [
+                    ("orders.read", "GET", "/orders/{order_id}"),
+                    ("orders.slow", "GET", "/orders-slow"),
+                    ("orders.panic", "GET", "/panic"),
+                ],
+            )
+            .with_call_tracker(active_calls.clone(), max_active_calls.clone());
+            let status = FixtureEndpointFactory::new(
+                STATUS_PACKAGE_ID,
+                [
+                    ("status.read", "GET", "/health"),
+                    ("status.slow", "GET", "/status-slow"),
+                ],
+            )
+            .with_call_tracker(active_calls, max_active_calls);
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project(&[
+                    ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID),
+                    ProviderPlan::new("status-http", STATUS_PACKAGE_ID),
+                ]),
+                &ingress,
+                [orders.clone(), status.clone()],
+            )
+            .await
+            .expect("App should start with two immutable HTTP Endpoint providers");
+            let address = ingress.local_address().unwrap();
+            let manifest = ingress
+                .route_manifest()
+                .expect("activation should publish a canonical route manifest");
+            assert_eq!(manifest.routes().len(), 5);
+            assert!(manifest.routes().iter().any(|route| {
+                route.method == "GET"
+                    && route.path == "/orders/{order_id}"
+                    && route.route_id == "orders.read"
+            }));
+
+            let orders_response = request(
+                address,
+                "GET",
+                "/orders/42?include=items",
+                &[
+                    ("Authorization", "Bearer good-token"),
+                    ("X-Tenant", "acme"),
+                    ("X-Request-Id", "untrusted-client-id"),
+                ],
+                "",
+            )
+            .await;
+            assert_eq!(orders_response.status, 200);
+            assert_eq!(
+                orders_response.body,
+                r#"{"provider":"fixture.orders-http","route":"orders.read"}"#
+            );
+            let response_request_id = orders_response
+                .headers
+                .get("x-request-id")
+                .expect("Ingress should return its request id");
+            assert!(response_request_id.starts_with("lenso-"));
+            assert_ne!(response_request_id, "untrusted-client-id");
+            assert_eq!(
+                orders_response
+                    .headers
+                    .get("x-content-type-options")
+                    .map(String::as_str),
+                Some("nosniff")
+            );
+            let observed = orders.observed().expect("orders provider saw request");
+            assert_eq!(&observed.request_id, response_request_id);
+            assert_eq!(observed.route_id, "orders.read");
+            assert_eq!(observed.path, "/orders/42");
+            assert_eq!(observed.query.as_deref(), Some("include=items"));
+            assert_eq!(
+                observed
+                    .path_parameters
+                    .iter()
+                    .map(|item| (item.name.as_str(), item.value.as_str()))
+                    .collect::<Vec<_>>(),
+                [("order_id", "42")]
+            );
+            assert_eq!(observed.credential.unwrap().scheme, "bearer");
+            assert!(
+                observed
+                    .headers
+                    .iter()
+                    .any(|header| { header.name == "x-tenant" && header.value == "acme" })
+            );
+            assert!(
+                !observed
+                    .headers
+                    .iter()
+                    .any(|header| { header.name == "authorization" || header.name == "cookie" })
+            );
+
+            assert_hop_filtering_and_parallel_dispatch(address, &orders).await;
+
+            assert_error(
+                &request(address, "GET", "/panic", &[], "").await,
+                503,
+                "endpoint_unavailable",
+            );
+
+            let health = request(address, "GET", "/health", &[], "").await;
+            assert_eq!(health.status, 200);
+            assert!(health.body.contains(STATUS_PACKAGE_ID));
+            assert!(status.observed().is_some());
+
+            let method_not_allowed = request(address, "POST", "/health", &[], "").await;
+            assert_error(&method_not_allowed, 405, "method_not_allowed");
+            assert_eq!(
+                method_not_allowed.headers.get("allow").map(String::as_str),
+                Some("GET")
+            );
+            assert_error(
+                &request(address, "GET", "/missing", &[], "").await,
+                404,
+                "not_found",
+            );
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[allow(clippy::too_many_lines)]
+async fn session_cookie_auth_enforces_csrf_on_the_real_ingress_path() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [
+                    ("orders.read", "GET", "/orders/{order_id}"),
+                    ("orders.create", "POST", "/orders"),
+                ],
+            );
+            let config = WebIngressConfig::default()
+                .with_session_cookie(
+                    SessionCookieConfig::new(
+                        "__Host-lenso-session",
+                        "__Host-lenso-csrf",
+                        "x-csrf-token",
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .expect("session Cookie configuration should start");
+            let address = ingress.local_address().unwrap();
+
+            assert_error(
+                &request(
+                    address,
+                    "POST",
+                    "/orders",
+                    &[(
+                        "Cookie",
+                        "__Host-lenso-session=session-token; __Host-lenso-csrf=csrf-token",
+                    )],
+                    "",
+                )
+                .await,
+                403,
+                "csrf_rejected",
+            );
+            assert_error(
+                &request(
+                    address,
+                    "POST",
+                    "/orders",
+                    &[
+                        (
+                            "Cookie",
+                            "__Host-lenso-session=session-token; __Host-lenso-csrf=csrf-token",
+                        ),
+                        ("X-Csrf-Token", "wrong-token"),
+                    ],
+                    "",
+                )
+                .await,
+                403,
+                "csrf_rejected",
+            );
+            assert_error(
+                &request(
+                    address,
+                    "POST",
+                    "/orders",
+                    &[
+                        ("Authorization", "Bearer bearer-token"),
+                        (
+                            "Cookie",
+                            "__Host-lenso-session=session-token; __Host-lenso-csrf=csrf-token",
+                        ),
+                        ("X-Csrf-Token", "csrf-token"),
+                    ],
+                    "",
+                )
+                .await,
+                400,
+                "bad_request",
+            );
+            assert!(
+                endpoint.observed().is_none(),
+                "rejections must not dispatch"
+            );
+
+            let safe = request(
+                address,
+                "GET",
+                "/orders/42",
+                &[("Cookie", "theme=dark; __Host-lenso-session=session-token")],
+                "",
+            )
+            .await;
+            assert_eq!(safe.status, 200);
+            let observed = endpoint.observed().unwrap();
+            let credential = observed.credential.unwrap();
+            assert_eq!(credential.scheme, "session");
+            assert_eq!(credential.value, "session-token");
+            assert!(
+                observed
+                    .headers
+                    .iter()
+                    .all(|header| header.name != "cookie")
+            );
+
+            let accepted = request(
+                address,
+                "POST",
+                "/orders",
+                &[
+                    (
+                        "Cookie",
+                        "theme=dark; __Host-lenso-session=session-token; __Host-lenso-csrf=csrf-token",
+                    ),
+                    ("X-Csrf-Token", "csrf-token"),
+                ],
+                "",
+            )
+            .await;
+            assert_eq!(accepted.status, 200);
+            let observed = endpoint.observed().unwrap();
+            let credential = observed.credential.unwrap();
+            assert_eq!(credential.scheme, "session");
+            assert_eq!(credential.value, "session-token");
+            assert!(
+                observed
+                    .headers
+                    .iter()
+                    .all(|header| header.name != "cookie" && header.name != "x-csrf-token"),
+                "Ingress-owned Cookie and CSRF evidence must not reach the Endpoint"
+            );
+
+            let bearer = request(
+                address,
+                "POST",
+                "/orders",
+                &[
+                    ("Authorization", "Bearer bearer-token"),
+                    ("Cookie", "theme=dark"),
+                ],
+                "",
+            )
+            .await;
+            assert_eq!(bearer.status, 200);
+            let observed = endpoint.observed().unwrap();
+            let credential = observed.credential.unwrap();
+            assert_eq!(credential.scheme, "bearer");
+            assert_eq!(credential.value, "bearer-token");
+            assert!(
+                observed
+                    .headers
+                    .iter()
+                    .all(|header| header.name != "cookie")
+            );
+
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn sdk_authored_endpoint_routes_through_the_real_ingress() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = SdkEndpointFactory::default();
+            let ingress = WebIngressFactory::default();
+            let app = start_with_registry(
+                project(&[ProviderPlan::new("sdk-orders-http", SDK_PACKAGE_ID)]),
+                &ingress,
+                NativePluginRegistry::new().with_factory(endpoint.clone()),
+            )
+            .await
+            .expect("SDK-authored Endpoint should compose with Web Ingress");
+            let response = request(
+                ingress.local_address().unwrap(),
+                "GET",
+                "/sdk/orders/order-42",
+                &[("Authorization", "Bearer sdk-token")],
+                "",
+            )
+            .await;
+
+            assert_eq!(response.status, 200);
+            assert_eq!(response.body, r#"{"id":"order-42"}"#);
+            let observed = endpoint.observed().expect("SDK handler should run");
+            assert_eq!(observed.route_id, "sdk.orders.read");
+            assert_eq!(observed.path_parameters[0].value, "order-42");
+            assert_eq!(observed.credential.unwrap().value, "sdk-token");
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+        })
+        .await;
+}
+
+async fn assert_hop_filtering_and_parallel_dispatch(
+    address: SocketAddr,
+    orders: &FixtureEndpointFactory,
+) {
+    let hop_filtered = request(
+        address,
+        "GET",
+        "/orders/43",
+        &[("Connection", "close, x-hop"), ("X-Hop", "secret")],
+        "",
+    )
+    .await;
+    assert_eq!(hop_filtered.status, 200);
+    assert!(
+        !orders
+            .observed()
+            .unwrap()
+            .headers
+            .iter()
+            .any(|header| header.name == "x-hop")
+    );
+
+    let (slow_one, slow_two) = tokio::join!(
+        request(address, "GET", "/orders-slow", &[], ""),
+        request(address, "GET", "/status-slow", &[], "")
+    );
+    assert_eq!(slow_one.status, 200);
+    assert_eq!(slow_two.status, 200);
+    assert_eq!(orders.max_active_calls(), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn route_collisions_fail_activation_before_readiness() {
+    LocalSet::new()
+        .run_until(async {
+            let first = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let second = FixtureEndpointFactory::new(
+                STATUS_PACKAGE_ID,
+                [("orders.copy", "GET", "/orders/{another_id}")],
+            );
+            let ingress = WebIngressFactory::default();
+            let error = start(
+                project(&[
+                    ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID),
+                    ProviderPlan::new("status-http", STATUS_PACKAGE_ID),
+                ]),
+                &ingress,
+                [first, second],
+            )
+            .await
+            .expect_err("colliding routes must fail before App readiness");
+            assert!(format!("{error:?}").contains("HTTP route collision"));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn concurrency_limit_backpressures_without_dropping_requests() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.slow", "GET", "/orders-slow")],
+            );
+            let config = WebIngressConfig::default()
+                .with_max_concurrent_requests(1)
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .expect("App should start with a single-request concurrency limit");
+            let address = ingress.local_address().unwrap();
+
+            let (first, second) = tokio::join!(
+                request(address, "GET", "/orders-slow", &[], ""),
+                request(address, "GET", "/orders-slow", &[], "")
+            );
+            assert_eq!(first.status, 200);
+            assert_eq!(second.status, 200);
+            assert_eq!(endpoint.max_active_calls(), 1);
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn host_binding_admission_matches_source_first_ingress_concurrency() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.slow", "GET", "/orders-slow")],
+            );
+            let config = WebIngressConfig::default()
+                .with_max_concurrent_requests(4)
+                .unwrap();
+            let plan = source_first_host_project(&config);
+            let binding = &plan.capability_bindings()[0];
+            let admission = plan.request_admission_for(binding, HANDLE_OPERATION);
+            assert_eq!(admission.queue_capacity(), 0);
+            assert_eq!(admission.max_concurrency(), 4);
+            let ingress = WebIngressFactory::default();
+            let app = start(plan, &ingress, [endpoint.clone()]).await.unwrap();
+            let address = ingress.local_address().unwrap();
+
+            let responses =
+                join_all((0..8).map(|_| request(address, "GET", "/orders-slow", &[], ""))).await;
+            assert!(responses.iter().all(|response| response.status == 200));
+            assert_eq!(endpoint.max_active_calls(), 4);
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn transport_limits_duplicate_credentials_and_endpoint_failures_are_mapped() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [
+                    ("orders.read", "GET", "/orders/{order_id}"),
+                    ("orders.reject", "GET", "/reject"),
+                    ("orders.invalid", "GET", "/invalid"),
+                    ("orders.hop-response", "GET", "/hop-response"),
+                ],
+            );
+            let config = WebIngressConfig::default()
+                .with_request_limits(32, 512)
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+
+            let too_large = request(address, "POST", "/orders/42", &[], &"a".repeat(33)).await;
+            assert_error(&too_large, 413, "payload_too_large");
+            assert_error(
+                &request(
+                    address,
+                    "GET",
+                    "/orders/42",
+                    &[
+                        ("Authorization", "Bearer first"),
+                        ("Authorization", "Bearer second"),
+                    ],
+                    "",
+                )
+                .await,
+                400,
+                "bad_request",
+            );
+            assert_error(
+                &request(address, "GET", "/reject", &[], "").await,
+                502,
+                "endpoint_rejected",
+            );
+            assert_error(
+                &request(address, "GET", "/invalid", &[], "").await,
+                502,
+                "invalid_endpoint_response",
+            );
+            assert_error(
+                &request(address, "GET", "/hop-response", &[], "").await,
+                502,
+                "invalid_endpoint_response",
+            );
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn slow_request_body_expires_without_stranding_ingress_admission() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "POST", "/orders")],
+            );
+            let config = WebIngressConfig::default()
+                .with_max_concurrent_requests(1)
+                .unwrap()
+                .with_request_read_timeouts(
+                    Duration::from_secs(1),
+                    Duration::from_millis(25),
+                )
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+            let mut stream = TcpStream::connect(address).await.unwrap();
+            stream
+                .write_all(
+                    format!(
+                        "POST /orders HTTP/1.1\r\nHost: {address}\r\nContent-Length: 8\r\nConnection: close\r\n\r\nx"
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let mut response = Vec::new();
+            tokio::time::timeout(Duration::from_secs(1), stream.read_to_end(&mut response))
+                .await
+                .expect("slow body connection should close")
+                .unwrap();
+            let response = String::from_utf8(response).unwrap();
+            assert!(response.starts_with("HTTP/1.1 408"), "{response}");
+            assert!(response.ends_with(r#"{"error":"request_timeout"}"#));
+
+            let healthy = request(address, "POST", "/orders", &[], "complete").await;
+            assert_eq!(healthy.status, 200);
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn slow_headers_and_idle_connections_release_the_live_connection_budget() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint =
+                FixtureEndpointFactory::new(ORDERS_PACKAGE_ID, [("orders.read", "GET", "/orders")]);
+            let config = WebIngressConfig::default()
+                .with_connection_limits(1, Duration::from_millis(40))
+                .unwrap()
+                .with_request_read_timeouts(Duration::from_millis(25), Duration::from_secs(1))
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+
+            let mut slow_head = TcpStream::connect(address).await.unwrap();
+            slow_head
+                .write_all(b"GET /orders HTTP/1.1\r\n")
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_millis(75)).await;
+            let mut closed = Vec::new();
+            let _ =
+                tokio::time::timeout(Duration::from_secs(1), slow_head.read_to_end(&mut closed))
+                    .await
+                    .expect("slow header connection should be closed");
+
+            let idle = TcpStream::connect(address).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(75)).await;
+            drop(idle);
+            let healthy = request(address, "GET", "/orders", &[], "").await;
+            assert_eq!(healthy.status, 200);
+            app.shutdown(Duration::from_secs(1)).await;
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn plan_configuration_head_limit_and_endpoint_deadline_are_enforced() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [
+                    ("orders.read", "GET", "/orders/{order_id}"),
+                    ("orders.timeout", "GET", "/timeout"),
+                ],
+            );
+            let config = WebIngressConfig::default()
+                .with_request_limits(1024, 256)
+                .unwrap()
+                .with_request_timeout(Duration::from_millis(20))
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+
+            let oversized_head = request(
+                address,
+                "GET",
+                "/orders/42",
+                &[("X-Fill", &"x".repeat(300))],
+                "",
+            )
+            .await;
+            assert_error(&oversized_head, 431, "request_header_fields_too_large");
+            assert_error(
+                &request(address, "GET", "/timeout", &[], "").await,
+                504,
+                "endpoint_timeout",
+            );
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn invalid_plan_configuration_fails_before_readiness() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let ingress = WebIngressFactory::default();
+            let error = start(
+                project_with_configuration(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    serde_json::json!({"max_concurrent_requests": 0}).to_string(),
+                ),
+                &ingress,
+                [endpoint],
+            )
+            .await
+            .expect_err("invalid Ingress configuration must fail App preparation");
+            assert!(
+                matches!(error, RuntimeFailure::InvalidResolvedPlan { .. }),
+                "unexpected failure: {error:?}"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn client_disconnect_cancels_the_endpoint_invocation() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint =
+                FixtureEndpointFactory::new(ORDERS_PACKAGE_ID, [("orders.never", "GET", "/never")]);
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .unwrap();
+            let stream = begin_request(ingress.local_address().unwrap(), "/never").await;
+            wait_for(|| endpoint.blocked_started()).await;
+            drop(stream);
+            wait_for(|| endpoint.blocked_dropped()).await;
+
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn shutdown_stops_accepting_and_cancels_in_flight_endpoint_work() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint =
+                FixtureEndpointFactory::new(ORDERS_PACKAGE_ID, [("orders.never", "GET", "/never")]);
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .unwrap();
+            let address = ingress.local_address().unwrap();
+            let stream = begin_request(address, "/never").await;
+            wait_for(|| endpoint.blocked_started()).await;
+
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+            assert!(endpoint.blocked_dropped());
+            drop(stream);
+            assert!(TcpStream::connect(address).await.is_err());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn shutdown_hard_closes_a_client_that_does_not_read_its_response() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint =
+                FixtureEndpointFactory::new(ORDERS_PACKAGE_ID, [("orders.large", "GET", "/large")]);
+            let config = WebIngressConfig::default()
+                .with_shutdown_grace_timeout(Duration::from_millis(100))
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .unwrap();
+            let stream = begin_request(ingress.local_address().unwrap(), "/large").await;
+            wait_for(|| endpoint.observed().is_some()).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let started = tokio::time::Instant::now();
+
+            assert_eq!(
+                app.shutdown(Duration::from_secs(2)).await,
+                ShutdownOutcome::Clean
+            );
+            assert!(started.elapsed() < Duration::from_secs(1));
+            drop(stream);
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn shutdown_grace_drains_an_already_admitted_response() {
+    LocalSet::new()
+        .run_until(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let config = WebIngressConfig::default()
+                .with_shutdown_grace_timeout(Duration::from_millis(500))
+                .unwrap();
+            let ingress = WebIngressFactory::default();
+            let app = start(
+                project_with_config(
+                    &[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)],
+                    &config,
+                ),
+                &ingress,
+                [endpoint.clone()],
+            )
+            .await
+            .unwrap();
+            let mut stream = begin_request(ingress.local_address().unwrap(), "/orders/42").await;
+            wait_for(|| endpoint.observed().is_some()).await;
+
+            assert_eq!(
+                app.shutdown(Duration::from_secs(2)).await,
+                ShutdownOutcome::Clean
+            );
+            let mut response = Vec::new();
+            stream.read_to_end(&mut response).await.unwrap();
+            let response = String::from_utf8(response).unwrap();
+            assert!(response.starts_with("HTTP/1.1 200"));
+            assert!(response.contains("orders.read"));
+        })
+        .await;
+}
+
+#[derive(Clone, Debug)]
+struct ProviderPlan {
+    instance: &'static str,
+    package: &'static str,
+}
+
+impl ProviderPlan {
+    const fn new(instance: &'static str, package: &'static str) -> Self {
+        Self { instance, package }
+    }
+}
+
+fn project(providers: &[ProviderPlan]) -> ResolvedAppPlan {
+    project_with_optional_configuration(
+        providers,
+        None,
+        WebIngressConfig::default().endpoint_admission_limits(),
+    )
+}
+
+fn source_first_host_project(config: &WebIngressConfig) -> ResolvedAppPlan {
+    let ingress = PluginDescriptor::new(PACKAGE_ID, PACKAGE_VERSION, "http-ingress")
+        .with_requirement(CapabilityRequirementPlan::many(
+            CAPABILITY_ID,
+            DESCRIPTOR_VERSION,
+        ))
+        .with_configuration_schema(
+            serde_json::from_str(include_str!("../config.schema.json")).unwrap(),
+        );
+    let endpoint = PluginDescriptor::new(ORDERS_PACKAGE_ID, PACKAGE_VERSION, "http-endpoints")
+        .with_capability(CapabilityEndpointPlan::new(
+            CAPABILITY_ID,
+            DESCRIPTOR_VERSION,
+            [DESCRIBE_OPERATION, HANDLE_OPERATION],
+        ));
+    let (queue_capacity, max_concurrency) = config.endpoint_admission_limits();
+    let host = HostCatalog::new(
+        [
+            HostSlot::one("http-ingress"),
+            HostSlot::many("http-endpoints"),
+        ],
+        [
+            HostPluginRelease::new(ingress),
+            HostPluginRelease::new(endpoint),
+        ],
+        [HostDefaultPlugin::new(PACKAGE_ID, "default")
+            .with_configuration(serde_json::to_value(config).unwrap())],
+    )
+    .with_bindings([HostBinding::new(
+        PluginInstanceId::new(PACKAGE_ID, "default"),
+        CAPABILITY_ID,
+        "http-endpoints",
+    )
+    .with_admission(RequestAdmissionPlan::new(queue_capacity, max_concurrency))]);
+    let root = PluginRootSnapshot::new(
+        [],
+        [PluginRootInstance::new(ORDERS_PACKAGE_ID, "default")],
+        [],
+    );
+
+    resolve_plugin_root(&host, &root).unwrap().plan().clone()
+}
+
+fn project_with_config(providers: &[ProviderPlan], config: &WebIngressConfig) -> ResolvedAppPlan {
+    project_with_optional_configuration(
+        providers,
+        Some(serde_json::to_string(config).unwrap()),
+        config.endpoint_admission_limits(),
+    )
+}
+
+fn project_with_configuration(
+    providers: &[ProviderPlan],
+    configuration: String,
+) -> ResolvedAppPlan {
+    project_with_optional_configuration(
+        providers,
+        Some(configuration),
+        WebIngressConfig::default().endpoint_admission_limits(),
+    )
+}
+
+fn project_with_optional_configuration(
+    providers: &[ProviderPlan],
+    configuration: Option<String>,
+    endpoint_admission: (usize, usize),
+) -> ResolvedAppPlan {
+    let mut plugins = providers
+        .iter()
+        .map(|provider| {
+            PluginInstancePlan::new(provider.instance, provider.package).with_capability(
+                CapabilityEndpointPlan::new(
+                    CAPABILITY_ID,
+                    DESCRIPTOR_VERSION,
+                    [DESCRIBE_OPERATION, HANDLE_OPERATION],
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut ingress = PluginInstancePlan::new("web-ingress", PACKAGE_ID).with_requirement(
+        CapabilityRequirementPlan::many(CAPABILITY_ID, DESCRIPTOR_VERSION),
+    );
+    if let Some(configuration) = configuration {
+        ingress = ingress.with_configuration(configuration);
+    }
+    plugins.push(ingress);
+    let bindings = providers
+        .iter()
+        .map(|provider| {
+            CapabilityBinding::new(
+                "web-ingress",
+                CAPABILITY_ID,
+                DESCRIPTOR_VERSION,
+                provider.instance,
+            )
+            .with_limits(endpoint_admission.0, endpoint_admission.1)
+        })
+        .collect();
+    AppComposition::new(plugins, bindings).resolve().unwrap()
+}
+
+async fn start<const N: usize>(
+    plan: ResolvedAppPlan,
+    ingress: &WebIngressFactory,
+    endpoints: [FixtureEndpointFactory; N],
+) -> Result<NativeApp, RuntimeFailure> {
+    let mut registry = NativePluginRegistry::new();
+    for endpoint in endpoints {
+        registry = registry.with_factory(endpoint);
+    }
+    start_with_registry(plan, ingress, registry).await
+}
+
+async fn start_with_registry(
+    plan: ResolvedAppPlan,
+    ingress: &WebIngressFactory,
+    registry: NativePluginRegistry,
+) -> Result<NativeApp, RuntimeFailure> {
+    let registry = registry.with_factory(ingress.clone());
+    Kernel::start_native(plan, TokioDriver::new(), registry).await
+}
+
+#[derive(Clone, Debug, Default)]
+struct SdkEndpointFactory {
+    endpoint: SdkOrdersEndpoint,
+}
+
+impl SdkEndpointFactory {
+    fn observed(&self) -> Option<HandleRequest> {
+        self.endpoint.observed.borrow().clone()
+    }
+}
+
+impl NativePluginFactory for SdkEndpointFactory {
+    fn package_id(&self) -> &'static str {
+        SDK_PACKAGE_ID
+    }
+
+    fn package_version(&self) -> &'static str {
+        PACKAGE_VERSION
+    }
+
+    fn instantiate(
+        &self,
+        _context: NativePluginFactoryContext<'_>,
+    ) -> Result<NativePluginInstance, RuntimeFailure> {
+        Ok(NativePluginInstance::new(vec![Rc::new(
+            EndpointEndpoint::new(self.endpoint.clone()),
+        )]))
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct SdkOrdersEndpoint {
+    observed: Rc<RefCell<Option<HandleRequest>>>,
+}
+
+#[endpoint(standalone)]
+impl SdkOrdersEndpoint {
+    #[get("sdk.orders.read", "/sdk/orders/{order_id}")]
+    async fn read(
+        &self,
+        _context: InvocationContext,
+        request: HandleRequest,
+    ) -> Result<HandleResponse, EndpointHandleInvocationError> {
+        futures::future::ready(()).await;
+        let order_id = request
+            .path_parameters
+            .iter()
+            .find(|parameter| parameter.name == "order_id")
+            .map_or("missing", |parameter| parameter.value.as_str())
+            .to_owned();
+        self.observed.borrow_mut().replace(request);
+        Ok(HandleResponse {
+            body: format!(r#"{{"id":"{order_id}"}}"#).into_bytes().into(),
+            headers: vec![HandleResponseHeadersItem {
+                name: "content-type".to_owned(),
+                value: "application/json; charset=utf-8".to_owned(),
+            }],
+            status: 200,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct FixtureEndpointFactory {
+    package_id: &'static str,
+    routes: Rc<Vec<DescribeResponseRoutesItem>>,
+    observed: Rc<RefCell<Option<HandleRequest>>>,
+    active_calls: Rc<Cell<usize>>,
+    max_active_calls: Rc<Cell<usize>>,
+    blocked_started: Rc<Cell<bool>>,
+    blocked_dropped: Rc<Cell<bool>>,
+}
+
+impl FixtureEndpointFactory {
+    fn new<const N: usize>(
+        package_id: &'static str,
+        routes: [(&'static str, &'static str, &'static str); N],
+    ) -> Self {
+        Self {
+            package_id,
+            routes: Rc::new(
+                routes
+                    .into_iter()
+                    .map(|(route_id, method, path)| DescribeResponseRoutesItem {
+                        method: method.to_owned(),
+                        openapi: None,
+                        path: path.to_owned(),
+                        route_id: route_id.to_owned(),
+                    })
+                    .collect(),
+            ),
+            observed: Rc::new(RefCell::new(None)),
+            active_calls: Rc::new(Cell::new(0)),
+            max_active_calls: Rc::new(Cell::new(0)),
+            blocked_started: Rc::new(Cell::new(false)),
+            blocked_dropped: Rc::new(Cell::new(false)),
+        }
+    }
+
+    fn observed(&self) -> Option<HandleRequest> {
+        self.observed.borrow().clone()
+    }
+
+    fn with_call_tracker(
+        mut self,
+        active_calls: Rc<Cell<usize>>,
+        max_active_calls: Rc<Cell<usize>>,
+    ) -> Self {
+        self.active_calls = active_calls;
+        self.max_active_calls = max_active_calls;
+        self
+    }
+
+    fn max_active_calls(&self) -> usize {
+        self.max_active_calls.get()
+    }
+
+    fn blocked_started(&self) -> bool {
+        self.blocked_started.get()
+    }
+
+    fn blocked_dropped(&self) -> bool {
+        self.blocked_dropped.get()
+    }
+}
+
+impl NativePluginFactory for FixtureEndpointFactory {
+    fn package_id(&self) -> &'static str {
+        self.package_id
+    }
+
+    fn package_version(&self) -> &'static str {
+        PACKAGE_VERSION
+    }
+
+    fn instantiate(
+        &self,
+        _context: NativePluginFactoryContext<'_>,
+    ) -> Result<NativePluginInstance, RuntimeFailure> {
+        Ok(NativePluginInstance::new(vec![Rc::new(
+            EndpointEndpoint::new(FixtureEndpoint {
+                package_id: self.package_id,
+                routes: self.routes.clone(),
+                observed: self.observed.clone(),
+                active_calls: self.active_calls.clone(),
+                max_active_calls: self.max_active_calls.clone(),
+                blocked_started: self.blocked_started.clone(),
+                blocked_dropped: self.blocked_dropped.clone(),
+            }),
+        )]))
+    }
+}
+
+#[derive(Debug)]
+struct FixtureEndpoint {
+    package_id: &'static str,
+    routes: Rc<Vec<DescribeResponseRoutesItem>>,
+    observed: Rc<RefCell<Option<HandleRequest>>>,
+    active_calls: Rc<Cell<usize>>,
+    max_active_calls: Rc<Cell<usize>>,
+    blocked_started: Rc<Cell<bool>>,
+    blocked_dropped: Rc<Cell<bool>>,
+}
+
+struct DropFlag(Rc<Cell<bool>>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.set(true);
+    }
+}
+
+impl EndpointProvider for FixtureEndpoint {
+    fn describe(
+        &self,
+        _context: InvocationContext,
+        _request: DescribeRequest,
+    ) -> NativeRequestFuture<EndpointDescribe> {
+        Box::pin(futures::future::ready(Ok(Ok(DescribeResponse {
+            routes: self.routes.as_ref().clone(),
+        }))))
+    }
+
+    fn handle(
+        &self,
+        _context: InvocationContext,
+        request: HandleRequest,
+    ) -> NativeRequestFuture<EndpointHandle> {
+        assert_ne!(request.route_id, "orders.panic", "fixture endpoint panic");
+        self.observed.borrow_mut().replace(request.clone());
+        let package_id = self.package_id;
+        let active_calls = self.active_calls.clone();
+        let max_active_calls = self.max_active_calls.clone();
+        let blocked_started = self.blocked_started.clone();
+        let blocked_dropped = self.blocked_dropped.clone();
+        Box::pin(async move {
+            if request.route_id == "orders.fail" {
+                return Err(RuntimeFailure::PluginFailure {
+                    detail: "fixture Endpoint failed".to_owned(),
+                });
+            }
+            if request.route_id == "orders.never" {
+                let _drop_flag = DropFlag(blocked_dropped);
+                blocked_started.set(true);
+                return pending::<Result<Result<HandleResponse, HandleError>, RuntimeFailure>>()
+                    .await;
+            }
+            if request.route_id == "orders.timeout" {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+            }
+            if request.route_id == "orders.slow" || request.route_id == "status.slow" {
+                let active = active_calls.get() + 1;
+                active_calls.set(active);
+                max_active_calls.set(max_active_calls.get().max(active));
+                tokio::time::sleep(Duration::from_millis(25)).await;
+                active_calls.set(active_calls.get() - 1);
+            }
+            if request.route_id == "orders.reject" {
+                return Ok(Err(HandleError::Rejected));
+            }
+            if request.route_id == "orders.invalid" {
+                return Ok(Ok(HandleResponse {
+                    body: ContractBytes::from(b"invalid status".as_slice()),
+                    headers: Vec::new(),
+                    status: 1_000,
+                }));
+            }
+            if request.route_id == "orders.hop-response" {
+                return Ok(Ok(HandleResponse {
+                    body: ContractBytes::from(b"invalid hop header".as_slice()),
+                    headers: vec![HandleResponseHeadersItem {
+                        name: "connection".to_owned(),
+                        value: "close".to_owned(),
+                    }],
+                    status: 200,
+                }));
+            }
+            if request.route_id == "orders.large" {
+                return Ok(Ok(HandleResponse {
+                    body: vec![b'x'; 8 * 1024 * 1024].into(),
+                    headers: Vec::new(),
+                    status: 200,
+                }));
+            }
+            let body = format!(
+                r#"{{"provider":"{}","route":"{}"}}"#,
+                package_id, request.route_id
+            );
+            Ok(Ok(HandleResponse {
+                body: body.into_bytes().into(),
+                headers: vec![HandleResponseHeadersItem {
+                    name: "content-type".to_owned(),
+                    value: "application/json; charset=utf-8".to_owned(),
+                }],
+                status: 200,
+            }))
+        })
+    }
+}
+
+#[derive(Debug)]
+struct HttpResponse {
+    status: u16,
+    headers: BTreeMap<String, String>,
+    body: String,
+}
+
+fn assert_error(response: &HttpResponse, status: u16, code: &str) {
+    assert_eq!(response.status, status);
+    assert_eq!(
+        response.headers.get("content-type").map(String::as_str),
+        Some("application/json; charset=utf-8")
+    );
+    assert_eq!(response.body, format!(r#"{{"error":"{code}"}}"#));
+    assert!(
+        response
+            .headers
+            .get("x-request-id")
+            .is_some_and(|value| value.starts_with("lenso-"))
+    );
+}
+
+async fn begin_request(address: SocketAddr, path: &str) -> TcpStream {
+    let mut stream = TcpStream::connect(address)
+        .await
+        .expect("connect to Ingress");
+    let wire = format!("GET {path} HTTP/1.1\r\nHost: {address}\r\nContent-Length: 0\r\n\r\n");
+    stream.write_all(wire.as_bytes()).await.unwrap();
+    stream
+}
+
+async fn wait_for(condition: impl Fn() -> bool) {
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while !condition() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("condition should become true");
+}
+
+async fn request(
+    address: SocketAddr,
+    method: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> HttpResponse {
+    let mut stream = TcpStream::connect(address)
+        .await
+        .expect("connect to Ingress");
+    let headers = headers
+        .iter()
+        .fold(String::new(), |mut wire, (name, value)| {
+            write!(wire, "{name}: {value}\r\n").expect("writing to a String cannot fail");
+            wire
+        });
+    let connection = if headers
+        .lines()
+        .any(|line| line.to_ascii_lowercase().starts_with("connection:"))
+    {
+        String::new()
+    } else {
+        "Connection: close\r\n".to_owned()
+    };
+    let wire = format!(
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\n{headers}Content-Length: {}\r\n{connection}\r\n{body}",
+        body.len()
+    );
+    stream.write_all(wire.as_bytes()).await.unwrap();
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response).await.unwrap();
+    let response = String::from_utf8(response).unwrap();
+    let (head, body) = response.split_once("\r\n\r\n").unwrap();
+    let status = head.split_whitespace().nth(1).unwrap().parse().unwrap();
+    let headers = head
+        .split("\r\n")
+        .skip(1)
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_owned()))
+        .collect();
+    HttpResponse {
+        status,
+        headers,
+        body: body.to_owned(),
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn event_ingress_uses_shared_route_conflict_detection() {
+    LocalSet::new()
+        .run_until(async {
+            let ingress = lenso_web_ingress_plugin::WebIngressEventFactory::new();
+            let error = Kernel::start_native(
+                project(&[
+                    ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID),
+                    ProviderPlan::new("status-http", STATUS_PACKAGE_ID),
+                ]),
+                TokioDriver::new(),
+                NativePluginRegistry::new()
+                    .with_factory(FixtureEndpointFactory::new(
+                        ORDERS_PACKAGE_ID,
+                        [("first", "GET", "/orders/{id}")],
+                    ))
+                    .with_factory(FixtureEndpointFactory::new(
+                        STATUS_PACKAGE_ID,
+                        [("second", "GET", "/orders/{other}")],
+                    ))
+                    .with_factory(ingress.clone()),
+            )
+            .await
+            .expect_err("event route conflicts must fail before Ready");
+            assert!(format!("{error:?}").contains("HTTP route collision"));
+            assert!(ingress.route_manifest().is_none());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn event_middleware_snapshot_preserves_credentials_and_request_identity() {
+    LocalSet::new()
+        .run_until(Box::pin(async {
+            let endpoint = FixtureEndpointFactory::new(
+                ORDERS_PACKAGE_ID,
+                [("orders.read", "GET", "/orders/{order_id}")],
+            );
+            let middleware = GlobalMiddleware::default();
+            let events = middleware.events.clone();
+            let ingress =
+                lenso_web_ingress_plugin::WebIngressEventFactory::new().with_middleware(middleware);
+            let app = Kernel::start_native(
+                project(&[ProviderPlan::new("orders-http", ORDERS_PACKAGE_ID)]),
+                TokioDriver::new(),
+                NativePluginRegistry::new()
+                    .with_factory(endpoint.clone())
+                    .with_factory(ingress.clone()),
+            )
+            .await
+            .unwrap();
+            let later_layer = GlobalMiddleware::default();
+            let later_events = later_layer.events.clone();
+            let changed_handle = ingress.with_middleware(later_layer);
+            let response = changed_handle
+                .handle(
+                    http::Request::builder()
+                        .uri("/orders/42")
+                        .header("authorization", "Bearer alice")
+                        .body(bytes::Bytes::new())
+                        .unwrap(),
+                    lenso_kernel::CancellationToken::new(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200);
+            assert_eq!(response.headers()["x-global-after"], "present");
+            assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+            assert_ne!(response.headers()["x-request-id"], "middleware-controlled");
+            let request = endpoint.observed().unwrap();
+            assert_eq!(request.credential.unwrap().value, "alice");
+            assert!(
+                request
+                    .headers
+                    .iter()
+                    .all(|header| header.name != "authorization" && header.name != "x-request-id")
+            );
+            assert_eq!(*events.borrow(), ["before:/orders/42", "after:/orders/42"]);
+            assert!(later_events.borrow().is_empty());
+            assert_eq!(
+                app.shutdown(Duration::from_secs(1)).await,
+                ShutdownOutcome::Clean
+            );
+        }))
+        .await;
+}

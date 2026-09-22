@@ -1,0 +1,17 @@
+[package]
+name = "lenso-web-greetings-app-example"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "greetings-web"
+path = "src/main.rs"
+
+[dependencies]
+lenso-web-greetings-plugin-example = { path = "../greetings-http-plugin" }
+lenso-web-host = { path = "../../crates/lenso-web-host" }
+tokio = { workspace = true, features = ["macros", "rt", "signal"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,324 @@
+//! Event-owned registration with buffered requests and pull-based response streams.
+use crate::{
+    PACKAGE_ID, PACKAGE_VERSION, WebIngressConfig, WebIngressDiagnostics, WebIngressMiddleware,
+    WebIngressRouteManifest, diagnostics,
+    ingress::{
+        IngressBody, IngressResponse, RequestIdSequence, canonical_request_head_len,
+        dispatch_buffered, mark_sensitive_headers, payload_too_large, replace_request_id,
+        unavailable, with_transport_headers,
+    },
+    middleware, plugin_failure,
+    routing::RouteTable,
+    session_cookie::SessionCookiePolicy,
+};
+use bytes::Bytes;
+use futures::future::{Either, select};
+use http::{Request, Response, StatusCode, header::CONTENT_LENGTH};
+use lenso::prelude::ManyPort;
+use lenso_app_plan::authoring::PluginDescriptor;
+use lenso_capability_http_endpoint::EndpointClient;
+use lenso_capability_http_stream_endpoint::StreamEndpointClient;
+use lenso_kernel::{
+    ActivateContext, CancellationToken, DeactivateContext, PluginFuture, PluginLifecycle,
+    ReadinessContext, RuntimeFailure,
+};
+use lenso_native_adapter::{NativePluginFactory, NativePluginFactoryContext, NativePluginInstance};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
+use tokio::sync::Semaphore;
+
+/// A normalized response body, preserving the existing Stream Endpoint contract.
+#[derive(Debug)]
+pub enum WebIngressEventBody {
+    Buffered(Bytes),
+    Streaming(crate::WebIngressResponseStream),
+    WebSocket(crate::WebSocketSession),
+}
+
+#[derive(Debug)]
+struct EventState {
+    config: WebIngressConfig,
+    routes: Rc<RouteTable>,
+    readiness: ReadinessContext,
+    concurrency: std::sync::Arc<Semaphore>,
+    middleware: Vec<Rc<dyn WebIngressMiddleware>>,
+    next_request_id: RequestIdSequence,
+}
+
+/// One event-owned instance of the existing `lenso.web-ingress` Plugin.
+///
+/// Register a clone in the native registry with the event Driver, then invoke
+/// `handle` on this handle after Kernel startup. Create a new factory for each
+/// event App; a factory rejects a second instantiation. No socket or Tokio
+/// runtime is required with `default-features = false`.
+///
+/// The host owns bounded body collection and its read deadline, URL/header
+/// conversion, and response serialization. Pass an origin-form URI preserving
+/// raw path/query and append repeated headers. The shared ingress owns all
+/// routing, credentials, middleware and Endpoint response normalization.
+#[derive(Clone, Debug)]
+pub struct WebIngressEventFactory {
+    instantiated: Rc<Cell<bool>>,
+    state: Rc<RefCell<Option<Rc<EventState>>>>,
+    diagnostics: Rc<dyn WebIngressDiagnostics>,
+    middleware: Vec<Rc<dyn WebIngressMiddleware>>,
+}
+
+impl Default for WebIngressEventFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WebIngressEventFactory {
+    pub fn new() -> Self {
+        Self {
+            instantiated: Rc::new(Cell::new(false)),
+            state: Rc::default(),
+            diagnostics: Rc::new(diagnostics::NoopDiagnostics),
+            middleware: Vec::new(),
+        }
+    }
+
+    pub fn plugin_descriptor() -> PluginDescriptor {
+        crate::plugin_descriptor()
+    }
+
+    #[must_use]
+    pub fn with_middleware(mut self, middleware: impl WebIngressMiddleware + 'static) -> Self {
+        self.middleware.push(Rc::new(middleware));
+        self
+    }
+
+    /// Shares one Host-owned middleware handle with this factory.
+    ///
+    /// This is used by builders that configure native and event factories from
+    /// one immutable middleware list. The handle remains local to the runtime
+    /// lane and is not a cross-thread transport boundary.
+    #[must_use]
+    pub fn with_shared_middleware(mut self, middleware: Rc<dyn WebIngressMiddleware>) -> Self {
+        self.middleware.push(middleware);
+        self
+    }
+
+    #[must_use]
+    pub fn with_diagnostics(mut self, diagnostics: impl WebIngressDiagnostics + 'static) -> Self {
+        self.diagnostics = Rc::new(diagnostics);
+        self
+    }
+
+    /// Shares one Host-owned diagnostics handle with another Ingress factory.
+    ///
+    /// This keeps native and event Hosts on the same observer without changing
+    /// the diagnostics contract or creating a second observer instance.
+    #[must_use]
+    pub fn with_shared_diagnostics(mut self, diagnostics: Rc<dyn WebIngressDiagnostics>) -> Self {
+        self.diagnostics = diagnostics;
+        self
+    }
+
+    pub fn route_manifest(&self) -> Option<WebIngressRouteManifest> {
+        self.state
+            .borrow()
+            .as_ref()
+            .map(|state| state.routes.manifest().clone())
+    }
+
+    /// Buffered compatibility entrypoint. Use `handle_response` when the Plan
+    /// contains Stream Endpoint providers; no implicit stream collection occurs.
+    pub async fn handle(
+        &self,
+        request: Request<Bytes>,
+        cancellation: CancellationToken,
+    ) -> Result<Response<Bytes>, RuntimeFailure> {
+        let response = self.handle_response(request, cancellation).await?;
+        let (parts, body) = response.into_parts();
+        match body {
+            WebIngressEventBody::Buffered(bytes) => Ok(Response::from_parts(parts, bytes)),
+            WebIngressEventBody::WebSocket(_) | WebIngressEventBody::Streaming(_) => Err(
+                plugin_failure("streaming response requires handle_response"),
+            ),
+        }
+    }
+
+    /// Dispatches through the same Plan-bound routes, credentials and middleware
+    /// as native ingress. The Host keeps the App alive until body termination,
+    /// then awaits App shutdown before releasing its event generation lease.
+    pub async fn handle_response(
+        &self,
+        mut request: Request<Bytes>,
+        cancellation: CancellationToken,
+    ) -> Result<Response<WebIngressEventBody>, RuntimeFailure> {
+        let state = self
+            .state
+            .borrow()
+            .clone()
+            .ok_or_else(|| plugin_failure("event ingress is not active"))?;
+        let session_cookie = state.config.session_cookie().map(SessionCookiePolicy::from);
+        mark_sensitive_headers(request.headers_mut(), session_cookie.as_ref());
+        let head_len = canonical_request_head_len(&request);
+        let request_id = replace_request_id(request.headers_mut(), &state.next_request_id);
+        let method = request.method().clone();
+        let body_permit = RefCell::new(None);
+        let work = async {
+            if !state.readiness.is_open() || !state.readiness.is_accepting() {
+                return unavailable();
+            }
+            if head_len > state.config.max_request_head_bytes() {
+                return IngressResponse::json(
+                    StatusCode::REQUEST_HEADER_FIELDS_TOO_LARGE,
+                    r#"{"error":"request_header_fields_too_large"}"#,
+                );
+            }
+            if cancellation.is_cancelled() {
+                return unavailable();
+            }
+            let acquiring = state.concurrency.clone().acquire_owned();
+            futures::pin_mut!(acquiring);
+            *body_permit.borrow_mut() = match select(acquiring, cancellation.cancelled()).await {
+                Either::Left((Ok(permit), _)) => Some(permit),
+                _ => return unavailable(),
+            };
+            if !state.readiness.is_accepting() {
+                return unavailable();
+            }
+            if request.body().len() > state.config.max_request_body_bytes()
+                || request
+                    .headers()
+                    .get(CONTENT_LENGTH)
+                    .and_then(|value| value.to_str().ok()?.parse::<usize>().ok())
+                    .is_some_and(|length| length > state.config.max_request_body_bytes())
+            {
+                return payload_too_large();
+            }
+            let (parts, body) = request.into_parts();
+            dispatch_buffered(
+                parts,
+                body,
+                cancellation.clone(),
+                session_cookie.as_ref(),
+                state.routes.clone(),
+                &state.middleware,
+            )
+            .await
+        };
+        let app_cancel = state.readiness.cancellation();
+        futures::pin_mut!(work);
+        let response = match select(work, app_cancel.cancelled()).await {
+            Either::Left((response, _)) => response,
+            Either::Right(((), work)) => {
+                cancellation.cancel();
+                work.await
+            }
+        };
+        let response = response.normalize_body(&method);
+        let body = match response.body {
+            IngressBody::WebSocket(upgrade) => {
+                upgrade
+                    .session
+                    .retain_permit(body_permit.borrow_mut().take());
+                WebIngressEventBody::WebSocket(upgrade.session)
+            }
+            IngressBody::Buffered(bytes) => WebIngressEventBody::Buffered(bytes),
+            IngressBody::Streaming(stream) => {
+                let stream = crate::WebIngressResponseStream::new(stream);
+                stream.retain_permit(body_permit.borrow_mut().take());
+                WebIngressEventBody::Streaming(stream)
+            }
+        };
+        let mut result = Response::new(body);
+        *result.status_mut() = response.status;
+        *result.headers_mut() = response.headers;
+        Ok(with_transport_headers(result, request_id))
+    }
+}
+
+impl NativePluginFactory for WebIngressEventFactory {
+    fn package_id(&self) -> &'static str {
+        PACKAGE_ID
+    }
+    fn package_version(&self) -> &'static str {
+        PACKAGE_VERSION
+    }
+    fn instantiate(
+        &self,
+        context: NativePluginFactoryContext<'_>,
+    ) -> Result<NativePluginInstance, RuntimeFailure> {
+        let config: WebIngressConfig =
+            serde_json::from_str(context.configuration()).map_err(|error| {
+                RuntimeFailure::InvalidResolvedPlan {
+                    detail: format!("Web Ingress configuration is invalid: {error}"),
+                }
+            })?;
+        config
+            .validate()
+            .map_err(|detail| RuntimeFailure::InvalidResolvedPlan { detail })?;
+        middleware::validate(&self.middleware)
+            .map_err(|detail| RuntimeFailure::InvalidResolvedPlan { detail })?;
+        if self.instantiated.replace(true) {
+            return Err(plugin_failure(
+                "create a fresh WebIngressEventFactory for each event App",
+            ));
+        }
+        Ok(NativePluginInstance::with_lifecycle(
+            Vec::new(),
+            EventLifecycle {
+                config,
+                state: self.state.clone(),
+                diagnostics: self.diagnostics.clone(),
+                middleware: self.middleware.clone(),
+            },
+        ))
+    }
+}
+
+#[derive(Debug)]
+struct EventLifecycle {
+    middleware: Vec<Rc<dyn WebIngressMiddleware>>,
+    config: WebIngressConfig,
+    state: Rc<RefCell<Option<Rc<EventState>>>>,
+    diagnostics: Rc<dyn WebIngressDiagnostics>,
+}
+
+impl PluginLifecycle for EventLifecycle {
+    fn activate(&self, context: ActivateContext) -> PluginFuture {
+        let state = self.state.clone();
+        let config = self.config.clone();
+        let diagnostics = self.diagnostics.clone();
+        let middleware = self.middleware.clone();
+        Box::pin(async move {
+            let endpoints = ManyPort::<EndpointClient>::default();
+            let streams = ManyPort::<StreamEndpointClient>::default();
+            let websockets =
+                ManyPort::<lenso_capability_websocket_endpoint::EndpointClient>::default();
+            websockets.connect(context.dependencies())?;
+            endpoints.connect(context.dependencies())?;
+            streams.connect(context.dependencies())?;
+            let routes = RouteTable::resolve(
+                endpoints,
+                streams,
+                websockets,
+                config.websocket().cloned(),
+                context.dependencies(),
+                config.request_timeout(),
+                diagnostics,
+            )
+            .await?;
+            *state.borrow_mut() = Some(Rc::new(EventState {
+                concurrency: std::sync::Arc::new(Semaphore::new(config.max_concurrent_requests())),
+                middleware,
+                config,
+                routes,
+                readiness: context.readiness(),
+                next_request_id: RequestIdSequence::Local(Rc::new(Cell::new(0))),
+            }));
+            Ok(())
+        })
+    }
+    fn deactivate(&self, _context: DeactivateContext) -> PluginFuture {
+        self.state.borrow_mut().take();
+        Box::pin(async { Ok(()) })
+    }
+}
