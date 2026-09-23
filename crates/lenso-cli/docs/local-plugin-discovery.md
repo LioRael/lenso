@@ -60,6 +60,15 @@ executable variants may coexist but are not runtime fallback candidates for
 this adoption. Requirements that this generated Host cannot prove are rejected
 before any App source or Plugin Root change.
 
+If publication is interrupted after verification, `app add` reports the
+source, `lenso.toml`, and Plugin Root paths. Retry with the same exact signed
+snapshot and archive or Bundle: the source and configuration are checked again,
+and missing selection intent is published without overwriting an existing
+Plugin Root entry. A detected conflicting edit is preserved for review. This is
+recoverable multi-file publication, not an atomic filesystem transaction or a
+lock respected by external editors. An external path replacement can still
+race the final symlink check and rename; use a trusted App directory.
+
 `app add` verifies the catalog signature, exact listed version, Native Host
 target, `.crate` digest, archive contents, and linked Plugin source identity.
 It vendors the exact source under `vendor/lenso/`, records the source digest,

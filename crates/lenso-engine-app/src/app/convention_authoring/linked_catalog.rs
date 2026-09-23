@@ -18,6 +18,8 @@ use sha2::{Digest as _, Sha256};
 
 use super::AddArgs;
 
+mod adoption;
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TrustFile {
@@ -401,27 +403,15 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         serde_json::to_vec_pretty(&lock)?,
     )?;
     let destination = parent.join(version);
-    if destination.try_exists()? {
-        ensure!(
-            same_tree(stage.path(), &destination)?,
-            "existing linked Cargo source differs from signed archive"
-        );
-    } else {
-        fs::create_dir_all(&parent)?;
-        fs::rename(stage.path(), &destination)?;
-    }
-    super::add(AddArgs {
-        source: destination
-            .to_str()
-            .context("linked source path UTF-8")?
-            .to_owned(),
-        root: Some(root.to_path_buf()),
-        no_install: args.no_install,
-        linked_snapshot: None,
-        trust: None,
-        crate_archive: None,
-        bundle: None,
-    })?;
+    let prepared = adoption::PreparedLinkedAdoption::new(root, &destination, plugin_id)?;
+    prepared
+        .commit(stage.path())
+        .with_context(|| format!(
+            "linked Cargo adoption may be incomplete; retry the same exact signed app add input after resolving any filesystem conflict; source={}, config={}, intent={}",
+            destination.display(),
+            root.join("lenso.toml").display(),
+            root.join("plugins").join(plugin_id).display(),
+        ))?;
     println!(
         "Linked Cargo {}@{} selected for Host compilation; review its build-time code before app build",
         plugin_id, version
@@ -606,6 +596,7 @@ pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
         .context("linked Cargo source must be an exact PLUGIN_ID@VERSION")?;
     lenso_app_authoring::identity::validate_plugin_id_v1(plugin_id)?;
     lenso_app_authoring::identity::validate_release_version(version)?;
+    let _app_lock = adoption::lock_app(root)?;
     let relative = Path::new("vendor/lenso").join(plugin_id).join(version);
     let source_path = root.join(&relative);
     let intent_relative = Path::new("plugins").join(plugin_id);
