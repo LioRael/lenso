@@ -1,5 +1,35 @@
 use std::{fs, process::Command};
 
+#[cfg(unix)]
+#[test]
+fn root_run_uses_the_built_local_host_entrypoint() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let private = temp.path().join(".lenso");
+    fs::create_dir(&private).unwrap();
+    fs::write(private.join("host-mode"), "native").unwrap();
+    let host = private.join("host");
+    fs::write(
+        &host,
+        "#!/bin/sh\n[ \"$#\" -eq 0 ] || exit 64\nprintf 'built-local-host\\n'\n",
+    )
+    .unwrap();
+    fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lenso"))
+        .args(["run", "--root"])
+        .arg(temp.path())
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout, b"built-local-host\n");
+}
+
 #[test]
 fn empty_portable_host_emits_dev_readiness_only_after_startup() {
     use std::time::{Duration, Instant};
