@@ -347,8 +347,9 @@ typechecking or compiling all application business code.
 
 ### Native ownership transport (private)
 
-`src/host-owner.ts` now connects to the native `lenso-process-owner` helper from
-the Lenso Rust workspace using bounded, versioned JSON frames. Node and Bun use the
+`lenso-js/packages/lenso-cli/src/host-owner.ts` connects to the native
+`lenso-process-owner` helper from the Lenso Rust workspace using bounded,
+versioned JSON frames. Node and Bun use the
 same implementation. It validates the ownership handshake, joins repeated stop
 requests, and returns confirmed or unconfirmed physical termination. The helper
 continues cleanup after the launcher disappears.
@@ -366,23 +367,30 @@ distribution verification, same-cohort resolution, Artifact admission, Adapter
 assembly, durable activation, suspension, and exact recovery. Released target
 artifact cohorts remain required for public installation.
 
-With a locally built native helper, run the real cross-language check explicitly:
+With locally built native helper and control fixture, run the real
+cross-language check from the `lenso-js` workspace explicitly:
 
 ```sh
 LENSO_NATIVE_OWNER=/absolute/path/lenso-process-owner \
 LENSO_APPLICATION_RUNTIME=/absolute/path/control_fixture \
-pnpm check:host-owner-native
+node --test packages/lenso-cli/scripts/host-owner-native.test.mjs
 ```
 
 The check fails if the helper is absent; it has no mocked fallback.
 
 ### Authoring and transport checks
 
-Repository contributors run:
+In the `lenso-js` workspace, contributors run:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm check:npm-shim
+bun install --frozen-lockfile
+bun run --filter '@lenso/cli' build
+bun run --filter '@lenso/cli' smoke
+```
+
+In the Rust `lenso` workspace, run:
+
+```sh
 cargo test --locked --workspace
 ```
 

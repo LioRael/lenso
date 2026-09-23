@@ -60,7 +60,8 @@ A blocked output writer cannot block cleanup. Missing terminal output is not
 termination proof. No Plugin configuration, business calls, logs, or arbitrary
 inspection payloads cross this ownership channel.
 
-The companion private TypeScript transport lives in `lenso-cli/src/host-owner.ts`.
+The companion private TypeScript transport lives in
+[`lenso-js/packages/lenso-cli/src/host-owner.ts`](https://github.com/LioRael/lenso-js/blob/main/packages/lenso-cli/src/host-owner.ts).
 It uses the same frame bounds, validates version/identity/envelopes, joins repeated
 stops, and resolves a terminal ownership outcome. It never kills the native owner
 when its own waiting budget expires. It is not exported as the public Host SDK.
