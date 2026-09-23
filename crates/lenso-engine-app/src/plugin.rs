@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     path::{Path, PathBuf},
     process::Command,
@@ -12,9 +12,10 @@ use lenso_app_plan::{
     authoring::PluginContract,
 };
 use lenso_plugin_bundle::{
-    PluginManifest, SourcePluginBuild, SourcePluginImplementation, SourcePluginReleaseBuild,
-    SourceProcessPluginBuild, VerifiedBundle, build_source_plugin_bundle,
-    build_source_plugin_release_bundle, build_source_process_plugin_bundle,
+    PluginManifest, SourcePluginBuild, SourcePluginImplementation, SourcePluginImplementationGroup,
+    SourcePluginReleaseBuild, SourcePluginReleaseBuildV5, SourceProcessPluginBuild, VerifiedBundle,
+    build_source_plugin_bundle, build_source_plugin_release_bundle,
+    build_source_plugin_release_bundle_v5, build_source_process_plugin_bundle,
     extract_plugin_descriptor, read_bundle_manifest, verify_bundle_directory,
 };
 use lenso_wasm_component_adapter::EXECUTION_CLASS as WASM_EXECUTION_CLASS;
@@ -206,6 +207,8 @@ struct LensoCliMetadata {
 #[derive(Clone, Debug, Deserialize)]
 struct LensoCliImplementation {
     id: String,
+    #[serde(default)]
+    group: Option<String>,
     path: PathBuf,
     runtime: String,
 }
@@ -852,8 +855,33 @@ fn materialize_composite(
         .as_ref()
         .expect("composite projects have CLI metadata")
         .implementations;
-    if declarations.len() < 2 {
+    if declarations.is_empty() {
+        bail!("composite Plugin projects require declared implementations");
+    }
+    let grouped = declarations
+        .iter()
+        .any(|declaration| declaration.group.is_some());
+    if !grouped && declarations.len() < 2 {
         bail!("composite Plugin projects require at least two implementations");
+    }
+    if grouped
+        && declarations
+            .iter()
+            .any(|declaration| declaration.group.is_none())
+    {
+        bail!("grouped Plugin variants require a group on every declaration");
+    }
+    for group in declarations
+        .iter()
+        .filter_map(|declaration| declaration.group.as_deref())
+    {
+        if group.is_empty()
+            || !group
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            bail!("invalid Plugin implementation group `{group}`");
+        }
     }
     let staging = tempfile::tempdir().context("stage declared Plugin implementations")?;
     let mut contract = None::<PluginContract>;
@@ -883,12 +911,30 @@ fn materialize_composite(
         }
         implementations.push(source);
     }
-    build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
-        contract: contract.expect("composite Plugin has implementations"),
-        implementations,
-        output: output.to_path_buf(),
-    })
-    .map_err(Into::into)
+    let contract = contract.expect("composite Plugin has implementations");
+    if grouped {
+        let mut groups = BTreeMap::<String, Vec<SourcePluginImplementation>>::new();
+        for (declaration, source) in declarations.iter().zip(implementations) {
+            let group = declaration.group.as_ref().expect("checked group presence");
+            groups.entry(group.clone()).or_default().push(source);
+        }
+        build_source_plugin_release_bundle_v5(&SourcePluginReleaseBuildV5 {
+            contract,
+            implementations: groups
+                .into_iter()
+                .map(|(id, variants)| SourcePluginImplementationGroup { id, variants })
+                .collect(),
+            output: output.to_path_buf(),
+        })
+        .map_err(Into::into)
+    } else {
+        build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+            contract,
+            implementations,
+            output: output.to_path_buf(),
+        })
+        .map_err(Into::into)
+    }
 }
 
 fn materialize_declared_implementation(

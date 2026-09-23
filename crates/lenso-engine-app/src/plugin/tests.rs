@@ -361,6 +361,40 @@ implementations = [
 }
 
 #[test]
+fn cargo_project_can_declare_explicit_variant_groups() {
+    let root = tempfile::tempdir().unwrap();
+    let manifest = root.path().join("Cargo.toml");
+    fs::write(
+        &manifest,
+        r#"[package]
+name = "grouped"
+version = "1.0.0"
+[package.metadata.lenso]
+plugin-id = "example.grouped"
+root-slot = "tools"
+[package.metadata.lenso-cli]
+implementations = [
+  { id = "mac", group = "portable", path = "mac", runtime = "process" },
+  { id = "linux", group = "portable", path = "linux", runtime = "process" },
+]
+"#,
+    )
+    .unwrap();
+
+    let package = read_package(&manifest).unwrap();
+    assert_eq!(
+        project_runtime(&package).unwrap(),
+        ProjectRuntime::Composite
+    );
+    let declarations = &package.metadata.lenso_cli.unwrap().implementations;
+    assert!(
+        declarations
+            .iter()
+            .all(|declaration| declaration.group.as_deref() == Some("portable"))
+    );
+}
+
+#[test]
 fn process_artifacts_use_the_canonical_rust_host_target() {
     assert_eq!(
         rust_host_target(Path::new(".")).unwrap(),

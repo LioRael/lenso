@@ -11,7 +11,8 @@ execution mechanics, not the Plugin's product identity or Capability contract.
 Plugin Release
   -> one Plugin Contract
   -> one or more exact implementations
-  -> Host selects one implementation
+  -> optional explicit Artifact variants per implementation
+  -> Host selects one exact implementation and variant
   -> resolved Plugin Descriptor
   -> Plugin Instance in the Resolved App Plan
 ```
@@ -77,9 +78,18 @@ recreation contract.
 A V2 Plugin Bundle is one Contract with one implementation. A multi-
 implementation Bundle carries one canonical Contract plus an ordered,
 uniquely-identified implementation set. The receiver verifies the complete
-closure, proves that every implementation projects the same Contract, and
-selects one implementation through Host policy before Plan materialization.
+closure, checks declared Contract closure and source-derived descriptors where
+available, and selects one implementation through Host policy before Plan materialization.
 The admitted Artifact is reopened by digest and size before execution.
+
+Bundle V5 adds publisher-declared implementation groups, each with one or more
+uniquely identified executable variants. The publisher must explicitly group
+variants; sharing a language, source tree, or Contract does not prove identical
+behavior. In a composite Cargo project, each `lenso-cli.implementations` entry
+may set `group = "portable"`; when any entry does, every entry must name a
+group, and `id` names its variant within that group. V2–V4 wire bytes and
+their digest rules remain unchanged. Selection evidence records both IDs and
+the exact Artifact; equal-priority compatible variants are an error.
 
 Selection is not runtime fallback. If the selected implementation fails its
 Ready Gate or later invocation, the Generation fails through its ordinary

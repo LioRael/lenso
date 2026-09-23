@@ -30,6 +30,8 @@ pub(crate) struct ImplementationSelectionEvidence {
 #[serde(deny_unknown_fields)]
 pub(crate) struct SelectedImplementationEvidence {
     pub(crate) implementation_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) variant_id: Option<String>,
     pub(crate) execution_class: ExecutionClassId,
     pub(crate) runtime_profile: String,
 }
@@ -155,6 +157,7 @@ pub(crate) fn select_implementation(
     let evidence = ImplementationSelectionEvidence {
         selected: SelectedImplementationEvidence {
             implementation_id: implementation.implementation_id.clone(),
+            variant_id: implementation.variant_id.clone(),
             execution_class: implementation.descriptor.execution_class().clone(),
             runtime_profile: implementation.descriptor.runtime_profile().to_owned(),
         },

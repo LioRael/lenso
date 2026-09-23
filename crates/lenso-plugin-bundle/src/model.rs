@@ -69,12 +69,40 @@ pub struct PluginImplementationV4 {
     pub runtime: PluginImplementation,
 }
 
+/// One release with explicit behavioral implementation groups and artifact variants.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginManifestV5 {
+    pub schema_version: u32,
+    pub contract: PluginContract,
+    pub implementations: Vec<PluginImplementationV5>,
+}
+
+/// A publisher-declared behavior group; variants are never inferred from language.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginImplementationV5 {
+    pub id: String,
+    pub variants: Vec<PluginVariantV5>,
+}
+
+/// One exact executable output and its own runtime requirements.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginVariantV5 {
+    pub id: String,
+    pub host_targets: Vec<String>,
+    pub artifact: PluginArtifactV2,
+    pub runtime: PluginImplementation,
+}
+
 /// A strictly parsed Plugin Manifest, including the legacy single-artifact form.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PluginManifest {
     V2(PluginManifestV2),
     V3(PluginManifestV3),
     V4(PluginManifestV4),
+    V5(PluginManifestV5),
 }
 
 impl PluginManifest {
@@ -83,6 +111,7 @@ impl PluginManifest {
             Self::V2(value) => &value.plugin_id,
             Self::V3(value) => value.contract.plugin_id(),
             Self::V4(value) => value.contract.plugin_id(),
+            Self::V5(value) => value.contract.plugin_id(),
         }
     }
 
@@ -91,6 +120,7 @@ impl PluginManifest {
             Self::V2(value) => &value.release_version,
             Self::V3(value) => value.contract.release_version(),
             Self::V4(value) => value.contract.release_version(),
+            Self::V5(value) => value.contract.release_version(),
         }
     }
 }

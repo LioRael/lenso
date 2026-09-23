@@ -389,13 +389,29 @@ fn cargo_implementations(root: &Path, value: &Value) -> anyhow::Result<Vec<Imple
         let declarations = declarations
             .as_array()
             .context("Plugin implementations must be an array")?;
-        if declarations.len() < 2 {
+        let grouped = declarations
+            .iter()
+            .any(|declaration| declaration.get("group").is_some());
+        if declarations.is_empty() || (!grouped && declarations.len() < 2) {
             bail!("composite Plugin requires at least two implementations");
         }
         let mut ids = BTreeSet::new();
         let mut implementations = Vec::new();
         for declaration in declarations {
             let id = string(declaration, "id")?;
+            let group = if grouped {
+                let group = string(declaration, "group")?;
+                if group.is_empty()
+                    || !group
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+                {
+                    bail!("invalid Plugin implementation group `{group}`");
+                }
+                Some(group)
+            } else {
+                None
+            };
             if !ids.insert(id) {
                 bail!("duplicate Plugin implementation `{id}`");
             }
@@ -438,7 +454,8 @@ fn cargo_implementations(root: &Path, value: &Value) -> anyhow::Result<Vec<Imple
             if child_version != cargo_version(root, value)? {
                 bail!("composite implementation `{id}` has a different release version");
             }
-            implementations.push(implementation(id, runtime, &path));
+            let identity = group.map_or_else(|| id.to_owned(), |group| format!("{group}/{id}"));
+            implementations.push(implementation(&identity, runtime, &path));
         }
         return Ok(implementations);
     }
@@ -490,6 +507,19 @@ pub(super) fn bundle(path: &Path, role: SourceRole) -> anyhow::Result<Candidate>
             .implementations
             .iter()
             .map(|item| implementation(&item.id, item.runtime.execution_class().as_str(), path))
+            .collect(),
+        PluginManifest::V5(value) => value
+            .implementations
+            .iter()
+            .flat_map(|item| {
+                item.variants.iter().map(|variant| {
+                    implementation(
+                        &format!("{}/{}", item.id, variant.id),
+                        variant.runtime.execution_class().as_str(),
+                        path,
+                    )
+                })
+            })
             .collect(),
     };
     Ok(Candidate {

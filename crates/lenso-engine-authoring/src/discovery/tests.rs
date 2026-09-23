@@ -264,6 +264,33 @@ implementations = [
 }
 
 #[test]
+fn grouped_composite_discovers_exact_variant_identities() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "app/grouped/Cargo.toml",
+        r#"
+[package]
+name = "grouped"
+version = "1.0.0"
+[package.metadata.lenso]
+plugin-id = "example.grouped"
+[package.metadata.lenso-cli]
+implementations = [
+  { id = "rust", group = "portable", runtime = "process", path = "." },
+  { id = "ts", group = "portable", runtime = "bun", path = "typescript" },
+]
+"#,
+    );
+    bun(root.path(), "app/grouped/typescript", "example.grouped");
+
+    let report = discover(root.path()).unwrap();
+    assert_eq!(report.candidates.len(), 1);
+    assert_eq!(report.candidates[0].implementations[0].id, "portable/rust");
+    assert_eq!(report.candidates[0].implementations[1].id, "portable/ts");
+}
+
+#[test]
 fn rejects_corrupt_local_archives_without_installation() {
     let root = tempfile::tempdir().unwrap();
     write(root.path(), "app/bad.lenso-plugin", "not a bundle");

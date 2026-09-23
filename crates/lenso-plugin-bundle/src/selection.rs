@@ -104,6 +104,8 @@ pub enum ImplementationRejectionReason {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RejectedPluginImplementation {
     pub implementation_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant_id: Option<String>,
     pub execution_class: ExecutionClassId,
     pub runtime_profile: String,
     pub reason: ImplementationRejectionReason,
@@ -180,6 +182,7 @@ pub struct ImplementationPolicy {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolvedPluginImplementation {
     pub implementation_id: String,
+    pub variant_id: Option<String>,
     pub descriptor: PluginDescriptor,
     pub artifact: PluginArtifactV2,
 }
@@ -193,6 +196,7 @@ pub fn resolve_implementation(
         PluginManifest::V2(_) => "V2",
         PluginManifest::V3(_) => "V3",
         PluginManifest::V4(_) => "V4",
+        PluginManifest::V5(_) => "V5",
     };
     let explanation = explain_implementation(manifest, policy)?;
     let failure_detail = explanation.failure_detail(schema);
@@ -217,6 +221,7 @@ pub fn explain_implementation(
                     .map_err(|error| BundleError::InvalidManifest(error.to_string()))?;
             let candidate = Candidate {
                 implementation_id: "default".to_owned(),
+                variant_id: None,
                 host_targets: vec![value.artifact.target.clone()],
                 artifact: value.artifact.clone(),
                 descriptor,
@@ -248,12 +253,30 @@ pub fn explain_implementation(
             }),
             policy,
         )),
+        PluginManifest::V5(value) => {
+            let candidates = value
+                .implementations
+                .iter()
+                .flat_map(|implementation| {
+                    implementation.variants.iter().map(|variant| Candidate {
+                        implementation_id: implementation.id.clone(),
+                        variant_id: Some(variant.id.clone()),
+                        host_targets: variant.host_targets.clone(),
+                        artifact: variant.artifact.clone(),
+                        descriptor: value.contract.resolve(&variant.runtime),
+                        artifact_matches_wasm: false,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(explain_candidates(&candidates, policy))
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 struct Candidate {
     implementation_id: String,
+    variant_id: Option<String>,
     host_targets: Vec<String>,
     artifact: PluginArtifactV2,
     descriptor: PluginDescriptor,
@@ -275,6 +298,7 @@ fn explain_profiled_implementation<'a>(
     let candidates = candidates
         .map(|(id, targets, artifact, runtime)| Candidate {
             implementation_id: id.clone(),
+            variant_id: None,
             host_targets: targets.clone(),
             artifact: artifact.clone(),
             descriptor: contract.resolve(runtime),
@@ -299,6 +323,7 @@ fn explain_candidates(
                 return ImplementationSelectionExplanation {
                     selected: Some(ResolvedPluginImplementation {
                         implementation_id: candidate.implementation_id.clone(),
+                        variant_id: candidate.variant_id.clone(),
                         descriptor: candidate.descriptor.clone(),
                         artifact: candidate.artifact.clone(),
                     }),
@@ -308,12 +333,13 @@ fn explain_candidates(
             matches => {
                 rejected.push(RejectedPluginImplementation {
                     implementation_id: "<host-policy>".to_owned(),
+                    variant_id: None,
                     execution_class: admission.execution_class.clone(),
                     runtime_profile: admission.runtime_profile.clone(),
                     reason: ImplementationRejectionReason::AmbiguousRuntimeAdmission {
                         matching_implementation_ids: matches
                             .iter()
-                            .map(|candidate| candidate.implementation_id.clone())
+                            .map(|candidate| candidate.identity())
                             .collect(),
                     },
                 });
@@ -514,6 +540,7 @@ fn rejected_candidate(
 ) -> RejectedPluginImplementation {
     RejectedPluginImplementation {
         implementation_id: candidate.implementation_id.clone(),
+        variant_id: candidate.variant_id.clone(),
         execution_class: candidate.descriptor.execution_class().clone(),
         runtime_profile: candidate.descriptor.runtime_profile().to_owned(),
         reason,
@@ -569,5 +596,17 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
             matching_implementation_ids.join(", ")
         ),
     };
-    format!("{}: {reason}", rejection.implementation_id)
+    match &rejection.variant_id {
+        Some(variant) => format!("{}/{}: {reason}", rejection.implementation_id, variant),
+        None => format!("{}: {reason}", rejection.implementation_id),
+    }
+}
+
+impl Candidate {
+    fn identity(&self) -> String {
+        self.variant_id.as_ref().map_or_else(
+            || self.implementation_id.clone(),
+            |variant| format!("{}/{variant}", self.implementation_id),
+        )
+    }
 }
