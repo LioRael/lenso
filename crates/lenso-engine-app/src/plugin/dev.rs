@@ -2,7 +2,7 @@ use std::{
     any::Any,
     collections::{BTreeMap, HashMap},
     io::{BufRead, BufReader, Write},
-    process::Stdio,
+    process::{Command, Stdio},
     sync::{Mutex, OnceLock},
     time::Duration,
 };
@@ -26,12 +26,12 @@ use lenso_wasm_component_adapter::{WasmComponentAdapter, WasmComponentLimits};
 use crate::watch::SourceWatcher;
 
 use super::{
-    BuildProfile, BunPackage, Command, DevImplementationArg, ExecutionClassId,
-    PROCESS_EXECUTION_CLASS, PROCESS_RUNTIME_PROFILE_V1, PROCESS_RUNTIME_PROFILE_V2, Path,
-    PluginCapability, PluginDescriptor, PluginDevArgs, ProjectRuntime, Value, VerifiedBundle,
-    WASM_EXECUTION_CLASS, env, fs, implementation_root, materialize_bun, materialize_composite,
-    materialize_dev, native_host_target, one_capability, parse_descriptor, project_root,
-    project_runtime, read_bun_package, read_bundle_manifest, read_package, resolve_dev_selection,
+    BuildProfile, BunPackage, DevImplementationArg, ExecutionClassId, PROCESS_EXECUTION_CLASS,
+    PROCESS_RUNTIME_PROFILE_V1, PROCESS_RUNTIME_PROFILE_V2, Path, PluginCapability,
+    PluginDescriptor, PluginDevArgs, ProjectRuntime, Value, VerifiedBundle, WASM_EXECUTION_CLASS,
+    env, fs, implementation_root, materialize_bun, materialize_composite, materialize_dev,
+    native_host_target, one_capability, parse_descriptor, project_root, project_runtime,
+    read_bun_package, read_bundle_manifest, read_package, resolve_dev_selection,
 };
 
 pub(super) async fn run(args: PluginDevArgs) -> anyhow::Result<()> {
