@@ -940,6 +940,23 @@ fn adopt_exact_twice(
     }
 }
 
+fn assert_re_adoption_preserves_disabled(
+    cli: &str,
+    root: &std::path::Path,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+    archive: &std::path::Path,
+) {
+    let disabled = root.join("plugins/example.web/default.disabled");
+    fs::write(&disabled, "").unwrap();
+    adopt_exact_twice(cli, root, snapshot_path, trust_path, archive);
+    assert!(
+        disabled.is_file(),
+        "re-adoption must preserve App selection intent"
+    );
+    fs::remove_file(&disabled).unwrap();
+}
+
 #[test]
 fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     let temp = tempfile::tempdir().unwrap();
@@ -1022,6 +1039,7 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         config["plugin_sources"][0].as_str(),
         Some("vendor/lenso/example.web/0.4.5")
     );
+    assert_re_adoption_preserves_disabled(cli, &root, &snapshot_path, &trust_path, &archive);
     modified_linked_source_cannot_build(cli, &root);
     generated_cargo_lock_is_not_authored_source(cli, &root);
     modified_linked_source_cannot_unadopt(cli, &root);

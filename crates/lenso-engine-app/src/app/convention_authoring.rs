@@ -326,9 +326,6 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
     if !default.exists() {
         fs::write(default, "# Explicit local Plugin adoption\n")?;
     }
-    if intent.join("default.disabled").exists() {
-        fs::remove_file(intent.join("default.disabled"))?;
-    }
     if !args.no_install && candidate.format == "bun" {
         install(&candidate.project)?;
     }
