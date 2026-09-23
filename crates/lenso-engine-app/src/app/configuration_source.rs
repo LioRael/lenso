@@ -67,6 +67,16 @@ struct ObjectScope {
 struct State {
     schema: String,
     desired: PluginConfigurationSnapshotIntent,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_activated: Option<ActivatedConfiguration>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ActivatedConfiguration {
+    revision: u64,
+    snapshot_digest: String,
+    plugin_root_revision: String,
 }
 
 pub fn sync_command(args: SyncArgs) -> anyhow::Result<()> {
@@ -256,6 +266,7 @@ fn read_state(path: &Path) -> anyhow::Result<Option<State>> {
 }
 
 fn write_state(path: &Path, desired: &PluginConfigurationSnapshotIntent) -> anyhow::Result<()> {
+    let last_activated = read_state(path)?.and_then(|state| state.last_activated);
     let parent = path.parent().context("configuration state parent")?;
     let mut stage = tempfile::NamedTempFile::new_in(parent)?;
     serde_json::to_writer(
@@ -263,6 +274,7 @@ fn write_state(path: &Path, desired: &PluginConfigurationSnapshotIntent) -> anyh
         &State {
             schema: STATE_SCHEMA.into(),
             desired: desired.clone(),
+            last_activated,
         },
     )?;
     stage.as_file().sync_all()?;
@@ -418,6 +430,27 @@ mod tests {
             .unwrap()
             .contains("second")
         );
+    }
+
+    #[test]
+    fn new_desired_revision_preserves_last_successful_activation() {
+        let (root, source, policy) = fixture();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        snapshot(&source, 1, "greeting = 'first'\n");
+        sync(root.path(), &policy).unwrap();
+        let mut state = read_state(&state_path).unwrap().unwrap();
+        state.last_activated = Some(ActivatedConfiguration {
+            revision: state.desired.revision(),
+            snapshot_digest: state.desired.snapshot_digest().to_owned(),
+            plugin_root_revision: state.desired.candidate_plugin_root_revision().to_owned(),
+        });
+        fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
+
+        snapshot(&source, 2, "greeting = 'second'\n");
+        sync(root.path(), &policy).unwrap();
+        let current = read_state(&state_path).unwrap().unwrap();
+        assert_eq!(current.desired.revision(), 2);
+        assert_eq!(current.last_activated.unwrap().revision, 1);
     }
 
     #[test]

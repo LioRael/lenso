@@ -1,7 +1,7 @@
 use std::{
     fs,
     process::Command,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use ed25519_dalek::SigningKey;
@@ -197,6 +197,47 @@ fn assert_external_source_bootstraps_before_start(cli: &str, distribution: &std:
             .join("intent/.lenso/configuration-source-state.json")
             .exists()
     );
+    let state_path = distribution.join("intent/.lenso/configuration-source-state.json");
+    let state: serde_json::Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+    assert!(
+        state.get("last_activated").is_none(),
+        "--check must not claim activation"
+    );
+    let mut host = Command::new(cli)
+        .args(["app", "start", "--from"])
+        .arg(distribution)
+        .arg("--configuration-policy")
+        .arg(&policy)
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let state: serde_json::Value =
+            serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+        if state.get("last_activated").is_some() {
+            assert!(
+                host.try_wait().unwrap().is_none(),
+                "Host exited before activation was observed"
+            );
+            assert_eq!(state["last_activated"]["revision"], 1);
+            assert_eq!(
+                state["last_activated"]["plugin_root_revision"],
+                state["desired"]["candidate_plugin_root_revision"]
+            );
+            break;
+        }
+        if let Some(status) = host.try_wait().unwrap() {
+            panic!("Host exited before activation: {status}");
+        }
+        if Instant::now() >= deadline {
+            host.kill().unwrap();
+            host.wait().unwrap();
+            panic!("Host did not activate within 30 seconds");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    host.kill().unwrap();
+    host.wait().unwrap();
     let missing_policy = Command::new(cli)
         .args(["app", "start", "--from"])
         .arg(distribution)

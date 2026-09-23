@@ -48,8 +48,12 @@ The accepted desired revision is persisted in the built App's private
 revision cannot silently replace newer content; an interrupted publication is
 reconciled only against the same snapshot. Once a distribution has a source,
 `app start` requires its policy on every subsequent start, including after a
-network outage. A failed initial fetch prevents startup. This state records
-accepted desired configuration, **not** proof of a running active Generation.
+network outage. A failed initial fetch prevents startup. The state separates
+accepted `desired` configuration from `last_activated`: the latter is written
+only after native Kernel startup, never by `--check` or source reconciliation.
+It records the last successful activation, **not** a claim that a Generation
+is still running. A new desired revision preserves the previous activation
+record until the new Host is ready.
 There is no background polling or live switch yet; rerun the reconciliation and
 Host readiness flow to consume an update. Keep secret material with its provider:
 the snapshot contains only authorized references for schema-marked sensitive

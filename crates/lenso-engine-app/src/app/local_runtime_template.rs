@@ -16,7 +16,79 @@ use std::{fs, path::PathBuf, time::Duration};
 #[derive(Deserialize)]
 struct Resolution {
     schema: String,
+    plugin_root_revision: String,
     plan: ResolvedAppPlan,
+}
+
+struct Activation {
+    _lock: fs::File,
+    path: PathBuf,
+    state: serde_json::Value,
+}
+
+#[cfg(unix)]
+fn begin_activation(distribution: &std::path::Path, intent: &std::path::Path) -> anyhow::Result<Option<Activation>> {
+    let built_intent = distribution.join("intent");
+    if fs::canonicalize(intent)? != fs::canonicalize(&built_intent)? {
+        return Ok(None);
+    }
+    let control = intent.join(".lenso");
+    if !fs::symlink_metadata(&control)?.file_type().is_dir() {
+        bail!("configuration control directory must be a real directory");
+    }
+    let path = control.join("configuration-source-state.json");
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+        Ok(metadata) if !metadata.file_type().is_file() => bail!("configuration state must be a regular file"),
+        Ok(_) => {}
+    }
+    let lock = {
+        use rustix::fs::{Mode, OFlags};
+        let descriptor = rustix::fs::open(control.join("configuration-source.lock"), OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW, Mode::RUSR | Mode::WUSR)?;
+        let file = fs::File::from(descriptor);
+        if !file.metadata()?.file_type().is_file() { bail!("configuration lock must be a regular file"); }
+        file
+    };
+    lock.lock()?;
+    use std::io::Read as _;
+    let mut bytes = Vec::new();
+    let descriptor = rustix::fs::open(&path, rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC | rustix::fs::OFlags::NOFOLLOW, rustix::fs::Mode::empty())?;
+    let file = fs::File::from(descriptor);
+    file.take(16 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > 16 * 1024 * 1024 { bail!("configuration state exceeds runtime limit"); }
+    let state: serde_json::Value = serde_json::from_slice(&bytes)?;
+    if state.get("schema").and_then(|v| v.as_str()) != Some("lenso.configuration-source-state.v1") { bail!("unsupported configuration state"); }
+    Ok(Some(Activation { _lock: lock, path, state }))
+}
+
+#[cfg(not(unix))]
+fn begin_activation(distribution: &std::path::Path, intent: &std::path::Path) -> anyhow::Result<Option<Activation>> {
+    if fs::canonicalize(intent)? == fs::canonicalize(distribution.join("intent"))?
+        && intent.join(".lenso/configuration-source-state.json").exists()
+    {
+        bail!("external configuration startup is unsupported on this platform");
+    }
+    Ok(None)
+}
+
+fn mark_activated(mut activation: Activation, root_revision: &str) -> anyhow::Result<()> {
+    let desired = activation.state.get("desired").context("missing desired configuration")?;
+    let selected = desired.get("candidate_plugin_root_revision").and_then(|v| v.as_str()).context("missing desired Root revision")?;
+    if selected != root_revision { bail!("Host resolved a different Root revision than the desired configuration"); }
+    let last_activated = serde_json::json!({
+        "revision": desired.get("revision").and_then(|v| v.as_u64()).context("missing desired revision")?,
+        "snapshot_digest": desired.get("snapshot_digest").and_then(|v| v.as_str()).context("missing snapshot digest")?,
+        "plugin_root_revision": root_revision,
+    });
+    activation.state.as_object_mut().context("configuration state must be an object")?.insert("last_activated".into(), last_activated);
+    let parent = activation.path.parent().context("configuration state parent")?;
+    let mut stage = tempfile::NamedTempFile::new_in(parent)?;
+    serde_json::to_writer(&mut stage, &activation.state)?;
+    stage.as_file().sync_all()?;
+    stage.persist(&activation.path)?;
+    fs::File::open(parent)?.sync_all()?;
+    Ok(())
 }
 #[derive(Deserialize)]
 struct Artifact {
@@ -118,6 +190,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             bail!("distribution missing locked file: {required}");
         }
     }
+    let activation = begin_activation(root, &intent)?;
     let output = std::process::Command::new(root.join("runtime/lenso-resolver"))
         .args(["app", "show", "--runtime-json", "--host-build"])
         .arg(root.join(".lenso/host-build.json"))
@@ -130,6 +203,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let resolution: Resolution = serde_json::from_slice(&output.stdout)?;
     if resolution.schema != "lenso.runtime-app-resolution.v1" {
         bail!("unsupported resolver schema");
+    }
+    if let Some(active) = &activation {
+        let selected = active.state.pointer("/desired/candidate_plugin_root_revision").and_then(|v| v.as_str());
+        if selected != Some(&resolution.plugin_root_revision) { bail!("configuration changed during Host resolution"); }
     }
     let inventory: Vec<Artifact> = serde_json::from_slice(&fs::read(root.join("bundles.json"))?)?;
     let mut artifacts = ArtifactCatalog::new();
@@ -230,6 +307,13 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         tokio::task::LocalSet::new().run_until(async move {
             let app = Kernel::start(resolution.plan, lenso_runner::TokioDriver::new(), catalog)
                 .await.map_err(|e| anyhow::anyhow!("Host startup failed: {e:?}"))?;
+            if !check
+                && let Some(activation) = activation
+                && let Err(error) = mark_activated(activation, &resolution.plugin_root_revision)
+            {
+                let outcome = app.shutdown(Duration::from_secs(10)).await;
+                bail!("record Host activation: {error}; shutdown: {outcome:?}");
+            }
             eprintln!("Local App ready");
             // LENSO_WEB_READY
             let mut command_result: anyhow::Result<()> = Ok(());

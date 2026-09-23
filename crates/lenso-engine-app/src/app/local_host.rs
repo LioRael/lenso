@@ -39,6 +39,7 @@ pub(super) fn generate(
         ("futures", "0.3"),
         ("serde_json", "1"),
         ("sha2", "0.10"),
+        ("tempfile", "3"),
         ("lenso-app-plan", "=0.4.5"),
         ("lenso-kernel", "=0.3.11"),
         ("lenso-native-adapter", "=0.3.15"),
@@ -54,6 +55,7 @@ pub(super) fn generate(
         "serde".into(),
         json!({"version":"1", "features":["derive"]}),
     );
+    dependencies.insert("rustix".into(), json!({"version":"1.1", "features":["fs"]}));
     dependencies.insert(
         "tokio".into(),
         json!({"version":"1.52", "features":["rt-multi-thread","macros","signal","time","net"]}),
