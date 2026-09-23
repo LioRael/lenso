@@ -233,7 +233,9 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             names,
-            ["engine", "plugin", "plugins", "app", "run", "doctor"]
+            [
+                "new", "dev", "mcp", "engine", "plugin", "plugins", "app", "run", "doctor"
+            ]
         );
 
         let plugin = command
@@ -272,7 +274,9 @@ mod tests {
 
     #[test]
     fn static_maintenance_roots_stay_local_and_app_roots_delegate() {
-        for command in ["engine", "plugin", "plugins", "app", "run", "doctor"] {
+        for command in [
+            "new", "dev", "mcp", "engine", "plugin", "plugins", "app", "run", "doctor",
+        ] {
             assert!(!should_delegate_to_host(&[command.to_owned()]));
         }
         for argument in ["--help", "-h", "--version", "-V"] {
@@ -299,7 +303,7 @@ mod tests {
 
     #[test]
     fn retired_roots_fail_before_host_delegation() {
-        for command in ["module", "new", "dev", "check", "verify"] {
+        for command in ["module", "check", "verify"] {
             let error = reject_retired_invocation(&[command.to_owned()]).unwrap_err();
             assert!(error.to_string().contains("retired"));
         }
