@@ -63,7 +63,7 @@ struct RunArgs {
     /// App project root. Defaults to the current directory.
     #[arg(long)]
     root: Option<PathBuf>,
-    /// Arguments forwarded to the Host after `run`.
+    /// Arguments forwarded to current Host terminal support.
     #[arg(last = true)]
     host_args: Vec<String>,
 }
@@ -168,6 +168,10 @@ fn run_host_command(arguments: Vec<String>) -> anyhow::Result<()> {
 }
 
 fn run(args: RunArgs) -> anyhow::Result<()> {
+    let root = plugins::project_root(args.root.clone())?;
+    if root.join(".lenso/host-mode").is_file() {
+        return app::start_built_local_app(root, args.host_args);
+    }
     let mut arguments = vec!["run".to_owned()];
     arguments.extend(args.host_args);
     run_current_host_at(args.root, arguments)

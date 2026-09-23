@@ -200,6 +200,16 @@ pub struct StartArgs {
     #[arg(last = true, conflicts_with = "check")]
     args: Vec<String>,
 }
+pub(super) fn start_built_local_app(from: PathBuf, args: Vec<String>) -> anyhow::Result<()> {
+    start(StartArgs {
+        from,
+        root: None,
+        configuration_policy: None,
+        check: false,
+        ready_file: None,
+        args,
+    })
+}
 pub fn start(args: StartArgs) -> anyhow::Result<()> {
     super::configuration_source::require_or_sync(&args.from, args.configuration_policy.as_deref())?;
     let executable = fs::canonicalize(args.from.join(".lenso/host"))

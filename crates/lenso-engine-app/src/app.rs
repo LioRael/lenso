@@ -149,6 +149,12 @@ pub async fn dev_source(args: DevArgs) -> anyhow::Result<()> {
     local_dev::dev(args).await
 }
 
+/// Start a locally built App through the same validated distribution path as
+/// `lenso app start --from`, without exposing the generated Host's private CLI.
+pub fn start_built_local_app(from: PathBuf, args: Vec<String>) -> anyhow::Result<()> {
+    local_workflow::start_built_local_app(from, args)
+}
+
 #[derive(Clone, Debug, Subcommand)]
 pub enum AppCommand {
     /// Adopt a local source or bundled convention support.
