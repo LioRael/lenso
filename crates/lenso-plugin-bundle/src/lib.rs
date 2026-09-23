@@ -4178,13 +4178,13 @@ root-slot = "tools"
                 ExecutionAdmissionRequirementV6::MemoryCeiling {
                     max_bytes: 16 * 1024 * 1024,
                 },
-                "per linear memory",
+                "did not prove an aggregate Guest linear-memory bound",
             ),
             (
                 ExecutionAdmissionRequirementV6::MemoryCeiling {
                     max_bytes: 128 * 1024 * 1024,
                 },
-                "per linear memory",
+                "did not prove an aggregate Guest linear-memory bound",
             ),
             (
                 ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 100 },
@@ -4250,6 +4250,96 @@ root-slot = "tools"
         let manifest = v6_admission_manifest(vec![restricted, unrestricted]);
         let explanation = explain_implementation(&manifest, &policy).unwrap();
         assert!(!explanation.is_selected());
+    }
+
+    #[test]
+    fn v6_wasm_memory_admission_requires_a_real_aggregate_ceiling() {
+        let wasm_class = "lenso.wasm-component@1";
+        let admission = RuntimeAdmission::new(
+            ExecutionClassId::new(wasm_class),
+            wasm_class,
+            ExecutionTargetCapabilities::new([
+                ExecutionTargetCapability::Request,
+                ExecutionTargetCapability::WasmComponent,
+            ]),
+        );
+        let manifest = |requirements| {
+            v6_admission_manifest(vec![v6_admission_variant(
+                "restricted",
+                wasm_class,
+                "*",
+                requirements,
+            )])
+        };
+        let policy = |admission| ImplementationPolicy {
+            host_target: "aarch64-apple-darwin".to_owned(),
+            runtimes: vec![admission],
+        };
+        let memory = |max_bytes| {
+            manifest(vec![ExecutionAdmissionRequirementV6::MemoryCeiling {
+                max_bytes,
+            }])
+        };
+
+        assert!(
+            resolve_implementation(
+                &memory(64 * 1024 * 1024),
+                &policy(
+                    admission
+                        .clone()
+                        .with_enforced_wasm_memory_ceiling(32 * 1024 * 1024)
+                ),
+            )
+            .is_ok()
+        );
+        for (enforced, demanded) in [(0, 64 * 1024 * 1024), (64 * 1024 * 1024, 32 * 1024 * 1024)] {
+            let explanation = explain_implementation(
+                &memory(demanded),
+                &policy(
+                    admission
+                        .clone()
+                        .with_enforced_wasm_memory_ceiling(enforced),
+                ),
+            )
+            .unwrap();
+            assert!(!explanation.is_selected());
+            assert!(matches!(
+                explanation.rejected.as_slice(),
+                [RejectedPluginImplementation {
+                    reason: ImplementationRejectionReason::ExecutionRequirementsUnverified { .. },
+                    ..
+                }]
+            ));
+        }
+
+        // Memory enforcement does not imply a wall-clock bound or permission.
+        let still_unverified = manifest(vec![
+            ExecutionAdmissionRequirementV6::MemoryCeiling {
+                max_bytes: 64 * 1024 * 1024,
+            },
+            ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 500 },
+            ExecutionAdmissionRequirementV6::PermissionGrant {
+                permission: RequiredPermissionV6::OutboundNetwork,
+            },
+        ]);
+        let explanation = explain_implementation(
+            &still_unverified,
+            &policy(admission.with_enforced_wasm_memory_ceiling(32 * 1024 * 1024)),
+        )
+        .unwrap();
+        assert!(!explanation.is_selected());
+        assert!(matches!(
+            explanation.rejected.as_slice(),
+            [RejectedPluginImplementation {
+                reason: ImplementationRejectionReason::ExecutionRequirementsUnverified { requirements },
+                ..
+            }] if requirements == &vec![
+                ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 500 },
+                ExecutionAdmissionRequirementV6::PermissionGrant {
+                    permission: RequiredPermissionV6::OutboundNetwork,
+                },
+            ]
+        ));
     }
 
     #[test]

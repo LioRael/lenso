@@ -174,6 +174,9 @@ pub struct RuntimeAdmission {
     pub execution_class: ExecutionClassId,
     pub runtime_profile: String,
     pub capabilities: ExecutionTargetCapabilities,
+    /// Aggregate Guest linear-memory bound actually configured and rechecked
+    /// by this Host's Wasm Component Adapter. A mechanism alone is not proof.
+    pub enforced_wasm_memory_ceiling_bytes: Option<u64>,
 }
 
 impl RuntimeAdmission {
@@ -187,7 +190,17 @@ impl RuntimeAdmission {
             execution_class,
             runtime_profile: runtime_profile.into(),
             capabilities,
+            enforced_wasm_memory_ceiling_bytes: None,
         }
+    }
+
+    /// Records the aggregate Guest linear-memory ceiling this Host actually
+    /// configures and rechecks for the selected Wasm Component instance.
+    /// Invalid or non-Wasm admissions remain fail closed during selection.
+    #[must_use]
+    pub fn with_enforced_wasm_memory_ceiling(mut self, max_bytes: u64) -> Self {
+        self.enforced_wasm_memory_ceiling_bytes = Some(max_bytes);
+        self
     }
 
     /// Returns the exact portable profile this Host is admitting.
@@ -467,11 +480,12 @@ fn candidates_for_admission<'a>(
         if !record_target_match(candidate, policy, rejected) {
             continue;
         }
-        if !candidate.execution_requirements.is_empty() {
+        let unverified = unverified_execution_requirements(candidate, admission);
+        if !unverified.is_empty() {
             rejected.push(rejected_candidate(
                 candidate,
                 ImplementationRejectionReason::ExecutionRequirementsUnverified {
-                    requirements: candidate.execution_requirements.clone(),
+                    requirements: unverified,
                 },
             ));
             unverified_controls = true;
@@ -484,6 +498,33 @@ fn candidates_for_admission<'a>(
         }
     }
     (compatible, unverified_controls)
+}
+
+fn unverified_execution_requirements(
+    candidate: &Candidate,
+    admission: &RuntimeAdmission,
+) -> Vec<ExecutionAdmissionRequirementV6> {
+    let memory_ceiling = (admission.execution_class.as_str() == "lenso.wasm-component@1"
+        && admission
+            .capabilities
+            .supports(ExecutionTargetCapability::WasmComponent))
+    .then_some(admission.enforced_wasm_memory_ceiling_bytes)
+    .flatten();
+    candidate
+        .execution_requirements
+        .iter()
+        .filter(|requirement| match requirement {
+            ExecutionAdmissionRequirementV6::MemoryCeiling { max_bytes } => {
+                !memory_ceiling.is_some_and(|enforced| enforced > 0 && enforced <= *max_bytes)
+            }
+            // In-process Host imports may block synchronously. Epoch interrupts
+            // cannot prove a total wall-clock turn deadline across those calls.
+            ExecutionAdmissionRequirementV6::TurnDeadline { .. }
+            | ExecutionAdmissionRequirementV6::PermissionGrant { .. }
+            | ExecutionAdmissionRequirementV6::OsSandbox => true,
+        })
+        .cloned()
+        .collect()
 }
 
 fn candidate_matches_admission(candidate: &Candidate, admission: &RuntimeAdmission) -> bool {
@@ -849,7 +890,8 @@ fn render_unverified_requirements(
             ExecutionAdmissionRequirementV6::MemoryCeiling { .. }
         )
     }) {
-        detail.push_str("; Wasmtime's current memory limit applies per linear memory, not to aggregate Component or Host memory");
+        detail
+            .push_str("; this Host admission did not prove an aggregate Guest linear-memory bound");
     }
     if requirements.iter().any(|requirement| {
         matches!(
