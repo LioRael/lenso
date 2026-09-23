@@ -1,0 +1,53 @@
+//! Read-only project operations shared with the App authoring API.
+use std::path::PathBuf;
+
+use anyhow::Context;
+use clap::Args;
+use rmcp::{
+    ErrorData as McpError, ServerHandler, ServiceExt,
+    model::{CallToolResult, ContentBlock},
+    tool, tool_handler, tool_router,
+    transport::stdio,
+};
+
+#[derive(Clone, Debug, Args)]
+pub(crate) struct McpArgs {
+    /// One local App root this MCP process may inspect.
+    #[arg(long)]
+    root: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+struct AppTools {
+    root: PathBuf,
+}
+
+#[tool_router]
+impl AppTools {
+    #[tool(
+        description = "Inspect exact App, Plugin, source, binding and diagnostic facts without reading secret values"
+    )]
+    fn project_facts(&self) -> Result<CallToolResult, McpError> {
+        let facts = lenso_engine_app::app::inspect_project_facts(&self.root).map_err(|_| {
+            McpError::internal_error("App facts are unavailable; run lenso doctor", None)
+        })?;
+        let json = serde_json::to_string(&facts)
+            .map_err(|_| McpError::internal_error("serialize App facts", None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+    }
+}
+
+// The SDK generates an async handler for the synchronous tool router.
+#[allow(clippy::unused_async_trait_impl)]
+#[tool_handler]
+impl ServerHandler for AppTools {}
+
+pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
+    let root = std::fs::canonicalize(&args.root).context("resolve MCP App root")?;
+    if !root.is_dir() {
+        anyhow::bail!("MCP App root must be a directory");
+    }
+    let service = AppTools { root }.serve(stdio()).await?;
+    service.waiting().await?;
+    Ok(())
+}

@@ -52,6 +52,17 @@ diagnostic codes. It deliberately reports runtime state as `not_observed` until
 a runtime control surface supplies evidence; build artifacts are not treated as
 proof that an App is running. Configuration values are not included.
 
+The same projection is available to an MCP client over stdio:
+
+```sh
+lenso mcp --root ./my-app
+```
+
+The server fixes one App root for its lifetime and exposes the read-only
+`project_facts` tool. It does not offer App mutations, silently start a Host,
+or infer runtime readiness. This is the initial MCP slice, not the complete
+Agent operation set (create, change, build, run, diagnose, and publish).
+
 ```rust,ignore
 lenso_engine_app::app::create_empty(project.clone())?;
 lenso_engine_app::app::adopt(project.clone(), "@lenso/cli".into(), true)?;

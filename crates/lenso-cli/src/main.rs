@@ -1,6 +1,7 @@
 use lenso_engine_app::app;
 use lenso_engine_app::doctor;
 mod engine;
+mod mcp;
 use lenso_engine_app::plugin;
 use lenso_engine_app::plugins;
 
@@ -29,6 +30,8 @@ enum RootCommand {
     New(app::CreateArgs),
     /// Build, run, and watch a source App.
     Dev(app::DevArgs),
+    /// Serve local App development facts over MCP stdio.
+    Mcp(mcp::McpArgs),
     /// Process files through optional conventions without creating an App.
     Engine {
         #[command(subcommand)]
@@ -92,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
     match command {
         RootCommand::New(args) => app::create_source(args),
         RootCommand::Dev(args) => app::dev_source(args).await,
+        RootCommand::Mcp(args) => mcp::serve(args).await,
         RootCommand::Engine { command } => engine::run(command).await,
         RootCommand::Plugin { command } => plugin::plugin(command).await,
         RootCommand::Plugins { command } => plugins::plugins(command),
@@ -155,7 +159,7 @@ fn should_delegate_to_host(arguments: &[String]) -> bool {
     !first.starts_with('-')
         && !matches!(
             first,
-            "new" | "dev" | "engine" | "plugin" | "plugins" | "app" | "run" | "doctor"
+            "new" | "dev" | "mcp" | "engine" | "plugin" | "plugins" | "app" | "run" | "doctor"
         )
 }
 
