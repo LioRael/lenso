@@ -198,6 +198,14 @@ fn prove_removed_build_when_requested(cli: &str, root: &std::path::Path) {
     assert!(checked.status.success());
     let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
     assert_eq!(report["plugin_instances"], 0);
+    let shown = Command::new(cli)
+        .args(["app", "show", "--json", "--root"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(shown.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+    assert_eq!(report["instances"].as_array().unwrap().len(), 0);
     assert_eq!(
         fs::read_to_string(output.join(".lenso/host-mode")).unwrap(),
         "portable"
@@ -237,6 +245,49 @@ fn assert_host_provided_rejected(
     assert!(!rejected.status.success());
     assert!(String::from_utf8_lossy(&rejected.stderr).contains("Host integration"));
     assert!(!host_root.join("lenso.toml").exists());
+}
+
+fn reject_unlisted_version_and_changed_archive(
+    cli: &str,
+    root: &std::path::Path,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+    archive: &std::path::Path,
+) {
+    let wrong_version = Command::new(cli)
+        .args(["app", "add", "example.web@0.4.6", "--root"])
+        .arg(root)
+        .arg("--linked-snapshot")
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--crate")
+        .arg(archive)
+        .output()
+        .unwrap();
+    assert!(!wrong_version.status.success());
+    assert!(
+        String::from_utf8_lossy(&wrong_version.stderr)
+            .contains("exact linked Cargo release is not in this catalog")
+    );
+    assert!(!root.join("lenso.toml").exists());
+
+    let wrong_archive = archive.with_file_name("wrong.crate");
+    fs::write(&wrong_archive, b"not the signed archive").unwrap();
+    let wrong_digest = Command::new(cli)
+        .args(["app", "add", "example.web@0.4.5", "--root"])
+        .arg(root)
+        .arg("--linked-snapshot")
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--crate")
+        .arg(&wrong_archive)
+        .output()
+        .unwrap();
+    assert!(!wrong_digest.status.success());
+    assert!(String::from_utf8_lossy(&wrong_digest.stderr).contains("digest"));
+    assert!(!root.join("lenso.toml").exists());
 }
 
 #[test]
@@ -357,6 +408,7 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     fs::write(&trust_path, serde_json::to_vec(&serde_json::json!({
         "catalog_id": "test-catalog", "key_id": "test-key", "public_key_hex": hex::encode(key.verifying_key().to_bytes())
     })).unwrap()).unwrap();
+    reject_unlisted_version_and_changed_archive(cli, &root, &snapshot_path, &trust_path, &archive);
     for _ in 0..2 {
         let added = Command::new(cli)
             .args(["app", "add", "example.web@0.4.5", "--root"])
