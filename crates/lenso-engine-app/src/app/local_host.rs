@@ -76,6 +76,7 @@ pub(super) fn generate(
     // native Plugin registration inventory.
     let mut local_lenso_patches = BTreeMap::<String, (String, Value)>::new();
     let mut git_lenso_source = None;
+    let mut host_framework_dependencies = BTreeSet::<String>::new();
     for (name, version) in [
         ("anyhow", "1"),
         ("futures", "0.3"),
@@ -88,6 +89,9 @@ pub(super) fn generate(
         ("lenso-runner", "=0.2.17"),
     ] {
         dependencies.insert(name.into(), json!(version));
+        if name.starts_with("lenso-") {
+            host_framework_dependencies.insert(name.into());
+        }
     }
     dependencies.insert(
         "serde".into(),
@@ -307,6 +311,7 @@ pub(super) fn generate(
                 json!(version)
             };
             dependencies.insert(name.into(), dependency);
+            host_framework_dependencies.insert(name.into());
         }
     }
     if cohort == "0.3" {
@@ -314,6 +319,7 @@ pub(super) fn generate(
             "native-resources".into(),
             json!({"package":"lenso-runtime-codec","version":"=0.4.2"}),
         );
+        host_framework_dependencies.insert("native-resources".into());
     }
     let web_ingress = web_contract
         .as_ref()
@@ -375,6 +381,9 @@ pub(super) fn generate(
             ("shell-words", "1.1"),
         ] {
             dependencies.insert(name.into(), json!(version));
+            if name.starts_with("lenso-") {
+                host_framework_dependencies.insert(name.into());
+            }
         }
         dependencies.insert("clap".into(), json!({"version":"4", "features":["string"]}));
         fs::create_dir_all(generated.join("src/terminal"))?;
@@ -473,19 +482,12 @@ pub(super) fn generate(
             if let Some(address) = ingress.local_address() { eprintln!("Listening on http://{address}"); }
 "# } else { "" });
     if let Some((git, rev)) = git_lenso_source {
-        for (name, dependency) in &mut dependencies {
-            let package = dependency["package"].as_str().unwrap_or(name);
-            if (package == "lenso" || package.starts_with("lenso-"))
-                && dependency.get("git").is_none()
-            {
-                let version = dependency
-                    .get("version")
-                    .cloned()
-                    .unwrap_or_else(|| dependency.clone());
-                *dependency =
-                    json!({"package": package, "version": version, "git": git, "rev": rev});
-            }
-        }
+        pin_host_framework_versions(
+            &mut dependencies,
+            &host_framework_dependencies,
+            &git,
+            &rev,
+        );
     }
     let patches = local_lenso_patches
         .into_iter()
@@ -619,6 +621,48 @@ pub(super) fn dependency(package: &Value) -> anyhow::Result<Value> {
         Some(source) => bail!(
             "unsupported contract registry {source}; use a custom Host for alternate registry dependencies"
         ),
+    }
+}
+
+fn pin_host_framework_versions(
+    dependencies: &mut BTreeMap<String, Value>,
+    host_framework_dependencies: &BTreeSet<String>,
+    git: &str,
+    rev: &str,
+) {
+    for name in host_framework_dependencies {
+        let Some(dependency) = dependencies.get_mut(name) else {
+            continue;
+        };
+        let expected_package = if name == "native-resources" {
+            "lenso-runtime-codec"
+        } else {
+            name.as_str()
+        };
+        let actual_package = match dependency.get("package") {
+            Some(Value::String(package)) => package.as_str(),
+            None => name.as_str(),
+            _ => continue,
+        };
+        if actual_package != expected_package {
+            continue;
+        }
+        match dependency {
+            Value::String(version) => {
+                let version = version.clone();
+                *dependency = json!({"version":version,"git":git,"rev":rev});
+            }
+            Value::Object(table)
+                if table.get("version").and_then(Value::as_str).is_some()
+                    && ["path", "git", "registry", "branch", "tag"]
+                        .iter()
+                        .all(|key| !table.contains_key(*key)) =>
+            {
+                table.insert("git".into(), json!(git));
+                table.insert("rev".into(), json!(rev));
+            }
+            _ => {}
+        }
     }
 }
 
@@ -1083,14 +1127,101 @@ pub(super) fn digest_text(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use serde_json::json;
 
     use super::{
-        AdapterSet, collect_local_lenso_patch, dependency_lock_digests, local_framework_crates_dir,
-        local_framework_dependency, verify_dependency_lock_digests, web_ingress_dependency,
+        AdapterSet, collect_local_lenso_patch, dependency, dependency_lock_digests,
+        local_framework_crates_dir, local_framework_dependency, pin_host_framework_versions,
+        verify_dependency_lock_digests, web_ingress_dependency,
     };
+
+    #[test]
+    fn git_framework_source_does_not_rewrite_signed_vendor_paths() {
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let vendor = dependency(&json!({
+            "name": "lenso-secrets-env-plugin",
+            "version": "0.1.8",
+            "source": null,
+            "manifest_path": "/app/vendor/lenso/lenso.secrets.env/0.1.8/Cargo.toml"
+        }))
+        .unwrap();
+        let local_adapter = json!({
+            "package": "lenso-wasm-component-adapter",
+            "path": "/work/lenso/crates/lenso-wasm-component-adapter",
+            "version": "=0.2.16"
+        });
+        let mut dependencies = BTreeMap::from([
+            ("lenso-app-plan".into(), json!("=0.4.5")),
+            (
+                "lenso-native-adapter".into(),
+                json!({"version":"=0.3.15", "features":["test-support"]}),
+            ),
+            ("lenso-wasm-component-adapter".into(), local_adapter.clone()),
+            ("local_plugin_0".into(), vendor.clone()),
+            (
+                "local_plugin_1".into(),
+                json!({"package":"lenso-kernel","version":"=0.3.11"}),
+            ),
+        ]);
+        let framework = BTreeSet::from([
+            "lenso-app-plan".into(),
+            "lenso-native-adapter".into(),
+            "lenso-wasm-component-adapter".into(),
+        ]);
+
+        pin_host_framework_versions(&mut dependencies, &framework, git, rev);
+
+        assert_eq!(dependencies["local_plugin_0"], vendor);
+        assert_eq!(dependencies["lenso-wasm-component-adapter"], local_adapter);
+        assert!(dependencies["local_plugin_1"].get("git").is_none());
+        assert_eq!(dependencies["lenso-app-plan"]["version"], "=0.4.5");
+        assert_eq!(dependencies["lenso-app-plan"]["git"], git);
+        assert_eq!(dependencies["lenso-app-plan"]["rev"], rev);
+        assert_eq!(
+            dependencies["lenso-native-adapter"]["features"],
+            json!(["test-support"])
+        );
+        assert_eq!(dependencies["lenso-native-adapter"]["git"], git);
+
+        let manifest = json!({
+            "package": {"name":"lenso-generated-local-host", "version":"0.0.0", "edition":"2024"},
+            "dependencies": dependencies
+        });
+        let rendered = toml::to_string_pretty(&manifest).unwrap();
+        let parsed: toml::Value = toml::from_str(&rendered).unwrap();
+        assert_eq!(
+            parsed["dependencies"]["local_plugin_0"]["path"].as_str(),
+            Some("/app/vendor/lenso/lenso.secrets.env/0.1.8")
+        );
+        assert_eq!(
+            parsed["dependencies"]["lenso-app-plan"]["version"].as_str(),
+            Some("=0.4.5")
+        );
+    }
+
+    #[test]
+    fn git_framework_source_rejects_renamed_and_alternate_registry_dependencies() {
+        let renamed = json!({"package":"unrelated-package", "version":"=0.1.0"});
+        let alternate_registry = json!({"version":"=0.5.0", "registry":"private"});
+        let mut dependencies = BTreeMap::from([
+            ("lenso-kernel".into(), renamed.clone()),
+            ("lenso-guest-sdk".into(), alternate_registry.clone()),
+        ]);
+        let framework = BTreeSet::from(["lenso-kernel".into(), "lenso-guest-sdk".into()]);
+
+        pin_host_framework_versions(
+            &mut dependencies,
+            &framework,
+            "https://example.invalid/lenso",
+            "abc123",
+        );
+
+        assert_eq!(dependencies["lenso-kernel"], renamed);
+        assert_eq!(dependencies["lenso-guest-sdk"], alternate_registry);
+    }
 
     #[test]
     fn generated_host_only_links_declared_execution_classes() {
