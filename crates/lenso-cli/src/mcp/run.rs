@@ -177,6 +177,15 @@ impl RunController {
             .context("unknown MCP App run request_id")
     }
 
+    pub(super) fn active_state(&self) -> Option<&'static str> {
+        let state = self.state.lock().expect("MCP run state lock");
+        state
+            .active
+            .as_ref()
+            .and_then(|id| state.entries.get(id))
+            .map(|entry| entry.status.state)
+    }
+
     pub(super) fn stop(&self, request_id: &str) -> anyhow::Result<RunStatus> {
         let mut state = self.state.lock().expect("MCP run state lock");
         let entry = state

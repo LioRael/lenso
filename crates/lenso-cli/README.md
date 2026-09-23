@@ -263,6 +263,10 @@ deadline, or bridge shutdown. Status reports readiness and stable diagnostic
 codes, not raw logs or a guessed preview URL. `request_id` retries never start
 another Host; runs have a maximum one-hour lifetime. This is local process
 control, not deployment or proof of a browser flow.
+While this bridge owns a live run, `project_facts` reads that run's built
+distribution and reports its observed startup/running/stopping state. Once the
+run ends, facts return to the ordinary project inspection; a build artifact
+alone never counts as an observed process.
 
 `project_change_preview` reviews one Instance TOML change against an exact
 Plugin Root revision and returns the proposal digest, changed field names,

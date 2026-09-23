@@ -578,6 +578,20 @@ fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
         assert!(Instant::now() < deadline, "real Host did not become ready");
         std::thread::sleep(Duration::from_millis(25));
     }
+    let observed = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"project_facts","arguments":{}}}),
+    );
+    assert!(observed["error"].is_null(), "{observed}");
+    let observed: serde_json::Value =
+        serde_json::from_str(observed["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(observed["status"], "resolved");
+    assert_eq!(observed["runtime"]["status"], "running");
+    assert_eq!(
+        observed["root"],
+        root.join("dist").canonicalize().unwrap().to_str().unwrap()
+    );
     let stopped = mcp_roundtrip(
         &mut stdin,
         &mut stdout,

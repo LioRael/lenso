@@ -520,13 +520,28 @@ impl AppTools {
         &self,
         Parameters(request): Parameters<ProjectFactsQuery>,
     ) -> Result<CallToolResult, McpError> {
-        let facts = lenso_engine_app::app::facts::inspect_project_facts_with_host_build(
-            &self.root,
-            self.host_build.as_deref(),
+        let active = self.runs.active_state();
+        let observed_root = if active.is_some() {
+            self.root.join("dist")
+        } else {
+            self.root.clone()
+        };
+        let host_build = if active.is_some() {
+            None
+        } else {
+            self.host_build.as_deref()
+        };
+        let mut facts = lenso_engine_app::app::facts::inspect_project_facts_with_host_build(
+            &observed_root,
+            host_build,
         )
         .map_err(|_| {
             McpError::internal_error("App facts are unavailable; run lenso doctor", None)
         })?;
+        if let Some(state) = active {
+            facts.runtime.status = state;
+            facts.runtime.detail = "This MCP process observed its fixed built Host run; use project_run_status for its exact request and terminal outcome.";
+        }
         let json = project_facts_json(&facts, &request)?;
         Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
