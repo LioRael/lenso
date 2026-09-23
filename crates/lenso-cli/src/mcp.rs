@@ -29,6 +29,21 @@ struct AppTools {
 #[tool_router]
 impl AppTools {
     #[tool(
+        description = "Explain persisted Host target admission, implementation selection, and consumer requirements for a built App"
+    )]
+    fn project_explain(&self) -> Result<CallToolResult, McpError> {
+        let explanation = lenso_engine_app::app::inspect_app_explanation(&self.root).map_err(|_| {
+            McpError::internal_error(
+                "App explanation is unavailable; run lenso app explain --json on the built Host root",
+                None,
+            )
+        })?;
+        let json = serde_json::to_string(&explanation)
+            .map_err(|_| McpError::internal_error("serialize App explanation", None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+    }
+
+    #[tool(
         description = "Inspect exact App, Plugin, source, binding and diagnostic facts without reading secret values"
     )]
     fn project_facts(&self) -> Result<CallToolResult, McpError> {

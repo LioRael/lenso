@@ -1,4 +1,9 @@
-use std::{ffi::OsStr, fs, path::PathBuf, process::Command};
+use std::{
+    ffi::OsStr,
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use anyhow::{Context, bail};
 use clap::{Args, Subcommand};
@@ -74,6 +79,12 @@ pub(crate) fn build_command(program: impl AsRef<OsStr>) -> Command {
 // owns the persisted Host inspection; callers should not recreate a profile
 // parser or a second resolver around it.
 pub use explain::ExplainArgs;
+
+/// Inspect the same persisted Host admission and binding evidence as
+/// `lenso app explain --json`, without invoking a second resolver.
+pub fn inspect_app_explanation(root: impl AsRef<Path>) -> anyhow::Result<serde_json::Value> {
+    explain::report(root.as_ref())
+}
 
 /// Create the same source App through an embedding or root CLI.
 pub fn create_source(args: CreateArgs) -> anyhow::Result<()> {

@@ -70,10 +70,13 @@ The MCP server accepts the same optional `--host-build` when its fixed root is
 external to the distribution. Both paths use the same resolver-backed facts
 projection and omit configuration values.
 
-The server fixes one App root for its lifetime and exposes the read-only
-`project_facts` tool. It does not offer App mutations, silently start a Host,
-or infer runtime readiness. This is the initial MCP slice, not the complete
-Agent operation set (create, change, build, run, diagnose, and publish).
+The server fixes one App root for its lifetime and exposes read-only
+`project_facts` and `project_explain` tools. `project_explain` requires a built
+Host root containing the persisted bundle inventory and returns the same
+`lenso.app-explain.v1` projection as `app explain --json`; `--host-build` for an
+external Plugin Root applies only to `project_facts`. Neither tool mutates an
+App, starts a Host, or infers runtime readiness. These tools are not the
+complete Agent operation set (create, change, build, run, diagnose, and publish).
 
 ```rust,ignore
 lenso_engine_app::app::create_empty(project.clone())?;
