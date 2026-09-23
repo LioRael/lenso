@@ -669,6 +669,15 @@ cargo test --locked --workspace
 cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
+For a bounded portable HTTP Endpoint proof, run
+`cargo test --locked -p lenso-web-ingress-plugin --test portable_http_component`.
+The fixture compiles the same business handler into a native provider and a
+real Wasm Component, then sends six loopback HTTP requests through Web Ingress
+to each: method/path matching, non-UTF-8 request and response bytes, 404/405,
+domain rejection, and runtime failure. This is local Native Host plus Wasmtime
+evidence. It does not qualify workerd or deployed Workers, outbound HTTP,
+streaming, WebSocket, authentication, or production resource ceilings.
+
 The dispatch-only release workflow publishes an explicitly authorized package
 set from a landed `main` SHA through configured crates.io Trusted Publishers
 and GitHub OIDC. Dependency-aware
