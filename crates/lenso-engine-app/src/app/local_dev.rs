@@ -143,7 +143,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 }
                 event = events.recv() => {
                     match event.context("App watcher closed")? {
-                        Ok(event) if event.paths.iter().any(|p| relevant(p)) => {
+                        Ok(event) if rebuild_event(&event) => {
                             if event.paths.iter().any(|p| frontend::is_config(&root, p)) {
                                 eprintln!("Frontend dev configuration changed; restart lenso dev to review and apply its command.");
                             }
@@ -900,10 +900,7 @@ fn watch(
 )> {
     let (sender, receiver) = mpsc::channel(128);
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        if event
-            .as_ref()
-            .is_ok_and(|event| !event.paths.iter().any(|path| relevant(path)))
-        {
+        if event.as_ref().is_ok_and(|event| !rebuild_event(event)) {
             return;
         }
         // A full queue already guarantees a rebuild; coalesce further events.
@@ -974,6 +971,10 @@ fn relevant(path: &Path) -> bool {
                 .contains(&name)
         })
     })
+}
+
+fn rebuild_event(event: &notify::Event) -> bool {
+    !event.kind.is_access() && event.paths.iter().any(|path| relevant(path))
 }
 
 #[cfg(test)]
@@ -1312,5 +1313,25 @@ mod tests {
         ] {
             assert!(!relevant(Path::new(path)));
         }
+    }
+
+    #[test]
+    fn app_watch_ignores_access_but_rebuilds_on_mutation() {
+        use notify::event::{AccessKind, AccessMode, ModifyKind};
+
+        let source = PathBuf::from("/app/src/lib.rs");
+        let opened =
+            notify::Event::new(notify::EventKind::Access(AccessKind::Open(AccessMode::Any)))
+                .add_path(source.clone());
+        let closed_after_read = notify::Event::new(notify::EventKind::Access(AccessKind::Close(
+            AccessMode::Read,
+        )))
+        .add_path(source.clone());
+        let modified =
+            notify::Event::new(notify::EventKind::Modify(ModifyKind::Any)).add_path(source);
+
+        assert!(!rebuild_event(&opened));
+        assert!(!rebuild_event(&closed_after_read));
+        assert!(rebuild_event(&modified));
     }
 }
