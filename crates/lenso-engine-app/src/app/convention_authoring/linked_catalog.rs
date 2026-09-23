@@ -718,7 +718,7 @@ fn unpack(
                 && relative
                     .split('/')
                     .all(|part| !matches!(part, "" | "." | ".."))
-                && !matches!(relative, SOURCE_LOCK | "Cargo.lock")
+                && relative != SOURCE_LOCK
                 && !relative.starts_with("target/"),
             "crate archive has an invalid path"
         );
@@ -770,8 +770,11 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<Vec<_>, _>>()?;
     if root {
-        // Cargo may materialize this generated dependency lock on first build.
-        // It is excluded from the adopted source digest and not in .crate input.
+        // Registry crates can contain a root Cargo.lock; Cargo may also
+        // materialize or rewrite it during a standalone build. The signed
+        // archive is verified before unpacking, but this lock is not part of
+        // the adopted source identity used for Host path dependencies.
+        expected_entries.retain(|name| name != "Cargo.lock");
         actual_entries.retain(|name| name != "Cargo.lock");
     }
     expected_entries.sort();
@@ -858,5 +861,62 @@ mod tests {
         assert!(same_tree(&expected, &actual).unwrap());
         fs::write(actual.join("nested/Cargo.lock"), b"unexpected\n").unwrap();
         assert!(!same_tree(&expected, &actual).unwrap());
+    }
+
+    #[test]
+    fn crate_archive_accepts_registry_root_cargo_lock() {
+        let release = linked_cargo::LinkedCargoRelease {
+            plugin_id: "example.web".into(),
+            version: "0.4.5".into(),
+            publisher_id: "example".into(),
+            title: "Web".into(),
+            summary: "Web Plugin".into(),
+            source_url: "https://example.test/web".into(),
+            source_revision: "a".repeat(40),
+            license: "MIT".into(),
+            package: "example-web-plugin".into(),
+            registry_url: "https://crates.io".into(),
+            crate_digest: format!("sha256:{}", "a".repeat(64)),
+            integration: linked_cargo::LinkedCargoIntegration::LinkedPlugin,
+            targets: vec!["aarch64-apple-darwin".into()],
+            availability: Availability::Listed,
+            documentation: vec![],
+        };
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        for (name, contents) in [
+            (
+                "Cargo.toml",
+                "[package]\nname = \"example-web-plugin\"\nversion = \"0.4.5\"\n[package.metadata.lenso]\nplugin-id = \"example.web\"\n",
+            ),
+            ("Cargo.lock", "# published lock\n"),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(contents.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(
+                    &mut header,
+                    format!("example-web-plugin-0.4.5/{name}"),
+                    contents.as_bytes(),
+                )
+                .unwrap();
+        }
+        let archive = builder.into_inner().unwrap().finish().unwrap();
+        let stage = tempfile::tempdir().unwrap();
+        unpack(&archive, stage.path(), &release).unwrap();
+        assert_eq!(
+            fs::read(stage.path().join("Cargo.lock")).unwrap(),
+            b"# published lock\n"
+        );
+        let actual = tempfile::tempdir().unwrap();
+        fs::write(
+            actual.path().join("Cargo.toml"),
+            fs::read(stage.path().join("Cargo.toml")).unwrap(),
+        )
+        .unwrap();
+        fs::write(actual.path().join("Cargo.lock"), b"# Cargo-updated lock\n").unwrap();
+        assert!(same_tree(stage.path(), actual.path()).unwrap());
     }
 }
