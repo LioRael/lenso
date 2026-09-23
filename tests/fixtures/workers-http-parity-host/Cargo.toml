@@ -1,0 +1,24 @@
+[package]
+name = "lenso-workers-http-parity-host"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+bytes.workspace = true
+http.workspace = true
+lenso-kernel.workspace = true
+lenso-native-adapter.workspace = true
+lenso-web-http-parity-fixture = { path = "../http-parity-plugin" }
+lenso-web-ingress-plugin = { path = "../../../crates/lenso-web-ingress-plugin", default-features = false }
+lenso-workers-driver = { path = "../../../crates/lenso-workers-driver" }
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen = "=0.2.127"
+wasm-bindgen-futures = "=0.4.77"
+
+[lints]
+workspace = true

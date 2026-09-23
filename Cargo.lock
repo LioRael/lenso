@@ -2951,6 +2951,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-workers-http-parity-host"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "http",
+ "lenso-kernel",
+ "lenso-native-adapter",
+ "lenso-web-http-parity-fixture",
+ "lenso-web-ingress-plugin",
+ "lenso-workers-driver",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "libbun"
 version = "0.2.3"
 source = "git+https://github.com/enki/libbun?rev=15669af8f832be36e9184372c15f2ef0e4cc3b60#15669af8f832be36e9184372c15f2ef0e4cc3b60"
