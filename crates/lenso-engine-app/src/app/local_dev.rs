@@ -53,7 +53,21 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
             }
         };
         watch_dependencies(&root, &mut watcher)?;
-        if status.success() {
+        let ready = if status.success() {
+            match preflight(&output).await {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!(
+                        "App candidate failed readiness; retaining the running generation: {error:#}"
+                    );
+                    false
+                }
+            }
+        } else {
+            eprintln!("App rebuild failed; edit the source to retry.");
+            false
+        };
+        if ready {
             if let Some(host) = &mut host {
                 stop(host, false).await?;
             }
@@ -77,8 +91,6 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 "Watching {} for App changes. Press Ctrl-C to stop.",
                 root.display()
             );
-        } else {
-            eprintln!("App rebuild failed; edit the source to retry.");
         }
         loop {
             tokio::select! {
@@ -117,6 +129,25 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         }
         // Retain the OS watcher while building, so edits during compilation are queued.
         let _ = &watcher;
+    }
+}
+
+async fn preflight(output: &Path) -> anyhow::Result<()> {
+    let mut candidate = command(output.join(".lenso/host"));
+    candidate
+        .args(super::local_host::host_arguments(output)?)
+        .arg("--check");
+    let mut candidate = candidate
+        .spawn()
+        .context("start App candidate readiness check")?;
+    match tokio::time::timeout(Duration::from_secs(60), candidate.wait()).await {
+        Ok(Ok(status)) if status.success() => Ok(()),
+        Ok(Ok(status)) => bail!("App candidate readiness check failed: {status}"),
+        Ok(Err(error)) => Err(error).context("wait for App candidate readiness"),
+        Err(_) => {
+            stop(&mut candidate, true).await?;
+            bail!("App candidate did not become ready within 60 seconds")
+        }
     }
 }
 
@@ -262,6 +293,24 @@ fn relevant(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn readiness_preflight_uses_candidate_check_and_rejects_failed_startup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let control = directory.path().join(".lenso");
+        fs::create_dir(&control).unwrap();
+        fs::write(control.join("host-mode"), "native").unwrap();
+        let host = control.join("host");
+        fs::write(&host, "#!/bin/sh\ntest \"$1\" = --check\n").unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o755)).unwrap();
+        preflight(directory.path()).await.unwrap();
+        fs::write(&host, "#!/bin/sh\nexit 23\n").unwrap();
+        assert!(preflight(directory.path()).await.is_err());
+    }
+
     #[test]
     fn app_watch_includes_discovery_and_intent_but_excludes_generated_output() {
         for path in [
