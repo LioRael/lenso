@@ -198,6 +198,16 @@ pub(super) fn require_or_sync(root: &Path, policy: Option<&Path>) -> anyhow::Res
 }
 
 pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
+    sync_with_https_poll(root, policy_path, |source, cursor| source.poll(cursor))
+}
+
+fn sync_with_https_poll<F>(root: &Path, policy_path: &Path, poll: F) -> anyhow::Result<()>
+where
+    F: FnOnce(
+        &HttpsPluginConfigurationSnapshotSource,
+        Option<&PluginConfigurationSnapshotCursor>,
+    ) -> anyhow::Result<PluginConfigurationSnapshotPoll>,
+{
     let root = fs::canonicalize(root)?;
     let intent = root.join("intent");
     ensure!(
@@ -270,7 +280,7 @@ pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
                 &admitted_origins,
             )?;
             let previous_cursor = revalidation_cursor(previous.as_ref(), pending, &policy_digest);
-            match source.poll(previous_cursor)? {
+            match poll(&source, previous_cursor)? {
                 PluginConfigurationSnapshotPoll::Updated { snapshot, cursor } => (snapshot, cursor),
                 PluginConfigurationSnapshotPoll::NotModified { .. } => {
                     ensure!(
@@ -512,6 +522,7 @@ fn open_regular(_path: &Path) -> anyhow::Result<fs::File> {
 mod tests {
     use std::fs;
 
+    use lenso_app_authoring::{VersionedPluginConfiguration, VersionedPluginConfigurationSnapshot};
     use lenso_app_plan::authoring::{
         HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
     };
@@ -696,6 +707,134 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("cursor source")
+        );
+    }
+
+    #[test]
+    fn https_reconciliation_handles_304_outage_and_policy_reauthorization() {
+        let (root, _source, policy) = fixture();
+        let url = "https://configuration.example/snapshot";
+        let policy_document = |field: &str| {
+            serde_json::json!({
+                "schema": POLICY_SCHEMA,
+                "source_reference": "development",
+                "source": {"type": "https", "url": url, "admitted_origins": ["https://configuration.example/"]},
+                "objects": [{"plugin_id": "example.agent", "instance_key": "default", "fields": [field]}]
+            })
+        };
+        let approved_policy = serde_json::to_vec(&policy_document("greeting")).unwrap();
+        fs::write(&policy, &approved_policy).unwrap();
+        let identity =
+            PluginConfigurationAuthoritySource::new("https_poll", "development").unwrap();
+        let cursor = |etag: &str| -> PluginConfigurationSnapshotCursor {
+            serde_json::from_value(serde_json::json!({
+                "endpoint": url,
+                "source_kind": "https_poll",
+                "source_reference": "development",
+                "etag": etag
+            }))
+            .unwrap()
+        };
+        let snapshot = |revision: u64, greeting: &str| {
+            VersionedPluginConfigurationSnapshot::new(
+                identity.clone(),
+                revision,
+                [VersionedPluginConfiguration::new(
+                    "example.agent",
+                    "default",
+                    format!("greeting = {greeting:?}\n"),
+                )],
+            )
+            .unwrap()
+        };
+        let first = cursor("\"revision-1\"");
+        sync_with_https_poll(root.path(), &policy, |source, previous| {
+            assert_eq!(source.url().as_str(), url);
+            assert!(previous.is_none());
+            Ok(PluginConfigurationSnapshotPoll::Updated {
+                snapshot: snapshot(1, "first"),
+                cursor: Some(first.clone()),
+            })
+        })
+        .unwrap();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        let current = read_state(&state_path).unwrap().unwrap();
+        assert_eq!(current.desired.revision(), 1);
+        assert_eq!(current.cursor, Some(first.clone()));
+        assert!(
+            fs::read_to_string(
+                root.path()
+                    .join("intent/plugins/example.agent/default.toml")
+            )
+            .unwrap()
+            .contains("first")
+        );
+
+        sync_with_https_poll(root.path(), &policy, |_, previous| {
+            assert_eq!(previous, Some(&first));
+            Ok(PluginConfigurationSnapshotPoll::NotModified {
+                cursor: first.clone(),
+            })
+        })
+        .unwrap();
+        assert!(
+            sync_with_https_poll(root.path(), &policy, |_, previous| {
+                assert_eq!(previous, Some(&first));
+                Err(anyhow::anyhow!("configuration source offline"))
+            })
+            .is_err()
+        );
+        assert_eq!(
+            read_state(&state_path).unwrap().unwrap().desired.revision(),
+            1
+        );
+
+        fs::write(
+            &policy,
+            serde_json::to_vec(&policy_document("token")).unwrap(),
+        )
+        .unwrap();
+        let rejected = sync_with_https_poll(root.path(), &policy, |_, previous| {
+            assert!(
+                previous.is_none(),
+                "a changed Host policy must force a full fetch"
+            );
+            Ok(PluginConfigurationSnapshotPoll::Updated {
+                snapshot: snapshot(2, "unauthorized"),
+                cursor: Some(cursor("\"revision-2\"")),
+            })
+        });
+        assert!(
+            rejected
+                .unwrap_err()
+                .to_string()
+                .contains("authorized scope")
+        );
+        assert_eq!(
+            read_state(&state_path).unwrap().unwrap().desired.revision(),
+            1
+        );
+
+        fs::write(&policy, approved_policy).unwrap();
+        let second = cursor("\"revision-2\"");
+        sync_with_https_poll(root.path(), &policy, |_, previous| {
+            assert_eq!(previous, Some(&first));
+            Ok(PluginConfigurationSnapshotPoll::Updated {
+                snapshot: snapshot(2, "second"),
+                cursor: Some(second.clone()),
+            })
+        })
+        .unwrap();
+        let current = read_state(&state_path).unwrap().unwrap();
+        assert_eq!(current.desired.revision(), 2);
+        assert_eq!(current.cursor, Some(second));
+        assert!(
+            fs::read_to_string(
+                root.path()
+                    .join("intent/plugins/example.agent/default.toml")
+            )
+            .unwrap()
+            .contains("second")
         );
     }
 
