@@ -471,4 +471,49 @@ mod tests {
             thread::sleep(Duration::from_millis(25));
         }
     }
+
+    #[test]
+    fn deadline_and_bridge_drop_reap_the_host() {
+        let temp = tempfile::tempdir().unwrap();
+        let script = temp.path().join("host-script");
+        fs::write(&script, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+        let controller = RunController::default();
+        controller
+            .start_with_executable(temp.path(), "timeout", 1, &script, false)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let status = controller.status("timeout").unwrap();
+            if status.state == "failed" {
+                assert_eq!(status.diagnostic_code, Some("LENSO_RUN_READY_TIMEOUT"));
+                assert!(controller.active_state().is_none());
+                break;
+            }
+            assert!(Instant::now() < deadline, "run deadline was not enforced");
+            thread::sleep(Duration::from_millis(25));
+        }
+
+        let dist = temp.path().join("dist");
+        fs::create_dir_all(&dist).unwrap();
+        fs::write(&script, "#!/bin/sh\nwhile [ \"$1\" != --from ]; do shift; done\ndist=$2\nwhile [ \"$1\" != --ready-file ]; do shift; done\nprintf '%s' \"$$\" > \"$dist/child.pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$2.tmp\"\nmv \"$2.tmp\" \"$2\"\nexec sleep 30\n").unwrap();
+        controller
+            .start_with_executable(temp.path(), "drop", 10, &script, false)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while controller.status("drop").unwrap().state != "running" {
+            assert!(Instant::now() < deadline, "Host did not become ready");
+            thread::sleep(Duration::from_millis(25));
+        }
+        let pid: i32 = fs::read_to_string(dist.join("child.pid"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        drop(controller);
+        assert_eq!(
+            nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None),
+            Err(nix::errno::Errno::ESRCH),
+            "MCP bridge shutdown left the Host alive"
+        );
+    }
 }
