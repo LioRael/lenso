@@ -118,15 +118,6 @@ pub fn resolve_runtime_app(root: &Path, host_build: &Path) -> anyhow::Result<Run
     if !fs::metadata(&root)?.is_dir() {
         bail!("external App root must be a directory: {}", root.display());
     }
-    for competing in [HOST_BUILD, HOST_CATALOG] {
-        match fs::symlink_metadata(root.join(competing)) {
-            Ok(_) => bail!(
-                "external App root cannot replace distribution Host authority with `{competing}`"
-            ),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error).context("inspect external Host authority"),
-        }
-    }
     let metadata = fs::symlink_metadata(host_build)
         .with_context(|| format!("inspect distribution Host build {}", host_build.display()))?;
     if !metadata.file_type().is_file() {
@@ -137,6 +128,22 @@ pub fn resolve_runtime_app(root: &Path, host_build: &Path) -> anyhow::Result<Run
     }
     let host_bytes = fs::read(host_build)
         .with_context(|| format!("read distribution Host build {}", host_build.display()))?;
+    match fs::symlink_metadata(root.join(HOST_CATALOG)) {
+        Ok(_) => bail!(
+            "external App root cannot replace distribution Host authority with `{HOST_CATALOG}`"
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("inspect external Host authority"),
+    }
+    match fs::symlink_metadata(root.join(HOST_BUILD)) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_file() || fs::read(root.join(HOST_BUILD))? != host_bytes {
+                bail!("external App root Host authority differs from the distribution Host build");
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("inspect external Host authority"),
+    }
     let host: GeneratedHostBuild =
         serde_json::from_slice(&host_bytes).context("invalid distribution Host build")?;
     host.validate()?;

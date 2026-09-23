@@ -86,10 +86,15 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
         "{}",
         String::from_utf8_lossy(&built.stderr)
     );
+    let distribution = root.join("dist");
+    assert_eq!(
+        fs::read(distribution.join(".lenso/host-build.json")).unwrap(),
+        fs::read(distribution.join("intent/.lenso/host-build.json")).unwrap()
+    );
     for action in ["check", "show"] {
         let result = Command::new(cli)
             .args(["app", action, "--json", "--root"])
-            .arg(root.join("dist"))
+            .arg(distribution.join("intent"))
             .output()
             .unwrap();
         assert!(
@@ -104,6 +109,102 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
             assert_eq!(report["instances"].as_array().unwrap().len(), 1);
         }
     }
+    assert_runtime_intent_and_start(cli, &distribution);
+}
+
+fn assert_runtime_intent_and_start(cli: &str, distribution: &std::path::Path) {
+    let runtime = Command::new(cli)
+        .args(["app", "show", "--runtime-json", "--host-build"])
+        .arg(distribution.join(".lenso/host-build.json"))
+        .arg("--root")
+        .arg(distribution.join("intent"))
+        .output()
+        .unwrap();
+    assert!(
+        runtime.status.success(),
+        "{}",
+        String::from_utf8_lossy(&runtime.stderr)
+    );
+    let resolved: serde_json::Value = serde_json::from_slice(&runtime.stdout).unwrap();
+    assert_eq!(
+        resolved["plan"]["plugin_instances"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let mirror = distribution.join("intent/.lenso/host-build.json");
+    let original = fs::read(&mirror).unwrap();
+    fs::write(&mirror, b"{}").unwrap();
+    let rejected = Command::new(cli)
+        .args(["app", "show", "--runtime-json", "--host-build"])
+        .arg(distribution.join(".lenso/host-build.json"))
+        .arg("--root")
+        .arg(distribution.join("intent"))
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("differs"));
+    fs::write(&mirror, original).unwrap();
+    let started = Command::new(cli)
+        .args(["app", "start", "--from"])
+        .arg(distribution)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+    assert_external_source_bootstraps_before_start(cli, distribution);
+}
+
+fn assert_external_source_bootstraps_before_start(cli: &str, distribution: &std::path::Path) {
+    let source = distribution.join("configuration-snapshot.json");
+    fs::write(
+        &source,
+        serde_json::to_vec(&serde_json::json!({
+            "schema": "lenso.plugin-configuration-snapshot.v1",
+            "revision": 1,
+            "configurations": [{"plugin_id": "example.web", "instance_key": "default", "toml": ""}]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let policy = distribution.join("configuration-policy.json");
+    fs::write(&policy, serde_json::to_vec(&serde_json::json!({
+        "schema": "lenso.configuration-source-policy.v1",
+        "source_reference": "linked-build-proof",
+        "source": {"type": "file", "path": source},
+        "objects": [{"plugin_id": "example.web", "instance_key": "default", "fields": ["unused"]}]
+    })).unwrap()).unwrap();
+    let started = Command::new(cli)
+        .args(["app", "start", "--from"])
+        .arg(distribution)
+        .arg("--configuration-policy")
+        .arg(&policy)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+    assert!(
+        distribution
+            .join("intent/.lenso/configuration-source-state.json")
+            .exists()
+    );
+    let missing_policy = Command::new(cli)
+        .args(["app", "start", "--from"])
+        .arg(distribution)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert!(!missing_policy.status.success());
+    assert!(String::from_utf8_lossy(&missing_policy.stderr).contains("configuration-policy"));
 }
 
 fn modified_linked_source_cannot_build(cli: &str, root: &std::path::Path) {
@@ -192,7 +293,7 @@ fn prove_removed_build_when_requested(cli: &str, root: &std::path::Path) {
     );
     let checked = Command::new(cli)
         .args(["app", "check", "--json", "--root"])
-        .arg(&output)
+        .arg(output.join("intent"))
         .output()
         .unwrap();
     assert!(checked.status.success());
@@ -200,7 +301,7 @@ fn prove_removed_build_when_requested(cli: &str, root: &std::path::Path) {
     assert_eq!(report["plugin_instances"], 0);
     let shown = Command::new(cli)
         .args(["app", "show", "--json", "--root"])
-        .arg(&output)
+        .arg(output.join("intent"))
         .output()
         .unwrap();
     assert!(shown.status.success());

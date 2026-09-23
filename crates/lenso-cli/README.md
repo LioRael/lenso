@@ -175,6 +175,10 @@ enables package defaults. `<instance>.disabled` is the explicit absence marker.
 Optional structured files live beside it under
 `plugins/<plugin-id>/<instance>/`; `app check` validates the bounded regular-file
 tree before the Host snapshots it into a Generation.
+An operator may reconcile a versioned file or HTTPS configuration snapshot
+before starting a built App. The Host owns the source and per-field policy;
+see [external configuration](docs/configuration-sources.md) for the exact
+policy, startup command, and current update limitations.
 Named single-dependency choices live in `plugins/.dependencies.json` and are
 changed through `plugins bind`. They preserve exact provider intent, including
 explicit absence for optional requirements, across unrelated installations.

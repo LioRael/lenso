@@ -182,6 +182,9 @@ pub struct StartArgs {
     /// External App root whose plugins/ intent replaces the build snapshot.
     #[arg(long)]
     root: Option<PathBuf>,
+    /// Host-operator policy for one versioned external configuration source.
+    #[arg(long, conflicts_with = "root")]
+    configuration_policy: Option<PathBuf>,
     /// Start, validate readiness and shut down immediately.
     #[arg(long)]
     check: bool,
@@ -190,6 +193,7 @@ pub struct StartArgs {
     args: Vec<String>,
 }
 pub fn start(args: StartArgs) -> anyhow::Result<()> {
+    super::configuration_source::require_or_sync(&args.from, args.configuration_policy.as_deref())?;
     let executable = fs::canonicalize(args.from.join(".lenso/host"))
         .context("locate built local Host; run lenso app build first")?;
     let mut command = Command::new(executable);
@@ -296,6 +300,7 @@ pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Resu
     start(StartArgs {
         from,
         root: None,
+        configuration_policy: None,
         check: false,
         args: arguments,
     })

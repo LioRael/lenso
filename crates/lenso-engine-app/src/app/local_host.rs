@@ -642,6 +642,10 @@ pub(super) fn finalize(stage: &Path, runtime_artifacts: Vec<Value>) -> anyhow::R
     }
     fs::create_dir_all(stage.join("intent/.lenso"))?;
     fs::write(stage.join("intent/.lenso/plugin-root-authoring.lock"), [])?;
+    fs::copy(
+        stage.join(".lenso/host-build.json"),
+        stage.join("intent/.lenso/host-build.json"),
+    )?;
     if stage.join("plugins").exists() {
         super::assemble::copy_root(
             &stage.join("plugins"),

@@ -19,6 +19,7 @@ include = [
     "/docs/local-plugin-discovery.md",
     "/docs/capability-authoring.md",
     "/docs/convention-authoring.md",
+    "/docs/configuration-sources.md",
     "/docs/engine.md",
     "/docs/execution-target-preflight.md",
     "/README.md",

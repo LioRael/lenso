@@ -8,6 +8,7 @@ use crate::plugins::{load_resolved_app, project_root};
 
 mod assemble;
 mod build;
+mod configuration_source;
 mod contracts;
 mod convention_authoring;
 mod convention_build;
@@ -51,6 +52,9 @@ pub enum AppCommand {
     Add(convention_authoring::AddArgs),
     /// Withdraw one exact signed linked Cargo source from the next Host build.
     Unadopt(convention_authoring::UnadoptArgs),
+    /// Reconcile a Host-authorized versioned configuration source into a built App.
+    #[command(name = "config-sync")]
+    ConfigSync(configuration_source::SyncArgs),
     /// Create an App-owned Plugin with optional language-specific entries.
     Plugin {
         #[command(subcommand)]
@@ -140,6 +144,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
     match command {
         AppCommand::Add(args) => convention_authoring::add(args),
         AppCommand::Unadopt(args) => convention_authoring::unadopt(args),
+        AppCommand::ConfigSync(args) => configuration_source::sync_command(args),
         AppCommand::Plugin { command } => convention_authoring::new(command),
         AppCommand::Contract { command } => contracts::scaffold::run(command),
         AppCommand::Build(args) => local_workflow::build(args),
