@@ -40,12 +40,18 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 
 [dev-dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+hex.workspace = true
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http2", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 lenso-app-plan.workspace = true
 lenso-runner.workspace = true
+lenso-runtime-codec = { version = "0.4.2", path = "../lenso-runtime-codec" }
+lenso-wasm-component-adapter = { version = "0.2.16", path = "../lenso-wasm-component-adapter" }
+sha2.workspace = true
+tempfile = "3"
 tokio = { workspace = true, features = ["macros", "time"] }
+wit-component = "0.252"
 
 [lints]
 workspace = true
