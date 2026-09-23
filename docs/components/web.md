@@ -737,7 +737,7 @@ and middleware as the native listener. See [the event ingress seam](docs/design/
 for the host integration contract, buffered-only scope and qualification limits.
 
 `lenso-http-egress-plugin` exposes `HttpEgressEventFactory` for an explicitly
-injected event transport, with a `workers` feature and the Web-owned abortable
+injected event transport, with a `workers` feature and the JS-owned abortable
 Fetch bridge. It reuses the native exact-origin and transfer policy. See
 [event HTTP Egress](docs/design/event-http-egress.md) for supported configuration,
 per-event injection, cancellation and target qualification requirements.

@@ -51,7 +51,7 @@ impl From<HttpEventError> for SendError {
 /// A trusted, event-owned transport. It must use manual redirects, no implicit
 /// retries, proxies or cookie storage, and abort I/O when its future is dropped.
 /// Limits and the total deadline include streamed response collection.
-/// The Web-owned `event-fetch.mjs` bridge implements this contract for Workers.
+/// The JS-owned `@lenso/http-egress-workers` bridge implements this contract for Workers.
 pub trait HttpEventTransport: fmt::Debug {
     fn send(
         &self,

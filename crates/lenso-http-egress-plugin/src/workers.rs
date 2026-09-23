@@ -1,4 +1,4 @@
-//! Adapter for the Web-owned abortable Fetch bridge. No ambient JS fetch lookup.
+//! Adapter for the JS-owned abortable Fetch bridge. No ambient JS fetch lookup.
 use crate::{HttpEgressEventFactory, HttpEventError, HttpEventRequest, HttpEventTransport};
 use bytes::Bytes;
 use futures::future::LocalBoxFuture;
@@ -11,7 +11,7 @@ use wasm_bindgen_futures::JsFuture;
 struct WorkersFetch(Function);
 impl HttpEgressEventFactory {
     /// Accepts the event-owned function returned by `createEventHttpFetch` in
-    /// `js/event-fetch.mjs`. The host injects event-scoped fetch/timer functions.
+    /// `@lenso/http-egress-workers`. The host injects event-scoped fetch/timer functions.
     pub fn from_js(transport: Function) -> Self {
         Self::new(WorkersFetch(transport))
     }
