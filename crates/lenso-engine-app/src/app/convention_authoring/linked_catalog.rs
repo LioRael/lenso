@@ -52,6 +52,32 @@ struct SourceLock {
     v6: Option<V6BuildInputLock>,
 }
 
+// The original generated lock wire had no workspace ownership or archive
+// Cargo.lock fields. Exact retries may upgrade that canonical wire, but must
+// not treat an arbitrary edited lock as equivalent to a signed adoption.
+#[derive(Serialize)]
+struct LegacySourceLock<'a> {
+    schema_version: u32,
+    plugin_id: &'a str,
+    version: &'a str,
+    crate_digest: &'a str,
+    source_digest: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v6: Option<&'a V6BuildInputLock>,
+}
+
+fn legacy_source_lock_bytes(new_lock: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let lock: SourceLock = serde_json::from_slice(new_lock)?;
+    Ok(serde_json::to_vec_pretty(&LegacySourceLock {
+        schema_version: lock.schema_version,
+        plugin_id: &lock.plugin_id,
+        version: &lock.version,
+        crate_digest: &lock.crate_digest,
+        source_digest: &lock.source_digest,
+        v6: lock.v6.as_ref(),
+    })?)
+}
+
 fn is_false(value: &bool) -> bool {
     !value
 }
@@ -868,6 +894,12 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
     if root && !expected_entries.iter().any(|name| name == "Cargo.lock") {
         // Cargo may materialize a root lock after adoption. Only a lock
         // absent from the signed archive may be ignored during an exact retry.
+        if actual_entries.iter().any(|name| name == "Cargo.lock") {
+            let metadata = fs::symlink_metadata(actual.join("Cargo.lock"))?;
+            if !metadata.is_file() || metadata.len() > MAX_CRATE_BYTES {
+                return Ok(false);
+            }
+        }
         actual_entries.retain(|name| name != "Cargo.lock");
     }
     expected_entries.sort();
@@ -886,11 +918,27 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
             if !same_tree_children(&expected_child, &actual_child, false)? {
                 return Ok(false);
             }
-        } else if !metadata.is_file()
-            || metadata.len() != fs::metadata(&expected_child)?.len()
-            || fs::read(&expected_child)? != fs::read(&actual_child)?
-        {
-            return Ok(false);
+        } else {
+            if !metadata.is_file() {
+                return Ok(false);
+            }
+            let expected_len = fs::metadata(&expected_child)?.len();
+            if root && name == SOURCE_LOCK {
+                if metadata.len() > 4096 || expected_len > 4096 {
+                    return Ok(false);
+                }
+            } else if metadata.len() != expected_len {
+                return Ok(false);
+            }
+            let expected_bytes = fs::read(&expected_child)?;
+            let actual_bytes = fs::read(&actual_child)?;
+            if actual_bytes != expected_bytes
+                && !(root
+                    && name == SOURCE_LOCK
+                    && actual_bytes == legacy_source_lock_bytes(&expected_bytes)?)
+            {
+                return Ok(false);
+            }
         }
     }
     Ok(true)
@@ -1026,5 +1074,30 @@ mod tests {
         assert!(verify_archive_cargo_lock(actual.path(), &lock).is_err());
         fs::write(actual.path().join("Cargo.lock"), b"# published lock\n").unwrap();
         verify_archive_cargo_lock(actual.path(), &lock).unwrap();
+    }
+
+    #[test]
+    fn exact_retry_only_ignores_a_regular_generated_root_lock() {
+        let expected = tempfile::tempdir().unwrap();
+        let actual = tempfile::tempdir().unwrap();
+        for root in [expected.path(), actual.path()] {
+            fs::write(
+                root.join("Cargo.toml"),
+                b"[package]\nname = \"example\"\nversion = \"0.1.0\"\n",
+            )
+            .unwrap();
+        }
+        fs::write(actual.path().join("Cargo.lock"), b"# generated lock\n").unwrap();
+        assert!(same_tree(expected.path(), actual.path()).unwrap());
+        fs::remove_file(actual.path().join("Cargo.lock")).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(
+                actual.path().join("Cargo.toml"),
+                actual.path().join("Cargo.lock"),
+            )
+            .unwrap();
+            assert!(!same_tree(expected.path(), actual.path()).unwrap());
+        }
     }
 }

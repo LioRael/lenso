@@ -27,6 +27,7 @@ enum StagedIntent {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum CommitCheckpoint {
     AfterSource,
+    AfterSourceLock,
     AfterWorkspace,
     AfterConfig,
 }
@@ -55,6 +56,16 @@ impl PreparedLinkedAdoption {
         super::super::writable_path(root, Path::new("Cargo.toml"))?;
         let workspace_manifest = root.join("Cargo.toml");
         let workspace_before = read_optional_regular(&workspace_manifest)?;
+        let app_owns_workspace = workspace_before
+            .as_deref()
+            .map(|bytes| {
+                workspace_document(bytes).map(|document| document.get("workspace").is_some())
+            })
+            .transpose()?
+            .unwrap_or(false);
+        if !app_owns_workspace {
+            ensure_no_enclosing_workspace(root)?;
+        }
         let source_relative = destination
             .strip_prefix(root)
             .context("linked source is outside App root")?;
@@ -181,6 +192,31 @@ impl PreparedLinkedAdoption {
         }
         checkpoint(CommitCheckpoint::AfterSource)?;
 
+        // A prior CLI wrote the same signed source with the canonical V5/V6
+        // lock wire. Upgrade that generated lock before selecting the new
+        // workspace exclusion; an interrupted upgrade is safe to retry.
+        let staged_lock = source_stage.join(super::SOURCE_LOCK);
+        if staged_lock.is_file() {
+            let expected = fs::read(&staged_lock)?;
+            let destination_lock = self.destination.join(super::SOURCE_LOCK);
+            let before = read_optional_regular(&destination_lock)?
+                .context("linked Cargo source lock disappeared during adoption")?;
+            if before != expected {
+                ensure!(
+                    before == super::legacy_source_lock_bytes(&expected)?,
+                    "existing linked Cargo source lock differs from canonical prior adoption"
+                );
+                let mut staged = NamedTempFile::new_in(&self.destination)?;
+                staged.write_all(&expected)?;
+                ensure!(
+                    read_optional_regular(&destination_lock)?.as_deref() == Some(before.as_slice()),
+                    "linked Cargo source lock changed during adoption retry"
+                );
+                staged.persist(&destination_lock)?;
+            }
+        }
+        checkpoint(CommitCheckpoint::AfterSourceLock)?;
+
         self.ensure_config_is(&self.config_before)?;
         self.ensure_workspace_is(&self.workspace_before)?;
         if let Some(staged) = self.staged_workspace.take() {
@@ -251,6 +287,22 @@ fn workspace_document(bytes: &[u8]) -> anyhow::Result<DocumentMut> {
     std::str::from_utf8(bytes)?
         .parse::<DocumentMut>()
         .context("parse App Cargo.toml")
+}
+
+fn ensure_no_enclosing_workspace(root: &Path) -> anyhow::Result<()> {
+    for ancestor in root.ancestors().skip(1) {
+        let manifest = ancestor.join("Cargo.toml");
+        let Some(bytes) = read_optional_regular(&manifest)? else {
+            continue;
+        };
+        if workspace_document(&bytes)?.get("workspace").is_some() {
+            bail!(
+                "App root is inside enclosing Cargo workspace {}; add an App-root [workspace] or move the App before adopting a linked Cargo source",
+                manifest.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 fn add_workspace_exclude(
@@ -440,6 +492,77 @@ mod tests {
         let stage = tempfile::tempdir_in(root).unwrap();
         fs::write(stage.path().join("Cargo.toml"), b"[package]\n").unwrap();
         stage
+    }
+
+    #[test]
+    fn prior_canonical_source_lock_upgrades_on_exact_retry() {
+        let root = tempfile::tempdir().unwrap();
+        let cargo = root.path().join("Cargo.toml");
+        fs::write(&cargo, b"[workspace]\n").unwrap();
+        let destination = root.path().join("vendor/lenso/example.web/0.4.5");
+        fs::create_dir_all(&destination).unwrap();
+        let stage = source_stage(root.path());
+        let new_lock = serde_json::to_vec_pretty(&super::super::SourceLock {
+            schema_version: 1,
+            plugin_id: "example.web".into(),
+            version: "0.4.5".into(),
+            crate_digest: "sha256:example".into(),
+            source_digest: super::super::source_digest(stage.path()).unwrap(),
+            archive_cargo_lock_digest: None,
+            workspace_exclude_owned: true,
+            v6: None,
+        })
+        .unwrap();
+        fs::write(stage.path().join(super::super::SOURCE_LOCK), &new_lock).unwrap();
+        fs::copy(
+            stage.path().join("Cargo.toml"),
+            destination.join("Cargo.toml"),
+        )
+        .unwrap();
+        let old_lock = super::super::legacy_source_lock_bytes(&new_lock).unwrap();
+        fs::write(destination.join(super::super::SOURCE_LOCK), &old_lock).unwrap();
+        let mut edited_lock = old_lock.clone();
+        edited_lock.push(b'\n');
+        fs::write(destination.join(super::super::SOURCE_LOCK), edited_lock).unwrap();
+        assert!(!super::super::same_tree(stage.path(), &destination).unwrap());
+        fs::write(destination.join(super::super::SOURCE_LOCK), old_lock).unwrap();
+
+        let first = PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
+        let error = first.commit_with(stage.path(), |step| {
+            if step == CommitCheckpoint::AfterSourceLock {
+                bail!("injected interruption after canonical lock upgrade");
+            }
+            Ok(())
+        });
+        assert!(error.is_err());
+        assert_eq!(
+            fs::read(destination.join(super::super::SOURCE_LOCK)).unwrap(),
+            new_lock
+        );
+        assert!(!fs::read_to_string(&cargo).unwrap().contains(OWNED_EXCLUDE));
+
+        PreparedLinkedAdoption::new(root.path(), &destination, "example.web")
+            .unwrap()
+            .commit(stage.path())
+            .unwrap();
+        assert!(fs::read_to_string(&cargo).unwrap().contains(OWNED_EXCLUDE));
+        super::super::unadopt(root.path(), "example.web@0.4.5").unwrap();
+        assert!(!fs::read_to_string(&cargo).unwrap().contains(OWNED_EXCLUDE));
+    }
+
+    #[test]
+    fn nested_app_without_own_workspace_rejects_linked_source_early() {
+        let enclosing = tempfile::tempdir().unwrap();
+        fs::write(enclosing.path().join("Cargo.toml"), b"[workspace]\n").unwrap();
+        let app = enclosing.path().join("app");
+        fs::create_dir(&app).unwrap();
+        let destination = app.join("vendor/lenso/example.web/0.4.5");
+        let error = PreparedLinkedAdoption::new(&app, &destination, "example.web")
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("enclosing Cargo workspace"));
+        assert!(!destination.exists());
+        assert!(!app.join("lenso.toml").exists());
     }
 
     #[test]
