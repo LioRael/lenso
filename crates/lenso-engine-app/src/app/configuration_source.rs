@@ -43,12 +43,28 @@ pub struct SyncArgs {
 
 #[derive(Clone, Debug, Args)]
 pub struct StatusArgs {
-    /// Built App distribution whose private configuration state is inspected.
+    /// Built App distribution, or external Plugin Root with --host-build.
     #[arg(long)]
     root: PathBuf,
+    /// Exact distribution Host build for an external Plugin Root.
+    #[arg(long)]
+    host_build: Option<PathBuf>,
     /// Emit a stable, non-secret JSON projection.
     #[arg(long)]
     json: bool,
+}
+
+#[derive(Clone, Debug, Args)]
+pub struct ActivatedArgs {
+    /// External Plugin Root whose active Generation passed the Host Ready Gate.
+    #[arg(long)]
+    root: PathBuf,
+    /// Exact distribution Host build used to resolve the active Generation.
+    #[arg(long)]
+    host_build: PathBuf,
+    /// Root revision resolved into the active Generation.
+    #[arg(long)]
+    plugin_root_revision: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -126,8 +142,54 @@ pub fn sync_command(args: SyncArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn activated_command(args: ActivatedArgs) -> anyhow::Result<()> {
+    record_external_activation(&args.root, &args.host_build, &args.plugin_root_revision)
+}
+
+/// A private Host receipt, not a request to activate. The caller must invoke
+/// this only after its controller proves the resolved Generation is active.
+pub fn record_external_activation(
+    plugin_root: &Path,
+    distribution_host_build: &Path,
+    expected_revision: &str,
+) -> anyhow::Result<()> {
+    let intent = fs::canonicalize(plugin_root)?;
+    ensure!(
+        fs::symlink_metadata(&intent)?.file_type().is_dir(),
+        "App runtime intent must be a real directory"
+    );
+    let control = intent.join(".lenso");
+    ensure!(
+        fs::symlink_metadata(&control)?.file_type().is_dir(),
+        "App control directory must be a real directory"
+    );
+    let lock = open_lock(&control.join("configuration-source.lock"))?;
+    lock.lock()?;
+    verify_external_host_authority(distribution_host_build, &intent)?;
+    let path = control.join(STATE_FILE);
+    let mut state = read_state(&path)?.context("missing accepted external configuration")?;
+    let current = LocalPluginRootAuthority::new(&intent).inspect()?;
+    ensure!(
+        current.revision().as_str() == expected_revision
+            && state.desired.candidate_plugin_root_revision() == expected_revision
+            && state.desired.publication_state(current.revision())?
+                == PluginConfigurationSnapshotPublicationState::Published,
+        "activation receipt no longer matches the accepted Plugin Root revision"
+    );
+    state.last_activated = Some(ActivatedConfiguration {
+        revision: state.desired.revision(),
+        snapshot_digest: state.desired.snapshot_digest().to_owned(),
+        plugin_root_revision: expected_revision.to_owned(),
+    });
+    persist_state(&path, &state)
+}
+
 pub fn status_command(args: StatusArgs) -> anyhow::Result<()> {
-    let status = inspect_status(&args.root)?;
+    let status = if let Some(host_build) = args.host_build {
+        inspect_external_status(&args.root, &host_build)?
+    } else {
+        inspect_status(&args.root)?
+    };
     if args.json {
         println!("{}", serde_json::to_string(&status)?);
     } else {
@@ -148,13 +210,32 @@ pub fn status_command(args: StatusArgs) -> anyhow::Result<()> {
 pub(super) fn inspect_status(root: &Path) -> anyhow::Result<Status> {
     let root = fs::canonicalize(root)?;
     let intent = root.join("intent");
+    status_for_intent(&intent)
+}
+
+pub fn inspect_external_status(plugin_root: &Path, host_build: &Path) -> anyhow::Result<Status> {
+    let intent = fs::canonicalize(plugin_root)?;
+    let source = read_bounded(host_build, 16 * 1024 * 1024)?;
+    let copied = read_bounded(&intent.join(".lenso/host-build.json"), 16 * 1024 * 1024)?;
     ensure!(
-        fs::symlink_metadata(&intent)?.file_type().is_dir(),
+        source == copied,
+        "runtime intent Host authority differs from the built distribution"
+    );
+    ensure!(
+        !intent.join(".lenso/host-catalog.json").exists(),
+        "runtime intent has a competing Host authority"
+    );
+    status_for_intent(&intent)
+}
+
+fn status_for_intent(intent: &Path) -> anyhow::Result<Status> {
+    ensure!(
+        fs::symlink_metadata(intent)?.file_type().is_dir(),
         "App runtime intent must be a real directory"
     );
     let state = read_state(&intent.join(".lenso").join(STATE_FILE))?;
     let status = if let Some(state) = state {
-        let current = LocalPluginRootAuthority::new(&intent).inspect()?;
+        let current = LocalPluginRootAuthority::new(intent).inspect()?;
         let pending_publication = state.desired.publication_state(current.revision())?
             == PluginConfigurationSnapshotPublicationState::AwaitingPublication;
         let last = state.last_activated.as_ref();

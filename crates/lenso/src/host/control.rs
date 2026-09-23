@@ -87,7 +87,7 @@ where
 pub async fn serve_with_reconcile<R, W, F, Fut, C, CFut, T>(
     options: ControlOptions,
     reader: R,
-    mut writer: W,
+    writer: W,
     start: F,
     reconcile: C,
 ) -> io::Result<()>
@@ -99,6 +99,34 @@ where
     Fut: Future<Output = Result<(Host<T>, ResolvedGeneration), ControlPlaneError>>,
     C: FnMut() -> CFut,
     CFut: Future<Output = Result<ResolvedGeneration, ControlPlaneError>>,
+{
+    serve_with_reconcile_and_receipt(options, reader, writer, start, reconcile, |_| async {
+        Ok(())
+    })
+    .await
+}
+
+/// Runs a Host-owned activation receipt after readiness or a successful route
+/// switch. Receipt failure does not undo a healthy active Generation; it is
+/// reported explicitly and may be retried by a later reconciliation.
+pub async fn serve_with_reconcile_and_receipt<R, W, F, Fut, C, CFut, A, AFut, T>(
+    options: ControlOptions,
+    reader: R,
+    mut writer: W,
+    start: F,
+    reconcile: C,
+    mut receipt: A,
+) -> io::Result<()>
+where
+    R: AsyncRead + Unpin + 'static,
+    W: AsyncWrite + Unpin,
+    T: Clone + std::fmt::Debug + 'static,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<(Host<T>, ResolvedGeneration), ControlPlaneError>>,
+    C: FnMut() -> CFut,
+    CFut: Future<Output = Result<ResolvedGeneration, ControlPlaneError>>,
+    A: FnMut(&ResolvedGeneration) -> AFut,
+    AFut: Future<Output = Result<(), ControlPlaneError>>,
 {
     if options.startup_timeout.is_zero()
         || options.stop_timeout.is_zero()
@@ -151,9 +179,12 @@ where
     }
     let state = ready.map_err(io::Error::other)?;
     let revision = state.revision;
+    let activation_recorded = tokio::time::timeout(options.startup_timeout, receipt(&generation))
+        .await
+        .is_ok_and(|result| result.is_ok());
     let announced = async {
         emit(&mut writer, &json!({"kind":"ready","version":1,"revision":revision}), options.stop_timeout).await?;
-        emit(&mut writer, &json!({"kind":"started","version":1,"id":1,"revision":revision,"distribution":options.distribution}), options.stop_timeout).await
+        emit(&mut writer, &json!({"kind":"started","version":1,"id":1,"revision":revision,"distribution":options.distribution,"activation_recorded":activation_recorded}), options.stop_timeout).await
     }.await;
     if announced.is_err() {
         let _ = host.drain_and_suspend(options.stop_timeout).await;
@@ -164,6 +195,7 @@ where
         &mut host,
         generation,
         reconcile,
+        receipt,
         &mut requests,
         &mut stopping,
         &mut writer,
@@ -175,11 +207,13 @@ where
     result
 }
 
-async fn session<W, C, CFut, T>(
+#[expect(clippy::too_many_arguments, reason = "private control session requires independent IO and Host callbacks")]
+async fn session<W, C, CFut, A, AFut, T>(
     options: &ControlOptions,
     host: &mut Host<T>,
     mut generation: ResolvedGeneration,
     mut reconcile: C,
+    mut receipt: A,
     requests: &mut mpsc::Receiver<Request>,
     stopping: &mut watch::Receiver<Option<u32>>,
     writer: &mut W,
@@ -189,6 +223,8 @@ where
     T: Clone + std::fmt::Debug + 'static,
     C: FnMut() -> CFut,
     CFut: Future<Output = Result<ResolvedGeneration, ControlPlaneError>>,
+    A: FnMut(&ResolvedGeneration) -> AFut,
+    AFut: Future<Output = Result<(), ControlPlaneError>>,
 {
     let mut events = host.subscribe();
     loop {
@@ -242,7 +278,8 @@ where
                             continue;
                         };
                         if candidate.spec.digest() == generation.spec.digest() {
-                            emit(writer, &json!({"kind":"reconciled","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"changed":false}), options.stop_timeout).await?;
+                            let activation_recorded = tokio::time::timeout(options.startup_timeout, receipt(&generation)).await.is_ok_and(|result| result.is_ok());
+                            emit(writer, &json!({"kind":"reconciled","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"changed":false,"activation_recorded":activation_recorded}), options.stop_timeout).await?;
                             continue;
                         }
                         let transition = CanonicalDocument::from_value("lenso-generation-transition.json", AppGenerationTransitionSpec {
@@ -273,7 +310,8 @@ where
                         }
                         let revision = host.inspect().await.map_err(io::Error::other)?.revision;
                         generation = candidate;
-                        emit(writer, &json!({"kind":"reconciled","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"changed":true}), options.stop_timeout).await?;
+                        let activation_recorded = tokio::time::timeout(options.startup_timeout, receipt(&generation)).await.is_ok_and(|result| result.is_ok());
+                        emit(writer, &json!({"kind":"reconciled","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"changed":true,"activation_recorded":activation_recorded}), options.stop_timeout).await?;
                     }
                     _ => {
                         let _ = host.drain_and_suspend(options.stop_timeout).await;

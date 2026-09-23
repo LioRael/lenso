@@ -71,6 +71,9 @@ fn run_session(
     let mut child = command.spawn().unwrap();
     let mut input = child.stdin.take().unwrap();
     let mut output = child.stdout.take().unwrap();
+    let resolution: Value =
+        serde_json::from_slice(&fs::read(app.join("resolution.json")).unwrap()).unwrap();
+    let initial_root_revision = resolution["plugin_root_revision"].as_str().unwrap();
     write_frame(
         &mut input,
         &json!({"op":"start","version":1,"id":1,"distribution":identity}),
@@ -78,6 +81,11 @@ fn run_session(
     assert_eq!(read_frame(&mut output)["kind"], "ready");
     let started = read_frame(&mut output);
     assert_eq!(started["kind"], "started");
+    assert_eq!(started["activation_recorded"], true);
+    assert_eq!(
+        fs::read_to_string(app.join("activated-revision")).unwrap(),
+        initial_root_revision
+    );
     let revision = started["revision"].as_u64().unwrap();
     write_frame(
         &mut input,
@@ -95,6 +103,10 @@ fn run_session(
             &json!({"op":"reconcile","version":1,"id":3,"revision":revision}),
         );
         assert_eq!(read_frame(&mut output)["code"], "candidate_unavailable");
+        assert_eq!(
+            fs::read_to_string(app.join("activated-revision")).unwrap(),
+            initial_root_revision
+        );
         write_frame(
             &mut input,
             &json!({"op":"inspect","version":1,"id":4,"revision":revision,"offset":0,"limit":16}),
@@ -112,6 +124,11 @@ fn run_session(
         let switched = read_frame(&mut output);
         assert_eq!(switched["kind"], "reconciled", "{switched}");
         assert_eq!(switched["changed"], true);
+        assert_eq!(switched["activation_recorded"], true);
+        assert_eq!(
+            fs::read_to_string(app.join("activated-revision")).unwrap(),
+            digest(b"root-updated")
+        );
         assert_ne!(switched["generation"], inspected["generation"]);
         assert!(switched["revision"].as_u64().unwrap() > revision);
         stop_id = 6;
@@ -184,7 +201,7 @@ fn prepared_runtime_reaches_ready_inspects_and_suspends() {
     .unwrap();
     executable(
         distribution.join("runtime/lenso-resolver").as_path(),
-        b"#!/bin/sh\nif [ \"$2\" = config-sync ]; then\n  if grep -q reject \"$8\"; then exit 1; fi\n  cp \"$8\" \"$4/accepted-policy\"\n  exit 0\nfi\ncat \"$4/resolution.json\"\n",
+        b"#!/bin/sh\nif [ \"$2\" = config-sync ]; then\n  if grep -q reject \"$8\"; then exit 1; fi\n  cp \"$8\" \"$4/accepted-policy\"\n  exit 0\nfi\nif [ \"$2\" = config-activated ]; then\n  printf %s \"$8\" > \"$4/activated-revision\"\n  exit 0\nfi\ncat \"$4/resolution.json\"\n",
     );
     let files = [
         (".lenso/host-build.json", "host_authority", false),

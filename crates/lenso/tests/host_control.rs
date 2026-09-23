@@ -12,7 +12,14 @@ use lenso_plugin_control_plane::{
 };
 use lenso_runtime_codec::{ArtifactCatalog, InstanceResourceCatalog};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Debug)]
@@ -181,6 +188,67 @@ async fn invalid_start_and_queued_overflow_never_open_readiness() {
 
 async fn must_not_start() -> Result<(host::Host<()>, ResolvedGeneration), ControlPlaneError> {
     panic!("invalid handshake must not execute runtime")
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_activation_receipt_is_reported_and_retryable_without_replacing_route() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (client, server) = tokio::io::duplex(4096);
+            let (reader, writer) = tokio::io::split(server);
+            let candidate = generation();
+            let retry_candidate = candidate.clone();
+            let attempts = Arc::new(AtomicUsize::new(0));
+            let receipt_attempts = attempts.clone();
+            let task = tokio::task::spawn_local(host::control::serve_with_reconcile_and_receipt(
+                host::control::ControlOptions {
+                    distribution: "dist-v1".into(),
+                    startup_timeout: Duration::from_secs(1),
+                    stop_timeout: Duration::from_secs(1),
+                },
+                reader,
+                writer,
+                move || start_host(candidate),
+                move || {
+                    let candidate = retry_candidate.clone();
+                    async move { Ok(candidate) }
+                },
+                move |_| {
+                    let attempt = receipt_attempts.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if attempt == 0 {
+                            Err(ControlPlaneError::HostFailure {
+                                detail: "receipt unavailable".into(),
+                            })
+                        } else {
+                            Ok(())
+                        }
+                    }
+                },
+            ));
+            let mut client = client;
+            write(
+                &mut client,
+                json!({"op":"start","version":1,"id":1,"distribution":"dist-v1"}),
+            )
+            .await;
+            assert_eq!(read(&mut client).await["kind"], "ready");
+            let started = read(&mut client).await;
+            assert_eq!(started["activation_recorded"], false);
+            write(
+                &mut client,
+                json!({"op":"reconcile","version":1,"id":2,"revision":started["revision"]}),
+            )
+            .await;
+            let reconciled = read(&mut client).await;
+            assert_eq!(reconciled["changed"], false);
+            assert_eq!(reconciled["activation_recorded"], true);
+            assert_eq!(attempts.load(Ordering::SeqCst), 2);
+            write(&mut client, json!({"op":"stop","version":1,"id":3})).await;
+            assert_eq!(read(&mut client).await["shutdown"], "suspended");
+            task.await.unwrap().unwrap();
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "current_thread")]

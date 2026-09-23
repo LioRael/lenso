@@ -94,6 +94,9 @@ pub enum AppCommand {
     /// Reconcile a Host-authorized versioned configuration source into a built App.
     #[command(name = "config-sync")]
     ConfigSync(configuration_source::SyncArgs),
+    /// Private Host receipt after a Generation passes its Ready Gate.
+    #[command(name = "config-activated", hide = true)]
+    ConfigActivated(configuration_source::ActivatedArgs),
     /// Inspect accepted and last-activated external configuration revisions.
     #[command(name = "config-status")]
     ConfigStatus(configuration_source::StatusArgs),
@@ -187,6 +190,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
         AppCommand::Add(args) => convention_authoring::add(args),
         AppCommand::Unadopt(args) => convention_authoring::unadopt(args),
         AppCommand::ConfigSync(args) => configuration_source::sync_command(args),
+        AppCommand::ConfigActivated(args) => configuration_source::activated_command(args),
         AppCommand::ConfigStatus(args) => configuration_source::status_command(args),
         AppCommand::Plugin { command } => convention_authoring::new(command),
         AppCommand::Contract { command } => contracts::scaffold::run(command),

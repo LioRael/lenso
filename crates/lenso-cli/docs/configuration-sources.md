@@ -82,3 +82,14 @@ request. A failed source sync or candidate transition does not report success;
 the current healthy Generation remains selected. This private control path
 does not automatically poll the source, and it is not yet wired into the
 generated native Host or a public App-handle update operation.
+After the prepared Host passes its Ready Gate or switches to a new Generation,
+it asks the bundled resolver to record the exact resolved Plugin Root revision
+as `last_activated`. The receipt is fenced against the currently accepted
+desired revision, so a newer source update cannot be mistaken for an already
+active Generation. If receipt writing fails, the healthy Generation stays
+active, but the control response reports `activation_recorded: false`; without
+a prior matching receipt, `config-status` remains pending. A later `reconcile`
+can retry the receipt.
+Inspect an external Root with `lenso app config-status --root APP --host-build
+DIST/.lenso/host-build.json --json`. This is historical activation evidence,
+not a live-process health assertion.

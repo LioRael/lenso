@@ -233,4 +233,52 @@ fn external_plugin_root_sync_uses_the_distributions_exact_host_build() {
         .unwrap();
     assert!(facts.status.success());
     assert!(!String::from_utf8_lossy(&facts.stdout).contains("accepted"));
+    let state_path = app.path().join(".lenso/configuration-source-state.json");
+    let before: serde_json::Value =
+        serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+    assert!(before["last_activated"].is_null());
+    let stale = Command::new(cli)
+        .args(["app", "config-activated", "--root"])
+        .arg(app.path())
+        .arg("--host-build")
+        .arg(&host_build)
+        .args(["--plugin-root-revision", "sha256:deadbeef"])
+        .output()
+        .unwrap();
+    assert!(!stale.status.success());
+    let after_stale: serde_json::Value =
+        serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+    assert!(after_stale["last_activated"].is_null());
+    let activated = Command::new(cli)
+        .args(["app", "config-activated", "--root"])
+        .arg(app.path())
+        .arg("--host-build")
+        .arg(&host_build)
+        .arg("--plugin-root-revision")
+        .arg(resolution["plugin_root_revision"].as_str().unwrap())
+        .output()
+        .unwrap();
+    assert!(
+        activated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&activated.stderr)
+    );
+    let after: serde_json::Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+    assert_eq!(after["last_activated"]["revision"], 1);
+    assert_eq!(
+        after["last_activated"]["plugin_root_revision"],
+        resolution["plugin_root_revision"]
+    );
+    let status = Command::new(cli)
+        .args(["app", "config-status", "--root"])
+        .arg(app.path())
+        .arg("--host-build")
+        .arg(&host_build)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(status.status.success());
+    let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["state"], "last_activated");
+    assert_eq!(status["pending_activation"], false);
 }

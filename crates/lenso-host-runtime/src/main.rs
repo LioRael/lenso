@@ -4,7 +4,7 @@ use std::{
     env,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -58,7 +58,13 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
         let reconcile_distribution = distribution.clone();
         let reconcile_root = app_root.clone();
         let reconcile_policy = arguments.configuration_policy.clone();
-        host::control::serve_with_reconcile(
+        let receipt_distribution = distribution.clone();
+        let receipt_root = app_root.clone();
+        let receipt_policy = arguments.configuration_policy.clone();
+        let candidate_revisions = Arc::new(Mutex::new(HashMap::<String, String>::new()));
+        let initial_revisions = candidate_revisions.clone();
+        let reconcile_revisions = candidate_revisions.clone();
+        host::control::serve_with_reconcile_and_receipt(
             options,
             tokio::io::stdin(),
             tokio::io::stdout(),
@@ -69,16 +75,40 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
                     arguments.configuration_policy.clone(),
                     arguments.startup_timeout,
                     arguments.stop_timeout,
+                    initial_revisions,
                 )
             },
             move || {
                 let distribution = reconcile_distribution.clone();
                 let root = reconcile_root.clone();
                 let policy = reconcile_policy.clone();
+                let revisions = reconcile_revisions.clone();
                 async move {
                     prepare_generation(&distribution, &root, policy.as_deref())
                         .await
-                        .map(|prepared| prepared.generation)
+                        .and_then(|prepared| {
+                            remember_revision(&revisions, &prepared)?;
+                            Ok(prepared.generation)
+                        })
+                }
+            },
+            move |generation| {
+                let distribution = receipt_distribution.clone();
+                let root = receipt_root.clone();
+                let policy = receipt_policy.clone();
+                let revisions = candidate_revisions.clone();
+                let digest = generation.spec.digest().to_owned();
+                async move {
+                    if policy.is_none() {
+                        return Ok(());
+                    }
+                    let revision = revisions
+                        .lock()
+                        .map_err(host_failure)?
+                        .get(&digest)
+                        .cloned()
+                        .ok_or_else(|| host_failure("active Generation lacks a Root revision"))?;
+                    record_activation(&distribution, &root, &revision).await
                 }
             },
         )
@@ -93,11 +123,13 @@ async fn start_host(
     configuration_policy: Option<PathBuf>,
     startup_timeout: Duration,
     stop_timeout: Duration,
+    candidate_revisions: Arc<Mutex<HashMap<String, String>>>,
 ) -> Result<(host::Host<lenso_kernel::NativeApp>, ResolvedGeneration), ControlPlaneError> {
     let app_id = distribution.app_id().to_owned();
     let bun = distribution.root().join("runtime/bun");
     let prepared =
         prepare_generation(&distribution, &app_root, configuration_policy.as_deref()).await?;
+    remember_revision(&candidate_revisions, &prepared)?;
     let factory = HostCatalogFactory::new(bun, app_root.clone(), &prepared.generation)?;
     let runtime = KernelGenerationRuntime::new(factory);
     let store = FileControlStateStore::open(app_root.join(".lenso/runtime-control"))?;
@@ -138,6 +170,48 @@ async fn start_host(
         ));
     };
     Ok((host, candidate))
+}
+
+fn remember_revision(
+    revisions: &Arc<Mutex<HashMap<String, String>>>,
+    prepared: &PreparedHostGeneration,
+) -> Result<(), ControlPlaneError> {
+    revisions.lock().map_err(host_failure)?.insert(
+        prepared.generation.spec.digest().to_owned(),
+        prepared.plugin_root_revision.clone(),
+    );
+    Ok(())
+}
+
+async fn record_activation(
+    distribution: &VerifiedDistribution,
+    app_root: &Path,
+    revision: &str,
+) -> Result<(), ControlPlaneError> {
+    let mut command =
+        tokio::process::Command::new(distribution.root().join("runtime/lenso-resolver"));
+    command
+        .args(["app", "config-activated", "--root"])
+        .arg(app_root)
+        .arg("--host-build")
+        .arg(distribution.root().join(".lenso/host-build.json"))
+        .arg("--plugin-root-revision")
+        .arg(revision)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    let mut child = command.spawn().map_err(host_failure)?;
+    let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+        .await
+        .map_err(host_failure)?
+        .map_err(host_failure)?;
+    if !status.success() {
+        return Err(host_failure(
+            "active Generation configuration receipt was not recorded",
+        ));
+    }
+    Ok(())
 }
 
 async fn prepare_generation(
