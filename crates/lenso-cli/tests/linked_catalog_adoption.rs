@@ -440,6 +440,7 @@ fn adopt_next_exact_version(
     trust_path: &std::path::Path,
     key: &SigningKey,
     now: u64,
+    expect_conflict: bool,
 ) {
     let bytes = crate_archive("example-web-plugin", "0.4.6", "example.web");
     let archive = fixture_root.join("plugin-0.4.6.crate");
@@ -465,6 +466,9 @@ fn adopt_next_exact_version(
         LinkedCargoSnapshot::new("test-catalog".into(), 2, now - 1, now + 3600, vec![release]);
     let snapshot_path = fixture_root.join("snapshot-0.4.6.json");
     fs::write(&snapshot_path, sign(&snapshot, "test-key", key).unwrap()).unwrap();
+    let config_before = expect_conflict.then(|| fs::read(root.join("lenso.toml")).unwrap());
+    let intent_before =
+        expect_conflict.then(|| fs::read(root.join("plugins/example.web/default.toml")).unwrap());
     let added = Command::new(cli)
         .args(["app", "add", "example.web@0.4.6", "--root"])
         .arg(root)
@@ -476,6 +480,25 @@ fn adopt_next_exact_version(
         .arg(&archive)
         .output()
         .unwrap();
+    if expect_conflict {
+        assert!(!added.status.success());
+        let diagnostic = String::from_utf8_lossy(&added.stderr);
+        assert!(
+            diagnostic.contains("already selects example.web@0.4.5")
+                && diagnostic.contains("lenso app unadopt example.web@0.4.5"),
+            "{diagnostic}"
+        );
+        assert!(!root.join("vendor/lenso/example.web/0.4.6").exists());
+        assert_eq!(
+            fs::read(root.join("lenso.toml")).unwrap(),
+            config_before.unwrap()
+        );
+        assert_eq!(
+            fs::read(root.join("plugins/example.web/default.toml")).unwrap(),
+            intent_before.unwrap()
+        );
+        return;
+    }
     assert!(
         added.status.success(),
         "{}",
@@ -1109,6 +1132,7 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     generated_cargo_lock_is_not_authored_source(cli, &root);
     modified_linked_source_cannot_unadopt(cli, &root);
     prove_build_when_requested(cli, &root);
+    adopt_next_exact_version(cli, &root, temp.path(), &trust_path, &key, now, true);
     assert_host_provided_rejected(
         cli,
         temp.path(),
@@ -1120,7 +1144,7 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     );
     unadopt_exact_source(cli, &root);
     prove_removed_build_when_requested(cli, &root);
-    adopt_next_exact_version(cli, &root, temp.path(), &trust_path, &key, now);
+    adopt_next_exact_version(cli, &root, temp.path(), &trust_path, &key, now, false);
 }
 
 #[test]

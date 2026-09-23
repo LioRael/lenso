@@ -427,6 +427,8 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         root,
         &Path::new("vendor/lenso").join(plugin_id).join(version),
     )?;
+    let destination = parent.join(version);
+    preflight_selected_identity(root, plugin_id, version, &destination)?;
     let stage = tempfile::Builder::new()
         .prefix(".linked-cargo-")
         .tempdir_in(root)?;
@@ -445,7 +447,6 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
                 .any(|entry| entry.runtime == "native-linked"),
         "linked Cargo source does not match an adoptable native Plugin"
     );
-    let destination = parent.join(version);
     let prepared =
         adoption::PreparedLinkedAdoption::new_locked(root, &destination, plugin_id, app_lock)?;
     let lock = SourceLock {
@@ -476,6 +477,44 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         plugin_id, version
     );
     Ok(())
+}
+
+fn preflight_selected_identity(
+    root: &Path,
+    plugin_id: &str,
+    version: &str,
+    destination: &Path,
+) -> anyhow::Result<()> {
+    let current = lenso_app_authoring::discovery::discover(root)
+        .context("inspect current App Plugin selection before linked Cargo adoption")?;
+    let Some(selected) = current
+        .candidates
+        .iter()
+        .find(|candidate| candidate.plugin_id == plugin_id)
+    else {
+        return Ok(());
+    };
+    if selected.project == destination && selected.release_version == version {
+        return Ok(());
+    }
+    let signed_source = root
+        .join("vendor/lenso")
+        .join(plugin_id)
+        .join(&selected.release_version);
+    if selected.project == signed_source {
+        bail!(
+            "App already selects {plugin_id}@{} from {}; run `lenso app unadopt {plugin_id}@{} --root {}` before adding {plugin_id}@{version}; automatic replacement is not supported",
+            selected.release_version,
+            selected.project.display(),
+            selected.release_version,
+            root.display()
+        );
+    }
+    bail!(
+        "App already selects {plugin_id}@{} from {}; remove that App source selection before adding {plugin_id}@{version}; automatic replacement is not supported",
+        selected.release_version,
+        selected.project.display()
+    )
 }
 
 fn verified_v6_archive(
