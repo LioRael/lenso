@@ -55,7 +55,7 @@ these remain follow-up work, with no public API change authorized here.
 
 ## Current progress (2026-09-15)
 
-- `packages/workers-runtime` and `crates/lenso-workers-driver` now own the promoted
+- At this checkpoint, `packages/workers-runtime` and `crates/lenso-workers-driver` owned the promoted
   implementation. The npm archive builds the Auth proof Host without sibling JS
   imports; the Rust Driver archive also compiles after extraction outside the repository.
   All seven Auth owner archives compile using only extracted Runtime/Capability
@@ -97,5 +97,14 @@ these remain follow-up work, with no public API change authorized here.
   has no drain API: output is byte-bounded, not acknowledged network backpressure.
   WebSocket hibernation is outside this event-runtime scope.
 
-No current implementation PR, merge or registry publication has been performed.
-The new proof Worker is isolated from production and earlier G4 resources.
+At the 2026-09-15 checkpoint, no implementation PR, merge or registry
+publication had been performed. The proof Worker was isolated from production
+and earlier G4 resources.
+
+## Source relocation in the current candidate
+
+The JavaScript event runtime source has moved, with history, to
+`lenso-js/packages/lenso-workers-runtime`; its Rust Driver remains at
+`lenso/crates/lenso-workers-driver`. The 2026-09-15 qualification receipts above
+remain historical evidence for their exact builds. The relocation does not by
+itself requalify a Workers target, publish the npm package, or deploy a Worker.

@@ -69,15 +69,15 @@ silently assumed to work. The primary design has no intermediary JS proxy.
 
 | Source at the baseline | Relevant behavior |
 | --- | --- |
-| [Runner](../../packages/workers-runtime/runner.mjs), `execute`, `open`, `rotate`, `abandon` | `admittedCount` increases once per event and does not fall when a short request finishes. Idle retirement defaults to 64 admissions, with an unconditional hard ceiling of 96. `open` retains its pending entry through terminal closure and owner cleanup. |
-| [Host](../../packages/workers-runtime/host.mjs), `generatedInstantiate`, `createWorkersHttpHost` | One Runner closes over one generated namespace. `handle_http` is captured from that namespace. The scope/HTTP handler is constructed inside `fetch` to keep request, `env` and `ctx` event-owned. |
-| [Exports](../../packages/workers-runtime/index.mjs) and [package contract](../../packages/workers-runtime/README.md) | The high-level entry is buffered HTTP; lower-level `run`/`open` and transport composition remain available. The documented default clock supports one generated module/Runner domain. |
-| [Build entry](../../packages/workers-runtime/build.mjs) | Pins Rust 1.94.0 and wasm-bindgen 0.2.127, uses locked Cargo and `--target web --experimental-reset-state-function`, and exports static constructors. |
-| [Clock](../../packages/workers-runtime/clock.mjs) and [Driver](../../crates/lenso-workers-driver/src/lib.rs) | Module-level timer Map; `clearTimers()` clears that entire domain. Driver imports the fixed `@lenso/workers-runtime/clock` module. G1/G2 clock files only re-export it. |
-| [Scope](../../packages/workers-runtime/scope.mjs) and [HTTP transports](../../packages/workers-runtime/http.mjs) | Synchronous JS-only invalidation fences Wasm delivery; owner continuations abort and settle native I/O. Streams retain the lease, copy memory views and observe `closed`. |
-| [G1 Runner](../../experiments/workers-g1/runner.mjs), [README](../../experiments/workers-g1/README.md), [acceptance](../evidence/workers-g1/acceptance.md) | Bounded short-event retirement and same-fetch trap recovery are evidenced. Cross-request native cancellation and a shared rotation Promise previously failed under workerd. |
-| [G2 Runner](../../experiments/workers-g2/runner.mjs), [session Host](../../experiments/workers-g2/host/src/sessions.rs), [README](../../experiments/workers-g2/README.md) | Buffered and duplex handlers in this source use the same Runner if composed together. `ResponseSession.closed` retains the App, Driver guard, cancellation guard and body until body completion/cancellation and clean App shutdown. |
-| [G2 buffered config](../../experiments/workers-g2/wrangler.jsonc) and [duplex config](../../experiments/workers-g2/wrangler.duplex.jsonc) | Already name distinct Worker deployments. This is a useful composition precedent, not evidence for mixed traffic or public route partitioning. |
+| Runner (`lenso-js/packages/lenso-workers-runtime/runner.mjs`), `execute`, `open`, `rotate`, `abandon` | `admittedCount` increases once per event and does not fall when a short request finishes. Idle retirement defaults to 64 admissions, with an unconditional hard ceiling of 96. `open` retains its pending entry through terminal closure and owner cleanup. |
+| Host (`lenso-js/packages/lenso-workers-runtime/host.mjs`), `generatedInstantiate`, `createWorkersHttpHost` | One Runner closes over one generated namespace. `handle_http` is captured from that namespace. The scope/HTTP handler is constructed inside `fetch` to keep request, `env` and `ctx` event-owned. |
+| Exports (`lenso-js/packages/lenso-workers-runtime/index.mjs`) and package contract (`README.md` in the same package) | The high-level entry is buffered HTTP; lower-level `run`/`open` and transport composition remain available. The documented default clock supports one generated module/Runner domain. |
+| Build entry (`lenso-js/packages/lenso-workers-runtime/build.mjs`) | Pins Rust 1.94.0 and wasm-bindgen 0.2.127, uses locked Cargo and `--target web --experimental-reset-state-function`, and exports static constructors. |
+| Clock (`lenso-js/packages/lenso-workers-runtime/clock.mjs`) and [Driver](../../../../crates/lenso-workers-driver/src/lib.rs) | Module-level timer Map; `clearTimers()` clears that entire domain. Driver imports the fixed `@lenso/workers-runtime/clock` module. G1/G2 clock files only re-export it. |
+| Scope (`lenso-js/packages/lenso-workers-runtime/scope.mjs`) and HTTP transports (`http.mjs` in the same package) | Synchronous JS-only invalidation fences Wasm delivery; owner continuations abort and settle native I/O. Streams retain the lease, copy memory views and observe `closed`. |
+| Historical G1 Runner, README, and acceptance (`lenso-runtime-rust/experiments/workers-g1/{runner.mjs,README.md}` and `docs/evidence/workers-g1/acceptance.md`) | Bounded short-event retirement and same-fetch trap recovery are evidenced. Cross-request native cancellation and a shared rotation Promise previously failed under workerd. |
+| Historical G2 Runner, session Host, and README (`lenso-runtime-rust/experiments/workers-g2/`) | Buffered and duplex handlers in this source use the same Runner if composed together. `ResponseSession.closed` retains the App, Driver guard, cancellation guard and body until body completion/cancellation and clean App shutdown. |
+| Historical G2 buffered and duplex configs (`lenso-runtime-rust/experiments/workers-g2/wrangler*.jsonc`) | Already name distinct Worker deployments. This is a useful composition precedent, not evidence for mixed traffic or public route partitioning. |
 
 The coordinator supplies the reproduced W02 trace: one healthy long session plus
 95 completed short requests reaches 96 admissions; later work waits and times
@@ -97,7 +97,8 @@ and this design task did not rerun the reproduction. The code explains it exactl
 
 Generated `pkg` JS is absent in this worktree. Inspection therefore used the
 installed **wasm-bindgen-cli-support 0.2.127 generator source**, `src/js/mod.rs`,
-alongside the build flags and recorded [G1 lifecycle proof](../evidence/workers-g1/recovery.md).
+alongside the build flags and historical G1 lifecycle proof in
+`lenso-runtime-rust/docs/evidence/workers-g1/recovery.md`.
 The exact upstream source is
 [version 0.2.127](https://docs.rs/crate/wasm-bindgen-cli-support/0.2.127/source/src/js/mod.rs).
 These are generator facts; fresh consumer output inspection remains a gate:
@@ -222,8 +223,11 @@ replacement admission until the owner batch releases. Built-in scopes separately
 retain a sticky bounded settlement receipt and internal JS-only late-release
 observation. Rejected custom cleanup or failed abort/reset/initialization stays
 unavailable. A timeout does not keep the client response pending indefinitely.
-The [local W02 report](../evidence/workers-w02/README.md) records the passing
-external-socket and supplementary workerd gates; it does not qualify production deployment.
+The baseline design cited a local W02 report for external-socket and
+supplementary workerd gates, but that report is not in the current consolidated
+checkout or the old repository's current checkout. Recover and verify its exact
+candidate before treating those claims as acceptance; they would not qualify
+production deployment in any case.
 
 The bounds limit admissions and retained generations; they do not establish an
 arbitrary Plugin graph's memory bound. A long session can allocate within its
@@ -383,17 +387,19 @@ remain separately authorized actions; the harness must not do them implicitly.
 Existing executable regressions remain required in the follow-up: G1 `smoke.mjs`,
 `io-smoke.mjs`, `disconnect-smoke.mjs`, `load.mjs` and `retirement-smoke.mjs`; G2
 `smoke.mjs`, `limits-smoke.mjs`, `disconnect-smoke.mjs` and `qualify-duplex.mjs`.
-Use their [G1](../../experiments/workers-g1/README.md) and
-[G2](../../experiments/workers-g2/README.md) commands, locked cohorts and existing
-checks unchanged. Run fault suites sequentially except for the deliberately
+Use the historical `lenso-runtime-rust/experiments/workers-g1/README.md` and
+`lenso-runtime-rust/experiments/workers-g2/README.md` as starting points. Reconcile
+their imports and paths against the new JS package while preserving the assertions.
+Run fault suites sequentially except for the deliberately
 orchestrated peers within a case. Any Cargo work in the Lenso workspace uses
-`/Users/leosouthey/Projects/framework/.lenso-tools/bin/lenso-cargo` and `--locked`.
+`cargo` directly with the repository toolchain and `--locked`.
 Retain applicable `lenso-runtime-conformance` and native/Web parity checks.
 
-The nine existing duplex [local](../../experiments/workers-g2/evidence/duplex-local.json)
-and [deployed](../../experiments/workers-g2/evidence/duplex.json) checks do not run
+The nine historical duplex local and deployed receipts in
+`lenso-runtime-rust/experiments/workers-g2/evidence/` do not run
 the W02 workload. G1 retirement evidence contains no held long session. The
-[G2 report](../evidence/workers-g2/README.md) records local proxy disconnect and
+historical G2 report in `lenso-runtime-rust/docs/evidence/workers-g2/README.md`
+records local proxy disconnect and
 oversized-upload limitations: report them separately; never call deployed
 disconnect proof a local pass. Missing same-boot receipts are inconclusive,
 and a harness must exit nonzero for required assertions lacking evidence.
