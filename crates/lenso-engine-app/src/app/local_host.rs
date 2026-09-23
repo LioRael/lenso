@@ -115,13 +115,18 @@ pub(super) fn generate(
         if candidate.format != "cargo" || !is_native(candidate) {
             continue;
         }
-        let output = super::cargo_command()
+        let mut command = super::cargo_command();
+        command
             .args(["metadata", "--format-version=1", "--filter-platform"])
             .arg(lenso_app_authoring::native_host_target())
             .arg("--manifest-path")
-            .arg(candidate.project.join("Cargo.toml"))
-            .output()
-            .context("read native Cargo graph")?;
+            .arg(candidate.project.join("Cargo.toml"));
+        // A signed source archive may provide its own Cargo.lock. Metadata is
+        // allowed to resolve it, but must not rewrite that release input.
+        if candidate.project.join("Cargo.lock").exists() {
+            command.arg("--locked");
+        }
+        let output = command.output().context("read native Cargo graph")?;
         if !output.status.success() {
             bail!(
                 "Cargo metadata for {}: {}",
