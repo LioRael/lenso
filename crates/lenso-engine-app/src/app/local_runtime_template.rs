@@ -132,6 +132,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let mut intent = root.join("intent");
     let mut check = false;
     let mut ready_file = None;
+    let mut defer_activation = false;
     let mut command_args = None;
     let mut index = 0;
     while index < args.len() {
@@ -141,6 +142,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 intent = PathBuf::from(args.get(index).context("--root needs a directory")?);
             }
             "--check" => check = true,
+            "--defer-activation" => defer_activation = true,
             "--ready-file" => {
                 index += 1;
                 ready_file = Some(PathBuf::from(args.get(index).context("--ready-file needs a path")?));
@@ -153,6 +155,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     anyhow::ensure!(
         !check || ready_file.is_none(),
         "--ready-file cannot be combined with --check"
+    );
+    anyhow::ensure!(
+        !defer_activation || (!check && ready_file.is_some()),
+        "--defer-activation requires --ready-file without --check"
     );
     let lock: DistributionLock =
         serde_json::from_slice(&fs::read(root.join(".lenso/distribution.lock.json"))?)?;
@@ -199,7 +205,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             bail!("distribution missing locked file: {required}");
         }
     }
-    let activation = begin_activation(root, &intent)?;
+    let mut activation = begin_activation(root, &intent)?;
     let output = std::process::Command::new(root.join("runtime/lenso-resolver"))
         .args(["app", "show", "--runtime-json", "--host-build"])
         .arg(root.join(".lenso/host-build.json"))
@@ -216,6 +222,13 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     if let Some(active) = &activation {
         let selected = active.state.pointer("/desired/candidate_plugin_root_revision").and_then(|v| v.as_str());
         if selected != Some(&resolution.plugin_root_revision) { bail!("configuration changed during Host resolution"); }
+    }
+    // A check-only or supervised candidate has no Host-side activation write.
+    // Release the configuration lock before Plugin startup and the long-lived
+    // serving loop; the supervisor fences its later receipt against the exact
+    // resolved Root revision after the Ready Gate.
+    if check || defer_activation {
+        activation = None;
     }
     let inventory: Vec<Artifact> = serde_json::from_slice(&fs::read(root.join("bundles.json"))?)?;
     let mut artifacts = ArtifactCatalog::new();
@@ -317,6 +330,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             let app = Kernel::start(resolution.plan, lenso_runner::TokioDriver::new(), catalog)
                 .await.map_err(|e| anyhow::anyhow!("Host startup failed: {e:?}"))?;
             if !check
+                && !defer_activation
                 && let Some(activation) = activation
                 && let Err(error) = mark_activated(activation, &resolution.plugin_root_revision)
             {

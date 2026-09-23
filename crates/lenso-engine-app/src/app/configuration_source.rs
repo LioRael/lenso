@@ -166,14 +166,67 @@ pub fn record_external_activation(
     let lock = open_lock(&control.join("configuration-source.lock"))?;
     lock.lock()?;
     verify_external_host_authority(distribution_host_build, &intent)?;
+    record_activation_locked(&intent, expected_revision)
+}
+
+/// The local development supervisor calls this only after its candidate Host
+/// passed readiness and the preceding Host stopped. A source publication by
+/// itself never advances the activation receipt.
+pub(super) fn record_distribution_activation(
+    distribution: &Path,
+    expected_revision: &str,
+) -> anyhow::Result<()> {
+    let distribution = fs::canonicalize(distribution)?;
+    let intent = fs::canonicalize(distribution.join("intent"))?;
+    let control = intent.join(".lenso");
+    ensure!(
+        fs::symlink_metadata(&control)?.file_type().is_dir(),
+        "App control directory must be a real directory"
+    );
+    let lock = open_lock(&control.join("configuration-source.lock"))?;
+    lock.lock()?;
+    verify_intent_authority(&distribution, &intent)?;
+    record_activation_locked(&intent, expected_revision)
+}
+
+/// Return the exact accepted Root revision to fence a supervised candidate.
+pub(super) fn desired_root_revision(distribution: &Path) -> anyhow::Result<Option<String>> {
+    let distribution = fs::canonicalize(distribution)?;
+    let intent = fs::canonicalize(distribution.join("intent"))?;
+    let control = intent.join(".lenso");
+    let lock = open_lock(&control.join("configuration-source.lock"))?;
+    lock.lock()?;
+    verify_intent_authority(&distribution, &intent)?;
+    let Some(state) = read_state(&control.join(STATE_FILE))? else {
+        return Ok(None);
+    };
+    let current = LocalPluginRootAuthority::new(intent).inspect()?;
+    ensure!(
+        matches!(
+            state.desired.publication_state(current.revision())?,
+            PluginConfigurationSnapshotPublicationState::Published
+                | PluginConfigurationSnapshotPublicationState::NoRootChange
+        ),
+        "configuration candidate has not reached its proposed Plugin Root revision"
+    );
+    Ok(Some(
+        state.desired.candidate_plugin_root_revision().to_owned(),
+    ))
+}
+
+fn record_activation_locked(intent: &Path, expected_revision: &str) -> anyhow::Result<()> {
+    let control = intent.join(".lenso");
     let path = control.join(STATE_FILE);
     let mut state = read_state(&path)?.context("missing accepted external configuration")?;
-    let current = LocalPluginRootAuthority::new(&intent).inspect()?;
+    let current = LocalPluginRootAuthority::new(intent).inspect()?;
     ensure!(
         current.revision().as_str() == expected_revision
             && state.desired.candidate_plugin_root_revision() == expected_revision
-            && state.desired.publication_state(current.revision())?
-                == PluginConfigurationSnapshotPublicationState::Published,
+            && matches!(
+                state.desired.publication_state(current.revision())?,
+                PluginConfigurationSnapshotPublicationState::Published
+                    | PluginConfigurationSnapshotPublicationState::NoRootChange
+            ),
         "activation receipt no longer matches the accepted Plugin Root revision"
     );
     state.last_activated = Some(ActivatedConfiguration {
@@ -877,6 +930,27 @@ mod tests {
         assert!(!projected.contains("first"));
         assert!(!projected.contains("second"));
         assert!(!projected.contains("sha256:"));
+    }
+
+    #[test]
+    fn revision_without_root_change_can_record_a_new_ready_generation() {
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'first'\n");
+        sync(root.path(), &policy).unwrap();
+        let first = desired_root_revision(root.path()).unwrap().unwrap();
+        record_distribution_activation(root.path(), &first).unwrap();
+
+        snapshot(&source, 2, "greeting = 'first'\n");
+        sync(root.path(), &policy).unwrap();
+        let second = desired_root_revision(root.path()).unwrap().unwrap();
+        assert_eq!(second, first);
+        let pending = inspect_status(root.path()).unwrap();
+        assert_eq!(pending.desired_revision, Some(2));
+        assert_eq!(pending.last_activated_revision, Some(1));
+        record_distribution_activation(root.path(), &second).unwrap();
+        let activated = inspect_status(root.path()).unwrap();
+        assert_eq!(activated.last_activated_revision, Some(2));
+        assert!(!activated.pending_activation);
     }
 
     #[test]

@@ -344,6 +344,20 @@ Transport failure returns no snapshot or acknowledgement and never mutates the
 Root. The Host retains the last accepted intent/active Generation and may retry
 the same source-bound cursor after connectivity returns.
 
+For a source App in local development, `lenso app dev --root APP
+--configuration-policy /absolute/policy.json --configuration-poll-seconds 10`
+reconciles the configured file or HTTPS source on each bounded poll. An accepted
+revision is desired configuration, not an activation (and it may leave the Root
+bytes unchanged): the development supervisor
+checks and starts a complete candidate Host, waits for its actual Ready receipt,
+then stops the prior Host and records the exact activated Root revision. Invalid
+snapshots, transport outages, failed checks, and failed startup retain the old
+Host and its activation receipt. The default interval is 10 seconds (allowed
+range 1–3600); Ctrl-C stops the supervised Host. Source rebuilds use the same
+Ready Gate. A fixed listener that cannot coexist with the old Host may prevent
+candidate readiness; this development loop does not promise zero-downtime
+switching or a production configuration subscription.
+
 This first source adapter is deliberately single-source and upsert-only: a
 missing object does not delete prior local configuration, and a Root intent is
 not shared across independently versioned sources. Multi-source ownership,
