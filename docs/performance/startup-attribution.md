@@ -23,11 +23,11 @@ small, medium, and larger graph sizes are 10, 100, and 500 Instances.
 
 ## Run
 
-Run the optimized Cargo benchmark profile through the workspace Cargo wrapper:
+Run the optimized Cargo benchmark profile with the repository toolchain:
 
 ```sh
 LENSO_STARTUP_BUILD_ID='<commit plus source identity>' \
-/Users/leosouthey/Projects/framework/.lenso-tools/bin/lenso-cargo bench \
+cargo bench \
   --locked -p lenso-kernel --bench startup_attribution -- \
   --iterations 20 --warmup 3 --sizes 10,100,500 \
   > startup-attribution.json
@@ -38,7 +38,7 @@ remain on standard error. For a quick harness smoke test, use one iteration and
 small graphs; do not compare those smoke-test values:
 
 ```sh
-/Users/leosouthey/Projects/framework/.lenso-tools/bin/lenso-cargo bench \
+cargo bench \
   --locked -p lenso-kernel --bench startup_attribution -- \
   --iterations 1 --warmup 0 --sizes 3,10,30
 ```
