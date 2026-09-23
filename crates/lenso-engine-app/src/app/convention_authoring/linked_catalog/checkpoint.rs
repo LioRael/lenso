@@ -64,7 +64,7 @@ fn state_dir(root_lock: &fs::File, create: bool) -> anyhow::Result<Option<fs::Fi
     match openat(
         root_lock,
         ".lenso",
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
         Mode::empty(),
     ) {
         Ok(descriptor) => Ok(Some(fs::File::from(descriptor))),
@@ -89,7 +89,7 @@ fn read_in_dir(
     let descriptor = match openat(
         dir,
         name,
-        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
         Mode::empty(),
     ) {
         Ok(descriptor) => descriptor,
@@ -204,14 +204,32 @@ pub(super) fn read(
     let Some(path) = state_path(root, &file_name(catalog_id), false)? else {
         return Ok(None);
     };
-    let Some(bytes) = super::adoption::read_optional_regular(&path)? else {
+    let Some(bytes) = read_bounded_regular(&path)? else {
         return Ok(None);
     };
+    Ok(Some(decode(&bytes, catalog_id)?))
+}
+
+#[cfg(any(windows, test))]
+fn read_bounded_regular(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => ensure!(
+            metadata.len() <= MAX_CHECKPOINT_BYTES,
+            "linked Cargo checkpoint exceeds size limit"
+        ),
+        Ok(_) => anyhow::bail!("linked Cargo checkpoint must be a regular file"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(MAX_CHECKPOINT_BYTES + 1)
+        .read_to_end(&mut bytes)?;
     ensure!(
         u64::try_from(bytes.len())? <= MAX_CHECKPOINT_BYTES,
         "linked Cargo checkpoint exceeds size limit"
     );
-    Ok(Some(decode(&bytes, catalog_id)?))
+    Ok(Some(bytes))
 }
 
 #[cfg(windows)]
@@ -251,6 +269,38 @@ pub(super) fn read(
     _catalog_id: &str,
 ) -> anyhow::Result<Option<LinkedCargoCheckpoint>> {
     bail!("durable linked Cargo checkpoints are unsupported on this platform")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounded_read_rejects_oversized_checkpoint() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("checkpoint.json");
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_CHECKPOINT_BYTES + 1)
+            .unwrap();
+        let error = read_bounded_regular(&path).unwrap_err();
+        assert!(error.to_string().contains("exceeds size limit"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn fifo_state_paths_fail_without_waiting_for_a_writer() {
+        use rustix::fs::{Mode, mkfifoat};
+
+        let root = tempfile::tempdir().unwrap();
+        let directory = fs::File::open(root.path()).unwrap();
+        mkfifoat(&directory, "checkpoint.json", Mode::RUSR | Mode::WUSR).unwrap();
+        let error = read_in_dir(&directory, "checkpoint.json", "catalog").unwrap_err();
+        assert!(error.to_string().contains("single-link regular file"));
+
+        mkfifoat(&directory, ".lenso", Mode::RUSR | Mode::WUSR).unwrap();
+        assert!(state_dir(&directory, false).is_err());
+    }
 }
 
 #[cfg(not(any(unix, windows)))]
