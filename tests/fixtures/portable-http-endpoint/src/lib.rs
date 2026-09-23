@@ -22,8 +22,9 @@ pub fn handle(route_id: &str, method: &str, path: &str, body: &[u8]) -> Reply {
             Reply::Bytes(format!("{method} {path}").into_bytes())
         }
         ("bytes", "POST", "/bytes") => Reply::Bytes(body.to_vec()),
-        ("reject", "GET", "/reject") => Reply::DomainError,
         ("failure", "GET", "/failure") => Reply::RuntimeFailure,
+        // The declared reject route and invalid internal dispatches both
+        // become intentional domain errors at the HTTP boundary.
         _ => Reply::DomainError,
     }
 }

@@ -33,6 +33,7 @@ use sha2::{Digest, Sha256};
 use tokio::{net::TcpStream, task::LocalSet};
 
 const PACKAGE_ID: &str = "fixture.portable-http";
+type HttpCase<'a> = (&'a str, &'a str, &'a [u8], u16, &'a [u8]);
 
 #[derive(Debug)]
 struct NativeEndpoint;
@@ -294,7 +295,7 @@ async fn one_http_endpoint_runs_through_native_and_real_wasm_component() {
                 .await
                 .unwrap();
 
-            let cases: [(&str, &str, &[u8], u16, &[u8]); 6] = [
+            let cases: [HttpCase<'_>; 6] = [
                 ("GET", "/method/42", b"", 200, b"GET /method/42"),
                 (
                     "POST",
