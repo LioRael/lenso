@@ -53,6 +53,20 @@ impl AdapterSet {
     }
 }
 
+fn write_generated_host_file(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
+    match fs::read(path) {
+        Ok(existing) if existing == contents => return Ok(()),
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("read generated Host file {}", path.display()));
+        }
+    }
+    fs::write(path, contents)
+        .with_context(|| format!("write generated Host file {}", path.display()))
+}
+
 pub(super) fn generate(
     stage: &Path,
     cache: &Path,
@@ -502,11 +516,11 @@ pub(super) fn generate(
         .map(|(name, (_, dependency))| (name, dependency))
         .collect::<BTreeMap<_, _>>();
     let manifest = json!({"package":{"name":"lenso-generated-local-host", "version":"0.0.0", "edition":"2024"}, "workspace":{}, "dependencies": dependencies, "patch":{"crates-io":patches}});
-    fs::write(
-        generated.join("Cargo.toml"),
-        toml::to_string_pretty(&manifest)?,
+    write_generated_host_file(
+        &generated.join("Cargo.toml"),
+        toml::to_string_pretty(&manifest)?.as_bytes(),
     )?;
-    fs::write(generated.join("src/main.rs"), source)?;
+    write_generated_host_file(&generated.join("src/main.rs"), source.as_bytes())?;
     let mut build_script = "fn main() { println!(\"cargo:rustc-check-cfg=cfg(generated_native_host)\"); println!(\"cargo:rustc-cfg=generated_native_host\");".to_owned();
     for (enabled, name) in [
         (adapters.bun, "generated_bun_adapter"),
@@ -521,7 +535,7 @@ pub(super) fn generate(
         }
     }
     build_script.push_str(" }\n");
-    fs::write(generated.join("build.rs"), build_script)?;
+    write_generated_host_file(&generated.join("build.rs"), build_script.as_bytes())?;
 
     let output = super::cargo_command()
         .args([
@@ -1142,8 +1156,39 @@ mod tests {
     use super::{
         AdapterSet, collect_local_lenso_patch, dependency, dependency_lock_digests,
         local_framework_crates_dir, local_framework_dependency, pin_host_framework_versions,
-        verify_dependency_lock_digests, web_ingress_dependency,
+        verify_dependency_lock_digests, web_ingress_dependency, write_generated_host_file,
     };
+
+    #[test]
+    fn unchanged_generated_host_file_preserves_mtime_but_edit_rewrites_it() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("main.rs");
+        write_generated_host_file(&path, b"fn main() {}\n").unwrap();
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let before = std::fs::metadata(&path).unwrap().modified().unwrap();
+
+        write_generated_host_file(&path, b"fn main() {}\n").unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            before
+        );
+
+        write_generated_host_file(&path, b"fn main() { println!(\"changed\"); }\n").unwrap();
+        assert_ne!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            before
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"fn main() { println!(\"changed\"); }\n"
+        );
+    }
 
     #[test]
     fn git_framework_source_does_not_rewrite_signed_vendor_paths() {
