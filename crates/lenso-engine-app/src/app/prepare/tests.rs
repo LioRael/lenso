@@ -199,6 +199,8 @@ fn rejects_missing_bun_wrong_targets_and_non_executable_runtime() {
     assert!(format!("{error:#}").contains("supply the exact --bun executable"));
     assert!(!temporary.path().join("out").exists());
     assert!(target_platform("wasm32-wasi").is_err());
+    let workers = target_platform("workers").unwrap_err();
+    assert!(format!("{workers:#}").contains("unsupported first-release Host distribution target"));
 }
 
 #[test]

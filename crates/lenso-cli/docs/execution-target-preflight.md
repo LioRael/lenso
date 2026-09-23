@@ -73,3 +73,20 @@ by the applicable target and Environment-plus-Infrastructure cohort. Use
 `lenso engine explain` for a bounded processing Session's cache/rebuild and
 candidate-retention explanation; its `lenso.engine-explain.v1` output is
 separate from this App admission report.
+
+The local convention `lenso app build` constructs a Native Host for the current
+machine and does not accept `--target`. The explicit
+`app build --source HOST.ts --target TARGET --out DIR` path creates Host
+authoring data, not an executable target distribution. `app prepare` currently
+admits only `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` with the
+matching runtime, owner, resolver and selected artifacts. A `workers` or Wasm
+distribution target is rejected before output publication. A selected Wasm
+Component inside a Native Host is not evidence that this App has a Workers
+Host, Workers ingress, or qualified Workers infrastructure.
+
+Consequently, `app explain` can report a rejected Workers-only candidate, but
+cannot prove the whole dependency/resource closure is Workers-compatible or
+that one business Endpoint has passed a real workerd/Workers HTTP corpus. Do
+not present static selection, a Native run, or a simulated target as Workers
+availability. The missing Workers Host and target-specific build/test path
+remain separate implementation and qualification work.
