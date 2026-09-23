@@ -78,6 +78,14 @@ and selects it through the App's Plugin Root. It does not download the crate,
 prove registry provenance by itself, or make a `host_provided` integration a
 generic candidate. Review build-time code before compiling it.
 
+Selection creates a comment-only `plugins/<plugin-id>/default.toml`, not a
+ready-to-run configuration for every Plugin. If the selected Contract requires
+fields or other Capabilities, fill this App-owned intent with the required
+non-secret values and explicitly select/configure the providers before
+`app build`; keep secret values outside Plugin Root. `app build` fails closed on
+missing fields or providers. A modified intent is user-owned: `app unadopt`
+refuses to remove it until those changes are resolved explicitly.
+
 To remove an unchanged adopted source, use `lenso app unadopt
 example.web@0.4.5 --root ./my-app`, then rebuild and check the App. Unadoption
 moves both source and default Plugin Root intent to a recoverable `.lenso/trash/`

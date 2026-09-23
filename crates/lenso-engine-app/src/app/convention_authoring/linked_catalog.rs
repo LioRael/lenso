@@ -476,6 +476,9 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         "Linked Cargo {}@{} selected for Host compilation; review its build-time code before app build",
         plugin_id, version
     );
+    println!(
+        "Complete plugins/{plugin_id}/default.toml and select required Capability providers before app build when this Plugin's Contract requires them"
+    );
     Ok(())
 }
 

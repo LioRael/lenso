@@ -135,6 +135,9 @@ entries require a product Host adapter. This local flow does not fetch or prove
 crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
 published dependency cohort can compile the generated Host. Review source and
 build under an isolated account/container when the source is not trusted.
+The generated `plugins/<plugin-id>/default.toml` only selects the Instance;
+Contracts with required configuration or Capability providers need explicit
+App-owned, non-secret configuration before `app build` can succeed.
 For a root Cargo App with `[workspace]`, adoption adds the exact vendor path to
 `workspace.exclude` so Cargo treats the verified package as a separate path
 dependency without rewriting its signed source. An existing App-owned exclusion
