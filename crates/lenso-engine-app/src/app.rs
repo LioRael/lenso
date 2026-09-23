@@ -138,7 +138,7 @@ pub enum AppCommand {
     /// Explain local convention support and selected surface packages without executing code.
     Inspect(ProjectArgs),
     /// Report resolved project facts for agents and other development tools.
-    Facts(ProjectArgs),
+    Facts(facts::FactsArgs),
     /// Build local Plugin sources into a validated Host authoring directory.
     Assemble(assemble::AssembleArgs),
 }
@@ -464,10 +464,12 @@ mod tests {
 
         assert!(matches!(
             parsed.command,
-            AppCommand::Facts(ProjectArgs {
+            AppCommand::Facts(facts::FactsArgs {
                 root: Some(root),
+                host_build: None,
                 json: true,
             }) if root.as_path() == std::path::Path::new("app")
         ));
+        assert!(TestCli::try_parse_from(["lenso", "check", "--host-build", "build.json"]).is_err());
     }
 }

@@ -54,12 +54,21 @@ That digest does not identify Host defaults or resolved configuration values.
 It deliberately reports runtime state as `not_observed` until
 a runtime control surface supplies evidence; build artifacts are not treated as
 proof that an App is running. Configuration values are not included.
+For an external Plugin Root, pass its exact distribution authority as
+`--host-build DIST/.lenso/host-build.json` to `app facts`; this verifies and
+includes external configuration status without treating the last activation
+receipt as current process health. Host-default source locations then point
+to the actual `host-build.json`, not a nonexistent Host catalog.
 
 The same projection is available to an MCP client over stdio:
 
 ```sh
 lenso mcp --root ./my-app
 ```
+
+The MCP server accepts the same optional `--host-build` when its fixed root is
+external to the distribution. Both paths use the same resolver-backed facts
+projection and omit configuration values.
 
 The server fixes one App root for its lifetime and exposes the read-only
 `project_facts` tool. It does not offer App mutations, silently start a Host,

@@ -15,11 +15,15 @@ pub(crate) struct McpArgs {
     /// One local App root this MCP process may inspect.
     #[arg(long)]
     root: PathBuf,
+    /// Exact distribution Host build when the root is external to its distribution.
+    #[arg(long)]
+    host_build: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
 struct AppTools {
     root: PathBuf,
+    host_build: Option<PathBuf>,
 }
 
 #[tool_router]
@@ -28,7 +32,11 @@ impl AppTools {
         description = "Inspect exact App, Plugin, source, binding and diagnostic facts without reading secret values"
     )]
     fn project_facts(&self) -> Result<CallToolResult, McpError> {
-        let facts = lenso_engine_app::app::inspect_project_facts(&self.root).map_err(|_| {
+        let facts = lenso_engine_app::app::facts::inspect_project_facts_with_host_build(
+            &self.root,
+            self.host_build.as_deref(),
+        )
+        .map_err(|_| {
             McpError::internal_error("App facts are unavailable; run lenso doctor", None)
         })?;
         let json = serde_json::to_string(&facts)
@@ -47,7 +55,12 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
     if !root.is_dir() {
         anyhow::bail!("MCP App root must be a directory");
     }
-    let service = AppTools { root }.serve(stdio()).await?;
+    let service = AppTools {
+        root,
+        host_build: args.host_build,
+    }
+    .serve(stdio())
+    .await?;
     service.waiting().await?;
     Ok(())
 }

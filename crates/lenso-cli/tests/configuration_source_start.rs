@@ -281,4 +281,44 @@ fn external_plugin_root_sync_uses_the_distributions_exact_host_build() {
     let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
     assert_eq!(status["state"], "last_activated");
     assert_eq!(status["pending_activation"], false);
+    let facts_output = Command::new(cli)
+        .args(["app", "facts", "--root"])
+        .arg(app.path())
+        .arg("--host-build")
+        .arg(&host_build)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        facts_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&facts_output.stderr)
+    );
+    let facts: serde_json::Value = serde_json::from_slice(&facts_output.stdout).unwrap();
+    assert_eq!(facts["configuration"]["state"], "last_activated");
+    assert_eq!(
+        facts["plugins"][0]["source_location"]["path"],
+        fs::canonicalize(app.path().join(".lenso/host-build.json"))
+            .unwrap()
+            .to_str()
+            .unwrap()
+    );
+    assert!(!String::from_utf8_lossy(&facts_output.stdout).contains("accepted"));
+    let wrong_build = distribution.path().join("wrong-host-build.json");
+    fs::write(&wrong_build, b"{}").unwrap();
+    let rejected = Command::new(cli)
+        .args(["app", "facts", "--root"])
+        .arg(app.path())
+        .arg("--host-build")
+        .arg(&wrong_build)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    let rejected: serde_json::Value = serde_json::from_slice(&rejected.stdout).unwrap();
+    assert_eq!(rejected["status"], "invalid");
+    assert_eq!(
+        rejected["diagnostics"][0]["code"],
+        "LENSO_CONFIGURATION_STATUS_FAILED"
+    );
 }

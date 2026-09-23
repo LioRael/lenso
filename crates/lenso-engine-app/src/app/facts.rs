@@ -5,15 +5,28 @@ use std::{
 };
 
 use anyhow::bail;
+use clap::Args;
 use lenso_app_plan::{
     CapabilityCardinality, CapabilityOperationKind,
     authoring::{PluginInstanceSource, ResolvedApp},
 };
 use serde::Serialize;
 
-use super::ProjectArgs;
 use super::configuration_source;
 use crate::plugins::project_root;
+
+#[derive(Args, Clone, Debug)]
+pub struct FactsArgs {
+    /// App project root. Defaults to the current directory.
+    #[arg(long)]
+    pub(super) root: Option<PathBuf>,
+    /// Exact distribution Host build when inspecting an external Plugin Root.
+    #[arg(long)]
+    pub(super) host_build: Option<PathBuf>,
+    /// Emit a stable JSON report.
+    #[arg(long)]
+    pub(super) json: bool,
+}
 
 #[derive(Debug, Serialize)]
 pub struct ProjectFacts {
@@ -131,8 +144,11 @@ pub struct SourceLocation {
     pub path: PathBuf,
 }
 
-pub(super) fn facts(args: ProjectArgs) -> anyhow::Result<()> {
-    let report = inspect_project_facts(project_root(args.root)?)?;
+pub(super) fn facts(args: FactsArgs) -> anyhow::Result<()> {
+    let report = inspect_project_facts_with_host_build(
+        project_root(args.root)?,
+        args.host_build.as_deref(),
+    )?;
     if args.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -145,6 +161,13 @@ pub(super) fn facts(args: ProjectArgs) -> anyhow::Result<()> {
 }
 
 pub fn inspect_project_facts(root: impl AsRef<Path>) -> anyhow::Result<ProjectFacts> {
+    inspect_project_facts_with_host_build(root, None)
+}
+
+pub fn inspect_project_facts_with_host_build(
+    root: impl AsRef<Path>,
+    host_build: Option<&Path>,
+) -> anyhow::Result<ProjectFacts> {
     let root = fs::canonicalize(root)?;
     let distribution = root.join("intent").is_dir()
         && ["host-build.json", "host-catalog.json"]
@@ -155,12 +178,15 @@ pub fn inspect_project_facts(root: impl AsRef<Path>) -> anyhow::Result<ProjectFa
     } else {
         root.clone()
     };
+    if distribution && host_build.is_some() {
+        bail!("--host-build is only for an external Plugin Root, not a built distribution");
+    }
     let discovery = lenso_app_authoring::discovery::discover(&intent);
     let state = lenso_app_authoring::inspect_plugin_root(&intent);
     let configuration = if distribution {
         Some(configuration_source::inspect_status(&root))
     } else {
-        None
+        host_build.map(|build| configuration_source::inspect_external_status(&intent, build))
     };
     let mut diagnostics = Vec::new();
 
@@ -168,11 +194,11 @@ pub fn inspect_project_facts(root: impl AsRef<Path>) -> anyhow::Result<ProjectFa
         diagnostics.push(Diagnostic {
             code: "LENSO_CONFIGURATION_STATUS_FAILED",
             severity: "error",
-            message: "The built App configuration status could not be verified.",
+            message: "The App configuration status could not be verified against its Host authority.",
             source: Some(SourceLocation {
                 path: intent.join(".lenso/configuration-source-state.json"),
             }),
-            help: "Run `lenso app config-status --root DIST` for a bounded status error.",
+            help: "Run `lenso app config-status --root ROOT [--host-build HOST_BUILD]` for a bounded status error.",
         });
     }
 
@@ -258,6 +284,11 @@ fn plugins(
     root: &std::path::Path,
     state: &lenso_app_authoring::PluginRootAuthoringState,
 ) -> Vec<PluginFacts> {
+    let host_authority = if root.join(".lenso/host-build.json").is_file() {
+        root.join(".lenso/host-build.json")
+    } else {
+        root.join(".lenso/host-catalog.json")
+    };
     let resolved = state.resolved();
     let enabled = resolved
         .instances()
@@ -274,7 +305,7 @@ fn plugins(
                     .join(plugin.plugin_id())
                     .join("plugin.lenso-plugin")
             } else {
-                root.join(".lenso/host-catalog.json")
+                host_authority.clone()
             };
             PluginFacts {
                 plugin_id: plugin.plugin_id().to_owned(),
@@ -298,14 +329,14 @@ fn plugins(
                                 .join(instance.id().plugin_id())
                                 .join(format!("{}.toml", instance.id().instance_key()))
                         } else {
-                            root.join(".lenso/host-catalog.json")
+                            host_authority.clone()
                         };
                         let selection_source = if instance.is_disabled_by_root() {
                             root.join("plugins")
                                 .join(instance.id().plugin_id())
                                 .join(format!("{}.disabled", instance.id().instance_key()))
                         } else if instance.is_host_default() {
-                            root.join(".lenso/host-catalog.json")
+                            host_authority.clone()
                         } else {
                             root.join("plugins")
                                 .join(instance.id().plugin_id())
