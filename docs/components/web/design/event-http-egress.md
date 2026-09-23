@@ -13,7 +13,7 @@ Depend on `lenso-http-egress-plugin` with `default-features = false` and
 `features = ["workers"]`. Create a transport function in the event Host:
 
 ```js
-import { createEventHttpFetch } from './event-fetch.mjs';
+import { createEventHttpFetch } from '@lenso/http-egress-workers';
 const transport = createEventHttpFetch({
   fetch: eventScopedFetch,
   setTimeout: eventSetTimeout,
@@ -21,8 +21,8 @@ const transport = createEventHttpFetch({
 });
 ```
 
-Use the Web-owned module at
-`crates/lenso-http-egress-plugin/js/event-fetch.mjs`; pass the returned Function
+Use the JS-owned source at
+`lenso-js/packages/lenso-http-egress-workers/event-fetch.mjs`; pass the returned Function
 explicitly to Rust and register `HttpEgressEventFactory::from_js(transport)` in
 that event's `NativePluginRegistry`. Use
 `HttpEgressEventFactory::plugin_descriptor()` for Host catalog construction and
@@ -97,8 +97,9 @@ durable upstream work.
   response filtering, redirect exposure, bounds, timeout mapping, cancellation,
   and unsupported-policy startup rejection.
 - Existing native request/HTTP2/timeout/concurrency regressions remain required.
-- `node --test crates/lenso-http-egress-plugin/js/event-fetch.test.mjs` exercises
-  real Fetch against a local HTTP server and focused abort/timeout/reader cases.
+- In `lenso-js`, `node --test
+  packages/lenso-http-egress-workers/event-fetch.test.mjs` exercises real Fetch
+  against a local HTTP server and focused abort/timeout/reader cases.
 - Wasm feature closure: `cargo check -p lenso-http-egress-plugin
   --no-default-features --features workers --target wasm32-unknown-unknown`.
 - The Auth owner must run its OIDC fixture on real workerd and deployed Workers;
