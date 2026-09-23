@@ -5,7 +5,8 @@ directory.
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for fork, Issue, durable patch, review, and candidate-first landing guidance.
+Read [CONTRIBUTING.md](https://github.com/LioRael/lenso/blob/main/CONTRIBUTING.md)
+for fork, Issue, durable patch, review, and candidate-first landing guidance.
 
 ## Install
 

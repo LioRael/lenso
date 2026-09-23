@@ -387,19 +387,13 @@ lifecycle work rather than implied by this API.
 - The low-level core can execute trusted processors directly. Applications
   wanting Lenso lifecycle/admission use the runtime SDK, as the CLI does.
 
-## Development and local migration
+## Development validation
 
 ```sh
 cargo fmt --all -- --check
 cargo test --workspace --locked
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
-
-This repository was created locally from the existing CLI implementation. The CLI
-checkout currently consumes these unpublished packages through local path
-references. No remote repository, commit, push, merge or registry release has
-been performed. A later authorized release must publish the dependency chain and
-switch CLI references to released versions before remote standalone closeout.
 
 ## Repository layout
 

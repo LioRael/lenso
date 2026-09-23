@@ -1,10 +1,11 @@
 # Lenso Web context
 
-`lenso-web` owns general-purpose backend Web Interfaces and linked Rust Plugins. It
-consumes released Lenso Plan, Kernel, runtime, protocol, Auth, and authoring
-packages; none of those repositories depend back on this one.
+The optional Web crates in this Rust workspace own general-purpose backend Web
+Interfaces and linked Rust Plugins. They depend on the framework's Plan,
+Kernel, runtime, and protocol crates without reversing those dependency
+directions. Product-owned Auth Plugins remain separate unless explicitly moved.
 
-Console and application UI concerns are explicitly outside this repository.
+Console and application UI concerns are outside these Web crates.
 `lenso.ui.contribution@1`, `lenso.web.shell@1`, Browser Adapter, pages,
 navigation, and assets remain with their UI product owner.
 

@@ -1,12 +1,13 @@
 # Lenso Protocols
 
-This repository owns runtime-neutral protocol tooling and portable conformance
-artifacts for Lenso. It does not own the Kernel, host runtimes, product
-Capabilities, or Plugin implementations.
-
-The source was extracted from `LioRael/lenso` at monorepo commit
-`67d21499548d07e92c2f6529d7c8345e58c067d9` under ADR 0064. Imported subtrees
-retain their relevant Git history.
+This Rust workspace owns runtime-neutral protocol tooling and portable
+conformance fixtures under `crates/` and `spec/`. Its protocol crates do not
+define Kernel, host-runtime, product-Capability, or Plugin behavior. JavaScript
+and TypeScript SDK work is moving to
+[`lenso-js`](https://github.com/LioRael/lenso-js) under
+[ADR 0077](../adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md),
+but the npm protocol runtime packages below are still separate published
+dependencies, not members of either current workspace.
 
 ## Packages
 
@@ -19,9 +20,10 @@ retain their relevant Git history.
   decoding as an npm package.
 - `lenso-plugin-authoring`: provides runtime-neutral typed Ports and generated
   contract references, including source-named requirement connection.
-- `lenso-process-protocol` and `@lenso/process-protocol`: retain the exact
-  HTTP V1 protocol, transport-neutral Authoring V2 values, and the versioned
-  execution-target capability-profile contract.
+- `lenso-process-protocol` and the separately published
+  `@lenso/process-protocol`: retain the exact HTTP V1 protocol,
+  transport-neutral Authoring V2 values, and the versioned execution-target
+  capability-profile contract.
 - `spec/fixtures/portable-contract`: cross-language value-profile conformance data.
 
 Generated bindings retain contract-specific values, Provider traits, Clients,
@@ -70,10 +72,9 @@ lenso-contract-codegen generate capability.json src/generated.rs generated/bindi
 cargo fmt --all -- --check
 cargo check --locked --workspace --all-targets
 cargo test --locked --workspace
-bun install --frozen-lockfile
-bun run build
-bun run typecheck
-bun run package-smoke
-bun run test
-npm pack --dry-run ./packages/lenso-contract-runtime
 ```
+
+The Rust checks above run here. Cross-language consumers in `lenso-js` must
+build, typecheck, and test against exact published npm runtime versions. Changes
+to those runtime packages still need their own source-package gates until they
+are consolidated.

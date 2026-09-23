@@ -5,9 +5,11 @@ model accepted by [ADR 0070](../adr/0070-resolve-apps-from-plugin-roots.md).
 It changes App authoring above Kernel; it does not change Plan or Kernel
 semantics.
 
-The core resolver implements this contract. Product Hosts generate their own
-Catalogs and filesystem adapters, while `lenso-cli` exposes the common Plugin
-and App-owner command surface.
+`crates/lenso-app-plan` implements the core resolver. Product Hosts generate
+their own Catalogs; `crates/lenso-engine-authoring` and
+`crates/lenso-engine-app` provide the local authoring path; and
+`crates/lenso-cli` exposes the common Plugin and App-owner commands. These
+Rust packages share this repository without collapsing their ownership seams.
 
 ## The complete public model
 

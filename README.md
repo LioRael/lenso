@@ -97,11 +97,13 @@ and versions remain stable, and packaged-consumer validation remains a separate
 release gate.
 
 The repository boundary follows language and product ownership rather than
-runtime mechanics. JavaScript and TypeScript SDKs, Bun fixtures, and browser
-integration live in `lenso-js`. The Site, Lenso UI, Marketplace backend, and
-downstream products remain independent. Optional product Plugins such as Auth
-stay with their product owner unless frequent shared Rust evolution provides a
-concrete reason to move them here. See ADR 0077.
+runtime mechanics. Bun/Node SDKs, Bun fixtures, and Web client integration live
+in `lenso-js`. The protocol npm runtime packages are still separate published
+dependencies pending source consolidation; `lenso-js` consumes them as packages.
+The Site, Lenso UI, Marketplace backend, and downstream products remain
+independent. Optional product Plugins such as Auth stay with their product
+owner unless frequent shared Rust evolution provides a concrete reason to move
+them here. See ADR 0077.
 
 The Kernel has no Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, Outbox, Workflow, migration, release, or discovery implementation.
@@ -136,8 +138,8 @@ Choose focused checks for prose, Rust code, or workflow/build changes rather
 than running every workspace and platform command for every edit. The portable
 Plan, Kernel, and conformance Interface are compile-checked for
 `wasm32-unknown-unknown` and `wasm32-wasip2` when the final candidate requires
-that proof. Host Driver and Adapter repositories own their target-specific
-checks against released core packages.
+that proof. Driver and Adapter crates in this workspace own their target-specific
+checks; external products separately validate packaged framework releases.
 
 ## Architecture
 

@@ -1,13 +1,11 @@
 # Lenso Rust Runtime
 
 Rust host-side Runtime Drivers and Execution Adapters for the portable Lenso
-Kernel. Implementations are verified across the published
-`lenso-runtime-conformance` Interface; this repository does not own Plan or
-Kernel semantics.
-
-The source was extracted from `LioRael/lenso` at monorepo commit
-`67d21499548d07e92c2f6529d7c8345e58c067d9` under ADR 0064. Imported subtrees
-retain their relevant Git history.
+Kernel. The Runtime crates share this workspace with Plan and Kernel under
+[ADR 0077](../adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md),
+but keep separate package and dependency boundaries. Their implementations are
+verified against the `lenso-runtime-conformance` Interface; Driver and Adapter
+crates do not define Plan or Kernel semantics.
 
 `lenso-test` provides a deterministic `TestApp` that boots an immutable Plan
 through the real Kernel and native Adapter for Plugin integration tests.

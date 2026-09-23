@@ -2,11 +2,12 @@
 
 Status: current public authoring contract.
 
-The `lenso-cli` repository owns the executable authoring product and its
-filesystem-facing library under ADR 0064. The public CLI exposes Plugin source
-and Plugin Root intent; the library owns safe filesystem edits, bundle
-inspection, validation, derivation, canonical Plan materialization, and
-development Host mechanics.
+The `crates/lenso-cli` package owns the executable command surface. In this
+shared Rust workspace, `crates/lenso-engine-app` and
+`crates/lenso-engine-authoring` own App filesystem workflows and embeddable
+authoring, while `crates/lenso-app-plan` owns resolution. This follows
+[ADR 0077](../adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md):
+the CLI invokes these APIs instead of defining a separate repository boundary.
 
 Neither the CLI nor its library installs code into a running Kernel. A Host
 resolves a complete candidate App, passes its Ready Gate, and then applies an

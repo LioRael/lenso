@@ -21,11 +21,12 @@ authoring layer; file conventions do not belong in the CLI or portable Kernel.
    `lenso-plugin-authoring`. Finish when Driver, Adapter, Runner, authoring, or
    Kernel owns the change unambiguously.
 2. **Resolve the live contract.** Find repository instructions, selected core
-   package versions, relevant ADRs, owning runtime/Adapter repository,
-   conformance package, supported targets, CI gates, and existing production
-   implementation. Cross-repository dependencies use released packages or an
-   explicitly approved immutable bootstrap reference. Finish when every trait,
-   error, and execution-class identity comes from current source.
+   package versions, relevant ADRs, the owning crate in this Rust workspace or
+   independent product repository, conformance package, supported targets, CI
+   gates, and existing production implementation. Cross-repository dependencies
+   use packaged releases or an explicitly approved immutable bootstrap
+   reference. Finish when every trait, error, and execution-class identity
+   comes from current source.
 3. **Read one implementation branch.** Use
    [Runtime Driver](references/runtime-driver.md) for scheduling/time/task-lane
    work; [Execution Adapter](references/execution-adapter.md) for Plugin
