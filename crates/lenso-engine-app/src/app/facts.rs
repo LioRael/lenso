@@ -12,6 +12,7 @@ use lenso_app_plan::{
 use serde::Serialize;
 
 use super::ProjectArgs;
+use super::configuration_source;
 use crate::plugins::project_root;
 
 #[derive(Debug, Serialize)]
@@ -24,6 +25,8 @@ pub struct ProjectFacts {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_root_revision: Option<String>,
     pub runtime: RuntimeFacts,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configuration: Option<super::ConfigurationStatus>,
     pub plugins: Vec<PluginFacts>,
     pub bindings: Vec<BindingFacts>,
     pub discovered_sources: Vec<DiscoveredSourceFacts>,
@@ -143,9 +146,35 @@ pub(super) fn facts(args: ProjectArgs) -> anyhow::Result<()> {
 
 pub fn inspect_project_facts(root: impl AsRef<Path>) -> anyhow::Result<ProjectFacts> {
     let root = fs::canonicalize(root)?;
-    let discovery = lenso_app_authoring::discovery::discover(&root);
-    let state = lenso_app_authoring::inspect_plugin_root(&root);
+    let distribution = root.join("intent").is_dir()
+        && ["host-build.json", "host-catalog.json"]
+            .iter()
+            .any(|name| root.join(".lenso").join(name).is_file());
+    let intent = if distribution {
+        root.join("intent")
+    } else {
+        root.clone()
+    };
+    let discovery = lenso_app_authoring::discovery::discover(&intent);
+    let state = lenso_app_authoring::inspect_plugin_root(&intent);
+    let configuration = if distribution {
+        Some(configuration_source::inspect_status(&root))
+    } else {
+        None
+    };
     let mut diagnostics = Vec::new();
+
+    if configuration.as_ref().is_some_and(Result::is_err) {
+        diagnostics.push(Diagnostic {
+            code: "LENSO_CONFIGURATION_STATUS_FAILED",
+            severity: "error",
+            message: "The built App configuration status could not be verified.",
+            source: Some(SourceLocation {
+                path: intent.join(".lenso/configuration-source-state.json"),
+            }),
+            help: "Run `lenso app config-status --root DIST` for a bounded status error.",
+        });
+    }
 
     if discovery.is_err() {
         diagnostics.push(Diagnostic {
@@ -181,6 +210,7 @@ pub fn inspect_project_facts(root: impl AsRef<Path>) -> anyhow::Result<ProjectFa
             status: "not_observed",
             detail: "This read-only command does not infer a running process from build artifacts.",
         },
+        configuration: configuration.and_then(Result::ok),
         plugins: Vec::new(),
         bindings: Vec::new(),
         discovered_sources: Vec::new(),
@@ -190,7 +220,7 @@ pub fn inspect_project_facts(root: impl AsRef<Path>) -> anyhow::Result<ProjectFa
     if let Ok(state) = state {
         report.plugin_root_revision = Some(state.revision().as_str().to_owned());
         report.bindings = bindings(state.resolved());
-        report.plugins = plugins(&root, &state);
+        report.plugins = plugins(&intent, &state);
     }
     if let Ok(discovery) = discovery {
         let adopted = report
@@ -566,5 +596,78 @@ root-slot = "agent"
         );
         let serialized = serde_json::to_string(&changed).unwrap();
         assert!(!serialized.contains("must-not-enter-project-facts"));
+    }
+
+    #[test]
+    fn built_distribution_reports_desired_configuration_without_claiming_activation() {
+        let temporary = app_root();
+        let intent = temporary.path().join("intent");
+        fs::create_dir_all(intent.join(".lenso")).unwrap();
+        fs::create_dir(intent.join("plugins")).unwrap();
+        fs::copy(
+            temporary.path().join(".lenso/host-catalog.json"),
+            intent.join(".lenso/host-catalog.json"),
+        )
+        .unwrap();
+        let snapshot = temporary.path().join("snapshot.json");
+        fs::write(
+            &snapshot,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": "lenso.plugin-configuration-snapshot.v1",
+                "revision": 4,
+                "configurations": [{
+                    "plugin_id": "example.agent",
+                    "instance_key": "default",
+                    "toml": "credential = 'must-not-enter-project-facts'\n"
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let policy = temporary.path().join("policy.json");
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": "lenso.configuration-source-policy.v1",
+                "source_reference": "development",
+                "source": {"type": "file", "path": snapshot},
+                "objects": [{
+                    "plugin_id": "example.agent",
+                    "instance_key": "default",
+                    "fields": ["credential"]
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        configuration_source::sync(temporary.path(), &policy).unwrap();
+
+        let report = inspect_project_facts(temporary.path()).unwrap();
+        assert_eq!(report.status, "resolved");
+        assert_eq!(report.plugins[0].release_version, "1.2.3");
+        let configuration = report.configuration.as_ref().unwrap();
+        assert_eq!(configuration.source_kind.as_deref(), Some("file_snapshot"));
+        assert_eq!(configuration.desired_revision, Some(4));
+        assert_eq!(configuration.last_activated_revision, None);
+        assert!(configuration.pending_activation);
+        assert_eq!(report.runtime.status, "not_observed");
+        assert!(
+            !serde_json::to_string(&report)
+                .unwrap()
+                .contains("must-not-enter-project-facts")
+        );
+
+        fs::write(
+            intent.join(".lenso/configuration-source-state.json"),
+            b"not JSON",
+        )
+        .unwrap();
+        let invalid = inspect_project_facts(temporary.path()).unwrap();
+        assert_eq!(invalid.status, "invalid");
+        assert_eq!(invalid.diagnostics.len(), 1);
+        assert_eq!(
+            invalid.diagnostics[0].code,
+            "LENSO_CONFIGURATION_STATUS_FAILED"
+        );
     }
 }

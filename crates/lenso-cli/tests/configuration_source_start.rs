@@ -87,6 +87,28 @@ fn external_file_source_reconciles_through_public_app_commands() {
         .unwrap()
         .contains("hello")
     );
+    let facts = Command::new(cli)
+        .args(["app", "facts", "--root"])
+        .arg(root.path())
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        facts.status.success(),
+        "{}",
+        String::from_utf8_lossy(&facts.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&facts.stdout).unwrap();
+    assert_eq!(report["status"], "resolved");
+    assert_eq!(report["plugins"][0]["release_version"], "1.0.0");
+    assert_eq!(report["configuration"]["source_kind"], "file_snapshot");
+    assert_eq!(report["configuration"]["desired_revision"], 1);
+    assert_eq!(
+        report["configuration"]["last_activated_revision"],
+        serde_json::Value::Null
+    );
+    assert_eq!(report["configuration"]["pending_activation"], true);
+    assert!(!String::from_utf8_lossy(&facts.stdout).contains("hello"));
     let missing_policy = Command::new(cli)
         .args(["app", "start", "--from"])
         .arg(root.path())

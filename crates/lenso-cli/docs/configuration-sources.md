@@ -62,9 +62,11 @@ is still running. A new desired revision preserves the previous activation
 record until the new Host is ready.
 Use `lenso app config-status --root dist --json` to inspect those revision
 numbers and whether a proposal is still pending publication or an accepted
-update is pending activation. This public
-projection omits configuration values, source addresses, and digests; it does
-not report whether the last activated Host process is currently running.
+update is pending activation. `lenso app facts --root dist --json` includes the
+same status alongside the resolved Plugin and binding facts from `dist/intent`.
+The status identifies the source kind, but omits configuration values, source
+addresses, and digests; it does not report whether the last activated Host
+process is currently running.
 There is no background polling or live switch yet; rerun the reconciliation and
 Host readiness flow to consume an update. Keep secret material with its provider:
 the snapshot contains only authorized references for schema-marked sensitive

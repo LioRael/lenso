@@ -49,13 +49,14 @@ pub struct StatusArgs {
 }
 
 #[derive(Debug, Serialize)]
-struct Status {
-    schema: &'static str,
-    state: &'static str,
-    desired_revision: Option<u64>,
-    last_activated_revision: Option<u64>,
-    pending_publication: bool,
-    pending_activation: bool,
+pub struct Status {
+    pub schema: &'static str,
+    pub state: &'static str,
+    pub source_kind: Option<String>,
+    pub desired_revision: Option<u64>,
+    pub last_activated_revision: Option<u64>,
+    pub pending_publication: bool,
+    pub pending_activation: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,7 +138,7 @@ pub fn status_command(args: StatusArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn inspect_status(root: &Path) -> anyhow::Result<Status> {
+pub(super) fn inspect_status(root: &Path) -> anyhow::Result<Status> {
     let root = fs::canonicalize(root)?;
     let intent = root.join("intent");
     ensure!(
@@ -165,6 +166,7 @@ fn inspect_status(root: &Path) -> anyhow::Result<Status> {
                 "last_activated"
             },
             desired_revision: Some(state.desired.revision()),
+            source_kind: Some(state.desired.source()?.kind().to_owned()),
             last_activated_revision: last.map(|last| last.revision),
             pending_publication,
             pending_activation: pending,
@@ -174,6 +176,7 @@ fn inspect_status(root: &Path) -> anyhow::Result<Status> {
             schema: "lenso.configuration-status.v1",
             state: "no_external_source",
             desired_revision: None,
+            source_kind: None,
             last_activated_revision: None,
             pending_publication: false,
             pending_activation: false,
