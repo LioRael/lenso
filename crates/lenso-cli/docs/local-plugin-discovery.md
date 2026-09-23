@@ -34,6 +34,37 @@ An empty/comment-only TOML file uses the Plugin's defaults. App-owned Plugins ge
 a disableable `default` Instance. Duplicate identities, ambiguous providers,
 invalid configuration, and disabled required providers fail before publication.
 
+## Exact linked Cargo catalog adoption
+
+The source-only Marketplace channel is distinct from a portable Bundle. Given
+an exact signed linked-Cargo snapshot, an independently configured public trust
+file, and the matching registry `.crate` already downloaded by the operator:
+
+```sh
+lenso app add example.web@0.4.5 --root ./my-app \
+  --linked-snapshot ./linked-cargo.json --trust ./catalog-trust.json \
+  --crate ./example-web-plugin-0.4.5.crate
+lenso app build --root ./my-app --out ./dist-web
+lenso app check --root ./dist-web/intent --json
+lenso app show --root ./dist-web/intent --json
+```
+
+`app add` verifies the catalog signature, exact listed version, Native Host
+target, `.crate` digest, archive contents, and linked Plugin source identity.
+It vendors the exact source under `vendor/lenso/`, records the source digest,
+and selects it through the App's Plugin Root. It does not download the crate,
+prove registry provenance by itself, or make a `host_provided` integration a
+generic candidate. Review build-time code before compiling it.
+
+To remove an unchanged adopted source, use `lenso app unadopt
+example.web@0.4.5 --root ./my-app`, then rebuild and check the App. Unadoption
+moves both source and default Plugin Root intent to a recoverable `.lenso/trash/`
+entry. It refuses edited source or user-modified Plugin Root intent; resolve
+those changes explicitly before retrying. An upgrade uses an explicit
+unadopt/add/build/check sequence for two exact versions, not a runtime fallback
+or implicit semver selection. A signed catalog listing alone does not prove a
+release is installed, buildable, or running.
+
 ## Build, inspect, and run
 
 ```sh

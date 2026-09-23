@@ -274,6 +274,10 @@ pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
         "linked Cargo source lock does not match requested identity"
     );
     ensure!(
+        source_digest(&source_path)? == lock.source_digest,
+        "linked Cargo source has user changes; preserve it and review before unadopting"
+    );
+    ensure!(
         intent_path.is_dir(),
         "linked Cargo Plugin Root intent is missing"
     );

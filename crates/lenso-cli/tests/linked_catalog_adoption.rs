@@ -353,6 +353,32 @@ fn unadopt_exact_source(cli: &str, root: &std::path::Path) {
     assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
 }
 
+fn modified_linked_source_cannot_unadopt(cli: &str, root: &std::path::Path) {
+    let source = root.join("vendor/lenso/example.web/0.4.5/src/lib.rs");
+    let original = fs::read(&source).unwrap();
+    fs::write(&source, b"pub fn user_change() {}\n").unwrap();
+    let rejected = Command::new(cli)
+        .args(["app", "unadopt", "example.web@0.4.5", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(
+        String::from_utf8_lossy(&rejected.stderr).contains("source has user changes"),
+        "{}",
+        String::from_utf8_lossy(&rejected.stderr)
+    );
+    assert!(source.exists());
+    assert!(root.join("plugins/example.web/default.toml").exists());
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join("lenso.toml")).unwrap()).unwrap();
+    assert_eq!(
+        config["plugin_sources"][0].as_str(),
+        Some("vendor/lenso/example.web/0.4.5")
+    );
+    fs::write(source, original).unwrap();
+}
+
 fn prove_removed_build_when_requested(cli: &str, root: &std::path::Path) {
     if std::env::var_os("LENSO_LINKED_BUILD_PROOF").is_none() {
         return;
@@ -632,6 +658,7 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     );
     modified_linked_source_cannot_build(cli, &root);
     generated_cargo_lock_is_not_authored_source(cli, &root);
+    modified_linked_source_cannot_unadopt(cli, &root);
     prove_build_when_requested(cli, &root);
     assert_host_provided_rejected(
         cli,
