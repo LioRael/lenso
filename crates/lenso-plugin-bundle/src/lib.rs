@@ -3152,4 +3152,66 @@ root-slot = "tools"
             ImplementationRejectionReason::HostLinkedBuildRequired
         )));
     }
+
+    #[test]
+    fn v5_runtime_profile_mismatch_explains_exact_abi_requirement() {
+        let digest = sha256_digest(b"export default {};");
+        let manifest = PluginManifest::V5(PluginManifestV5 {
+            schema_version: 5,
+            contract: PluginContract::new("example.profile", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV5 {
+                id: "portable".to_owned(),
+                variants: vec![PluginVariantV5 {
+                    id: "quickjs".to_owned(),
+                    host_targets: vec!["*".to_owned()],
+                    artifact: PluginArtifactV2 {
+                        path: "implementations/quickjs/plugin.js".to_owned(),
+                        digest: digest.clone(),
+                        size: 18,
+                        media_type: "application/javascript".to_owned(),
+                        target: "javascript-es2023".to_owned(),
+                    },
+                    runtime: PluginImplementation::new(
+                        "example.profile",
+                        digest,
+                        "plugin.js",
+                        ExecutionClassId::new("lenso.quickjs@1"),
+                    )
+                    .with_runtime_profile("lenso.quickjs-authoring@2"),
+                }],
+            }],
+        });
+        let parsed =
+            ManifestDocument::parse(&canonical_manifest_bytes(&manifest).unwrap()).unwrap();
+        let policy = ImplementationPolicy {
+            host_target: "aarch64-apple-darwin".to_owned(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.quickjs@1"),
+                "lenso.quickjs-authoring@1",
+                ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+            )],
+        };
+        let explanation = explain_implementation(&parsed.value, &policy).unwrap();
+        assert!(!explanation.is_selected());
+        assert!(matches!(
+            explanation.rejected.as_slice(),
+            [RejectedPluginImplementation {
+                implementation_id,
+                variant_id: Some(variant_id),
+                reason: ImplementationRejectionReason::RuntimeProfileMismatch {
+                    required_runtime_profile,
+                    admitted_runtime_profiles,
+                },
+                ..
+            }] if implementation_id == "portable"
+                && variant_id == "quickjs"
+                && required_runtime_profile == "lenso.quickjs-authoring@2"
+                && admitted_runtime_profiles == &["lenso.quickjs-authoring@1".to_owned()]
+        ));
+        assert!(matches!(
+            resolve_implementation(&parsed.value, &policy),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("runtime ABI/profile")
+        ));
+    }
 }

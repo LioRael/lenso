@@ -93,6 +93,10 @@ pub enum ImplementationRejectionReason {
     /// A linked native factory is a Host build input, not a loadable Bundle Artifact.
     HostLinkedBuildRequired,
     RuntimeNotAdmitted,
+    RuntimeProfileMismatch {
+        required_runtime_profile: String,
+        admitted_runtime_profiles: Vec<String>,
+    },
     MissingTargetCapabilities {
         requirements: Vec<TargetCapabilityRequirement>,
     },
@@ -519,10 +523,23 @@ fn record_unadmitted_runtimes(
             .iter()
             .any(|admission| candidate_matches_admission(candidate, admission))
         {
-            rejected.push(rejected_candidate(
-                candidate,
-                ImplementationRejectionReason::RuntimeNotAdmitted,
-            ));
+            let admitted_profiles = policy
+                .runtimes
+                .iter()
+                .filter(|admission| {
+                    admission.execution_class == *candidate.descriptor.execution_class()
+                })
+                .map(|admission| admission.runtime_profile.clone())
+                .collect::<BTreeSet<_>>();
+            let reason = if admitted_profiles.is_empty() {
+                ImplementationRejectionReason::RuntimeNotAdmitted
+            } else {
+                ImplementationRejectionReason::RuntimeProfileMismatch {
+                    required_runtime_profile: candidate.descriptor.runtime_profile().to_owned(),
+                    admitted_runtime_profiles: admitted_profiles.into_iter().collect(),
+                }
+            };
+            rejected.push(rejected_candidate(candidate, reason));
         }
     }
 }
@@ -632,6 +649,17 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
         ImplementationRejectionReason::HostLinkedBuildRequired =>
             "native-linked Plugin is a static build input; adopt its exact source and rebuild the Host, not a runtime-loadable Bundle Artifact".to_owned(),
         ImplementationRejectionReason::RuntimeNotAdmitted => "runtime is not admitted".to_owned(),
+        ImplementationRejectionReason::RuntimeProfileMismatch {
+            required_runtime_profile,
+            admitted_runtime_profiles,
+        } => format!(
+            "runtime ABI/profile `{required_runtime_profile}` is not admitted (Host admits {})",
+            admitted_runtime_profiles
+                .iter()
+                .map(|profile| format!("`{profile}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         ImplementationRejectionReason::MissingTargetCapabilities { requirements } => format!(
             "missing target capabilities {}",
             requirements

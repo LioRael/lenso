@@ -108,6 +108,9 @@ rebuild rather than treating any packaged file as a loadable native factory.
 Legacy V2–V4 signed selection and digest behavior is unchanged; a future
 build-input variant format needs its own explicit wire contract and Host build
 binding.
+When the Host admits the Execution Class but only a different runtime
+ABI/profile version, selection reports the exact required and admitted
+profiles instead of a generic unadmitted-runtime error.
 
 Selection is not runtime fallback. If the selected implementation fails its
 Ready Gate or later invocation, the Generation fails through its ordinary
