@@ -4178,13 +4178,13 @@ root-slot = "tools"
                 ExecutionAdmissionRequirementV6::MemoryCeiling {
                     max_bytes: 16 * 1024 * 1024,
                 },
-                "did not prove an aggregate Guest linear-memory bound",
+                "did not prove an aggregate Guest linear-memory bound at or below",
             ),
             (
                 ExecutionAdmissionRequirementV6::MemoryCeiling {
                     max_bytes: 128 * 1024 * 1024,
                 },
-                "did not prove an aggregate Guest linear-memory bound",
+                "did not prove an aggregate Guest linear-memory bound at or below",
             ),
             (
                 ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 100 },
@@ -4218,7 +4218,10 @@ root-slot = "tools"
             let error = resolve_implementation(&parsed.value, &policy).unwrap_err();
             let detail = error.to_string();
             assert!(detail.contains(explanation_detail), "{detail}");
-            assert!(detail.contains("not durably bound"), "{detail}");
+            assert!(
+                detail.contains("durably bound Adapter configuration"),
+                "{detail}"
+            );
         }
 
         for requirement in [
@@ -4237,7 +4240,10 @@ root-slot = "tools"
                 .unwrap_err()
                 .to_string();
             assert!(detail.contains("no verified enforcement"), "{detail}");
-            assert!(!detail.contains("not durably bound"), "{detail}");
+            assert!(
+                !detail.contains("durably bound Adapter configuration"),
+                "{detail}"
+            );
         }
 
         let unrestricted = v6_admission_variant("unrestricted", wasm_class, "*", Vec::new());

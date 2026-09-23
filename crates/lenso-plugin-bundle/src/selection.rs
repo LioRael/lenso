@@ -890,8 +890,9 @@ fn render_unverified_requirements(
             ExecutionAdmissionRequirementV6::MemoryCeiling { .. }
         )
     }) {
-        detail
-            .push_str("; this Host admission did not prove an aggregate Guest linear-memory bound");
+        detail.push_str(
+            "; this Host admission did not prove an aggregate Guest linear-memory bound at or below the requested ceiling",
+        );
     }
     if requirements.iter().any(|requirement| {
         matches!(
@@ -908,9 +909,7 @@ fn render_unverified_requirements(
                 | ExecutionAdmissionRequirementV6::TurnDeadline { .. }
         )
     }) {
-        detail.push_str(
-            "; selected limits are not durably bound to and rechecked against the actual Adapter",
-        );
+        detail.push_str("; V6 limits require a selected, durably bound Adapter configuration rechecked at startup");
     }
     detail
 }
