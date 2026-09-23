@@ -144,10 +144,15 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
     } else {
         "Add Plugin source projects under `app/`."
     };
+    let web_routes = if args.web || root_package {
+        "The starter Web Plugin keeps one handler per `src/routes/*.rs` file. Add or remove a file and rebuild; duplicate route IDs or method/path pairs fail during compilation. The built Host never scans route source.\n\n"
+    } else {
+        ""
+    };
     fs::write(
         staging.path().join("README.md"),
         format!(
-            "# Local Lenso App\n\nRun `lenso dev` to build and watch this App. Run `lenso app build` to produce an offline executable, then `lenso app start --from dist`.\n\n{business_source} Keep instance configuration and explicit dependency choices in `plugins/`. No App configuration file is required. Optional `plugin_sources` in `lenso.toml` adds shared local candidates; an explicit Plugin Root instance is required to select them.\n\nThe generated Host supports native Rust, Bun, Process and Wasm implementations. Existing custom Host authoring remains available through `lenso app build --source ... --target ...`.\n"
+            "# Local Lenso App\n\nRun `lenso dev` to build and watch this App. Run `lenso app build` to produce an offline executable, then `lenso app start --from dist`.\n\n{business_source} Keep instance configuration and explicit dependency choices in `plugins/`. No App configuration file is required. Optional `plugin_sources` in `lenso.toml` adds shared local candidates; an explicit Plugin Root instance is required to select them.\n\n{web_routes}The generated Host supports native Rust, Bun, Process and Wasm implementations. Existing custom Host authoring remains available through `lenso app build --source ... --target ...`.\n"
         ),
     )?;
     super::build::publish_new_output(staging.path(), &destination)?;
@@ -230,20 +235,49 @@ pub fn start(args: StartArgs) -> anyhow::Result<()> {
 fn prepare_web_starter(root: &std::path::Path, no_install: bool) -> anyhow::Result<()> {
     let source = root.join("src/lib.rs");
     let code = fs::read_to_string(&source)?
-        .replace("pub const fn link() {}", "pub fn link() { link_plugin(); }")
-        .replace(
-            "impl GreetingsHttp {",
-            r#"impl GreetingsHttp {
-    #[get("local.home", "/")]
-    async fn home(&self) -> Result<HandleResponse, Problem> {
-        let mut response = lenso_capability_http_endpoint::response::text(
-            StatusCode::OK, include_str!("../public/index.html"));
-        response.headers[0].value = "text/html; charset=utf-8".into();
-        Ok(response)
-    }
-"#,
-        );
+        .replace("pub const fn link() {}", "pub fn link() { link_plugin(); }");
     fs::write(source, code)?;
+    fs::create_dir_all(root.join("src/routes"))?;
+    fs::write(
+        root.join("src/routes/home.rs"),
+        r#"#[get("local.home", "/")]
+async fn home(&self) -> Result<HandleResponse, Problem> {
+    let mut response = lenso_capability_http_endpoint::response::text(
+        StatusCode::OK, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/public/index.html")));
+    response.headers[0].value = "text/html; charset=utf-8".into();
+    Ok(response)
+}
+"#,
+    )?;
+    fs::create_dir_all(root.join("tests"))?;
+    fs::write(
+        root.join("tests/home.rs"),
+        r#"use std::time::Duration;
+
+use bytes::Bytes;
+use http::Request;
+use lenso_kernel::ShutdownOutcome;
+use lenso_test::TestApp;
+use lenso_web_host::NativeWebHost;
+use local_starter::GreetingsHttp;
+
+#[test]
+fn serves_the_homepage_through_ingress() {
+    let prepared = NativeWebHost::new()
+        .plugin::<GreetingsHttp>()
+        .prepare_simulated()
+        .unwrap();
+    let (plan, registry, web) = prepared.into_parts();
+    let app = TestApp::builder(plan).with_registry(registry).start().unwrap();
+    let response = app.run(web.request(
+        Request::builder().method("GET").uri("/").body(Bytes::new()).unwrap(),
+    )).unwrap();
+    assert_eq!(response.status(), 200);
+    assert!(response.body().starts_with(b"<!doctype html>"));
+    assert_eq!(app.shutdown(Duration::from_secs(1)), ShutdownOutcome::Clean);
+}
+"#,
+    )?;
     fs::create_dir_all(root.join("public"))?;
     fs::write(
         root.join("public/index.html"),
@@ -340,6 +374,39 @@ mod tests {
         assert!(manifest.contains("lenso-test = { version = \"=0.1.2\""));
         assert!(plugin.join("tests/simulated_web.rs").is_file());
         assert!(plugin.join("public/index.html").is_file());
+        assert!(plugin.join("src/routes/home.rs").is_file());
+        assert!(
+            fs::read_to_string(destination.join("README.md"))
+                .unwrap()
+                .contains("src/routes/*.rs")
+        );
+        assert!(
+            fs::read_to_string(plugin.join("src/routes/home.rs"))
+                .unwrap()
+                .contains("#[get(\"local.home\", \"/\")]")
+        );
+    }
+
+    #[test]
+    #[ignore = "clean-room test downloads the pinned Web cohort"]
+    fn clean_room_web_app_starter_runs_generated_tests() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("starter");
+        create(CreateArgs {
+            directory: destination.clone(),
+            lang: None,
+            runtime: None,
+            web: true,
+            cli: false,
+            no_install: true,
+        })
+        .unwrap();
+        let status = std::process::Command::new("cargo")
+            .args(["test"])
+            .current_dir(destination.join("app/local.starter"))
+            .status()
+            .unwrap();
+        assert!(status.success(), "generated Web App tests failed");
     }
 
     #[test]

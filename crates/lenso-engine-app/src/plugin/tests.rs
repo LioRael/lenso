@@ -118,7 +118,10 @@ fn bun_descriptor_rejects_duplicate_providers() {
 fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     let files = web_plugin_scaffold("company.greetings-http");
     let manifest = files.get(Path::new("Cargo.toml")).unwrap();
+    let build = files.get(Path::new("build.rs")).unwrap();
     let source = files.get(Path::new("src/lib.rs")).unwrap();
+    let create_route = files.get(Path::new("src/routes/create.rs")).unwrap();
+    let search_route = files.get(Path::new("src/routes/search.rs")).unwrap();
     let readme = files.get(Path::new("README.md")).unwrap();
 
     assert!(manifest.contains("plugin-id = \"company.greetings-http\""));
@@ -135,12 +138,15 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(manifest.contains("lenso-web-host"));
     assert!(manifest.contains("lenso-test"));
     assert!(manifest.contains("schemars = \"1.2\""));
+    assert!(manifest.contains("syn = { version = \"2\", features = [\"full\"] }"));
     assert!(source.contains("#[lenso::plugin]"));
-    assert!(source.contains("#[endpoint]"));
-    assert!(source.contains("#[openapi_contract("));
+    assert!(source.contains("include!(concat!(env!(\"OUT_DIR\"), \"/web_routes.rs\"))"));
+    assert!(build.contains("syn::parse_file"));
+    assert!(build.contains("#[endpoint]"));
+    assert!(create_route.contains("#[openapi_contract("));
     assert!(source.contains("JsonSchema"));
-    assert!(source.contains("#[query("));
-    assert!(source.contains("Result<(StatusCode, Json<Greeting>), Problem>"));
+    assert!(search_route.contains("#[query("));
+    assert!(create_route.contains("Result<(StatusCode, Json<Greeting>), Problem>"));
     assert!(source.contains("EndpointTest"));
     assert!(source.contains("pub const fn link()"));
     let simulated = files.get(Path::new("tests/simulated_web.rs")).unwrap();
@@ -174,7 +180,10 @@ fn web_plugin_new_writes_the_complete_project() {
     let project = root.path().join("company.greetings-http");
     for path in [
         "Cargo.toml",
+        "build.rs",
         "src/lib.rs",
+        "src/routes/create.rs",
+        "src/routes/search.rs",
         "tests/simulated_web.rs",
         "WEB_GOLDEN_PATH.md",
         "README.md",
@@ -197,6 +206,59 @@ fn clean_room_web_plugin_runs_generated_tests() {
         dry_run: false,
     })
     .unwrap();
+    let project = root.path().join("company.greetings-http");
+    let library = project.join("src/lib.rs");
+    let original = fs::read_to_string(&library).unwrap();
+    fs::write(
+        project.join("src/routes/health.rs"),
+        "#[get(\"greetings.health\", \"/health\")]\nasync fn health(&self) -> Result<HandleResponse, Problem> {\n    Ok(lenso_capability_http_endpoint::response::text(StatusCode::OK, \"ok\"))\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        &library,
+        format!(
+            "{original}\n#[cfg(test)] mod route_file_proof {{\n    use super::*;\n    #[test] fn added_route_dispatches() {{\n        let result = futures::executor::block_on(lenso_capability_http_endpoint::testing::EndpointTest::new(GreetingsHttp::default()).request(\"greetings.health\").send()).unwrap();\n        assert_eq!(result.status(), StatusCode::OK);\n    }}\n}}\n"
+        ),
+    )
+    .unwrap();
+    run_cargo(&project, &["test", "--locked"], "test added Web route").unwrap();
+
+    fs::write(
+        project.join("src/routes/duplicate.rs"),
+        "#[post(\"greetings.other\", \"/greetings\")]\nasync fn duplicate(&self) -> Result<HandleResponse, Problem> { unreachable!() }\n",
+    )
+    .unwrap();
+    let conflict = Command::new("cargo")
+        .args(["check", "--locked"])
+        .current_dir(&project)
+        .output()
+        .unwrap();
+    assert!(!conflict.status.success());
+    let diagnostic = String::from_utf8_lossy(&conflict.stderr);
+    assert!(diagnostic.contains("duplicate Web POST /greetings"));
+    assert!(diagnostic.contains("duplicate.rs"));
+    assert!(diagnostic.contains("create.rs"));
+
+    fs::write(
+        project.join("src/routes/duplicate.rs"),
+        "#[get(\"greetings.create\", \"/another\")]\nasync fn duplicate(&self) -> Result<HandleResponse, Problem> { unreachable!() }\n",
+    )
+    .unwrap();
+    let conflict = Command::new("cargo")
+        .args(["check", "--locked"])
+        .current_dir(&project)
+        .output()
+        .unwrap();
+    assert!(!conflict.status.success());
+    let diagnostic = String::from_utf8_lossy(&conflict.stderr);
+    assert!(diagnostic.contains("duplicate Web route ID `greetings.create`"));
+    assert!(diagnostic.contains("duplicate.rs"));
+    assert!(diagnostic.contains("create.rs"));
+
+    fs::remove_file(project.join("src/routes/duplicate.rs")).unwrap();
+    fs::remove_file(project.join("src/routes/health.rs")).unwrap();
+    fs::write(&library, original).unwrap();
+    run_cargo(&project, &["test", "--locked"], "test removed Web route").unwrap();
 }
 
 #[test]

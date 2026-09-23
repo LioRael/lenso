@@ -123,6 +123,10 @@ lenso-capability-http-endpoint = {{ version = "0.3.4", git = "https://github.com
 serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
 
+[build-dependencies]
+quote = "1"
+syn = {{ version = "2", features = ["full"] }}
+
 [dev-dependencies]
 bytes = "1"
 futures = "0.3"
@@ -182,62 +186,7 @@ pub struct GreetingsHttp {
 /// Keeps this Plugin's generated factory linked into a native Host binary.
 pub const fn link() {}
 
-#[endpoint]
-impl GreetingsHttp {
-    #[post("greetings.create", "/greetings")]
-    #[openapi({
-        summary: "Create a greeting",
-        responses: {
-            "201": { description: "Greeting created" }
-        }
-    })]
-    #[openapi_contract(
-        success = 201,
-        errors = [(400, "invalid_name")]
-    )]
-    async fn create(
-        &self,
-        Json(input): Json<CreateGreeting>,
-    ) -> Result<(StatusCode, Json<Greeting>), Problem> {
-        // A real Plugin normally awaits its business Capability here.
-        std::future::ready(()).await;
-        let name = input.name.trim();
-        if name.is_empty() {
-            return Err(Problem::new(
-                StatusCode::BAD_REQUEST,
-                "invalid_name",
-                "name must not be empty",
-            ));
-        }
-
-        let sequence = self.next_id.get() + 1;
-        self.next_id.set(sequence);
-        let greeting = Greeting {
-            id: format!("greeting-{sequence}"),
-            message: format!("Hello, {name}!"),
-        };
-        self.greetings
-            .borrow_mut()
-            .insert(greeting.id.clone(), greeting.clone());
-        Ok((StatusCode::CREATED, Json(greeting)))
-    }
-
-    #[query("greetings.search", "/greetings/search")]
-    async fn search(
-        &self,
-        Json(input): Json<SearchGreetings>,
-    ) -> Result<Json<Vec<Greeting>>, Problem> {
-        std::future::ready(()).await;
-        let greetings = self
-            .greetings
-            .borrow()
-            .values()
-            .filter(|greeting| greeting.message.contains(&input.term))
-            .cloned()
-            .collect();
-        Ok(Json(greetings))
-    }
-}
+include!(concat!(env!("OUT_DIR"), "/web_routes.rs"));
 
 #[cfg(test)]
 mod tests {
@@ -298,6 +247,60 @@ mod tests {
 }
 "#
     .to_owned();
+    let create_route = r#"#[post("greetings.create", "/greetings")]
+#[openapi({
+    summary: "Create a greeting",
+    responses: {
+        "201": { description: "Greeting created" }
+    }
+})]
+#[openapi_contract(
+    success = 201,
+    errors = [(400, "invalid_name")]
+)]
+async fn create(
+    &self,
+    Json(input): Json<CreateGreeting>,
+) -> Result<(StatusCode, Json<Greeting>), Problem> {
+    // A real Plugin normally awaits its business Capability here.
+    std::future::ready(()).await;
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err(Problem::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_name",
+            "name must not be empty",
+        ));
+    }
+
+    let sequence = self.next_id.get() + 1;
+    self.next_id.set(sequence);
+    let greeting = Greeting {
+        id: format!("greeting-{sequence}"),
+        message: format!("Hello, {name}!"),
+    };
+    self.greetings
+        .borrow_mut()
+        .insert(greeting.id.clone(), greeting.clone());
+    Ok((StatusCode::CREATED, Json(greeting)))
+}
+"#;
+    let search_route = r#"#[query("greetings.search", "/greetings/search")]
+async fn search(
+    &self,
+    Json(input): Json<SearchGreetings>,
+) -> Result<Json<Vec<Greeting>>, Problem> {
+    std::future::ready(()).await;
+    let greetings = self
+        .greetings
+        .borrow()
+        .values()
+        .filter(|greeting| greeting.message.contains(&input.term))
+        .cloned()
+        .collect();
+    Ok(Json(greetings))
+}
+"#;
     let simulated_test = format!(
         concat!(
             "//! Socket-free Web contract test through the real event Ingress.\n",
@@ -331,7 +334,7 @@ mod tests {
     );
     let golden_path = concat!(
         "# Web Plugin golden path\n\n",
-        "The generated `src/lib.rs` is the normal starting point: typed JSON, a structured `Problem`, an opt-in strict OpenAPI operation, a small unit test, and `lenso plugin dev` for a real loopback request. It deliberately does not require knowing about generations, drivers, adapter catalogs, or factories.\n\n",
+        "The generated `src/lib.rs` owns the Plugin state and types; `src/routes/*.rs` contains one handler per file. The build script parses only this directory with `syn`, sorts files, and emits one `#[endpoint]` impl. The existing Endpoint macro derives the immutable route table and dispatch, while Web Ingress checks collisions across Plugins before readiness. Add or remove a route file, then rebuild; the built Host never scans source. Route IDs and method/path pairs must be unique. Keep at least one route or remove the Web Plugin itself.\n\nThe starter includes typed JSON, a structured `Problem`, an opt-in strict OpenAPI operation, a small unit test, and `lenso plugin dev` for a real loopback request. It deliberately does not require knowing about generations, drivers, adapter catalogs, or factories.\n\n",
         "## Add an authenticated business endpoint\n\n",
         "Authentication at the HTTP edge is a typed Capability dependency, not a middleware global. Add the product-owned Auth and business Capability crates, then make their generated clients explicit dependencies of the endpoint Plugin. The native authoring shape is intentionally small:\n\n",
         "```rust,ignore\n",
@@ -355,12 +358,24 @@ mod tests {
     )
     .to_owned();
     let readme = format!(
-        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations and the real event Ingress without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n\nSee [the Web golden path](WEB_GOLDEN_PATH.md) to add an authenticated business Capability, strict public OpenAPI, a simulated Host test, or a streaming endpoint without making the basic route depend on Runtime internals.\n"
+        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`. Each `src/routes/*.rs` file contains one handler; the build script combines selected files into one immutable Endpoint. Add or delete a route file, then rebuild. Duplicate IDs or method/path pairs fail with both filenames.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations and the real event Ingress without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n\nSee [the Web golden path](WEB_GOLDEN_PATH.md) to add an authenticated business Capability, strict public OpenAPI, a simulated Host test, or a streaming endpoint without making the basic route depend on Runtime internals.\n"
     );
 
     BTreeMap::from([
         (PathBuf::from("Cargo.toml"), manifest),
+        (
+            PathBuf::from("build.rs"),
+            include_str!("assets/web_routes_build.rs").to_owned(),
+        ),
         (PathBuf::from("src/lib.rs"), source),
+        (
+            PathBuf::from("src/routes/create.rs"),
+            create_route.to_owned(),
+        ),
+        (
+            PathBuf::from("src/routes/search.rs"),
+            search_route.to_owned(),
+        ),
         (PathBuf::from("tests/simulated_web.rs"), simulated_test),
         (PathBuf::from("WEB_GOLDEN_PATH.md"), golden_path),
         (PathBuf::from("README.md"), readme),
