@@ -12,7 +12,8 @@ pub use lenso_process_protocol::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    BundleError, PluginArtifactV2, PluginCargoBuildInputV6, PluginManifest, PluginVariantInputV6,
+    BundleError, ExecutionAdmissionRequirementV6, PluginArtifactV2, PluginCargoBuildInputV6,
+    PluginManifest, PluginVariantInputV6, RequiredPermissionV6,
 };
 
 /// An explicit, fail-closed capability profile for one admitted target runtime.
@@ -113,6 +114,11 @@ pub enum ImplementationRejectionReason {
     },
     InvalidTargetCapabilityProfile {
         profile: ExecutionTargetCapabilityProfile,
+    },
+    /// Candidate demands controls absent from the Host's verified runtime admission.
+    /// Target mechanism markers never count as sandbox or resource evidence.
+    ExecutionRequirementsUnverified {
+        requirements: Vec<ExecutionAdmissionRequirementV6>,
     },
     AmbiguousRuntimeAdmission {
         matching_implementation_ids: Vec<String>,
@@ -227,9 +233,9 @@ pub fn resolve_implementation(
 
 /// Explains a Host's exact implementation choice or all rejected candidates.
 ///
-/// A missing feature remains a rejection even if another implementation can be
-/// selected. This lets a CLI show the reason for a fallback while preserving the
-/// Host's declared runtime priority order.
+/// A missing target feature remains a rejection even if another implementation
+/// can be selected. Unverified execution controls instead veto the selection:
+/// a lower-priority or same-priority variant may not silently relax them.
 pub fn explain_implementation(
     manifest: &PluginManifest,
     policy: &ImplementationPolicy,
@@ -247,6 +253,7 @@ pub fn explain_implementation(
                 descriptor,
                 artifact_matches_wasm: value.artifact.media_type == "application/wasm",
                 enforce_artifact_capability: false,
+                execution_requirements: Vec::new(),
             };
             Ok(explain_candidates(&[candidate], policy))
         }
@@ -287,6 +294,7 @@ pub fn explain_implementation(
                         descriptor: value.contract.resolve(&variant.runtime),
                         artifact_matches_wasm: false,
                         enforce_artifact_capability: true,
+                        execution_requirements: Vec::new(),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -312,6 +320,7 @@ pub fn explain_implementation(
                         descriptor: value.contract.resolve(&variant.runtime),
                         artifact_matches_wasm: false,
                         enforce_artifact_capability: true,
+                        execution_requirements: variant.execution_requirements.clone(),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -329,6 +338,7 @@ struct Candidate {
     descriptor: PluginDescriptor,
     artifact_matches_wasm: bool,
     enforce_artifact_capability: bool,
+    execution_requirements: Vec<ExecutionAdmissionRequirementV6>,
 }
 
 #[derive(Clone, Debug)]
@@ -358,6 +368,7 @@ fn explain_profiled_implementation<'a>(
             descriptor: contract.resolve(runtime),
             artifact_matches_wasm: false,
             enforce_artifact_capability: false,
+            execution_requirements: Vec::new(),
         })
         .collect::<Vec<_>>();
     explain_candidates(&candidates, policy)
@@ -370,7 +381,14 @@ fn explain_candidates(
     let mut rejected = Vec::new();
 
     for admission in &policy.runtimes {
-        let compatible = candidates_for_admission(candidates, policy, admission, &mut rejected);
+        let (compatible, unverified_controls) =
+            candidates_for_admission(candidates, policy, admission, &mut rejected);
+        if unverified_controls {
+            return ImplementationSelectionExplanation {
+                selected: None,
+                rejected,
+            };
+        }
 
         match compatible.as_slice() {
             [] => {}
@@ -429,8 +447,9 @@ fn candidates_for_admission<'a>(
     policy: &ImplementationPolicy,
     admission: &RuntimeAdmission,
     rejected: &mut Vec<RejectedPluginImplementation>,
-) -> Vec<&'a Candidate> {
+) -> (Vec<&'a Candidate>, bool) {
     let mut compatible = Vec::new();
+    let mut unverified_controls = false;
     let capability_profile = admission.capability_profile();
     for candidate in candidates
         .iter()
@@ -445,14 +464,26 @@ fn candidates_for_admission<'a>(
             ));
             continue;
         }
-        if record_target_match(candidate, policy, rejected)
-            && record_artifact_format_match(candidate, admission, rejected)
+        if !record_target_match(candidate, policy, rejected) {
+            continue;
+        }
+        if !candidate.execution_requirements.is_empty() {
+            rejected.push(rejected_candidate(
+                candidate,
+                ImplementationRejectionReason::ExecutionRequirementsUnverified {
+                    requirements: candidate.execution_requirements.clone(),
+                },
+            ));
+            unverified_controls = true;
+            continue;
+        }
+        if record_artifact_format_match(candidate, admission, rejected)
             && record_capability_match(candidate, admission, rejected)
         {
             compatible.push(candidate);
         }
     }
-    compatible
+    (compatible, unverified_controls)
 }
 
 fn candidate_matches_admission(candidate: &Candidate, admission: &RuntimeAdmission) -> bool {
@@ -781,6 +812,14 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
             "invalid target capability profile `{}` for `{}`",
             profile.profile, profile.target_profile
         ),
+        ImplementationRejectionReason::ExecutionRequirementsUnverified { requirements } => format!(
+            "Host has no verified enforcement for {}; no weaker variant was selected",
+            requirements
+                .iter()
+                .map(render_execution_requirement)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         ImplementationRejectionReason::AmbiguousRuntimeAdmission {
             matching_implementation_ids,
         } => format!(
@@ -791,6 +830,28 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
     match &rejection.variant_id {
         Some(variant) => format!("{}/{}: {reason}", rejection.implementation_id, variant),
         None => format!("{}: {reason}", rejection.implementation_id),
+    }
+}
+
+fn render_execution_requirement(requirement: &ExecutionAdmissionRequirementV6) -> String {
+    match requirement {
+        ExecutionAdmissionRequirementV6::PermissionGrant { permission } => {
+            let permission = match permission {
+                RequiredPermissionV6::OutboundNetwork => "outbound network",
+                RequiredPermissionV6::FilesystemRead => "filesystem read",
+                RequiredPermissionV6::FilesystemWrite => "filesystem write",
+                RequiredPermissionV6::SpawnProcess => "process spawn",
+                RequiredPermissionV6::ReadEnvironment => "environment read",
+            };
+            format!("permission grant `{permission}`")
+        }
+        ExecutionAdmissionRequirementV6::OsSandbox => "OS sandbox isolation".to_owned(),
+        ExecutionAdmissionRequirementV6::MemoryCeiling { max_bytes } => {
+            format!("memory ceiling `{max_bytes}` bytes")
+        }
+        ExecutionAdmissionRequirementV6::TurnDeadline { max_millis } => {
+            format!("turn deadline `{max_millis}` ms")
+        }
     }
 }
 

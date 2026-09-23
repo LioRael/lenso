@@ -121,6 +121,34 @@ pub struct PluginVariantV6 {
     pub host_targets: Vec<String>,
     pub input: PluginVariantInputV6,
     pub runtime: PluginImplementation,
+    /// Candidate admission requirements, not evidence that controls are enforced.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub execution_requirements: Vec<ExecutionAdmissionRequirementV6>,
+}
+
+/// An execution control a variant requires the Host to prove before activation.
+///
+/// The current runtime admission profile does not prove any of these controls.
+/// Ordinary processes, Bun and `QuickJS` are not OS sandboxes; a Wasm Component
+/// marker alone does not prove a requested permission or resource ceiling.
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ExecutionAdmissionRequirementV6 {
+    PermissionGrant { permission: RequiredPermissionV6 },
+    OsSandbox,
+    MemoryCeiling { max_bytes: u64 },
+    TurnDeadline { max_millis: u64 },
+}
+
+/// A requested permission, not a grant or a claim of least-privilege isolation.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequiredPermissionV6 {
+    OutboundNetwork,
+    FilesystemRead,
+    FilesystemWrite,
+    SpawnProcess,
+    ReadEnvironment,
 }
 
 /// Build inputs are not runtime-loadable artifacts, even with a Native class.

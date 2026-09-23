@@ -151,6 +151,8 @@ pub struct SourcePluginVariantV6 {
     pub execution_class: ExecutionClassId,
     pub runtime_profile: String,
     pub required_target_capabilities: Vec<PlanExecutionTargetCapability>,
+    /// Candidate requirements; the Bundle builder does not grant or enforce them.
+    pub execution_requirements: Vec<ExecutionAdmissionRequirementV6>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -881,6 +883,8 @@ fn materialize_source_variant_v6(
             },
         },
     };
+    let mut execution_requirements = source.execution_requirements.clone();
+    execution_requirements.sort_unstable();
     Ok((
         PluginVariantV6 {
             id: source.id.clone(),
@@ -894,6 +898,7 @@ fn materialize_source_variant_v6(
             )
             .with_runtime_profile(&source.runtime_profile)
             .with_required_target_capabilities(source.required_target_capabilities.iter().copied()),
+            execution_requirements,
         },
         (path.clone(), bundle_path.clone(), bytes, is_executable),
     ))
@@ -1553,6 +1558,7 @@ fn validate_v6_manifest(manifest: &PluginManifestV6) -> Result<(), BundleError> 
             {
                 return invalid_manifest("V6 variant host targets must be non-empty");
             }
+            validate_execution_requirements_v6(&variant.execution_requirements)?;
             let (path, digest) = match &variant.input {
                 PluginVariantInputV6::Artifact { artifact } => {
                     validate_artifact(artifact)?;
@@ -1582,6 +1588,37 @@ fn validate_v6_manifest(manifest: &PluginManifestV6) -> Result<(), BundleError> 
                 || variant.runtime.runtime_profile().trim().is_empty()
             {
                 return invalid_manifest("V6 variant does not close Plugin authority");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_execution_requirements_v6(
+    requirements: &[ExecutionAdmissionRequirementV6],
+) -> Result<(), BundleError> {
+    if requirements.len() > 16 || requirements.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return invalid_manifest(
+            "V6 execution requirements must be unique and canonically ordered",
+        );
+    }
+    let mut memory_ceiling = false;
+    let mut turn_deadline = false;
+    for requirement in requirements {
+        match requirement {
+            ExecutionAdmissionRequirementV6::PermissionGrant { .. }
+            | ExecutionAdmissionRequirementV6::OsSandbox => {}
+            ExecutionAdmissionRequirementV6::MemoryCeiling { max_bytes } => {
+                if *max_bytes == 0 || memory_ceiling {
+                    return invalid_manifest("V6 needs one positive memory ceiling at most");
+                }
+                memory_ceiling = true;
+            }
+            ExecutionAdmissionRequirementV6::TurnDeadline { max_millis } => {
+                if *max_millis == 0 || turn_deadline {
+                    return invalid_manifest("V6 needs one positive turn deadline at most");
+                }
+                turn_deadline = true;
             }
         }
     }
@@ -3752,6 +3789,7 @@ root-slot = "tools"
                         execution_class: ExecutionClassId::new("lenso.native-rust@1"),
                         runtime_profile: "lenso.native-rust@1".to_owned(),
                         required_target_capabilities: Vec::new(),
+                        execution_requirements: Vec::new(),
                     },
                     SourcePluginVariantV6 {
                         id: "quickjs".to_owned(),
@@ -3766,6 +3804,7 @@ root-slot = "tools"
                         execution_class: ExecutionClassId::new("lenso.quickjs@1"),
                         runtime_profile: "lenso.quickjs-authoring@2".to_owned(),
                         required_target_capabilities: Vec::new(),
+                        execution_requirements: Vec::new(),
                     },
                 ],
             }],
@@ -3919,6 +3958,7 @@ root-slot = "tools"
                         "factory",
                         ExecutionClassId::new("lenso.native-rust@1"),
                     ),
+                    execution_requirements: Vec::new(),
                 }],
             }],
         };
@@ -3955,6 +3995,7 @@ root-slot = "tools"
                     execution_class: ExecutionClassId::new("lenso.native-rust@1"),
                     runtime_profile: "lenso.native-rust@1".to_owned(),
                     required_target_capabilities: Vec::new(),
+                    execution_requirements: Vec::new(),
                 }],
             }],
             output: output.clone(),
@@ -3966,5 +4007,270 @@ root-slot = "tools"
         ));
         assert!(!output.exists());
         assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    }
+
+    fn v6_admission_variant(
+        id: &str,
+        class: &str,
+        host_target: &str,
+        execution_requirements: Vec<ExecutionAdmissionRequirementV6>,
+    ) -> PluginVariantV6 {
+        let digest = sha256_digest(id.as_bytes());
+        let process = class == "lenso.process@1";
+        PluginVariantV6 {
+            id: id.to_owned(),
+            host_targets: vec![host_target.to_owned()],
+            input: PluginVariantInputV6::Artifact {
+                artifact: PluginArtifactV2 {
+                    path: format!("implementations/{id}/artifact"),
+                    digest: digest.clone(),
+                    size: id.len() as u64,
+                    media_type: if process {
+                        "application/vnd.lenso.process"
+                    } else {
+                        "application/javascript"
+                    }
+                    .to_owned(),
+                    target: if process {
+                        host_target
+                    } else {
+                        "javascript-es2023"
+                    }
+                    .to_owned(),
+                },
+            },
+            runtime: PluginImplementation::new(
+                "example.admission",
+                digest,
+                "artifact",
+                ExecutionClassId::new(class),
+            )
+            .with_runtime_profile(class),
+            execution_requirements,
+        }
+    }
+
+    fn v6_admission_manifest(variants: Vec<PluginVariantV6>) -> PluginManifest {
+        PluginManifest::V6(PluginManifestV6 {
+            schema_version: 6,
+            contract: PluginContract::new("example.admission", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV6 {
+                id: "portable".to_owned(),
+                variants,
+            }],
+        })
+    }
+
+    fn v6_admission_policy() -> ImplementationPolicy {
+        ImplementationPolicy {
+            host_target: "aarch64-apple-darwin".to_owned(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.quickjs@1"),
+                "lenso.quickjs@1",
+                ExecutionTargetCapabilities::none(),
+            )],
+        }
+    }
+
+    #[test]
+    fn v6_execution_requirements_need_real_host_enforcement_evidence() {
+        let requirements = [
+            ExecutionAdmissionRequirementV6::PermissionGrant {
+                permission: RequiredPermissionV6::OutboundNetwork,
+            },
+            ExecutionAdmissionRequirementV6::OsSandbox,
+            ExecutionAdmissionRequirementV6::MemoryCeiling {
+                max_bytes: 64 * 1024 * 1024,
+            },
+            ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 500 },
+        ];
+        for requirement in requirements {
+            let manifest = v6_admission_manifest(vec![v6_admission_variant(
+                "restricted",
+                "lenso.quickjs@1",
+                "*",
+                vec![requirement.clone()],
+            )]);
+            let wire = canonical_manifest_bytes(&manifest).unwrap();
+            let parsed = ManifestDocument::parse(&wire).unwrap();
+            let explanation =
+                explain_implementation(&parsed.value, &v6_admission_policy()).unwrap();
+            assert!(!explanation.is_selected());
+            assert!(matches!(
+                explanation.rejected.as_slice(),
+                [RejectedPluginImplementation {
+                    variant_id: Some(variant_id),
+                    reason: ImplementationRejectionReason::ExecutionRequirementsUnverified {
+                        requirements,
+                    },
+                    ..
+                }] if variant_id == "restricted" && requirements == &vec![requirement.clone()]
+            ));
+            assert!(matches!(
+                resolve_implementation(&parsed.value, &v6_admission_policy()),
+                Err(BundleError::InvalidBundle(detail)) if detail.contains("no verified enforcement")
+            ));
+        }
+    }
+
+    #[test]
+    fn v6_source_builder_canonicalizes_admission_requirements_without_granting_them() {
+        let root = tempfile::tempdir().unwrap();
+        let script = root.path().join("plugin.js");
+        fs::write(&script, b"export default {};").unwrap();
+        let output = root.path().join("restricted.lenso-plugin");
+        let built = build_source_plugin_release_bundle_v6(&SourcePluginReleaseBuildV6 {
+            contract: PluginContract::new("example.restricted", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![SourcePluginImplementationGroupV6 {
+                id: "portable".to_owned(),
+                variants: vec![SourcePluginVariantV6 {
+                    id: "quickjs".to_owned(),
+                    host_targets: vec!["*".to_owned()],
+                    input: SourcePluginVariantInputV6::Artifact {
+                        path: script,
+                        bundle_path: "implementations/portable/plugin.js".to_owned(),
+                        media_type: "application/javascript".to_owned(),
+                        target: "javascript-es2023".to_owned(),
+                    },
+                    entrypoint: "plugin.js".to_owned(),
+                    execution_class: ExecutionClassId::new("lenso.quickjs@1"),
+                    runtime_profile: "lenso.quickjs@1".to_owned(),
+                    required_target_capabilities: Vec::new(),
+                    execution_requirements: vec![
+                        ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 500 },
+                        ExecutionAdmissionRequirementV6::OsSandbox,
+                    ],
+                }],
+            }],
+            output: output.clone(),
+        })
+        .unwrap();
+        assert_eq!(verify_bundle_directory(&output).unwrap(), built);
+        let manifest = read_bundle_manifest(&output).unwrap();
+        let PluginManifest::V6(value) = &manifest else {
+            panic!("V6 builder must produce V6");
+        };
+        assert_eq!(
+            value.implementations[0].variants[0].execution_requirements,
+            vec![
+                ExecutionAdmissionRequirementV6::OsSandbox,
+                ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 500 },
+            ]
+        );
+        assert!(matches!(
+            resolve_implementation(&manifest, &v6_admission_policy()),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("no verified enforcement")
+        ));
+    }
+
+    #[test]
+    fn v6_execution_requirements_veto_same_priority_and_lower_priority_fallback() {
+        let restricted = v6_admission_variant(
+            "restricted",
+            "lenso.quickjs@1",
+            "*",
+            vec![ExecutionAdmissionRequirementV6::OsSandbox],
+        );
+        let unrestricted = v6_admission_variant("unrestricted", "lenso.quickjs@1", "*", Vec::new());
+        let same_priority = v6_admission_manifest(vec![restricted, unrestricted.clone()]);
+        let parsed =
+            ManifestDocument::parse(&canonical_manifest_bytes(&same_priority).unwrap()).unwrap();
+        let explanation = explain_implementation(&parsed.value, &v6_admission_policy()).unwrap();
+        assert!(!explanation.is_selected());
+        assert!(explanation.rejected.iter().any(|rejection| matches!(
+            rejection.reason,
+            ImplementationRejectionReason::ExecutionRequirementsUnverified { .. }
+        )));
+        assert!(!explanation.rejected.iter().any(|rejection| matches!(
+            rejection.reason,
+            ImplementationRejectionReason::AmbiguousRuntimeAdmission { .. }
+        )));
+
+        let preferred_process = v6_admission_variant(
+            "preferred-process",
+            "lenso.process@1",
+            "aarch64-apple-darwin",
+            vec![ExecutionAdmissionRequirementV6::OsSandbox],
+        );
+        let lower_priority = v6_admission_manifest(vec![preferred_process, unrestricted]);
+        let parsed =
+            ManifestDocument::parse(&canonical_manifest_bytes(&lower_priority).unwrap()).unwrap();
+        let mut policy = v6_admission_policy();
+        policy.runtimes.insert(
+            0,
+            RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.process@1"),
+                "lenso.process@1",
+                ExecutionTargetCapabilities::new([ExecutionTargetCapability::NativeProcess]),
+            ),
+        );
+        let explanation = explain_implementation(&parsed.value, &policy).unwrap();
+        assert!(!explanation.is_selected());
+        assert!(explanation.rejected.iter().any(|rejection| matches!(
+            rejection.reason,
+            ImplementationRejectionReason::ExecutionRequirementsUnverified { .. }
+        )));
+    }
+
+    #[test]
+    fn v6_execution_requirements_do_not_veto_target_incompatible_variant() {
+        let restricted_elsewhere = v6_admission_variant(
+            "linux-only",
+            "lenso.quickjs@1",
+            "x86_64-unknown-linux-gnu",
+            vec![ExecutionAdmissionRequirementV6::OsSandbox],
+        );
+        let compatible = v6_admission_variant("mac", "lenso.quickjs@1", "*", Vec::new());
+        let manifest = v6_admission_manifest(vec![restricted_elsewhere, compatible]);
+        let parsed =
+            ManifestDocument::parse(&canonical_manifest_bytes(&manifest).unwrap()).unwrap();
+        let explanation = explain_implementation(&parsed.value, &v6_admission_policy()).unwrap();
+        assert_eq!(
+            explanation.selected.unwrap().variant_id.as_deref(),
+            Some("mac")
+        );
+        assert!(matches!(
+            explanation.rejected.as_slice(),
+            [RejectedPluginImplementation {
+                reason: ImplementationRejectionReason::HostTargetMismatch { .. },
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn v6_absent_requirements_keep_canonical_wire_and_invalid_requirements_reject() {
+        let variant = v6_admission_variant("plain", "lenso.quickjs@1", "*", Vec::new());
+        let manifest = v6_admission_manifest(vec![variant.clone()]);
+        let wire = canonical_manifest_bytes(&manifest).unwrap();
+        assert!(!String::from_utf8_lossy(&wire).contains("execution_requirements"));
+        ManifestDocument::parse(&wire).unwrap();
+
+        let invalid_sets = [
+            vec![
+                ExecutionAdmissionRequirementV6::OsSandbox,
+                ExecutionAdmissionRequirementV6::OsSandbox,
+            ],
+            vec![ExecutionAdmissionRequirementV6::MemoryCeiling { max_bytes: 0 }],
+            vec![ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 0 }],
+            vec![
+                ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 100 },
+                ExecutionAdmissionRequirementV6::OsSandbox,
+            ],
+        ];
+        for requirements in invalid_sets {
+            let manifest = v6_admission_manifest(vec![PluginVariantV6 {
+                execution_requirements: requirements,
+                ..variant.clone()
+            }]);
+            assert!(matches!(
+                ManifestDocument::parse(&canonical_manifest_bytes(&manifest).unwrap()),
+                Err(BundleError::InvalidManifest(detail)) if detail.contains("execution requirements")
+                    || detail.contains("memory ceiling")
+                    || detail.contains("turn deadline")
+            ));
+        }
     }
 }
