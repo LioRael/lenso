@@ -102,6 +102,21 @@ pub fn execute_cancellable_with_budget(
     cancelled: &std::sync::atomic::AtomicBool,
     budget: ProcessBudget,
 ) -> anyhow::Result<Vec<u8>> {
+    let mut command = Command::new(&spec.program);
+    command.args(&spec.args).current_dir(&spec.directory);
+    execute_cancellable_command_with_budget(command, request, active, cancelled, budget)
+}
+
+/// Execute a trusted, fully configured command with the same cancellation and
+/// output bounds as a processor. The caller owns executable and environment
+/// selection; this function always replaces stdio and isolates a process group.
+pub fn execute_cancellable_command_with_budget(
+    mut command: Command,
+    request: &serde_json::Value,
+    active: Arc<AtomicI32>,
+    cancelled: &std::sync::atomic::AtomicBool,
+    budget: ProcessBudget,
+) -> anyhow::Result<Vec<u8>> {
     if cancelled.load(std::sync::atomic::Ordering::SeqCst) {
         bail!("processing cancelled");
     }
@@ -114,10 +129,7 @@ pub fn execute_cancellable_with_budget(
     let mut stdin = tempfile::tempfile()?;
     stdin.write_all(&input)?;
     std::io::Seek::rewind(&mut stdin)?;
-    let mut command = Command::new(&spec.program);
     command
-        .args(&spec.args)
-        .current_dir(&spec.directory)
         .stdin(stdin)
         .stdout(stdout.try_clone()?)
         .stderr(stderr.try_clone()?);
@@ -126,9 +138,10 @@ pub fn execute_cancellable_with_budget(
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    let program = command.get_program().to_string_lossy().into_owned();
     let child = command
         .spawn()
-        .with_context(|| format!("start processor {}", spec.program))?;
+        .with_context(|| format!("start processor {program}"))?;
     #[cfg(unix)]
     let group = CompilerGroup::new(active.clone(), child.id());
     let mut child = ChildGuard(child);
@@ -185,7 +198,7 @@ pub fn execute_cancellable_with_budget(
         .take(budget.output_limit_bytes())
         .read_to_string(&mut diagnostic)?;
     if !status.success() {
-        bail!("processor {} failed: {diagnostic}", spec.program);
+        bail!("processor {program} failed: {diagnostic}");
     }
     let mut stdout = stdout;
     stdout.rewind()?;

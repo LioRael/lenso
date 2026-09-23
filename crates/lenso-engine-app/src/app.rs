@@ -45,7 +45,9 @@ pub(crate) fn cargo_command() -> Command {
     build_command("cargo")
 }
 
-pub(crate) fn build_command(program: impl AsRef<OsStr>) -> Command {
+/// Create a build-phase command with only the toolchain environment allowlist.
+/// This removes ambient business credentials but is not a filesystem sandbox.
+pub fn build_command(program: impl AsRef<OsStr>) -> Command {
     let mut command = Command::new(program);
     command.env_clear();
     for name in [

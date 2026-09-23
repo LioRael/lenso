@@ -244,8 +244,17 @@ Host mechanics, not application behavior.
 resolution check as `lenso app check`, and Host admission explanations over
 stdio. Configure `--linked-snapshot` and `--trust` to enable
 signed candidate search; HTTPS documentation fetch also requires the explicit
-`--allow-document-fetch` flag. The MCP process cannot build, install, or edit
-the App.
+`--allow-document-fetch` flag. By default the MCP process cannot build,
+install, or edit the App. A local owner may pass `--allow-build` to expose
+`project_build`, `project_build_status`, and `project_build_cancel`. Builds use
+the fixed `--root`, publish to a new `dist`, require a client `request_id`, and
+run with a bounded deadline and output. Build tools may still update generated
+caches and create initially absent lockfiles. A repeated `request_id` returns
+the same operation; an existing `dist` is never overwritten. Status returns a
+diagnostic code rather than raw build logs, which may contain private data.
+The build environment filters ambient credentials but is not a filesystem
+sandbox; only enable builds for source packages you trust to compile locally.
+Installing or editing Plugin intent is not exposed by this MCP server.
 
 `project_facts` with `{}` retains the full `lenso app facts --json` shape for
 small projects. For a large project, request `section: "plugins"`,

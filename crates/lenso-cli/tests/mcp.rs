@@ -1,8 +1,9 @@
 //! Exercise the public MCP transport, not only the underlying facts function.
 use std::{
     fs,
-    io::Write,
+    io::{BufRead as _, BufReader, Write as _},
     process::{Command, Stdio},
+    time::{Duration, Instant},
 };
 
 #[test]
@@ -34,6 +35,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"project_facts","arguments":{"offset":1}}}"#,
         r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"diagnostics","limit":0}}}"#,
         r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"project_check","arguments":{}}}"#,
+        r#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"without-owner-authorization"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -53,12 +55,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 11, "{frames}");
+    assert_eq!(responses.len(), 12, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 11);
+    assert_eq!(by_id.len(), 12);
     let tools = by_id[&2]["result"]["tools"].as_array().unwrap();
     let names = tools
         .iter()
@@ -70,6 +72,9 @@ fn stdio_exposes_bounded_read_only_app_facts() {
             "linked_catalog",
             "linked_document",
             "project_check",
+            "project_build",
+            "project_build_cancel",
+            "project_build_status",
             "project_explain",
             "project_facts",
         ]
@@ -101,6 +106,8 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert!(by_id[&9]["error"].is_object());
     assert!(by_id[&10]["error"].is_object());
     assert!(by_id[&11]["error"].is_object());
+    assert!(by_id[&12]["error"].is_object());
+    assert!(!root.path().join("dist").exists());
 }
 
 #[test]
@@ -205,4 +212,91 @@ fn stdio_explanation_matches_app_explain_json() {
     )
     .unwrap();
     assert_eq!(actual_check, expected_check);
+}
+
+#[test]
+fn stdio_authorized_build_reports_the_same_app_check() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    let mut child = Command::new(cli)
+        .args(["mcp", "--root"])
+        .arg(&root)
+        .arg("--allow-build")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let call = |stdin: &mut std::process::ChildStdin,
+                stdout: &mut BufReader<std::process::ChildStdout>,
+                request: serde_json::Value|
+     -> serde_json::Value {
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        serde_json::from_str(&line).unwrap()
+    };
+    let initialized = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    assert_eq!(initialized["id"], 1);
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .unwrap();
+    let start = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"mcp-build-proof"}}}),
+    );
+    assert!(start["error"].is_null(), "{start}");
+    let status: serde_json::Value =
+        serde_json::from_str(start["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(status["state"], "running");
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let final_status = loop {
+        let response = call(
+            &mut stdin,
+            &mut stdout,
+            serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_build_status","arguments":{"request_id":"mcp-build-proof"}}}),
+        );
+        assert!(response["error"].is_null(), "{response}");
+        let status: serde_json::Value =
+            serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        if status["state"] != "running" {
+            break status;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "MCP build did not finish: {status}"
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(final_status["state"], "succeeded", "{final_status}");
+    let checked = Command::new(cli)
+        .args(["app", "check", "--json", "--root"])
+        .arg(root.join("dist"))
+        .output()
+        .unwrap();
+    assert!(checked.status.success());
+    let expected: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(final_status["check"], expected);
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
 }
