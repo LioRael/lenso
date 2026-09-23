@@ -609,6 +609,7 @@ fn unpack(
         let relative = &path[root.len()..];
         ensure!(
             !relative.is_empty()
+                && !relative.contains('\\')
                 && relative
                     .split('/')
                     .all(|part| !matches!(part, "" | "." | ".."))
@@ -683,4 +684,50 @@ fn same_tree(expected: &Path, actual: &Path) -> anyhow::Result<bool> {
         }
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crate_archive_rejects_windows_style_path_escape() {
+        let release = linked_cargo::LinkedCargoRelease {
+            plugin_id: "example.web".into(),
+            version: "0.4.5".into(),
+            publisher_id: "example".into(),
+            title: "Web".into(),
+            summary: "Web Plugin".into(),
+            source_url: "https://example.test/web".into(),
+            source_revision: "a".repeat(40),
+            license: "MIT".into(),
+            package: "example-web-plugin".into(),
+            registry_url: "https://crates.io".into(),
+            crate_digest: format!("sha256:{}", "a".repeat(64)),
+            integration: linked_cargo::LinkedCargoIntegration::LinkedPlugin,
+            targets: vec!["aarch64-apple-darwin".into()],
+            availability: Availability::Listed,
+            documentation: vec![],
+        };
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        let path = "example-web-plugin-0.4.5/src\\..\\escape.rs";
+        let contents = b"pub fn escaped() {}";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(contents.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, path, contents.as_slice())
+            .unwrap();
+        let archive = builder.into_inner().unwrap().finish().unwrap();
+        let stage = tempfile::tempdir().unwrap();
+        assert!(
+            unpack(&archive, stage.path(), &release)
+                .unwrap_err()
+                .to_string()
+                .contains("invalid path")
+        );
+        assert!(!stage.path().join("escape.rs").exists());
+    }
 }
