@@ -10,7 +10,7 @@ description = "Dynamic Plugin admission, resolution, and App Generation supervis
 [dependencies]
 hex.workspace = true
 lenso-app-plan.workspace = true
-lenso-plugin-bundle = { version = "0.5.1", path = "../lenso-plugin-bundle" }
+lenso-plugin-bundle = { version = "0.6.0", path = "../lenso-plugin-bundle" }
 lenso-kernel.workspace = true
 lenso-dylib-adapter = { version = "0.2.9", path = "../lenso-dylib-adapter" }
 lenso-process-adapter = { version = "0.3.12", path = "../lenso-process-adapter" }

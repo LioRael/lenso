@@ -2552,7 +2552,7 @@ version = "0.2.0"
 
 [[package]]
 name = "lenso-plugin-bundle"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "flate2",
  "hex",

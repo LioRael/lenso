@@ -22,7 +22,7 @@ lenso-contract-runtime = { path = "../lenso-contract-runtime", version = "0.2.0"
 lenso-plugin-authoring = { path = "../lenso-plugin-authoring", version = "0.2.0" }
 lenso-guest-sdk = { path = "../lenso-guest-sdk", version = "0.5.0" }
 lenso-kernel = { path = "../lenso-kernel", version = "=0.3.11" }
-lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.5.1" }
+lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.6.0" }
 lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.2", features = ["bundle-verification"] }
 ed25519-dalek = "2.2"
 hex = "0.4"

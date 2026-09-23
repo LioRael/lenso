@@ -37,7 +37,7 @@ nix = { version = "0.31", features = ["signal"] }
 
 [dev-dependencies]
 lenso-native-adapter = { version = "=0.3.15", path = "../lenso-native-adapter" }
-lenso-plugin-bundle = { version = "=0.5.1", path = "../lenso-plugin-bundle" }
+lenso-plugin-bundle = { version = "=0.6.0", path = "../lenso-plugin-bundle" }
 lenso-process-adapter = { version = "=0.3.12", path = "../lenso-process-adapter" }
 tempfile = "3"
 time.workspace = true
