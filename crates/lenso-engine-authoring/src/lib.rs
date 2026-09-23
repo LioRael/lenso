@@ -61,8 +61,9 @@ pub use configuration_authority::{
     PluginConfigurationSourceConflict, PluginConfigurationSourceDigest, PluginRequirementMigration,
     PluginRootChangeProposal, PluginRootChangePublication, PluginRootChangeSet,
     PluginRootConfigurationChange, PluginRootRevision, PluginRootRevisionConflict,
-    PluginRootRevisionParseError, PluginRootSourceDigest, propose_instance_configuration,
-    propose_plugin_root_changes, publish_instance_configuration, publish_plugin_root_changes,
+    PluginRootRevisionParseError, PluginRootSelectionChange, PluginRootSourceDigest,
+    propose_instance_configuration, propose_plugin_root_changes, publish_instance_configuration,
+    publish_plugin_root_changes,
 };
 pub use configuration_snapshot::{
     FilePluginConfigurationSnapshotSource, HttpsPluginConfigurationSnapshotSource,

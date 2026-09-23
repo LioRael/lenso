@@ -30,6 +30,7 @@ const PROPOSAL_SCHEMA: &str = "lenso.plugin-configuration-proposal.v1";
 const PUBLICATION_SCHEMA: &str = "lenso.plugin-configuration-publication.v1";
 const SOURCE_DIGEST_SCHEMA: &str = "lenso.plugin-configuration-source.v1";
 const ROOT_CHANGE_PROPOSAL_SCHEMA: &str = "lenso.plugin-root-change-proposal.v1";
+const ROOT_SELECTION_PROPOSAL_SCHEMA: &str = "lenso.plugin-root-change-proposal.v2";
 const ROOT_CHANGE_PUBLICATION_SCHEMA: &str = "lenso.plugin-root-change-publication.v1";
 const ROOT_SOURCE_DIGEST_SCHEMA: &str = "lenso.plugin-root-source.v1";
 
@@ -263,6 +264,36 @@ pub struct PluginRootConfigurationChange {
     toml: Vec<u8>,
 }
 
+/// One enabled or disabled Instance selection in a coordinated Root change.
+#[derive(Clone, Debug, Serialize)]
+pub struct PluginRootSelectionChange {
+    plugin_id: String,
+    instance_key: String,
+    enabled: bool,
+}
+
+impl PluginRootSelectionChange {
+    pub fn new(plugin_id: impl Into<String>, instance: impl Into<String>, enabled: bool) -> Self {
+        Self {
+            plugin_id: plugin_id.into(),
+            instance_key: instance.into(),
+            enabled,
+        }
+    }
+
+    pub fn plugin_id(&self) -> &str {
+        &self.plugin_id
+    }
+
+    pub fn instance_key(&self) -> &str {
+        &self.instance_key
+    }
+
+    pub const fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
 impl PluginRootConfigurationChange {
     pub fn new(
         plugin_id: impl Into<String>,
@@ -289,10 +320,11 @@ impl PluginRootConfigurationChange {
     }
 }
 
-/// A complete change request that can coordinate multiple configurations and choices.
+/// A complete change request for configurations, selections, and dependency choices.
 #[derive(Clone, Debug, Default)]
 pub struct PluginRootChangeSet {
     configurations: Vec<PluginRootConfigurationChange>,
+    selections: Vec<PluginRootSelectionChange>,
     dependency_choices: Option<Vec<DependencyChoice>>,
 }
 
@@ -300,6 +332,7 @@ impl PluginRootChangeSet {
     pub const fn new() -> Self {
         Self {
             configurations: Vec::new(),
+            selections: Vec::new(),
             dependency_choices: None,
         }
     }
@@ -307,6 +340,12 @@ impl PluginRootChangeSet {
     #[must_use]
     pub fn with_configuration(mut self, change: PluginRootConfigurationChange) -> Self {
         self.configurations.push(change);
+        self
+    }
+
+    #[must_use]
+    pub fn with_selection(mut self, change: PluginRootSelectionChange) -> Self {
+        self.selections.push(change);
         self
     }
 
@@ -322,6 +361,10 @@ impl PluginRootChangeSet {
 
     pub fn configurations(&self) -> &[PluginRootConfigurationChange] {
         &self.configurations
+    }
+
+    pub fn selections(&self) -> &[PluginRootSelectionChange] {
+        &self.selections
     }
 
     pub fn dependency_choices(&self) -> Option<&[DependencyChoice]> {
@@ -672,6 +715,15 @@ pub fn publish_plugin_root_changes(
             )
         })
         .collect::<Vec<_>>();
+    files.extend(verified.changes.selections.iter().map(|change| {
+        let path =
+            PathBuf::from(&change.plugin_id).join(format!("{}.disabled", change.instance_key));
+        if change.enabled {
+            root_transaction::RootFileChange::remove(path)
+        } else {
+            root_transaction::RootFileChange::write(path, Vec::new())
+        }
+    }));
     if let Some(choices) = &verified.materialized_choices {
         let document = DependencySelectionsDocument {
             schema_version: DEPENDENCY_SELECTIONS_SCHEMA_VERSION,
@@ -730,11 +782,23 @@ fn build_root_change_proposal(
 ) -> anyhow::Result<PluginRootChangeProposal> {
     let changes = normalize_change_set(changes)?;
     let instances = candidate_configuration_instances(current, &changes)?;
-    let mut candidate = PluginRootSnapshot::new(
-        current.releases().iter().cloned(),
-        instances,
-        current.disabled().iter().cloned(),
-    );
+    let mut disabled = current
+        .disabled()
+        .iter()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    for change in &changes.selections {
+        let id = PluginInstanceId::new(&change.plugin_id, &change.instance_key);
+        if change.enabled {
+            if !disabled.remove(&id) {
+                bail!("Plugin Instance `{id}` is not disabled");
+            }
+        } else {
+            disabled.insert(id);
+        }
+    }
+    let mut candidate =
+        PluginRootSnapshot::new(current.releases().iter().cloned(), instances, disabled);
     candidate = match &changes.dependency_choices {
         Some(choices) => candidate.with_dependency_choices(choices.clone()),
         None => crate::preserve_dependency_selections(candidate, current),
@@ -793,22 +857,42 @@ fn build_root_change_proposal(
     }
     let host_catalog_digest = host_catalog_digest(root)?;
     let source_digests = source_digests_for_changes(root, &changes)?;
-    let authority = serde_json::to_vec(&(
-        ROOT_CHANGE_PROPOSAL_SCHEMA,
-        base_revision.as_str(),
-        &host_catalog_digest,
-        source_digests
-            .iter()
-            .map(|source| (&source.path, &source.digest))
-            .collect::<Vec<_>>(),
-        candidate_revision.as_str(),
-        &changes.configurations,
-        &materialized_choices,
-        &requirement_migrations,
-    ))
+    let source_identities = source_digests
+        .iter()
+        .map(|source| (&source.path, &source.digest))
+        .collect::<Vec<_>>();
+    let schema = if changes.selections.is_empty() {
+        ROOT_CHANGE_PROPOSAL_SCHEMA
+    } else {
+        ROOT_SELECTION_PROPOSAL_SCHEMA
+    };
+    let authority = if changes.selections.is_empty() {
+        serde_json::to_vec(&(
+            schema,
+            base_revision.as_str(),
+            &host_catalog_digest,
+            &source_identities,
+            candidate_revision.as_str(),
+            &changes.configurations,
+            &materialized_choices,
+            &requirement_migrations,
+        ))
+    } else {
+        serde_json::to_vec(&(
+            schema,
+            base_revision.as_str(),
+            &host_catalog_digest,
+            &source_identities,
+            candidate_revision.as_str(),
+            &changes.configurations,
+            &changes.selections,
+            &materialized_choices,
+            &requirement_migrations,
+        ))
+    }
     .context("encode Plugin Root proposal authority")?;
     Ok(PluginRootChangeProposal {
-        schema: ROOT_CHANGE_PROPOSAL_SCHEMA,
+        schema,
         base_revision,
         host_catalog_digest,
         source_digests,
@@ -840,7 +924,10 @@ fn has_unreviewed_split(
 }
 
 fn normalize_change_set(mut changes: PluginRootChangeSet) -> anyhow::Result<PluginRootChangeSet> {
-    if changes.configurations.is_empty() && changes.dependency_choices.is_none() {
+    if changes.configurations.is_empty()
+        && changes.selections.is_empty()
+        && changes.dependency_choices.is_none()
+    {
         bail!("Plugin Root proposal must contain at least one change");
     }
     let mut identities = std::collections::BTreeSet::new();
@@ -857,6 +944,23 @@ fn normalize_change_set(mut changes: PluginRootChangeSet) -> anyhow::Result<Plug
         }
     }
     changes.configurations.sort_by(|left, right| {
+        left.plugin_id
+            .cmp(&right.plugin_id)
+            .then_with(|| left.instance_key.cmp(&right.instance_key))
+    });
+    let mut selections = std::collections::BTreeSet::new();
+    for change in &changes.selections {
+        validate_existing_plugin_id(&change.plugin_id)?;
+        validate_instance_filename(&change.instance_key)?;
+        if !selections.insert((change.plugin_id.clone(), change.instance_key.clone())) {
+            bail!(
+                "duplicate Plugin selection change for `{}/{}`",
+                change.plugin_id,
+                change.instance_key
+            );
+        }
+    }
+    changes.selections.sort_by(|left, right| {
         left.plugin_id
             .cmp(&right.plugin_id)
             .then_with(|| left.instance_key.cmp(&right.instance_key))
@@ -961,6 +1065,12 @@ fn source_digests_for_changes(
         .iter()
         .map(|change| format!("{}/{}.toml", change.plugin_id, change.instance_key))
         .collect::<Vec<_>>();
+    paths.extend(
+        changes
+            .selections
+            .iter()
+            .map(|change| format!("{}/{}.disabled", change.plugin_id, change.instance_key)),
+    );
     if changes.dependency_choices.is_some() {
         paths.extend([
             DEPENDENCY_SELECTIONS.to_owned(),
@@ -1479,6 +1589,7 @@ mod tests {
             .with_dependency_choices([]);
         let proposal = propose_plugin_root_changes(root.path(), &base, changes).unwrap();
 
+        assert_eq!(proposal.schema(), ROOT_CHANGE_PROPOSAL_SCHEMA);
         assert_eq!(proposal.status(), PluginConfigurationProposalStatus::Ready);
         assert_eq!(proposal.source_digests().len(), 4);
         assert!(proposal.host_catalog_digest().starts_with("sha256:"));
@@ -1507,6 +1618,69 @@ mod tests {
         .unwrap();
         assert_eq!(choices.schema_version, DEPENDENCY_SELECTIONS_SCHEMA_VERSION);
         assert!(choices.choices.is_empty());
+    }
+
+    #[test]
+    fn selection_proposal_previews_and_publishes_exact_disable_then_enable() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join(".lenso")).unwrap();
+        let host = lenso_app_plan::authoring::HostCatalog::new(
+            [HostSlot::many("agent")],
+            [HostPluginRelease::new(PluginDescriptor::new(
+                "example.agent",
+                "1.0.0",
+                "agent",
+            ))],
+            [],
+        );
+        fs::write(
+            root.path().join(HOST_CATALOG),
+            serde_json::to_vec(&host).unwrap(),
+        )
+        .unwrap();
+        fs::create_dir_all(root.path().join("plugins/example.agent")).unwrap();
+        fs::write(root.path().join("plugins/example.agent/default.toml"), "").unwrap();
+        let base = inspect_plugin_root(root.path()).unwrap().revision().clone();
+        let disable = propose_plugin_root_changes(
+            root.path(),
+            &base,
+            PluginRootChangeSet::new().with_selection(PluginRootSelectionChange::new(
+                "example.agent",
+                "default",
+                false,
+            )),
+        )
+        .unwrap();
+        assert_eq!(disable.schema(), ROOT_SELECTION_PROPOSAL_SCHEMA);
+        assert_eq!(
+            disable.status(),
+            PluginConfigurationProposalStatus::Ready,
+            "{:?}",
+            disable.diagnostics()
+        );
+        assert_eq!(disable.source_digests().len(), 1);
+        let marker = root.path().join("plugins/example.agent/default.disabled");
+        assert!(!marker.exists());
+        let disabled = publish_plugin_root_changes(root.path(), &disable).unwrap();
+        assert!(marker.is_file());
+        assert_eq!(disabled.resolved().instances().len(), 0);
+        assert!(publish_plugin_root_changes(root.path(), &disable).is_err());
+
+        let enable = propose_plugin_root_changes(
+            root.path(),
+            disabled.revision(),
+            PluginRootChangeSet::new().with_selection(PluginRootSelectionChange::new(
+                "example.agent",
+                "default",
+                true,
+            )),
+        )
+        .unwrap();
+        assert_eq!(enable.status(), PluginConfigurationProposalStatus::Ready);
+        let enabled = publish_plugin_root_changes(root.path(), &enable).unwrap();
+        assert!(!marker.exists());
+        assert_eq!(enabled.resolved().instances().len(), 1);
+        assert_eq!(enabled.revision(), &base);
     }
 
     #[test]

@@ -127,10 +127,50 @@ struct ProjectChangeApplyQuery {
     request_id: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ProjectSelectionPreviewQuery {
+    base_revision: String,
+    plugin_id: String,
+    instance: String,
+    enabled: bool,
+}
+
 const MAX_MCP_TEXT_BYTES: usize = 128 * 1024;
 
 #[tool_router]
 impl AppTools {
+    #[tool(
+        description = "Preview enabling or disabling one Plugin Instance against the exact current Root and Host without changing files"
+    )]
+    fn project_selection_preview(
+        &self,
+        Parameters(request): Parameters<ProjectSelectionPreviewQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        let preview = self
+            .changes
+            .preview_selection(
+                &request.base_revision,
+                &request.plugin_id,
+                &request.instance,
+                request.enabled,
+            )
+            .map_err(|_| {
+                McpError::invalid_request(
+                    "Plugin selection proposal failed; inspect the current Root revision and Host authority locally",
+                    None,
+                )
+            })?;
+        let json = serde_json::to_string(&preview)
+            .map_err(|_| McpError::internal_error("serialize Plugin selection preview", None))?;
+        if json.len() > MAX_MCP_TEXT_BYTES {
+            return Err(McpError::invalid_request(
+                "Plugin selection preview exceeds MCP output limit",
+                None,
+            ));
+        }
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+    }
+
     #[tool(
         description = "Preview one typed Plugin Instance configuration change against an exact Plugin Root revision; values are redacted and no file is changed"
     )]
@@ -164,7 +204,7 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Publish one exact reviewed Plugin Root configuration proposal; requires --allow-changes and a new client request_id"
+        description = "Publish one exact reviewed Plugin Root configuration or selection proposal; requires --allow-changes and a new client request_id"
     )]
     fn project_change_apply(
         &self,

@@ -260,6 +260,8 @@ Plugin Root revision and returns the proposal digest, changed field names,
 validation status, and required application step without exposing values. It
 requires a built or installed Host authority at the Plugin Root; a source-only
 App must first be built.
+`project_selection_preview` uses the same proposal authority to review one
+enable/disable action, including Host-required Instance rejection.
 `project_change_apply` requires a separate `--allow-changes` startup flag, the
 exact proposal digest, and a client `request_id`. It uses the same Host and
 source-fenced authority as ordinary Plugin configuration publication; a

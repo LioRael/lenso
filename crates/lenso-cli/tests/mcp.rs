@@ -80,6 +80,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
             "project_change_preview",
             "project_explain",
             "project_facts",
+            "project_selection_preview",
         ]
         .into()
     );
@@ -395,6 +396,128 @@ fn stdio_configuration_preview_and_apply_use_plugin_root_authority() {
     let replay_result: serde_json::Value =
         serde_json::from_str(replay["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(replay_result, first_result);
+    assert_required_selection_rejected(
+        &mut stdin,
+        &mut stdout,
+        &first_result["revision"],
+        temp.path(),
+    );
     drop(stdin);
     assert!(child.wait().unwrap().success());
+}
+
+fn assert_required_selection_rejected(
+    stdin: &mut std::process::ChildStdin,
+    stdout: &mut BufReader<std::process::ChildStdout>,
+    revision: &serde_json::Value,
+    root: &std::path::Path,
+) {
+    writeln!(stdin, "{}", serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_selection_preview","arguments":{"base_revision":revision,"plugin_id":"example.agent","instance":"default","enabled":false}}})).unwrap();
+    stdin.flush().unwrap();
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let response: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert!(response["error"].is_null(), "{response}");
+    let preview: serde_json::Value =
+        serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(preview["status"], "rejected");
+    assert_eq!(
+        preview["diagnostic_codes"],
+        serde_json::json!(["required_instance_disabled"])
+    );
+    assert!(!root.join("plugins/example.agent/default.disabled").exists());
+}
+
+#[test]
+fn stdio_selection_preview_and_apply_disable_then_enable() {
+    use lenso_app_plan::authoring::{HostCatalog, HostPluginRelease, HostSlot, PluginDescriptor};
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".lenso")).unwrap();
+    let host = HostCatalog::new(
+        [HostSlot::many("agent")],
+        [HostPluginRelease::new(PluginDescriptor::new(
+            "example.agent",
+            "1.0.0",
+            "agent",
+        ))],
+        [],
+    );
+    fs::write(
+        temp.path().join(".lenso/host-catalog.json"),
+        serde_json::to_vec(&host).unwrap(),
+    )
+    .unwrap();
+    fs::create_dir_all(temp.path().join("plugins/example.agent")).unwrap();
+    fs::write(temp.path().join("plugins/example.agent/default.toml"), "").unwrap();
+    let base = lenso_app_authoring::inspect_plugin_root(temp.path())
+        .unwrap()
+        .revision()
+        .as_str()
+        .to_owned();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_lenso"))
+        .args(["mcp", "--root"])
+        .arg(temp.path())
+        .arg("--allow-changes")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let initialized = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    assert_eq!(initialized["id"], 1);
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .unwrap();
+    let marker = temp.path().join("plugins/example.agent/default.disabled");
+    let mut revision = base;
+    for (enabled, request_id) in [(false, "disable"), (true, "enable")] {
+        let preview = mcp_roundtrip(
+            &mut stdin,
+            &mut stdout,
+            &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_selection_preview","arguments":{"base_revision":revision,"plugin_id":"example.agent","instance":"default","enabled":enabled}}}),
+        );
+        assert!(preview["error"].is_null(), "{preview}");
+        let preview: serde_json::Value =
+            serde_json::from_str(preview["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(preview["status"], "ready");
+        assert_eq!(preview["requested_enabled"], enabled);
+        let applied = mcp_roundtrip(
+            &mut stdin,
+            &mut stdout,
+            &serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_change_apply","arguments":{"proposal_digest":preview["proposal_digest"],"request_id":request_id}}}),
+        );
+        assert!(applied["error"].is_null(), "{applied}");
+        let applied: serde_json::Value =
+            serde_json::from_str(applied["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(applied["state"], "published");
+        assert_eq!(applied["kind"], "lenso.mcp-selection-apply");
+        assert_eq!(marker.exists(), !enabled);
+        revision = applied["revision"].as_str().unwrap().to_owned();
+    }
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
+fn mcp_roundtrip(
+    stdin: &mut std::process::ChildStdin,
+    stdout: &mut BufReader<std::process::ChildStdout>,
+    request: &serde_json::Value,
+) -> serde_json::Value {
+    writeln!(stdin, "{request}").unwrap();
+    stdin.flush().unwrap();
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    serde_json::from_str(&line).unwrap()
 }

@@ -2,7 +2,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     str::FromStr as _,
     sync::Mutex,
 };
@@ -11,7 +11,8 @@ use anyhow::{Context as _, ensure};
 use lenso_app_authoring::{
     LocalPluginRootAuthority, PluginConfigurationApplication, PluginConfigurationAuthority as _,
     PluginConfigurationProposal, PluginConfigurationProposalStatus,
-    PluginConfigurationSourceDigest, PluginRootRevision,
+    PluginConfigurationSourceDigest, PluginRootChangeProposal, PluginRootChangeSet,
+    PluginRootRevision, PluginRootSelectionChange,
 };
 use serde::Serialize;
 
@@ -31,6 +32,79 @@ pub(super) struct ChangePreview {
     values_redacted: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub(super) struct SelectionPreview {
+    schema_version: u32,
+    kind: &'static str,
+    proposal_digest: String,
+    base_revision: String,
+    candidate_revision: String,
+    plugin_id: String,
+    instance: String,
+    before_enabled: bool,
+    requested_enabled: bool,
+    status: &'static str,
+    application: &'static str,
+    diagnostic_codes: Vec<String>,
+}
+
+#[derive(Debug)]
+enum StoredProposal {
+    Configuration(Box<PluginConfigurationProposal>),
+    Selection(Box<PluginRootChangeProposal>),
+}
+
+impl StoredProposal {
+    fn status(&self) -> PluginConfigurationProposalStatus {
+        match self {
+            Self::Configuration(proposal) => proposal.status(),
+            Self::Selection(proposal) => proposal.status(),
+        }
+    }
+
+    fn base_revision(&self) -> &PluginRootRevision {
+        match self {
+            Self::Configuration(proposal) => proposal.base_revision(),
+            Self::Selection(proposal) => proposal.base_revision(),
+        }
+    }
+
+    fn candidate_revision(&self) -> &PluginRootRevision {
+        match self {
+            Self::Configuration(proposal) => proposal.candidate_revision(),
+            Self::Selection(proposal) => proposal.candidate_revision(),
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Configuration(_) => "lenso.mcp-configuration-apply",
+            Self::Selection(_) => "lenso.mcp-selection-apply",
+        }
+    }
+
+    fn publish(&self, authority: &LocalPluginRootAuthority) -> anyhow::Result<serde_json::Value> {
+        match self {
+            Self::Configuration(proposal) => {
+                let publication = authority.publish(proposal)?;
+                Ok(serde_json::json!({
+                    "base_revision": publication.base_revision().as_str(),
+                    "revision": publication.revision().as_str(),
+                    "proposal_digest": publication.proposal_digest(),
+                }))
+            }
+            Self::Selection(proposal) => {
+                let publication = authority.publish_changes(proposal)?;
+                Ok(serde_json::json!({
+                    "base_revision": publication.base_revision().as_str(),
+                    "revision": publication.revision().as_str(),
+                    "proposal_digest": publication.proposal_digest(),
+                }))
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ApplyRecord {
     proposal_digest: String,
@@ -39,7 +113,7 @@ struct ApplyRecord {
 
 #[derive(Debug, Default)]
 struct ChangeState {
-    proposals: BTreeMap<String, PluginConfigurationProposal>,
+    proposals: BTreeMap<String, StoredProposal>,
     applies: BTreeMap<String, ApplyRecord>,
 }
 
@@ -121,9 +195,73 @@ impl ChangeController {
                 state.proposals.len() < 32,
                 "MCP proposal history is full; restart the bridge"
             );
-            state
-                .proposals
-                .insert(proposal.digest().to_owned(), proposal);
+            state.proposals.insert(
+                proposal.digest().to_owned(),
+                StoredProposal::Configuration(Box::new(proposal)),
+            );
+        }
+        Ok(report)
+    }
+
+    pub(super) fn preview_selection(
+        &self,
+        base_revision: &str,
+        plugin_id: &str,
+        instance: &str,
+        enabled: bool,
+    ) -> anyhow::Result<SelectionPreview> {
+        let base = PluginRootRevision::from_str(base_revision)?;
+        let authority = LocalPluginRootAuthority::new(&self.root);
+        let proposal = authority.propose_changes(
+            &base,
+            PluginRootChangeSet::new()
+                .with_selection(PluginRootSelectionChange::new(plugin_id, instance, enabled)),
+        )?;
+        let current = authority.inspect()?;
+        ensure!(
+            current.revision() == proposal.base_revision(),
+            "Plugin Root changed while preparing the selection preview"
+        );
+        let before_enabled = current
+            .plugins()
+            .iter()
+            .find(|plugin| plugin.plugin_id() == plugin_id)
+            .and_then(|plugin| {
+                plugin.instances().iter().find(|candidate| {
+                    candidate.id().plugin_id() == plugin_id
+                        && candidate.id().instance_key() == instance
+                })
+            })
+            .context("Plugin Instance is not in the current Host Catalog or Plugin Root")?
+            .is_enabled();
+        let report = SelectionPreview {
+            schema_version: 1,
+            kind: "lenso.mcp-selection-preview",
+            proposal_digest: proposal.digest().to_owned(),
+            base_revision: proposal.base_revision().as_str().to_owned(),
+            candidate_revision: proposal.candidate_revision().as_str().to_owned(),
+            plugin_id: plugin_id.to_owned(),
+            instance: instance.to_owned(),
+            before_enabled,
+            requested_enabled: enabled,
+            status: status(proposal.status()),
+            application: application(proposal.application()),
+            diagnostic_codes: proposal
+                .diagnostics()
+                .iter()
+                .map(|diagnostic| diagnostic.code().to_owned())
+                .collect(),
+        };
+        let mut state = self.state.lock().expect("MCP change state lock");
+        if !state.proposals.contains_key(proposal.digest()) {
+            ensure!(
+                state.proposals.len() < 32,
+                "MCP proposal history is full; restart the bridge"
+            );
+            state.proposals.insert(
+                proposal.digest().to_owned(),
+                StoredProposal::Selection(Box::new(proposal)),
+            );
         }
         Ok(report)
     }
@@ -162,13 +300,18 @@ impl ChangeController {
             .and_then(|record| record.result["revision"].as_str())
             .map(str::to_owned)
         {
+            let kind = state
+                .proposals
+                .get(proposal_digest)
+                .context("unknown proposal digest")?
+                .kind();
             let current = LocalPluginRootAuthority::new(&self.root)
                 .inspect()
                 .ok()
                 .map(|view| view.revision().as_str().to_owned());
             let result = serde_json::json!({
                 "schema_version": 1,
-                "kind": "lenso.mcp-configuration-apply",
+                "kind": kind,
                 "request_id": request_id,
                 "proposal_digest": proposal_digest,
                 "revision": revision,
@@ -193,38 +336,7 @@ impl ChangeController {
             proposal.status() == PluginConfigurationProposalStatus::Ready,
             "proposal is not ready for publication"
         );
-        let authority = LocalPluginRootAuthority::new(&self.root);
-        let result = if let Ok(publication) = authority.publish(proposal) {
-            serde_json::json!({
-                "schema_version": 1,
-                "kind": "lenso.mcp-configuration-apply",
-                "request_id": request_id,
-                "proposal_digest": publication.proposal_digest(),
-                "base_revision": publication.base_revision().as_str(),
-                "revision": publication.revision().as_str(),
-                "state": "published",
-                "activation": "not_observed",
-            })
-        } else {
-            let current = authority
-                .inspect()
-                .ok()
-                .map(|view| view.revision().as_str().to_owned());
-            let uncertain = current.as_deref() == Some(proposal.candidate_revision().as_str())
-                || current.is_none();
-            serde_json::json!({
-                    "schema_version": 1,
-                    "kind": "lenso.mcp-configuration-apply",
-                    "request_id": request_id,
-                    "proposal_digest": proposal_digest,
-                    "base_revision": proposal.base_revision().as_str(),
-                    "candidate_revision": proposal.candidate_revision().as_str(),
-                    "current_revision": current,
-                    "state": if uncertain { "outcome_uncertain" } else { "rejected" },
-                    "diagnostic_code": if uncertain { "LENSO_CHANGE_OUTCOME_UNCERTAIN" } else { "LENSO_CHANGE_CONFLICT" },
-                    "activation": "not_observed",
-            })
-        };
+        let result = publication_result(&self.root, proposal, proposal_digest, request_id);
         state.applies.insert(
             request_id.to_owned(),
             ApplyRecord {
@@ -233,6 +345,46 @@ impl ChangeController {
             },
         );
         Ok(result)
+    }
+}
+
+fn publication_result(
+    root: &Path,
+    proposal: &StoredProposal,
+    proposal_digest: &str,
+    request_id: &str,
+) -> serde_json::Value {
+    let authority = LocalPluginRootAuthority::new(root);
+    if let Ok(publication) = proposal.publish(&authority) {
+        serde_json::json!({
+            "schema_version": 1,
+            "kind": proposal.kind(),
+            "request_id": request_id,
+            "proposal_digest": publication["proposal_digest"],
+            "base_revision": publication["base_revision"],
+            "revision": publication["revision"],
+            "state": "published",
+            "activation": "not_observed",
+        })
+    } else {
+        let current = authority
+            .inspect()
+            .ok()
+            .map(|view| view.revision().as_str().to_owned());
+        let uncertain =
+            current.as_deref() == Some(proposal.candidate_revision().as_str()) || current.is_none();
+        serde_json::json!({
+            "schema_version": 1,
+            "kind": proposal.kind(),
+            "request_id": request_id,
+            "proposal_digest": proposal_digest,
+            "base_revision": proposal.base_revision().as_str(),
+            "candidate_revision": proposal.candidate_revision().as_str(),
+            "current_revision": current,
+            "state": if uncertain { "outcome_uncertain" } else { "rejected" },
+            "diagnostic_code": if uncertain { "LENSO_CHANGE_OUTCOME_UNCERTAIN" } else { "LENSO_CHANGE_CONFLICT" },
+            "activation": "not_observed",
+        })
     }
 }
 
@@ -383,5 +535,63 @@ mod tests {
             fs::read_to_string(&path).unwrap(),
             "greeting = 'private-value'\n"
         );
+    }
+
+    #[test]
+    fn selection_preview_and_apply_disable_then_enable_without_a_second_resolver() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(temp.path().join(".lenso")).unwrap();
+        let host = HostCatalog::new(
+            [HostSlot::many("agent")],
+            [HostPluginRelease::new(PluginDescriptor::new(
+                "example.agent",
+                "1.0.0",
+                "agent",
+            ))],
+            [],
+        );
+        fs::write(
+            temp.path().join(".lenso/host-catalog.json"),
+            serde_json::to_vec(&host).unwrap(),
+        )
+        .unwrap();
+        fs::create_dir_all(temp.path().join("plugins/example.agent")).unwrap();
+        fs::write(temp.path().join("plugins/example.agent/default.toml"), "").unwrap();
+        let base = lenso_app_authoring::inspect_plugin_root(temp.path())
+            .unwrap()
+            .revision()
+            .as_str()
+            .to_owned();
+        let controller = ChangeController::new(temp.path().to_path_buf());
+        let disable = controller
+            .preview_selection(&base, "example.agent", "default", false)
+            .unwrap();
+        assert_eq!(disable.status, "ready");
+        assert!(disable.before_enabled);
+        assert!(!disable.requested_enabled);
+        let marker = temp.path().join("plugins/example.agent/default.disabled");
+        assert!(!marker.exists());
+        let disabled = controller
+            .apply(&disable.proposal_digest, "disable-1")
+            .unwrap();
+        assert_eq!(disabled["state"], "published");
+        assert_eq!(disabled["kind"], "lenso.mcp-selection-apply");
+        assert!(marker.is_file());
+        let enable = controller
+            .preview_selection(
+                disabled["revision"].as_str().unwrap(),
+                "example.agent",
+                "default",
+                true,
+            )
+            .unwrap();
+        assert_eq!(enable.status, "ready");
+        assert!(!enable.before_enabled);
+        let enabled = controller
+            .apply(&enable.proposal_digest, "enable-1")
+            .unwrap();
+        assert_eq!(enabled["state"], "published");
+        assert!(!marker.exists());
+        assert_eq!(enabled["revision"], base);
     }
 }
