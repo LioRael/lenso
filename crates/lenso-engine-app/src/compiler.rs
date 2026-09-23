@@ -80,6 +80,7 @@ mod tests {
     fn convention_compiler_does_not_inherit_runtime_secret_environment() {
         const MARKER: &str = "LENSO_TEST_BUILD_SECRET_REEXEC";
         const SECRET: &str = "LENSO_TEST_RUNTIME_SECRET_FOR_BUILD";
+        const COMPLETED: &str = "LENSO_TEST_BUILD_SECRET_CHECK_COMPLETED";
         if std::env::var_os(MARKER).is_none() {
             let output = Command::new(std::env::current_exe().unwrap())
                 .args([
@@ -93,7 +94,13 @@ mod tests {
                 .unwrap();
             assert!(
                 output.status.success(),
-                "isolated compiler test failed: {}",
+                "isolated compiler test failed: stdout={} stderr={}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains(COMPLETED),
+                "isolated compiler test did not execute: {}",
                 String::from_utf8_lossy(&output.stdout)
             );
             return;
@@ -124,6 +131,7 @@ mod tests {
         engine
             .execute(&plan, &Arc::new(AtomicBool::new(false)))
             .unwrap();
+        println!("{COMPLETED}");
     }
 
     #[test]
