@@ -5,7 +5,6 @@ use serde_json::json;
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
 pub(super) mod linked_catalog;
@@ -182,7 +181,7 @@ fn writable_path(root: &Path, relative: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 fn install(root: &Path) -> anyhow::Result<()> {
-    if !Command::new("bun")
+    if !super::build_command("bun")
         .args(["install", "--ignore-scripts"])
         .current_dir(root)
         .status()?

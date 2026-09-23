@@ -3,7 +3,6 @@ use std::{
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
-    process::Command,
     time::Duration,
 };
 
@@ -306,7 +305,7 @@ fn run_cargo<const N: usize>(
     action: &str,
 ) -> anyhow::Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let status = Command::new(cargo)
+    let status = crate::app::build_command(cargo)
         .args(args)
         .env("CARGO_TARGET_DIR", target_directory)
         .current_dir(root)

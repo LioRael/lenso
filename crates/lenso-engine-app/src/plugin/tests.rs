@@ -3,6 +3,7 @@ use super::scaffold::{
     process_plugin_scaffold, web_plugin_scaffold,
 };
 use super::*;
+use std::process::Command;
 
 #[test]
 fn bun_descriptor_lowers_named_dependencies_into_the_plugin_contract() {

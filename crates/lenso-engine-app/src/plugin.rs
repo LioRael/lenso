@@ -2,7 +2,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     env, fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 use anyhow::{Context, bail};
@@ -43,7 +42,7 @@ const BUN_PLUGIN_BUILDER: &str = include_str!("../assets/plugin-build.mjs");
 
 fn rust_host_target(root: &Path) -> anyhow::Result<String> {
     let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
-    let output = Command::new(rustc)
+    let output = crate::app::build_command(rustc)
         .arg("-vV")
         .current_dir(root)
         .output()
@@ -1050,7 +1049,7 @@ fn synchronize_plugin_lock(root: &Path, package: &CargoPackage) -> anyhow::Resul
 
 fn cargo_target_directory(root: &Path) -> anyhow::Result<PathBuf> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let output = Command::new(cargo)
+    let output = crate::app::build_command(cargo)
         .args(["metadata", "--locked", "--format-version", "1", "--no-deps"])
         .current_dir(root)
         .output()
@@ -1246,7 +1245,7 @@ fn warn_for_legacy_plugin_id(plugin_id: &str) -> anyhow::Result<()> {
 
 fn run_cargo(root: &Path, args: &[&str], action: &str) -> anyhow::Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let status = Command::new(cargo)
+    let status = crate::app::build_command(cargo)
         .args(args)
         .current_dir(root)
         .status()
@@ -1259,7 +1258,7 @@ fn run_cargo(root: &Path, args: &[&str], action: &str) -> anyhow::Result<()> {
 
 fn run_bun(root: &Path, args: &[&str], action: &str) -> anyhow::Result<()> {
     let bun = env::var_os("BUN_BIN").unwrap_or_else(|| "bun".into());
-    let status = Command::new(bun)
+    let status = crate::app::build_command(bun)
         .args(args)
         .current_dir(root)
         .status()
