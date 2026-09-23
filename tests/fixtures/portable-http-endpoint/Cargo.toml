@@ -1,0 +1,8 @@
+[package]
+name = "lenso-portable-http-endpoint-fixture"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true

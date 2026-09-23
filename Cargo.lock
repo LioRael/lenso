@@ -2646,6 +2646,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-portable-http-endpoint-fixture"
+version = "0.0.0"
+
+[[package]]
 name = "lenso-process-adapter"
 version = "0.3.12"
 dependencies = [
@@ -2880,6 +2884,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "futures",
+ "hex",
  "http",
  "http-body-util",
  "hyper",
@@ -2894,7 +2899,10 @@ dependencies = [
  "lenso-http-auth",
  "lenso-kernel",
  "lenso-native-adapter",
+ "lenso-portable-http-endpoint-fixture",
  "lenso-runner",
+ "lenso-runtime-codec",
+ "lenso-wasm-component-adapter",
  "lenso-web-duplex-fixture",
  "lenso-web-http-parity-fixture",
  "lenso-web-query-endpoint-fixture",
@@ -2902,12 +2910,15 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1 0.10.7",
+ "sha2 0.10.9",
  "stats_alloc",
+ "tempfile",
  "time",
  "tokio",
  "tokio-tungstenite",
  "tower",
  "tower-http",
+ "wit-component 0.252.0",
 ]
 
 [[package]]

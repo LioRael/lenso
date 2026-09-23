@@ -40,6 +40,10 @@ serde_json.workspace = true
 tokio = { version = "1.52", default-features = false, features = ["macros", "sync"] }
 
 [dev-dependencies]
+hex.workspace = true
+lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "0.4.2" }
+lenso-wasm-component-adapter = { path = "../lenso-wasm-component-adapter", version = "0.2.15" }
+lenso-portable-http-endpoint-fixture = { path = "../../tests/fixtures/portable-http-endpoint" }
 lenso-web-duplex-fixture = { path = "../../tests/fixtures/duplex-endpoint-plugin" }
 lenso-web-http-parity-fixture = { path = "../../tests/fixtures/http-parity-plugin" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
@@ -50,11 +54,14 @@ lenso-http-auth = { path = "../lenso-http-auth", version = "0.2.4" }
 lenso-web-query-endpoint-fixture = { path = "../../tests/fixtures/query-endpoint-plugin" }
 lenso-runner.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 stats_alloc = "0.1.10"
+tempfile = "3"
 time = "0.3"
 tokio = { workspace = true, features = ["io-util", "macros", "rt", "time"] }
 tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["limit", "request-id", "sensitive-headers", "set-header"] }
+wit-component = "0.252"
 
 [[bench]]
 name = "http_ingress"
