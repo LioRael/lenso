@@ -1,6 +1,64 @@
 use std::{fs, process::Command};
 
 #[test]
+fn empty_portable_host_emits_dev_readiness_only_after_startup() {
+    use std::time::{Duration, Instant};
+
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join("source");
+    let distribution = temp.path().join("dist");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&source)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(&source)
+        .arg("--out")
+        .arg(&distribution)
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(distribution.join(".lenso/host-mode")).unwrap(),
+        "portable"
+    );
+    let marker = distribution.join(".lenso/ready-test");
+    let mut host = Command::new(distribution.join(".lenso/host"))
+        .args(["app", "__run-local", "--", "--ready-file"])
+        .arg(&marker)
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        if marker.exists() {
+            assert_eq!(fs::read(&marker).unwrap(), b"lenso.local-host-ready.v1\n");
+            assert!(host.try_wait().unwrap().is_none());
+            break;
+        }
+        if let Some(status) = host.try_wait().unwrap() {
+            panic!("portable Host exited before readiness: {status}");
+        }
+        if Instant::now() >= deadline {
+            host.kill().unwrap();
+            host.wait().unwrap();
+            panic!("portable Host did not publish readiness");
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    host.kill().unwrap();
+    host.wait().unwrap();
+}
+
+#[test]
 fn create_is_configuration_free_and_preserves_existing_projects() {
     let temp = tempfile::tempdir().unwrap();
     let destination = temp.path().join("project");

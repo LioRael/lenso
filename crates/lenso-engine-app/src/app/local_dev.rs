@@ -1,5 +1,6 @@
 //! Local development rebuilds complete App generations. A failed build leaves
-//! the running generation alone; replacement first drains the previous Host.
+//! the running generation alone; replacement waits for the new Host Ready Gate
+//! before draining the previous Host.
 use anyhow::{Context, bail};
 use clap::Args;
 use notify::{RecursiveMode, Watcher};
@@ -68,29 +69,50 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
             false
         };
         if ready {
-            if let Some(host) = &mut host {
-                stop(host, false).await?;
-            }
-            host = Some(
-                command(output.join(".lenso/host"))
-                    .args(super::local_host::host_arguments(&output)?)
-                    .args(if args.args.is_empty() {
-                        vec![]
+            match launch_ready(&output, &args.args).await {
+                Ok(Some(mut candidate)) => {
+                    let old_stopped = if let Some(previous_host) = &mut host {
+                        match stop(previous_host, false).await {
+                            Ok(()) => true,
+                            Err(error) => {
+                                eprintln!("Previous Host shutdown failed: {error:#}");
+                                previous_host.try_wait()?.is_some()
+                            }
+                        }
                     } else {
-                        std::iter::once("--".to_owned())
-                            .chain(args.args.clone())
-                            .collect()
-                    })
-                    .spawn()
-                    .context("start generated local Host")?,
-            );
-            if let Some(previous) = current_output.replace(output.clone()) {
-                fs::remove_dir_all(previous)?;
+                        true
+                    };
+                    if old_stopped {
+                        host = Some(candidate);
+                        if let Some(previous) = current_output.replace(output.clone())
+                            && let Err(error) = fs::remove_dir_all(&previous)
+                        {
+                            eprintln!(
+                                "Previous inactive generation could not be removed at {}: {error}",
+                                previous.display()
+                            );
+                        }
+                        eprintln!(
+                            "Watching {} for App changes. Press Ctrl-C to stop.",
+                            root.display()
+                        );
+                    } else {
+                        stop(&mut candidate, true).await?;
+                        eprintln!("Retaining the previous Host because it did not stop cleanly");
+                    }
+                }
+                Err(error) => {
+                    eprintln!(
+                        "App candidate failed actual startup; retaining the running generation: {error:#}"
+                    );
+                }
+                Ok(None) => {
+                    if let Some(host) = &mut host {
+                        stop(host, false).await?;
+                    }
+                    return Ok(());
+                }
             }
-            eprintln!(
-                "Watching {} for App changes. Press Ctrl-C to stop.",
-                root.display()
-            );
         }
         loop {
             tokio::select! {
@@ -129,6 +151,53 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         }
         // Retain the OS watcher while building, so edits during compilation are queued.
         let _ = &watcher;
+    }
+}
+
+async fn launch_ready(output: &Path, args: &[String]) -> anyhow::Result<Option<Child>> {
+    let marker = output.join(".lenso/dev-ready");
+    let mut candidate = command(output.join(".lenso/host"));
+    candidate
+        .args(super::local_host::host_arguments(output)?)
+        .arg("--ready-file")
+        .arg(&marker);
+    if !args.is_empty() {
+        candidate.arg("--").args(args);
+    }
+    let mut candidate = candidate.spawn().context("start generated local Host")?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        if let Some(status) = candidate.try_wait()? {
+            bail!("generated local Host exited before readiness: {status}");
+        }
+        match fs::symlink_metadata(&marker) {
+            Ok(metadata) => {
+                if !metadata.file_type().is_file()
+                    || fs::read(&marker)? != b"lenso.local-host-ready.v1\n"
+                {
+                    stop(&mut candidate, true).await?;
+                    bail!("generated local Host returned an invalid readiness receipt");
+                }
+                return Ok(Some(candidate));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                stop(&mut candidate, true).await?;
+                return Err(error).context("inspect generated local Host readiness");
+            }
+        }
+        if tokio::time::Instant::now() >= deadline {
+            stop(&mut candidate, true).await?;
+            bail!("generated local Host did not become ready within 60 seconds");
+        }
+        tokio::select! {
+            signal = tokio::signal::ctrl_c() => {
+                signal?;
+                stop(&mut candidate, true).await?;
+                return Ok(None);
+            }
+            () = tokio::time::sleep(Duration::from_millis(25)) => {}
+        }
     }
 }
 
@@ -309,6 +378,29 @@ mod tests {
         preflight(directory.path()).await.unwrap();
         fs::write(&host, "#!/bin/sh\nexit 23\n").unwrap();
         assert!(preflight(directory.path()).await.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn actual_startup_requires_a_live_host_readiness_receipt() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let control = directory.path().join(".lenso");
+        fs::create_dir(&control).unwrap();
+        fs::write(control.join("host-mode"), "native").unwrap();
+        let host = control.join("host");
+        fs::write(&host, "#!/bin/sh\nexit 23\n").unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(launch_ready(directory.path(), &[]).await.is_err());
+        fs::write(
+            &host,
+            "#!/bin/sh\nif [ \"$1\" = --ready-file ]; then printf 'lenso.local-host-ready.v1\\n' > \"$2\"; exec sleep 30; fi\nexit 24\n",
+        )
+        .unwrap();
+        let mut candidate = launch_ready(directory.path(), &[]).await.unwrap().unwrap();
+        assert!(candidate.try_wait().unwrap().is_none());
+        stop(&mut candidate, true).await.unwrap();
     }
 
     #[test]

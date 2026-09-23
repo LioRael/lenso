@@ -131,6 +131,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         .context("Host location")?;
     let mut intent = root.join("intent");
     let mut check = false;
+    let mut ready_file = None;
     let mut command_args = None;
     let mut index = 0;
     while index < args.len() {
@@ -140,11 +141,19 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 intent = PathBuf::from(args.get(index).context("--root needs a directory")?);
             }
             "--check" => check = true,
+            "--ready-file" => {
+                index += 1;
+                ready_file = Some(PathBuf::from(args.get(index).context("--ready-file needs a path")?));
+            },
             "--" => { command_args = Some(args[index + 1..].to_vec()); break; },
             other => bail!("unknown Host argument: {other}"),
         }
         index += 1;
     }
+    anyhow::ensure!(
+        !check || ready_file.is_none(),
+        "--ready-file cannot be combined with --check"
+    );
     let lock: DistributionLock =
         serde_json::from_slice(&fs::read(root.join(".lenso/distribution.lock.json"))?)?;
     if lock.schema != "lenso.local-host-distribution.v1" || lock.files.len() > 2048 {
@@ -313,6 +322,11 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             {
                 let outcome = app.shutdown(Duration::from_secs(10)).await;
                 bail!("record Host activation: {error}; shutdown: {outcome:?}");
+            }
+            if let Some(path) = ready_file {
+                let stage = path.with_extension("stage");
+                fs::write(&stage, b"lenso.local-host-ready.v1\n")?;
+                fs::rename(stage, path)?;
             }
             eprintln!("Local App ready");
             // LENSO_WEB_READY

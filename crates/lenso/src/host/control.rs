@@ -207,7 +207,10 @@ where
     result
 }
 
-#[expect(clippy::too_many_arguments, reason = "private control session requires independent IO and Host callbacks")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "private control session requires independent IO and Host callbacks"
+)]
 async fn session<W, C, CFut, A, AFut, T>(
     options: &ControlOptions,
     host: &mut Host<T>,
