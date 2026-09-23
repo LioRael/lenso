@@ -37,7 +37,7 @@ path = "src/lib.rs"
 
 [features]
 default = ["cli"]
-cli = ["dep:clap", "dep:tokio", "dep:rmcp", "dep:schemars", "dep:lenso-engine", "dep:lenso-engine-app", "dep:lenso-engine-markdown", "dep:lenso-engine-runtime"]
+cli = ["dep:clap", "dep:tokio", "dep:rmcp", "dep:schemars", "dep:tempfile", "dep:nix", "dep:lenso-engine", "dep:lenso-engine-app", "dep:lenso-engine-markdown", "dep:lenso-engine-runtime"]
 js-integration = []
 
 [[test]]
@@ -53,6 +53,7 @@ clap = { version = "4", features = ["derive", "string"], optional = true }
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "signal"], optional = true }
 rmcp = { version = "=3.4.0", default-features = false, features = ["macros", "server", "transport-io"], optional = true }
 schemars = { workspace = true, optional = true }
+tempfile = { version = "3.23", optional = true }
 lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.5" }
 lenso-engine-authoring = { path = "../lenso-engine-authoring", version = "=0.2.2" }
 lenso-engine = { path = "../lenso-engine", version = "=0.1.2", optional = true }
@@ -81,6 +82,9 @@ module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.30", features = ["signal"], optional = true }
 
 [target.'cfg(unix)'.dev-dependencies]
 nix = { version = "0.30", features = ["signal"] }

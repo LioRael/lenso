@@ -255,6 +255,15 @@ diagnostic code rather than raw build logs, which may contain private data.
 The build environment filters ambient credentials but is not a filesystem
 sandbox; only enable builds for source packages you trust to compile locally.
 
+After an App is built, `--allow-run` separately enables `project_run`,
+`project_run_status`, and `project_run_stop`. The bridge starts only the fixed
+root's checked `dist`, waits for the Host's actual Ready receipt, accepts one
+active run at a time, and stops the whole local subprocess group on request,
+deadline, or bridge shutdown. Status reports readiness and stable diagnostic
+codes, not raw logs or a guessed preview URL. `request_id` retries never start
+another Host; runs have a maximum one-hour lifetime. This is local process
+control, not deployment or proof of a browser flow.
+
 `project_change_preview` reviews one Instance TOML change against an exact
 Plugin Root revision and returns the proposal digest, changed field names,
 validation status, and required application step without exposing values. It

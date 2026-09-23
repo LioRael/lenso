@@ -37,6 +37,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"project_check","arguments":{}}}"#,
         r#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"project_change_apply","arguments":{"proposal_digest":"sha256:unknown","request_id":"without-owner-authorization"}}}"#,
+        r#"{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"project_run","arguments":{"request_id":"without-owner-authorization"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -56,34 +57,13 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 13, "{frames}");
+    assert_eq!(responses.len(), 14, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 13);
-    let tools = by_id[&2]["result"]["tools"].as_array().unwrap();
-    let names = tools
-        .iter()
-        .map(|tool| tool["name"].as_str().unwrap())
-        .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(
-        names,
-        [
-            "linked_catalog",
-            "linked_document",
-            "project_check",
-            "project_build",
-            "project_build_cancel",
-            "project_build_status",
-            "project_change_apply",
-            "project_change_preview",
-            "project_explain",
-            "project_facts",
-            "project_selection_preview",
-        ]
-        .into()
-    );
+    assert_eq!(by_id.len(), 14);
+    assert_tools(by_id[&2]);
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(facts["kind"], "lenso.app-facts");
@@ -104,10 +84,38 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(second_page["offset"], 1);
     assert_eq!(second_page["items"].as_array().unwrap().len(), 1);
     assert_ne!(first_page["items"][0], second_page["items"][0]);
-    for id in [4, 5, 6, 9, 10, 11, 12, 13] {
+    for id in [4, 5, 6, 9, 10, 11, 12, 13, 14] {
         assert!(by_id[&id]["error"].is_object(), "response {id}");
     }
     assert!(!root.path().join("dist").exists());
+}
+
+fn assert_tools(list: &serde_json::Value) {
+    let tools = list["result"]["tools"].as_array().unwrap();
+    let names = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        names,
+        [
+            "linked_catalog",
+            "linked_document",
+            "project_check",
+            "project_build",
+            "project_build_cancel",
+            "project_build_status",
+            "project_change_apply",
+            "project_change_preview",
+            "project_explain",
+            "project_facts",
+            "project_run",
+            "project_run_status",
+            "project_run_stop",
+            "project_selection_preview",
+        ]
+        .into()
+    );
 }
 
 #[test]
@@ -508,6 +516,98 @@ fn stdio_selection_preview_and_apply_disable_then_enable() {
     }
     drop(stdin);
     assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let mut child = Command::new(cli)
+        .args(["mcp", "--root"])
+        .arg(&root)
+        .arg("--allow-run")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .unwrap();
+    let started = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_run","arguments":{"request_id":"real-empty-host","timeout_seconds":30}}}),
+    );
+    assert!(started["error"].is_null(), "{started}");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let status = run_status(&mut stdin, &mut stdout);
+        if status["state"] == "running" {
+            break;
+        }
+        assert!(status["state"] == "starting", "{status}");
+        assert!(Instant::now() < deadline, "real Host did not become ready");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let stopped = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_run_stop","arguments":{"request_id":"real-empty-host"}}}),
+    );
+    assert!(stopped["error"].is_null(), "{stopped}");
+    loop {
+        let status = run_status(&mut stdin, &mut stdout);
+        if status["state"] == "stopped" {
+            break;
+        }
+        assert!(status["state"] == "stopping", "{status}");
+        assert!(Instant::now() < deadline, "real Host did not stop");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
+fn run_status(
+    stdin: &mut std::process::ChildStdin,
+    stdout: &mut BufReader<std::process::ChildStdout>,
+) -> serde_json::Value {
+    let response = mcp_roundtrip(
+        stdin,
+        stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_run_status","arguments":{"request_id":"real-empty-host"}}}),
+    );
+    assert!(response["error"].is_null(), "{response}");
+    serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
 }
 
 fn mcp_roundtrip(

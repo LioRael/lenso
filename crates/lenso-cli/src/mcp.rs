@@ -15,6 +15,7 @@ use serde::Deserialize;
 
 mod build;
 mod change;
+mod run;
 
 #[derive(Clone, Debug, Args)]
 pub(crate) struct McpArgs {
@@ -33,9 +34,18 @@ pub(crate) struct McpArgs {
     /// Explicitly permit signed HTTPS documentation fetches by MCP tools.
     #[arg(long, requires_all = ["linked_snapshot", "trust"])]
     allow_document_fetch: bool,
+    #[command(flatten)]
+    permissions: McpMutationAccess,
+}
+
+#[derive(Clone, Debug, Args)]
+struct McpMutationAccess {
     /// Explicitly permit bounded App builds under --root.
     #[arg(long)]
     allow_build: bool,
+    /// Explicitly permit one bounded App run from the already built dist.
+    #[arg(long)]
+    allow_run: bool,
     /// Explicitly permit publication of reviewed Plugin Root configuration proposals.
     #[arg(long)]
     allow_changes: bool,
@@ -48,9 +58,9 @@ struct AppTools {
     linked_snapshot: Option<PathBuf>,
     trust: Option<PathBuf>,
     allow_document_fetch: bool,
-    allow_build: bool,
+    permissions: McpMutationAccess,
     builds: Arc<build::BuildController>,
-    allow_changes: bool,
+    runs: Arc<run::RunController>,
     changes: Arc<change::ChangeController>,
 }
 
@@ -114,6 +124,18 @@ struct ProjectBuildIdentity {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+struct ProjectRunQuery {
+    request_id: String,
+    #[serde(default)]
+    timeout_seconds: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ProjectRunIdentity {
+    request_id: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 struct ProjectChangePreviewQuery {
     base_revision: String,
     plugin_id: String,
@@ -139,6 +161,60 @@ const MAX_MCP_TEXT_BYTES: usize = 128 * 1024;
 
 #[tool_router]
 impl AppTools {
+    #[tool(
+        description = "Start one bounded built App at the fixed root; requires --allow-run and a client request_id"
+    )]
+    fn project_run(
+        &self,
+        Parameters(request): Parameters<ProjectRunQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_run {
+            return Err(McpError::invalid_request(
+                "MCP App runs were not explicitly enabled",
+                None,
+            ));
+        }
+        let status = self.runs.start(&self.root, &request.request_id, request.timeout_seconds.unwrap_or(300))
+            .map_err(|_| McpError::invalid_request("App run could not start; verify the built distribution and local run authority", None))?;
+        run_result(&status)
+    }
+
+    #[tool(description = "Read startup readiness or terminal status for one MCP App run")]
+    fn project_run_status(
+        &self,
+        Parameters(request): Parameters<ProjectRunIdentity>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_run {
+            return Err(McpError::invalid_request(
+                "MCP App runs were not explicitly enabled",
+                None,
+            ));
+        }
+        let status = self
+            .runs
+            .status(&request.request_id)
+            .map_err(|_| McpError::invalid_params("unknown MCP App run request_id", None))?;
+        run_result(&status)
+    }
+
+    #[tool(description = "Stop one MCP App run and its subprocess group")]
+    fn project_run_stop(
+        &self,
+        Parameters(request): Parameters<ProjectRunIdentity>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_run {
+            return Err(McpError::invalid_request(
+                "MCP App runs were not explicitly enabled",
+                None,
+            ));
+        }
+        let status = self
+            .runs
+            .stop(&request.request_id)
+            .map_err(|_| McpError::invalid_params("unknown MCP App run request_id", None))?;
+        run_result(&status)
+    }
+
     #[tool(
         description = "Preview enabling or disabling one Plugin Instance against the exact current Root and Host without changing files"
     )]
@@ -210,7 +286,7 @@ impl AppTools {
         &self,
         Parameters(request): Parameters<ProjectChangeApplyQuery>,
     ) -> Result<CallToolResult, McpError> {
-        if !self.allow_changes {
+        if !self.permissions.allow_changes {
             return Err(McpError::invalid_request(
                 "MCP Plugin Root changes were not explicitly enabled",
                 None,
@@ -237,7 +313,7 @@ impl AppTools {
         &self,
         Parameters(request): Parameters<ProjectBuildQuery>,
     ) -> Result<CallToolResult, McpError> {
-        if !self.allow_build {
+        if !self.permissions.allow_build {
             return Err(McpError::invalid_request(
                 "MCP App builds were not explicitly enabled",
                 None,
@@ -259,7 +335,7 @@ impl AppTools {
         &self,
         Parameters(request): Parameters<ProjectBuildIdentity>,
     ) -> Result<CallToolResult, McpError> {
-        if !self.allow_build {
+        if !self.permissions.allow_build {
             return Err(McpError::invalid_request(
                 "MCP App builds were not explicitly enabled",
                 None,
@@ -279,7 +355,7 @@ impl AppTools {
         &self,
         Parameters(request): Parameters<ProjectBuildIdentity>,
     ) -> Result<CallToolResult, McpError> {
-        if !self.allow_build {
+        if !self.permissions.allow_build {
             return Err(McpError::invalid_request(
                 "MCP App builds were not explicitly enabled",
                 None,
@@ -462,6 +538,12 @@ fn build_result(status: &build::BuildStatus) -> Result<CallToolResult, McpError>
     Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
 }
 
+fn run_result(status: &run::RunStatus) -> Result<CallToolResult, McpError> {
+    let json = serde_json::to_string(status)
+        .map_err(|_| McpError::internal_error("serialize App run status", None))?;
+    Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+}
+
 fn project_facts_json(
     facts: &lenso_engine_app::app::facts::ProjectFacts,
     request: &ProjectFactsQuery,
@@ -589,9 +671,9 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         linked_snapshot: args.linked_snapshot,
         trust: args.trust,
         allow_document_fetch: args.allow_document_fetch,
-        allow_build: args.allow_build,
+        permissions: args.permissions,
         builds: Arc::new(build::BuildController::default()),
-        allow_changes: args.allow_changes,
+        runs: Arc::new(run::RunController::default()),
         changes: Arc::new(change::ChangeController::new(change_root)),
     }
     .serve(stdio())

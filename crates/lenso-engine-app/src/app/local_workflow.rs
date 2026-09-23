@@ -188,6 +188,9 @@ pub struct StartArgs {
     /// Start, validate readiness and shut down immediately.
     #[arg(long)]
     check: bool,
+    /// Local control-plane readiness receipt; not an App-authored input.
+    #[arg(long, hide = true, conflicts_with = "check")]
+    ready_file: Option<PathBuf>,
     /// Arguments passed to installed terminal support.
     #[arg(last = true, conflicts_with = "check")]
     args: Vec<String>,
@@ -203,6 +206,9 @@ pub fn start(args: StartArgs) -> anyhow::Result<()> {
     }
     if args.check {
         command.arg("--check");
+    }
+    if let Some(path) = args.ready_file {
+        command.arg("--ready-file").arg(path);
     }
     if !args.args.is_empty() {
         command.arg("--").args(&args.args);
@@ -302,6 +308,7 @@ pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Resu
         root: None,
         configuration_policy: None,
         check: false,
+        ready_file: None,
         args: arguments,
     })
 }
