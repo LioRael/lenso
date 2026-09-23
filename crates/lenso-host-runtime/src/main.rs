@@ -54,7 +54,9 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
             startup_timeout: arguments.startup_timeout,
             stop_timeout: arguments.stop_timeout,
         };
-        host::control::serve(
+        let reconcile_distribution = distribution.clone();
+        let reconcile_root = app_root.clone();
+        host::control::serve_with_reconcile(
             options,
             tokio::io::stdin(),
             tokio::io::stdout(),
@@ -65,6 +67,17 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
                     arguments.startup_timeout,
                     arguments.stop_timeout,
                 )
+            },
+            move || {
+                let distribution = reconcile_distribution.clone();
+                let root = reconcile_root.clone();
+                async move {
+                    tokio::task::spawn_blocking(move || distribution.resolve(root))
+                        .await
+                        .map_err(host_failure)?
+                        .map(|prepared| prepared.generation)
+                        .map_err(host_failure)
+                }
             },
         )
         .await

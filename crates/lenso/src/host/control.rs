@@ -1,10 +1,13 @@
 //! Private application control bridge. The native owner supplies separate physical
 //! termination evidence; a suspension receipt alone never proves process exit.
 
-use super::{ControlPlaneError, Host, ResolvedGeneration};
+use super::{
+    AppGenerationTransitionSpec, CanonicalDocument, ControlPlaneError, Host, ResolvedGeneration,
+};
+use lenso_plugin_control_plane::{ReplacementMode, RolloutPolicy};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{future::Future, io, time::Duration};
+use std::{collections::BTreeMap, future::Future, io, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::{mpsc, watch},
@@ -34,6 +37,11 @@ enum Request {
         offset: usize,
         limit: usize,
     },
+    Reconcile {
+        version: u32,
+        id: u32,
+        revision: u64,
+    },
     Stop {
         version: u32,
         id: u32,
@@ -45,6 +53,7 @@ impl Request {
         match self {
             Self::Start { version, id, .. }
             | Self::Inspect { version, id, .. }
+            | Self::Reconcile { version, id, .. }
             | Self::Stop { version, id } => (*version, *id),
         }
     }
@@ -55,7 +64,7 @@ impl Request {
 pub async fn serve<R, W, F, Fut, T>(
     options: ControlOptions,
     reader: R,
-    mut writer: W,
+    writer: W,
     start: F,
 ) -> io::Result<()>
 where
@@ -64,6 +73,32 @@ where
     T: Clone + std::fmt::Debug + 'static,
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<(Host<T>, ResolvedGeneration), ControlPlaneError>>,
+{
+    serve_with_reconcile(options, reader, writer, start, || async {
+        Err(ControlPlaneError::HostFailure {
+            detail: "this Host does not support reconciliation".to_owned(),
+        })
+    })
+    .await
+}
+
+/// Adds an operator-owned candidate resolver to the private control bridge.
+/// The controller still performs the exact readiness and fenced route switch.
+pub async fn serve_with_reconcile<R, W, F, Fut, C, CFut, T>(
+    options: ControlOptions,
+    reader: R,
+    mut writer: W,
+    start: F,
+    reconcile: C,
+) -> io::Result<()>
+where
+    R: AsyncRead + Unpin + 'static,
+    W: AsyncWrite + Unpin,
+    T: Clone + std::fmt::Debug + 'static,
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<(Host<T>, ResolvedGeneration), ControlPlaneError>>,
+    C: FnMut() -> CFut,
+    CFut: Future<Output = Result<ResolvedGeneration, ControlPlaneError>>,
 {
     if options.startup_timeout.is_zero()
         || options.stop_timeout.is_zero()
@@ -127,8 +162,8 @@ where
     let result = session(
         &options,
         &mut host,
-        &generation,
-        revision,
+        generation,
+        reconcile,
         &mut requests,
         &mut stopping,
         &mut writer,
@@ -140,11 +175,11 @@ where
     result
 }
 
-async fn session<W, T>(
+async fn session<W, C, CFut, T>(
     options: &ControlOptions,
     host: &mut Host<T>,
-    generation: &ResolvedGeneration,
-    revision: u64,
+    mut generation: ResolvedGeneration,
+    mut reconcile: C,
     requests: &mut mpsc::Receiver<Request>,
     stopping: &mut watch::Receiver<Option<u32>>,
     writer: &mut W,
@@ -152,6 +187,8 @@ async fn session<W, T>(
 where
     W: AsyncWrite + Unpin,
     T: Clone + std::fmt::Debug + 'static,
+    C: FnMut() -> CFut,
+    CFut: Future<Output = Result<ResolvedGeneration, ControlPlaneError>>,
 {
     let mut events = host.subscribe();
     loop {
@@ -169,22 +206,80 @@ where
                 }
             }
             request = requests.recv() => {
-                let Some(Request::Inspect { id, revision: expected, offset, limit, .. }) = request else {
-                    let _ = host.drain_and_suspend(options.stop_timeout).await;
-                    return Err(io::Error::other("unexpected application operation"));
-                };
-                let current = host.inspect().await.map_err(io::Error::other)?;
-                let instances = generation.plan.plugin_instances();
-                if current.revision != revision || expected.is_some_and(|expected| expected != revision) || limit == 0 || limit > 64 || offset > instances.len() {
-                    emit(writer, &json!({"kind":"rejected","version":1,"id":id,"code":"snapshot_expired_or_invalid_page"}), options.stop_timeout).await?;
-                    continue;
+                match request {
+                    Some(Request::Inspect { id, revision: expected, offset, limit, .. }) => {
+                        let current = host.inspect().await.map_err(io::Error::other)?;
+                        if current.active_generation_spec_digest.as_deref() != Some(generation.spec.digest()) {
+                            emit(writer, &json!({"kind":"rejected","version":1,"id":id,"code":"active_generation_changed"}), options.stop_timeout).await?;
+                            continue;
+                        }
+                        let revision = current.revision;
+                        let instances = generation.plan.plugin_instances();
+                        if expected.is_some_and(|expected| expected != revision) || limit == 0 || limit > 64 || offset > instances.len() {
+                            emit(writer, &json!({"kind":"rejected","version":1,"id":id,"code":"snapshot_expired_or_invalid_page"}), options.stop_timeout).await?;
+                            continue;
+                        }
+                        let end = offset.saturating_add(limit).min(instances.len());
+                        let page = instances[offset..end].iter().map(|instance| {
+                            let artifacts = generation.artifact_set.value().artifacts.iter().filter(|artifact| artifact.plugin_id == instance.package_id()).map(|artifact| json!({"id":artifact.artifact_id,"digest":artifact.digest,"target":artifact.target})).collect::<Vec<_>>();
+                            json!({"instance":instance.instance_key(),"plugin":instance.package_id(),"package_revision":instance.package_revision(),"execution_class":instance.execution_class().as_str(),"artifacts":artifacts})
+                        }).collect::<Vec<_>>();
+                        emit(writer, &json!({"kind":"inspected","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"instances":page,"diagnostics":[],"next":if end < instances.len() { Some(end) } else { None }}), options.stop_timeout).await?;
+                    }
+                    Some(Request::Reconcile { id, revision: expected, .. }) => {
+                        let current = host.inspect().await.map_err(io::Error::other)?;
+                        if current.active_generation_spec_digest.as_deref() != Some(generation.spec.digest()) {
+                            emit(writer, &json!({"kind":"rejected","version":1,"id":id,"code":"active_generation_changed"}), options.stop_timeout).await?;
+                            continue;
+                        }
+                        let revision = current.revision;
+                        if expected != revision {
+                            emit(writer, &json!({"kind":"rejected","version":1,"id":id,"code":"snapshot_expired"}), options.stop_timeout).await?;
+                            continue;
+                        }
+                        let Ok(Ok(candidate)) = tokio::time::timeout(options.startup_timeout, reconcile()).await else {
+                            emit(writer, &json!({"kind":"rejected","version":1,"id":id,"code":"candidate_unavailable"}), options.stop_timeout).await?;
+                            continue;
+                        };
+                        if candidate.spec.digest() == generation.spec.digest() {
+                            emit(writer, &json!({"kind":"reconciled","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"changed":false}), options.stop_timeout).await?;
+                            continue;
+                        }
+                        let transition = CanonicalDocument::from_value("lenso-generation-transition.json", AppGenerationTransitionSpec {
+                            schema_version: 1,
+                            app_id: candidate.spec.value().app_id.clone(),
+                            from_generation_spec_digest: Some(generation.spec.digest().to_owned()),
+                            to_generation_spec_digest: candidate.spec.digest().to_owned(),
+                            replacement_mode: ReplacementMode::Overlap,
+                            state_compatibility_receipt_digests: Vec::new(),
+                            rollout_policy: RolloutPolicy {
+                                ready_timeout_nanos: options.startup_timeout.as_nanos().to_string(),
+                                drain_timeout_nanos: options.stop_timeout.as_nanos().to_string(),
+                                rollback_window_nanos: "0".to_owned(),
+                                automatic_rollback_on_generation_failure: false,
+                            },
+                        }).map_err(io::Error::other)?;
+                        if host.transition(transition, candidate.clone(), BTreeMap::default()).await.is_err() {
+                            let still_active = host.inspect().await.is_ok_and(|state| {
+                                state.active_generation_spec_digest.as_deref() == Some(generation.spec.digest())
+                                    && !state.host_suspended
+                            });
+                            if !still_active {
+                                emit(writer, &json!({"kind":"terminal","version":1,"id":id,"shutdown":"failed"}), options.stop_timeout).await?;
+                                return Err(io::Error::other("Host lost its active Generation during reconciliation"));
+                            }
+                            emit(writer, &json!({"kind":"rejected","version":1,"id":id,"code":"candidate_not_ready_or_incompatible"}), options.stop_timeout).await?;
+                            continue;
+                        }
+                        let revision = host.inspect().await.map_err(io::Error::other)?.revision;
+                        generation = candidate;
+                        emit(writer, &json!({"kind":"reconciled","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"changed":true}), options.stop_timeout).await?;
+                    }
+                    _ => {
+                        let _ = host.drain_and_suspend(options.stop_timeout).await;
+                        return Err(io::Error::other("unexpected application operation"));
+                    }
                 }
-                let end = offset.saturating_add(limit).min(instances.len());
-                let page = instances[offset..end].iter().map(|instance| {
-                    let artifacts = generation.artifact_set.value().artifacts.iter().filter(|artifact| artifact.plugin_id == instance.package_id()).map(|artifact| json!({"id":artifact.artifact_id,"digest":artifact.digest,"target":artifact.target})).collect::<Vec<_>>();
-                    json!({"instance":instance.instance_key(),"plugin":instance.package_id(),"package_revision":instance.package_revision(),"execution_class":instance.execution_class().as_str(),"artifacts":artifacts})
-                }).collect::<Vec<_>>();
-                emit(writer, &json!({"kind":"inspected","version":1,"id":id,"revision":revision,"generation":generation.spec.digest(),"instances":page,"diagnostics":[],"next":if end < instances.len() { Some(end) } else { None }}), options.stop_timeout).await?;
             }
         }
     }

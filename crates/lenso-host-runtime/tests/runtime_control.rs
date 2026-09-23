@@ -47,7 +47,7 @@ fn read_frame(reader: &mut impl Read) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str) {
+fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str, update: Option<&str>) {
     let mut child = Command::new(runtime)
         .args([
             "--distribution",
@@ -67,7 +67,9 @@ fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str) {
         &json!({"op":"start","version":1,"id":1,"distribution":identity}),
     );
     assert_eq!(read_frame(&mut output)["kind"], "ready");
-    assert_eq!(read_frame(&mut output)["kind"], "started");
+    let started = read_frame(&mut output);
+    assert_eq!(started["kind"], "started");
+    let revision = started["revision"].as_u64().unwrap();
     write_frame(
         &mut input,
         &json!({"op":"inspect","version":1,"id":2,"revision":null,"offset":0,"limit":16}),
@@ -75,7 +77,35 @@ fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str) {
     let inspected = read_frame(&mut output);
     assert_eq!(inspected["kind"], "inspected");
     assert_eq!(inspected["instances"], json!([]));
-    write_frame(&mut input, &json!({"op":"stop","version":1,"id":3}));
+    let mut stop_id = 3;
+    if let Some(update) = update {
+        fs::write(app.join("resolution.json"), b"invalid resolution").unwrap();
+        write_frame(
+            &mut input,
+            &json!({"op":"reconcile","version":1,"id":3,"revision":revision}),
+        );
+        assert_eq!(read_frame(&mut output)["code"], "candidate_unavailable");
+        write_frame(
+            &mut input,
+            &json!({"op":"inspect","version":1,"id":4,"revision":revision,"offset":0,"limit":16}),
+        );
+        assert_eq!(
+            read_frame(&mut output)["generation"],
+            inspected["generation"]
+        );
+        fs::write(app.join("resolution.json"), update).unwrap();
+        write_frame(
+            &mut input,
+            &json!({"op":"reconcile","version":1,"id":5,"revision":revision}),
+        );
+        let switched = read_frame(&mut output);
+        assert_eq!(switched["kind"], "reconciled", "{switched}");
+        assert_eq!(switched["changed"], true);
+        assert_ne!(switched["generation"], inspected["generation"]);
+        assert!(switched["revision"].as_u64().unwrap() > revision);
+        stop_id = 6;
+    }
+    write_frame(&mut input, &json!({"op":"stop","version":1,"id":stop_id}));
     let stopped = read_frame(&mut output);
     assert_eq!(stopped["kind"], "terminal");
     assert_eq!(stopped["shutdown"], "suspended");
@@ -127,9 +157,19 @@ fn prepared_runtime_reaches_ready_inspects_and_suspends() {
         "plan": ResolvedAppPlan::empty(),
     }))
     .unwrap();
+    fs::write(app.join("resolution.json"), &resolution).unwrap();
+    let updated_resolution = serde_json::to_string(&json!({
+        "schema": "lenso.runtime-app-resolution.v1",
+        "app_id": "company.app",
+        "authority_digest": digest(b"authority-updated"),
+        "host_build_digest": digest(host_build),
+        "plugin_root_revision": digest(b"root-updated"),
+        "plan": ResolvedAppPlan::empty(),
+    }))
+    .unwrap();
     executable(
         distribution.join("runtime/lenso-resolver").as_path(),
-        format!("#!/bin/sh\nprintf '%s\\n' '{resolution}'\n").as_bytes(),
+        b"#!/bin/sh\ncat \"$4/resolution.json\"\n",
     );
     let files = [
         (".lenso/host-build.json", "host_authority", false),
@@ -167,6 +207,12 @@ fn prepared_runtime_reaches_ready_inspects_and_suspends() {
     fs::write(&lock_path, lock).unwrap();
 
     let runtime = distribution.join("runtime/lenso-host-runtime");
-    run_session(&runtime, &lock_path, &app, &identity);
-    run_session(&runtime, &lock_path, &app, &identity);
+    run_session(
+        &runtime,
+        &lock_path,
+        &app,
+        &identity,
+        Some(&updated_resolution),
+    );
+    run_session(&runtime, &lock_path, &app, &identity, None);
 }

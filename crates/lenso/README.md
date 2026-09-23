@@ -235,3 +235,11 @@ owner must settle runtime and child processes before recovery. This API does not
 provide that OS owner or a TypeScript launcher. Blocking runtime code or synchronous
 Store I/O cannot be preempted by Tokio timers; the outer process owner must enforce
 the physical termination budget.
+
+The private Host control bridge can accept a revision-fenced `reconcile` request.
+The product Host re-resolves its own authorized App Root; the Controller stages
+the exact new Generation with overlap and switches only after readiness. Source
+failure, stale revision, or an incompatible candidate leaves the previous route
+active when its durable state is still healthy. This bridge does not itself poll
+external configuration, authorize a new source, or make the generated native App
+Host a live-updating Host.

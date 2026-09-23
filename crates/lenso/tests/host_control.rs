@@ -41,11 +41,15 @@ impl GenerationRuntime for Runtime {
 }
 
 fn generation() -> ResolvedGeneration {
+    generation_with_authority("authority")
+}
+
+fn generation_with_authority(authority: &str) -> ResolvedGeneration {
     let artifacts = CanonicalDocument::from_value(
         "artifacts",
         ResolvedArtifactSet {
             schema_version: 3,
-            resolution_authority_digest: "authority".into(),
+            resolution_authority_digest: authority.into(),
             host_execution_policy_digest: "policy".into(),
             artifacts: vec![],
             instance_resources: vec![],
@@ -56,7 +60,7 @@ fn generation() -> ResolvedGeneration {
         "grants",
         EffectiveHostGrantSet {
             schema_version: 2,
-            resolution_authority_digest: "authority".into(),
+            resolution_authority_digest: authority.into(),
             grants: vec![],
         },
     )
@@ -69,7 +73,7 @@ fn generation() -> ResolvedGeneration {
             host_build_manifest_digest: "host".into(),
             host_execution_policy_digest: "policy".into(),
             resolved_plan_digest: "plan".into(),
-            resolution_authority_digest: "authority".into(),
+            resolution_authority_digest: authority.into(),
             resolved_artifact_set_digest: artifacts.digest().into(),
             effective_host_grant_set_digest: grants.digest().into(),
         },
@@ -177,4 +181,133 @@ async fn invalid_start_and_queued_overflow_never_open_readiness() {
 
 async fn must_not_start() -> Result<(host::Host<()>, ResolvedGeneration), ControlPlaneError> {
     panic!("invalid handshake must not execute runtime")
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one ordered control session proves stale, failed, switched, and idempotent outcomes"
+)]
+async fn reconcile_keeps_old_route_on_source_failure_then_switches_exact_candidate() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (client, server) = tokio::io::duplex(8192);
+            let (read_half, write_half) = tokio::io::split(server);
+            let initial = generation();
+            let replacement = generation_with_authority("authority-v2");
+            let replacement_digest = replacement.spec.digest().to_owned();
+            let mut invalid = generation_with_authority("authority-invalid");
+            let mut invalid_spec = invalid.spec.value().clone();
+            invalid_spec.app_id = "other.app".into();
+            invalid.spec = CanonicalDocument::from_value("generation", invalid_spec).unwrap();
+            let mut attempts = 0;
+            let task = tokio::task::spawn_local(host::control::serve_with_reconcile(
+                host::control::ControlOptions {
+                    distribution: "dist-v1".into(),
+                    startup_timeout: Duration::from_secs(1),
+                    stop_timeout: Duration::from_secs(1),
+                },
+                read_half,
+                write_half,
+                move || start_host(initial),
+                move || {
+                    attempts += 1;
+                    let candidate = replacement.clone();
+                    let invalid = invalid.clone();
+                    async move {
+                        match attempts {
+                            1 => Err(ControlPlaneError::HostFailure {
+                                detail: "source unavailable".into(),
+                            }),
+                            2 => Ok(invalid),
+                            _ => Ok(candidate),
+                        }
+                    }
+                },
+            ));
+            let mut client = client;
+            write(
+                &mut client,
+                json!({"op":"start","version":1,"id":1,"distribution":"dist-v1"}),
+            )
+            .await;
+            assert_eq!(read(&mut client).await["kind"], "ready");
+            let started = read(&mut client).await;
+            let revision = started["revision"].as_u64().unwrap();
+            write(
+                &mut client,
+                json!({"op":"reconcile","version":1,"id":2,"revision":revision - 1}),
+            )
+            .await;
+            assert_eq!(read(&mut client).await["code"], "snapshot_expired");
+            write(
+                &mut client,
+                json!({"op":"reconcile","version":1,"id":3,"revision":revision}),
+            )
+            .await;
+            assert_eq!(read(&mut client).await["code"], "candidate_unavailable");
+            write(
+                &mut client,
+                json!({"op":"inspect","version":1,"id":4,"revision":revision,"offset":0,"limit":1}),
+            )
+            .await;
+            let still_old = read(&mut client).await;
+            assert_eq!(still_old["kind"], "inspected");
+            assert_ne!(still_old["generation"], replacement_digest);
+            write(
+                &mut client,
+                json!({"op":"reconcile","version":1,"id":5,"revision":revision}),
+            )
+            .await;
+            assert_eq!(
+                read(&mut client).await["code"],
+                "candidate_not_ready_or_incompatible"
+            );
+            write(
+                &mut client,
+                json!({"op":"inspect","version":1,"id":6,"revision":null,"offset":0,"limit":1}),
+            )
+            .await;
+            let still_old = read(&mut client).await;
+            assert_eq!(still_old["kind"], "inspected");
+            assert_ne!(still_old["generation"], replacement_digest);
+            let revision = still_old["revision"].as_u64().unwrap();
+            write(
+                &mut client,
+                json!({"op":"reconcile","version":1,"id":7,"revision":revision}),
+            )
+            .await;
+            let switched = read(&mut client).await;
+            assert_eq!(switched["kind"], "reconciled");
+            assert_eq!(switched["changed"], true);
+            assert_eq!(switched["generation"], replacement_digest);
+            let new_revision = switched["revision"].as_u64().unwrap();
+            assert!(new_revision > revision);
+            write(
+                &mut client,
+                json!({"op":"reconcile","version":1,"id":8,"revision":revision}),
+            )
+            .await;
+            assert_eq!(read(&mut client).await["code"], "snapshot_expired");
+            write(
+                &mut client,
+                json!({"op":"inspect","version":1,"id":9,"revision":null,"offset":0,"limit":1}),
+            )
+            .await;
+            let refreshed = read(&mut client).await;
+            assert_eq!(refreshed["kind"], "inspected");
+            let current_revision = refreshed["revision"].as_u64().unwrap();
+            write(
+                &mut client,
+                json!({"op":"reconcile","version":1,"id":10,"revision":current_revision}),
+            )
+            .await;
+            let unchanged = read(&mut client).await;
+            assert_eq!(unchanged["changed"], false);
+            assert_eq!(unchanged["revision"], current_revision);
+            write(&mut client, json!({"op":"stop","version":1,"id":11})).await;
+            assert_eq!(read(&mut client).await["shutdown"], "suspended");
+            task.await.unwrap().unwrap();
+        })
+        .await;
 }
