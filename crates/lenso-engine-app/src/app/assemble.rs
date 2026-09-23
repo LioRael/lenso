@@ -639,6 +639,73 @@ mod tests {
     }
 
     #[test]
+    fn v6_memory_selection_locks_the_executable_host_limit() {
+        use lenso_app_plan::authoring::{PluginContract, PluginImplementation};
+        use lenso_plugin_bundle::{
+            ExecutionAdmissionRequirementV6, PluginArtifactV2, PluginImplementationV6,
+            PluginManifest, PluginManifestV6, PluginVariantInputV6, PluginVariantV6,
+        };
+
+        let wasm_class = lenso_wasm_component_adapter::EXECUTION_CLASS;
+        let digest = format!("sha256:{}", "0".repeat(64));
+        let manifest = PluginManifest::V6(PluginManifestV6 {
+            schema_version: 6,
+            contract: PluginContract::new("example.memory", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV6 {
+                id: "portable".to_owned(),
+                variants: vec![PluginVariantV6 {
+                    id: "wasm".to_owned(),
+                    host_targets: vec!["*".to_owned()],
+                    input: PluginVariantInputV6::Artifact {
+                        artifact: PluginArtifactV2 {
+                            path: "implementations/portable/plugin.wasm".to_owned(),
+                            digest: digest.clone(),
+                            size: 1,
+                            media_type: "application/wasm".to_owned(),
+                            target: "wasm32-unknown-unknown".to_owned(),
+                        },
+                    },
+                    runtime: PluginImplementation::new(
+                        "example.memory",
+                        digest,
+                        "plugin.wasm",
+                        lenso_app_plan::ExecutionClassId::new(wasm_class),
+                    )
+                    .with_runtime_profile(lenso_wasm_component_adapter::RUNTIME_PROFILE),
+                    execution_requirements: vec![ExecutionAdmissionRequirementV6::MemoryCeiling {
+                        max_bytes: 64 * 1024 * 1024,
+                    }],
+                }],
+            }],
+        });
+        let selected = crate::target_profile::select_implementation(
+            &manifest,
+            &local_implementation_policy(true).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            selected
+                .evidence
+                .selected
+                .enforced_wasm_memory_ceiling_bytes,
+            Some(64 * 1024 * 1024)
+        );
+        let encoded = serde_json::to_value(&selected.evidence).unwrap();
+        assert_eq!(
+            encoded["selected"]["enforced_wasm_memory_ceiling_bytes"],
+            64 * 1024 * 1024
+        );
+        assert!(
+            crate::target_profile::select_implementation(
+                &manifest,
+                &local_implementation_policy(false).unwrap(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn publishes_declared_resources_with_an_exact_inventory() {
         let temporary = tempfile::tempdir().unwrap();
         let project = temporary.path().join("plugin");
