@@ -337,6 +337,7 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         lenso_plugin_catalog::digest(&archive) == release.crate_digest,
         "crate archive digest does not match signed catalog"
     );
+    super::preflight_source_adoption(root, plugin_id)?;
     let parent = root.join("vendor/lenso").join(plugin_id);
     super::writable_path(root, Path::new("vendor/lenso"))?;
     super::writable_path(

@@ -957,6 +957,65 @@ fn assert_re_adoption_preserves_disabled(
     fs::remove_file(&disabled).unwrap();
 }
 
+fn reject_invalid_app_config_without_vendoring(
+    cli: &str,
+    fixture_root: &std::path::Path,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+    archive: &std::path::Path,
+) {
+    let root = fixture_root.join("invalid-app");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    let config = root.join("lenso.toml");
+    let original = b"plugin_sources = 'not-an-array'\n";
+    fs::write(&config, original).unwrap();
+    let rejected = Command::new(cli)
+        .args(["app", "add", "example.web@0.4.5", "--root"])
+        .arg(&root)
+        .arg("--linked-snapshot")
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--crate")
+        .arg(archive)
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+    assert!(!root.join("plugins/example.web").exists());
+    assert_eq!(fs::read(config).unwrap(), original);
+}
+
+fn assert_exact_source_discovered(cli: &str, root: &std::path::Path) {
+    let discovery = Command::new(cli)
+        .args(["app", "discover", "--json", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(
+        discovery.status.success(),
+        "{}",
+        String::from_utf8_lossy(&discovery.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&discovery.stdout).unwrap();
+    assert_eq!(report["candidates"].as_array().unwrap().len(), 1);
+    assert_eq!(report["candidates"][0]["plugin_id"], "example.web");
+    assert!(root.join("plugins/example.web/default.toml").exists());
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join("lenso.toml")).unwrap()).unwrap();
+    assert_eq!(config["plugin_sources"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        config["plugin_sources"][0].as_str(),
+        Some("vendor/lenso/example.web/0.4.5")
+    );
+}
+
 #[test]
 fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     let temp = tempfile::tempdir().unwrap();
@@ -1016,29 +1075,15 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         &document_path,
     );
     reject_unlisted_version_and_changed_archive(cli, &root, &snapshot_path, &trust_path, &archive);
+    reject_invalid_app_config_without_vendoring(
+        cli,
+        temp.path(),
+        &snapshot_path,
+        &trust_path,
+        &archive,
+    );
     adopt_exact_twice(cli, &root, &snapshot_path, &trust_path, &archive);
-    let discovery = Command::new(cli)
-        .args(["app", "discover", "--json", "--root"])
-        .arg(&root)
-        .output()
-        .unwrap();
-    assert!(
-        discovery.status.success(),
-        "{}",
-        String::from_utf8_lossy(&discovery.stderr)
-    );
-    let report: serde_json::Value = serde_json::from_slice(&discovery.stdout).unwrap();
-    assert_eq!(report["candidates"].as_array().unwrap().len(), 1);
-    assert_eq!(report["candidates"][0]["plugin_id"], "example.web");
-    let intent = root.join("plugins/example.web/default.toml");
-    assert!(intent.exists());
-    let config: toml::Value =
-        toml::from_str(&fs::read_to_string(root.join("lenso.toml")).unwrap()).unwrap();
-    assert_eq!(config["plugin_sources"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        config["plugin_sources"][0].as_str(),
-        Some("vendor/lenso/example.web/0.4.5")
-    );
+    assert_exact_source_discovered(cli, &root);
     assert_re_adoption_preserves_disabled(cli, &root, &snapshot_path, &trust_path, &archive);
     modified_linked_source_cannot_build(cli, &root);
     generated_cargo_lock_is_not_authored_source(cli, &root);

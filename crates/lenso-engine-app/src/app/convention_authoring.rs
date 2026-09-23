@@ -286,17 +286,8 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let [candidate] = report.candidates.as_slice() else {
         bail!("select one Plugin source package, not a workspace of candidates");
     };
-    writable_path(&root, Path::new("lenso.toml"))?;
-    let intent_relative = Path::new("plugins").join(&candidate.plugin_id);
-    for name in ["default.toml", "default.disabled"] {
-        writable_path(&root, &intent_relative.join(name))?;
-    }
+    let mut document = preflight_source_adoption(&root, &candidate.plugin_id)?;
     let config = root.join("lenso.toml");
-    let mut document: toml::Value = if config.exists() {
-        toml::from_str(&fs::read_to_string(&config)?)?
-    } else {
-        toml::Value::Table(Default::default())
-    };
     let sources = document
         .as_table_mut()
         .context("lenso.toml table")?
@@ -331,6 +322,28 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
     }
     println!("Adopted {} from {}", candidate.plugin_id, source.display());
     Ok(())
+}
+
+fn preflight_source_adoption(root: &Path, plugin_id: &str) -> anyhow::Result<toml::Value> {
+    writable_path(root, Path::new("app"))?;
+    writable_path(root, Path::new("lenso.toml"))?;
+    let intent_relative = Path::new("plugins").join(plugin_id);
+    for name in ["default.toml", "default.disabled"] {
+        writable_path(root, &intent_relative.join(name))?;
+    }
+    let config = root.join("lenso.toml");
+    let document: toml::Value = if config.exists() {
+        toml::from_str(&fs::read_to_string(&config)?)?
+    } else {
+        toml::Value::Table(Default::default())
+    };
+    let table = document.as_table().context("lenso.toml table")?;
+    if let Some(sources) = table.get("plugin_sources") {
+        sources
+            .as_array()
+            .context("lenso.toml plugin_sources array")?;
+    }
+    Ok(document)
 }
 
 pub fn unadopt(args: UnadoptArgs) -> anyhow::Result<()> {
