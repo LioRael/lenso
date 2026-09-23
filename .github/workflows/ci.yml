@@ -31,7 +31,8 @@ jobs:
         run: cargo check --locked --workspace --all-targets
       - name: Test the workspace
         run: cargo test --locked --workspace
-      - name: Compile portable core for WebAssembly hosts
+      - name: Compile portable core and Workers HTTP Host for WebAssembly
         run: |
           cargo check --locked -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-unknown-unknown
+          cargo check --locked -p lenso-workers-http-parity-host --target wasm32-unknown-unknown
           cargo check --locked -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2

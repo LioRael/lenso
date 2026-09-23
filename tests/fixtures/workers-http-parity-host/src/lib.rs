@@ -149,6 +149,14 @@ pub async fn handle_http(input: String, scope: JsValue) -> Result<String, JsValu
     .await
     .map_err(error)?;
     let ready = app.is_ready() && app.is_accepting();
+    if !ready {
+        let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
+        return Err(if shutdown == ShutdownOutcome::Clean {
+            error("HTTP App is not ready or accepting")
+        } else {
+            error(shutdown)
+        });
+    }
     let response = ingress.handle(request, cancellation.clone()).await;
     let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
     if shutdown != ShutdownOutcome::Clean {
