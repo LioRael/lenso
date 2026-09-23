@@ -43,10 +43,13 @@ HTTP, PostgreSQL, Auth, Console, Story, and similar features do not pass this
 deletion test because their complexity disappears when their Plugins are not
 selected.
 
-Repository ownership is narrower than the current migration workspace. The
-main repository owns Plan, Kernel, and Kernel conformance; host runtimes,
-Adapters, protocols, Plugins, tooling, and examples depend inward and move to
-their named owners under [ADR 0064](../adr/0064-keep-only-portable-core-ownership-in-the-main-repository.md).
+Under [ADR 0077](../adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md),
+the frequently co-evolving Rust Plan, Kernel, Engine, Drivers, Adapters, CLI,
+SDKs, and protocols share this repository. Their crate boundaries preserve
+portable dependency direction: Plan and Kernel do not depend on concrete Host,
+product, Web, or CLI concerns. JavaScript/TypeScript tooling lives in
+`lenso-js`; Site, UI, Marketplace, and downstream products keep separate
+ownership.
 
 ## Composition and packages
 
@@ -89,7 +92,7 @@ See ADRs [0031](../adr/0031-separate-capability-contracts-from-module-packages.m
 [0057](../adr/0057-make-module-installation-an-authoring-operation.md).
 
 The executable contract is documented in [Lenso authoring tooling](lenso-authoring.md)
-and implemented by the `lenso-cli` repository. Its public CLI exposes Plugin
+and implemented by this workspace's `crates/lenso-cli`. Its public CLI exposes Plugin
 authoring through `plugin new`, `check`, `dev`,
 and `pack`, plus Plugin Root management and derived App inspection. Plugin
 packages provide locked deny-safe configuration defaults; direct Instance TOML

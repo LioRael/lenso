@@ -139,16 +139,21 @@ separately running program is a host or an Execution Adapter concern.
 
 `lenso-app-plan` owns serializable plan data. `lenso-kernel` owns the portable
 runtime and deterministic test Driver. `lenso-runtime-conformance` owns the
-product-neutral executable test surface for Kernel Interfaces. Runtime Drivers,
-Execution Adapters, Plugins, authoring tools, and examples have been extracted
-to their ADR 0064 owners. New concerns must first identify their
-Capability, Plugin, Adapter, or authoring seam before adding a crate.
+product-neutral executable test surface for Kernel Interfaces. Under
+[ADR 0077](docs/adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md),
+the co-evolving Rust Engine, Drivers, Adapters, CLI, SDKs, and protocols share
+this workspace while retaining distinct crate and dependency boundaries.
+JavaScript/TypeScript tooling lives in `lenso-js`; the Site, UI, Marketplace,
+and downstream products retain their own ownership. New concerns must first
+identify their Capability, Plugin, Adapter, or authoring seam before adding a
+crate.
 
 ## Delivery
 
-Create worktrees from the latest `origin/main` with Worktrunk. Pull requests
-target `main`. Do not publish or recreate v0.3.x artifacts from the vNext
-workspace.
+Create worktrees from the latest `origin/main` with Worktrunk. Follow
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for immutable candidate validation and
+fast-forward landing; publication is a separate authorization. Do not publish
+or recreate v0.3.x artifacts from the vNext workspace.
 
 ## Evidence
 

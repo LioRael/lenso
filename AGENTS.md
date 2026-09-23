@@ -28,10 +28,10 @@ source is retained by the `lenso@0.3.47` tag and Git history.
   database, process, product, and release concerns.
 - Keep authoring data in `lenso-app-plan`; keep host scheduling in a Runtime
   Driver; keep host-specific Plugin execution in an Execution Adapter.
-- Keep main-repository product ownership limited to `lenso-app-plan`,
-  `lenso-kernel`, and Kernel-owned runtime conformance under ADR 0064. Do not
-  add inward dependencies on a concrete Driver, Adapter, Capability, Plugin,
-  CLI, or example.
+- Follow ADR 0077's consolidated Rust workspace ownership while retaining
+  ADR 0064's portable dependency direction: Plan, Kernel, and Kernel
+  conformance do not depend inward on a concrete Driver, Adapter, Capability,
+  Plugin, CLI, or example.
 - Kernel executes only immutable, completely resolved Plan Snapshots. It may
   apply only an ADR 0067 validated atomic Plan Transition between adjacent
   snapshots; discovery, installation, version selection, product policy,
