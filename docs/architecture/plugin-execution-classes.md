@@ -116,22 +116,26 @@ signed selection and digest behavior is unchanged.
 
 V6 variants may also declare required permission grants, an OS sandbox, a
 memory ceiling or a turn deadline. These are admission demands, not evidence
-that an Adapter enforces them. Current Host runtime admission supplies no
-verifiable grant, sandbox or resource-control evidence for these demands, so a
-matching candidate is rejected rather than falling back to a same- or
-lower-priority variant with wider authority. An execution-class name, Wasm
-Artifact or QuickJS VM is not proof of an OS sandbox or an effective limit.
+that an Adapter enforces them. A matching candidate with an unverified demand
+is rejected rather than falling back to a same- or lower-priority variant with
+wider authority. An execution-class name, Wasm Artifact or QuickJS VM is not
+proof of an OS sandbox or an effective limit. Permission grants and OS sandbox
+demands remain unverified.
 When the Host admits the Execution Class but only a different runtime
 ABI/profile version, selection reports the exact required and admitted
 profiles instead of a generic unadmitted-runtime error.
 
-The current Wasm Component Adapter does apply Wasmtime limits, but those
-defaults are not persisted as selected V6 admission evidence or rechecked
-against the Adapter instantiated by the generated Host. In particular, its
-memory-size limit is per linear memory, not an aggregate Component/Host memory
-ceiling, and its turn timer pauses during Host imports. Neither mechanism
-currently discharges a V6 `MemoryCeiling` or `TurnDeadline` demand; both remain
-fail-closed even when their requested number is looser than an Adapter default.
+The Wasm Component Adapter's memory limit counts all Guest linear memories in
+one Store together, not total Host-process memory. An executable local Host may
+admit a V6 `MemoryCeiling` only when its selected, locked evidence records an
+actual per-instance Adapter limit no wider than the requested ceiling. The
+generated Host rebinds that exact limit to every selected Wasm Instance at
+startup and on recreation; a missing binding is rejected. Non-executable
+authoring output and the prepared-distribution path do not claim this
+enforcement. The current turn timer cannot preempt a synchronously blocking
+Host import, so it does **not** establish a total wall-clock `TurnDeadline`.
+That demand remains fail-closed even if its requested duration exceeds the
+Adapter's ordinary timer default.
 
 Selection is not runtime fallback. If the selected implementation fails its
 Ready Gate or later invocation, the Generation fails through its ordinary

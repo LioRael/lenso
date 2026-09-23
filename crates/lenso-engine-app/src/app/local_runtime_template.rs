@@ -93,8 +93,22 @@ fn mark_activated(mut activation: Activation, root_revision: &str) -> anyhow::Re
 #[derive(Deserialize)]
 struct Artifact {
     plugin_id: String,
+    execution_class: String,
+    runtime_profile: String,
     artifact_digest: String,
     artifact_size: u64,
+    selection: ArtifactSelection,
+}
+#[derive(Deserialize)]
+struct ArtifactSelection {
+    selected: SelectedArtifact,
+}
+#[derive(Deserialize)]
+struct SelectedArtifact {
+    execution_class: String,
+    runtime_profile: String,
+    #[serde(default)]
+    enforced_wasm_memory_ceiling_bytes: Option<u64>,
 }
 #[derive(Deserialize)]
 struct FileProof {
@@ -245,6 +259,8 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     }
     let inventory: Vec<Artifact> = serde_json::from_slice(&fs::read(root.join("bundles.json"))?)?;
     let mut artifacts = ArtifactCatalog::new();
+    #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
+    let mut wasm_limits = std::collections::BTreeMap::new();
     for instance in resolution.plan.plugin_instances() {
         if instance.execution_class().as_str() == "lenso.native-rust@1" {
             continue;
@@ -253,6 +269,31 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             .iter()
             .find(|a| a.plugin_id == instance.package_id())
             .with_context(|| format!("missing built artifact for {}", instance.package_id()))?;
+        if artifact.execution_class != instance.execution_class().as_str()
+            || artifact.runtime_profile != instance.runtime_profile()
+            || artifact.selection.selected.execution_class != artifact.execution_class
+            || artifact.selection.selected.runtime_profile != artifact.runtime_profile
+        {
+            bail!("selected runtime identity differs from locked artifact inventory for {}", instance.package_id());
+        }
+        if instance.execution_class().as_str() == "lenso.wasm-component@1" {
+            #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
+            {
+            let ceiling = artifact.selection.selected.enforced_wasm_memory_ceiling_bytes
+                .context("Wasm Component memory ceiling is absent from locked selection")?;
+            let ceiling = usize::try_from(ceiling).context("Wasm Component memory ceiling exceeds Host address space")?;
+            if ceiling == 0 { bail!("Wasm Component memory ceiling must be positive"); }
+            wasm_limits.insert(instance.instance_key().to_owned(),
+                lenso_wasm_component_adapter::WasmComponentLimits {
+                    max_memory_bytes: ceiling,
+                    ..lenso_wasm_component_adapter::WasmComponentLimits::default()
+                });
+            }
+            #[cfg(all(generated_native_host, not(generated_wasm_adapter)))]
+            bail!("Host has no built Wasm Component Adapter");
+        } else if artifact.selection.selected.enforced_wasm_memory_ceiling_bytes.is_some() {
+            bail!("non-Wasm artifact advertises a Wasm Component memory ceiling");
+        }
         let path = format!("runtime/artifacts/{}", artifact.plugin_id);
         if !locked.contains(&path) {
             bail!("selected artifact is not locked: {path}");
@@ -304,7 +345,11 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     #[cfg(any(not(generated_native_host), generated_process_adapter))]
     let process = lenso_process_adapter::ProcessAdapter::new(artifacts.clone());
     #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
-    let wasm = lenso_wasm_component_adapter::WasmComponentAdapter::new(artifacts);
+    let mut wasm = lenso_wasm_component_adapter::WasmComponentAdapter::new(artifacts)
+        .require_exact_instance_limits();
+    for (instance_key, limits) in wasm_limits {
+        wasm = wasm.with_instance_limits(instance_key, limits);
+    }
     #[cfg(not(generated_native_host))]
     let typed = std::collections::BTreeSet::from([super::terminal::command::CAPABILITY_ID, super::terminal::provider::CAPABILITY_ID]);
     #[cfg(not(generated_native_host))]

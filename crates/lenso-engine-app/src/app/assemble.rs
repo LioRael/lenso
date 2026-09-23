@@ -252,7 +252,7 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
                 verify_bundle_directory(directory)?,
                 crate::target_profile::select_implementation(
                     &read_bundle_manifest(directory)?,
-                    &local_implementation_policy()?,
+                    &local_implementation_policy(executable)?,
                 )?,
             ))
         })?;
@@ -522,7 +522,23 @@ fn publish_resource_files(
     Ok(())
 }
 
-fn local_implementation_policy() -> anyhow::Result<ImplementationPolicy> {
+fn local_implementation_policy(executable: bool) -> anyhow::Result<ImplementationPolicy> {
+    let wasm = crate::target_profile::request_wasm_component_admission(
+        lenso_app_plan::ExecutionClassId::new(lenso_wasm_component_adapter::EXECUTION_CLASS),
+        lenso_wasm_component_adapter::RUNTIME_PROFILE,
+    );
+    // Only an executable local Host owns the Adapter whose exact per-instance
+    // limit is locked into bundles.json and rechecked on every Host startup.
+    let wasm = if executable {
+        wasm.with_enforced_wasm_memory_ceiling(
+            u64::try_from(
+                lenso_wasm_component_adapter::WasmComponentLimits::default().max_memory_bytes,
+            )
+            .context("Wasm memory limit exceeds u64")?,
+        )
+    } else {
+        wasm
+    };
     Ok(ImplementationPolicy {
         host_target: lenso_app_authoring::native_host_target().to_owned(),
         // The local Host wires Request endpoints for these portable Adapter
@@ -537,12 +553,7 @@ fn local_implementation_policy() -> anyhow::Result<ImplementationPolicy> {
                 lenso_app_plan::ExecutionClassId::new(lenso_process_adapter::EXECUTION_CLASS),
                 lenso_process_adapter::RUNTIME_PROFILE_V1,
             ),
-            crate::target_profile::request_wasm_component_admission(
-                lenso_app_plan::ExecutionClassId::new(
-                    lenso_wasm_component_adapter::EXECUTION_CLASS,
-                ),
-                lenso_wasm_component_adapter::RUNTIME_PROFILE,
-            ),
+            wasm,
             crate::target_profile::bun_admission()?,
         ],
     })

@@ -34,6 +34,10 @@ pub(crate) struct SelectedImplementationEvidence {
     pub(crate) variant_id: Option<String>,
     pub(crate) execution_class: ExecutionClassId,
     pub(crate) runtime_profile: String,
+    /// Locked Host-to-Adapter binding for an aggregate Guest linear-memory
+    /// ceiling. This is absent unless a concrete Host execution path owns it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) enforced_wasm_memory_ceiling_bytes: Option<u64>,
 }
 
 /// One fully explained selection plus the exact capability profile consumed by
@@ -160,6 +164,7 @@ pub(crate) fn select_implementation(
             variant_id: implementation.variant_id.clone(),
             execution_class: implementation.descriptor.execution_class().clone(),
             runtime_profile: implementation.descriptor.runtime_profile().to_owned(),
+            enforced_wasm_memory_ceiling_bytes: admission.enforced_wasm_memory_ceiling_bytes,
         },
         rejected: explanation.rejected,
     };
