@@ -9,7 +9,7 @@ use std::{
         mpsc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use futures::{FutureExt, StreamExt, channel::mpsc as futures_mpsc, select};
@@ -107,8 +107,9 @@ pub struct WasmComponentLimits {
     pub max_streams: usize,
     pub max_host_imports_per_call: usize,
     pub fuel_per_invocation: u64,
-    /// Guest execution-turn timer. Host imports can block past this duration;
-    /// it is not evidence for a V6 wall-clock `TurnDeadline` requirement.
+    /// Maximum wall-clock time for one Guest turn, including Host imports.
+    /// In-flight Host callback effects cannot be rolled back, so this alone
+    /// is not evidence for a V6 `TurnDeadline` admission requirement.
     pub max_turn: Duration,
 }
 
@@ -214,7 +215,8 @@ impl WasmComponentAdapter {
 
     /// Returns the immutable limits that `prepare` and `recreate` will apply.
     /// `max_memory_bytes` is the aggregate Guest linear-memory ceiling; the
-    /// `max_turn` field is not a V6 wall-clock deadline guarantee.
+    /// `max_turn` field cannot roll back an in-flight Host callback and is not
+    /// a V6 `TurnDeadline` admission guarantee.
     pub fn configured_limits_for_instance(
         &self,
         instance_key: &str,
@@ -396,12 +398,14 @@ enum HostImportCall {
 
 struct HostImportCommand {
     call: HostImportCall,
+    turn: TurnDeadline,
     response: mpsc::SyncSender<String>,
 }
 
 struct GuestCommand {
     call: GuestCall,
     abandoned: Arc<AtomicBool>,
+    turn: TurnDeadline,
     imports: futures_mpsc::Sender<HostImportCommand>,
     outcome: futures::channel::oneshot::Sender<Result<JsonInvocationOutcome, String>>,
 }
@@ -412,9 +416,49 @@ enum WorkerCommand {
 }
 
 enum DeadlineCommand {
-    Arm(std::time::Duration),
-    Disarm,
+    Arm(TurnDeadline),
+    Disarm(mpsc::SyncSender<()>),
     Shutdown,
+}
+
+#[derive(Clone, Debug)]
+struct TurnDeadline {
+    at: Instant,
+    request_id: u64,
+    expired: Arc<AtomicBool>,
+}
+
+impl TurnDeadline {
+    fn after(
+        duration: Duration,
+        request_id: u64,
+        expired: Arc<AtomicBool>,
+    ) -> Result<Self, String> {
+        let at = Instant::now()
+            .checked_add(duration)
+            .ok_or_else(|| "Wasm Component turn deadline overflowed".to_owned())?;
+        Ok(Self {
+            at,
+            request_id,
+            expired,
+        })
+    }
+
+    fn is_expired(&self) -> bool {
+        if Instant::now() >= self.at {
+            self.expired.store(true, Ordering::Release);
+        }
+        self.expired.load(Ordering::Acquire)
+    }
+
+    fn host_failure(&self) -> String {
+        serde_json::json!({
+            "runtime": json_runtime_failure(&RuntimeFailure::DeadlineExceeded {
+                request_id: self.request_id,
+            }),
+        })
+        .to_string()
+    }
 }
 
 struct WasmGeneration {
@@ -426,6 +470,7 @@ struct WasmGeneration {
     active_streams: std::cell::Cell<usize>,
     max_streams: usize,
     max_host_imports_per_call: usize,
+    max_turn: Duration,
     host_imports: Rc<JsonHostImports>,
 }
 
@@ -495,6 +540,7 @@ impl WasmGeneration {
                 active_streams: std::cell::Cell::new(0),
                 max_streams,
                 max_host_imports_per_call,
+                max_turn: limits.max_turn,
                 host_imports,
             }),
             Ok(Err(detail)) => {
@@ -547,6 +593,12 @@ impl WasmGeneration {
             });
         }
         let abandoned = Arc::new(AtomicBool::new(false));
+        let turn = TurnDeadline::after(
+            self.max_turn,
+            context.request_id(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .map_err(wasm_failure)?;
         let mut abandonment = WasmAbandonmentGuard::new(abandoned.clone(), self.engine.clone());
         let (outcome, response) = futures::channel::oneshot::channel();
         let (imports, import_receiver) = futures_mpsc::channel(1);
@@ -554,6 +606,7 @@ impl WasmGeneration {
             .try_send(WorkerCommand::Call(GuestCommand {
                 call,
                 abandoned,
+                turn: turn.clone(),
                 imports,
                 outcome,
             }))
@@ -570,6 +623,12 @@ impl WasmGeneration {
             select! {
                 result = response => {
                     abandonment.disarm();
+                    if turn.is_expired() {
+                        self.failed.store(true, Ordering::Release);
+                        return Err(RuntimeFailure::DeadlineExceeded {
+                            request_id: context.request_id(),
+                        });
+                    }
                     return match result {
                         Ok(Ok(outcome)) => Ok(outcome),
                         Ok(Err(detail)) => {
@@ -589,7 +648,9 @@ impl WasmGeneration {
                         continue;
                     };
                     imported = imported.saturating_add(1);
-                    let encoded = if imported > self.max_host_imports_per_call {
+                    let encoded = if command.turn.is_expired() {
+                        command.turn.host_failure()
+                    } else if imported > self.max_host_imports_per_call {
                         serde_json::to_string(&serde_json::json!({
                             "runtime": json_runtime_failure(&RuntimeFailure::ResourceExhausted {
                                 capability: JSON_HOST_IMPORTS_ABI_V2,
@@ -599,6 +660,11 @@ impl WasmGeneration {
                         .expect("host import Runtime Failure is JSON")
                     } else {
                         self.dispatch_host_import(command.call, context.clone()).await
+                    };
+                    let encoded = if command.turn.is_expired() {
+                        command.turn.host_failure()
+                    } else {
+                        encoded
                     };
                     let _ = command.response.send(encoded);
                 }
@@ -977,8 +1043,7 @@ impl Drop for WasmAbandonmentGuard {
 struct HostState {
     limits: GuestLinearMemoryBudget,
     imports: Option<futures_mpsc::Sender<HostImportCommand>>,
-    deadline: mpsc::Sender<DeadlineCommand>,
-    max_turn: std::time::Duration,
+    turn: Option<TurnDeadline>,
 }
 
 impl host_imports_abi::PluginImports for HostState {
@@ -1053,7 +1118,12 @@ impl host_imports_abi::PluginImports for HostState {
 }
 
 fn call_wasm_host(state: &mut HostState, call: HostImportCall) -> String {
-    let _ = state.deadline.send(DeadlineCommand::Disarm);
+    let Some(turn) = state.turn.clone() else {
+        return serde_json::json!({ "runtime": { "kind": "admission_closed" } }).to_string();
+    };
+    if turn.is_expired() {
+        return turn.host_failure();
+    }
     let (response, receiver) = mpsc::sync_channel(1);
     let result = state
         .imports
@@ -1061,7 +1131,11 @@ fn call_wasm_host(state: &mut HostState, call: HostImportCall) -> String {
         .ok_or(())
         .and_then(|sender| {
             sender
-                .try_send(HostImportCommand { call, response })
+                .try_send(HostImportCommand {
+                    call,
+                    turn: turn.clone(),
+                    response,
+                })
                 .map_err(|_| ())
         })
         .and_then(|()| receiver.recv().map_err(|_| ()))
@@ -1071,8 +1145,11 @@ fn call_wasm_host(state: &mut HostState, call: HostImportCall) -> String {
             })
             .to_string()
         });
-    let _ = state.deadline.send(DeadlineCommand::Arm(state.max_turn));
-    result
+    if turn.is_expired() {
+        turn.host_failure()
+    } else {
+        result
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1109,6 +1186,7 @@ fn run_worker(
         limits.max_table_elements,
         limits.max_instances,
     );
+    let startup_turn = TurnDeadline::after(limits.max_turn, 0, Arc::new(AtomicBool::new(false)))?;
     let (deadline_tx, deadline_rx) = mpsc::channel();
     let deadline_engine = engine.clone();
     let deadline_worker = thread::Builder::new()
@@ -1120,8 +1198,7 @@ fn run_worker(
         HostState {
             limits: store_limits,
             imports: None,
-            deadline: deadline_tx.clone(),
-            max_turn: limits.max_turn,
+            turn: Some(startup_turn.clone()),
         },
     );
     store.limiter(|state| &mut state.limits);
@@ -1131,7 +1208,7 @@ fn run_worker(
     store.set_epoch_deadline(1);
     store.epoch_deadline_trap();
     deadline_tx
-        .send(DeadlineCommand::Arm(limits.max_turn))
+        .send(DeadlineCommand::Arm(startup_turn.clone()))
         .map_err(|error| error.to_string())?;
     let requires_stream = instance
         .provided_capabilities()
@@ -1164,9 +1241,13 @@ fn run_worker(
     }
     validate_json_plugin_descriptor(instance, &descriptor)
         .map_err(|error| bounded(format!("Wasm Component descriptor mismatch: {error:?}")))?;
-    deadline_tx
-        .send(DeadlineCommand::Disarm)
-        .map_err(|error| error.to_string())?;
+    if startup_turn.is_expired() {
+        let _ = deadline_tx.send(DeadlineCommand::Shutdown);
+        let _ = deadline_worker.join();
+        return Err("Wasm Component startup turn deadline exceeded".to_owned());
+    }
+    store.data_mut().turn = None;
+    disarm_deadline(&deadline_tx)?;
     ready.send(Ok(())).map_err(|error| error.to_string())?;
     let worker_result = (|| {
         while let Ok(command) = receiver.recv() {
@@ -1185,20 +1266,33 @@ fn run_worker(
                         .map_err(|error| error.to_string())?;
                     store.set_epoch_deadline(1);
                     store.epoch_deadline_trap();
+                    let turn = command.turn;
+                    if turn.is_expired() {
+                        failed.store(true, Ordering::Release);
+                        let _ = command
+                            .outcome
+                            .send(Err("Wasm Component turn deadline exceeded".to_owned()));
+                        return Ok(());
+                    }
+                    store.data_mut().turn = Some(turn.clone());
                     deadline_tx
-                        .send(DeadlineCommand::Arm(limits.max_turn))
+                        .send(DeadlineCommand::Arm(turn.clone()))
                         .map_err(|error| error.to_string())?;
                     store.data_mut().imports = Some(command.imports);
-                    let outcome = call_wasm_guest(
+                    let guest_outcome = call_wasm_guest(
                         &bindings,
                         &mut store,
                         &command.call,
                         limits.max_result_bytes,
                     );
                     store.data_mut().imports = None;
-                    deadline_tx
-                        .send(DeadlineCommand::Disarm)
-                        .map_err(|error| error.to_string())?;
+                    store.data_mut().turn = None;
+                    disarm_deadline(&deadline_tx)?;
+                    let outcome = if turn.is_expired() {
+                        Err("Wasm Component turn deadline exceeded".to_owned())
+                    } else {
+                        guest_outcome
+                    };
                     if outcome.is_err() {
                         failed.store(true, Ordering::Release);
                     }
@@ -1391,31 +1485,43 @@ fn parse_bounded_json(encoded: &str, max_result_bytes: usize) -> Result<serde_js
 }
 
 fn run_deadline_worker(engine: &Engine, commands: &mpsc::Receiver<DeadlineCommand>) {
-    while let Ok(command) = commands.recv() {
-        match command {
-            DeadlineCommand::Arm(duration) => loop {
-                match commands.recv_timeout(duration) {
-                    Ok(DeadlineCommand::Disarm) => break,
-                    Ok(DeadlineCommand::Arm(next_duration)) => {
-                        if next_duration != duration {
-                            // Only the single Wasm worker can arm this timer, so this branch is a
-                            // defensive reset rather than concurrent invocation support.
-                            break;
-                        }
-                    }
-                    Ok(DeadlineCommand::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        return;
-                    }
+    let mut active: Option<TurnDeadline> = None;
+    loop {
+        let command = match &active {
+            Some(turn) => {
+                match commands.recv_timeout(turn.at.saturating_duration_since(Instant::now())) {
+                    Ok(command) => command,
                     Err(mpsc::RecvTimeoutError::Timeout) => {
+                        turn.expired.store(true, Ordering::Release);
                         engine.increment_epoch();
-                        break;
+                        active = None;
+                        continue;
                     }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 }
+            }
+            None => match commands.recv() {
+                Ok(command) => command,
+                Err(_) => return,
             },
-            DeadlineCommand::Disarm => {}
+        };
+        match command {
+            DeadlineCommand::Arm(turn) => active = Some(turn),
+            DeadlineCommand::Disarm(acknowledge) => {
+                active = None;
+                let _ = acknowledge.send(());
+            }
             DeadlineCommand::Shutdown => return,
         }
     }
+}
+
+fn disarm_deadline(commands: &mpsc::Sender<DeadlineCommand>) -> Result<(), String> {
+    let (acknowledge, receipt) = mpsc::sync_channel(0);
+    commands
+        .send(DeadlineCommand::Disarm(acknowledge))
+        .map_err(|error| error.to_string())?;
+    receipt.recv().map_err(|error| error.to_string())
 }
 
 #[derive(Debug)]

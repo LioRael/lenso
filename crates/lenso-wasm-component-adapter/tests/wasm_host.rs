@@ -692,7 +692,7 @@ fn real_component_import_invokes_only_the_plan_bound_host_capability() {
 }
 
 #[test]
-fn real_component_host_imports_do_not_enforce_total_wall_clock_turn_deadline() {
+fn real_component_rejects_late_guest_effects_after_host_import_deadline() {
     let component = wit_component::ComponentEncoder::default()
         .module(rust_host_import_guest())
         .unwrap()
@@ -744,21 +744,23 @@ fn real_component_host_imports_do_not_enforce_total_wall_clock_turn_deadline() {
             ))
             .unwrap();
         let started = Instant::now();
-        let result = driver
+        let failure = driver
             .run(
                 app.handle::<EchoCapability>("consumer")
                     .unwrap()
                     .invoke("echo", 7),
             )
-            .unwrap()
-            .unwrap();
-        assert_eq!(result, 7);
+            .expect_err("a Guest turn cannot complete after its wall-clock deadline");
+        assert!(
+            matches!(failure, RuntimeFailure::DeadlineExceeded { .. }),
+            "asynchronous={asynchronous}, failure={failure:?}"
+        );
         assert!(
             started.elapsed() >= Duration::from_millis(200),
             "asynchronous={asynchronous}"
         );
         assert_eq!(completed.load(Ordering::Relaxed), 1);
-        assert_eq!(publications.load(Ordering::Relaxed), 1);
+        assert_eq!(publications.load(Ordering::Relaxed), 0);
     }
 }
 

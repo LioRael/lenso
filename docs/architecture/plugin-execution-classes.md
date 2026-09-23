@@ -134,10 +134,14 @@ startup and on recreation; a missing binding is rejected. Non-executable
 authoring output and the prepared-distribution path do not claim this
 enforcement. The current local Host policy binds 64 MiB per Wasm Instance;
 a release demanding a lower ceiling is rejected rather than silently assigned
-a weaker limit. The current turn timer pauses for Host imports: a synchronous
-block or asynchronous wait can outlast the timer, then complete Host and Guest
-side effects. It does **not** establish a total wall-clock `TurnDeadline`.
-That demand remains fail-closed even if its requested duration exceeds the
+a weaker limit. The current turn timer measures one absolute wall-clock
+interval, including Host imports. When it expires, the Adapter rejects the
+Guest result and denies later Host imports from that turn, so Guest code
+cannot publish a new event after a slow import returns. A Host callback that
+began before expiry may already have committed effects; the Adapter cannot
+roll them back. A synchronous blocking callback can also delay error delivery
+until it returns. This is **not** complete V6 `TurnDeadline` enforcement, and
+that demand remains fail-closed even if its requested duration exceeds the
 Adapter's ordinary timer default.
 
 Selection is not runtime fallback. If the selected implementation fails its
