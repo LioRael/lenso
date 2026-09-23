@@ -21,6 +21,15 @@ const SIGNATURE_CONTEXT: &[u8] = b"lenso.marketplace.linked-cargo-snapshot.v1\0"
 const MAX_HISTORY: usize = 16_384;
 const MAX_HISTORY_BYTES: usize = 8 * 1024 * 1024;
 
+/// Whether the package exposes a generated linked-Plugin entrypoint or
+/// requires a product Host's own integration.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkedCargoIntegration {
+    LinkedPlugin,
+    HostProvided,
+}
+
 /// One exact registry crate whose linked factory must be verified after Host build.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -37,6 +46,7 @@ pub struct LinkedCargoRelease {
     pub registry_url: String,
     /// SHA-256 of the registry crate archive, not a compiled Host artifact.
     pub crate_digest: String,
+    pub integration: LinkedCargoIntegration,
     pub targets: Vec<String>,
     pub availability: Availability,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -102,6 +112,7 @@ impl LinkedCargoRelease {
             &self.package,
             &self.registry_url,
             &self.crate_digest,
+            self.integration,
             &self.targets,
         ))?))
     }

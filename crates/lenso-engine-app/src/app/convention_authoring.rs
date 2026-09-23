@@ -8,6 +8,7 @@ use std::{
     process::Command,
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
+mod linked_catalog;
 
 #[derive(Clone, Debug, Args)]
 pub struct AddArgs {
@@ -17,6 +18,15 @@ pub struct AddArgs {
     root: Option<PathBuf>,
     #[arg(long)]
     no_install: bool,
+    /// Exact signed source-only linked Cargo snapshot.
+    #[arg(long)]
+    linked_snapshot: Option<PathBuf>,
+    /// Local public trust configuration for the signed catalog.
+    #[arg(long)]
+    trust: Option<PathBuf>,
+    /// Exact registry .crate archive; it must match the signed digest.
+    #[arg(long = "crate")]
+    crate_archive: Option<PathBuf>,
 }
 #[derive(Clone, Debug, Subcommand)]
 pub enum PluginCommand {
@@ -87,7 +97,10 @@ fn tsconfig(root: &Path, source: &str) -> anyhow::Result<()> {
 }
 
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
-    let root = crate::plugins::project_root(args.root)?;
+    let root = fs::canonicalize(crate::plugins::project_root(args.root.clone())?)?;
+    if args.linked_snapshot.is_some() || args.trust.is_some() || args.crate_archive.is_some() {
+        return linked_catalog::add(&root, &args);
+    }
     writable_path(&root, Path::new("app"))?;
     if args.source == "@lenso/cli" {
         let destination = root.join("app/lenso-terminal-cli");
@@ -182,7 +195,13 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
         .or_insert_with(|| toml::Value::Array(vec![]))
         .as_array_mut()
         .context("plugin_sources array")?;
-    let value = toml::Value::String(source.to_str().context("source path UTF-8")?.to_owned());
+    let portable_source = source.strip_prefix(&root).unwrap_or(&source);
+    let value = toml::Value::String(
+        portable_source
+            .to_str()
+            .context("source path UTF-8")?
+            .to_owned(),
+    );
     if !source.starts_with(root.join("app")) && !sources.contains(&value) {
         sources.push(value);
     }
@@ -290,6 +309,9 @@ pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyho
         root: Some(root),
         source,
         no_install: !install_dependencies,
+        linked_snapshot: None,
+        trust: None,
+        crate_archive: None,
     })
 }
 pub fn create_plugin(

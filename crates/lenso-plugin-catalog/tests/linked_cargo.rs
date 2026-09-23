@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
     Availability, Documentation, Trust, digest,
-    linked_cargo::{LinkedCargoRelease, LinkedCargoSnapshot, sign, verify},
+    linked_cargo::{LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot, sign, verify},
     verify as verify_portable,
 };
 
@@ -25,6 +25,7 @@ fn snapshot() -> LinkedCargoSnapshot {
             package: "example-notes-plugin".into(),
             registry_url: "https://crates.io".into(),
             crate_digest: digest(b"exact crate archive"),
+            integration: LinkedCargoIntegration::LinkedPlugin,
             targets: vec!["aarch64-apple-darwin".into()],
             availability: Availability::Listed,
             documentation: vec![Documentation {
@@ -70,6 +71,12 @@ fn immutable_crate_input_and_document_revisions_fail_closed() {
     let mut changed = snapshot();
     changed.revision = 2;
     changed.releases[0].crate_digest = digest(b"different crate archive");
+    let bytes = sign(&changed, "key", &key).unwrap();
+    assert!(verify(&bytes, &trust, Some(first.checkpoint()), 150).is_err());
+
+    let mut changed = snapshot();
+    changed.revision = 2;
+    changed.releases[0].integration = LinkedCargoIntegration::HostProvided;
     let bytes = sign(&changed, "key", &key).unwrap();
     assert!(verify(&bytes, &trust, Some(first.checkpoint()), 150).is_err());
 

@@ -24,6 +24,10 @@ lenso-guest-sdk = { path = "../lenso-guest-sdk", version = "0.5.0" }
 lenso-kernel = { path = "../lenso-kernel", version = "=0.3.11" }
 lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.5.1" }
 lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.2", features = ["bundle-verification"] }
+ed25519-dalek = "2.2"
+hex = "0.4"
+flate2 = "1"
+tar = "0.4"
 lenso-process-adapter = { path = "../lenso-process-adapter", version = "=0.3.12" }
 lenso-process-protocol = { path = "../lenso-process-protocol", version = "=0.2.3" }
 lenso-runner = { path = "../lenso-runner", version = "=0.2.17" }

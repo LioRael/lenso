@@ -35,12 +35,15 @@ context and checkpoint prevent replay as a base catalog. Details remain data;
 the Host still owns compatibility, permission, trust and installation admission.
 
 `linked_cargo` is a separate signed source-only channel. It describes an exact
-Cargo crate archive checksum and target list for a Host-linked Plugin, with
+Cargo crate archive checksum, target list and integration kind for a Host-linked Plugin, with
 append-only documentation revisions. It never claims the crate is a portable
 Bundle or a loadable runtime artifact. The old v1 snapshot and details wire
 formats remain unchanged. A consumer must independently verify the registry
 bytes, build the Host, and check the resulting linked Plugin identity before
 admission; signature verification alone does not perform those steps.
+`linked_plugin` identifies a generic linked entrypoint; `host_provided` requires
+product-specific Host integration and must not be advertised as generically
+adoptable.
 
 This new package is prepared for local review. It has not been published; registry
 release requires the repository's Trusted Publisher workflow and explicit approval.

@@ -121,6 +121,17 @@ Native Rust, Bun, Process, and Wasm reuse the existing Plugin builders and runti
 adapters. See [local App development](docs/local-plugin-discovery.md) for the
 supported platform/interaction profile and offline distribution contract.
 
+For a signed source-only linked Cargo candidate, select one exact version with
+`lenso app add PLUGIN_ID@VERSION --linked-snapshot snapshot.json --trust trust.json
+--crate package.crate --root my-app`. The local `.crate` must match the signed
+digest, target, package identity and Plugin ID. This copies source into
+`vendor/lenso/` and records explicit Plugin Root intent; it does not install a
+portable runtime bundle. Only `linked_plugin` entries qualify. `host_provided`
+entries require a product Host adapter. This local flow does not fetch or prove
+crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
+published dependency cohort can compile the generated Host. Review source and
+run `lenso app build`, `app check`, and `app show` before use.
+
 For CLI Apps, `lenso app create my-app --cli` installs bundled local convention
 support. Write `cli.ts` or `cli.rs`, then run `lenso app dev -- hello --name Ada`.
 TypeScript authoring needs Bun but no Rust environment. Support Plugins can add
