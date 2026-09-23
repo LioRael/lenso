@@ -132,7 +132,9 @@ actual per-instance Adapter limit no wider than the requested ceiling. The
 generated Host rebinds that exact limit to every selected Wasm Instance at
 startup and on recreation; a missing binding is rejected. Non-executable
 authoring output and the prepared-distribution path do not claim this
-enforcement. The current turn timer cannot preempt a synchronously blocking
+enforcement. The current local Host policy binds 64 MiB per Wasm Instance;
+a release demanding a lower ceiling is rejected rather than silently assigned
+a weaker limit. The current turn timer cannot preempt a synchronously blocking
 Host import, so it does **not** establish a total wall-clock `TurnDeadline`.
 That demand remains fail-closed even if its requested duration exceeds the
 Adapter's ordinary timer default.
