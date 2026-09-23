@@ -51,13 +51,20 @@ enum Starter {
     Multi,
     Empty,
 }
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum AppLanguage {
+    Rust,
+}
 #[derive(Clone, Debug, Args)]
 pub struct CreateArgs {
     /// New App directory. Existing directories are never overwritten.
     directory: PathBuf,
-    /// Starter implementation; more languages and Plugin types can be added under app/.
-    #[arg(long, value_enum, default_value = "process")]
-    runtime: Starter,
+    /// Application language. Rust creates a normal root Cargo package.
+    #[arg(long, value_enum, conflicts_with_all = ["runtime", "web", "cli"])]
+    lang: Option<AppLanguage>,
+    /// Legacy nested starter implementation under app/.
+    #[arg(long, value_enum)]
+    runtime: Option<Starter>,
     /// Create a native Rust Web Plugin with Plugin-owned HTML assets.
     #[arg(long, conflicts_with = "runtime")]
     web: bool,
@@ -69,6 +76,10 @@ pub struct CreateArgs {
     no_install: bool,
 }
 pub fn create(args: CreateArgs) -> anyhow::Result<()> {
+    if args.lang.is_some() && (args.runtime.is_some() || args.web || args.cli) {
+        bail!("--lang selects the root package and cannot be combined with a nested starter");
+    }
+    let root_package = !args.cli && !args.web && args.runtime.is_none();
     let destination = std::path::absolute(args.directory)?;
     if fs::symlink_metadata(&destination).is_ok() {
         bail!("App directory already exists: {}", destination.display());
@@ -82,7 +93,7 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
         .tempdir_in(parent)?;
     fs::create_dir(staging.path().join("app"))?;
     fs::create_dir(staging.path().join("plugins"))?;
-    if !args.cli && (args.web || !matches!(args.runtime, Starter::Empty)) {
+    if !args.cli {
         if args.web {
             crate::plugin::create_web_scaffold(
                 "local.starter".to_owned(),
@@ -91,35 +102,53 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
                 true,
             )?;
             prepare_web_starter(&staging.path().join("app/local.starter"), args.no_install)?;
+        } else if let Some(starter) = args.runtime {
+            if !matches!(starter, Starter::Empty) {
+                let runtime = match starter {
+                    Starter::Process => "process",
+                    Starter::Bun => "bun",
+                    Starter::Wasm => "wasm",
+                    Starter::Multi => "multi",
+                    Starter::Empty => unreachable!(),
+                };
+                let mut command = Command::new(std::env::current_exe()?);
+                command
+                    .args(["plugin", "new", "local.starter", "--repo-root"])
+                    .arg(staging.path())
+                    .args(["--dir", "app/local.starter"])
+                    .args(["--runtime", runtime]);
+                if args.no_install {
+                    command.arg("--no-install");
+                }
+                if !command.status()?.success() {
+                    bail!("App starter creation failed");
+                }
+            }
         } else {
-            let runtime = match args.runtime {
-                Starter::Process => "process",
-                Starter::Bun => "bun",
-                Starter::Wasm => "wasm",
-                Starter::Multi => "multi",
-                Starter::Empty => unreachable!(),
-            };
-            let mut command = Command::new(std::env::current_exe()?);
-            command
-                .args(["plugin", "new", "local.starter", "--repo-root"])
-                .arg(staging.path())
-                .args(["--dir", "app/local.starter"])
-                .args(["--runtime", runtime]);
-            if args.no_install {
-                command.arg("--no-install");
+            for (path, contents) in crate::plugin::web_plugin_scaffold("local.starter") {
+                let file = staging.path().join(path);
+                if let Some(parent) = file.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(file, contents)?;
             }
-            if !command.status()?.success() {
-                bail!("App starter creation failed");
-            }
+            prepare_web_starter(staging.path(), args.no_install)?;
         }
     }
     fs::write(
         staging.path().join(".gitignore"),
         ".lenso/\ndist/\ntarget/\nnode_modules/\n",
     )?;
+    let business_source = if root_package {
+        "The root Cargo package is the default business Plugin. Add more Plugin source projects under `app/` only when they need an independent identity."
+    } else {
+        "Add Plugin source projects under `app/`."
+    };
     fs::write(
         staging.path().join("README.md"),
-        "# Local Lenso App\n\nRun `lenso app dev` to build and watch this App. Run `lenso app build` to produce an offline executable, then `lenso app start --from dist`.\n\nAdd Plugin source projects under `app/`. Keep instance configuration and explicit dependency choices in `plugins/`. No App configuration file is required. Optional `plugin_sources` in `lenso.toml` adds shared local candidates; an explicit Plugin Root instance is required to select them.\n\nThe generated Host supports native Rust, Bun, Process and Wasm implementations. Existing custom Host authoring remains available through `lenso app build --source ... --target ...`.\n",
+        format!(
+            "# Local Lenso App\n\nRun `lenso dev` to build and watch this App. Run `lenso app build` to produce an offline executable, then `lenso app start --from dist`.\n\n{business_source} Keep instance configuration and explicit dependency choices in `plugins/`. No App configuration file is required. Optional `plugin_sources` in `lenso.toml` adds shared local candidates; an explicit Plugin Root instance is required to select them.\n\nThe generated Host supports native Rust, Bun, Process and Wasm implementations. Existing custom Host authoring remains available through `lenso app build --source ... --target ...`.\n"
+        ),
     )?;
     super::build::publish_new_output(staging.path(), &destination)?;
     if args.cli {
@@ -138,7 +167,7 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
         }
     }
     println!(
-        "Created App at {}. Run `lenso app dev --root {}`.",
+        "Created App at {}. Run `lenso dev --root {}`.",
         destination.display(),
         destination.display()
     );
@@ -254,7 +283,8 @@ pub fn build_local(
 pub fn create_empty(directory: PathBuf) -> anyhow::Result<()> {
     create(CreateArgs {
         directory,
-        runtime: Starter::Empty,
+        lang: None,
+        runtime: Some(Starter::Empty),
         web: false,
         cli: false,
         no_install: true,
@@ -275,7 +305,7 @@ pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Resu
 mod tests {
     use std::fs;
 
-    use super::{CreateArgs, Starter, create, prepare_web_starter};
+    use super::{AppLanguage, CreateArgs, create, prepare_web_starter};
 
     #[test]
     fn web_app_create_uses_the_native_web_scaffold() {
@@ -284,7 +314,8 @@ mod tests {
 
         create(CreateArgs {
             directory: destination.clone(),
-            runtime: Starter::Process,
+            lang: None,
+            runtime: None,
             web: true,
             cli: false,
             no_install: true,
@@ -297,6 +328,32 @@ mod tests {
         assert!(manifest.contains("lenso-test = { version = \"=0.1.2\""));
         assert!(plugin.join("tests/simulated_web.rs").is_file());
         assert!(plugin.join("public/index.html").is_file());
+    }
+
+    #[test]
+    fn default_rust_app_uses_the_root_cargo_package() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("notes");
+        create(CreateArgs {
+            directory: destination.clone(),
+            lang: Some(AppLanguage::Rust),
+            runtime: None,
+            web: false,
+            cli: false,
+            no_install: true,
+        })
+        .unwrap();
+
+        assert!(destination.join("Cargo.toml").is_file());
+        assert!(destination.join("src/lib.rs").is_file());
+        assert!(!destination.join("app/local.starter").exists());
+        let report = lenso_app_authoring::discovery::discover(&destination).unwrap();
+        assert_eq!(report.candidates.len(), 1);
+        assert_eq!(report.candidates[0].plugin_id, "local.starter");
+        assert_eq!(
+            report.candidates[0].project,
+            fs::canonicalize(destination).unwrap()
+        );
     }
 
     #[test]

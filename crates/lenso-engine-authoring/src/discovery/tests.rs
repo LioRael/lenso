@@ -58,6 +58,46 @@ fn discovers_multiple_languages_without_configuration_or_executing_code() {
 }
 
 #[test]
+fn root_cargo_package_is_an_app_owned_plugin_without_adopting_other_members() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "Cargo.toml",
+        r#"[package]
+name = "notes"
+version = "1.0.0"
+[package.metadata.lenso]
+plugin-id = "local.notes"
+root-slot = "web"
+[workspace]
+members = ["tools"]
+"#,
+    );
+    rust(root.path(), "tools", "local.unselected");
+    rust(root.path(), "app/worker", "local.worker");
+
+    let report = discover(root.path()).unwrap();
+    assert_eq!(
+        report
+            .candidates
+            .iter()
+            .map(|candidate| candidate.plugin_id.as_str())
+            .collect::<Vec<_>>(),
+        ["local.notes", "local.worker"]
+    );
+    assert_eq!(
+        report.candidates[0].project,
+        fs::canonicalize(root.path()).unwrap()
+    );
+    assert!(
+        report
+            .candidates
+            .iter()
+            .all(|candidate| candidate.role == SourceRole::AppOwned)
+    );
+}
+
+#[test]
 fn discovers_only_declared_regular_published_resources() {
     let root = tempfile::tempdir().unwrap();
     bun(root.path(), "app/agent", "example.agent");

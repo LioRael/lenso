@@ -33,6 +33,7 @@ pub(super) fn generate(
     // otherwise admit a registry copy alongside a path copy and split the
     // native Plugin registration inventory.
     let mut local_lenso_patches = BTreeMap::<String, (String, Value)>::new();
+    let mut git_lenso_source = None;
     for (name, version) in [
         ("anyhow", "1"),
         ("futures", "0.3"),
@@ -144,6 +145,7 @@ pub(super) fn generate(
                     .find(|p| p["id"] == id)
                     .context("reachable Cargo package")?;
                 collect_local_lenso_patch(&mut local_lenso_patches, package)?;
+                collect_git_lenso_source(&mut git_lenso_source, package)?;
             }
             if !seen_packages.insert(id.clone()) {
                 continue;
@@ -373,6 +375,21 @@ pub(super) fn generate(
     source = source.replace("// LENSO_WEB_READY", if web { r#"
             if let Some(address) = ingress.local_address() { eprintln!("Listening on http://{address}"); }
 "# } else { "" });
+    if let Some((git, rev)) = git_lenso_source {
+        for (name, dependency) in &mut dependencies {
+            let package = dependency["package"].as_str().unwrap_or(name);
+            if (package == "lenso" || package.starts_with("lenso-"))
+                && dependency.get("git").is_none()
+            {
+                let version = dependency
+                    .get("version")
+                    .cloned()
+                    .unwrap_or_else(|| dependency.clone());
+                *dependency =
+                    json!({"package": package, "version": version, "git": git, "rev": rev});
+            }
+        }
+    }
     let patches = local_lenso_patches
         .into_iter()
         .map(|(name, (_, dependency))| (name, dependency))
@@ -519,6 +536,31 @@ fn collect_local_lenso_patch(
         return Ok(());
     }
     patches.insert(name.to_owned(), (id.to_owned(), dependency));
+    Ok(())
+}
+
+fn collect_git_lenso_source(
+    selected: &mut Option<(String, String)>,
+    package: &Value,
+) -> anyhow::Result<()> {
+    let name = package["name"].as_str().context("Cargo package name")?;
+    if name != "lenso" && !name.starts_with("lenso-") {
+        return Ok(());
+    }
+    let dependency = dependency(package)?;
+    let (Some(git), Some(rev)) = (dependency["git"].as_str(), dependency["rev"].as_str()) else {
+        return Ok(());
+    };
+    let source = (git.to_owned(), rev.to_owned());
+    if selected
+        .as_ref()
+        .is_some_and(|previous| previous != &source)
+    {
+        bail!(
+            "native Plugins use incompatible Lenso Git source revisions; align their dependencies before generating one Host"
+        );
+    }
+    *selected = Some(source);
     Ok(())
 }
 

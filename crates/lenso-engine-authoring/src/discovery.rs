@@ -112,6 +112,14 @@ pub fn discover(root: &Path) -> anyhow::Result<DiscoveryReport> {
         candidates: BTreeMap::new(),
         entries: 0,
     };
+    // The App's root package can itself be the App-owned business Plugin.
+    // Inspect only its package metadata here: recursively scanning the root
+    // would also treat unrelated workspace members as adopted Plugins.
+    if let Some(candidate) =
+        project::read(&root, SourceRole::AppOwned).context("inspect App root package")?
+    {
+        scanner.insert(candidate)?;
+    }
     let app = root.join("app");
     if app.try_exists()? {
         scanner.scan(&app, SourceRole::AppOwned, 0)?;

@@ -15,8 +15,10 @@ mod explain;
 pub mod facts;
 pub use facts::{ProjectFacts, inspect_project_facts};
 mod local_dev;
+pub use local_dev::DevArgs;
 mod local_host;
 mod local_workflow;
+pub use local_workflow::CreateArgs;
 mod portable_runtime {
     include!("app/local_runtime_template.rs");
     include!("app/local_json_template.rs");
@@ -32,6 +34,16 @@ mod terminal;
 // owns the persisted Host inspection; callers should not recreate a profile
 // parser or a second resolver around it.
 pub use explain::ExplainArgs;
+
+/// Create the same source App through an embedding or root CLI.
+pub fn create_source(args: CreateArgs) -> anyhow::Result<()> {
+    local_workflow::create(args)
+}
+
+/// Run the source App development loop through an embedding or root CLI.
+pub async fn dev_source(args: DevArgs) -> anyhow::Result<()> {
+    local_dev::dev(args).await
+}
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum AppCommand {

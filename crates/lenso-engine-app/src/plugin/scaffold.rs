@@ -9,7 +9,7 @@ use lenso_app_authoring::identity::validate_plugin_id_v1;
 
 use super::{PluginNewArgs, PluginRuntimeArg, WASM_TARGET, run_bun, run_cargo};
 
-pub(super) const LENSO_FRAMEWORK_REVISION: &str = "c2e77e3ccc4b7dabe2e1596f6c513641798330f8";
+pub(super) const LENSO_FRAMEWORK_REVISION: &str = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
 
 pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
     validate_plugin_id_v1(&args.plugin_id)?;
@@ -104,7 +104,7 @@ pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
 }
 
 #[allow(clippy::too_many_lines)] // The generated, copyable source is kept in one visible template.
-pub(super) fn web_plugin_scaffold(plugin_id: &str) -> BTreeMap<PathBuf, String> {
+pub(crate) fn web_plugin_scaffold(plugin_id: &str) -> BTreeMap<PathBuf, String> {
     let package_name = plugin_id.replace('.', "-");
     let manifest = format!(
         r#"[package]

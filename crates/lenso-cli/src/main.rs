@@ -25,6 +25,10 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum RootCommand {
+    /// Create a source App with a root Rust package by default.
+    New(app::CreateArgs),
+    /// Build, run, and watch a source App.
+    Dev(app::DevArgs),
     /// Process files through optional conventions without creating an App.
     Engine {
         #[command(subcommand)]
@@ -86,6 +90,8 @@ async fn main() -> anyhow::Result<()> {
         observe_build_shutdown()?;
     }
     match command {
+        RootCommand::New(args) => app::create_source(args),
+        RootCommand::Dev(args) => app::dev_source(args).await,
         RootCommand::Engine { command } => engine::run(command).await,
         RootCommand::Plugin { command } => plugin::plugin(command).await,
         RootCommand::Plugins { command } => plugins::plugins(command),
@@ -118,9 +124,7 @@ fn reject_retired_invocation(arguments: &[String]) -> anyhow::Result<()> {
         );
     }
     match arguments {
-        [command, ..]
-            if ["module", "new", "dev", "check", "verify"].contains(&command.as_str()) =>
-        {
+        [command, ..] if ["module", "check", "verify"].contains(&command.as_str()) => {
             anyhow::bail!(
                 "`lenso {command}` is retired: use `lenso plugin new|dev|check|pack`; Module is not an application behavior concept"
             );
@@ -151,7 +155,7 @@ fn should_delegate_to_host(arguments: &[String]) -> bool {
     !first.starts_with('-')
         && !matches!(
             first,
-            "engine" | "plugin" | "plugins" | "app" | "run" | "doctor"
+            "new" | "dev" | "engine" | "plugin" | "plugins" | "app" | "run" | "doctor"
         )
 }
 

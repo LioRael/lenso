@@ -31,6 +31,8 @@ mod dev;
 mod scaffold;
 mod web_dev;
 
+pub(crate) use scaffold::web_plugin_scaffold;
+
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
 const PROCESS_EXECUTION_CLASS: &str = "lenso.process@1";
 const PROCESS_RUNTIME_PROFILE_V1: &str = "lenso.process@1";
