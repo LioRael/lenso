@@ -101,6 +101,13 @@ V5 also rejects a format mismatch for an official versioned Execution Class:
 Process accepts its process Artifact, Wasm Component accepts Wasm, and
 Bun/QuickJS accept JavaScript. A third-party Execution Class remains open but
 its Adapter must validate the exact Artifact it receives before readiness.
+V5 cannot select `lenso.native-rust@1` from a runtime Bundle Artifact: a linked
+Cargo package is a static Host build input, adopted through its exact signed
+source release and compiled into the Host. Selection reports the required Host
+rebuild rather than treating any packaged file as a loadable native factory.
+Legacy V2–V4 signed selection and digest behavior is unchanged; a future
+build-input variant format needs its own explicit wire contract and Host build
+binding.
 
 Selection is not runtime fallback. If the selected implementation fails its
 Ready Gate or later invocation, the Generation fails through its ordinary

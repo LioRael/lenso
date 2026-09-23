@@ -90,6 +90,8 @@ pub enum ImplementationRejectionReason {
         artifact_media_type: String,
         expected_media_type: String,
     },
+    /// A linked native factory is a Host build input, not a loadable Bundle Artifact.
+    HostLinkedBuildRequired,
     RuntimeNotAdmitted,
     MissingTargetCapabilities {
         requirements: Vec<TargetCapabilityRequirement>,
@@ -445,6 +447,13 @@ fn record_artifact_format_match(
     if !candidate.enforce_artifact_capability {
         return true;
     }
+    if admission.execution_class.as_str() == "lenso.native-rust@1" {
+        rejected.push(rejected_candidate(
+            candidate,
+            ImplementationRejectionReason::HostLinkedBuildRequired,
+        ));
+        return false;
+    }
     // Official versioned Execution Classes fix their Artifact format. Third-
     // party classes remain open and must enforce their own Adapter contract.
     let expected = match admission.execution_class.as_str() {
@@ -620,6 +629,8 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
         } => format!(
             "Artifact format `{artifact_media_type}` does not match execution class `{execution_class}` (requires `{expected_media_type}`)"
         ),
+        ImplementationRejectionReason::HostLinkedBuildRequired =>
+            "native-linked Plugin is a static build input; adopt its exact source and rebuild the Host, not a runtime-loadable Bundle Artifact".to_owned(),
         ImplementationRejectionReason::RuntimeNotAdmitted => "runtime is not admitted".to_owned(),
         ImplementationRejectionReason::MissingTargetCapabilities { requirements } => format!(
             "missing target capabilities {}",

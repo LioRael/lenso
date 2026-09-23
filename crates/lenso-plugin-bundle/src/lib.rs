@@ -3064,4 +3064,92 @@ root-slot = "tools"
         ));
         assert!(!explanation.is_selected());
     }
+
+    #[test]
+    fn v5_native_linked_variant_requires_a_rebuilt_host() {
+        let variant = |id: &str, class: &str, media_type: &str| {
+            let digest = sha256_digest(id.as_bytes());
+            PluginVariantV5 {
+                id: id.to_owned(),
+                host_targets: vec!["x86_64-unknown-linux-gnu".to_owned()],
+                artifact: PluginArtifactV2 {
+                    path: format!("implementations/{id}/artifact"),
+                    digest: digest.clone(),
+                    size: id.len() as u64,
+                    media_type: media_type.to_owned(),
+                    target: "x86_64-unknown-linux-gnu".to_owned(),
+                },
+                runtime: PluginImplementation::new(
+                    "example.host-linked",
+                    digest,
+                    "plugin",
+                    ExecutionClassId::new(class),
+                )
+                .with_runtime_profile(class),
+            }
+        };
+        let manifest = PluginManifest::V5(PluginManifestV5 {
+            schema_version: 5,
+            contract: PluginContract::new("example.host-linked", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV5 {
+                id: "rust".to_owned(),
+                variants: vec![
+                    variant("linked", "lenso.native-rust@1", "application/javascript"),
+                    variant(
+                        "process",
+                        "lenso.process@1",
+                        "application/vnd.lenso.process",
+                    ),
+                ],
+            }],
+        });
+        let parsed =
+            ManifestDocument::parse(&canonical_manifest_bytes(&manifest).unwrap()).unwrap();
+        let native = RuntimeAdmission::new(
+            ExecutionClassId::native_rust(),
+            "lenso.native-rust@1",
+            ExecutionTargetCapabilities::none(),
+        );
+        let native_only = ImplementationPolicy {
+            host_target: "x86_64-unknown-linux-gnu".to_owned(),
+            runtimes: vec![native.clone()],
+        };
+        let explanation = explain_implementation(&parsed.value, &native_only).unwrap();
+        assert!(!explanation.is_selected());
+        assert!(explanation.rejected.iter().any(|rejection| matches!(
+            rejection,
+            RejectedPluginImplementation {
+                variant_id: Some(id),
+                reason: ImplementationRejectionReason::HostLinkedBuildRequired,
+                ..
+            } if id == "linked"
+        )));
+        assert!(matches!(
+            resolve_implementation(&parsed.value, &native_only),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("rebuild the Host")
+        ));
+
+        let explicitly_admitted_process = ImplementationPolicy {
+            host_target: native_only.host_target,
+            runtimes: vec![
+                native,
+                RuntimeAdmission::new(
+                    ExecutionClassId::new("lenso.process@1"),
+                    "lenso.process@1",
+                    ExecutionTargetCapabilities::new([ExecutionTargetCapability::NativeProcess]),
+                ),
+            ],
+        };
+        let explanation =
+            explain_implementation(&parsed.value, &explicitly_admitted_process).unwrap();
+        assert_eq!(
+            explanation.selected.unwrap().variant_id.as_deref(),
+            Some("process")
+        );
+        assert!(explanation.rejected.iter().any(|rejection| matches!(
+            rejection.reason,
+            ImplementationRejectionReason::HostLinkedBuildRequired
+        )));
+    }
 }
