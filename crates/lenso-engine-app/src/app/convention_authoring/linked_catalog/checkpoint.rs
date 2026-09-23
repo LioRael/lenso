@@ -144,6 +144,7 @@ pub(super) fn persist(
         "linked Cargo checkpoint changed during verification; retry with the latest App state"
     );
     if observed.as_ref() == Some(checkpoint) {
+        dir.sync_all()?;
         return Ok(());
     }
     let bytes = encode(checkpoint)?;
