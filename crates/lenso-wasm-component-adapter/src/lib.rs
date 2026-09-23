@@ -983,6 +983,14 @@ impl JsonStreamSessionTransport for WasmStreamSession {
             return;
         }
         self.finish();
+        let Ok(turn) = TurnDeadline::after(
+            self.generation.max_turn,
+            self.context.request_id(),
+            Arc::new(AtomicBool::new(false)),
+        ) else {
+            self.generation.failed.store(true, Ordering::Release);
+            return;
+        };
         let abandoned = Arc::new(AtomicBool::new(false));
         let (outcome, _response) = futures::channel::oneshot::channel();
         let (imports, _import_receiver) = futures_mpsc::channel(1);
@@ -994,6 +1002,7 @@ impl JsonStreamSessionTransport for WasmStreamSession {
                     stream_id: self.stream_id,
                 },
                 abandoned,
+                turn,
                 imports,
                 outcome,
             }));
