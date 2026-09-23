@@ -135,6 +135,16 @@ entries require a product Host adapter. This local flow does not fetch or prove
 crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
 published dependency cohort can compile the generated Host. Review source and
 build under an isolated account/container when the source is not trusted.
+For a root Cargo App with `[workspace]`, adoption adds the exact vendor path to
+`workspace.exclude` so Cargo treats the verified package as a separate path
+dependency without rewriting its signed source. An existing App-owned exclusion
+is retained. `app unadopt` removes only an exclusion marked as created by
+`app add`; if that entry was edited, unadoption stops and preserves the source
+and App manifest for review.
+If the signed `.crate` contains a root `Cargo.lock`, its bytes remain part of
+the adopted source evidence. Contract dependency inspection uses `--locked`,
+and a changed archive lock fails source verification. When the archive has no lock,
+Cargo may generate one locally without changing the signed source identity.
 For a V6 Bundle carrying the `.crate` as a `CargoBuildInput`, use mutually
 exclusive `--bundle release.lenso-plugin` instead of `--crate`. The Bundle
 closure, exact Contract, native-linked ABI, target, Cargo coordinate, size,

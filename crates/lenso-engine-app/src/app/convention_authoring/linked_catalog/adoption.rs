@@ -13,6 +13,10 @@ use std::{
 
 use anyhow::{Context as _, bail, ensure};
 use tempfile::{NamedTempFile, TempDir};
+use toml_edit::{Array, DocumentMut, Value, value};
+
+const OWNED_EXCLUDE: &str = "# lenso:linked-cargo-exclude";
+const OWNED_EXCLUDE_LIST: &str = "# lenso:linked-cargo-exclude-list";
 
 enum StagedIntent {
     New(TempDir),
@@ -23,6 +27,7 @@ enum StagedIntent {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum CommitCheckpoint {
     AfterSource,
+    AfterWorkspace,
     AfterConfig,
 }
 
@@ -34,6 +39,11 @@ pub(super) struct PreparedLinkedAdoption {
     config_before: Option<Vec<u8>>,
     config_after: Vec<u8>,
     staged_config: Option<NamedTempFile>,
+    workspace_manifest: PathBuf,
+    workspace_before: Option<Vec<u8>>,
+    workspace_after: Option<Vec<u8>>,
+    staged_workspace: Option<NamedTempFile>,
+    workspace_exclude_owned: bool,
     intent: PathBuf,
     staged_intent: StagedIntent,
 }
@@ -42,6 +52,25 @@ impl PreparedLinkedAdoption {
     pub(super) fn new(root: &Path, destination: &Path, plugin_id: &str) -> anyhow::Result<Self> {
         let app_lock = lock_app(root)?;
         super::super::preflight_source_adoption(root, plugin_id)?;
+        super::super::writable_path(root, Path::new("Cargo.toml"))?;
+        let workspace_manifest = root.join("Cargo.toml");
+        let workspace_before = read_optional_regular(&workspace_manifest)?;
+        let source_relative = destination
+            .strip_prefix(root)
+            .context("linked source is outside App root")?;
+        let (workspace_after, workspace_exclude_owned) =
+            add_workspace_exclude(workspace_before.as_deref(), source_relative)?;
+        let staged_workspace = if workspace_after != workspace_before {
+            let mut staged = NamedTempFile::new_in(root)?;
+            staged.write_all(
+                workspace_after
+                    .as_deref()
+                    .context("updated workspace manifest is missing")?,
+            )?;
+            Some(staged)
+        } else {
+            None
+        };
         let config = root.join("lenso.toml");
         let config_before = read_optional_regular(&config)?;
         let mut document: toml::Value = match &config_before {
@@ -114,6 +143,11 @@ impl PreparedLinkedAdoption {
             config_before,
             config_after,
             staged_config,
+            workspace_manifest,
+            workspace_before,
+            workspace_after,
+            staged_workspace,
+            workspace_exclude_owned,
             intent,
             staged_intent,
         })
@@ -123,12 +157,17 @@ impl PreparedLinkedAdoption {
         self.commit_with(source_stage, |_| Ok(()))
     }
 
+    pub(super) fn workspace_exclude_owned(&self) -> bool {
+        self.workspace_exclude_owned
+    }
+
     fn commit_with(
         mut self,
         source_stage: &Path,
         mut checkpoint: impl FnMut(CommitCheckpoint) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         self.ensure_config_is(&self.config_before)?;
+        self.ensure_workspace_is(&self.workspace_before)?;
         let source_relative = self.destination.strip_prefix(&self.root)?;
         super::super::writable_path(&self.root, source_relative)?;
         if fs::symlink_metadata(&self.destination).is_ok() {
@@ -143,6 +182,13 @@ impl PreparedLinkedAdoption {
         checkpoint(CommitCheckpoint::AfterSource)?;
 
         self.ensure_config_is(&self.config_before)?;
+        self.ensure_workspace_is(&self.workspace_before)?;
+        if let Some(staged) = self.staged_workspace.take() {
+            staged.persist(&self.workspace_manifest)?;
+        }
+        checkpoint(CommitCheckpoint::AfterWorkspace)?;
+
+        self.ensure_workspace_is(&self.workspace_after)?;
         if let Some(staged) = self.staged_config.take() {
             if self.config_before.is_some() {
                 staged.persist(&self.config)?;
@@ -154,6 +200,7 @@ impl PreparedLinkedAdoption {
 
         // A changed configuration must not acquire a fresh selection intent.
         self.ensure_config_is(&Some(self.config_after.clone()))?;
+        self.ensure_workspace_is(&self.workspace_after)?;
         let intent_relative = self.intent.strip_prefix(&self.root)?;
         super::super::writable_path(&self.root, intent_relative)?;
         super::super::writable_path(&self.root, &intent_relative.join("default.toml"))?;
@@ -182,6 +229,151 @@ impl PreparedLinkedAdoption {
         );
         Ok(())
     }
+
+    fn ensure_workspace_is(&self, expected: &Option<Vec<u8>>) -> anyhow::Result<()> {
+        ensure!(
+            read_optional_regular(&self.workspace_manifest)? == *expected,
+            "Cargo.toml changed during linked Cargo adoption; preserving concurrent edit"
+        );
+        Ok(())
+    }
+}
+
+fn managed_exclude(value: &Value) -> bool {
+    value
+        .decor()
+        .prefix()
+        .and_then(|prefix| prefix.as_str())
+        .is_some_and(|prefix| prefix.contains(OWNED_EXCLUDE))
+}
+
+fn workspace_document(bytes: &[u8]) -> anyhow::Result<DocumentMut> {
+    std::str::from_utf8(bytes)?
+        .parse::<DocumentMut>()
+        .context("parse App Cargo.toml")
+}
+
+fn add_workspace_exclude(
+    before: Option<&[u8]>,
+    source_relative: &Path,
+) -> anyhow::Result<(Option<Vec<u8>>, bool)> {
+    let Some(before) = before else {
+        return Ok((None, false));
+    };
+    let mut document = workspace_document(before)?;
+    let Some(workspace) = document.get_mut("workspace") else {
+        return Ok((Some(before.to_vec()), false));
+    };
+    let workspace = workspace
+        .as_table_mut()
+        .context("App Cargo.toml [workspace] must be a table")?;
+    let package_path = source_relative.join("Cargo.toml");
+    if let Some(members) = workspace.get("members") {
+        let members = members
+            .as_array()
+            .context("App Cargo.toml workspace.members must be an array")?;
+        for member in members.iter() {
+            let member = member
+                .as_str()
+                .context("App Cargo.toml workspace.members must contain strings")?;
+            if member_matches(member, source_relative)? {
+                bail!(
+                    "App Cargo.toml workspace.members explicitly selects linked Cargo source; remove that member before adoption"
+                );
+            }
+        }
+    }
+    let created_list = !workspace.contains_key("exclude");
+    if created_list {
+        workspace["exclude"] = value(Array::new());
+    }
+    let exclude = workspace["exclude"]
+        .as_array_mut()
+        .context("App Cargo.toml workspace.exclude must be an array")?;
+    let relative = source_relative
+        .to_str()
+        .context("linked source path must be UTF-8")?;
+    let mut exact_owned = false;
+    let mut covered = false;
+    for existing in exclude.iter() {
+        let path = existing
+            .as_str()
+            .context("App Cargo.toml workspace.exclude must contain strings")?;
+        if path == relative && managed_exclude(existing) {
+            exact_owned = true;
+        }
+        if package_path.starts_with(Path::new(path)) {
+            covered = true;
+        }
+    }
+    if covered {
+        return Ok((Some(before.to_vec()), exact_owned));
+    }
+    let mut added = Value::from(relative);
+    added
+        .decor_mut()
+        .set_prefix(format!("\n    {OWNED_EXCLUDE}\n    "));
+    exclude.push_formatted(added);
+    if created_list {
+        exclude
+            .decor_mut()
+            .set_suffix(format!(" {OWNED_EXCLUDE_LIST}"));
+    }
+    Ok((Some(document.to_string().into_bytes()), true))
+}
+
+fn member_matches(member: &str, source_relative: &Path) -> anyhow::Result<bool> {
+    if member.contains('*') || member.contains('?') || member.contains('[') {
+        Ok(glob::Pattern::new(member)?.matches_path(source_relative))
+    } else {
+        Ok(source_relative.starts_with(Path::new(member)))
+    }
+}
+
+pub(super) fn remove_workspace_exclude(
+    before: Option<&[u8]>,
+    source_relative: &Path,
+    owned: bool,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    if !owned {
+        return Ok(before.map(ToOwned::to_owned));
+    }
+    let before = before.context("managed linked Cargo exclusion needs App Cargo.toml")?;
+    let mut document = workspace_document(before)?;
+    let workspace = document
+        .get_mut("workspace")
+        .and_then(toml_edit::Item::as_table_mut)
+        .context("managed linked Cargo exclusion needs [workspace]")?;
+    let exclude = workspace
+        .get_mut("exclude")
+        .and_then(toml_edit::Item::as_array_mut)
+        .context("managed linked Cargo exclusion needs workspace.exclude")?;
+    let relative = source_relative
+        .to_str()
+        .context("linked source path must be UTF-8")?;
+    let mut found = None;
+    for (index, entry) in exclude.iter().enumerate() {
+        if entry.as_str() == Some(relative) {
+            ensure!(found.is_none(), "linked Cargo exclusion is duplicated");
+            found = Some((index, managed_exclude(entry)));
+        }
+    }
+    let (index, managed) = found.context("managed linked Cargo exclusion is missing")?;
+    ensure!(
+        managed,
+        "linked Cargo exclusion was edited; preserving Cargo.toml and adopted source"
+    );
+    exclude.remove(index);
+    let remove_list = exclude.is_empty()
+        && exclude
+            .decor()
+            .suffix()
+            .and_then(|suffix| suffix.as_str())
+            .is_some_and(|suffix| suffix.trim() == OWNED_EXCLUDE_LIST);
+    if remove_list {
+        workspace.remove("exclude");
+    }
+    Ok(Some(document.to_string().into_bytes()))
 }
 
 /// Serialize linked-Cargo mutations for one App without creating a lock file
@@ -231,7 +423,7 @@ fn lock_regular_file(root: &Path) -> anyhow::Result<fs::File> {
     Ok(file)
 }
 
-fn read_optional_regular(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
+pub(super) fn read_optional_regular(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() => Ok(Some(fs::read(path)?)),
         Ok(_) => bail!("refusing non-regular App config: {}", path.display()),
@@ -248,6 +440,159 @@ mod tests {
         let stage = tempfile::tempdir_in(root).unwrap();
         fs::write(stage.path().join("Cargo.toml"), b"[package]\n").unwrap();
         stage
+    }
+
+    #[test]
+    fn workspace_exclusion_preserves_user_manifest_and_exact_retry() {
+        let root = tempfile::tempdir().unwrap();
+        let cargo = root.path().join("Cargo.toml");
+        fs::write(
+            &cargo,
+            b"# user heading\n[package]\nname = \"business\"\nversion = \"0.1.0\"\n# custom workspace\n[workspace]\nmembers = [\"app/*\"]\n",
+        )
+        .unwrap();
+        let destination = root.path().join("vendor/lenso/example.web/0.4.5");
+        let first = PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
+        assert!(first.workspace_exclude_owned());
+        let stage = source_stage(root.path());
+        let error = first.commit_with(stage.path(), |step| {
+            if step == CommitCheckpoint::AfterWorkspace {
+                bail!("injected interruption");
+            }
+            Ok(())
+        });
+        assert!(error.is_err());
+        let after_interruption = fs::read_to_string(&cargo).unwrap();
+        assert!(after_interruption.contains("# user heading"));
+        assert!(after_interruption.contains(OWNED_EXCLUDE));
+        assert!(!root.path().join("plugins/example.web").exists());
+
+        let retry = PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
+        assert!(retry.workspace_exclude_owned());
+        let same_source = source_stage(root.path());
+        retry.commit(same_source.path()).unwrap();
+        assert_eq!(fs::read_to_string(&cargo).unwrap(), after_interruption);
+        assert!(
+            root.path()
+                .join("plugins/example.web/default.toml")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn concurrent_workspace_edit_is_preserved_without_selection_and_can_retry() {
+        let root = tempfile::tempdir().unwrap();
+        let cargo = root.path().join("Cargo.toml");
+        fs::write(&cargo, b"[workspace]\n").unwrap();
+        let destination = root.path().join("vendor/lenso/example.web/0.4.5");
+        let prepared =
+            PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
+        let stage = source_stage(root.path());
+        let changed = b"# user's concurrent edit\n[workspace]\n";
+        let error = prepared.commit_with(stage.path(), |step| {
+            if step == CommitCheckpoint::AfterSource {
+                fs::write(&cargo, changed)?;
+            }
+            Ok(())
+        });
+        assert!(error.is_err());
+        assert_eq!(fs::read(&cargo).unwrap(), changed);
+        assert!(!root.path().join("lenso.toml").exists());
+        assert!(!root.path().join("plugins/example.web").exists());
+
+        let retry = PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
+        let same_source = source_stage(root.path());
+        retry.commit(same_source.path()).unwrap();
+        assert!(
+            fs::read_to_string(&cargo)
+                .unwrap()
+                .contains("# user's concurrent edit")
+        );
+    }
+
+    #[test]
+    fn workspace_edit_after_publication_is_not_overwritten_on_retry() {
+        let root = tempfile::tempdir().unwrap();
+        let cargo = root.path().join("Cargo.toml");
+        fs::write(&cargo, b"[workspace]\n").unwrap();
+        let destination = root.path().join("vendor/lenso/example.web/0.4.5");
+        let prepared =
+            PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
+        let stage = source_stage(root.path());
+        let error = prepared.commit_with(stage.path(), |step| {
+            if step == CommitCheckpoint::AfterWorkspace {
+                let mut bytes = fs::read(&cargo)?;
+                bytes.extend_from_slice(b"\n# user edit after workspace publication\n");
+                fs::write(&cargo, bytes)?;
+            }
+            Ok(())
+        });
+        assert!(error.is_err());
+        assert!(!root.path().join("plugins/example.web").exists());
+        assert!(!root.path().join("lenso.toml").exists());
+        let user_manifest = fs::read(&cargo).unwrap();
+
+        let retry = PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
+        let same_source = source_stage(root.path());
+        retry.commit(same_source.path()).unwrap();
+        assert_eq!(fs::read(&cargo).unwrap(), user_manifest);
+        assert!(
+            root.path()
+                .join("plugins/example.web/default.toml")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn workspace_exclude_respects_preexisting_user_coverage() {
+        let source = Path::new("vendor/lenso/example.web/0.4.5");
+        for existing in [
+            "[workspace]\nexclude = [\"vendor/lenso/example.web/0.4.5\"]\n",
+            "[workspace]\nexclude = [\"vendor/lenso\"]\n",
+        ] {
+            let (after, owned) = add_workspace_exclude(Some(existing.as_bytes()), source).unwrap();
+            assert_eq!(after.unwrap(), existing.as_bytes());
+            assert!(!owned);
+        }
+    }
+
+    #[test]
+    fn unadopt_removes_only_owned_exclude_and_keeps_unrelated_edits() {
+        let source = Path::new("vendor/lenso/example.web/0.4.5");
+        let original = b"# user heading\n[workspace]\nexclude = [\"other-plugin\"]\n";
+        let (added, owned) = add_workspace_exclude(Some(original), source).unwrap();
+        assert!(owned);
+        let mut modified = String::from_utf8(added.unwrap()).unwrap();
+        modified.push_str("\n# user's later note\n");
+        let removed = remove_workspace_exclude(Some(modified.as_bytes()), source, owned)
+            .unwrap()
+            .unwrap();
+        let removed = String::from_utf8(removed).unwrap();
+        assert!(removed.contains("# user heading"));
+        assert!(removed.contains("# user's later note"));
+        assert!(removed.contains("other-plugin"));
+        assert!(!removed.contains("vendor/lenso/example.web/0.4.5"));
+
+        let user_entry = b"[workspace]\nexclude = [\"vendor/lenso/example.web/0.4.5\"]\n";
+        assert_eq!(
+            remove_workspace_exclude(Some(user_entry), source, false)
+                .unwrap()
+                .unwrap(),
+            user_entry
+        );
+    }
+
+    #[test]
+    fn edited_managed_exclude_blocks_unadopt_without_rewriting_user_manifest() {
+        let source = Path::new("vendor/lenso/example.web/0.4.5");
+        let (added, owned) = add_workspace_exclude(Some(b"[workspace]\n"), source).unwrap();
+        assert!(owned);
+        let edited = String::from_utf8(added.unwrap())
+            .unwrap()
+            .replace(OWNED_EXCLUDE, "# user's exclusion");
+        let error = remove_workspace_exclude(Some(edited.as_bytes()), source, owned).unwrap_err();
+        assert!(error.to_string().contains("exclusion was edited"));
+        assert!(edited.contains("# user's exclusion"));
     }
 
     #[test]

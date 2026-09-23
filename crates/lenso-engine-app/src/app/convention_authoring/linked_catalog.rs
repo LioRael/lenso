@@ -41,9 +41,19 @@ struct SourceLock {
     version: String,
     crate_digest: String,
     source_digest: String,
+    /// Present only when the signed archive contains a root Cargo.lock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    archive_cargo_lock_digest: Option<String>,
+    /// Only exclusions added by app add may be removed by app unadopt.
+    #[serde(default, skip_serializing_if = "is_false")]
+    workspace_exclude_owned: bool,
     /// V5 signed .crate adoption omits this field and retains its lock wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     v6: Option<V6BuildInputLock>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -390,25 +400,28 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
                 .any(|entry| entry.runtime == "native-linked"),
         "linked Cargo source does not match an adoptable native Plugin"
     );
+    let destination = parent.join(version);
+    let prepared = adoption::PreparedLinkedAdoption::new(root, &destination, plugin_id)?;
     let lock = SourceLock {
         schema_version: 1,
         plugin_id: release.plugin_id.clone(),
         version: release.version.clone(),
         crate_digest: release.crate_digest.clone(),
         source_digest: source_digest(stage.path())?,
+        archive_cargo_lock_digest: archive_cargo_lock_digest(stage.path())?,
+        workspace_exclude_owned: prepared.workspace_exclude_owned(),
         v6: v6_lock,
     };
     fs::write(
         stage.path().join(SOURCE_LOCK),
         serde_json::to_vec_pretty(&lock)?,
     )?;
-    let destination = parent.join(version);
-    let prepared = adoption::PreparedLinkedAdoption::new(root, &destination, plugin_id)?;
     prepared
         .commit(stage.path())
         .with_context(|| format!(
-            "linked Cargo adoption may be incomplete; retry the same exact signed app add input after resolving any filesystem conflict; source={}, config={}, intent={}",
+            "linked Cargo adoption may be incomplete; retry the same exact signed app add input after resolving any filesystem conflict; source={}, cargo={}, config={}, intent={}",
             destination.display(),
+            root.join("Cargo.toml").display(),
             root.join("lenso.toml").display(),
             root.join("plugins").join(plugin_id).display(),
         ))?;
@@ -534,6 +547,7 @@ pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::R
             "linked Cargo source changed after adoption: {}",
             candidate.project.display()
         );
+        verify_archive_cargo_lock(&candidate.project, &lock)?;
     }
     Ok(())
 }
@@ -590,6 +604,29 @@ fn source_digest(root: &Path) -> anyhow::Result<String> {
     Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
+fn archive_cargo_lock_digest(root: &Path) -> anyhow::Result<Option<String>> {
+    let path = root.join("Cargo.lock");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.is_file() && metadata.len() <= MAX_CRATE_BYTES => {
+            Ok(Some(lenso_plugin_catalog::digest(&fs::read(path)?)))
+        }
+        Ok(_) => bail!("linked Cargo root Cargo.lock is not a bounded regular file"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn verify_archive_cargo_lock(root: &Path, lock: &SourceLock) -> anyhow::Result<()> {
+    if let Some(expected) = &lock.archive_cargo_lock_digest {
+        ensure!(
+            archive_cargo_lock_digest(root)?.as_deref() == Some(expected),
+            "signed archive Cargo.lock changed after adoption: {}",
+            root.display()
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
     let (plugin_id, version) = source
         .split_once('@')
@@ -605,6 +642,7 @@ pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
         relative.as_path(),
         intent_relative.as_path(),
         Path::new("lenso.toml"),
+        Path::new("Cargo.toml"),
         Path::new(".lenso/trash/linked-cargo"),
     ] {
         super::writable_path(root, path)?;
@@ -625,6 +663,7 @@ pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
         source_digest(&source_path)? == lock.source_digest,
         "linked Cargo source has user changes; preserve it and review before unadopting"
     );
+    verify_archive_cargo_lock(&source_path, &lock)?;
     ensure!(
         intent_path.is_dir(),
         "linked Cargo Plugin Root intent is missing"
@@ -657,23 +696,80 @@ pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
         "linked Cargo source is not uniquely selected by lenso.toml"
     );
     sources.retain(|value| value.as_str() != Some(selected));
+    let config_before = fs::read(&config_path)?;
+    let config_after = toml::to_string_pretty(&document)?.into_bytes();
     let mut staged = tempfile::NamedTempFile::new_in(root)?;
-    staged.write_all(toml::to_string_pretty(&document)?.as_bytes())?;
+    staged.write_all(&config_after)?;
+    let cargo_path = root.join("Cargo.toml");
+    let cargo_before = adoption::read_optional_regular(&cargo_path)?;
+    let cargo_after = adoption::remove_workspace_exclude(
+        cargo_before.as_deref(),
+        &relative,
+        lock.workspace_exclude_owned,
+    )?;
+    let staged_cargo = if cargo_after != cargo_before {
+        let mut staged = tempfile::NamedTempFile::new_in(root)?;
+        staged.write_all(
+            cargo_after
+                .as_deref()
+                .context("updated Cargo.toml is missing")?,
+        )?;
+        Some(staged)
+    } else {
+        None
+    };
     let trash_parent = root.join(".lenso/trash/linked-cargo");
     fs::create_dir_all(&trash_parent)?;
     let trash = tempfile::Builder::new()
         .prefix("unadopt-")
         .tempdir_in(&trash_parent)?
         .keep();
+    ensure!(
+        adoption::read_optional_regular(&cargo_path)? == cargo_before,
+        "Cargo.toml changed during linked Cargo unadopt; preserving concurrent edit"
+    );
+    ensure!(
+        fs::read(&config_path)? == config_before,
+        "lenso.toml changed during linked Cargo unadopt; preserving concurrent edit"
+    );
     fs::rename(&source_path, trash.join("source"))?;
     if let Err(error) = fs::rename(&intent_path, trash.join("plugin-root")) {
         fs::rename(trash.join("source"), &source_path)?;
         return Err(error.into());
     }
+    if adoption::read_optional_regular(&cargo_path)? != cargo_before
+        || fs::read(&config_path)? != config_before
+    {
+        fs::rename(trash.join("plugin-root"), &intent_path)?;
+        fs::rename(trash.join("source"), &source_path)?;
+        bail!("App manifests changed during linked Cargo unadopt; preserving concurrent edit");
+    }
     if let Err(error) = staged.persist(&config_path) {
         fs::rename(trash.join("plugin-root"), &intent_path)?;
         fs::rename(trash.join("source"), &source_path)?;
         return Err(error.into());
+    }
+    if adoption::read_optional_regular(&cargo_path)? != cargo_before {
+        let mut rollback = tempfile::NamedTempFile::new_in(root)?;
+        rollback.write_all(&config_before)?;
+        if fs::read(&config_path)? == config_after {
+            rollback.persist(&config_path)?;
+        }
+        fs::rename(trash.join("plugin-root"), &intent_path)?;
+        fs::rename(trash.join("source"), &source_path)?;
+        bail!("Cargo.toml changed during linked Cargo unadopt; preserving concurrent edit");
+    }
+    if let Some(staged_cargo) = staged_cargo {
+        if let Err(error) = staged_cargo.persist(&cargo_path) {
+            let mut rollback = tempfile::NamedTempFile::new_in(root)?;
+            rollback.write_all(&config_before)?;
+            if fs::read(&config_path)? == config_after {
+                rollback.persist(&config_path)?;
+            }
+            fs::rename(trash.join("plugin-root"), &intent_path)?;
+            fs::rename(trash.join("source"), &source_path)?;
+            return Err(error.into());
+        }
     }
     println!(
         "Unadopted {plugin_id}@{version}; source and Plugin Root intent are recoverable at {}",
@@ -769,12 +865,9 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
     let mut actual_entries = fs::read_dir(actual)?
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<Vec<_>, _>>()?;
-    if root {
-        // Registry crates can contain a root Cargo.lock; Cargo may also
-        // materialize or rewrite it during a standalone build. The signed
-        // archive is verified before unpacking, but this lock is not part of
-        // the adopted source identity used for Host path dependencies.
-        expected_entries.retain(|name| name != "Cargo.lock");
+    if root && !expected_entries.iter().any(|name| name == "Cargo.lock") {
+        // Cargo may materialize a root lock after adoption. Only a lock
+        // absent from the signed archive may be ignored during an exact retry.
         actual_entries.retain(|name| name != "Cargo.lock");
     }
     expected_entries.sort();
@@ -916,7 +1009,22 @@ mod tests {
             fs::read(stage.path().join("Cargo.toml")).unwrap(),
         )
         .unwrap();
-        fs::write(actual.path().join("Cargo.lock"), b"# Cargo-updated lock\n").unwrap();
+        fs::write(actual.path().join("Cargo.lock"), b"# published lock\n").unwrap();
         assert!(same_tree(stage.path(), actual.path()).unwrap());
+        fs::write(actual.path().join("Cargo.lock"), b"# Cargo-updated lock\n").unwrap();
+        assert!(!same_tree(stage.path(), actual.path()).unwrap());
+        let lock = SourceLock {
+            schema_version: 1,
+            plugin_id: release.plugin_id,
+            version: release.version,
+            crate_digest: release.crate_digest,
+            source_digest: source_digest(stage.path()).unwrap(),
+            archive_cargo_lock_digest: archive_cargo_lock_digest(stage.path()).unwrap(),
+            workspace_exclude_owned: false,
+            v6: None,
+        };
+        assert!(verify_archive_cargo_lock(actual.path(), &lock).is_err());
+        fs::write(actual.path().join("Cargo.lock"), b"# published lock\n").unwrap();
+        verify_archive_cargo_lock(actual.path(), &lock).unwrap();
     }
 }

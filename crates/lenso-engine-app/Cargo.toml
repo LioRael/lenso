@@ -41,6 +41,7 @@ rustix = { version = "1.1", features = ["fs"] }
 tempfile = { workspace = true }
 tokio = { version = "1.52", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = { workspace = true }
+toml_edit = { workspace = true }
 uuid = { version = "1", features = ["v7"] }
 ureq = { version = "2.12", default-features = false, features = ["tls"] }
 url = "2.5"

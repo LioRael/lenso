@@ -1,5 +1,5 @@
 //! Local contract synchronization is authoring work, never runtime discovery.
-use anyhow::{Context, bail};
+use anyhow::{Context, bail, ensure};
 use lenso_app_authoring::discovery::Candidate;
 use lenso_contract_codegen_next::{
     ProjectionLanguage, generate_projection, lint_compatibility, load_descriptor,
@@ -440,10 +440,32 @@ fn scan(
     Ok(())
 }
 fn cargo_metadata(manifest: &Path) -> anyhow::Result<Value> {
-    let output = super::cargo_command()
-        .args(["metadata", "--format-version=1", "--manifest-path"])
-        .arg(manifest)
-        .output()?;
+    let lock_path = manifest.with_file_name("Cargo.lock");
+    let lock_before = match fs::symlink_metadata(&lock_path) {
+        Ok(metadata) if metadata.is_file() && metadata.len() <= 32 * 1024 * 1024 => {
+            Some(fs::read(&lock_path)?)
+        }
+        Ok(_) => bail!(
+            "Cargo dependency lock is not a bounded regular file: {}",
+            lock_path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+    let mut command = super::cargo_command();
+    command.args(["metadata", "--format-version=1", "--manifest-path"]);
+    command.arg(manifest);
+    if lock_before.is_some() {
+        command.arg("--locked");
+    }
+    let output = command.output()?;
+    if let Some(before) = lock_before {
+        ensure!(
+            fs::read(&lock_path)? == before,
+            "Cargo dependency lock changed during contract discovery: {}",
+            lock_path.display()
+        );
+    }
     if !output.status.success() {
         bail!(
             "contract dependency discovery: {}",
