@@ -5,7 +5,9 @@ exact manifest version, and `publish=false` first. The workflow tests and packs
 the artifact and reports its SHA-256. Review the source commit and successful
 run before dispatching the same source SHA with `publish=true`. A changed
 source SHA requires another dry run. Publication uses npm OIDC; no token fallback
-is configured. Configure each package's Trusted Publisher for this repository
+is configured. The dry-run job has no OIDC permission; the publication job
+checks the exact packed archive digest before using that permission. Configure
+each package's Trusted Publisher for this repository
 and `release-workers-npm.yml` (no environment).
 
 A first package allocation requires an npm owner bootstrap before Trusted
