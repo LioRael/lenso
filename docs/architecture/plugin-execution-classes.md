@@ -11,7 +11,7 @@ execution mechanics, not the Plugin's product identity or Capability contract.
 Plugin Release
   -> one Plugin Contract
   -> one or more exact implementations
-  -> optional explicit Artifact variants per implementation
+  -> optional explicit Artifact or build-input variants per implementation
   -> Host selects one exact implementation and variant
   -> resolved Plugin Descriptor
   -> Plugin Instance in the Resolved App Plan
@@ -42,8 +42,8 @@ negotiates, or falls back to another Artifact after failure.
 | Execution Class | Input | Isolation | Intended use |
 | --- | --- | --- | --- |
 | `lenso.native-rust@1` | Exact statically linked factory | In-process | Stable Host-linked Plugins |
-| `lenso.wasm-component@1` | Verified Component Artifact | In-process sandbox | Portable bundled Plugins |
-| `lenso.quickjs@1` | Verified immutable ESM graph | In-process sandbox | Embedded JavaScript Plugins |
+| `lenso.wasm-component@1` | Verified Component Artifact | Component boundary; exact controls require Host evidence | Portable bundled Plugins |
+| `lenso.quickjs@1` | Verified immutable ESM graph | JavaScript VM boundary, not an OS sandbox | Embedded JavaScript Plugins |
 | `lenso.native-dylib@1` | Verified native library | In-process, trusted | Experimental trusted Plugins |
 | product process classes | Verified executable plus protocol | Child process | Product-specific adapters |
 
@@ -105,9 +105,22 @@ V5 cannot select `lenso.native-rust@1` from a runtime Bundle Artifact: a linked
 Cargo package is a static Host build input, adopted through its exact signed
 source release and compiled into the Host. Selection reports the required Host
 rebuild rather than treating any packaged file as a loadable native factory.
-Legacy V2–V4 signed selection and digest behavior is unchanged; a future
-build-input variant format needs its own explicit wire contract and Host build
-binding.
+V6 makes this distinction explicit in its signed Bundle closure: each variant
+contains either a runtime `Artifact` or a `CargoBuildInput` with exact `.crate`
+bytes, digest, size, package and version. The verifier checks the archive's
+Cargo identity and Plugin ID without executing it. Runtime selection cannot
+activate a `CargoBuildInput`; it reports that a new Host build is required.
+The signed source catalog remains a separate adoption authority: a local V6
+Bundle alone does not authorize installing a linked package. Legacy V2–V5
+signed selection and digest behavior is unchanged.
+
+V6 variants may also declare required permission grants, an OS sandbox, a
+memory ceiling or a turn deadline. These are admission demands, not evidence
+that an Adapter enforces them. Current Host runtime admission supplies no
+verifiable grant, sandbox or resource-control evidence for these demands, so a
+matching candidate is rejected rather than falling back to a same- or
+lower-priority variant with wider authority. An execution-class name, Wasm
+Artifact or QuickJS VM is not proof of an OS sandbox or an effective limit.
 When the Host admits the Execution Class but only a different runtime
 ABI/profile version, selection reports the exact required and admitted
 profiles instead of a generic unadmitted-runtime error.
