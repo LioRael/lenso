@@ -789,6 +789,76 @@ fn real_component_runs_without_wasi_and_retires_on_trap_or_cancellation() {
     assert!(adapter.recreate(&plan, "plugin").is_ok());
 }
 
+#[test]
+fn real_component_applies_limits_to_the_exact_instance() {
+    let component = wit_component::ComponentEncoder::default()
+        .module(rust_guest())
+        .unwrap()
+        .validate(true)
+        .encode()
+        .unwrap();
+    let artifact_file = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(artifact_file.path(), &component).unwrap();
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(&component)));
+    let artifact =
+        ArtifactHandle::open(artifact_file.path(), &digest, component.len() as u64).unwrap();
+    let artifacts = ArtifactCatalog::new()
+        .with_artifact("plugin", artifact.clone())
+        .unwrap()
+        .with_artifact("other", artifact)
+        .unwrap();
+    let adapter = WasmComponentAdapter::new(artifacts)
+        .with_instance_limits(
+            "plugin",
+            WasmComponentLimits {
+                max_memory_bytes: 64 * 1024 * 1024,
+                ..WasmComponentLimits::default()
+            },
+        )
+        .with_instance_limits(
+            "other",
+            WasmComponentLimits {
+                max_memory_bytes: 1,
+                ..WasmComponentLimits::default()
+            },
+        )
+        .require_exact_instance_limits()
+        .with_codec(EchoCodec);
+    let first = plan();
+    let other = ResolvedAppPlan::new(
+        vec![
+            PluginInstancePlan::new("other", "test.component")
+                .with_entrypoint("plugin")
+                .with_execution_class(ExecutionClassId::new(EXECUTION_CLASS))
+                .with_capability(CapabilityEndpointPlan::new(
+                    "test.echo@1",
+                    "1.0.0",
+                    ["echo", "fail", "trap", "loop"],
+                )),
+        ],
+        Vec::new(),
+    );
+    assert_eq!(
+        adapter
+            .configured_limits_for_instance("other")
+            .unwrap()
+            .max_memory_bytes,
+        1
+    );
+    assert!(adapter.recreate(&first, "plugin").is_ok());
+    assert!(adapter.recreate(&other, "other").is_err());
+
+    let absent = WasmComponentAdapter::new(ArtifactCatalog::new())
+        .require_exact_instance_limits()
+        .with_codec(EchoCodec);
+    assert!(absent.recreate(&first, "plugin").is_err());
+
+    let duplicate = WasmComponentAdapter::new(ArtifactCatalog::new())
+        .with_instance_limits("plugin", WasmComponentLimits::default())
+        .with_instance_limits("plugin", WasmComponentLimits::default());
+    assert!(duplicate.configured_limits_for_instance("plugin").is_err());
+}
+
 fn narrow_plan() -> ResolvedAppPlan {
     ResolvedAppPlan::new(
         vec![

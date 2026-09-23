@@ -27,7 +27,10 @@ use lenso_runtime_codec::{
     validate_json_plugin_descriptor,
 };
 use wasmtime::component::{Component, HasSelf, Linker};
-use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
+use wasmtime::{Config, Engine, Store};
+
+mod limits;
+use limits::GuestLinearMemoryBudget;
 
 mod request_abi {
     wasmtime::component::bindgen!({
@@ -92,9 +95,11 @@ pub const EXECUTION_CLASS: &str = "lenso.wasm-component@1";
 pub const RUNTIME_PROFILE: &str = "lenso.wasm-component@1";
 
 /// Per-generation Wasmtime resource and execution limits.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WasmComponentLimits {
     pub max_component_bytes: usize,
+    /// Maximum combined size of all non-shared Guest linear memories in one Store.
+    /// This does not cap Wasmtime or Host process memory.
     pub max_memory_bytes: usize,
     pub max_table_elements: usize,
     pub max_instances: usize,
@@ -102,6 +107,8 @@ pub struct WasmComponentLimits {
     pub max_streams: usize,
     pub max_host_imports_per_call: usize,
     pub fuel_per_invocation: u64,
+    /// Guest execution-turn timer. Host imports can block past this duration;
+    /// it is not evidence for a V6 wall-clock `TurnDeadline` requirement.
     pub max_turn: Duration,
 }
 
@@ -128,6 +135,9 @@ pub struct WasmComponentAdapter {
     codecs: BTreeMap<String, Rc<dyn JsonCapabilityCodec>>,
     duplicate_codecs: BTreeSet<String>,
     limits: WasmComponentLimits,
+    instance_limits: BTreeMap<String, WasmComponentLimits>,
+    duplicate_instance_limits: BTreeSet<String>,
+    exact_instance_limits_required: bool,
 }
 
 impl WasmComponentAdapter {
@@ -138,6 +148,9 @@ impl WasmComponentAdapter {
             codecs: BTreeMap::new(),
             duplicate_codecs: BTreeSet::new(),
             limits: WasmComponentLimits::default(),
+            instance_limits: BTreeMap::new(),
+            duplicate_instance_limits: BTreeSet::new(),
+            exact_instance_limits_required: false,
         }
     }
 
@@ -172,10 +185,59 @@ impl WasmComponentAdapter {
         self
     }
 
+    /// Binds concrete limits to one exact Plan Instance, without changing
+    /// limits for other Instances in the same Adapter.
+    #[must_use]
+    pub fn with_instance_limits(
+        mut self,
+        instance_key: impl Into<String>,
+        limits: WasmComponentLimits,
+    ) -> Self {
+        let instance_key = instance_key.into();
+        if self
+            .instance_limits
+            .insert(instance_key.clone(), limits)
+            .is_some()
+        {
+            self.duplicate_instance_limits.insert(instance_key);
+        }
+        self
+    }
+
+    /// Requires each prepared or recreated Wasm Instance to have an exact
+    /// per-Instance limit binding; legacy default fallback is then disabled.
+    #[must_use]
+    pub fn require_exact_instance_limits(mut self) -> Self {
+        self.exact_instance_limits_required = true;
+        self
+    }
+
+    /// Returns the immutable limits that `prepare` and `recreate` will apply.
+    /// `max_memory_bytes` is the aggregate Guest linear-memory ceiling; the
+    /// `max_turn` field is not a V6 wall-clock deadline guarantee.
+    pub fn configured_limits_for_instance(
+        &self,
+        instance_key: &str,
+    ) -> Result<WasmComponentLimits, RuntimeFailure> {
+        if self.duplicate_instance_limits.contains(instance_key) {
+            return invalid(format!(
+                "duplicate Wasm Component limits for Instance `{instance_key}`"
+            ));
+        }
+        match self.instance_limits.get(instance_key) {
+            Some(limits) => Ok(limits.clone()),
+            None if self.exact_instance_limits_required => invalid(format!(
+                "Wasm Component Instance `{instance_key}` has no exact limit binding"
+            )),
+            None => Ok(self.limits.clone()),
+        }
+    }
+
     fn prepare_instance(
         &self,
         instance: &PluginInstancePlan,
     ) -> Result<PreparedNativePlugin, RuntimeFailure> {
+        let limits = self.configured_limits_for_instance(instance.instance_key())?;
         if instance.authoring_version() == 2 && !instance.required_capabilities().is_empty() {
             return invalid(
                 "Wasm Component authoring v2 currently requires a dependency-free Contract"
@@ -204,7 +266,7 @@ impl WasmComponentAdapter {
             .artifacts
             .require(instance.instance_key())?
             .read_verified()?;
-        if bytes.len() > self.limits.max_component_bytes {
+        if bytes.len() > limits.max_component_bytes {
             return plugin_failure("Wasm Component exceeds max_component_bytes");
         }
         let codecs = codecs_for_instance(instance, &self.codecs)?;
@@ -213,7 +275,7 @@ impl WasmComponentAdapter {
             bytes,
             instance.clone(),
             import_codecs,
-            self.limits.clone(),
+            limits,
         )?);
         let endpoints = json_request_endpoints(generation.clone(), codecs.clone());
         let stream_endpoints = json_stream_endpoints(generation.clone(), codecs);
@@ -913,7 +975,7 @@ impl Drop for WasmAbandonmentGuard {
 
 #[derive(Debug)]
 struct HostState {
-    limits: StoreLimits,
+    limits: GuestLinearMemoryBudget,
     imports: Option<futures_mpsc::Sender<HostImportCommand>>,
     deadline: mpsc::Sender<DeadlineCommand>,
     max_turn: std::time::Duration,
@@ -1042,14 +1104,11 @@ fn run_worker(
         instance,
         limits,
     } = inputs;
-    let store_limits = StoreLimitsBuilder::new()
-        .memory_size(limits.max_memory_bytes)
-        .table_elements(limits.max_table_elements)
-        .instances(limits.max_instances)
-        .memories(limits.max_instances)
-        .tables(limits.max_instances)
-        .trap_on_grow_failure(true)
-        .build();
+    let store_limits = GuestLinearMemoryBudget::new(
+        limits.max_memory_bytes,
+        limits.max_table_elements,
+        limits.max_instances,
+    );
     let (deadline_tx, deadline_rx) = mpsc::channel();
     let deadline_engine = engine.clone();
     let deadline_worker = thread::Builder::new()
