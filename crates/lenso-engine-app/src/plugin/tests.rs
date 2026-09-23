@@ -258,6 +258,32 @@ fn clean_room_web_plugin_runs_generated_tests() {
     fs::remove_file(project.join("src/routes/duplicate.rs")).unwrap();
     fs::remove_file(project.join("src/routes/health.rs")).unwrap();
     fs::write(&library, original).unwrap();
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let routes = project.join("src/routes");
+        let outside = root.path().join("outside-routes");
+        let build = project.join("build.rs");
+        let original_build = fs::read_to_string(&build).unwrap();
+        fs::rename(&routes, &outside).unwrap();
+        symlink(&outside, &routes).unwrap();
+        fs::write(&build, format!("{original_build}\n// symlink proof\n")).unwrap();
+        let rejected = Command::new("cargo")
+            .args(["check", "--locked"])
+            .current_dir(&project)
+            .output()
+            .unwrap();
+        assert!(!rejected.status.success());
+        let diagnostic = String::from_utf8_lossy(&rejected.stderr);
+        assert!(diagnostic.contains("route source must be a real directory"));
+        assert!(diagnostic.contains("src/routes"));
+        fs::remove_file(&routes).unwrap();
+        fs::rename(&outside, &routes).unwrap();
+        fs::write(&build, original_build).unwrap();
+    }
+
     run_cargo(&project, &["test", "--locked"], "test removed Web route").unwrap();
 }
 

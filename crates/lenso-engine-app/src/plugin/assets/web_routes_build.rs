@@ -23,6 +23,15 @@ fn main() {
 fn compile_routes() -> Result<(), Box<dyn std::error::Error>> {
     let directory = Path::new("src/routes");
     println!("cargo:rerun-if-changed={}", directory.display());
+    for part in [Path::new("src"), directory] {
+        if !fs::symlink_metadata(part)?.file_type().is_dir() {
+            return Err(format!(
+                "route source must be a real directory, not a symlink or special file: {}",
+                part.display()
+            )
+            .into());
+        }
+    }
     let mut files = fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
     files.sort_by_key(fs::DirEntry::file_name);
     let mut methods = Vec::new();
