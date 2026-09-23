@@ -59,6 +59,19 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
         "linked build script was not exercised"
     );
     let distribution = root.join("dist");
+    let generated_manifest =
+        fs::read_to_string(distribution.join(".lenso/generated-host/Cargo.toml"))
+            .expect("generated Host manifest");
+    for unused in [
+        "lenso-bun-adapter",
+        "lenso-process-adapter",
+        "lenso-wasm-component-adapter",
+    ] {
+        assert!(
+            !generated_manifest.contains(unused),
+            "native-only Host unexpectedly depends on {unused}"
+        );
+    }
     assert_eq!(
         fs::read(distribution.join(".lenso/host-build.json")).unwrap(),
         fs::read(distribution.join("intent/.lenso/host-build.json")).unwrap()

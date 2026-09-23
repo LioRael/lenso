@@ -250,8 +250,10 @@ fn portable_codecs(
         .collect())
 }
 
+#[cfg(any(not(generated_native_host), generated_bun_adapter))]
 #[derive(Clone, Debug)]
 struct LegacyBunCodec<C>(C);
+#[cfg(any(not(generated_native_host), generated_bun_adapter))]
 impl<C: lenso_runtime_codec::JsonCapabilityCodec> lenso_bun_adapter::BunCapabilityCodec
     for LegacyBunCodec<C>
 {

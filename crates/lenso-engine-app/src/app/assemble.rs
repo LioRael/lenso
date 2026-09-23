@@ -142,11 +142,22 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     if executable {
         super::prepare::target_platform(lenso_app_authoring::native_host_target())?;
     }
+    let generated_adapters =
+        if precompiled.is_none() && candidates.iter().any(super::local_host::is_native) {
+            Some(super::local_host::AdapterSet::from_candidates(&candidates)?)
+        } else {
+            None
+        };
     let native = if candidates.iter().any(super::local_host::is_native) {
         if let Some(host) = &precompiled {
             host.install(stage.path(), &candidates)?
         } else {
-            super::local_host::generate(stage.path(), &root.join(".lenso/host-cache"), &candidates)?
+            super::local_host::generate(
+                stage.path(),
+                &root.join(".lenso/host-cache"),
+                &candidates,
+                generated_adapters.context("generated Host Adapter set")?,
+            )?
         }
     } else {
         Vec::new()
@@ -245,6 +256,19 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
                 )?,
             ))
         })?;
+        if let Some(adapters) = generated_adapters {
+            let execution_class = selected
+                .implementation
+                .descriptor
+                .execution_class()
+                .as_str();
+            if !adapters.admits_portable(execution_class) {
+                bail!(
+                    "selected Plugin {} requires an Execution Adapter absent from the generated Host: {execution_class}",
+                    candidate.plugin_id
+                );
+            }
+        }
         if verified.plugin_id != candidate.plugin_id
             || verified.release_version != candidate.release_version
         {

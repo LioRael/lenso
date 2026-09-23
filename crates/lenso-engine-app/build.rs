@@ -1,5 +1,8 @@
 fn main() {
     println!("cargo:rustc-check-cfg=cfg(generated_native_host)");
+    println!("cargo:rustc-check-cfg=cfg(generated_bun_adapter)");
+    println!("cargo:rustc-check-cfg=cfg(generated_process_adapter)");
+    println!("cargo:rustc-check-cfg=cfg(generated_wasm_adapter)");
     fn assets(root: &std::path::Path, directory: &std::path::Path, output: &mut String) {
         let mut entries = std::fs::read_dir(directory)
             .unwrap()

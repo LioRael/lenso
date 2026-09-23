@@ -219,6 +219,19 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     if resolution.schema != "lenso.runtime-app-resolution.v1" {
         bail!("unsupported resolver schema");
     }
+    #[cfg(generated_native_host)]
+    for instance in resolution.plan.plugin_instances() {
+        let supported = match instance.execution_class().as_str() {
+            "lenso.native-rust@1" => true,
+            "lenso.bun-process@1" => cfg!(generated_bun_adapter),
+            "lenso.process@1" => cfg!(generated_process_adapter),
+            "lenso.wasm-component@1" => cfg!(generated_wasm_adapter),
+            _ => false,
+        };
+        if !supported {
+            bail!("Host has no built Execution Adapter for {}", instance.execution_class().as_str());
+        }
+    }
     if let Some(active) = &activation {
         let selected = active.state.pointer("/desired/candidate_plugin_root_revision").and_then(|v| v.as_str());
         if selected != Some(&resolution.plugin_root_revision) { bail!("configuration changed during Host resolution"); }
@@ -284,9 +297,13 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             .with_resources(resources)
     };
     // LENSO_RUNTIME_WEB
+    let _ = &artifacts;
+    #[cfg(any(not(generated_native_host), generated_bun_adapter))]
     let bun = lenso_bun_adapter::BunAdapter::production(root.join("runtime/bun"))
         .with_artifacts(artifacts.clone());
+    #[cfg(any(not(generated_native_host), generated_process_adapter))]
     let process = lenso_process_adapter::ProcessAdapter::new(artifacts.clone());
+    #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
     let wasm = lenso_wasm_component_adapter::WasmComponentAdapter::new(artifacts);
     #[cfg(not(generated_native_host))]
     let typed = std::collections::BTreeSet::from([super::terminal::command::CAPABILITY_ID, super::terminal::provider::CAPABILITY_ID]);
@@ -298,26 +315,41 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let wasm = wasm.with_codec(super::terminal::command::CommandJsonCodec).with_codec(super::terminal::provider::CommandProviderJsonCodec);
     // LENSO_REGISTER_CODECS
     let evidence = serde_json::from_slice(&fs::read(root.join("runtime-codecs.json"))?)?;
+    #[cfg(any(not(generated_native_host), generated_bun_adapter))]
     let mut bun = bun;
+    #[cfg(any(not(generated_native_host), generated_process_adapter))]
     let mut process = process;
+    #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
     let mut wasm = wasm;
     for codec in portable_codecs(&resolution.plan, &typed, &evidence)? {
-        bun = bun
-            .with_codec(LegacyBunCodec(codec.clone()))
-            .with_authoring_codec(codec.clone());
-        process = process.with_codec(codec.clone());
-        wasm = wasm.with_codec(codec);
+        #[cfg(any(not(generated_native_host), generated_bun_adapter))]
+        {
+            bun = bun
+                .with_codec(LegacyBunCodec(codec.clone()))
+                .with_authoring_codec(codec.clone());
+        }
+        #[cfg(any(not(generated_native_host), generated_process_adapter))]
+        {
+            process = process.with_codec(codec.clone());
+        }
+        #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
+        {
+            wasm = wasm.with_codec(codec);
+        }
+        #[cfg(all(generated_native_host, not(any(generated_bun_adapter, generated_process_adapter, generated_wasm_adapter))))]
+        let _ = codec;
     }
     let catalog = ExecutionAdapterCatalog::new();
     #[cfg(generated_native_host)]
     let catalog = catalog
         .with_adapter(native)
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-    let catalog = catalog
-        .with_adapter(bun)
-        .and_then(|c| c.with_adapter(process))
-        .and_then(|c| c.with_adapter(wasm))
-        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    #[cfg(any(not(generated_native_host), generated_bun_adapter))]
+    let catalog = catalog.with_adapter(bun).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    #[cfg(any(not(generated_native_host), generated_process_adapter))]
+    let catalog = catalog.with_adapter(process).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
+    let catalog = catalog.with_adapter(wasm).map_err(|e| anyhow::anyhow!("{e:?}"))?;
     // Drive the local Kernel outside Tokio's block_on execution context: Bun's
     // synchronous startup handshake owns a separate RPC runtime. Tokio workers
     // still service I/O/timers, and LocalSet retains thread-local Plugin state.

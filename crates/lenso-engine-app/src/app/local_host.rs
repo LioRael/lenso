@@ -11,10 +11,53 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct AdapterSet {
+    bun: bool,
+    process: bool,
+    wasm: bool,
+}
+
+impl AdapterSet {
+    pub(super) fn from_candidates(candidates: &[Candidate]) -> anyhow::Result<Self> {
+        // Discovery describes the Host's closed release set before portable
+        // bundles have been built. Include every declared implementation class;
+        // runtime admission below still rejects classes absent from this set.
+        let mut declared = Self::default();
+        for candidate in candidates {
+            for implementation in &candidate.implementations {
+                declared.include_runtime(&implementation.runtime)?;
+            }
+        }
+        Ok(declared)
+    }
+
+    fn include_runtime(&mut self, runtime: &str) -> anyhow::Result<()> {
+        match runtime {
+            "native-linked" | "lenso.native-rust@1" => {}
+            "bun" | "lenso.bun-process@1" => self.bun = true,
+            "process" | "lenso.process@1" => self.process = true,
+            "wasm" | "lenso.wasm-component@1" => self.wasm = true,
+            other => bail!("generated Host cannot assemble unknown execution class `{other}`"),
+        }
+        Ok(())
+    }
+
+    pub(super) fn admits_portable(&self, execution_class: &str) -> bool {
+        match execution_class {
+            "lenso.bun-process@1" => self.bun,
+            "lenso.process@1" => self.process,
+            "lenso.wasm-component@1" => self.wasm,
+            _ => false,
+        }
+    }
+}
+
 pub(super) fn generate(
     stage: &Path,
     cache: &Path,
     candidates: &[Candidate],
+    adapters: AdapterSet,
 ) -> anyhow::Result<Vec<PluginDescriptor>> {
     fs::create_dir_all(cache)?;
     let lock = fs::File::options()
@@ -43,10 +86,6 @@ pub(super) fn generate(
         ("lenso-kernel", "=0.3.11"),
         ("lenso-native-adapter", "=0.3.15"),
         ("lenso-runner", "=0.2.17"),
-        ("lenso-bun-adapter", "=0.1.14"),
-        ("lenso-process-adapter", "=0.3.12"),
-        ("lenso-wasm-component-adapter", "=0.2.15"),
-        ("lenso-runtime-codec", "=0.4.2"),
     ] {
         dependencies.insert(name.into(), json!(version));
     }
@@ -245,7 +284,15 @@ pub(super) fn generate(
         other => bail!("unsupported typed Codec cohort {other}; use a custom Host"),
     };
     for (name, version) in versions {
-        dependencies.insert(name.into(), json!(version));
+        let enabled = match name {
+            "lenso-bun-adapter" => adapters.bun,
+            "lenso-process-adapter" => adapters.process,
+            "lenso-wasm-component-adapter" => adapters.wasm,
+            _ => true,
+        };
+        if enabled {
+            dependencies.insert(name.into(), json!(version));
+        }
     }
     if cohort == "0.3" {
         dependencies.insert(
@@ -283,7 +330,17 @@ pub(super) fn generate(
             terminal_aliases.insert(capability.clone(), alias.clone());
         }
         let name = codec_name(&capability)?;
-        register.push_str(&format!("let bun = bun.with_codec(LegacyBunCodec({alias}::{name})).with_authoring_codec({alias}::{name});\nlet process = process.with_codec({alias}::{name});\nlet wasm = wasm.with_codec({alias}::{name});\n"));
+        if adapters.bun {
+            register.push_str(&format!("let bun = bun.with_codec(LegacyBunCodec({alias}::{name})).with_authoring_codec({alias}::{name});\n"));
+        }
+        if adapters.process {
+            register.push_str(&format!(
+                "let process = process.with_codec({alias}::{name});\n"
+            ));
+        }
+        if adapters.wasm {
+            register.push_str(&format!("let wasm = wasm.with_codec({alias}::{name});\n"));
+        }
     }
     if terminal_enabled {
         for (name, version) in [
@@ -318,7 +375,21 @@ pub(super) fn generate(
                 );
             } else {
                 fs::write(generated.join(format!("src/terminal/{name}.rs")), body)?;
-                register.push_str(&format!("let bun = bun.with_authoring_codec(terminal::{name}::{codec});\nlet process = process.with_codec(terminal::{name}::{codec});\nlet wasm = wasm.with_codec(terminal::{name}::{codec});\n"));
+                if adapters.bun {
+                    register.push_str(&format!(
+                        "let bun = bun.with_authoring_codec(terminal::{name}::{codec});\n"
+                    ));
+                }
+                if adapters.process {
+                    register.push_str(&format!(
+                        "let process = process.with_codec(terminal::{name}::{codec});\n"
+                    ));
+                }
+                if adapters.wasm {
+                    register.push_str(&format!(
+                        "let wasm = wasm.with_codec(terminal::{name}::{codec});\n"
+                    ));
+                }
             }
         }
         register.push_str("let mut typed = typed; typed.insert(terminal::command::CAPABILITY_ID); typed.insert(terminal::provider::CAPABILITY_ID);\n");
@@ -401,10 +472,21 @@ pub(super) fn generate(
         toml::to_string_pretty(&manifest)?,
     )?;
     fs::write(generated.join("src/main.rs"), source)?;
-    fs::write(
-        generated.join("build.rs"),
-        "fn main() { println!(\"cargo:rustc-check-cfg=cfg(generated_native_host)\"); println!(\"cargo:rustc-cfg=generated_native_host\"); }\n",
-    )?;
+    let mut build_script = "fn main() { println!(\"cargo:rustc-check-cfg=cfg(generated_native_host)\"); println!(\"cargo:rustc-cfg=generated_native_host\");".to_owned();
+    for (enabled, name) in [
+        (adapters.bun, "generated_bun_adapter"),
+        (adapters.process, "generated_process_adapter"),
+        (adapters.wasm, "generated_wasm_adapter"),
+    ] {
+        build_script.push_str(&format!(
+            " println!(\"cargo:rustc-check-cfg=cfg({name})\");"
+        ));
+        if enabled {
+            build_script.push_str(&format!(" println!(\"cargo:rustc-cfg={name}\");"));
+        }
+    }
+    build_script.push_str(" }\n");
+    fs::write(generated.join("build.rs"), build_script)?;
 
     let output = super::cargo_command()
         .args([
@@ -901,9 +983,33 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        collect_local_lenso_patch, dependency_lock_digests, verify_dependency_lock_digests,
-        web_ingress_dependency,
+        AdapterSet, collect_local_lenso_patch, dependency_lock_digests,
+        verify_dependency_lock_digests, web_ingress_dependency,
     };
+
+    #[test]
+    fn generated_host_only_links_declared_execution_classes() {
+        let mut adapters = AdapterSet::default();
+        adapters.include_runtime("native-linked").unwrap();
+        assert_eq!(adapters, AdapterSet::default());
+        adapters.include_runtime("lenso.process@1").unwrap();
+        adapters.include_runtime("wasm").unwrap();
+        assert_eq!(
+            adapters,
+            AdapterSet {
+                bun: false,
+                process: true,
+                wasm: true,
+            }
+        );
+        assert!(adapters.admits_portable("lenso.process@1"));
+        assert!(adapters.admits_portable("lenso.wasm-component@1"));
+        assert!(!adapters.admits_portable("lenso.bun-process@1"));
+        assert!(!adapters.admits_portable("lenso.native-rust@1"));
+        adapters.include_runtime("bun").unwrap();
+        assert!(adapters.bun);
+        assert!(adapters.include_runtime("unrecognized-runtime").is_err());
+    }
 
     #[test]
     fn existing_dependency_lock_change_is_rejected_but_first_lock_is_allowed() {
