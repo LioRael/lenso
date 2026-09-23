@@ -42,8 +42,12 @@ impl Plugin for ConventionCompiler {
         }])
     }
     fn process(&self, context: &ContextView<'_>) -> anyhow::Result<BTreeMap<String, Resource>> {
-        let bytes = process::execute_cancellable_with_budget(
-            &self.process,
+        let mut command = crate::app::build_command(&self.process.program);
+        command
+            .args(&self.process.args)
+            .current_dir(&self.process.directory);
+        let bytes = process::execute_cancellable_command_with_budget(
+            command,
             &context.step.options,
             self.active_group.clone(),
             context.cancelled,
@@ -66,10 +70,61 @@ impl Plugin for ConventionCompiler {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::process::Command;
     use std::{
         sync::{Arc, atomic::AtomicBool},
         time::Duration,
     };
+
+    #[test]
+    fn convention_compiler_does_not_inherit_runtime_secret_environment() {
+        const MARKER: &str = "LENSO_TEST_BUILD_SECRET_REEXEC";
+        const SECRET: &str = "LENSO_TEST_RUNTIME_SECRET_FOR_BUILD";
+        if std::env::var_os(MARKER).is_none() {
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "compiler::tests::convention_compiler_does_not_inherit_runtime_secret_environment",
+                    "--nocapture",
+                ])
+                .env(MARKER, "1")
+                .env(SECRET, "dummy-test-value")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "isolated compiler test failed: {}",
+                String::from_utf8_lossy(&output.stdout)
+            );
+            return;
+        }
+
+        assert_eq!(std::env::var(SECRET).unwrap(), "dummy-test-value");
+        let directory = tempfile::tempdir().unwrap();
+        let mut engine = lenso_engine::Engine::default();
+        engine
+            .register(ConventionCompiler {
+                identity: "test.convention.v1".into(),
+                request: serde_json::json!({"schema":"lenso.convention-compile.v1"}),
+                process: ProcessSpec {
+                    program: "/bin/sh".into(),
+                    args: vec![
+                        "-c".into(),
+                        format!(
+                            "if [ -n \"${{{SECRET}+x}}\" ]; then printf '{{\"schema\":\"lenso.convention-compiled.v1\",\"leaked\":true}}'; else printf '{{\"schema\":\"lenso.convention-compiled.v1\"}}'; fi"
+                        ),
+                    ],
+                    directory: directory.path().into(),
+                },
+                budget: process::ProcessBudget::default(),
+                active_group: Arc::new(AtomicI32::new(0)),
+            })
+            .unwrap();
+        let plan = engine.plan(Snapshot::default()).unwrap();
+        engine
+            .execute(&plan, &Arc::new(AtomicBool::new(false)))
+            .unwrap();
+    }
 
     #[test]
     fn convention_compiler_applies_its_declared_budget() {
