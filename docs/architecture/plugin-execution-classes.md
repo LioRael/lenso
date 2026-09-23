@@ -97,6 +97,10 @@ explicit requirement. A Request-only target cannot select either variant.
 This capability check does not itself prove that Wasm bytes are a valid
 Component; Artifact validation remains separate. Legacy V2–V4 candidates
 retain their signed selection semantics.
+V5 also rejects a format mismatch for an official versioned Execution Class:
+Process accepts its process Artifact, Wasm Component accepts Wasm, and
+Bun/QuickJS accept JavaScript. A third-party Execution Class remains open but
+its Adapter must validate the exact Artifact it receives before readiness.
 
 Selection is not runtime fallback. If the selected implementation fails its
 Ready Gate or later invocation, the Generation fails through its ordinary

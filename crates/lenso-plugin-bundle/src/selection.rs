@@ -85,6 +85,11 @@ pub enum ImplementationRejectionReason {
         host_target: String,
         artifact_target: String,
     },
+    ArtifactFormatMismatch {
+        execution_class: ExecutionClassId,
+        artifact_media_type: String,
+        expected_media_type: String,
+    },
     RuntimeNotAdmitted,
     MissingTargetCapabilities {
         requirements: Vec<TargetCapabilityRequirement>,
@@ -383,6 +388,7 @@ fn candidates_for_admission<'a>(
             continue;
         }
         if record_target_match(candidate, policy, rejected)
+            && record_artifact_format_match(candidate, admission, rejected)
             && record_capability_match(candidate, admission, rejected)
         {
             compatible.push(candidate);
@@ -429,6 +435,36 @@ fn record_target_match(
         return false;
     }
     true
+}
+
+fn record_artifact_format_match(
+    candidate: &Candidate,
+    admission: &RuntimeAdmission,
+    rejected: &mut Vec<RejectedPluginImplementation>,
+) -> bool {
+    if !candidate.enforce_artifact_capability {
+        return true;
+    }
+    // Official versioned Execution Classes fix their Artifact format. Third-
+    // party classes remain open and must enforce their own Adapter contract.
+    let expected = match admission.execution_class.as_str() {
+        "lenso.process@1" => "application/vnd.lenso.process",
+        "lenso.wasm-component@1" => "application/wasm",
+        "lenso.bun-process@1" | "lenso.quickjs@1" => "application/javascript",
+        _ => return true,
+    };
+    if candidate.artifact.media_type == expected {
+        return true;
+    }
+    rejected.push(rejected_candidate(
+        candidate,
+        ImplementationRejectionReason::ArtifactFormatMismatch {
+            execution_class: admission.execution_class.clone(),
+            artifact_media_type: candidate.artifact.media_type.clone(),
+            expected_media_type: expected.to_owned(),
+        },
+    ));
+    false
 }
 
 fn record_capability_match(
@@ -576,6 +612,13 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
             artifact_target,
         } => format!(
             "Process artifact target `{artifact_target}` does not match host target `{host_target}`"
+        ),
+        ImplementationRejectionReason::ArtifactFormatMismatch {
+            execution_class,
+            artifact_media_type,
+            expected_media_type,
+        } => format!(
+            "Artifact format `{artifact_media_type}` does not match execution class `{execution_class}` (requires `{expected_media_type}`)"
         ),
         ImplementationRejectionReason::RuntimeNotAdmitted => "runtime is not admitted".to_owned(),
         ImplementationRejectionReason::MissingTargetCapabilities { requirements } => format!(

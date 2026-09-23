@@ -2726,6 +2726,10 @@ root-slot = "tools"
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one matrix covers both V5 artifact mechanisms and exact Host admissions"
+    )]
     fn v5_artifact_format_requires_the_actual_host_mechanism() {
         let variant = |id: &str, media_type: &str, target: &str, class: &str| {
             let digest = sha256_digest(id.as_bytes());
@@ -2834,6 +2838,88 @@ root-slot = "tools"
                 .variant_id
                 .as_deref(),
             Some("component")
+        );
+    }
+
+    #[test]
+    fn v5_official_execution_class_rejects_a_different_artifact_format() {
+        let variant = |id: &str, class: &str| {
+            let digest = sha256_digest(id.as_bytes());
+            PluginVariantV5 {
+                id: id.to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact: PluginArtifactV2 {
+                    path: format!("implementations/{id}/plugin.js"),
+                    digest: digest.clone(),
+                    size: id.len() as u64,
+                    media_type: "application/javascript".to_owned(),
+                    target: "javascript-es2023".to_owned(),
+                },
+                runtime: PluginImplementation::new(
+                    "example.format",
+                    digest,
+                    "plugin.js",
+                    ExecutionClassId::new(class),
+                )
+                .with_runtime_profile(class),
+            }
+        };
+        let manifest = PluginManifest::V5(PluginManifestV5 {
+            schema_version: 5,
+            contract: PluginContract::new("example.format", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV5 {
+                id: "portable".to_owned(),
+                variants: vec![
+                    variant("wrong-process", "lenso.process@1"),
+                    variant("quickjs", "lenso.quickjs@1"),
+                ],
+            }],
+        });
+        let wire = canonical_manifest_bytes(&manifest).unwrap();
+        let parsed = ManifestDocument::parse(&wire).unwrap();
+        let process = RuntimeAdmission::new(
+            ExecutionClassId::new("lenso.process@1"),
+            "lenso.process@1",
+            ExecutionTargetCapabilities::new([
+                ExecutionTargetCapability::Request,
+                ExecutionTargetCapability::NativeProcess,
+            ]),
+        );
+        let quickjs = RuntimeAdmission::new(
+            ExecutionClassId::new("lenso.quickjs@1"),
+            "lenso.quickjs@1",
+            ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+        );
+        let policy = ImplementationPolicy {
+            host_target: "aarch64-apple-darwin".to_owned(),
+            runtimes: vec![process.clone(), quickjs],
+        };
+        let explained = explain_implementation(&parsed.value, &policy).unwrap();
+        assert_eq!(
+            explained.selected.unwrap().variant_id.as_deref(),
+            Some("quickjs")
+        );
+        assert!(explained.rejected.iter().any(|rejection| matches!(
+            &rejection.reason,
+            ImplementationRejectionReason::ArtifactFormatMismatch {
+                execution_class,
+                artifact_media_type,
+                expected_media_type,
+            } if rejection.variant_id.as_deref() == Some("wrong-process")
+                && execution_class.as_str() == "lenso.process@1"
+                && artifact_media_type == "application/javascript"
+                && expected_media_type == "application/vnd.lenso.process"
+        )));
+        assert!(
+            resolve_implementation(
+                &parsed.value,
+                &ImplementationPolicy {
+                    host_target: policy.host_target,
+                    runtimes: vec![process],
+                },
+            )
+            .is_err()
         );
     }
 
