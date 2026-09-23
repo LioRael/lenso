@@ -63,6 +63,7 @@ jobs:
         id: pack
         run: |
           npm test --prefix "$PACKAGE_PATH"
+          git diff --exit-code -- "$PACKAGE_PATH"
           mkdir release-artifacts
           npm pack "./$PACKAGE_PATH" --pack-destination release-artifacts
           shopt -s nullglob
