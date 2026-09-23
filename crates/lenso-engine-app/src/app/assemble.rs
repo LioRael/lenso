@@ -78,6 +78,17 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             .file_name()
             .context("Host output needs a directory name")?,
     );
+    if destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case(".lenso"))
+        && parent.starts_with(fs::canonicalize(&root)?)
+    {
+        bail!(
+            "reserved .lenso output directory inside App: {}",
+            destination.display()
+        );
+    }
     let stage = stage_output(&root, &parent)?;
     fs::create_dir(stage.path().join(".lenso"))?;
     fs::write(stage.path().join(".lenso/plugin-root-authoring.lock"), [])?;
@@ -651,6 +662,26 @@ mod tests {
         discovery::conventions::GeneratedResourceContribution,
         discovery::{Candidate, PublishedResource, SourceRole},
     };
+
+    #[test]
+    fn in_app_host_output_cannot_claim_reserved_lenso_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let destination = root.path().join("artifacts/.lenso");
+        let error = assemble(AssembleArgs {
+            root: Some(root.path().to_path_buf()),
+            id: "test.local".to_owned(),
+            out: destination.clone(),
+            json: false,
+            executable: false,
+        })
+        .unwrap_err();
+
+        assert!(
+            format!("{error:#}").contains("reserved .lenso output directory"),
+            "{error:#}"
+        );
+        assert!(!destination.exists());
+    }
 
     #[test]
     fn wasm_memory_admission_is_owned_only_by_an_executable_local_host() {
