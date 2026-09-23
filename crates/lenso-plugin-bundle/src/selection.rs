@@ -517,8 +517,8 @@ fn unverified_execution_requirements(
             ExecutionAdmissionRequirementV6::MemoryCeiling { max_bytes } => {
                 !memory_ceiling.is_some_and(|enforced| enforced > 0 && enforced <= *max_bytes)
             }
-            // In-process Host imports may block synchronously. Epoch interrupts
-            // cannot prove a total wall-clock turn deadline across those calls.
+            // The wall-clock timer counts Host imports, but in-process callbacks
+            // may block past the deadline and cannot have their effects rolled back.
             ExecutionAdmissionRequirementV6::TurnDeadline { .. }
             | ExecutionAdmissionRequirementV6::PermissionGrant { .. }
             | ExecutionAdmissionRequirementV6::OsSandbox => true,
@@ -900,7 +900,7 @@ fn render_unverified_requirements(
             ExecutionAdmissionRequirementV6::TurnDeadline { .. }
         )
     }) {
-        detail.push_str("; the current Wasm turn timer pauses during Host imports");
+        detail.push_str("; the Wasm timer counts Host imports, but a blocking Host callback can outlive the deadline and its effects cannot be rolled back");
     }
     if requirements.iter().any(|requirement| {
         matches!(
