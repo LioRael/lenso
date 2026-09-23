@@ -506,6 +506,7 @@ impl WasmGeneration {
         let worker_engine = engine.clone();
         let max_streams = limits.max_streams;
         let max_host_imports_per_call = limits.max_host_imports_per_call;
+        let max_turn = limits.max_turn;
         let host_imports = Rc::new(JsonHostImports::new(import_codecs, limits.max_streams)?);
         let failed = Arc::new(AtomicBool::new(false));
         let worker_failed = failed.clone();
@@ -540,7 +541,7 @@ impl WasmGeneration {
                 active_streams: std::cell::Cell::new(0),
                 max_streams,
                 max_host_imports_per_call,
-                max_turn: limits.max_turn,
+                max_turn,
                 host_imports,
             }),
             Ok(Err(detail)) => {
