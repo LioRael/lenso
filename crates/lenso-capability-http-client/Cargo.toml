@@ -1,6 +1,6 @@
 [package]
 name = "lenso-capability-http-client"
-version = "0.3.1"
+version = "0.3.2"
 description = "Portable outbound HTTP Client Capability contract for Lenso Plugins."
 edition.workspace = true
 license.workspace = true
@@ -10,14 +10,16 @@ rust-version.workspace = true
 
 [package.metadata.lenso.contract]
 descriptor = "capability.json"
-projection = "rust"
+projection = "rust-runtime"
 output = "src/generated.rs"
 
 [dependencies]
 futures.workspace = true
 lenso-contract-runtime = { version = "0.2.0", path = "../lenso-contract-runtime" }
+lenso-guest-sdk = { version = "0.5.0", path = "../lenso-guest-sdk" }
 lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }
 lenso-plugin-authoring = { version = "0.2.0", path = "../lenso-plugin-authoring" }
+lenso-runtime-codec = { version = "0.4.2", path = "../lenso-runtime-codec" }
 serde.workspace = true
 serde_json.workspace = true
 

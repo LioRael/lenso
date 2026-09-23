@@ -24,7 +24,7 @@ lenso-app-plan.workspace = true
 bytes.workspace = true
 futures.workspace = true
 lenso.workspace = true
-lenso-capability-http-client = { version = "0.3.1", path = "../lenso-capability-http-client" }
+lenso-capability-http-client = { version = "0.3.2", path = "../lenso-capability-http-client" }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
 lenso-native-adapter-macros.workspace = true

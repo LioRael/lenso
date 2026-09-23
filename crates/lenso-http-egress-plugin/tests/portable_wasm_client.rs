@@ -22,22 +22,18 @@ use lenso_app_plan::{
     ExecutionClassId, PlanResolutionError, PluginInstancePlan,
 };
 use lenso_capability_http_client::{
-    CAPABILITY_ID as HTTP_CLIENT_ID, Client, DESCRIPTOR_VERSION as HTTP_CLIENT_VERSION,
-    SEND_OPERATION, SendError, SendRequest, SendResponse,
+    CAPABILITY_ID as HTTP_CLIENT_ID, ClientJsonCodec, DESCRIPTOR_VERSION as HTTP_CLIENT_VERSION,
+    SEND_OPERATION,
 };
 use lenso_http_egress_plugin::{HttpEgressConfig, PACKAGE_ID as EGRESS_PACKAGE_ID};
 use lenso_kernel::{
-    ExecutionAdapterCatalog, InvocationContext, Kernel, PluginDependencyHandle, RequestCapability,
-    RuntimeFailure, ShutdownOutcome,
+    ExecutionAdapterCatalog, Kernel, RequestCapability, RuntimeFailure, ShutdownOutcome,
 };
 use lenso_native_adapter::{
     NativePluginFactory, NativePluginFactoryContext, NativePluginInstance, NativePluginRegistry,
 };
 use lenso_runner::TokioDriver;
-use lenso_runtime_codec::{
-    ArtifactCatalog, ArtifactHandle, JsonCapabilityCodec, JsonHostRequestFuture,
-    JsonInvocationOutcome,
-};
+use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle, JsonCapabilityCodec};
 use lenso_wasm_component_adapter::{EXECUTION_CLASS, WasmComponentAdapter};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -128,91 +124,6 @@ impl JsonCapabilityCodec for FixtureCodec {
 fn fixture_protocol_error() -> RuntimeFailure {
     RuntimeFailure::ProtocolViolation {
         capability: FIXTURE_ID,
-    }
-}
-
-#[derive(Debug)]
-struct HttpClientCodec;
-
-impl JsonCapabilityCodec for HttpClientCodec {
-    fn capability_id(&self) -> &'static str {
-        HTTP_CLIENT_ID
-    }
-    fn descriptor_version(&self) -> &'static str {
-        HTTP_CLIENT_VERSION
-    }
-    fn request_operations(&self) -> &'static [&'static str] {
-        &[SEND_OPERATION]
-    }
-
-    fn encode_request(&self, operation: &str, request: &dyn Any) -> Result<Value, RuntimeFailure> {
-        if operation != SEND_OPERATION {
-            return Err(http_protocol_error());
-        }
-        request
-            .downcast_ref::<SendRequest>()
-            .and_then(|request| serde_json::to_value(request).ok())
-            .ok_or_else(http_protocol_error)
-    }
-
-    fn decode_response(
-        &self,
-        operation: &str,
-        value: Value,
-    ) -> Result<Box<dyn Any>, RuntimeFailure> {
-        if operation != SEND_OPERATION {
-            return Err(http_protocol_error());
-        }
-        serde_json::from_value::<SendResponse>(value)
-            .map(|response| Box::new(response) as Box<dyn Any>)
-            .map_err(|_| http_protocol_error())
-    }
-
-    fn decode_domain_error(
-        &self,
-        operation: &str,
-        value: Value,
-    ) -> Result<Box<dyn Any>, RuntimeFailure> {
-        if operation != SEND_OPERATION {
-            return Err(http_protocol_error());
-        }
-        serde_json::from_value::<SendError>(value)
-            .map(|error| Box::new(error) as Box<dyn Any>)
-            .map_err(|_| http_protocol_error())
-    }
-
-    fn invoke_host_request(
-        &self,
-        dependency: PluginDependencyHandle,
-        operation: String,
-        request: Value,
-        context: InvocationContext,
-    ) -> JsonHostRequestFuture {
-        Box::pin(async move {
-            if operation != SEND_OPERATION {
-                return Err(http_protocol_error());
-            }
-            let request = serde_json::from_value::<SendRequest>(request)
-                .map_err(|_| http_protocol_error())?;
-            match dependency
-                .typed::<Client>()?
-                .invoke_with_context(SEND_OPERATION, context, request)
-                .await?
-            {
-                Ok(response) => serde_json::to_value(response)
-                    .map(JsonInvocationOutcome::Success)
-                    .map_err(|_| http_protocol_error()),
-                Err(error) => serde_json::to_value(error)
-                    .map(JsonInvocationOutcome::DomainError)
-                    .map_err(|_| http_protocol_error()),
-            }
-        })
-    }
-}
-
-fn http_protocol_error() -> RuntimeFailure {
-    RuntimeFailure::ProtocolViolation {
-        capability: HTTP_CLIENT_ID,
     }
 }
 
@@ -353,7 +264,7 @@ async fn portable_guest_calls_only_its_bound_native_http_client() {
                     .unwrap(),
             )
             .with_codec(FixtureCodec)
-            .with_codec(HttpClientCodec);
+            .with_codec(ClientJsonCodec);
             let adapters = ExecutionAdapterCatalog::new()
                 .with_adapter(
                     NativePluginRegistry::new()

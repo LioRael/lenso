@@ -1,4 +1,5 @@
-use serde_json::{Value, json};
+use lenso_capability_http_client::{ClientGuestClient, SendRequest};
+use serde_json::json;
 
 wit_bindgen::generate!({
     path: "wit",
@@ -8,8 +9,7 @@ wit_bindgen::generate!({
 lenso_guest_sdk::wasm_host!(struct WasmHost);
 
 mod client {
-    pub const CAPABILITY_ID: &str = "lenso.http.client@1";
-    pub const DESCRIPTOR_VERSION: &str = "1.0.1";
+    pub use lenso_capability_http_client::{CAPABILITY_ID, DESCRIPTOR_VERSION};
 }
 
 mod fixture {
@@ -36,7 +36,7 @@ impl Guest for GuestComponent {
         assert_eq!(operation, fixture::RUN);
         let context = lenso_guest_sdk::GuestContext::load(WasmHost)
             .map_err(|error| format!("{error:?}"))?;
-        let client = context
+        let binding = context
             .require_named(
                 "~lenso.http.client@1",
                 client::CAPABILITY_ID,
@@ -46,15 +46,18 @@ impl Guest for GuestComponent {
                 &[],
             )
             .map_err(|error| format!("{error:?}"))?;
-        let request: Value = serde_json::from_str(&request_json).map_err(|error| error.to_string())?;
-        let result = client.request::<_, Value, Value>("send", &request);
+        let client = ClientGuestClient::from_context(&context)
+            .map_err(|error| format!("{error:?}"))?;
+        let request: SendRequest =
+            serde_json::from_str(&request_json).map_err(|error| error.to_string())?;
+        let result = client.send(&request);
         let response = match result {
             Ok(response) => json!({
-                "provider": client.binding().provider_instance(),
+                "provider": binding.binding().provider_instance(),
                 "response": response,
             }),
             Err(lenso_guest_sdk::GuestError::Domain(error)) => json!({
-                "provider": client.binding().provider_instance(),
+                "provider": binding.binding().provider_instance(),
                 "domain_error": error,
             }),
             Err(error) => return Err(format!("{error:?}")),
