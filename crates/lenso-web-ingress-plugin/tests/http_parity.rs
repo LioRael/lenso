@@ -81,6 +81,7 @@ fn assert_vector(vector: &Value, response: &Response<Bytes>) {
     if vector.get("route").is_some()
         || vector.get("query").is_some()
         || vector.get("credential").is_some()
+        || vector.get("header_values").is_some()
     {
         let body: Value = serde_json::from_slice(response.body()).unwrap();
         for (source, dest) in [
@@ -91,6 +92,26 @@ fn assert_vector(vector: &Value, response: &Response<Bytes>) {
         ] {
             if let Some(expected) = vector.get(source) {
                 assert_eq!(&body[dest], expected, "{}: {dest}", vector["name"]);
+            }
+        }
+        if let Some(expected_headers) = vector.get("header_values").and_then(Value::as_object) {
+            let actual_headers = body["headers"].as_array().unwrap();
+            for (name, expected_values) in expected_headers {
+                let actual_values = actual_headers
+                    .iter()
+                    .filter(|header| {
+                        header["name"]
+                            .as_str()
+                            .is_some_and(|actual| actual.eq_ignore_ascii_case(name))
+                    })
+                    .map(|header| header["value"].clone())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    actual_values,
+                    *expected_values.as_array().unwrap(),
+                    "{}: {name}",
+                    vector["name"]
+                );
             }
         }
     }

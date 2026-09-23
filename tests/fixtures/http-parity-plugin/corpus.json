@@ -197,7 +197,13 @@
       ]
     ],
     "body": [],
-    "status": 200
+    "status": 200,
+    "header_values": {
+      "x-test": [
+        "one",
+        "two"
+      ]
+    }
   },
   {
     "name": "bearer",
