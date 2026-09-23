@@ -36,6 +36,8 @@ mod precompiled;
 mod prepare;
 mod preset;
 pub use preset::AppProject;
+mod signed_catalog;
+pub use signed_catalog::{PortableCatalogPage, PortableCatalogQuery};
 #[allow(dead_code)]
 mod terminal;
 
@@ -126,6 +128,14 @@ pub fn inspect_linked_cargo_catalog(
             target,
         )?,
     )?)
+}
+
+/// Browse one explicitly supplied signed Portable snapshot. This verifies
+/// metadata provenance only; artifact bytes and Host admission remain unchecked.
+pub fn inspect_signed_portable_catalog(
+    request: PortableCatalogQuery<'_>,
+) -> anyhow::Result<PortableCatalogPage> {
+    signed_catalog::inspect(request)
 }
 
 pub use convention_authoring::linked_catalog::DocumentRequest as LinkedDocumentRequest;

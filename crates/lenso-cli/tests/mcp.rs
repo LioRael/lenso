@@ -38,6 +38,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"project_change_apply","arguments":{"proposal_digest":"sha256:unknown","request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"project_run","arguments":{"request_id":"without-owner-authorization"}}}"#,
+        r#"{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"portable_catalog","arguments":{}}}"#,
     ].join("\n");
     child
         .stdin
@@ -57,12 +58,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 14, "{frames}");
+    assert_eq!(responses.len(), 15, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 14);
+    assert_eq!(by_id.len(), 15);
     assert_tools(by_id[&2]);
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -84,7 +85,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(second_page["offset"], 1);
     assert_eq!(second_page["items"].as_array().unwrap().len(), 1);
     assert_ne!(first_page["items"][0], second_page["items"][0]);
-    for id in [4, 5, 6, 9, 10, 11, 12, 13, 14] {
+    for id in [4, 5, 6, 9, 10, 11, 12, 13, 14, 15] {
         assert!(by_id[&id]["error"].is_object(), "response {id}");
     }
     assert!(!root.path().join("dist").exists());
@@ -101,6 +102,7 @@ fn assert_tools(list: &serde_json::Value) {
         [
             "linked_catalog",
             "linked_document",
+            "portable_catalog",
             "project_check",
             "project_build",
             "project_build_cancel",
@@ -116,6 +118,230 @@ fn assert_tools(list: &serde_json::Value) {
         ]
         .into()
     );
+}
+
+#[test]
+fn stdio_browses_signed_portable_metadata_without_installation_claim() {
+    use ed25519_dalek::SigningKey;
+    use lenso_plugin_catalog::{Artifact, Availability, Release, Snapshot, sign};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let temp = tempfile::tempdir().unwrap();
+    let snapshot_path = temp.path().join("portable.snapshot.json");
+    let trust_path = temp.path().join("portable.trust.json");
+    let key = SigningKey::from_bytes(&[17; 32]);
+    fs::write(
+        &trust_path,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id": "portable-test",
+            "key_id": "test-key",
+            "public_key_hex": hex::encode(key.verifying_key().as_bytes()),
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let make_release = |plugin_id: &str, availability| Release {
+        plugin_id: plugin_id.into(),
+        version: "1.0.0".into(),
+        publisher_id: "test-publisher".into(),
+        title: format!("{plugin_id} title"),
+        summary: "Signed candidate metadata".into(),
+        description: String::new(),
+        presentation: None,
+        source_url: "https://example.com/source".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        artifact: Artifact {
+            url: "https://example.com/plugin.lenso-plugin".into(),
+            digest: format!("sha256:{}", "a".repeat(64)),
+            size: 1,
+            manifest_digest: format!("sha256:{}", "b".repeat(64)),
+        },
+        availability,
+    };
+    let releases = vec![
+        make_release("example.available", Availability::Listed),
+        make_release("example.withdrawn", Availability::Yanked),
+        make_release("example.revoked", Availability::Revoked),
+    ];
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    fs::write(
+        &snapshot_path,
+        sign(
+            &Snapshot::new(
+                "portable-test".into(),
+                1,
+                now - 120,
+                now + 60,
+                releases.clone(),
+            ),
+            "test-key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let command = Command::new(cli)
+        .args(["plugins", "signed-search", "--snapshot"])
+        .arg(&snapshot_path)
+        .arg("--trust")
+        .arg(&trust_path)
+        .args(["--limit", "2", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        command.status.success(),
+        "{}",
+        String::from_utf8_lossy(&command.stderr)
+    );
+    let cli_page: serde_json::Value = serde_json::from_slice(&command.stdout).unwrap();
+
+    let mut child = Command::new(cli)
+        .args(["mcp", "--root"])
+        .arg(temp.path())
+        .arg("--portable-snapshot")
+        .arg(&snapshot_path)
+        .arg("--portable-trust")
+        .arg(&trust_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"portable_catalog","arguments":{"limit":2}}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"portable_catalog","arguments":{"query":"revoked"}}}"#,
+        r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"portable_catalog","arguments":{"limit":21}}}"#,
+    ]
+    .join("\n");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(format!("{input}\n").as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let responses = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    let by_id = responses
+        .iter()
+        .map(|response| (response["id"].as_u64().unwrap(), response))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(by_id.len(), 4, "{responses:?}");
+    let page: serde_json::Value =
+        serde_json::from_str(by_id[&2]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(page, cli_page);
+    assert_eq!(page["stale"], false);
+    assert_eq!(page["history"], "not_checked");
+    assert_eq!(page["target_compatibility"], "not_verified");
+    assert_eq!(page["installation"], "not_authorized");
+    assert_eq!(page["publisher_text_is_untrusted"], true);
+    assert_eq!(page["total_releases"], 3);
+    assert_eq!(page["next_offset"], 2);
+    let revoked: serde_json::Value =
+        serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(revoked["releases"][0]["availability"], "revoked");
+    assert!(by_id[&4]["error"].is_object());
+
+    fs::write(
+        &snapshot_path,
+        sign(
+            &Snapshot::new(
+                "portable-test".into(),
+                2,
+                now - 120,
+                now - 1,
+                releases.clone(),
+            ),
+            "test-key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let stale = Command::new(cli)
+        .args(["plugins", "signed-search", "--snapshot"])
+        .arg(&snapshot_path)
+        .arg("--trust")
+        .arg(&trust_path)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(stale.status.success());
+    let stale_page: serde_json::Value = serde_json::from_slice(&stale.stdout).unwrap();
+    assert_eq!(stale_page["stale"], true);
+    fs::write(
+        &snapshot_path,
+        sign(
+            &Snapshot::new("portable-test".into(), 3, now - 120, now + 60, releases),
+            "test-key",
+            &SigningKey::from_bytes(&[18; 32]),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let forged = Command::new(cli)
+        .args(["plugins", "signed-search", "--snapshot"])
+        .arg(&snapshot_path)
+        .arg("--trust")
+        .arg(&trust_path)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!forged.status.success());
+
+    #[cfg(unix)]
+    {
+        use std::{os::unix::fs::symlink, path::Path};
+
+        let check_rejected = |path: &Path| {
+            let mut child = Command::new(cli)
+                .args(["plugins", "signed-search", "--snapshot"])
+                .arg(path)
+                .arg("--trust")
+                .arg(&trust_path)
+                .arg("--json")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let started = Instant::now();
+            loop {
+                if let Some(status) = child.try_wait().unwrap() {
+                    assert!(!status.success());
+                    break;
+                }
+                if started.elapsed() > Duration::from_secs(3) {
+                    child.kill().unwrap();
+                    child.wait().unwrap();
+                    panic!("signed catalog read blocked on a non-regular input");
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        let symlink_path = temp.path().join("portable.symlink");
+        symlink(&snapshot_path, &symlink_path).unwrap();
+        check_rejected(&symlink_path);
+        let fifo_path = temp.path().join("portable.fifo");
+        let fifo = Command::new("mkfifo").arg(&fifo_path).output().unwrap();
+        assert!(fifo.status.success());
+        check_rejected(&fifo_path);
+    }
 }
 
 #[test]

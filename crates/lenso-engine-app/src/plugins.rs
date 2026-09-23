@@ -44,6 +44,8 @@ pub enum PluginsCommand {
     Remove(RemoveArgs),
     /// Search immutable Plugin Releases in a catalog.
     Search(SearchArgs),
+    /// Browse one explicitly trusted signed Portable catalog snapshot.
+    SignedSearch(SignedSearchArgs),
     /// Install one exact catalog Release.
     Install(CatalogMutationArgs),
     /// Replace a root Bundle with one exact catalog Release.
@@ -152,6 +154,26 @@ pub struct SearchArgs {
 }
 
 #[derive(Clone, Debug, Args)]
+pub struct SignedSearchArgs {
+    /// Exact local signed Portable snapshot envelope.
+    #[arg(long)]
+    snapshot: PathBuf,
+    /// Public trust configuration for the signed snapshot.
+    #[arg(long)]
+    trust: PathBuf,
+    /// Text matched against Plugin ID, title, and summary.
+    #[arg(default_value = "")]
+    query: String,
+    #[arg(long, default_value_t = 0)]
+    offset: usize,
+    #[arg(long, default_value_t = 20)]
+    limit: usize,
+    /// Emit the same stable JSON page as the MCP Portable catalog tool.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Clone, Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct CatalogMutationArgs {
     /// Exact Plugin ID.
@@ -202,6 +224,7 @@ pub fn plugins(command: PluginsCommand) -> anyhow::Result<()> {
         PluginsCommand::Enable(args) => enable(args),
         PluginsCommand::Remove(args) => remove(args),
         PluginsCommand::Search(args) => search(args),
+        PluginsCommand::SignedSearch(args) => signed_search(args),
         PluginsCommand::Install(args) => install(args, false),
         PluginsCommand::Update(args) => install(args, true),
         PluginsCommand::History(args) => history(args),
@@ -475,6 +498,31 @@ fn search(args: SearchArgs) -> anyhow::Result<()> {
             println!(
                 "{}@{}\t{}",
                 release.plugin_id, release.version, release.summary
+            );
+        }
+    }
+    Ok(())
+}
+
+fn signed_search(args: SignedSearchArgs) -> anyhow::Result<()> {
+    let page = crate::app::inspect_signed_portable_catalog(crate::app::PortableCatalogQuery {
+        snapshot: &args.snapshot,
+        trust: &args.trust,
+        query: &args.query,
+        offset: args.offset,
+        limit: args.limit,
+    })?;
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&page)?);
+    } else {
+        println!(
+            "Signed Portable catalog {} revision {} (stale: {}). Candidate metadata only; target compatibility and installation are not verified.",
+            page.catalog_id, page.revision, page.stale
+        );
+        for release in &page.releases {
+            println!(
+                "{}@{}\t{:?}\t{}",
+                release.plugin_id, release.version, release.availability, release.summary
             );
         }
     }
