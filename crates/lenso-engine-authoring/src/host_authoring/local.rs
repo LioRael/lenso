@@ -11,10 +11,29 @@ pub struct LocalPluginInput {
     pub source: String,
 }
 
+/// Host-owned Slot restriction for one local `many` requirement. The App
+/// Plugin Root never authors this binding or chooses an implementation.
+#[derive(Debug)]
+pub struct LocalManySlotBinding<'a> {
+    pub consumer_plugin_id: &'a str,
+    pub capability_id: &'a str,
+    pub provider_slot: &'a str,
+}
+
 impl GeneratedHostBuild {
     /// Permit saved named choices only among compatible Instances already
     /// declared by this exact Host and Root. Does not discover/adopt providers.
-    pub fn with_local_root(mut self, root: &Path) -> anyhow::Result<(Self, ResolvedApp)> {
+    pub fn with_local_root(self, root: &Path) -> anyhow::Result<(Self, ResolvedApp)> {
+        self.with_local_root_bindings(root, &[])
+    }
+
+    /// Apply explicit Host-owned `many` Slot policies before deriving the App.
+    /// Policies are keyed by Plugin ID and follow every selected Instance key.
+    pub fn with_local_root_bindings(
+        mut self,
+        root: &Path,
+        many_slots: &[LocalManySlotBinding<'_>],
+    ) -> anyhow::Result<(Self, ResolvedApp)> {
         if self.schema != LOCAL_SCHEMA {
             bail!("local Root choices require the local Host profile");
         }
@@ -38,6 +57,21 @@ impl GeneratedHostBuild {
             };
             for requirement in descriptor.required_capabilities() {
                 if requirement.cardinality() == lenso_app_plan::CapabilityCardinality::Many {
+                    if let Some(policy) = many_slots.iter().find(|policy| {
+                        policy.consumer_plugin_id == consumer.plugin_id()
+                            && policy.capability_id == requirement.capability_id()
+                    }) {
+                        let binding = HostBinding::new(
+                            consumer.clone(),
+                            requirement.capability_id(),
+                            policy.provider_slot,
+                        );
+                        bindings.push(if requirement.requirement_id().starts_with('~') {
+                            binding
+                        } else {
+                            binding.with_requirement_id(requirement.requirement_id())
+                        });
+                    }
                     continue;
                 }
                 let providers = instances
@@ -215,6 +249,111 @@ mod tests {
                 .unwrap();
         assert_eq!(resolved.plan().capability_bindings().len(), 1);
         assert!(resolved.dependency_choices().is_empty());
+    }
+
+    #[test]
+    fn local_document_policy_selects_only_public_slot_and_tracks_root_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let mut document = input("example.document", false);
+        document.descriptor = PluginDescriptor::new("example.document", "1.0.0", "documents")
+            .with_capability(CapabilityEndpointPlan::new(
+                "example.http@1",
+                "1",
+                ["describe"],
+            ))
+            .with_requirement(CapabilityRequirementPlan::many("example.http@1", "1"));
+        let mut route = input("example.route", true);
+        route.descriptor = PluginDescriptor::new("example.route", "1.0.0", "web").with_capability(
+            CapabilityEndpointPlan::new("example.http@1", "1", ["describe"]),
+        );
+        let mut later_route = input("example.later-route", false);
+        later_route.descriptor =
+            PluginDescriptor::new("example.later-route", "1.0.0", "web").with_capability(
+                CapabilityEndpointPlan::new("example.http@1", "1", ["describe"]),
+            );
+        let mut internal = input("example.internal", true);
+        internal.descriptor =
+            PluginDescriptor::new("example.internal", "1.0.0", "internal").with_capability(
+                CapabilityEndpointPlan::new("example.http@1", "1", ["describe"]),
+            );
+        let build = GeneratedHostBuild::lower_local(
+            "example.app",
+            vec![document, route, later_route, internal],
+        )
+        .unwrap();
+        let selected = PluginRootSnapshot::new(
+            [],
+            [PluginRootInstance::new("example.document", "default")],
+            [],
+        );
+        // The local Root snapshot is the only App-owned input to this policy.
+        std::fs::create_dir_all(root.path().join("plugins/example.document")).unwrap();
+        std::fs::write(
+            root.path().join("plugins/example.document/default.toml"),
+            "",
+        )
+        .unwrap();
+        let (build, resolved) = build
+            .with_local_root_bindings(
+                root.path(),
+                &[LocalManySlotBinding {
+                    consumer_plugin_id: "example.document",
+                    capability_id: "example.http@1",
+                    provider_slot: "web",
+                }],
+            )
+            .unwrap();
+        assert_eq!(resolved.plan().capability_bindings().len(), 1);
+        assert_eq!(
+            resolved.plan().capability_bindings()[0].consumer_instance(),
+            "example.document/default"
+        );
+        assert_eq!(
+            resolved.plan().capability_bindings()[0].provider_instance(),
+            "example.route/default"
+        );
+        assert_eq!(
+            build
+                .resolve(&selected)
+                .unwrap()
+                .plan()
+                .capability_bindings()
+                .len(),
+            1
+        );
+        let with_later_route = PluginRootSnapshot::new(
+            [],
+            [
+                PluginRootInstance::new("example.document", "default"),
+                PluginRootInstance::new("example.later-route", "default"),
+            ],
+            [],
+        );
+        let providers = build
+            .resolve(&with_later_route)
+            .unwrap()
+            .plan()
+            .capability_bindings()
+            .iter()
+            .map(|binding| binding.provider_instance().to_owned())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            providers,
+            BTreeSet::from([
+                "example.route/default".to_owned(),
+                "example.later-route/default".to_owned(),
+            ])
+        );
+        assert!(!providers.contains("example.internal/default"));
+        assert!(!providers.contains("example.document/default"));
+        let absent = build.resolve(&PluginRootSnapshot::default()).unwrap();
+        assert_eq!(absent.plan().capability_bindings().len(), 0);
+        assert!(
+            absent
+                .instances()
+                .iter()
+                .all(|instance| instance.id().plugin_id() != "example.document")
+        );
     }
 
     #[test]

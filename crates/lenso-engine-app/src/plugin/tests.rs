@@ -144,8 +144,14 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(build.contains("syn::parse_file"));
     assert!(build.contains("#[endpoint]"));
     assert!(create_route.contains("#[openapi_contract("));
+    assert!(create_route.contains("requestBody:"));
+    assert!(create_route.contains("\"400\":"));
+    assert!(create_route.contains("\"415\":"));
     assert!(source.contains("JsonSchema"));
-    assert!(search_route.contains("#[query("));
+    assert!(search_route.contains("#[post("));
+    assert!(search_route.contains("#[openapi_contract("));
+    assert!(search_route.contains("requestBody:"));
+    assert!(search_route.contains("\"invalid_term\""));
     assert!(create_route.contains("Result<(StatusCode, Json<Greeting>), Problem>"));
     assert!(source.contains("EndpointTest"));
     assert!(source.contains("pub const fn link()"));

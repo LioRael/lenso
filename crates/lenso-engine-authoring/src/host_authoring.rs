@@ -17,7 +17,7 @@ use serde_json::Value;
 
 mod local;
 mod policy;
-pub use local::LocalPluginInput;
+pub use local::{LocalManySlotBinding, LocalPluginInput};
 pub use policy::{AdmittedRelease, SlotAdmission};
 
 pub(crate) const HOST_BUILD: &str = ".lenso/host-build.json";

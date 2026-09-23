@@ -9,7 +9,7 @@ use lenso_app_authoring::identity::validate_plugin_id_v1;
 
 use super::{PluginNewArgs, PluginRuntimeArg, WASM_TARGET, run_bun, run_cargo};
 
-pub(super) const LENSO_FRAMEWORK_REVISION: &str = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+pub(crate) const LENSO_FRAMEWORK_REVISION: &str = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
 
 pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
     validate_plugin_id_v1(&args.plugin_id)?;
@@ -243,6 +243,19 @@ mod tests {
             response.header("content-type"),
             Some("application/problem+json; charset=utf-8")
         );
+
+        let search = block_on(async {
+            EndpointTest::new(GreetingsHttp::default())
+                .request("greetings.search")
+                .json(&SearchGreetings {
+                    term: String::new(),
+                })
+                .unwrap()
+                .send()
+                .await
+                .unwrap()
+        });
+        assert_eq!(search.status(), StatusCode::BAD_REQUEST);
     }
 }
 "#
@@ -250,8 +263,73 @@ mod tests {
     let create_route = r#"#[post("greetings.create", "/greetings")]
 #[openapi({
     summary: "Create a greeting",
+    requestBody: {
+        required: true,
+        content: {
+            "application/json": {
+                schema: {
+                    type: "object",
+                    properties: { name: { type: "string" } },
+                    additionalProperties: false,
+                    required: ["name"]
+                }
+            }
+        }
+    },
     responses: {
-        "201": { description: "Greeting created" }
+        "201": {
+            description: "Greeting created",
+            content: {
+                "application/json": {
+                    schema: {
+                        type: "object",
+                        properties: {
+                            id: { type: "string" },
+                            message: { type: "string" }
+                        },
+                        required: ["id", "message"]
+                    }
+                }
+            }
+        },
+        "400": {
+            description: "Invalid JSON body or name",
+            content: {
+                "application/problem+json": {
+                    schema: {
+                        type: "object",
+                        required: ["type", "title", "status", "detail", "code"],
+                        properties: {
+                            type: { type: "string" },
+                            title: { type: "string" },
+                            status: { const: 400 },
+                            detail: { type: "string" },
+                            code: { type: "string", enum: ["invalid_json_body", "invalid_name"] }
+                        },
+                        additionalProperties: false
+                    }
+                }
+            }
+        },
+        "415": {
+            description: "JSON content type required",
+            content: {
+                "application/problem+json": {
+                    schema: {
+                        type: "object",
+                        required: ["type", "title", "status", "detail", "code"],
+                        properties: {
+                            type: { type: "string" },
+                            title: { type: "string" },
+                            status: { const: 415 },
+                            detail: { type: "string" },
+                            code: { type: "string", enum: ["json_content_type_required"] }
+                        },
+                        additionalProperties: false
+                    }
+                }
+            }
+        }
     }
 })]
 #[openapi_contract(
@@ -285,17 +363,99 @@ async fn create(
     Ok((StatusCode::CREATED, Json(greeting)))
 }
 "#;
-    let search_route = r#"#[query("greetings.search", "/greetings/search")]
+    let search_route = r#"#[post("greetings.search", "/greetings/search")]
+#[openapi({
+    summary: "Search greetings",
+    requestBody: {
+        required: true,
+        content: {
+            "application/json": {
+                schema: {
+                    type: "object",
+                    properties: { term: { type: "string" } },
+                    required: ["term"]
+                }
+            }
+        }
+    },
+    responses: {
+        "200": {
+            description: "Matching greetings",
+            content: {
+                "application/json": {
+                    schema: {
+                        type: "array",
+                        items: {
+                            type: "object",
+                            properties: {
+                                id: { type: "string" },
+                                message: { type: "string" }
+                            },
+                            required: ["id", "message"]
+                        }
+                    }
+                }
+            }
+        },
+        "400": {
+            description: "Invalid JSON body or term",
+            content: {
+                "application/problem+json": {
+                    schema: {
+                        type: "object",
+                        required: ["type", "title", "status", "detail", "code"],
+                        properties: {
+                            type: { type: "string" },
+                            title: { type: "string" },
+                            status: { const: 400 },
+                            detail: { type: "string" },
+                            code: { type: "string", enum: ["invalid_json_body", "invalid_term"] }
+                        },
+                        additionalProperties: false
+                    }
+                }
+            }
+        },
+        "415": {
+            description: "JSON content type required",
+            content: {
+                "application/problem+json": {
+                    schema: {
+                        type: "object",
+                        required: ["type", "title", "status", "detail", "code"],
+                        properties: {
+                            type: { type: "string" },
+                            title: { type: "string" },
+                            status: { const: 415 },
+                            detail: { type: "string" },
+                            code: { type: "string", enum: ["json_content_type_required"] }
+                        },
+                        additionalProperties: false
+                    }
+                }
+            }
+        }
+    }
+})]
+#[openapi_contract(errors = [(400, "invalid_term")])]
 async fn search(
     &self,
     Json(input): Json<SearchGreetings>,
 ) -> Result<Json<Vec<Greeting>>, Problem> {
     std::future::ready(()).await;
+    let term = input.term.trim();
+    if term.is_empty() {
+        return Err(Problem::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_term",
+            "term must not be empty",
+        ));
+    }
     let greetings = self
         .greetings
         .borrow()
         .values()
-        .filter(|greeting| greeting.message.contains(&input.term))
+        .filter(|greeting| greeting.message.contains(term))
         .cloned()
         .collect();
     Ok(Json(greetings))
@@ -350,7 +510,7 @@ async fn search(
         "The App plan selects the concrete Auth and Orders providers and binds those named requirements. It is the only place that chooses providers. Do not look up a database, an Auth provider, or another Plugin from a global service.\n\n",
         "For a request actor, use `lenso-http-auth`'s `AuthenticatedHttpActor` and `extract_authenticated_actor`; it turns the already bound Auth client into a typed edge actor. The business Capability still verifies authorization and resource ownership.\n\n",
         "## Keep public OpenAPI honest\n\n",
-        "`create` is marked with `#[openapi_contract]`. Its request body, success value, and stable `invalid_name` problem code are derived from the same typed handler values. Select and bind the optional OpenAPI Plugin only when this route is a public API; activation then rejects a document that drifts from the handler. Private routes may omit the attribute entirely.\n\n",
+        "`create` and `search` are marked with `#[openapi_contract]`. Their JSON request bodies, success values, and stable `invalid_name`/`invalid_term` problem codes are derived from the same typed handler values. Search uses POST so its JSON body is expressible in OpenAPI 3.1. In a generated App, run `lenso app add @lenso/openapi --root .` to select the optional OpenAPI Plugin before building. Fetch the running App's `/openapi.json` and feed that document to `lenso-web-client generate openapi.json src/generated/lenso-api.ts`. Activation rejects a document that drifts from the handler. This local Host profile binds the document to all selected `web` Slot Endpoint providers, not to internal Capability contracts. Routes without `#[openapi]` still receive an undocumented-response fallback when their provider is selected; place private routes in a separate unbound Host profile rather than assuming omission hides them.\n\n",
         "## Exercise the real Web path locally\n\n",
         "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest Git-pins `lenso-web-host@0.2.2`, Endpoint `0.3.4`, `lenso@0.5.25`, `lenso-test@0.1.2`, App Plan `0.4.5`, and Kernel `0.3.11`; its root patch makes the Host, Plugin, adapter, and TestApp share those exact type identities. Run it with `cargo test --locked`. Do not replace those pins with independent registry ranges until the cohort release validation says they are published together.\n\n",
         "## Add a stream deliberately\n\n",

@@ -5,7 +5,7 @@ use clap::Args;
 use lenso_app_authoring::{
     discovery::conventions::GeneratedResourceContribution,
     discovery::{PublishedResource, SourceRole, discover},
-    host_authoring::{GeneratedHostBuild, LocalPluginInput},
+    host_authoring::{GeneratedHostBuild, LocalManySlotBinding, LocalPluginInput},
 };
 use lenso_plugin_bundle::{ImplementationPolicy, read_bundle_manifest, verify_bundle_directory};
 use serde_json::json;
@@ -321,8 +321,20 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             source: candidate.project.display().to_string(),
         });
     }
-    let (authority, proposed) =
-        GeneratedHostBuild::lower_local(&args.id, inputs)?.with_local_root(stage.path())?;
+    let openapi_bindings = if inputs
+        .iter()
+        .any(|input| input.descriptor.plugin_id() == "lenso.openapi")
+    {
+        vec![LocalManySlotBinding {
+            consumer_plugin_id: "lenso.openapi",
+            capability_id: "lenso.http.endpoint@1",
+            provider_slot: "web",
+        }]
+    } else {
+        Vec::new()
+    };
+    let (authority, proposed) = GeneratedHostBuild::lower_local(&args.id, inputs)?
+        .with_local_root_bindings(stage.path(), &openapi_bindings)?;
     if !proposed.dependency_choices().is_empty() {
         fs::create_dir_all(stage.path().join("plugins"))?;
         let legacy = stage.path().join("plugins/dependencies.json");

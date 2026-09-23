@@ -32,6 +32,7 @@ mod dev;
 mod scaffold;
 mod web_dev;
 
+pub(crate) use scaffold::LENSO_FRAMEWORK_REVISION;
 pub(crate) use scaffold::web_plugin_scaffold;
 
 const WASM_TARGET: &str = "wasm32-unknown-unknown";

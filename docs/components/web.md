@@ -348,6 +348,22 @@ Instance, and binding the Instance's own HTTP Endpoint to Web Ingress. Removing
 that package selection, Instance, and those bindings removes the document
 without changing the business Endpoints.
 
+For a generated local Rust Web App, `lenso app add @lenso/openapi --root .`
+creates a pinned shared source link and an explicit
+`plugins/lenso.openapi/default.toml` selection. Its generated Host binds the
+document Plugin's `many` Endpoint requirement to the `web` Slot; the document
+Endpoint itself and Endpoint providers in other Slots are not document inputs.
+After `lenso app build`, `lenso app check --root dist`, and
+`lenso app start --from dist`, fetch the actual `/openapi.json` from that App
+for `lenso-web-client generate openapi.json src/generated/lenso-api.ts`.
+`lenso plugins disable lenso.openapi default --root dist` changes the built
+App's Plugin Root; `lenso app start --from dist --root dist` uses that external
+Root instead of the immutable build snapshot and no longer serves the document
+route. This is a native local-Host path; it does not imply
+Workers or Wasm Endpoint qualification.
+The generated HTML home route remains an undocumented-response fallback in
+this document; client generation does not provide a typed HTML response for it.
+
 Endpoint authors may attach an OpenAPI 3.1 Operation Object while retaining the
 stable route declaration as the source of `operationId`, method, and path:
 
