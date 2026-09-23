@@ -48,7 +48,10 @@ lenso app facts --root ./my-app --json
 `app facts` is the read-only Agent/tooling projection. It reports exact adopted
 Plugin versions, resolved execution and Capability metadata, source locations,
 Plugin Root revision, discovered-but-not-adopted source candidates, and stable
-diagnostic codes. It deliberately reports runtime state as `not_observed` until
+diagnostic codes. Schema version 2 also includes each instance's exact Plugin
+Root configuration-source digest (including the absence of a Root override).
+That digest does not identify Host defaults or resolved configuration values.
+It deliberately reports runtime state as `not_observed` until
 a runtime control surface supplies evidence; build artifacts are not treated as
 proof that an App is running. Configuration values are not included.
 

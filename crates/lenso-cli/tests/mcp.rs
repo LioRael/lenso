@@ -55,6 +55,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     )
     .unwrap();
     assert_eq!(facts["kind"], "lenso.app-facts");
+    assert_eq!(facts["schema_version"], 2);
     assert_eq!(facts["status"], "invalid");
     assert_eq!(facts["runtime"]["status"], "not_observed");
 }

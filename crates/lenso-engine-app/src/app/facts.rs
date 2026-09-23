@@ -51,6 +51,9 @@ pub struct InstanceFacts {
     pub enabled: bool,
     pub source: &'static str,
     pub configuration_source: SourceLocation,
+    /// Identity of the exact Plugin Root configuration source, including its absence.
+    /// This is not a digest of resolved values or Host-owned defaults.
+    pub root_configuration_source_digest: String,
     pub selection_source: SourceLocation,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution: Option<ExecutionFacts>,
@@ -164,7 +167,7 @@ pub fn inspect_project_facts(root: impl AsRef<Path>) -> anyhow::Result<ProjectFa
     }
 
     let mut report = ProjectFacts {
-        schema_version: 1,
+        schema_version: 2,
         kind: "lenso.app-facts",
         status: if diagnostics.is_empty() {
             "resolved"
@@ -286,6 +289,10 @@ fn plugins(
                             configuration_source: SourceLocation {
                                 path: configuration_source,
                             },
+                            root_configuration_source_digest: instance
+                                .source_digest()
+                                .as_str()
+                                .to_owned(),
                             selection_source: SourceLocation {
                                 path: selection_source,
                             },
@@ -480,6 +487,11 @@ root-slot = "agent"
                 .all(|plugin| plugin.plugin_id != "example.available-only")
         );
         assert_eq!(report.plugins[0].instances[0].source, "host_default");
+        assert!(
+            report.plugins[0].instances[0]
+                .root_configuration_source_digest
+                .starts_with("sha256:")
+        );
         assert_eq!(report.runtime.status, "not_observed");
         assert!(report.diagnostics.is_empty());
         assert!(report.plugin_root_revision.is_some());
@@ -527,5 +539,32 @@ root-slot = "agent"
                 .path
                 .ends_with("plugins/example.agent/default.disabled")
         );
+    }
+
+    #[test]
+    fn configuration_source_identity_changes_without_exposing_values() {
+        let temporary = app_root();
+        let original = inspect_project_facts(temporary.path()).unwrap();
+        let plugin = temporary.path().join("plugins/example.agent");
+        fs::create_dir(&plugin).unwrap();
+        fs::write(
+            plugin.join("default.toml"),
+            "credential = \"must-not-enter-project-facts\"\n",
+        )
+        .unwrap();
+
+        let changed = inspect_project_facts(temporary.path()).unwrap();
+        assert_ne!(
+            original.plugins[0].instances[0].root_configuration_source_digest,
+            changed.plugins[0].instances[0].root_configuration_source_digest
+        );
+        assert!(
+            changed.plugins[0].instances[0]
+                .configuration_source
+                .path
+                .ends_with("plugins/example.agent/default.toml")
+        );
+        let serialized = serde_json::to_string(&changed).unwrap();
+        assert!(!serialized.contains("must-not-enter-project-facts"));
     }
 }
