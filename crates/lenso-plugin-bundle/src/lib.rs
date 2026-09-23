@@ -832,8 +832,14 @@ fn verify_profiled_bundle_files<'a>(
                     runtime_profile: runtime.runtime_profile(),
                 },
             )?;
+            // Target requirements are conservative publisher-owned admission
+            // constraints, not Guest ABI claims. Project them onto the
+            // source-derived descriptor before comparing the complete choice.
             let derived = serde_json::from_value::<PluginDescriptor>(derived)
-                .map_err(|error| BundleError::InvalidManifest(error.to_string()))?;
+                .map_err(|error| BundleError::InvalidManifest(error.to_string()))?
+                .with_required_target_capabilities(
+                    runtime.required_target_capabilities().iter().copied(),
+                );
             if derived.contract() != *contract || derived.implementation() != *runtime {
                 return invalid_bundle(format!(
                     "Wasm source descriptor does not match its {schema} Contract and implementation"
@@ -2402,6 +2408,58 @@ root-slot = "tools"
                 "websocket",
                 "workers",
             ])
+        );
+    }
+
+    #[test]
+    fn v4_wasm_release_reopens_with_conservative_target_requirements() {
+        let root = tempfile::tempdir().unwrap();
+        let encoded = br#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"example.echo@1","descriptor_version":"1.0.0","request_operations":["echo"]}]}"#;
+        let wasm = wasm_with_descriptors(&[encoded]);
+        let source = root.path().join("plugin.wasm");
+        fs::write(&source, &wasm).unwrap();
+        let descriptor: PluginDescriptor = serde_json::from_value(
+            portable_plugin_descriptor(
+                "example.wasm",
+                "1.0.0",
+                "tools",
+                &sha256_digest(&wasm),
+                encoded,
+                PortableRuntime {
+                    execution_class: "lenso.wasm-component@1",
+                    authoring_version: 2,
+                    runtime_profile: "lenso.wasm-component@2",
+                },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let output = root.path().join("release.lenso-plugin");
+        build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+            contract: descriptor.contract(),
+            implementations: vec![SourcePluginImplementation {
+                id: "wasm".to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact: source,
+                bundle_path: "implementations/wasm/plugin.wasm".to_owned(),
+                media_type: "application/wasm".to_owned(),
+                target: "wasm32-unknown-unknown".to_owned(),
+                entrypoint: "plugin".to_owned(),
+                execution_class: ExecutionClassId::new("lenso.wasm-component@1"),
+                runtime_profile: "lenso.wasm-component@2".to_owned(),
+                required_target_capabilities: vec![PlanExecutionTargetCapability::WasmComponent],
+            }],
+            output: output.clone(),
+        })
+        .unwrap();
+        let PluginManifest::V4(reopened) = read_bundle_manifest(&output).unwrap() else {
+            panic!("expected V4 release");
+        };
+        assert_eq!(
+            reopened.implementations[0]
+                .runtime
+                .required_target_capabilities(),
+            [PlanExecutionTargetCapability::WasmComponent]
         );
     }
 

@@ -50,14 +50,17 @@ owns Wasm Component lowering, WIT, Capability descriptors, schema projection,
 and Process wire dispatch at compile time; target-specific generated files are
 not checked into the Plugin project.
 
-By default, one editable `src/lib.rs` produces both portable Wasm and trusted
-Process implementations. `dev` builds only the fastest declared local
-implementation (`Process` for a multi-output Rust project); use
-`--implementation wasm|process|all` when selecting or comparing a path.
+The default scaffold builds a trusted Process implementation. Choose
+`lenso plugin new company.uppercase --runtime multi` to produce both portable
+Wasm and trusted Process implementations from one editable `src/lib.rs`.
+`dev` builds only the fastest declared local implementation (`Process` for a
+multi-output Rust project); use `--implementation wasm|process|all` to select
+a path. `all` builds both outputs but invokes only Process, so run the Wasm
+and Process paths separately when comparing behavior.
 File notifications with debounce drive `--watch`, with bounded polling only as
 a platform fallback. `check` and `pack` still build every declared
 implementation, and `pack` places both in
-one V3 `.lenso-plugin` Release; the Host selects one implementation before Plan
+one V4 `.lenso-plugin` Release; the Host selects one implementation before Plan
 resolution and never falls back after startup. Legacy single-output projects
 remain readable.
 
