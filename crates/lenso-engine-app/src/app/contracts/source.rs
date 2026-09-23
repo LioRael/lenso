@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 
-/// Compile just the contract source module using its declared build dependencies.
+/// Compile just the contract source module using its declared dependencies.
 /// Building the owning library first would reject its stale generated projection.
 pub(super) fn extract(
     app: &Path,
@@ -23,10 +23,11 @@ pub(super) fn extract(
     let mut dependencies = BTreeMap::new();
     let mut generator = None;
     for dep in node["deps"].as_array().context("Cargo dependencies")? {
-        if !dep["dep_kinds"]
-            .as_array()
-            .is_some_and(|kinds| kinds.iter().any(|kind| kind["kind"] == "build"))
-        {
+        if !dep["dep_kinds"].as_array().is_some_and(|kinds| {
+            kinds
+                .iter()
+                .any(|kind| kind["kind"] == "build" || (source.is_some() && kind["kind"].is_null()))
+        }) {
             continue;
         }
         let package = packages

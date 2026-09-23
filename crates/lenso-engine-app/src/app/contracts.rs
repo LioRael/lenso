@@ -144,9 +144,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
     let mut owned = BTreeSet::new();
     let mut baselines = Vec::new();
     let mut ordered = contracts.values().collect::<Vec<_>>();
-    ordered.sort_by_key(|c| {
-        !(c.declaration.source.is_some() || c.root.join("src/contract.rs").is_file())
-    });
+    ordered.sort_by_key(|c| c.declaration.source.is_none());
     let mut staged_sources = BTreeMap::<PathBuf, PathBuf>::new();
     for (index, contract) in ordered.into_iter().enumerate() {
         let declaration = &contract.declaration;
@@ -154,10 +152,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
         let stage = staging.path().join(index.to_string());
         fs::create_dir_all(&stage)?;
         let staged_descriptor = stage.join("capability.json");
-        let source_path = declaration.source.clone().or_else(|| {
-            (contract.cargo.is_some() && contract.root.join("src/contract.rs").is_file())
-                .then(|| PathBuf::from("src/contract.rs"))
-        });
+        let source_path = declaration.source.clone();
         let source_owned = source_path.is_some();
         if !source_owned && descriptor.is_file() {
             for (relative, bytes) in snapshot_files(&descriptor)? {
@@ -283,9 +278,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
             };
             changes.insert(output, bytes);
         }
-        if declaration.source.is_some()
-            || (contract.cargo.is_some() && contract.root.join("src/contract.rs").is_file())
-        {
+        if source_owned {
             for (relative, bytes) in snapshot_files(&staged_descriptor)? {
                 let target = if relative == Path::new("capability.json") {
                     safe_output(&contract.root, &declaration.descriptor)?
@@ -665,6 +658,29 @@ mod tests {
     }
 
     #[test]
+    fn unrelated_contract_rs_does_not_claim_descriptor_source_authority() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("contracts/text");
+        descriptor(&root, "example.text@1");
+        fs::remove_file(root.join("package.json")).unwrap();
+        fs::create_dir(root.join("src")).unwrap();
+        fs::write(root.join("src/lib.rs"), "pub mod contract;\n").unwrap();
+        fs::write(root.join("src/contract.rs"), "pub fn unrelated() {}\n").unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"text-contract\"\nversion = \"1.0.0\"\nedition = \"2024\"\n[workspace]\n[package.metadata.lenso.contract]\ndescriptor = \"capability.json\"\nprojection = \"typescript\"\noutput = \"generated/text.ts\"\n",
+        )
+        .unwrap();
+
+        synchronize(temp.path(), &[]).unwrap();
+        assert!(root.join("generated/text.ts").is_file());
+        assert_eq!(
+            fs::read_to_string(root.join("src/contract.rs")).unwrap(),
+            "pub fn unrelated() {}\n"
+        );
+    }
+
+    #[test]
     #[ignore = "requires Cargo registry access; compiles actual source extraction"]
     fn clean_room_source_contract_generates_before_a_stale_library_can_compile() {
         let temp = tempfile::tempdir().unwrap();
@@ -683,9 +699,10 @@ descriptor = "capability.json"
 source = "src/contract.rs"
 projection = "typescript"
 output = "generated/text.ts"
-[build-dependencies]
+[dependencies]
 schemars = "1.2"
 lenso-contract-authoring = "=0.1.1"
+[build-dependencies]
 lenso-contract-codegen = "=0.9.0"
 "#,
         )

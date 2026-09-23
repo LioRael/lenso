@@ -34,6 +34,15 @@ These commands hide Descriptor lowering, binding closure, Plan serialization,
 Execution Adapter assembly, and development Host mechanics behind one deep
 interface. `Module` is not a public authoring type.
 
+For a local Rust Capability package, `lenso app contract new <id> --source rust`
+records `package.metadata.lenso.contract.source = "src/contract.rs"` in its Cargo
+manifest. That metadata, not the filename alone, makes Rust source the
+Descriptor authority. An existing code-first package that relied on the old
+implicit `src/contract.rs` convention must add the `source` field. A
+Descriptor-owned package omits it, even if it has an unrelated
+`src/contract.rs` helper; its Descriptor and generated projection remain the
+inputs to App builds.
+
 ## App-owner interface
 
 A Host supplies its root Slots, embedded Plugin Releases, default Plugin

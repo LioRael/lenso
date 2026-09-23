@@ -105,7 +105,10 @@ pub(super) fn generate(
     let mut web_contract = None;
     let mut watch_roots = BTreeSet::new();
     for (index, candidate) in candidates.iter().enumerate() {
-        if candidate.format != "cargo" {
+        // A portable Cargo Guest can depend on a rust-runtime projection for
+        // its own SDK without making that projection a Host-linked contract.
+        // Portable-only Capabilities use the Host's erased JSON codec instead.
+        if candidate.format != "cargo" || !is_native(candidate) {
             continue;
         }
         let output = super::cargo_command()
@@ -268,6 +271,7 @@ pub(super) fn generate(
     // Adapters have historically changed the Codec cohort in patch releases.
     // Pin a tested set instead of allowing Cargo to mix distinct traits.
     let cohort = codec_cohorts.first().map_or("0.4", String::as_str);
+    let local_crates = local_framework_crates_dir(&local_lenso_patches)?;
     let versions = match cohort {
         "0.3" => [
             ("lenso-bun-adapter", "=0.1.8"),
@@ -291,7 +295,18 @@ pub(super) fn generate(
             _ => true,
         };
         if enabled {
-            dependencies.insert(name.into(), json!(version));
+            let dependency = if name.ends_with("-adapter") {
+                if let Some(crates) = &local_crates {
+                    let (dependency, path) = local_framework_dependency(crates, name, version)?;
+                    watch_roots.insert(path);
+                    dependency
+                } else {
+                    json!(version)
+                }
+            } else {
+                json!(version)
+            };
+            dependencies.insert(name.into(), dependency);
         }
     }
     if cohort == "0.3" {
@@ -299,6 +314,16 @@ pub(super) fn generate(
             "native-resources".into(),
             json!({"package":"lenso-runtime-codec","version":"=0.4.2"}),
         );
+    }
+    let web_ingress = web_contract
+        .as_ref()
+        .map(web_ingress_dependency)
+        .transpose()?;
+    if let Some(path) = web_ingress
+        .as_ref()
+        .and_then(|ingress| ingress["path"].as_str())
+    {
+        watch_roots.insert(PathBuf::from(path));
     }
     fs::write(
         cache.join("watch-roots.json"),
@@ -407,7 +432,7 @@ pub(super) fn generate(
         // Ingress with incompatible Host/Kernel identities.
         dependencies.insert(
             "lenso-web-ingress-plugin".into(),
-            web_ingress_dependency(&contract)?,
+            web_ingress.context("Web Endpoint needs a matching Ingress")?,
         );
     }
     let mut source = (include_str!("local_runtime_template.rs").to_owned()
@@ -622,6 +647,70 @@ fn collect_local_lenso_patch(
     Ok(())
 }
 
+fn local_framework_crates_dir(
+    patches: &BTreeMap<String, (String, Value)>,
+) -> anyhow::Result<Option<PathBuf>> {
+    let mut sources = Vec::new();
+    for name in [
+        "lenso",
+        "lenso-app-plan",
+        "lenso-kernel",
+        "lenso-native-adapter",
+        "lenso-runtime-codec",
+        "lenso-plugin-authoring",
+        "lenso-contract-runtime",
+        "lenso-capability-http-endpoint",
+    ] {
+        let Some((_, dependency)) = patches.get(name) else {
+            continue;
+        };
+        let path = Path::new(dependency["path"].as_str().context("local Lenso path")?);
+        let crates = path.parent().context("local Lenso package parent")?;
+        let root = if path.file_name().is_some_and(|part| part == name)
+            && crates.file_name().is_some_and(|part| part == "crates")
+        {
+            Some(fs::canonicalize(crates)?)
+        } else {
+            None
+        };
+        sources.push((name, root));
+    }
+    let Some(selected) = sources.iter().find_map(|(_, root)| root.clone()) else {
+        return Ok(None);
+    };
+    for (name, root) in sources {
+        if root.as_ref() != Some(&selected) {
+            bail!(
+                "native Plugin uses {name} outside the selected local Lenso workspace {}; align framework dependency sources",
+                selected.display()
+            );
+        }
+    }
+    Ok(Some(selected))
+}
+
+fn local_framework_dependency(
+    crates: &Path,
+    name: &str,
+    version: &str,
+) -> anyhow::Result<(Value, PathBuf)> {
+    let path = crates.join(name);
+    let manifest: toml::Value = toml::from_str(
+        &fs::read_to_string(path.join("Cargo.toml"))
+            .with_context(|| format!("local Lenso workspace is missing {name}"))?,
+    )?;
+    if manifest["package"]["name"].as_str() != Some(name) {
+        bail!("local Lenso workspace package {name} has a different Cargo identity");
+    }
+    let actual = manifest["package"]["version"]
+        .as_str()
+        .with_context(|| format!("local Lenso {name} has no package version"))?;
+    if actual != version.trim_start_matches('=') {
+        bail!("local Lenso {name} version {actual} does not match generated Host cohort {version}");
+    }
+    Ok((json!({"package":name,"path":path,"version":version}), path))
+}
+
 fn collect_git_lenso_source(
     selected: &mut Option<(String, String)>,
     package: &Value,
@@ -659,9 +748,25 @@ fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
         );
         return Ok(ingress);
     }
-    // Registry and local-path Endpoint development keep the historical
-    // registry fallback. The generated Cargo lock still records the concrete
-    // identity Cargo selected for that standalone local Host.
+    if let Some(path) = fields.get("path").and_then(Value::as_str) {
+        let path = Path::new(path);
+        if path
+            .file_name()
+            .is_some_and(|name| name == "lenso-capability-http-endpoint")
+            && path
+                .parent()
+                .is_some_and(|parent| parent.file_name().is_some_and(|name| name == "crates"))
+        {
+            let (dependency, _) = local_framework_dependency(
+                path.parent().context("Endpoint crates directory")?,
+                "lenso-web-ingress-plugin",
+                "=0.4.7",
+            )?;
+            return Ok(dependency);
+        }
+    }
+    // A standalone local Endpoint package still uses the matching published
+    // Ingress dependency, recorded exactly in the generated Cargo lock.
     Ok(json!("=0.4.6"))
 }
 
@@ -983,8 +1088,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        AdapterSet, collect_local_lenso_patch, dependency_lock_digests,
-        verify_dependency_lock_digests, web_ingress_dependency,
+        AdapterSet, collect_local_lenso_patch, dependency_lock_digests, local_framework_crates_dir,
+        local_framework_dependency, verify_dependency_lock_digests, web_ingress_dependency,
     };
 
     #[test]
@@ -1078,6 +1183,92 @@ mod tests {
     }
 
     #[test]
+    fn local_lenso_workspace_supplies_the_matching_unpublished_adapter() {
+        let root = tempfile::tempdir().unwrap();
+        let crates = root.path().join("crates");
+        let adapter = crates.join("lenso-wasm-component-adapter");
+        std::fs::create_dir_all(&adapter).unwrap();
+        std::fs::write(
+            adapter.join("Cargo.toml"),
+            "[package]\nname = \"lenso-wasm-component-adapter\"\nversion = \"0.2.16\"\n",
+        )
+        .unwrap();
+        let mut patches = BTreeMap::new();
+        collect_local_lenso_patch(
+            &mut patches,
+            &local_package(
+                "lenso",
+                "path+file:///work/lenso/crates/lenso#0.5.25",
+                &crates.join("lenso/Cargo.toml").to_string_lossy(),
+            ),
+        )
+        .unwrap();
+        let found = local_framework_crates_dir(&patches).unwrap().unwrap();
+        assert_eq!(found, std::fs::canonicalize(crates).unwrap());
+        let (dependency, watched_path) =
+            local_framework_dependency(&found, "lenso-wasm-component-adapter", "=0.2.16").unwrap();
+        let adapter = std::fs::canonicalize(adapter).unwrap();
+        assert_eq!(dependency["path"], adapter.to_string_lossy().as_ref());
+        assert_eq!(watched_path, adapter);
+        assert!(
+            local_framework_dependency(&found, "lenso-wasm-component-adapter", "=0.2.15")
+                .unwrap_err()
+                .to_string()
+                .contains("does not match generated Host cohort")
+        );
+        std::fs::write(
+            adapter.join("Cargo.toml"),
+            "[package]\nname = \"other-adapter\"\nversion = \"0.2.16\"\n",
+        )
+        .unwrap();
+        assert!(
+            local_framework_dependency(&found, "lenso-wasm-component-adapter", "=0.2.16")
+                .unwrap_err()
+                .to_string()
+                .contains("different Cargo identity")
+        );
+    }
+
+    #[test]
+    fn local_framework_runtime_packages_cannot_mix_workspaces() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        std::fs::create_dir(first.path().join("crates")).unwrap();
+        std::fs::create_dir(second.path().join("crates")).unwrap();
+        let mut patches = BTreeMap::new();
+        collect_local_lenso_patch(
+            &mut patches,
+            &local_package(
+                "lenso",
+                "path+file:///first/crates/lenso#0.5.25",
+                &first
+                    .path()
+                    .join("crates/lenso/Cargo.toml")
+                    .to_string_lossy(),
+            ),
+        )
+        .unwrap();
+        collect_local_lenso_patch(
+            &mut patches,
+            &local_package(
+                "lenso-native-adapter",
+                "path+file:///second/crates/lenso-native-adapter#0.3.15",
+                &second
+                    .path()
+                    .join("crates/lenso-native-adapter/Cargo.toml")
+                    .to_string_lossy(),
+            ),
+        )
+        .unwrap();
+        assert!(
+            local_framework_crates_dir(&patches)
+                .unwrap_err()
+                .to_string()
+                .contains("align framework dependency sources")
+        );
+    }
+
+    #[test]
     fn conflicting_local_lenso_sources_are_rejected_before_host_build() {
         let mut patches = BTreeMap::new();
         collect_local_lenso_patch(
@@ -1119,5 +1310,26 @@ mod tests {
             dependency["rev"],
             "c9cd15629b7d65d6f6cdc12113234acd85c89a89"
         );
+    }
+
+    #[test]
+    fn local_endpoint_uses_sibling_ingress_from_the_same_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        let endpoint = root.path().join("crates/lenso-capability-http-endpoint");
+        let ingress = root.path().join("crates/lenso-web-ingress-plugin");
+        std::fs::create_dir_all(&endpoint).unwrap();
+        std::fs::create_dir_all(&ingress).unwrap();
+        std::fs::write(
+            ingress.join("Cargo.toml"),
+            "[package]\nname = \"lenso-web-ingress-plugin\"\nversion = \"0.4.7\"\n",
+        )
+        .unwrap();
+        let dependency = web_ingress_dependency(&json!({
+            "package": "lenso-capability-http-endpoint",
+            "path": endpoint,
+        }))
+        .unwrap();
+        assert_eq!(dependency["path"], ingress.to_string_lossy().as_ref());
+        assert_eq!(dependency["version"], "=0.4.7");
     }
 }
