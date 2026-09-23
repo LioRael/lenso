@@ -12,7 +12,7 @@ use lenso_plugin_catalog::{
 
 fn crate_archive(package: &str, version: &str, plugin_id: &str) -> Vec<u8> {
     let manifest = format!(
-        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id={plugin_id:?}\nroot-slot='tools'\n[dependencies]\nlenso='=0.5.23'\n"
+        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id={plugin_id:?}\nroot-slot='tools'\n[dependencies]\nlenso='=0.5.25'\n"
     );
     let source = b"#[lenso::plugin(consumer)]\n#[derive(Clone, Debug)]\nstruct Core {}\n";
     let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
@@ -36,9 +36,49 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
     if std::env::var_os("LENSO_LINKED_BUILD_PROOF").is_none() {
         return;
     }
+    let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
+    let mut patches = toml::map::Map::new();
+    for entry in fs::read_dir(workspace.join("crates")).unwrap() {
+        let directory = entry.unwrap().path();
+        let manifest = directory.join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        let package: toml::Value = toml::from_str(&fs::read_to_string(manifest).unwrap()).unwrap();
+        let Some(name) = package["package"]["name"].as_str() else {
+            continue;
+        };
+        patches.insert(
+            name.to_owned(),
+            toml::Value::Table(toml::map::Map::from_iter([(
+                "path".to_owned(),
+                toml::Value::String(directory.to_str().unwrap().to_owned()),
+            )])),
+        );
+    }
+    let config = root.join(".cargo/config.toml");
+    fs::create_dir_all(config.parent().unwrap()).unwrap();
+    fs::write(
+        &config,
+        toml::to_string(&toml::Value::Table(toml::map::Map::from_iter([(
+            "patch".to_owned(),
+            toml::Value::Table(toml::map::Map::from_iter([(
+                "crates-io".to_owned(),
+                toml::Value::Table(patches),
+            )])),
+        )])))
+        .unwrap(),
+    )
+    .unwrap();
     let built = Command::new(cli)
         .args(["app", "build", "--root"])
         .arg(root)
+        .current_dir(root)
+        .env("CARGO_TARGET_DIR", workspace.join("target"))
         .output()
         .unwrap();
     assert!(
@@ -49,7 +89,7 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
     for action in ["check", "show"] {
         let result = Command::new(cli)
             .args(["app", action, "--json", "--root"])
-            .arg(root)
+            .arg(root.join("dist"))
             .output()
             .unwrap();
         assert!(
@@ -57,6 +97,12 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
             "{action}: {}",
             String::from_utf8_lossy(&result.stderr)
         );
+        let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        if action == "check" {
+            assert_eq!(report["plugin_instances"], 1);
+        } else {
+            assert_eq!(report["instances"].as_array().unwrap().len(), 1);
+        }
     }
 }
 
@@ -124,6 +170,38 @@ fn unadopt_exact_source(cli: &str, root: &std::path::Path) {
     assert!(report["candidates"].as_array().unwrap().is_empty());
     assert!(!root.join("plugins/example.web").exists());
     assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+}
+
+fn prove_removed_build_when_requested(cli: &str, root: &std::path::Path) {
+    if std::env::var_os("LENSO_LINKED_BUILD_PROOF").is_none() {
+        return;
+    }
+    let output = root.join("dist-removed");
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(root)
+        .arg("--out")
+        .arg(&output)
+        .current_dir(root)
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let checked = Command::new(cli)
+        .args(["app", "check", "--json", "--root"])
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(checked.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(report["plugin_instances"], 0);
+    assert_eq!(
+        fs::read_to_string(output.join(".lenso/host-mode")).unwrap(),
+        "portable"
+    );
 }
 
 fn assert_host_provided_rejected(
@@ -332,4 +410,5 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         &key,
     );
     unadopt_exact_source(cli, &root);
+    prove_removed_build_when_requested(cli, &root);
 }
