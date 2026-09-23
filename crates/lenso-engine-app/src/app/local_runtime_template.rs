@@ -146,6 +146,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let mut intent = root.join("intent");
     let mut check = false;
     let mut ready_file = None;
+    let mut web_address_file = None;
     let mut defer_activation = false;
     let mut command_args = None;
     let mut index = 0;
@@ -161,6 +162,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 index += 1;
                 ready_file = Some(PathBuf::from(args.get(index).context("--ready-file needs a path")?));
             },
+            "--web-address-file" => {
+                index += 1;
+                web_address_file = Some(PathBuf::from(args.get(index).context("--web-address-file needs a path")?));
+            },
             "--" => { command_args = Some(args[index + 1..].to_vec()); break; },
             other => bail!("unknown Host argument: {other}"),
         }
@@ -173,6 +178,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     anyhow::ensure!(
         !defer_activation || (!check && ready_file.is_some()),
         "--defer-activation requires --ready-file without --check"
+    );
+    anyhow::ensure!(
+        web_address_file.is_none() || (!check && ready_file.is_some()),
+        "--web-address-file requires --ready-file without --check"
     );
     let lock: DistributionLock =
         serde_json::from_slice(&fs::read(root.join(".lenso/distribution.lock.json"))?)?;
@@ -415,13 +424,20 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 let outcome = app.shutdown(Duration::from_secs(10)).await;
                 bail!("record Host activation: {error}; shutdown: {outcome:?}");
             }
+            let local_web_url: Option<String> = None;
+            // LENSO_WEB_READY
+            if let Some(path) = web_address_file {
+                let address = local_web_url.context("frontend dev requires a ready Web Ingress")?;
+                let stage = path.with_extension("stage");
+                fs::write(&stage, format!("{address}\n"))?;
+                fs::rename(stage, path)?;
+            }
             if let Some(path) = ready_file {
                 let stage = path.with_extension("stage");
                 fs::write(&stage, b"lenso.local-host-ready.v1\n")?;
                 fs::rename(stage, path)?;
             }
             eprintln!("Local App ready");
-            // LENSO_WEB_READY
             let mut command_result: anyhow::Result<()> = Ok(());
             #[cfg(not(generated_native_host))]
             if let Some(args) = &command_args { command_result = super::terminal::run(&app, args).await; }

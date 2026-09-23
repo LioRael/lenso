@@ -133,8 +133,52 @@ Generated output and dependency/cache trees are excluded from watching.
 
 Web routes and assets belong to the Web Plugin. The starter embeds its own HTML;
 editing it triggers the ordinary rebuild/restart. Native instance resources are
-loaded from the Root snapshot. There is no separate frontend framework or implicit
-business route registry in the Host.
+loaded from the Root snapshot. By default, no separate frontend process or
+implicit business route registry runs in the Host.
+
+### Explicit React/Vite development process
+
+An App with an App-owned `frontend/` directory may opt into one separate
+frontend development process by adding `frontend/lenso.dev.toml`:
+
+```toml
+schema = "lenso.frontend-dev.v1"
+command = ["bun", "run", "dev"]
+url = "http://127.0.0.1:5173/"
+backend_url_mode = "file"
+```
+
+The declared command runs in `frontend/` without a shell; configure Vite itself
+to listen on that exact loopback port with `strictPort`. Use a non-default HTTP
+port such as 5173; explicit `:80` is normalized away and unsupported. `lenso dev` starts this
+process only when the file is present. The command is trusted App-owned code,
+not a sandbox for an unreviewed package: it can access files available to the
+developer account. Its environment contains only basic toolchain variables
+plus `LENSO_API_URL` for initial compatibility and `LENSO_API_URL_FILE`, which
+names `.lenso/dev-backend-url` under the App root. Host secret environment
+variables are not inherited by the frontend process. The file is updated
+atomically whenever the Web Host generation changes.
+Only one `app dev` session may own an App root at a time. The persistent
+`.lenso/dev.lock` file is locked for the session and is not removed on exit;
+a second session exits before building or changing the backend URL file.
+
+The frontend must read `LENSO_API_URL_FILE` for each API proxy request and expose
+`GET /__lenso/backend` with HTTP 200 and an unchunked plain-text body equal to
+the current file value (an optional trailing newline is accepted). This
+handshake is part of the explicit dev contract: it proves the frontend has
+observed the candidate backend URL before the previous Host is stopped.
+`lenso dev` reports the preview URL only after the Host Ready Gate, frontend
+HTTP `/` readiness, and this backend handshake all pass. A failed frontend
+candidate retains the previous running generation. A backend rebuild reuses
+the same frontend process and refreshes its backend URL through the file;
+frontend source changes are left to the declared frontend's HMR without recompiling the Host.
+Changing the dev command/configuration requires restarting `lenso dev`.
+
+This is a source-development preview, not a static-asset build. The built Host
+continues to serve its last explicitly built Plugin-owned assets until a
+frontend build copies new assets there. A custom frontend that reports the
+handshake but proxies API traffic through a different target violates its own
+contract; the handshake is not a general browser-flow test.
 
 ## Supported local runtime profile
 

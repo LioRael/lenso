@@ -483,9 +483,17 @@ pub(super) fn generate(
             ""
         },
     );
-    source = source.replace("// LENSO_WEB_READY", if web { r#"
-            if let Some(address) = ingress.local_address() { eprintln!("Listening on http://{address}"); }
-"# } else { "" });
+    source = source.replace(
+        "// LENSO_WEB_READY",
+        if web {
+            r#"
+            let local_web_url = ingress.local_address().map(|address| format!("http://{address}/"));
+            if let Some(address) = &local_web_url { eprintln!("Listening on {address}"); }
+"#
+        } else {
+            ""
+        },
+    );
     if let Some((git, rev)) = git_lenso_source {
         pin_host_framework_versions(&mut dependencies, &host_framework_dependencies, &git, &rev);
     }
