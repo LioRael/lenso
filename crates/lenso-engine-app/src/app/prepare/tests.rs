@@ -204,6 +204,14 @@ fn rejects_missing_bun_wrong_targets_and_non_executable_runtime() {
 }
 
 #[test]
+fn maps_linux_arm64_host_distribution_target() {
+    assert_eq!(
+        target_platform("aarch64-unknown-linux-gnu").unwrap(),
+        ("linux", "arm64")
+    );
+}
+
+#[test]
 fn rejects_tampered_runtime_selection_evidence() {
     let temporary = tempfile::tempdir().unwrap();
     let build = authoring(temporary.path());

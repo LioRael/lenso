@@ -13,6 +13,7 @@ fn digest(bytes: &[u8]) -> String {
 fn platform() -> (&'static str, &'static str, &'static str) {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => ("aarch64-apple-darwin", "darwin", "arm64"),
+        ("linux", "aarch64") => ("aarch64-unknown-linux-gnu", "linux", "arm64"),
         ("linux", "x86_64") => ("x86_64-unknown-linux-gnu", "linux", "x64"),
         values => panic!("unsupported test platform: {values:?}"),
     }

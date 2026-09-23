@@ -431,6 +431,7 @@ fn stage_selected_artifact(
 pub(super) fn target_platform(target: &str) -> anyhow::Result<(&'static str, &'static str)> {
     match target {
         "aarch64-apple-darwin" => Ok(("darwin", "arm64")),
+        "aarch64-unknown-linux-gnu" => Ok(("linux", "arm64")),
         "x86_64-unknown-linux-gnu" => Ok(("linux", "x64")),
         _ => bail!("unsupported first-release Host distribution target `{target}`"),
     }
