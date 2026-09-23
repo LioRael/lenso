@@ -712,7 +712,22 @@ fn verify_archive_cargo_lock(root: &Path, lock: &SourceLock) -> anyhow::Result<(
     Ok(())
 }
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum UnadoptCheckpoint {
+    AfterSourceMove,
+    AfterIntentMove,
+    AfterConfigPublish,
+}
+
 pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
+    unadopt_with(root, source, |_| Ok(()))
+}
+
+fn unadopt_with(
+    root: &Path,
+    source: &str,
+    mut checkpoint: impl FnMut(UnadoptCheckpoint) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
     let (plugin_id, version) = source
         .split_once('@')
         .context("linked Cargo source must be an exact PLUGIN_ID@VERSION")?;
@@ -750,20 +765,34 @@ pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
     );
     verify_archive_cargo_lock(&source_path, &lock)?;
     ensure!(
-        intent_path.is_dir(),
-        "linked Cargo Plugin Root intent is missing"
+        fs::symlink_metadata(&intent_path)?.file_type().is_dir(),
+        "linked Cargo Plugin Root intent must be a regular directory"
     );
-    let entries = fs::read_dir(&intent_path)?
-        .map(|entry| entry.map(|entry| entry.file_name()))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut default = false;
+    for entry in fs::read_dir(&intent_path)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_str().context("Plugin Root intent filename UTF-8")?;
+        ensure!(
+            name == "default.toml" || name == "default.disabled",
+            "Plugin Root intent has user changes; remove it explicitly before unadopting source"
+        );
+        let metadata = fs::symlink_metadata(entry.path())?;
+        ensure!(
+            metadata.file_type().is_file() && (name != "default.disabled" || metadata.len() == 0),
+            "Plugin Root intent has user changes; remove it explicitly before unadopting source"
+        );
+        if name == "default.toml" {
+            ensure!(
+                fs::read_to_string(entry.path())? == "# Explicit local Plugin adoption\n",
+                "Plugin Root intent has user changes; remove it explicitly before unadopting source"
+            );
+            default = true;
+        }
+    }
     ensure!(
-        entries
-            .iter()
-            .all(|name| name == "default.toml" || name == "default.disabled")
-            && entries.iter().any(|name| name == "default.toml")
-            && fs::read_to_string(intent_path.join("default.toml"))?
-                == "# Explicit local Plugin adoption\n",
-        "Plugin Root intent has user changes; remove it explicitly before unadopting source"
+        default,
+        "linked Cargo Plugin Root default intent is missing"
     );
     let config_path = root.join("lenso.toml");
     let mut document: toml::Value = toml::from_str(&fs::read_to_string(&config_path)?)?;
@@ -817,49 +846,113 @@ pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
         fs::read(&config_path)? == config_before,
         "lenso.toml changed during linked Cargo unadopt; preserving concurrent edit"
     );
-    fs::rename(&source_path, trash.join("source"))?;
-    if let Err(error) = fs::rename(&intent_path, trash.join("plugin-root")) {
-        fs::rename(trash.join("source"), &source_path)?;
-        return Err(error.into());
-    }
-    if adoption::read_optional_regular(&cargo_path)? != cargo_before
-        || fs::read(&config_path)? != config_before
-    {
-        fs::rename(trash.join("plugin-root"), &intent_path)?;
-        fs::rename(trash.join("source"), &source_path)?;
-        bail!("App manifests changed during linked Cargo unadopt; preserving concurrent edit");
-    }
-    if let Err(error) = staged.persist(&config_path) {
-        fs::rename(trash.join("plugin-root"), &intent_path)?;
-        fs::rename(trash.join("source"), &source_path)?;
-        return Err(error.into());
-    }
-    if adoption::read_optional_regular(&cargo_path)? != cargo_before {
-        let mut rollback = tempfile::NamedTempFile::new_in(root)?;
-        rollback.write_all(&config_before)?;
-        if fs::read(&config_path)? == config_after {
-            rollback.persist(&config_path)?;
+    let mut source_moved = false;
+    let mut intent_moved = false;
+    let mut config_published = false;
+    let result = (|| -> anyhow::Result<()> {
+        super::super::build::publish_new_output(&source_path, &trash.join("source"))?;
+        source_moved = true;
+        checkpoint(UnadoptCheckpoint::AfterSourceMove)?;
+        super::super::build::publish_new_output(&intent_path, &trash.join("plugin-root"))?;
+        intent_moved = true;
+        checkpoint(UnadoptCheckpoint::AfterIntentMove)?;
+        ensure!(
+            adoption::read_optional_regular(&cargo_path)? == cargo_before
+                && fs::read(&config_path)? == config_before,
+            "App manifests changed during linked Cargo unadopt; preserving concurrent edit"
+        );
+        staged.persist(&config_path)?;
+        config_published = true;
+        checkpoint(UnadoptCheckpoint::AfterConfigPublish)?;
+        ensure!(
+            adoption::read_optional_regular(&cargo_path)? == cargo_before,
+            "Cargo.toml changed during linked Cargo unadopt; preserving concurrent edit"
+        );
+        if let Some(staged_cargo) = staged_cargo {
+            staged_cargo.persist(&cargo_path)?;
         }
-        fs::rename(trash.join("plugin-root"), &intent_path)?;
-        fs::rename(trash.join("source"), &source_path)?;
-        bail!("Cargo.toml changed during linked Cargo unadopt; preserving concurrent edit");
-    }
-    if let Some(staged_cargo) = staged_cargo {
-        if let Err(error) = staged_cargo.persist(&cargo_path) {
-            let mut rollback = tempfile::NamedTempFile::new_in(root)?;
-            rollback.write_all(&config_before)?;
-            if fs::read(&config_path)? == config_after {
-                rollback.persist(&config_path)?;
-            }
-            fs::rename(trash.join("plugin-root"), &intent_path)?;
-            fs::rename(trash.join("source"), &source_path)?;
-            return Err(error.into());
+        Ok(())
+    })();
+    if let Err(error) = result {
+        if let Err(rollback_error) = rollback_unadopt(
+            root,
+            &trash,
+            &source_path,
+            &intent_path,
+            &config_path,
+            &config_before,
+            &config_after,
+            source_moved,
+            intent_moved,
+            config_published,
+        ) {
+            return Err(error.context(format!(
+                "linked Cargo unadopt rollback incomplete; recover from {}: {rollback_error:#}",
+                trash.display()
+            )));
         }
+        return Err(error);
     }
     println!(
         "Unadopted {plugin_id}@{version}; source and Plugin Root intent are recoverable at {}",
         trash.display()
     );
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "restores one attempted linked Cargo unadopt"
+)]
+fn rollback_unadopt(
+    root: &Path,
+    trash: &Path,
+    source_path: &Path,
+    intent_path: &Path,
+    config_path: &Path,
+    config_before: &[u8],
+    config_after: &[u8],
+    source_moved: bool,
+    intent_moved: bool,
+    config_published: bool,
+) -> anyhow::Result<()> {
+    let mut failures = Vec::new();
+    for (moved, staged, original) in [
+        (intent_moved, trash.join("plugin-root"), intent_path),
+        (source_moved, trash.join("source"), source_path),
+    ] {
+        if moved {
+            if let Err(error) = super::super::build::publish_new_output(&staged, original) {
+                failures.push(format!("restore {}: {error:#}", original.display()));
+            }
+        }
+    }
+    if config_published {
+        match adoption::read_optional_regular(config_path) {
+            Ok(Some(current)) if current == config_after => {
+                let restored = (|| -> anyhow::Result<()> {
+                    let mut staged = tempfile::NamedTempFile::new_in(root)?;
+                    staged.write_all(config_before)?;
+                    ensure!(
+                        adoption::read_optional_regular(config_path)?.as_deref()
+                            == Some(config_after),
+                        "lenso.toml changed during rollback"
+                    );
+                    staged.persist(config_path)?;
+                    Ok(())
+                })();
+                if let Err(error) = restored {
+                    failures.push(format!("restore {}: {error:#}", config_path.display()));
+                }
+            }
+            Ok(_) => failures.push(format!(
+                "preserved concurrent edit at {}",
+                config_path.display()
+            )),
+            Err(error) => failures.push(format!("inspect {}: {error:#}", config_path.display())),
+        }
+    }
+    ensure!(failures.is_empty(), "{}", failures.join("; "));
     Ok(())
 }
 
@@ -1006,6 +1099,154 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn adopted_source() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("vendor/lenso/example.web/0.4.5");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("Cargo.toml"),
+            b"[package]\nname = 'example-web'\n",
+        )
+        .unwrap();
+        let lock = SourceLock {
+            schema_version: 1,
+            plugin_id: "example.web".into(),
+            version: "0.4.5".into(),
+            crate_digest: format!("sha256:{}", "a".repeat(64)),
+            source_digest: source_digest(&source).unwrap(),
+            archive_cargo_lock_digest: None,
+            workspace_exclude_owned: false,
+            v6: None,
+        };
+        fs::write(
+            source.join(SOURCE_LOCK),
+            serde_json::to_vec_pretty(&lock).unwrap(),
+        )
+        .unwrap();
+        let intent = root.path().join("plugins/example.web");
+        fs::create_dir_all(&intent).unwrap();
+        fs::write(
+            intent.join("default.toml"),
+            b"# Explicit local Plugin adoption\n",
+        )
+        .unwrap();
+        fs::write(
+            root.path().join("lenso.toml"),
+            b"plugin_sources = ['vendor/lenso/example.web/0.4.5']\n",
+        )
+        .unwrap();
+        root
+    }
+
+    fn assert_adoption_intact(root: &Path) {
+        assert!(
+            root.join("vendor/lenso/example.web/0.4.5/Cargo.toml")
+                .is_file()
+        );
+        assert!(root.join("plugins/example.web/default.toml").is_file());
+        assert!(
+            fs::read_to_string(root.join("lenso.toml"))
+                .unwrap()
+                .contains("vendor/lenso/example.web/0.4.5")
+        );
+    }
+
+    #[test]
+    fn unadopt_rejects_edited_or_non_regular_disabled_intent() {
+        let root = adopted_source();
+        let disabled = root.path().join("plugins/example.web/default.disabled");
+        fs::write(&disabled, b"user edit\n").unwrap();
+        assert!(unadopt(root.path(), "example.web@0.4.5").is_err());
+        assert_adoption_intact(root.path());
+        #[cfg(unix)]
+        {
+            fs::remove_file(&disabled).unwrap();
+            std::os::unix::fs::symlink(root.path().join("lenso.toml"), &disabled).unwrap();
+            assert!(unadopt(root.path(), "example.web@0.4.5").is_err());
+            assert_adoption_intact(root.path());
+            fs::remove_file(&disabled).unwrap();
+        }
+        fs::write(&disabled, []).unwrap();
+        unadopt(root.path(), "example.web@0.4.5").unwrap();
+        let trash = root.path().join(".lenso/trash/linked-cargo");
+        let entry = fs::read_dir(trash).unwrap().next().unwrap().unwrap().path();
+        assert!(entry.join("plugin-root/default.disabled").is_file());
+    }
+
+    #[test]
+    fn unadopt_rolls_back_each_published_phase() {
+        for interrupted in [
+            UnadoptCheckpoint::AfterSourceMove,
+            UnadoptCheckpoint::AfterIntentMove,
+            UnadoptCheckpoint::AfterConfigPublish,
+        ] {
+            let root = adopted_source();
+            let before = fs::read(root.path().join("lenso.toml")).unwrap();
+            let error = unadopt_with(root.path(), "example.web@0.4.5", |step| {
+                if step == interrupted {
+                    bail!("injected interruption");
+                }
+                Ok(())
+            })
+            .unwrap_err();
+            assert!(error.to_string().contains("injected interruption"));
+            assert_adoption_intact(root.path());
+            assert_eq!(fs::read(root.path().join("lenso.toml")).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn unadopt_restores_directories_when_manifest_read_fails_after_move() {
+        let root = adopted_source();
+        let config = root.path().join("lenso.toml");
+        let error = unadopt_with(root.path(), "example.web@0.4.5", |step| {
+            if step == UnadoptCheckpoint::AfterIntentMove {
+                fs::remove_file(&config)?;
+                fs::create_dir(&config)?;
+            }
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(!error.to_string().contains("rollback incomplete"));
+        assert!(root.path().join("vendor/lenso/example.web/0.4.5").is_dir());
+        assert!(
+            root.path()
+                .join("plugins/example.web/default.toml")
+                .is_file()
+        );
+        assert!(
+            config.is_dir(),
+            "concurrent path change must not be overwritten"
+        );
+    }
+
+    #[test]
+    fn unadopt_preserves_conflicting_restore_path_in_trash() {
+        let root = adopted_source();
+        let source = root.path().join("vendor/lenso/example.web/0.4.5");
+        let error = unadopt_with(root.path(), "example.web@0.4.5", |step| {
+            if step == UnadoptCheckpoint::AfterIntentMove {
+                fs::create_dir(&source)?;
+                bail!("injected interruption");
+            }
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("rollback incomplete"));
+        assert!(
+            source.is_dir(),
+            "concurrent empty directory must not be replaced"
+        );
+        assert!(
+            root.path()
+                .join("plugins/example.web/default.toml")
+                .is_file()
+        );
+        let trash = root.path().join(".lenso/trash/linked-cargo");
+        let entry = fs::read_dir(trash).unwrap().next().unwrap().unwrap().path();
+        assert!(entry.join("source/Cargo.toml").is_file());
+    }
 
     #[test]
     fn crate_archive_rejects_windows_style_path_escape() {
