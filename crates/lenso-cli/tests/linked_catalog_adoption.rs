@@ -162,16 +162,7 @@ fn assert_runtime_intent_and_start(cli: &str, distribution: &std::path::Path) {
 
 fn assert_external_source_bootstraps_before_start(cli: &str, distribution: &std::path::Path) {
     let source = distribution.join("configuration-snapshot.json");
-    fs::write(
-        &source,
-        serde_json::to_vec(&serde_json::json!({
-            "schema": "lenso.plugin-configuration-snapshot.v1",
-            "revision": 1,
-            "configurations": [{"plugin_id": "example.web", "instance_key": "default", "toml": ""}]
-        }))
-        .unwrap(),
-    )
-    .unwrap();
+    write_external_snapshot(&source, 1, "");
     let policy = distribution.join("configuration-policy.json");
     fs::write(&policy, serde_json::to_vec(&serde_json::json!({
         "schema": "lenso.configuration-source-policy.v1",
@@ -203,23 +194,93 @@ fn assert_external_source_bootstraps_before_start(cli: &str, distribution: &std:
         state.get("last_activated").is_none(),
         "--check must not claim activation"
     );
+    let report = config_status(cli, distribution);
+    assert_eq!(report["state"], "pending_activation");
+    assert_eq!(report["desired_revision"], 1);
+    assert!(report["last_activated_revision"].is_null());
+    start_and_observe_activation(cli, distribution, &policy, 1);
+    let report = config_status(cli, distribution);
+    assert_eq!(report["state"], "last_activated");
+    assert_eq!(report["last_activated_revision"], 1);
+
+    write_external_snapshot(&source, 2, "unauthorized = 'value'\n");
+    let rejected = sync_external_snapshot(cli, distribution, &policy);
+    assert!(!rejected.status.success());
+    let report = config_status(cli, distribution);
+    assert_eq!(report["desired_revision"], 1);
+    assert_eq!(report["last_activated_revision"], 1);
+
+    write_external_snapshot(&source, 2, "");
+    let accepted = sync_external_snapshot(cli, distribution, &policy);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let report = config_status(cli, distribution);
+    assert_eq!(report["state"], "pending_activation");
+    assert_eq!(report["desired_revision"], 2);
+    assert_eq!(report["last_activated_revision"], 1);
+    start_and_observe_activation(cli, distribution, &policy, 2);
+    let report = config_status(cli, distribution);
+    assert_eq!(report["state"], "last_activated");
+    assert_eq!(report["last_activated_revision"], 2);
+    let missing_policy = Command::new(cli)
+        .args(["app", "start", "--from"])
+        .arg(distribution)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert!(!missing_policy.status.success());
+    assert!(String::from_utf8_lossy(&missing_policy.stderr).contains("configuration-policy"));
+}
+
+fn write_external_snapshot(path: &std::path::Path, revision: u64, toml: &str) {
+    fs::write(path, serde_json::to_vec(&serde_json::json!({
+        "schema": "lenso.plugin-configuration-snapshot.v1",
+        "revision": revision,
+        "configurations": [{"plugin_id": "example.web", "instance_key": "default", "toml": toml}]
+    })).unwrap()).unwrap();
+}
+
+fn sync_external_snapshot(
+    cli: &str,
+    distribution: &std::path::Path,
+    policy: &std::path::Path,
+) -> std::process::Output {
+    Command::new(cli)
+        .args(["app", "config-sync", "--root"])
+        .arg(distribution)
+        .arg("--policy")
+        .arg(policy)
+        .output()
+        .unwrap()
+}
+
+fn start_and_observe_activation(
+    cli: &str,
+    distribution: &std::path::Path,
+    policy: &std::path::Path,
+    revision: u64,
+) {
+    let state_path = distribution.join("intent/.lenso/configuration-source-state.json");
     let mut host = Command::new(cli)
         .args(["app", "start", "--from"])
         .arg(distribution)
         .arg("--configuration-policy")
-        .arg(&policy)
+        .arg(policy)
         .spawn()
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let state: serde_json::Value =
             serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
-        if state.get("last_activated").is_some() {
+        if state["last_activated"]["revision"] == revision {
             assert!(
                 host.try_wait().unwrap().is_none(),
                 "Host exited before activation was observed"
             );
-            assert_eq!(state["last_activated"]["revision"], 1);
+            assert_eq!(state["last_activated"]["revision"], revision);
             assert_eq!(
                 state["last_activated"]["plugin_root_revision"],
                 state["desired"]["candidate_plugin_root_revision"]
@@ -238,14 +299,21 @@ fn assert_external_source_bootstraps_before_start(cli: &str, distribution: &std:
     }
     host.kill().unwrap();
     host.wait().unwrap();
-    let missing_policy = Command::new(cli)
-        .args(["app", "start", "--from"])
+}
+
+fn config_status(cli: &str, distribution: &std::path::Path) -> serde_json::Value {
+    let output = Command::new(cli)
+        .args(["app", "config-status", "--root"])
         .arg(distribution)
-        .arg("--check")
+        .arg("--json")
         .output()
         .unwrap();
-    assert!(!missing_policy.status.success());
-    assert!(String::from_utf8_lossy(&missing_policy.stderr).contains("configuration-policy"));
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
 }
 
 fn modified_linked_source_cannot_build(cli: &str, root: &std::path::Path) {

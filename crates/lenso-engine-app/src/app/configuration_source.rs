@@ -33,6 +33,26 @@ pub struct SyncArgs {
     policy: PathBuf,
 }
 
+#[derive(Clone, Debug, Args)]
+pub struct StatusArgs {
+    /// Built App distribution whose private configuration state is inspected.
+    #[arg(long)]
+    root: PathBuf,
+    /// Emit a stable, non-secret JSON projection.
+    #[arg(long)]
+    json: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct Status {
+    schema: &'static str,
+    state: &'static str,
+    desired_revision: Option<u64>,
+    last_activated_revision: Option<u64>,
+    pending_publication: bool,
+    pending_activation: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Policy {
@@ -87,6 +107,70 @@ pub fn sync_command(args: SyncArgs) -> anyhow::Result<()> {
         root.display()
     );
     Ok(())
+}
+
+pub fn status_command(args: StatusArgs) -> anyhow::Result<()> {
+    let status = inspect_status(&args.root)?;
+    if args.json {
+        println!("{}", serde_json::to_string(&status)?);
+    } else {
+        println!(
+            "Configuration: {} (desired: {}, last activated: {})",
+            status.state,
+            status
+                .desired_revision
+                .map_or_else(|| "none".to_owned(), |v| v.to_string()),
+            status
+                .last_activated_revision
+                .map_or_else(|| "none".to_owned(), |v| v.to_string())
+        );
+    }
+    Ok(())
+}
+
+fn inspect_status(root: &Path) -> anyhow::Result<Status> {
+    let root = fs::canonicalize(root)?;
+    let intent = root.join("intent");
+    ensure!(
+        fs::symlink_metadata(&intent)?.file_type().is_dir(),
+        "App runtime intent must be a real directory"
+    );
+    let state = read_state(&intent.join(".lenso").join(STATE_FILE))?;
+    let status = if let Some(state) = state {
+        let current = LocalPluginRootAuthority::new(&intent).inspect()?;
+        let pending_publication = state.desired.publication_state(current.revision())?
+            == PluginConfigurationSnapshotPublicationState::AwaitingPublication;
+        let last = state.last_activated.as_ref();
+        let pending = last.is_none_or(|last| {
+            last.revision != state.desired.revision()
+                || last.snapshot_digest != state.desired.snapshot_digest()
+                || last.plugin_root_revision != state.desired.candidate_plugin_root_revision()
+        });
+        Status {
+            schema: "lenso.configuration-status.v1",
+            state: if pending_publication {
+                "pending_publication"
+            } else if pending {
+                "pending_activation"
+            } else {
+                "last_activated"
+            },
+            desired_revision: Some(state.desired.revision()),
+            last_activated_revision: last.map(|last| last.revision),
+            pending_publication,
+            pending_activation: pending,
+        }
+    } else {
+        Status {
+            schema: "lenso.configuration-status.v1",
+            state: "no_external_source",
+            desired_revision: None,
+            last_activated_revision: None,
+            pending_publication: false,
+            pending_activation: false,
+        }
+    };
+    Ok(status)
 }
 
 pub(super) fn require_or_sync(root: &Path, policy: Option<&Path>) -> anyhow::Result<()> {
@@ -436,8 +520,14 @@ mod tests {
     fn new_desired_revision_preserves_last_successful_activation() {
         let (root, source, policy) = fixture();
         let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        let unconfigured = inspect_status(root.path()).unwrap();
+        assert_eq!(unconfigured.state, "no_external_source");
         snapshot(&source, 1, "greeting = 'first'\n");
         sync(root.path(), &policy).unwrap();
+        let pending = inspect_status(root.path()).unwrap();
+        assert_eq!(pending.state, "pending_activation");
+        assert_eq!(pending.desired_revision, Some(1));
+        assert_eq!(pending.last_activated_revision, None);
         let mut state = read_state(&state_path).unwrap().unwrap();
         state.last_activated = Some(ActivatedConfiguration {
             revision: state.desired.revision(),
@@ -445,12 +535,23 @@ mod tests {
             plugin_root_revision: state.desired.candidate_plugin_root_revision().to_owned(),
         });
         fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
+        let activated = inspect_status(root.path()).unwrap();
+        assert_eq!(activated.state, "last_activated");
+        assert!(!activated.pending_activation);
 
         snapshot(&source, 2, "greeting = 'second'\n");
         sync(root.path(), &policy).unwrap();
         let current = read_state(&state_path).unwrap().unwrap();
         assert_eq!(current.desired.revision(), 2);
         assert_eq!(current.last_activated.unwrap().revision, 1);
+        let pending = inspect_status(root.path()).unwrap();
+        assert_eq!(pending.state, "pending_activation");
+        assert_eq!(pending.desired_revision, Some(2));
+        assert_eq!(pending.last_activated_revision, Some(1));
+        let projected = serde_json::to_string(&pending).unwrap();
+        assert!(!projected.contains("first"));
+        assert!(!projected.contains("second"));
+        assert!(!projected.contains("sha256:"));
     }
 
     #[test]
@@ -503,6 +604,9 @@ mod tests {
             proposal.intent(),
         )
         .unwrap();
+        let status = inspect_status(root.path()).unwrap();
+        assert_eq!(status.state, "pending_publication");
+        assert!(status.pending_publication);
 
         snapshot(&source, 1, "greeting = 'changed'\n");
         assert!(sync(root.path(), &policy).is_err());

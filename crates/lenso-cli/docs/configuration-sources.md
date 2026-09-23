@@ -54,6 +54,11 @@ only after native Kernel startup, never by `--check` or source reconciliation.
 It records the last successful activation, **not** a claim that a Generation
 is still running. A new desired revision preserves the previous activation
 record until the new Host is ready.
+Use `lenso app config-status --root dist --json` to inspect those revision
+numbers and whether a proposal is still pending publication or an accepted
+update is pending activation. This public
+projection omits configuration values, source addresses, and digests; it does
+not report whether the last activated Host process is currently running.
 There is no background polling or live switch yet; rerun the reconciliation and
 Host readiness flow to consume an update. Keep secret material with its provider:
 the snapshot contains only authorized references for schema-marked sensitive
