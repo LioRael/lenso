@@ -38,49 +38,13 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
     if std::env::var_os("LENSO_LINKED_BUILD_PROOF").is_none() {
         return;
     }
-    let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap();
-    let mut patches = toml::map::Map::new();
-    for entry in fs::read_dir(workspace.join("crates")).unwrap() {
-        let directory = entry.unwrap().path();
-        let manifest = directory.join("Cargo.toml");
-        if !manifest.is_file() {
-            continue;
-        }
-        let package: toml::Value = toml::from_str(&fs::read_to_string(manifest).unwrap()).unwrap();
-        let Some(name) = package["package"]["name"].as_str() else {
-            continue;
-        };
-        patches.insert(
-            name.to_owned(),
-            toml::Value::Table(toml::map::Map::from_iter([(
-                "path".to_owned(),
-                toml::Value::String(directory.to_str().unwrap().to_owned()),
-            )])),
-        );
-    }
-    let config = root.join(".cargo/config.toml");
-    fs::create_dir_all(config.parent().unwrap()).unwrap();
-    fs::write(
-        &config,
-        toml::to_string(&toml::Value::Table(toml::map::Map::from_iter([(
-            "patch".to_owned(),
-            toml::Value::Table(toml::map::Map::from_iter([(
-                "crates-io".to_owned(),
-                toml::Value::Table(patches),
-            )])),
-        )])))
-        .unwrap(),
-    )
-    .unwrap();
+    // This optional release gate deliberately uses registry dependencies only.
+    // A workspace path patch would not prove an external consumer can build.
+    assert!(!root.join(".cargo/config.toml").exists());
     let built = Command::new(cli)
         .args(["app", "build", "--root"])
         .arg(root)
         .current_dir(root)
-        .env("CARGO_TARGET_DIR", workspace.join("target"))
         .env("LENSO_BUILD_SECRET_CANARY", "private-runtime-value")
         .output()
         .unwrap();
