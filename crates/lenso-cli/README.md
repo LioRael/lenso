@@ -135,6 +135,13 @@ entries require a product Host adapter. This local flow does not fetch or prove
 crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
 published dependency cohort can compile the generated Host. Review source and
 build under an isolated account/container when the source is not trusted.
+For a V6 Bundle carrying the `.crate` as a `CargoBuildInput`, use mutually
+exclusive `--bundle release.lenso-plugin` instead of `--crate`. The Bundle
+closure, exact Contract, native-linked ABI, target, Cargo coordinate, size,
+and digest are checked against the same signed release before App files change.
+Other executable variants may coexist in the Bundle; they are not selected by
+this linked-Host adoption path. The Bundle is input evidence, not an alternate
+catalog signature or a runtime-loadable native Artifact.
 Use `lenso app linked-catalog --linked-snapshot snapshot.json --trust trust.json
 --json` to search the same signed snapshot first. The result separates eligible
 source candidates from target, availability, Host-integration, and registry

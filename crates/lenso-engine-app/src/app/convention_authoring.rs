@@ -26,8 +26,11 @@ pub struct AddArgs {
     #[arg(long)]
     trust: Option<PathBuf>,
     /// Exact registry .crate archive; it must match the signed digest.
-    #[arg(long = "crate")]
+    #[arg(long = "crate", conflicts_with = "bundle")]
     crate_archive: Option<PathBuf>,
+    /// Verified V6 Bundle carrying the signed .crate as a Host build input.
+    #[arg(long, conflicts_with = "crate_archive")]
+    bundle: Option<PathBuf>,
 }
 #[derive(Clone, Debug, Args)]
 pub struct UnadoptArgs {
@@ -208,7 +211,11 @@ fn tsconfig(root: &Path, source: &str) -> anyhow::Result<()> {
 
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(crate::plugins::project_root(args.root.clone())?)?;
-    if args.linked_snapshot.is_some() || args.trust.is_some() || args.crate_archive.is_some() {
+    if args.linked_snapshot.is_some()
+        || args.trust.is_some()
+        || args.crate_archive.is_some()
+        || args.bundle.is_some()
+    {
         return linked_catalog::add(&root, &args);
     }
     if args.source == "@lenso/openapi" {
@@ -440,6 +447,7 @@ pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyho
         linked_snapshot: None,
         trust: None,
         crate_archive: None,
+        bundle: None,
     })
 }
 pub fn create_plugin(

@@ -49,6 +49,17 @@ lenso app check --root ./dist-web/intent --json
 lenso app show --root ./dist-web/intent --json
 ```
 
+For a V6 Release Bundle whose selected native variant contains a `.crate`
+`CargoBuildInput`, replace `--crate` with `--bundle ./release.lenso-plugin`.
+This accepts a directory, not a registry lookup. The signed linked-Cargo
+snapshot remains the authority for the exact Plugin ID, version, supported
+target, package, and archive digest; Bundle verification additionally closes
+the input size, Cargo identity, native ABI, and all other variant files. The
+Host-build path requires one target-matching native build input. Other
+executable variants may coexist but are not runtime fallback candidates for
+this adoption. Requirements that this generated Host cannot prove are rejected
+before any App source or Plugin Root change.
+
 `app add` verifies the catalog signature, exact listed version, Native Host
 target, `.crate` digest, archive contents, and linked Plugin source identity.
 It vendors the exact source under `vendor/lenso/`, records the source digest,

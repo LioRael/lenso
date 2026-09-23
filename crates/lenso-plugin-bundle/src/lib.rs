@@ -961,9 +961,47 @@ fn verify_bundle_document_with_limits_after_manifest_read(
 
 /// Strictly reads either supported Plugin Manifest version from a verified Bundle.
 pub fn read_bundle_manifest(root: &Path) -> Result<PluginManifest, BundleError> {
-    let (_, manifest) =
-        verify_bundle_document_with_limits(root, &BundleVerificationLimits::default())?;
-    Ok(manifest.value)
+    read_bundle_manifest_with_limits(root, &BundleVerificationLimits::default())
+}
+
+/// Reads a Manifest only after verifying its entire Bundle under Host limits.
+pub fn read_bundle_manifest_with_limits(
+    root: &Path,
+    limits: &BundleVerificationLimits,
+) -> Result<PluginManifest, BundleError> {
+    read_verified_bundle_with_limits(root, limits).map(|(_, manifest)| manifest)
+}
+
+/// Returns exact verified closure evidence together with its parsed Manifest.
+pub fn read_verified_bundle_with_limits(
+    root: &Path,
+    limits: &BundleVerificationLimits,
+) -> Result<(VerifiedBundle, PluginManifest), BundleError> {
+    let (verified, manifest) = verify_bundle_document_with_limits(root, limits)?;
+    Ok((verified, manifest.value))
+}
+
+/// Reopens exact verified Cargo source bytes for a Host build, never execution.
+///
+/// Call this after verifying the enclosing Bundle Manifest and after checking
+/// the independently authorized release identity. The bounded read repeats
+/// digest, size, Cargo coordinate, and Plugin ID checks before use.
+pub fn read_verified_cargo_build_input(
+    root: &Path,
+    input: &PluginCargoBuildInputV6,
+    plugin_id: &str,
+    max_file_bytes: u64,
+) -> Result<Vec<u8>, BundleError> {
+    validate_cargo_build_input(input)?;
+    let bytes =
+        read_regular_file_bounded(&root.join(&input.path), "Cargo build input", max_file_bytes)?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) != input.size
+        || sha256_digest(&bytes) != input.digest
+    {
+        return Err(BundleError::DigestMismatch(input.path.clone()));
+    }
+    verify_cargo_build_input(&bytes, input, plugin_id)?;
+    Ok(bytes)
 }
 
 fn verify_manifest_bundle_files(

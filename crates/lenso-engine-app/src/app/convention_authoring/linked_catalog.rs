@@ -8,6 +8,7 @@ use std::{
 use anyhow::{Context as _, bail, ensure};
 use ed25519_dalek::VerifyingKey;
 use lenso_app_authoring::discovery::Candidate;
+use lenso_plugin_bundle::{BundleVerificationLimits, PluginManifest, PluginVariantInputV6};
 use lenso_plugin_catalog::{
     Availability, Trust,
     linked_cargo::{self, LinkedCargoIntegration},
@@ -38,6 +39,22 @@ struct SourceLock {
     version: String,
     crate_digest: String,
     source_digest: String,
+    /// V5 signed .crate adoption omits this field and retains its lock wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    v6: Option<V6BuildInputLock>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct V6BuildInputLock {
+    bundle_manifest_digest: String,
+    implementation_id: String,
+    variant_id: String,
+}
+
+struct SelectedV6Archive {
+    bytes: Vec<u8>,
+    lock: V6BuildInputLock,
 }
 
 /// One signed source-only catalog, without any claim that its crate can build.
@@ -302,7 +319,10 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         .as_ref()
         .context("--linked-snapshot required")?;
     let trust_path = args.trust.as_ref().context("--trust required")?;
-    let crate_path = args.crate_archive.as_ref().context("--crate required")?;
+    ensure!(
+        args.crate_archive.is_some() != args.bundle.is_some(),
+        "choose exactly one of --crate or --bundle"
+    );
     let (plugin_id, version) = args
         .source
         .split_once('@')
@@ -325,10 +345,16 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         release.registry_url == "https://crates.io",
         "linked Cargo registry is unsupported; use an authorized custom Host"
     );
-    let mut archive = Vec::new();
-    fs::File::open(crate_path)?
-        .take(MAX_CRATE_BYTES + 1)
-        .read_to_end(&mut archive)?;
+    let (archive, v6_lock) = if let Some(bundle) = &args.bundle {
+        let selected = verified_v6_archive(bundle, release, target)?;
+        (selected.bytes, Some(selected.lock))
+    } else {
+        let mut bytes = Vec::new();
+        fs::File::open(args.crate_archive.as_ref().context("--crate required")?)?
+            .take(MAX_CRATE_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        (bytes, None)
+    };
     ensure!(
         !archive.is_empty() && u64::try_from(archive.len())? <= MAX_CRATE_BYTES,
         "crate archive exceeds size limit"
@@ -344,10 +370,9 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         root,
         &Path::new("vendor/lenso").join(plugin_id).join(version),
     )?;
-    fs::create_dir_all(&parent)?;
     let stage = tempfile::Builder::new()
         .prefix(".linked-cargo-")
-        .tempdir_in(&parent)?;
+        .tempdir_in(root)?;
     unpack(&archive, stage.path(), release)?;
     let report = lenso_app_authoring::discovery::discover(stage.path())?;
     let [candidate] = report.candidates.as_slice() else {
@@ -369,6 +394,7 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         version: release.version.clone(),
         crate_digest: release.crate_digest.clone(),
         source_digest: source_digest(stage.path())?,
+        v6: v6_lock,
     };
     fs::write(
         stage.path().join(SOURCE_LOCK),
@@ -381,6 +407,7 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
             "existing linked Cargo source differs from signed archive"
         );
     } else {
+        fs::create_dir_all(&parent)?;
         fs::rename(stage.path(), &destination)?;
     }
     super::add(AddArgs {
@@ -393,12 +420,98 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         linked_snapshot: None,
         trust: None,
         crate_archive: None,
+        bundle: None,
     })?;
     println!(
         "Linked Cargo {}@{} selected for Host compilation; review its build-time code before app build",
         plugin_id, version
     );
     Ok(())
+}
+
+fn verified_v6_archive(
+    bundle: &Path,
+    release: &linked_cargo::LinkedCargoRelease,
+    target: &str,
+) -> anyhow::Result<SelectedV6Archive> {
+    let limits = BundleVerificationLimits {
+        max_file_bytes: MAX_CRATE_BYTES,
+        max_total_bytes: MAX_UNPACKED_BYTES,
+        ..BundleVerificationLimits::default()
+    };
+    let (verified, manifest) =
+        lenso_plugin_bundle::read_verified_bundle_with_limits(bundle, &limits)
+            .context("verify V6 Bundle before linked Cargo adoption")?;
+    let PluginManifest::V6(manifest) = manifest else {
+        bail!("--bundle requires a V6 Plugin Release with a Cargo build input");
+    };
+    ensure!(
+        manifest.contract.plugin_id() == release.plugin_id
+            && manifest.contract.release_version() == release.version,
+        "V6 Bundle Contract differs from exact signed linked Cargo release"
+    );
+    let matching = manifest
+        .implementations
+        .iter()
+        .flat_map(|implementation| {
+            implementation
+                .variants
+                .iter()
+                .map(move |variant| (implementation, variant))
+        })
+        .filter(|(_, variant)| {
+            matches!(variant.input, PluginVariantInputV6::CargoBuildInput { .. })
+                && variant
+                    .host_targets
+                    .iter()
+                    .any(|candidate| candidate == "*" || candidate == target)
+        })
+        .collect::<Vec<_>>();
+    let [(implementation, variant)] = matching.as_slice() else {
+        if matching.is_empty() {
+            bail!("V6 Bundle has no Cargo build input for Host target {target}");
+        }
+        bail!("V6 Bundle has ambiguous Cargo build inputs for Host target {target}");
+    };
+    ensure!(
+        variant.runtime.execution_class().as_str() == "lenso.native-rust@1"
+            && variant.runtime.runtime_profile() == "lenso.native-rust@1",
+        "V6 Cargo build input requires exact native-linked Host ABI lenso.native-rust@1"
+    );
+    ensure!(
+        variant.runtime.required_target_capabilities().is_empty(),
+        "V6 Cargo build input has target capability requirements without Host proof"
+    );
+    ensure!(
+        variant.execution_requirements.is_empty(),
+        "V6 Cargo build input has execution requirements without verified Host enforcement"
+    );
+    let PluginVariantInputV6::CargoBuildInput { build_input } = &variant.input else {
+        unreachable!("matching variants have Cargo build inputs")
+    };
+    ensure!(
+        build_input.package == release.package
+            && build_input.version == release.version
+            && build_input.digest == release.crate_digest
+            && build_input.size > 0
+            && build_input.size <= MAX_CRATE_BYTES,
+        "V6 Cargo build input coordinate, size, or digest differs from signed release"
+    );
+    let bytes = lenso_plugin_bundle::read_verified_cargo_build_input(
+        bundle,
+        build_input,
+        &release.plugin_id,
+        MAX_CRATE_BYTES,
+    )
+    .context("reopen exact verified V6 Cargo build input")?;
+    Ok(SelectedV6Archive {
+        bytes,
+        lock: V6BuildInputLock {
+            bundle_manifest_digest: verified.manifest_digest,
+            implementation_id: implementation.id.clone(),
+            variant_id: variant.id.clone(),
+        },
+    })
 }
 
 pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::Result<()> {
@@ -652,6 +765,10 @@ fn unpack(
 }
 
 fn same_tree(expected: &Path, actual: &Path) -> anyhow::Result<bool> {
+    same_tree_children(expected, actual, true)
+}
+
+fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Result<bool> {
     if !actual.is_dir() || actual.is_symlink() {
         return Ok(false);
     }
@@ -661,6 +778,11 @@ fn same_tree(expected: &Path, actual: &Path) -> anyhow::Result<bool> {
     let mut actual_entries = fs::read_dir(actual)?
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<Vec<_>, _>>()?;
+    if root {
+        // Cargo may materialize this generated dependency lock on first build.
+        // It is excluded from the adopted source digest and not in .crate input.
+        actual_entries.retain(|name| name != "Cargo.lock");
+    }
     expected_entries.sort();
     actual_entries.sort();
     if expected_entries != actual_entries {
@@ -674,7 +796,7 @@ fn same_tree(expected: &Path, actual: &Path) -> anyhow::Result<bool> {
             return Ok(false);
         }
         if expected_child.is_dir() {
-            if !same_tree(&expected_child, &actual_child)? {
+            if !same_tree_children(&expected_child, &actual_child, false)? {
                 return Ok(false);
             }
         } else if !metadata.is_file()
@@ -730,5 +852,20 @@ mod tests {
                 .contains("invalid path")
         );
         assert!(!stage.path().join("escape.rs").exists());
+    }
+
+    #[test]
+    fn repeated_adoption_ignores_only_generated_root_cargo_lock() {
+        let root = tempfile::tempdir().unwrap();
+        let expected = root.path().join("expected");
+        let actual = root.path().join("actual");
+        fs::create_dir_all(expected.join("nested")).unwrap();
+        fs::create_dir_all(actual.join("nested")).unwrap();
+        fs::write(expected.join("Cargo.toml"), b"[package]\n").unwrap();
+        fs::write(actual.join("Cargo.toml"), b"[package]\n").unwrap();
+        fs::write(actual.join("Cargo.lock"), b"generated\n").unwrap();
+        assert!(same_tree(&expected, &actual).unwrap());
+        fs::write(actual.join("nested/Cargo.lock"), b"unexpected\n").unwrap();
+        assert!(!same_tree(&expected, &actual).unwrap());
     }
 }

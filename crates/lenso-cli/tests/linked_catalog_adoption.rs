@@ -951,6 +951,13 @@ fn adopt_exact_twice(
             String::from_utf8_lossy(&added.stderr)
         );
     }
+    let lock =
+        fs::read_to_string(root.join("vendor/lenso/example.web/0.4.5/.lenso-linked-source.json"))
+            .unwrap();
+    assert!(
+        !lock.contains("\"v6\""),
+        "legacy linked Cargo source lock wire must not gain V6 fields"
+    );
 }
 
 fn assert_re_adoption_preserves_disabled(
