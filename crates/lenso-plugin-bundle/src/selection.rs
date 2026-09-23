@@ -11,7 +11,9 @@ pub use lenso_process_protocol::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{BundleError, PluginArtifactV2, PluginManifest};
+use crate::{
+    BundleError, PluginArtifactV2, PluginCargoBuildInputV6, PluginManifest, PluginVariantInputV6,
+};
 
 /// An explicit, fail-closed capability profile for one admitted target runtime.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -92,6 +94,12 @@ pub enum ImplementationRejectionReason {
     },
     /// A linked native factory is a Host build input, not a loadable Bundle Artifact.
     HostLinkedBuildRequired,
+    /// Verified Cargo source cannot be activated until a new Host is built.
+    CargoBuildInputRequiresHostRebuild {
+        package: String,
+        version: String,
+        digest: String,
+    },
     RuntimeNotAdmitted,
     RuntimeProfileMismatch {
         required_runtime_profile: String,
@@ -208,6 +216,7 @@ pub fn resolve_implementation(
         PluginManifest::V3(_) => "V3",
         PluginManifest::V4(_) => "V4",
         PluginManifest::V5(_) => "V5",
+        PluginManifest::V6(_) => "V6",
     };
     let explanation = explain_implementation(manifest, policy)?;
     let failure_detail = explanation.failure_detail(schema);
@@ -234,7 +243,7 @@ pub fn explain_implementation(
                 implementation_id: "default".to_owned(),
                 variant_id: None,
                 host_targets: vec![value.artifact.target.clone()],
-                artifact: value.artifact.clone(),
+                input: CandidateInput::Artifact(value.artifact.clone()),
                 descriptor,
                 artifact_matches_wasm: value.artifact.media_type == "application/wasm",
                 enforce_artifact_capability: false,
@@ -274,7 +283,32 @@ pub fn explain_implementation(
                         implementation_id: implementation.id.clone(),
                         variant_id: Some(variant.id.clone()),
                         host_targets: variant.host_targets.clone(),
-                        artifact: variant.artifact.clone(),
+                        input: CandidateInput::Artifact(variant.artifact.clone()),
+                        descriptor: value.contract.resolve(&variant.runtime),
+                        artifact_matches_wasm: false,
+                        enforce_artifact_capability: true,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(explain_candidates(&candidates, policy))
+        }
+        PluginManifest::V6(value) => {
+            let candidates = value
+                .implementations
+                .iter()
+                .flat_map(|implementation| {
+                    implementation.variants.iter().map(|variant| Candidate {
+                        implementation_id: implementation.id.clone(),
+                        variant_id: Some(variant.id.clone()),
+                        host_targets: variant.host_targets.clone(),
+                        input: match &variant.input {
+                            PluginVariantInputV6::Artifact { artifact } => {
+                                CandidateInput::Artifact(artifact.clone())
+                            }
+                            PluginVariantInputV6::CargoBuildInput { build_input } => {
+                                CandidateInput::CargoBuildInput(build_input.clone())
+                            }
+                        },
                         descriptor: value.contract.resolve(&variant.runtime),
                         artifact_matches_wasm: false,
                         enforce_artifact_capability: true,
@@ -291,10 +325,16 @@ struct Candidate {
     implementation_id: String,
     variant_id: Option<String>,
     host_targets: Vec<String>,
-    artifact: PluginArtifactV2,
+    input: CandidateInput,
     descriptor: PluginDescriptor,
     artifact_matches_wasm: bool,
     enforce_artifact_capability: bool,
+}
+
+#[derive(Clone, Debug)]
+enum CandidateInput {
+    Artifact(PluginArtifactV2),
+    CargoBuildInput(PluginCargoBuildInputV6),
 }
 
 fn explain_profiled_implementation<'a>(
@@ -314,7 +354,7 @@ fn explain_profiled_implementation<'a>(
             implementation_id: id.clone(),
             variant_id: None,
             host_targets: targets.clone(),
-            artifact: artifact.clone(),
+            input: CandidateInput::Artifact(artifact.clone()),
             descriptor: contract.resolve(runtime),
             artifact_matches_wasm: false,
             enforce_artifact_capability: false,
@@ -335,12 +375,24 @@ fn explain_candidates(
         match compatible.as_slice() {
             [] => {}
             [candidate] => {
+                let CandidateInput::Artifact(artifact) = &candidate.input else {
+                    // Keep the runtime-only API fail closed even if a future
+                    // admission change accidentally lets a build input through.
+                    rejected.push(rejected_candidate(
+                        candidate,
+                        build_input_rejection(&candidate.input),
+                    ));
+                    return ImplementationSelectionExplanation {
+                        selected: None,
+                        rejected,
+                    };
+                };
                 return ImplementationSelectionExplanation {
                     selected: Some(ResolvedPluginImplementation {
                         implementation_id: candidate.implementation_id.clone(),
                         variant_id: candidate.variant_id.clone(),
                         descriptor: candidate.descriptor.clone(),
-                        artifact: candidate.artifact.clone(),
+                        artifact: artifact.clone(),
                     }),
                     rejected,
                 };
@@ -428,14 +480,15 @@ fn record_target_match(
         ));
         return false;
     }
-    if candidate.artifact.media_type == "application/vnd.lenso.process"
-        && candidate.artifact.target != policy.host_target
+    if let CandidateInput::Artifact(artifact) = &candidate.input
+        && artifact.media_type == "application/vnd.lenso.process"
+        && artifact.target != policy.host_target
     {
         rejected.push(rejected_candidate(
             candidate,
             ImplementationRejectionReason::ArtifactTargetMismatch {
                 host_target: policy.host_target.clone(),
-                artifact_target: candidate.artifact.target.clone(),
+                artifact_target: artifact.target.clone(),
             },
         ));
         return false;
@@ -450,6 +503,13 @@ fn record_artifact_format_match(
 ) -> bool {
     if !candidate.enforce_artifact_capability {
         return true;
+    }
+    if matches!(&candidate.input, CandidateInput::CargoBuildInput(_)) {
+        rejected.push(rejected_candidate(
+            candidate,
+            build_input_rejection(&candidate.input),
+        ));
+        return false;
     }
     if admission.execution_class.as_str() == "lenso.native-rust@1" {
         rejected.push(rejected_candidate(
@@ -466,14 +526,17 @@ fn record_artifact_format_match(
         "lenso.bun-process@1" | "lenso.quickjs@1" => "application/javascript",
         _ => return true,
     };
-    if candidate.artifact.media_type == expected {
+    let CandidateInput::Artifact(artifact) = &candidate.input else {
+        return false;
+    };
+    if artifact.media_type == expected {
         return true;
     }
     rejected.push(rejected_candidate(
         candidate,
         ImplementationRejectionReason::ArtifactFormatMismatch {
             execution_class: admission.execution_class.clone(),
-            artifact_media_type: candidate.artifact.media_type.clone(),
+            artifact_media_type: artifact.media_type.clone(),
             expected_media_type: expected.to_owned(),
         },
     ));
@@ -565,10 +628,13 @@ fn target_requirements(candidate: &Candidate) -> Result<Vec<TargetCapabilityRequ
         );
     }
     if candidate.enforce_artifact_capability {
-        let inherent = match candidate.artifact.media_type.as_str() {
-            "application/wasm" => Some(ExecutionTargetCapability::WasmComponent),
-            "application/vnd.lenso.process" => Some(ExecutionTargetCapability::NativeProcess),
-            _ => None,
+        let inherent = match &candidate.input {
+            CandidateInput::Artifact(artifact) => match artifact.media_type.as_str() {
+                "application/wasm" => Some(ExecutionTargetCapability::WasmComponent),
+                "application/vnd.lenso.process" => Some(ExecutionTargetCapability::NativeProcess),
+                _ => None,
+            },
+            CandidateInput::CargoBuildInput(_) => None,
         };
         if let Some(feature) = inherent {
             requirements
@@ -628,6 +694,19 @@ fn rejected_candidate(
     }
 }
 
+fn build_input_rejection(input: &CandidateInput) -> ImplementationRejectionReason {
+    match input {
+        CandidateInput::CargoBuildInput(build_input) => {
+            ImplementationRejectionReason::CargoBuildInputRequiresHostRebuild {
+                package: build_input.package.clone(),
+                version: build_input.version.clone(),
+                digest: build_input.digest.clone(),
+            }
+        }
+        CandidateInput::Artifact(_) => ImplementationRejectionReason::HostLinkedBuildRequired,
+    }
+}
+
 fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
     let reason = match &rejection.reason {
         ImplementationRejectionReason::HostTargetMismatch { host_target, .. } => {
@@ -648,6 +727,13 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
         ),
         ImplementationRejectionReason::HostLinkedBuildRequired =>
             "native-linked Plugin is a static build input; adopt its exact source and rebuild the Host, not a runtime-loadable Bundle Artifact".to_owned(),
+        ImplementationRejectionReason::CargoBuildInputRequiresHostRebuild {
+            package,
+            version,
+            digest,
+        } => format!(
+            "Cargo build input `{package}@{version}` ({digest}) requires a new linked Host build; it is not a runtime-loadable Bundle Artifact"
+        ),
         ImplementationRejectionReason::RuntimeNotAdmitted => "runtime is not admitted".to_owned(),
         ImplementationRejectionReason::RuntimeProfileMismatch {
             required_runtime_profile,

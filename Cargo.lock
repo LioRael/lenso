@@ -2554,6 +2554,7 @@ version = "0.2.0"
 name = "lenso-plugin-bundle"
 version = "0.5.1"
 dependencies = [
+ "flate2",
  "hex",
  "lenso-app-plan",
  "lenso-process-protocol",
@@ -2561,6 +2562,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tar",
  "tempfile",
  "toml",
  "wasm-encoder 0.252.0",

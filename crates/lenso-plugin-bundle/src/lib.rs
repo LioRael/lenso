@@ -128,6 +128,47 @@ pub struct SourcePluginImplementationGroup {
     pub variants: Vec<SourcePluginImplementation>,
 }
 
+/// Source inputs for a release with executable and Host build-input variants.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourcePluginReleaseBuildV6 {
+    pub contract: PluginContract,
+    pub implementations: Vec<SourcePluginImplementationGroupV6>,
+    pub output: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourcePluginImplementationGroupV6 {
+    pub id: String,
+    pub variants: Vec<SourcePluginVariantV6>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourcePluginVariantV6 {
+    pub id: String,
+    pub host_targets: Vec<String>,
+    pub input: SourcePluginVariantInputV6,
+    pub entrypoint: String,
+    pub execution_class: ExecutionClassId,
+    pub runtime_profile: String,
+    pub required_target_capabilities: Vec<PlanExecutionTargetCapability>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SourcePluginVariantInputV6 {
+    Artifact {
+        path: PathBuf,
+        bundle_path: String,
+        media_type: String,
+        target: String,
+    },
+    CargoBuildInput {
+        path: PathBuf,
+        bundle_path: String,
+        package: String,
+        version: String,
+    },
+}
+
 #[derive(Clone, Debug)]
 struct SourceManifestDocument {
     value: PluginManifestV2,
@@ -174,6 +215,13 @@ impl ManifestDocument {
                         .map_err(|error| BundleError::InvalidManifest(error.to_string()))?,
                 )
             }
+            6 => {
+                validate_v6_profile_wire_shape(&value)?;
+                PluginManifest::V6(
+                    serde_json::from_value(value)
+                        .map_err(|error| BundleError::InvalidManifest(error.to_string()))?,
+                )
+            }
             _ => return invalid_manifest("unsupported schema version"),
         };
         validate_manifest(&value)?;
@@ -191,6 +239,7 @@ fn canonical_manifest_bytes(manifest: &PluginManifest) -> Result<Vec<u8>, Bundle
         PluginManifest::V3(value) => serde_json::to_value(value),
         PluginManifest::V4(value) => serde_json::to_value(value),
         PluginManifest::V5(value) => serde_json::to_value(value),
+        PluginManifest::V6(value) => serde_json::to_value(value),
     }
     .map_err(|error| BundleError::InvalidManifest(error.to_string()))?;
     if matches!(manifest, PluginManifest::V3(_)) {
@@ -288,6 +337,38 @@ fn validate_v5_profile_wire_shape(value: &Value) -> Result<(), BundleError> {
     Ok(())
 }
 
+fn validate_v6_profile_wire_shape(value: &Value) -> Result<(), BundleError> {
+    let contract = value
+        .get("contract")
+        .and_then(Value::as_object)
+        .ok_or_else(|| BundleError::InvalidManifest("contract is required".to_owned()))?;
+    if contract.get("authoring_version").is_none() {
+        return invalid_manifest("V6 contract requires authoring_version");
+    }
+    let implementations = value
+        .get("implementations")
+        .and_then(Value::as_array)
+        .ok_or_else(|| BundleError::InvalidManifest("implementations are required".to_owned()))?;
+    for implementation in implementations {
+        let variants = implementation
+            .get("variants")
+            .and_then(Value::as_array)
+            .ok_or_else(|| BundleError::InvalidManifest("V6 variants are required".to_owned()))?;
+        for variant in variants {
+            if !matches!(
+                variant
+                    .get("runtime")
+                    .and_then(|runtime| runtime.get("runtime_profile"))
+                    .and_then(Value::as_str),
+                Some(profile) if !profile.trim().is_empty()
+            ) {
+                return invalid_manifest("V6 variant requires a non-empty runtime_profile");
+            }
+        }
+    }
+    Ok(())
+}
+
 impl SourceManifestDocument {
     #[cfg(test)]
     fn parse(input: &[u8]) -> Result<Self, BundleError> {
@@ -374,6 +455,8 @@ pub struct VerifiedBundle {
     pub release_version: String,
     pub manifest_digest: String,
     pub artifact_digests: Vec<String>,
+    /// Verified source archives that still require a new Host build.
+    pub build_input_digests: Vec<String>,
     pub product_metadata_digests: Vec<String>,
 }
 
@@ -677,6 +760,124 @@ pub fn build_source_plugin_release_bundle_v5(
     verify_bundle_directory(&build.output)
 }
 
+/// Materializes a V6 release. A Cargo input is copied and verified, never built or loaded.
+pub fn build_source_plugin_release_bundle_v6(
+    build: &SourcePluginReleaseBuildV6,
+) -> Result<VerifiedBundle, BundleError> {
+    if build.output.exists() {
+        return invalid_bundle(format!(
+            "output `{}` already exists",
+            build.output.display()
+        ));
+    }
+    let mut files = Vec::new();
+    let mut implementations = Vec::with_capacity(build.implementations.len());
+    for group in &build.implementations {
+        let mut variants = Vec::with_capacity(group.variants.len());
+        for source in &group.variants {
+            let (variant, file) = materialize_source_variant_v6(&build.contract, source)?;
+            variants.push(variant);
+            files.push(file);
+        }
+        variants.sort_by(|left, right| left.id.cmp(&right.id));
+        implementations.push(PluginImplementationV6 {
+            id: group.id.clone(),
+            variants,
+        });
+    }
+    implementations.sort_by(|left, right| left.id.cmp(&right.id));
+    let manifest = PluginManifestV6 {
+        schema_version: 6,
+        contract: build.contract.clone(),
+        implementations,
+    };
+    validate_v6_manifest(&manifest)?;
+    let bytes = canonical_manifest_bytes(&PluginManifest::V6(manifest))?;
+
+    let parent = build.output.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(io_error)?;
+    let staging = tempfile::Builder::new()
+        .prefix(".lenso-plugin-")
+        .tempdir_in(parent)
+        .map_err(io_error)?;
+    for (source_path, bundle_path, bytes, is_executable) in files {
+        write_bundle_file(staging.path(), &bundle_path, &bytes)?;
+        if is_executable {
+            preserve_executable_permissions(&source_path, &staging.path().join(&bundle_path))?;
+        }
+    }
+    fs::write(staging.path().join(MANIFEST_FILE), bytes).map_err(io_error)?;
+    fs::rename(staging.path(), &build.output).map_err(io_error)?;
+    verify_bundle_directory(&build.output)
+}
+
+type SourceVariantFileV6 = (PathBuf, String, Vec<u8>, bool);
+
+fn materialize_source_variant_v6(
+    contract: &PluginContract,
+    source: &SourcePluginVariantV6,
+) -> Result<(PluginVariantV6, SourceVariantFileV6), BundleError> {
+    let (path, bundle_path, is_executable) = match &source.input {
+        SourcePluginVariantInputV6::Artifact {
+            path,
+            bundle_path,
+            media_type,
+            ..
+        } => (
+            path,
+            bundle_path,
+            media_type == "application/vnd.lenso.process",
+        ),
+        SourcePluginVariantInputV6::CargoBuildInput {
+            path, bundle_path, ..
+        } => (path, bundle_path, false),
+    };
+    let bytes = read_regular_file(path, "Plugin variant input")?;
+    let digest = sha256_digest(&bytes);
+    let size = u64::try_from(bytes.len())
+        .map_err(|_| BundleError::InvalidBundle("Input size exceeds u64".to_owned()))?;
+    let input = match &source.input {
+        SourcePluginVariantInputV6::Artifact {
+            media_type, target, ..
+        } => PluginVariantInputV6::Artifact {
+            artifact: PluginArtifactV2 {
+                path: bundle_path.clone(),
+                digest: digest.clone(),
+                size,
+                media_type: media_type.clone(),
+                target: target.clone(),
+            },
+        },
+        SourcePluginVariantInputV6::CargoBuildInput {
+            package, version, ..
+        } => PluginVariantInputV6::CargoBuildInput {
+            build_input: PluginCargoBuildInputV6 {
+                path: bundle_path.clone(),
+                digest: digest.clone(),
+                size,
+                package: package.clone(),
+                version: version.clone(),
+            },
+        },
+    };
+    Ok((
+        PluginVariantV6 {
+            id: source.id.clone(),
+            host_targets: source.host_targets.clone(),
+            input,
+            runtime: PluginImplementation::new(
+                contract.plugin_id(),
+                digest,
+                &source.entrypoint,
+                source.execution_class.clone(),
+            )
+            .with_runtime_profile(&source.runtime_profile)
+            .with_required_target_capabilities(source.required_target_capabilities.iter().copied()),
+        },
+        (path.clone(), bundle_path.clone(), bytes, is_executable),
+    ))
+}
+
 /// Verifies an already materialized directory as an exact immutable Bundle closure.
 pub fn verify_bundle_directory(root: &Path) -> Result<VerifiedBundle, BundleError> {
     verify_bundle_directory_with_limits(root, &BundleVerificationLimits::default())
@@ -764,6 +965,9 @@ fn verify_manifest_bundle_files(
         }
         PluginManifest::V5(value) => {
             verify_v5_bundle_files(root, value, &manifest.digest, files, limits)
+        }
+        PluginManifest::V6(value) => {
+            verify_v6_bundle_files(root, value, &manifest.digest, files, limits)
         }
     }
 }
@@ -853,6 +1057,7 @@ fn verify_profiled_bundle_files<'a>(
         release_version: contract.release_version().to_owned(),
         manifest_digest: manifest_digest.to_owned(),
         artifact_digests,
+        build_input_digests: Vec::new(),
         product_metadata_digests: Vec::new(),
     })
 }
@@ -904,6 +1109,69 @@ fn verify_v5_bundle_files(
         limits,
         "V5",
     )
+}
+
+fn verify_v6_bundle_files(
+    root: &Path,
+    manifest: &PluginManifestV6,
+    manifest_digest: &str,
+    files: &BTreeMap<String, BundleFileSummary>,
+    limits: &BundleVerificationLimits,
+) -> Result<VerifiedBundle, BundleError> {
+    let variants = manifest
+        .implementations
+        .iter()
+        .flat_map(|implementation| implementation.variants.iter())
+        .collect::<Vec<_>>();
+    if files.len() != variants.len() {
+        return invalid_bundle("V6 Bundle closure does not equal its variant inputs");
+    }
+    let artifacts = variants
+        .iter()
+        .filter_map(|variant| match &variant.input {
+            PluginVariantInputV6::Artifact { artifact } => Some((artifact, &variant.runtime)),
+            PluginVariantInputV6::CargoBuildInput { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    let artifact_files = artifacts
+        .iter()
+        .filter_map(|(artifact, _)| {
+            files
+                .get(&artifact.path)
+                .map(|summary| (artifact.path.clone(), summary.clone()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut verified = verify_profiled_bundle_files(
+        root,
+        &manifest.contract,
+        artifacts.iter().copied(),
+        artifacts.len(),
+        manifest_digest,
+        &artifact_files,
+        limits,
+        "V6",
+    )?;
+    for variant in variants {
+        let PluginVariantInputV6::CargoBuildInput { build_input } = &variant.input else {
+            continue;
+        };
+        let Some(summary) = files.get(&build_input.path) else {
+            return invalid_bundle(format!("V6 Bundle is missing `{}`", build_input.path));
+        };
+        if build_input.size != summary.size || build_input.digest != summary.digest {
+            return Err(BundleError::DigestMismatch(build_input.path.clone()));
+        }
+        let bytes = read_regular_file_bounded(
+            &root.join(&build_input.path),
+            "Cargo build input",
+            limits.max_file_bytes,
+        )?;
+        verify_cargo_build_input(&bytes, build_input, manifest.contract.plugin_id())?;
+        verified
+            .build_input_digests
+            .push(build_input.digest.clone());
+    }
+    Ok(verified)
 }
 
 fn verify_source_bundle_files(
@@ -971,6 +1239,7 @@ fn verify_source_bundle_files(
         release_version: manifest.value.release_version.clone(),
         manifest_digest: manifest.digest.clone(),
         artifact_digests: vec![artifact.digest.clone()],
+        build_input_digests: Vec::new(),
         product_metadata_digests: Vec::new(),
     })
 }
@@ -1160,6 +1429,7 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), BundleError> {
         PluginManifest::V3(value) => validate_v3_manifest(value),
         PluginManifest::V4(value) => validate_v4_manifest(value),
         PluginManifest::V5(value) => validate_v5_manifest(value),
+        PluginManifest::V6(value) => validate_v6_manifest(value),
     }
 }
 
@@ -1228,6 +1498,201 @@ fn validate_v5_manifest(manifest: &PluginManifestV5) -> Result<(), BundleError> 
                 return invalid_manifest("V5 variant does not close Plugin authority");
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_v6_manifest(manifest: &PluginManifestV6) -> Result<(), BundleError> {
+    if manifest.schema_version != 6 || manifest.contract.authoring_version() != 2 {
+        return invalid_manifest("V6 requires authoring_version 2");
+    }
+    if manifest.contract.plugin_id().is_empty()
+        || semver::Version::parse(manifest.contract.release_version()).is_err()
+        || manifest.contract.root_slot().is_empty()
+        || manifest.implementations.is_empty()
+    {
+        return invalid_manifest("V6 Contract or implementation set is invalid");
+    }
+    let mut implementation_ids = BTreeSet::new();
+    let mut paths = BTreeSet::new();
+    for implementation in &manifest.implementations {
+        if !valid_variant_identifier(&implementation.id)
+            || !implementation_ids.insert(&implementation.id)
+            || implementation.variants.is_empty()
+        {
+            return invalid_manifest(
+                "V6 implementation ids must be unique and non-empty, with variants",
+            );
+        }
+        let mut variant_ids = BTreeSet::new();
+        for variant in &implementation.variants {
+            if !valid_variant_identifier(&variant.id) || !variant_ids.insert(&variant.id) {
+                return invalid_manifest("V6 variant ids must be unique within an implementation");
+            }
+            if variant.host_targets.is_empty()
+                || variant
+                    .host_targets
+                    .iter()
+                    .any(|target| target.trim().is_empty())
+            {
+                return invalid_manifest("V6 variant host targets must be non-empty");
+            }
+            let (path, digest) = match &variant.input {
+                PluginVariantInputV6::Artifact { artifact } => {
+                    validate_artifact(artifact)?;
+                    if variant.runtime.execution_class().as_str() == "lenso.native-rust@1" {
+                        return invalid_manifest(
+                            "V6 native-linked variant requires a Cargo build input, not a runtime Artifact",
+                        );
+                    }
+                    (&artifact.path, &artifact.digest)
+                }
+                PluginVariantInputV6::CargoBuildInput { build_input } => {
+                    validate_cargo_build_input(build_input)?;
+                    if variant.runtime.execution_class().as_str() != "lenso.native-rust@1" {
+                        return invalid_manifest(
+                            "V6 Cargo build input requires the native-linked Execution Class",
+                        );
+                    }
+                    (&build_input.path, &build_input.digest)
+                }
+            };
+            if !paths.insert(path) {
+                return invalid_manifest("V6 variant input paths must be unique");
+            }
+            if variant.runtime.runtime_package_id() != manifest.contract.plugin_id()
+                || variant.runtime.runtime_package_revision() != digest
+                || variant.runtime.entrypoint().is_empty()
+                || variant.runtime.runtime_profile().trim().is_empty()
+            {
+                return invalid_manifest("V6 variant does not close Plugin authority");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_cargo_build_input(input: &PluginCargoBuildInputV6) -> Result<(), BundleError> {
+    validate_relative_path(&input.path)?;
+    digest_component(&input.digest)?;
+    if Path::new(&input.path)
+        .extension()
+        .is_none_or(|extension| extension != "crate")
+        || input.size == 0
+        || input.package.is_empty()
+        || !input
+            .package
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        || semver::Version::parse(&input.version).is_err()
+    {
+        return invalid_manifest(
+            "V6 Cargo build input needs a .crate path and valid Cargo coordinate",
+        );
+    }
+    Ok(())
+}
+
+fn verify_cargo_build_input(
+    bytes: &[u8],
+    input: &PluginCargoBuildInputV6,
+    plugin_id: &str,
+) -> Result<(), BundleError> {
+    const MAX_ENTRIES: usize = 4096;
+    const MAX_UNPACKED_BYTES: u64 = 128 * 1024 * 1024;
+    const MAX_CARGO_MANIFEST_BYTES: u64 = 128 * 1024;
+
+    let prefix = format!("{}-{}/", input.package, input.version);
+    let cargo_manifest_path = format!("{prefix}Cargo.toml");
+    let decoder = flate2::read::GzDecoder::new(bytes);
+    let mut archive = tar::Archive::new(decoder);
+    let mut count = 0;
+    let mut total_size = 0_u64;
+    let mut cargo_manifest = None;
+    let mut paths = BTreeSet::new();
+    for entry in archive.entries().map_err(io_error)? {
+        let mut entry = entry.map_err(io_error)?;
+        count += 1;
+        if count > MAX_ENTRIES {
+            return invalid_bundle("Cargo build input has too many archive entries");
+        }
+        let path_bytes = entry.path_bytes();
+        let path = std::str::from_utf8(&path_bytes).map_err(|_| {
+            BundleError::InvalidBundle("Cargo build input path is not UTF-8".to_owned())
+        })?;
+        let Some(relative) = path.strip_prefix(&prefix) else {
+            return invalid_bundle("Cargo build input contains an invalid archive path");
+        };
+        if relative.is_empty()
+            || relative.contains('\\')
+            || relative
+                .split('/')
+                .any(|part| matches!(part, "" | "." | ".."))
+            || matches!(relative, ".lenso-linked-source.json" | "Cargo.lock")
+            || relative.starts_with("target/")
+            || !paths.insert(path.to_owned())
+        {
+            return invalid_bundle("Cargo build input contains an invalid archive path");
+        }
+        let entry_type = entry.header().entry_type();
+        if !entry_type.is_file() {
+            return invalid_bundle("Cargo build input contains a non-file archive entry");
+        }
+        let entry_size = entry.header().size().map_err(io_error)?;
+        total_size = total_size.checked_add(entry_size).ok_or_else(|| {
+            BundleError::InvalidBundle("Cargo build input is too large".to_owned())
+        })?;
+        if total_size > MAX_UNPACKED_BYTES {
+            return invalid_bundle("Cargo build input is too large when unpacked");
+        }
+        if path == cargo_manifest_path {
+            if cargo_manifest.is_some() {
+                return invalid_bundle("Cargo build input has an invalid Cargo.toml");
+            }
+            let mut manifest_bytes = Vec::new();
+            entry
+                .take(MAX_CARGO_MANIFEST_BYTES + 1)
+                .read_to_end(&mut manifest_bytes)
+                .map_err(io_error)?;
+            if manifest_bytes.len() as u64 > MAX_CARGO_MANIFEST_BYTES
+                || manifest_bytes.len() as u64 != entry_size
+            {
+                return invalid_bundle("Cargo build input Cargo.toml is too large");
+            }
+            cargo_manifest = Some(manifest_bytes);
+        } else if std::io::copy(&mut entry, &mut std::io::sink()).map_err(io_error)? != entry_size {
+            return invalid_bundle("Cargo build input has a truncated archive entry");
+        }
+    }
+    let Some(cargo_manifest) = cargo_manifest else {
+        return invalid_bundle("Cargo build input has no root Cargo.toml");
+    };
+    let manifest = std::str::from_utf8(&cargo_manifest).map_err(|_| {
+        BundleError::InvalidBundle("Cargo build input Cargo.toml is not UTF-8".to_owned())
+    })?;
+    let manifest = toml::from_str::<toml::Value>(manifest).map_err(|error| {
+        BundleError::InvalidBundle(format!("invalid Cargo build input manifest: {error}"))
+    })?;
+    let package = manifest.get("package");
+    if package
+        .and_then(|package| package.get("name"))
+        .and_then(toml::Value::as_str)
+        != Some(input.package.as_str())
+        || package
+            .and_then(|package| package.get("version"))
+            .and_then(toml::Value::as_str)
+            != Some(input.version.as_str())
+    {
+        return invalid_bundle("Cargo build input coordinate differs from its archive manifest");
+    }
+    if package
+        .and_then(|package| package.get("metadata"))
+        .and_then(|metadata| metadata.get("lenso"))
+        .and_then(|lenso| lenso.get("plugin-id"))
+        .and_then(toml::Value::as_str)
+        != Some(plugin_id)
+    {
+        return invalid_bundle("Cargo build input Plugin ID differs from its release Contract");
     }
     Ok(())
 }
@@ -2112,7 +2577,10 @@ root-slot = "tools"
             selected.descriptor.contract(),
             match manifest {
                 PluginManifest::V4(value) => value.contract,
-                PluginManifest::V2(_) | PluginManifest::V3(_) | PluginManifest::V5(_) => {
+                PluginManifest::V2(_)
+                | PluginManifest::V3(_)
+                | PluginManifest::V5(_)
+                | PluginManifest::V6(_) => {
                     panic!("expected V4 manifest")
                 }
             }
@@ -3212,6 +3680,234 @@ root-slot = "tools"
         assert!(matches!(
             resolve_implementation(&parsed.value, &policy),
             Err(BundleError::InvalidBundle(detail)) if detail.contains("runtime ABI/profile")
+        ));
+    }
+
+    fn test_crate_archive(package: &str, version: &str, plugin_id: &str) -> Vec<u8> {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut archive = tar::Builder::new(encoder);
+        let manifest = format!(
+            "[package]\nname = \"{package}\"\nversion = \"{version}\"\n[package.metadata.lenso]\nplugin-id = \"{plugin_id}\"\n"
+        );
+        let mut header = tar::Header::new_gnu();
+        header.set_size(manifest.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        archive
+            .append_data(
+                &mut header,
+                format!("{package}-{version}/Cargo.toml"),
+                manifest.as_bytes(),
+            )
+            .unwrap();
+        archive.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one release fixture proves input integrity, runtime separation, target and ABI rejection"
+    )]
+    fn v6_separates_verified_cargo_build_input_from_runtime_artifact() {
+        let root = tempfile::tempdir().unwrap();
+        let crate_path = root.path().join("example-linked-1.0.0.crate");
+        let script_path = root.path().join("plugin.js");
+        let crate_bytes = test_crate_archive("example-linked", "1.0.0", "example.dual");
+        fs::write(&crate_path, &crate_bytes).unwrap();
+        fs::write(&script_path, b"export default {};").unwrap();
+        let output = root.path().join("example.lenso-plugin");
+        let verified = build_source_plugin_release_bundle_v6(&SourcePluginReleaseBuildV6 {
+            contract: PluginContract::new("example.dual", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![SourcePluginImplementationGroupV6 {
+                id: "same-behavior".to_owned(),
+                variants: vec![
+                    SourcePluginVariantV6 {
+                        id: "linked".to_owned(),
+                        host_targets: vec!["aarch64-apple-darwin".to_owned()],
+                        input: SourcePluginVariantInputV6::CargoBuildInput {
+                            path: crate_path,
+                            bundle_path: "implementations/same-behavior/example-linked-1.0.0.crate"
+                                .to_owned(),
+                            package: "example-linked".to_owned(),
+                            version: "1.0.0".to_owned(),
+                        },
+                        entrypoint: "linked-factory".to_owned(),
+                        execution_class: ExecutionClassId::new("lenso.native-rust@1"),
+                        runtime_profile: "lenso.native-rust@1".to_owned(),
+                        required_target_capabilities: Vec::new(),
+                    },
+                    SourcePluginVariantV6 {
+                        id: "quickjs".to_owned(),
+                        host_targets: vec!["*".to_owned()],
+                        input: SourcePluginVariantInputV6::Artifact {
+                            path: script_path,
+                            bundle_path: "implementations/same-behavior/plugin.js".to_owned(),
+                            media_type: "application/javascript".to_owned(),
+                            target: "javascript-es2023".to_owned(),
+                        },
+                        entrypoint: "plugin.js".to_owned(),
+                        execution_class: ExecutionClassId::new("lenso.quickjs@1"),
+                        runtime_profile: "lenso.quickjs-authoring@2".to_owned(),
+                        required_target_capabilities: Vec::new(),
+                    },
+                ],
+            }],
+            output: output.clone(),
+        })
+        .unwrap();
+        assert_eq!(
+            verified.build_input_digests,
+            vec![sha256_digest(&crate_bytes)]
+        );
+        assert_eq!(verified.artifact_digests.len(), 1);
+        assert_eq!(verify_bundle_directory(&output).unwrap(), verified);
+        let manifest = read_bundle_manifest(&output).unwrap();
+        let PluginManifest::V6(manifest_value) = &manifest else {
+            panic!("V6 builder must emit the V6 wire model");
+        };
+        assert_eq!(manifest_value.implementations[0].variants.len(), 2);
+        let native = ImplementationPolicy {
+            host_target: "aarch64-apple-darwin".to_owned(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.native-rust@1"),
+                "lenso.native-rust@1",
+                ExecutionTargetCapabilities::none(),
+            )],
+        };
+        let explanation = explain_implementation(&manifest, &native).unwrap();
+        assert!(!explanation.is_selected());
+        assert!(explanation.rejected.iter().any(|rejection| matches!(
+            &rejection.reason,
+            ImplementationRejectionReason::CargoBuildInputRequiresHostRebuild {
+                package,
+                version,
+                digest,
+            } if package == "example-linked" && version == "1.0.0"
+                && digest == &sha256_digest(&crate_bytes)
+        )));
+        assert!(matches!(
+            resolve_implementation(&manifest, &native),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("new linked Host build")
+        ));
+        let wrong_target = ImplementationPolicy {
+            host_target: "x86_64-unknown-linux-gnu".to_owned(),
+            runtimes: native.runtimes.clone(),
+        };
+        assert!(
+            explain_implementation(&manifest, &wrong_target)
+                .unwrap()
+                .rejected
+                .iter()
+                .any(|rejection| matches!(
+                    rejection.reason,
+                    ImplementationRejectionReason::HostTargetMismatch { .. }
+                ))
+        );
+        let wrong_profile = ImplementationPolicy {
+            host_target: native.host_target.clone(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.native-rust@1"),
+                "lenso.native-rust@2",
+                ExecutionTargetCapabilities::none(),
+            )],
+        };
+        assert!(
+            explain_implementation(&manifest, &wrong_profile)
+                .unwrap()
+                .rejected
+                .iter()
+                .any(|rejection| matches!(
+                    rejection.reason,
+                    ImplementationRejectionReason::RuntimeProfileMismatch { .. }
+                ))
+        );
+        let quickjs = ImplementationPolicy {
+            host_target: native.host_target,
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.quickjs@1"),
+                "lenso.quickjs-authoring@2",
+                ExecutionTargetCapabilities::none(),
+            )],
+        };
+        assert_eq!(
+            resolve_implementation(&manifest, &quickjs)
+                .unwrap()
+                .variant_id
+                .as_deref(),
+            Some("quickjs")
+        );
+        let mut unknown_field: Value =
+            serde_json::from_slice(&fs::read(output.join(MANIFEST_FILE)).unwrap()).unwrap();
+        unknown_field["implementations"][0]["variants"][0]["input"]["untrusted"] =
+            Value::Bool(true);
+        assert!(ManifestDocument::parse(&serde_json::to_vec(&unknown_field).unwrap()).is_err());
+        fs::write(
+            output.join("implementations/same-behavior/example-linked-1.0.0.crate"),
+            b"tampered",
+        )
+        .unwrap();
+        assert!(matches!(
+            verify_bundle_directory(&output),
+            Err(BundleError::DigestMismatch(_))
+        ));
+    }
+
+    #[test]
+    fn v6_rejects_forged_cargo_coordinates_and_native_runtime_artifacts() {
+        let bytes = test_crate_archive("actual", "1.0.0", "example.actual");
+        let input = PluginCargoBuildInputV6 {
+            path: "actual-1.0.0.crate".to_owned(),
+            digest: sha256_digest(&bytes),
+            size: bytes.len() as u64,
+            package: "forged".to_owned(),
+            version: "1.0.0".to_owned(),
+        };
+        assert!(matches!(
+            verify_cargo_build_input(&bytes, &input, "example.actual"),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("invalid archive path")
+                || detail.contains("coordinate differs")
+        ));
+        let exact_coordinate = PluginCargoBuildInputV6 {
+            package: "actual".to_owned(),
+            ..input
+        };
+        assert!(matches!(
+            verify_cargo_build_input(&bytes, &exact_coordinate, "example.forged"),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("Plugin ID differs")
+        ));
+
+        let artifact = PluginArtifactV2 {
+            path: "native.bin".to_owned(),
+            digest: sha256_digest(b"native"),
+            size: 6,
+            media_type: "application/vnd.lenso.process".to_owned(),
+            target: "aarch64-apple-darwin".to_owned(),
+        };
+        let manifest = PluginManifestV6 {
+            schema_version: 6,
+            contract: PluginContract::new("example.invalid", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV6 {
+                id: "native".to_owned(),
+                variants: vec![PluginVariantV6 {
+                    id: "linked".to_owned(),
+                    host_targets: vec!["aarch64-apple-darwin".to_owned()],
+                    input: PluginVariantInputV6::Artifact {
+                        artifact: artifact.clone(),
+                    },
+                    runtime: PluginImplementation::new(
+                        "example.invalid",
+                        artifact.digest,
+                        "factory",
+                        ExecutionClassId::new("lenso.native-rust@1"),
+                    ),
+                }],
+            }],
+        };
+        assert!(matches!(
+            validate_v6_manifest(&manifest),
+            Err(BundleError::InvalidManifest(detail)) if detail.contains("requires a Cargo build input")
         ));
     }
 }

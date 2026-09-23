@@ -521,7 +521,33 @@ pub(super) fn bundle(path: &Path, role: SourceRole) -> anyhow::Result<Candidate>
                 })
             })
             .collect(),
+        PluginManifest::V6(value) => value
+            .implementations
+            .iter()
+            .flat_map(|item| {
+                item.variants
+                    .iter()
+                    .filter(|variant| {
+                        matches!(
+                            &variant.input,
+                            lenso_plugin_bundle::PluginVariantInputV6::Artifact { .. }
+                        )
+                    })
+                    .map(|variant| {
+                        implementation(
+                            &format!("{}/{}", item.id, variant.id),
+                            variant.runtime.execution_class().as_str(),
+                            path,
+                        )
+                    })
+            })
+            .collect(),
     };
+    if implementations.is_empty() {
+        bail!(
+            "Plugin Bundle contains only Host build inputs; adopt its exact Cargo source and rebuild the Host"
+        );
+    }
     Ok(Candidate {
         composite: None,
         surface_owner: None,

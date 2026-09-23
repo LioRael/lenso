@@ -96,6 +96,56 @@ pub struct PluginVariantV5 {
     pub runtime: PluginImplementation,
 }
 
+/// A release that distinguishes executable artifacts from Host build inputs.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginManifestV6 {
+    pub schema_version: u32,
+    pub contract: PluginContract,
+    pub implementations: Vec<PluginImplementationV6>,
+}
+
+/// Publisher-declared behavioral group, independent of language or target.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginImplementationV6 {
+    pub id: String,
+    pub variants: Vec<PluginVariantV6>,
+}
+
+/// One immutable input, with requirements for the eventual execution binding.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginVariantV6 {
+    pub id: String,
+    pub host_targets: Vec<String>,
+    pub input: PluginVariantInputV6,
+    pub runtime: PluginImplementation,
+}
+
+/// Build inputs are not runtime-loadable artifacts, even with a Native class.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PluginVariantInputV6 {
+    Artifact {
+        artifact: PluginArtifactV2,
+    },
+    CargoBuildInput {
+        build_input: PluginCargoBuildInputV6,
+    },
+}
+
+/// Exact `.crate` bytes and Cargo coordinate to link into a newly built Host.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PluginCargoBuildInputV6 {
+    pub path: String,
+    pub digest: String,
+    pub size: u64,
+    pub package: String,
+    pub version: String,
+}
+
 /// A strictly parsed Plugin Manifest, including the legacy single-artifact form.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PluginManifest {
@@ -103,6 +153,7 @@ pub enum PluginManifest {
     V3(PluginManifestV3),
     V4(PluginManifestV4),
     V5(PluginManifestV5),
+    V6(PluginManifestV6),
 }
 
 impl PluginManifest {
@@ -112,6 +163,7 @@ impl PluginManifest {
             Self::V3(value) => value.contract.plugin_id(),
             Self::V4(value) => value.contract.plugin_id(),
             Self::V5(value) => value.contract.plugin_id(),
+            Self::V6(value) => value.contract.plugin_id(),
         }
     }
 
@@ -121,6 +173,7 @@ impl PluginManifest {
             Self::V3(value) => value.contract.release_version(),
             Self::V4(value) => value.contract.release_version(),
             Self::V5(value) => value.contract.release_version(),
+            Self::V6(value) => value.contract.release_version(),
         }
     }
 }
