@@ -241,7 +241,7 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     // Unlike the initial missing source, this outage happens after a real
     // Host has activated. Poll failure must retain that Host and its receipt;
     // restoring a later revision must use the same built distribution.
-    let log_offset = fs::metadata(&log).unwrap().len() as usize;
+    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     fs::remove_file(&snapshot).unwrap();
     await_source_outage(&mut dev.0, &log, log_offset);
     assert_eq!(generation(&source).unwrap(), output);
