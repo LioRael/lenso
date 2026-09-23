@@ -72,9 +72,13 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         .parent()
         .context("Host output needs a parent directory")?;
     fs::create_dir_all(parent)?;
-    let stage = tempfile::Builder::new()
-        .prefix(".lenso-local-host-")
-        .tempdir_in(parent)?;
+    let parent = fs::canonicalize(parent)?;
+    let destination = parent.join(
+        destination
+            .file_name()
+            .context("Host output needs a directory name")?,
+    );
+    let stage = stage_output(&root, &parent)?;
     fs::create_dir(stage.path().join(".lenso"))?;
     fs::write(stage.path().join(".lenso/plugin-root-authoring.lock"), [])?;
     fs::create_dir(stage.path().join("bundles"))?;
@@ -423,6 +427,51 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+pub(super) fn stage_output(root: &Path, parent: &Path) -> anyhow::Result<tempfile::TempDir> {
+    let root = fs::canonicalize(root)?;
+    let parent = fs::canonicalize(parent)?;
+    // Build output inside an App must not enter its authored-source fingerprint.
+    // Keep the stage on the output filesystem so publication stays atomic.
+    let stage_parent = if parent.starts_with(&root) {
+        let generated = parent.join(".lenso");
+        match fs::symlink_metadata(&generated) {
+            Ok(metadata) if metadata.is_dir() => {}
+            Ok(_) => bail!(
+                "Host staging path is not a directory: {}",
+                generated.display()
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&generated)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        let metadata = fs::symlink_metadata(&generated)?;
+        if !metadata.is_dir() {
+            bail!(
+                "Host staging path is not a directory: {}",
+                generated.display()
+            );
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if metadata.dev() != fs::metadata(parent)?.dev() {
+                bail!(
+                    "Host staging path is on a different filesystem: {}",
+                    generated.display()
+                );
+            }
+        }
+        generated
+    } else {
+        parent.to_path_buf()
+    };
+    tempfile::Builder::new()
+        .prefix(".lenso-local-host-")
+        .tempdir_in(stage_parent)
+        .context("stage local Host output")
 }
 
 fn publish_resources(

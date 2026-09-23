@@ -1154,10 +1154,74 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        AdapterSet, collect_local_lenso_patch, dependency, dependency_lock_digests,
+        AdapterSet, collect_local_lenso_patch, dependency, dependency_lock_digests, input_digest,
         local_framework_crates_dir, local_framework_dependency, pin_host_framework_versions,
         verify_dependency_lock_digests, web_ingress_dependency, write_generated_host_file,
     };
+
+    #[test]
+    fn generated_host_stage_does_not_change_root_cargo_source_digest() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("Cargo.toml"), b"[package]\nname = 'app'\n").unwrap();
+        let before = input_digest(root.path()).unwrap();
+
+        let stage = super::super::assemble::stage_output(root.path(), root.path()).unwrap();
+        let canonical_root = std::fs::canonicalize(root.path()).unwrap();
+        assert!(stage.path().starts_with(canonical_root.join(".lenso")));
+        std::fs::write(stage.path().join("generated-host"), b"first").unwrap();
+        assert_eq!(input_digest(root.path()).unwrap(), before);
+
+        let authored = root.path().join(".lenso-local-host-authored");
+        std::fs::create_dir(&authored).unwrap();
+        std::fs::write(authored.join("source.rs"), b"authored source").unwrap();
+        assert_ne!(input_digest(root.path()).unwrap(), before);
+        std::fs::remove_dir_all(authored).unwrap();
+        assert_eq!(input_digest(root.path()).unwrap(), before);
+
+        std::fs::write(root.path().join("src.rs"), b"real source edit").unwrap();
+        assert_ne!(input_digest(root.path()).unwrap(), before);
+    }
+
+    #[test]
+    fn generated_host_stage_uses_nested_source_parent_or_external_parent() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("Cargo.toml"), b"[package]\nname = 'app'\n").unwrap();
+        let before = input_digest(root.path()).unwrap();
+        let nested = root.path().join("review/output");
+        std::fs::create_dir_all(&nested).unwrap();
+        let nested_stage = super::super::assemble::stage_output(root.path(), &nested).unwrap();
+        let canonical_nested = std::fs::canonicalize(&nested).unwrap();
+        assert!(
+            nested_stage
+                .path()
+                .starts_with(canonical_nested.join(".lenso"))
+        );
+        std::fs::write(nested_stage.path().join("generated-host"), b"first").unwrap();
+        assert_eq!(input_digest(root.path()).unwrap(), before);
+
+        let external = tempfile::tempdir().unwrap();
+        let external_stage =
+            super::super::assemble::stage_output(root.path(), external.path()).unwrap();
+        let canonical_external = std::fs::canonicalize(external.path()).unwrap();
+        assert!(external_stage.path().starts_with(&canonical_external));
+        assert!(!external.path().join(".lenso").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generated_host_stage_rejects_symlinked_control_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(elsewhere.path(), root.path().join(".lenso")).unwrap();
+
+        let error = super::super::assemble::stage_output(root.path(), root.path()).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Host staging path is not a directory")
+        );
+        assert_eq!(std::fs::read_dir(elsewhere.path()).unwrap().count(), 0);
+    }
 
     #[test]
     fn unchanged_generated_host_file_preserves_mtime_but_edit_rewrites_it() {
