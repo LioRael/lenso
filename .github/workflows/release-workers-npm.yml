@@ -100,8 +100,11 @@ jobs:
       - name: Verify reviewed archive bytes
         env:
           EXPECTED_SHA256: ${{ needs.verify.outputs.archive_sha256 }}
+          RELEASE_SHA: ${{ inputs.source_sha }}
         run: |
-          test "$(git rev-parse HEAD)" = "${{ inputs.source_sha }}"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           shopt -s nullglob
           archives=(release-artifacts/*.tgz)
           test "${#archives[@]}" -eq 1
