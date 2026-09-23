@@ -110,13 +110,14 @@ Kernel entry, and independent generation state across checked-Plan starts.
 ### Local before/after evidence
 
 The paired run uses 20 samples and 3 warmups on each deterministic chain in the
-optimized bench profile. Raw distributions, compiler details, and source and
-executable hashes are retained in:
-
-- [Before JSON](validated-plan-reuse/before.json)
-- [After JSON](validated-plan-reuse/after.json)
-- [Build identity and source manifest](validated-plan-reuse/build-identity.json)
-- [Baseline harness patch](validated-plan-reuse/baseline-harness.patch)
+optimized bench profile. The [baseline harness patch](validated-plan-reuse/baseline-harness.patch)
+remains in the active tree because it is required to reproduce the comparable
+before build. The one-off raw sample JSON and full per-file source manifest are
+not benchmark inputs; they remain retrievable from historical commit
+`0bcb8e5a3ea9569d15abdbeb272d17992545e2cf` at
+`docs/performance/validated-plan-reuse/{before.json,after.json,build-identity.json}`.
+The summary below retains the measurements and provenance needed to interpret
+that archived evidence without keeping generated outputs in the active tree.
 
 Baseline production code is commit
 `c3fb3f3fa9c5df9bd35d8f1583d3c2ebf6a0a6a8`, with only the recorded benchmark
@@ -129,7 +130,16 @@ base plus source-manifest SHA-256
 The manifest hashes all crate Rust/TOML files plus root Cargo files; its digest
 is SHA-256 of the sorted, compact JSON `files` map. Both builds embed their
 identity in the benchmark binary; executable hashes identify the measured
-binaries without relying on the worktree's later state.
+binaries without relying on the worktree's later state. The baseline harness
+patch SHA-256 is
+`49946c90050355698a80ad2bb32ad048977bb39018992184ee20af3b01e49566`;
+the baseline and after executable SHA-256 values are, respectively,
+`86e5ede1d8abf9df906b6855feae55f064ebc5eaed732f968b2bcec54958a506`
+and `dade73da24f6526b351dc7f1e0e1b4ee18ba4888ea80562bfefde8146877c76b`.
+Both ran on macOS 27.0 arm64 with Rust 1.99.0-nightly
+(`375b1431b`, 2026-07-10) and Cargo 1.99.0-nightly (`59800466c`,
+2026-07-07). The host CPU model was unavailable to the sandbox, and unrelated
+system load was not controlled.
 
 Median durations in microseconds, **before → after**:
 
@@ -144,6 +154,8 @@ Median durations in microseconds, **before → after**:
 | Complete cold startup | 62.958 → 37.291 | 937.375 → 593.541 | 8678.458 → 6880.667 |
 
 Complete-start medians decreased about 41%, 37%, and 21% in this paired run.
+Complete-start p95 durations, also in microseconds, were 70.208 → 42.250,
+961.459 → 598.083, and 8982.584 → 7637.500 for 10, 100, and 500 Instances.
 Zero-nanosecond checked-validation samples reflect timer resolution, not zero
 work. Order copying and fresh Adapter generation construction remain measurable;
 prepared binding checks and lifecycle work still dominate larger graphs. The
