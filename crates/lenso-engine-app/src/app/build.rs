@@ -359,6 +359,13 @@ fn materialize(declaration: Declaration, args: &HostBuildArgs) -> anyhow::Result
         serde_json::to_vec_pretty(&build)?,
     )?;
     fs::write(
+        stage.path().join(".lenso/host-target.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "schema": "lenso.host-target.v1",
+            "target": args.target,
+        }))?,
+    )?;
+    fs::write(
         stage.path().join("bundles.json"),
         serde_json::to_vec_pretty(&inventory)?,
     )?;

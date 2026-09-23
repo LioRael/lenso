@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::bail;
+use anyhow::{Context as _, bail, ensure};
 use clap::Args;
 use lenso_app_plan::{
     CapabilityCardinality, CapabilityOperationKind,
@@ -34,7 +34,7 @@ pub struct ProjectFacts {
     pub kind: &'static str,
     pub status: &'static str,
     pub root: PathBuf,
-    pub host_target: &'static str,
+    pub host_target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_root_revision: Option<String>,
     pub runtime: RuntimeFacts,
@@ -220,9 +220,19 @@ pub fn inspect_project_facts_with_host_build(
             help: "Run `lenso doctor` for resolution checks without exposing configuration values.",
         });
     }
+    let host_target = persisted_host_target(&root);
+    if host_target.is_err() {
+        diagnostics.push(Diagnostic {
+            code: "LENSO_HOST_TARGET_UNVERIFIED",
+            severity: "error",
+            message: "The built Host target metadata is invalid or inconsistent.",
+            source: None,
+            help: "Inspect the built Host target and bundle inventory; rebuild the Host if either changed.",
+        });
+    }
 
     let mut report = ProjectFacts {
-        schema_version: 2,
+        schema_version: 3,
         kind: "lenso.app-facts",
         status: if diagnostics.is_empty() {
             "resolved"
@@ -230,7 +240,10 @@ pub fn inspect_project_facts_with_host_build(
             "invalid"
         },
         root: root.clone(),
-        host_target: lenso_app_authoring::native_host_target(),
+        host_target: host_target
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "unknown".into()),
         plugin_root_revision: None,
         runtime: RuntimeFacts {
             status: "not_observed",
@@ -278,6 +291,76 @@ pub fn inspect_project_facts_with_host_build(
             .collect();
     }
     Ok(report)
+}
+
+fn persisted_host_target(root: &Path) -> anyhow::Result<Option<String>> {
+    let lock = root.join(".lenso/distribution.lock.json");
+    if lock.is_file() {
+        let value: serde_json::Value =
+            serde_json::from_slice(&read_bounded(&lock, 8 * 1024 * 1024)?)?;
+        ensure!(
+            value["schema"] == "lenso.local-host-distribution.v1"
+                || value["schema"] == "lenso.host-distribution.v1",
+            "unsupported distribution lock schema"
+        );
+        return Ok(Some(target_field(&value)?));
+    }
+    let sidecar = root.join(".lenso/host-target.json");
+    let inventory = root.join("bundles.json");
+    let inventory_target = if inventory.is_file() {
+        let entries: Vec<serde_json::Value> =
+            serde_json::from_slice(&read_bounded(&inventory, 16 * 1024 * 1024)?)?;
+        ensure!(entries.len() <= 256, "Host bundle inventory exceeds limit");
+        let mut targets = entries
+            .iter()
+            .map(target_field)
+            .collect::<anyhow::Result<std::collections::BTreeSet<_>>>()?;
+        ensure!(
+            targets.len() <= 1,
+            "Host bundle inventory has conflicting targets"
+        );
+        targets.pop_first()
+    } else {
+        None
+    };
+    if !sidecar.is_file() {
+        return Ok(inventory_target);
+    }
+    let value: serde_json::Value = serde_json::from_slice(&read_bounded(&sidecar, 4096)?)?;
+    ensure!(
+        value["schema"] == "lenso.host-target.v1",
+        "unsupported Host target schema"
+    );
+    let target = target_field(&value)?;
+    ensure!(
+        inventory_target
+            .as_ref()
+            .is_none_or(|candidate| candidate == &target),
+        "Host target differs from bundle inventory"
+    );
+    Ok(Some(target))
+}
+
+fn target_field(value: &serde_json::Value) -> anyhow::Result<String> {
+    let target = value["target"].as_str().context("missing Host target")?;
+    ensure!(
+        !target.trim().is_empty() && target.len() <= 128,
+        "invalid Host target"
+    );
+    Ok(target.to_owned())
+}
+
+fn read_bounded(path: &Path, max: u64) -> anyhow::Result<Vec<u8>> {
+    use std::io::Read as _;
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(max + 1)
+        .read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() as u64 <= max,
+        "Host target evidence exceeds size limit"
+    );
+    Ok(bytes)
 }
 
 fn plugins(
@@ -554,6 +637,7 @@ root-slot = "agent"
                 .starts_with("sha256:")
         );
         assert_eq!(report.runtime.status, "not_observed");
+        assert_eq!(report.host_target, "unknown");
         assert!(report.diagnostics.is_empty());
         assert!(report.plugin_root_revision.is_some());
         assert_eq!(report.discovered_sources.len(), 1);
@@ -562,6 +646,40 @@ root-slot = "agent"
         assert!(serialized.contains("matches_adopted_coordinates"));
         assert!(!serialized.contains("matches_adopted_release"));
         assert!(!serialized.contains("must-not-enter-project-facts"));
+    }
+
+    #[test]
+    fn rejects_conflicting_persisted_host_target_without_claiming_machine_target() {
+        let temporary = app_root();
+        fs::write(
+            temporary.path().join(".lenso/host-target.json"),
+            r#"{"schema":"lenso.host-target.v1","target":"javascript-bun"}"#,
+        )
+        .unwrap();
+        fs::write(
+            temporary.path().join("bundles.json"),
+            r#"[{"target":"x86_64-unknown-linux-gnu"}]"#,
+        )
+        .unwrap();
+
+        let report = inspect_project_facts(temporary.path()).unwrap();
+        assert_eq!(report.status, "invalid");
+        assert_eq!(report.host_target, "unknown");
+        assert_eq!(report.diagnostics[0].code, "LENSO_HOST_TARGET_UNVERIFIED");
+    }
+
+    #[test]
+    fn reads_prepared_distribution_target_instead_of_inspector_target() {
+        let temporary = app_root();
+        fs::write(
+            temporary.path().join(".lenso/distribution.lock.json"),
+            r#"{"schema":"lenso.host-distribution.v1","target":"x86_64-unknown-linux-gnu"}"#,
+        )
+        .unwrap();
+
+        let report = inspect_project_facts(temporary.path()).unwrap();
+        assert_eq!(report.status, "resolved");
+        assert_eq!(report.host_target, "x86_64-unknown-linux-gnu");
     }
 
     #[test]

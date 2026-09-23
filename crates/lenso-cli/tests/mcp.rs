@@ -61,7 +61,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(facts["kind"], "lenso.app-facts");
-    assert_eq!(facts["schema_version"], 2);
+    assert_eq!(facts["schema_version"], 3);
     assert_eq!(facts["status"], "invalid");
     assert_eq!(facts["runtime"]["status"], "not_observed");
     assert!(by_id[&4]["error"].is_object());

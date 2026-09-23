@@ -309,6 +309,9 @@ fn host_build_persists_runtime_target_rejection_for_app_explain() {
     materialize(declaration(target_fallback_bundle(root.path())), &args).unwrap();
 
     let report = crate::app::explain::report(&args.out).unwrap();
+    let facts = crate::app::facts::inspect_project_facts(&args.out).unwrap();
+    assert_eq!(facts.host_target, "javascript-bun");
+    assert_eq!(facts.status, "resolved");
     assert_eq!(report["schema"], "lenso.app-explain.v1");
     assert_eq!(report["unmet_consumer_requirements"], serde_json::json!([]));
     assert_eq!(
