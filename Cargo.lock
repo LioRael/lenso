@@ -2786,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-wasm-component-adapter"
-version = "0.2.15"
+version = "0.2.16"
 dependencies = [
  "futures",
  "hex",

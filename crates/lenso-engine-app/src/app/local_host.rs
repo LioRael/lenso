@@ -278,7 +278,7 @@ pub(super) fn generate(
         "0.4" => [
             ("lenso-bun-adapter", "=0.1.14"),
             ("lenso-process-adapter", "=0.3.12"),
-            ("lenso-wasm-component-adapter", "=0.2.15"),
+            ("lenso-wasm-component-adapter", "=0.2.16"),
             ("lenso-runtime-codec", "=0.4.2"),
         ],
         other => bail!("unsupported typed Codec cohort {other}; use a custom Host"),
