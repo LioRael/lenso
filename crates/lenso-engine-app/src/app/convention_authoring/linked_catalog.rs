@@ -9,7 +9,7 @@ use anyhow::{Context as _, bail, ensure};
 use ed25519_dalek::VerifyingKey;
 use lenso_app_authoring::discovery::Candidate;
 use lenso_plugin_catalog::{
-    Trust,
+    Availability, Trust,
     linked_cargo::{self, LinkedCargoIntegration},
 };
 use serde::{Deserialize, Serialize};
@@ -40,6 +40,140 @@ struct SourceLock {
     source_digest: String,
 }
 
+/// One signed source-only catalog, without any claim that its crate can build.
+#[derive(Debug, Serialize)]
+pub struct LinkedCatalogReport {
+    pub schema_version: u32,
+    pub kind: &'static str,
+    pub catalog_id: String,
+    pub revision: u64,
+    pub requested_target: String,
+    pub releases: Vec<LinkedCatalogCandidate>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LinkedCatalogCandidate {
+    pub plugin_id: String,
+    pub version: String,
+    pub title: String,
+    pub summary: String,
+    pub package: String,
+    pub registry_url: String,
+    pub crate_digest: String,
+    pub integration: LinkedCargoIntegration,
+    pub targets: Vec<String>,
+    pub documentation: Vec<lenso_plugin_catalog::Documentation>,
+    pub adoption: &'static str,
+    pub rejection_reasons: Vec<&'static str>,
+    pub unverified: Vec<&'static str>,
+}
+
+pub fn inspect(
+    snapshot_path: &Path,
+    trust_path: &Path,
+    query: &str,
+    target: &str,
+) -> anyhow::Result<LinkedCatalogReport> {
+    ensure!(!target.trim().is_empty(), "requested target is empty");
+    let verified = read_verified(snapshot_path, trust_path)?;
+    let snapshot = verified.snapshot();
+    let query = query.to_lowercase();
+    let mut releases = snapshot
+        .releases
+        .iter()
+        .filter(|release| {
+            query.is_empty()
+                || release.plugin_id.to_lowercase().contains(&query)
+                || release.title.to_lowercase().contains(&query)
+                || release.summary.to_lowercase().contains(&query)
+        })
+        .map(|release| {
+            let mut rejection_reasons = Vec::new();
+            if release.availability != Availability::Listed {
+                rejection_reasons.push("not_listed");
+            }
+            if release.integration != LinkedCargoIntegration::LinkedPlugin {
+                rejection_reasons.push("requires_product_host");
+            }
+            if !release.targets.iter().any(|candidate| candidate == target) {
+                rejection_reasons.push("host_target_mismatch");
+            }
+            if release.registry_url != "https://crates.io" {
+                rejection_reasons.push("registry_not_supported_by_app_add");
+            }
+            LinkedCatalogCandidate {
+                plugin_id: release.plugin_id.clone(),
+                version: release.version.clone(),
+                title: release.title.clone(),
+                summary: release.summary.clone(),
+                package: release.package.clone(),
+                registry_url: release.registry_url.clone(),
+                crate_digest: release.crate_digest.clone(),
+                integration: release.integration,
+                targets: release.targets.clone(),
+                documentation: release.documentation.clone(),
+                adoption: if rejection_reasons.is_empty() {
+                    "candidate_only"
+                } else {
+                    "rejected"
+                },
+                rejection_reasons,
+                unverified: vec![
+                    "crate_archive_integrity_and_identity",
+                    "dependency_closure",
+                    "permissions_and_external_services",
+                    "host_build_and_runtime",
+                ],
+            }
+        })
+        .collect::<Vec<_>>();
+    releases.sort_by(|left, right| {
+        (&left.plugin_id, &left.version).cmp(&(&right.plugin_id, &right.version))
+    });
+    Ok(LinkedCatalogReport {
+        schema_version: 1,
+        kind: "lenso.linked-cargo-catalog",
+        catalog_id: snapshot.catalog_id.clone(),
+        revision: snapshot.revision,
+        requested_target: target.to_owned(),
+        releases,
+    })
+}
+
+fn read_verified(
+    snapshot_path: &Path,
+    trust_path: &Path,
+) -> anyhow::Result<linked_cargo::VerifiedLinkedCargoSnapshot> {
+    let mut trust_bytes = Vec::new();
+    fs::File::open(trust_path)?
+        .take(4097)
+        .read_to_end(&mut trust_bytes)?;
+    ensure!(
+        trust_bytes.len() <= 4096,
+        "linked Cargo trust file exceeds size limit"
+    );
+    let trust_file: TrustFile = serde_json::from_slice(&trust_bytes)?;
+    let key: [u8; 32] = hex::decode(trust_file.public_key_hex)?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("public trust key must have 32 bytes"))?;
+    let trust = Trust {
+        catalog_id: trust_file.catalog_id,
+        keys: BTreeMap::from([(trust_file.key_id, VerifyingKey::from_bytes(&key)?)]),
+    };
+    let mut envelope = Vec::new();
+    fs::File::open(snapshot_path)?
+        .take(lenso_plugin_catalog::MAX_ENVELOPE_BYTES as u64 + 1)
+        .read_to_end(&mut envelope)?;
+    ensure!(
+        envelope.len() <= lenso_plugin_catalog::MAX_ENVELOPE_BYTES,
+        "linked Cargo snapshot exceeds size limit"
+    );
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    linked_cargo::verify(&envelope, &trust, None, now)
+}
+
 pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     let snapshot_path = args
         .linked_snapshot
@@ -51,23 +185,10 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         .source
         .split_once('@')
         .context("linked Cargo source must be an exact PLUGIN_ID@VERSION")?;
-    let trust_file: TrustFile = serde_json::from_slice(&fs::read(trust_path)?)?;
-    let key: [u8; 32] = hex::decode(trust_file.public_key_hex)?
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("public trust key must have 32 bytes"))?;
-    let trust = Trust {
-        catalog_id: trust_file.catalog_id,
-        keys: BTreeMap::from([(trust_file.key_id, VerifyingKey::from_bytes(&key)?)]),
-    };
-    let envelope = fs::read(snapshot_path)?;
-    ensure!(
-        envelope.len() <= lenso_plugin_catalog::MAX_ENVELOPE_BYTES,
-        "linked Cargo snapshot exceeds size limit"
-    );
+    let verified = read_verified(snapshot_path, trust_path)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs();
-    let verified = linked_cargo::verify(&envelope, &trust, None, now)?;
     let release = verified.select(plugin_id, version, now)?;
     ensure!(
         release.integration == LinkedCargoIntegration::LinkedPlugin,

@@ -81,6 +81,12 @@ external Plugin Root applies only to `project_facts`. Neither tool mutates an
 App, starts a Host, or infers runtime readiness. These tools are not the
 complete Agent operation set (create, change, build, run, diagnose, and publish).
 
+An opt-in `lenso mcp --root APP --linked-snapshot SNAPSHOT --trust TRUST` also
+exposes `linked_catalog`. It reads the same signed source-only candidate
+projection as `app linked-catalog`, with a query, target, offset, page limit of
+20, and bounded output. It neither downloads a crate nor claims unverified
+permissions, dependency compatibility, or runtime readiness.
+
 ```rust,ignore
 lenso_engine_app::app::create_empty(project.clone())?;
 lenso_engine_app::app::adopt(project.clone(), "@lenso/cli".into(), true)?;

@@ -131,6 +131,11 @@ entries require a product Host adapter. This local flow does not fetch or prove
 crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
 published dependency cohort can compile the generated Host. Review source and
 build under an isolated account/container when the source is not trusted.
+Use `lenso app linked-catalog --linked-snapshot snapshot.json --trust trust.json
+--json` to search the same signed snapshot first. The result separates eligible
+source candidates from target, availability, Host-integration, and registry
+rejections; even an eligible entry remains `candidate_only` until the exact
+archive, dependency closure, permissions, build, and runtime are checked.
 Cargo subprocesses omit ambient business environment variables, but they can
 still read files available to the build account (including Cargo credentials)
 and execute build scripts or procedural macros; environment filtering is not

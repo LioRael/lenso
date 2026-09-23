@@ -35,6 +35,48 @@ pub struct UnadoptArgs {
     #[arg(long)]
     root: Option<PathBuf>,
 }
+#[derive(Clone, Debug, Args)]
+pub struct LinkedCatalogArgs {
+    /// Optional text matched against signed Plugin ID, title, and summary.
+    query: Option<String>,
+    /// Exact signed source-only linked Cargo snapshot.
+    #[arg(long)]
+    linked_snapshot: PathBuf,
+    /// Local public trust configuration for the signed catalog.
+    #[arg(long)]
+    trust: PathBuf,
+    /// Host target to check; defaults to this machine's Native target.
+    #[arg(long)]
+    target: Option<String>,
+    /// Emit a stable JSON report.
+    #[arg(long)]
+    json: bool,
+}
+
+pub fn linked_catalog(args: LinkedCatalogArgs) -> anyhow::Result<()> {
+    let target = args
+        .target
+        .unwrap_or_else(|| lenso_app_authoring::native_host_target().to_owned());
+    let report = linked_catalog::inspect(
+        &args.linked_snapshot,
+        &args.trust,
+        args.query.as_deref().unwrap_or_default(),
+        &target,
+    )?;
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else if report.releases.is_empty() {
+        println!("No signed linked Cargo candidates matched.");
+    } else {
+        for release in &report.releases {
+            println!(
+                "{}@{}\t{}\t{}",
+                release.plugin_id, release.version, release.adoption, release.summary
+            );
+        }
+    }
+    Ok(())
+}
 #[derive(Clone, Debug, Subcommand)]
 pub enum PluginCommand {
     New(NewArgs),

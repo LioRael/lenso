@@ -1,6 +1,7 @@
 use std::{
     fs,
-    process::Command,
+    io::Write as _,
+    process::{Command, Stdio},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -644,6 +645,151 @@ fn linked_catalog_target_mismatch_leaves_app_unchanged() {
     assert!(!root.join("app/example.web").exists());
 }
 
+fn assert_signed_catalog_search(
+    cli: &str,
+    root: &std::path::Path,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+) {
+    let listed = Command::new(cli)
+        .args(["app", "linked-catalog", "web", "--linked-snapshot"])
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        listed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    let candidates: serde_json::Value = serde_json::from_slice(&listed.stdout).unwrap();
+    assert_eq!(candidates["kind"], "lenso.linked-cargo-catalog");
+    assert_eq!(candidates["releases"][0]["plugin_id"], "example.web");
+    assert_eq!(candidates["releases"][0]["adoption"], "candidate_only");
+    assert_eq!(candidates["releases"][0]["version"], "0.4.5");
+    assert!(
+        candidates["releases"][0]["unverified"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "host_build_and_runtime")
+    );
+    let mut mcp = Command::new(cli)
+        .args(["mcp", "--root"])
+        .arg(root)
+        .arg("--linked-snapshot")
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let request = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"linked_catalog","arguments":{"query":"web"}}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"linked_catalog","arguments":{"query":"web","offset":1,"limit":1}}}"#,
+    ].join("\n");
+    mcp.stdin
+        .take()
+        .unwrap()
+        .write_all(format!("{request}\n").as_bytes())
+        .unwrap();
+    let response = mcp.wait_with_output().unwrap();
+    assert!(
+        response.status.success(),
+        "{}",
+        String::from_utf8_lossy(&response.stderr)
+    );
+    let frames = String::from_utf8(response.stdout).unwrap();
+    let response_for = |id| {
+        frames
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .find(|frame| frame["id"] == id)
+            .unwrap()
+    };
+    let call = response_for(2);
+    let mcp_report: serde_json::Value =
+        serde_json::from_str(call["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(mcp_report["releases"], candidates["releases"]);
+    assert_eq!(mcp_report["total_releases"], 1);
+    assert!(mcp_report["next_offset"].is_null());
+    let next_page = response_for(3);
+    let next_report: serde_json::Value =
+        serde_json::from_str(next_page["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(next_report["total_releases"], 1);
+    assert!(next_report["releases"].as_array().unwrap().is_empty());
+    let wrong_target = Command::new(cli)
+        .args(["app", "linked-catalog", "--linked-snapshot"])
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .args(["--target", "unsupported-target", "--json"])
+        .output()
+        .unwrap();
+    assert!(wrong_target.status.success());
+    let candidates: serde_json::Value = serde_json::from_slice(&wrong_target.stdout).unwrap();
+    assert_eq!(candidates["releases"][0]["adoption"], "rejected");
+    assert_eq!(
+        candidates["releases"][0]["rejection_reasons"][0],
+        "host_target_mismatch"
+    );
+    assert_tampered_catalog_rejected(cli, snapshot_path, trust_path);
+}
+
+fn assert_tampered_catalog_rejected(
+    cli: &str,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+) {
+    let tampered = snapshot_path.with_file_name("tampered-snapshot.json");
+    let mut bytes = fs::read(snapshot_path).unwrap();
+    let middle = bytes.len() / 2;
+    bytes[middle] ^= 1;
+    fs::write(&tampered, bytes).unwrap();
+    let rejected = Command::new(cli)
+        .args(["app", "linked-catalog", "--linked-snapshot"])
+        .arg(&tampered)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+}
+
+fn adopt_exact_twice(
+    cli: &str,
+    root: &std::path::Path,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+    archive: &std::path::Path,
+) {
+    for _ in 0..2 {
+        let added = Command::new(cli)
+            .args(["app", "add", "example.web@0.4.5", "--root"])
+            .arg(root)
+            .arg("--linked-snapshot")
+            .arg(snapshot_path)
+            .arg("--trust")
+            .arg(trust_path)
+            .arg("--crate")
+            .arg(archive)
+            .output()
+            .unwrap();
+        assert!(
+            added.status.success(),
+            "{}",
+            String::from_utf8_lossy(&added.stderr)
+        );
+    }
+}
+
 #[test]
 fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     let temp = tempfile::tempdir().unwrap();
@@ -689,25 +835,9 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     fs::write(&trust_path, serde_json::to_vec(&serde_json::json!({
         "catalog_id": "test-catalog", "key_id": "test-key", "public_key_hex": hex::encode(key.verifying_key().to_bytes())
     })).unwrap()).unwrap();
+    assert_signed_catalog_search(cli, &root, &snapshot_path, &trust_path);
     reject_unlisted_version_and_changed_archive(cli, &root, &snapshot_path, &trust_path, &archive);
-    for _ in 0..2 {
-        let added = Command::new(cli)
-            .args(["app", "add", "example.web@0.4.5", "--root"])
-            .arg(&root)
-            .arg("--linked-snapshot")
-            .arg(&snapshot_path)
-            .arg("--trust")
-            .arg(&trust_path)
-            .arg("--crate")
-            .arg(&archive)
-            .output()
-            .unwrap();
-        assert!(
-            added.status.success(),
-            "{}",
-            String::from_utf8_lossy(&added.stderr)
-        );
-    }
+    adopt_exact_twice(cli, &root, &snapshot_path, &trust_path, &archive);
     let discovery = Command::new(cli)
         .args(["app", "discover", "--json", "--root"])
         .arg(&root)

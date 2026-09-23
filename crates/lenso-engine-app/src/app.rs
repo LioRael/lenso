@@ -86,6 +86,24 @@ pub fn inspect_app_explanation(root: impl AsRef<Path>) -> anyhow::Result<serde_j
     explain::report(root.as_ref())
 }
 
+/// Read exact signed linked-Cargo candidate metadata without adopting or
+/// claiming that an archive or generated Host has passed compatibility checks.
+pub fn inspect_linked_cargo_catalog(
+    snapshot: impl AsRef<Path>,
+    trust: impl AsRef<Path>,
+    query: &str,
+    target: &str,
+) -> anyhow::Result<serde_json::Value> {
+    Ok(serde_json::to_value(
+        convention_authoring::linked_catalog::inspect(
+            snapshot.as_ref(),
+            trust.as_ref(),
+            query,
+            target,
+        )?,
+    )?)
+}
+
 /// Create the same source App through an embedding or root CLI.
 pub fn create_source(args: CreateArgs) -> anyhow::Result<()> {
     local_workflow::create(args)
@@ -146,6 +164,9 @@ pub enum AppCommand {
     Explain(explain::ExplainArgs),
     /// Discover local Plugin source projects and Bundles without building or activating them.
     Discover(ProjectArgs),
+    /// Search an exact signed source-only linked Cargo snapshot without adopting candidates.
+    #[command(name = "linked-catalog")]
+    LinkedCatalog(convention_authoring::LinkedCatalogArgs),
     /// Explain local convention support and selected surface packages without executing code.
     Inspect(ProjectArgs),
     /// Report resolved project facts for agents and other development tools.
@@ -218,6 +239,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
         AppCommand::Show(args) => show(args),
         AppCommand::Explain(args) => explain::run(args),
         AppCommand::Discover(args) => discover(args),
+        AppCommand::LinkedCatalog(args) => convention_authoring::linked_catalog(args),
         AppCommand::Inspect(args) => inspect(args),
         AppCommand::Facts(args) => facts::facts(args),
         AppCommand::Assemble(args) => assemble::assemble(args),
