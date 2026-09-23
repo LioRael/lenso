@@ -517,16 +517,25 @@ fn signed_search(args: SignedSearchArgs) -> anyhow::Result<()> {
     } else {
         println!(
             "Signed Portable catalog {} revision {} (stale: {}). Candidate metadata only; target compatibility and installation are not verified.",
-            page.catalog_id, page.revision, page.stale
+            terminal_safe_text(&page.catalog_id),
+            page.revision,
+            page.stale
         );
         for release in &page.releases {
             println!(
                 "{}@{}\t{:?}\t{}",
-                release.plugin_id, release.version, release.availability, release.summary
+                terminal_safe_text(&release.plugin_id),
+                terminal_safe_text(&release.version),
+                release.availability,
+                terminal_safe_text(&release.summary)
             );
         }
     }
     Ok(())
+}
+
+fn terminal_safe_text(value: &str) -> String {
+    value.chars().flat_map(char::escape_default).collect()
 }
 
 fn install(args: CatalogMutationArgs, replace: bool) -> anyhow::Result<()> {

@@ -159,11 +159,12 @@ fn stdio_browses_signed_portable_metadata_without_installation_claim() {
         },
         availability,
     };
-    let releases = vec![
+    let mut releases = vec![
         make_release("example.available", Availability::Listed),
         make_release("example.withdrawn", Availability::Yanked),
         make_release("example.revoked", Availability::Revoked),
     ];
+    releases[0].summary = "Signed candidate \u{202e}metadata".into();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -200,6 +201,23 @@ fn stdio_browses_signed_portable_metadata_without_installation_claim() {
         String::from_utf8_lossy(&command.stderr)
     );
     let cli_page: serde_json::Value = serde_json::from_slice(&command.stdout).unwrap();
+    assert!(
+        cli_page["releases"][0]["summary"]
+            .as_str()
+            .unwrap()
+            .contains('\u{202e}')
+    );
+    let human = Command::new(cli)
+        .args(["plugins", "signed-search", "--snapshot"])
+        .arg(&snapshot_path)
+        .arg("--trust")
+        .arg(&trust_path)
+        .output()
+        .unwrap();
+    assert!(human.status.success());
+    let human_text = String::from_utf8(human.stdout).unwrap();
+    assert!(!human_text.contains('\u{202e}'));
+    assert!(human_text.contains("\\u{202e}"));
 
     let mut child = Command::new(cli)
         .args(["mcp", "--root"])
