@@ -4055,6 +4055,7 @@ root-slot = "tools"
     ) -> PluginVariantV6 {
         let digest = sha256_digest(id.as_bytes());
         let process = class == "lenso.process@1";
+        let wasm = class == "lenso.wasm-component@1";
         PluginVariantV6 {
             id: id.to_owned(),
             host_targets: vec![host_target.to_owned()],
@@ -4065,12 +4066,16 @@ root-slot = "tools"
                     size: id.len() as u64,
                     media_type: if process {
                         "application/vnd.lenso.process"
+                    } else if wasm {
+                        "application/wasm"
                     } else {
                         "application/javascript"
                     }
                     .to_owned(),
                     target: if process {
                         host_target
+                    } else if wasm {
+                        "wasm32-unknown-unknown"
                     } else {
                         "javascript-es2023"
                     }
@@ -4150,6 +4155,101 @@ root-slot = "tools"
                 Err(BundleError::InvalidBundle(detail)) if detail.contains("no verified enforcement")
             ));
         }
+    }
+
+    #[test]
+    fn v6_wasm_mechanism_does_not_prove_memory_or_deadline_requirements() {
+        let wasm_class = "lenso.wasm-component@1";
+        let policy = ImplementationPolicy {
+            host_target: "aarch64-apple-darwin".to_owned(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new(wasm_class),
+                wasm_class,
+                ExecutionTargetCapabilities::new([
+                    ExecutionTargetCapability::Request,
+                    ExecutionTargetCapability::WasmComponent,
+                ]),
+            )],
+        };
+        // Neither a demand below the Adapter defaults nor one above them is
+        // evidence that the selected Generation actually enforces that value.
+        let cases = [
+            (
+                ExecutionAdmissionRequirementV6::MemoryCeiling {
+                    max_bytes: 16 * 1024 * 1024,
+                },
+                "per linear memory",
+            ),
+            (
+                ExecutionAdmissionRequirementV6::MemoryCeiling {
+                    max_bytes: 128 * 1024 * 1024,
+                },
+                "per linear memory",
+            ),
+            (
+                ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 100 },
+                "pauses during Host imports",
+            ),
+            (
+                ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 2_000 },
+                "pauses during Host imports",
+            ),
+        ];
+        for (requirement, explanation_detail) in cases {
+            let manifest = v6_admission_manifest(vec![v6_admission_variant(
+                "restricted",
+                wasm_class,
+                "*",
+                vec![requirement.clone()],
+            )]);
+            let parsed =
+                ManifestDocument::parse(&canonical_manifest_bytes(&manifest).unwrap()).unwrap();
+            let explanation = explain_implementation(&parsed.value, &policy).unwrap();
+            assert!(!explanation.is_selected());
+            assert!(matches!(
+                explanation.rejected.as_slice(),
+                [RejectedPluginImplementation {
+                    reason: ImplementationRejectionReason::ExecutionRequirementsUnverified {
+                        requirements,
+                    },
+                    ..
+                }] if requirements == &vec![requirement]
+            ));
+            let error = resolve_implementation(&parsed.value, &policy).unwrap_err();
+            let detail = error.to_string();
+            assert!(detail.contains(explanation_detail), "{detail}");
+            assert!(detail.contains("not durably bound"), "{detail}");
+        }
+
+        for requirement in [
+            ExecutionAdmissionRequirementV6::OsSandbox,
+            ExecutionAdmissionRequirementV6::PermissionGrant {
+                permission: RequiredPermissionV6::OutboundNetwork,
+            },
+        ] {
+            let manifest = v6_admission_manifest(vec![v6_admission_variant(
+                "restricted",
+                wasm_class,
+                "*",
+                vec![requirement],
+            )]);
+            let detail = resolve_implementation(&manifest, &policy)
+                .unwrap_err()
+                .to_string();
+            assert!(detail.contains("no verified enforcement"), "{detail}");
+            assert!(!detail.contains("not durably bound"), "{detail}");
+        }
+
+        let unrestricted = v6_admission_variant("unrestricted", wasm_class, "*", Vec::new());
+        let restricted = v6_admission_variant(
+            "restricted",
+            wasm_class,
+            "*",
+            vec![ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 100 }],
+        );
+        let manifest = v6_admission_manifest(vec![restricted, unrestricted]);
+        let explanation = explain_implementation(&manifest, &policy).unwrap();
+        assert!(!explanation.is_selected());
     }
 
     #[test]

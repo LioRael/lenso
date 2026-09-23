@@ -125,6 +125,14 @@ When the Host admits the Execution Class but only a different runtime
 ABI/profile version, selection reports the exact required and admitted
 profiles instead of a generic unadmitted-runtime error.
 
+The current Wasm Component Adapter does apply Wasmtime limits, but those
+defaults are not persisted as selected V6 admission evidence or rechecked
+against the Adapter instantiated by the generated Host. In particular, its
+memory-size limit is per linear memory, not an aggregate Component/Host memory
+ceiling, and its turn timer pauses during Host imports. Neither mechanism
+currently discharges a V6 `MemoryCeiling` or `TurnDeadline` demand; both remain
+fail-closed even when their requested number is looser than an Adapter default.
+
 Selection is not runtime fallback. If the selected implementation fails its
 Ready Gate or later invocation, the Generation fails through its ordinary
 supervision policy. Choosing another implementation requires a newly resolved

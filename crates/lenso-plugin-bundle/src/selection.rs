@@ -812,14 +812,9 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
             "invalid target capability profile `{}` for `{}`",
             profile.profile, profile.target_profile
         ),
-        ImplementationRejectionReason::ExecutionRequirementsUnverified { requirements } => format!(
-            "Host has no verified enforcement for {}; no weaker variant was selected",
-            requirements
-                .iter()
-                .map(render_execution_requirement)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+        ImplementationRejectionReason::ExecutionRequirementsUnverified { requirements } => {
+            render_unverified_requirements(rejection, requirements)
+        }
         ImplementationRejectionReason::AmbiguousRuntimeAdmission {
             matching_implementation_ids,
         } => format!(
@@ -831,6 +826,51 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
         Some(variant) => format!("{}/{}: {reason}", rejection.implementation_id, variant),
         None => format!("{}: {reason}", rejection.implementation_id),
     }
+}
+
+fn render_unverified_requirements(
+    rejection: &RejectedPluginImplementation,
+    requirements: &[ExecutionAdmissionRequirementV6],
+) -> String {
+    let mut detail = format!(
+        "Host has no verified enforcement for {}; no weaker variant was selected",
+        requirements
+            .iter()
+            .map(render_execution_requirement)
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if rejection.execution_class.as_str() != "lenso.wasm-component@1" {
+        return detail;
+    }
+    if requirements.iter().any(|requirement| {
+        matches!(
+            requirement,
+            ExecutionAdmissionRequirementV6::MemoryCeiling { .. }
+        )
+    }) {
+        detail.push_str("; Wasmtime's current memory limit applies per linear memory, not to aggregate Component or Host memory");
+    }
+    if requirements.iter().any(|requirement| {
+        matches!(
+            requirement,
+            ExecutionAdmissionRequirementV6::TurnDeadline { .. }
+        )
+    }) {
+        detail.push_str("; the current Wasm turn timer pauses during Host imports");
+    }
+    if requirements.iter().any(|requirement| {
+        matches!(
+            requirement,
+            ExecutionAdmissionRequirementV6::MemoryCeiling { .. }
+                | ExecutionAdmissionRequirementV6::TurnDeadline { .. }
+        )
+    }) {
+        detail.push_str(
+            "; selected limits are not durably bound to and rechecked against the actual Adapter",
+        );
+    }
+    detail
 }
 
 fn render_execution_requirement(requirement: &ExecutionAdmissionRequirementV6) -> String {
