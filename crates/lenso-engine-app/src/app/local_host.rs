@@ -482,12 +482,7 @@ pub(super) fn generate(
             if let Some(address) = ingress.local_address() { eprintln!("Listening on http://{address}"); }
 "# } else { "" });
     if let Some((git, rev)) = git_lenso_source {
-        pin_host_framework_versions(
-            &mut dependencies,
-            &host_framework_dependencies,
-            &git,
-            &rev,
-        );
+        pin_host_framework_versions(&mut dependencies, &host_framework_dependencies, &git, &rev);
     }
     let patches = local_lenso_patches
         .into_iter()
