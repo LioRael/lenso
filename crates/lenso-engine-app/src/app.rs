@@ -49,6 +49,8 @@ pub async fn dev_source(args: DevArgs) -> anyhow::Result<()> {
 pub enum AppCommand {
     /// Adopt a local source or bundled convention support.
     Add(convention_authoring::AddArgs),
+    /// Withdraw one exact signed linked Cargo source from the next Host build.
+    Unadopt(convention_authoring::UnadoptArgs),
     /// Create an App-owned Plugin with optional language-specific entries.
     Plugin {
         #[command(subcommand)]
@@ -137,6 +139,7 @@ pub struct ShowArgs {
 pub async fn app(command: AppCommand) -> anyhow::Result<()> {
     match command {
         AppCommand::Add(args) => convention_authoring::add(args),
+        AppCommand::Unadopt(args) => convention_authoring::unadopt(args),
         AppCommand::Plugin { command } => convention_authoring::new(command),
         AppCommand::Contract { command } => contracts::scaffold::run(command),
         AppCommand::Build(args) => local_workflow::build(args),

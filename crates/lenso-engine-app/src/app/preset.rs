@@ -14,6 +14,10 @@ impl Plugin for AppProject {
     }
     fn plan(&self, _: &Snapshot) -> anyhow::Result<Vec<Step>> {
         let report = lenso_app_authoring::discovery::discover(&self.root)?;
+        super::convention_authoring::linked_catalog::verify_sources(
+            &self.root,
+            &report.candidates,
+        )?;
         // Domain-specific source inspection belongs to this optional preset.
         let conventions = lenso_app_authoring::discovery::conventions::plan(&report)?;
         let mut fingerprints = BTreeMap::new();

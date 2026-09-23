@@ -8,7 +8,7 @@ use std::{
     process::Command,
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
-mod linked_catalog;
+pub(super) mod linked_catalog;
 
 #[derive(Clone, Debug, Args)]
 pub struct AddArgs {
@@ -27,6 +27,13 @@ pub struct AddArgs {
     /// Exact registry .crate archive; it must match the signed digest.
     #[arg(long = "crate")]
     crate_archive: Option<PathBuf>,
+}
+#[derive(Clone, Debug, Args)]
+pub struct UnadoptArgs {
+    /// Exact linked Cargo Plugin ID and version originally adopted by app add.
+    source: String,
+    #[arg(long)]
+    root: Option<PathBuf>,
 }
 #[derive(Clone, Debug, Subcommand)]
 pub enum PluginCommand {
@@ -225,6 +232,11 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
     }
     println!("Adopted {} from {}", candidate.plugin_id, source.display());
     Ok(())
+}
+
+pub fn unadopt(args: UnadoptArgs) -> anyhow::Result<()> {
+    let root = fs::canonicalize(crate::plugins::project_root(args.root)?)?;
+    linked_catalog::unadopt(&root, &args.source)
 }
 
 pub fn new(command: PluginCommand) -> anyhow::Result<()> {

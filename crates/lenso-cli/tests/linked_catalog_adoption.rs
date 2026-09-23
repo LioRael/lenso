@@ -60,6 +60,72 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
     }
 }
 
+fn modified_linked_source_cannot_build(cli: &str, root: &std::path::Path) {
+    let source = root.join("vendor/lenso/example.web/0.4.5/src/lib.rs");
+    let original = fs::read(&source).unwrap();
+    fs::write(&source, b"pub fn modified() {}\n").unwrap();
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(!built.status.success());
+    assert!(
+        String::from_utf8_lossy(&built.stderr).contains("linked Cargo source changed"),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    fs::write(source, original).unwrap();
+}
+
+fn generated_cargo_lock_is_not_authored_source(cli: &str, root: &std::path::Path) {
+    let lock = root.join("vendor/lenso/example.web/0.4.5/Cargo.lock");
+    fs::write(&lock, "version = 4\n").unwrap();
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(root)
+        .env("CARGO_NET_OFFLINE", "true")
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&built.stderr).contains("linked Cargo source changed"));
+    fs::remove_file(lock).unwrap();
+}
+
+fn unadopt_exact_source(cli: &str, root: &std::path::Path) {
+    let removed = Command::new(cli)
+        .args(["app", "unadopt", "example.web@0.4.5", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(
+        removed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&removed.stderr)
+    );
+    let receipt = String::from_utf8(removed.stdout).unwrap();
+    let trash = receipt.trim().rsplit_once(" at ").unwrap().1;
+    assert!(
+        std::path::Path::new(trash)
+            .join("source/Cargo.toml")
+            .exists()
+    );
+    assert!(
+        std::path::Path::new(trash)
+            .join("plugin-root/default.toml")
+            .exists()
+    );
+    let after = Command::new(cli)
+        .args(["app", "discover", "--json", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(after.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&after.stdout).unwrap();
+    assert!(report["candidates"].as_array().unwrap().is_empty());
+    assert!(!root.join("plugins/example.web").exists());
+    assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+}
+
 fn assert_host_provided_rejected(
     cli: &str,
     temp: &std::path::Path,
@@ -253,6 +319,8 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         config["plugin_sources"][0].as_str(),
         Some("vendor/lenso/example.web/0.4.5")
     );
+    modified_linked_source_cannot_build(cli, &root);
+    generated_cargo_lock_is_not_authored_source(cli, &root);
     prove_build_when_requested(cli, &root);
     assert_host_provided_rejected(
         cli,
@@ -263,4 +331,5 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         snapshot,
         &key,
     );
+    unadopt_exact_source(cli, &root);
 }

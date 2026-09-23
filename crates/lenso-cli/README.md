@@ -130,7 +130,13 @@ portable runtime bundle. Only `linked_plugin` entries qualify. `host_provided`
 entries require a product Host adapter. This local flow does not fetch or prove
 crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
 published dependency cohort can compile the generated Host. Review source and
-run `lenso app build`, `app check`, and `app show` before use.
+run `lenso app build`, `app check`, and `app show` before use. `app build` checks
+the adopted source against its local content lock before invoking Cargo; this
+detects drift, but an App owner who can edit both files can replace that lock.
+Use `lenso app unadopt PLUGIN_ID@VERSION --root my-app` to withdraw the exact
+source and generated default Root intent from the next Host build. Both are
+moved to recoverable `.lenso/trash`; `plugins disable/remove` separately governs
+an Instance in an already built Host.
 
 For CLI Apps, `lenso app create my-app --cli` installs bundled local convention
 support. Write `cli.ts` or `cli.rs`, then run `lenso app dev -- hello --name Ada`.
