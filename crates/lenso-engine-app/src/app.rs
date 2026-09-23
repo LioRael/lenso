@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{ffi::OsStr, fs, path::PathBuf, process::Command};
 
 use anyhow::{Context, bail};
 use clap::{Args, Subcommand};
@@ -30,6 +30,43 @@ mod preset;
 pub use preset::AppProject;
 #[allow(dead_code)]
 mod terminal;
+
+/// Keep build-phase subprocesses from inheriting business/runtime credentials.
+/// This is an environment boundary, not a filesystem or execution sandbox.
+pub(crate) fn cargo_command() -> Command {
+    build_command("cargo")
+}
+
+pub(crate) fn build_command(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    command.env_clear();
+    for name in [
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "TMPDIR",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TERM",
+        "DEVELOPER_DIR",
+        "SDKROOT",
+        "MACOSX_DEPLOYMENT_TARGET",
+        "CARGO_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_NET_OFFLINE",
+        "RUSTUP_HOME",
+        "RUSTUP_TOOLCHAIN",
+        "RUSTC",
+        "RUSTDOC",
+    ] {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    command
+}
 
 // Keep the command argument constructible for an embedding CLI.  The command
 // owns the persisted Host inspection; callers should not recreate a profile

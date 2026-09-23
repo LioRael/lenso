@@ -10,7 +10,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path, PathBuf},
-    process::Command,
 };
 
 pub mod scaffold;
@@ -448,7 +447,7 @@ fn scan(
     Ok(())
 }
 fn cargo_metadata(manifest: &Path) -> anyhow::Result<Value> {
-    let output = Command::new("cargo")
+    let output = super::cargo_command()
         .args(["metadata", "--format-version=1", "--manifest-path"])
         .arg(manifest)
         .output()?;

@@ -339,7 +339,9 @@ fn ts_host_cli_build_check_show_and_rejection_use_the_same_authority() {
     assert!(!competing_authority.status.success());
     assert!(
         String::from_utf8_lossy(&competing_authority.stderr)
-            .contains("cannot replace distribution Host authority")
+            .contains("external App root Host authority differs from the distribution Host build"),
+        "{}",
+        String::from_utf8_lossy(&competing_authority.stderr)
     );
     fs::write(
         root.path().join("NOTICES.txt"),

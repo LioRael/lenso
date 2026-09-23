@@ -304,7 +304,7 @@ pub fn new(command: PluginCommand) -> anyhow::Result<()> {
     }
     if !args.no_install
         && matches!(args.language, Language::Rust)
-        && !Command::new("cargo")
+        && !super::cargo_command()
             .arg("check")
             .current_dir(&destination)
             .status()?

@@ -15,10 +15,12 @@ fn crate_archive(package: &str, version: &str, plugin_id: &str) -> Vec<u8> {
         "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id={plugin_id:?}\nroot-slot='tools'\n[dependencies]\nlenso='=0.5.25'\n"
     );
     let source = b"#[lenso::plugin(consumer)]\n#[derive(Clone, Debug)]\nstruct Core {}\n";
+    let build_script = b"fn main() { assert!(std::env::var_os(\"LENSO_BUILD_SECRET_CANARY\").is_none(), \"ambient secret reached linked Cargo build script\"); println!(\"cargo:warning=LENSO_BUILD_ENV_CANARY_RAN\"); }\n";
     let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     let mut builder = tar::Builder::new(encoder);
     for (name, bytes) in [
         ("Cargo.toml", manifest.as_bytes()),
+        ("build.rs", build_script.as_slice()),
         ("src/lib.rs", source.as_slice()),
     ] {
         let mut header = tar::Header::new_gnu();
@@ -79,12 +81,17 @@ fn prove_build_when_requested(cli: &str, root: &std::path::Path) {
         .arg(root)
         .current_dir(root)
         .env("CARGO_TARGET_DIR", workspace.join("target"))
+        .env("LENSO_BUILD_SECRET_CANARY", "private-runtime-value")
         .output()
         .unwrap();
     assert!(
         built.status.success(),
         "{}",
         String::from_utf8_lossy(&built.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&built.stderr).contains("LENSO_BUILD_ENV_CANARY_RAN"),
+        "linked build script was not exercised"
     );
     let distribution = root.join("dist");
     assert_eq!(

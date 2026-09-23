@@ -7,7 +7,7 @@ use lenso_app_authoring::discovery::{
         generated_resource_contribution,
     },
 };
-use std::{fs, path::Path, process::Command, time::Duration};
+use std::{fs, path::Path, time::Duration};
 
 /// All selected convention results. A convention may produce a normal Plugin
 /// candidate or a resource-only contribution, never an implicit stand-in
@@ -73,7 +73,7 @@ pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Co
         }
         let candidate = generated_candidate(&project, compilation)?;
         if candidate.format == "bun" {
-            let status = Command::new("bun")
+            let status = super::build_command("bun")
                 .args(["install", "--ignore-scripts"])
                 .current_dir(&project)
                 .status()?;
@@ -82,7 +82,7 @@ pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Co
             }
         }
         if candidate.format == "cargo"
-            && !Command::new("cargo")
+            && !super::cargo_command()
                 .arg("generate-lockfile")
                 .current_dir(&project)
                 .status()?

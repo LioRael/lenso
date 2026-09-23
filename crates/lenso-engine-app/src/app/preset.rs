@@ -50,7 +50,7 @@ impl Plugin for AppProject {
         }
         let _cancellation = CancellationGuard::enter(context.cancelled.clone());
         let _runtime = RuntimeGuard::enter(self.runtime_executable.clone());
-        let info = std::process::Command::new(&self.runtime_executable)
+        let info = super::build_command(&self.runtime_executable)
             .arg("--engine-host-info")
             .output()?;
         if !info.status.success() {

@@ -130,9 +130,14 @@ portable runtime bundle. Only `linked_plugin` entries qualify. `host_provided`
 entries require a product Host adapter. This local flow does not fetch or prove
 crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
 published dependency cohort can compile the generated Host. Review source and
-run `lenso app build`, `app check`, and `app show` before use. `app build` checks
-the adopted source against its local content lock before invoking Cargo; this
-detects drift, but an App owner who can edit both files can replace that lock.
+build under an isolated account/container when the source is not trusted.
+Cargo subprocesses omit ambient business environment variables, but they can
+still read files available to the build account (including Cargo credentials)
+and execute build scripts or procedural macros; environment filtering is not
+a security sandbox. Run `lenso app build`, `app check`, and `app show` before
+use. `app build` checks the adopted source against its local content lock before
+invoking Cargo; this detects drift, but an App owner who can edit both files can
+replace that lock.
 Use `lenso app unadopt PLUGIN_ID@VERSION --root my-app` to withdraw the exact
 source and generated default Root intent from the next Host build. Both are
 moved to recoverable `.lenso/trash`; `plugins disable/remove` separately governs

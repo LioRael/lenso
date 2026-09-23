@@ -102,7 +102,7 @@ pub(super) fn extract(
             "{module}fn main() {{ let argument = std::env::args_os().nth(1).expect(\"output\"); let output = std::path::Path::new(&argument); {extract} {generate} }}\n"
         ),
     )?;
-    let status = Command::new("cargo")
+    let status = crate::app::cargo_command()
         .args(["run", "--quiet", "--manifest-path"])
         .arg(cache.join("Cargo.toml"))
         .arg("--")

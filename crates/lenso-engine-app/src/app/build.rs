@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
 use anyhow::{Context, bail};
 use clap::Args;
@@ -159,7 +159,7 @@ pub fn build(args: &HostBuildArgs) -> anyhow::Result<()> {
     )?;
     let javascript = std::env::var_os("LENSO_HOST_JS_RUNTIME")
         .context("TS Host build JavaScript runtime was not supplied by the npm CLI")?;
-    let output = Command::new(javascript)
+    let output = super::build_command(javascript)
         .arg(extractor)
         .arg(&source)
         .output()

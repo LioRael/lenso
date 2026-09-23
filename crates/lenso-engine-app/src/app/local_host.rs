@@ -9,7 +9,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 pub(super) fn generate(
@@ -70,7 +69,7 @@ pub(super) fn generate(
         if candidate.format != "cargo" {
             continue;
         }
-        let output = Command::new("cargo")
+        let output = super::cargo_command()
             .args(["metadata", "--format-version=1", "--filter-platform"])
             .arg(lenso_app_authoring::native_host_target())
             .arg("--manifest-path")
@@ -407,7 +406,7 @@ pub(super) fn generate(
         "fn main() { println!(\"cargo:rustc-check-cfg=cfg(generated_native_host)\"); println!(\"cargo:rustc-cfg=generated_native_host\"); }\n",
     )?;
 
-    let output = Command::new("cargo")
+    let output = super::cargo_command()
         .args([
             "build",
             "--release",
@@ -438,7 +437,7 @@ pub(super) fn generate(
         })
         .find_map(|message| message["executable"].as_str().map(PathBuf::from))
         .context("Cargo did not report the generated Host executable")?;
-    let output = Command::new(&binary).arg("--describe").output()?;
+    let output = super::build_command(&binary).arg("--describe").output()?;
     if !output.status.success() {
         bail!(
             "linked Host Descriptor failed: {}",

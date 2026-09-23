@@ -251,7 +251,7 @@ fn prepare_web_starter(root: &std::path::Path, no_install: bool) -> anyhow::Resu
 "#,
     )?;
     if !no_install
-        && !Command::new("cargo")
+        && !super::cargo_command()
             .args(["check", "--manifest-path"])
             .arg(root.join("Cargo.toml"))
             .status()?

@@ -7,7 +7,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 #[derive(Deserialize)]
@@ -102,7 +101,9 @@ impl Host {
         if super::local_host::digest(&installed)? != self.manifest.sha256 {
             bail!("precompiled Host changed during copy");
         }
-        let output = Command::new(&installed).arg("--describe").output()?;
+        let output = super::build_command(&installed)
+            .arg("--describe")
+            .output()?;
         if !output.status.success() {
             bail!("precompiled Host catalog probe failed");
         }
