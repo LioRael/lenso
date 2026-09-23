@@ -221,6 +221,21 @@ impl AppTools {
     }
 
     #[tool(
+        description = "Run the same read-only built-App resolution check as lenso app check --json"
+    )]
+    fn project_check(&self) -> Result<CallToolResult, McpError> {
+        let report = lenso_engine_app::app::inspect_app_check(&self.root).map_err(|_| {
+            McpError::internal_error(
+                "App check failed; inspect project_facts diagnostics or run lenso app check locally",
+                None,
+            )
+        })?;
+        let json = serde_json::to_string(&report)
+            .map_err(|_| McpError::internal_error("serialize App check", None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+    }
+
+    #[tool(
         description = "Inspect App facts without secret values; use section and pagination for large projects"
     )]
     fn project_facts(

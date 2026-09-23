@@ -240,8 +240,9 @@ Host mechanics, not application behavior.
 
 ## Inspect an App through MCP
 
-`lenso mcp --root ./my-app` serves read-only project facts and Host admission
-explanations over stdio. Configure `--linked-snapshot` and `--trust` to enable
+`lenso mcp --root ./my-app` serves read-only project facts, the same built-App
+resolution check as `lenso app check`, and Host admission explanations over
+stdio. Configure `--linked-snapshot` and `--trust` to enable
 signed candidate search; HTTPS documentation fetch also requires the explicit
 `--allow-document-fetch` flag. The MCP process cannot build, install, or edit
 the App.

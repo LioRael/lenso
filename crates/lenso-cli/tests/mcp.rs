@@ -33,6 +33,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"diagnostics","offset":1,"limit":1}}}"#,
         r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"project_facts","arguments":{"offset":1}}}"#,
         r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"diagnostics","limit":0}}}"#,
+        r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"project_check","arguments":{}}}"#,
     ].join("\n");
     child
         .stdin
@@ -52,12 +53,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 10, "{frames}");
+    assert_eq!(responses.len(), 11, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 10);
+    assert_eq!(by_id.len(), 11);
     let tools = by_id[&2]["result"]["tools"].as_array().unwrap();
     let names = tools
         .iter()
@@ -68,6 +69,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         [
             "linked_catalog",
             "linked_document",
+            "project_check",
             "project_explain",
             "project_facts",
         ]
@@ -98,6 +100,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_ne!(first_page["items"][0], second_page["items"][0]);
     assert!(by_id[&9]["error"].is_object());
     assert!(by_id[&10]["error"].is_object());
+    assert!(by_id[&11]["error"].is_object());
 }
 
 #[test]
@@ -139,6 +142,14 @@ fn stdio_explanation_matches_app_explain_json() {
         String::from_utf8_lossy(&explained.stderr)
     );
     let expected: serde_json::Value = serde_json::from_slice(&explained.stdout).unwrap();
+    let checked = Command::new(cli)
+        .args(["app", "check", "--root"])
+        .arg(&root)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(checked.status.success());
+    let expected_check: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
 
     let mut child = Command::new(cli)
         .args(["mcp", "--root"])
@@ -152,6 +163,7 @@ fn stdio_explanation_matches_app_explain_json() {
         r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#,
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_explain","arguments":{}}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_check","arguments":{}}}"#,
     ].join("\n");
     child
         .stdin
@@ -170,7 +182,7 @@ fn stdio_explanation_matches_app_explain_json() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 2);
+    assert_eq!(responses.len(), 3);
     let explain_response = responses
         .iter()
         .find(|response| response["id"] == 2)
@@ -182,4 +194,15 @@ fn stdio_explanation_matches_app_explain_json() {
     )
     .unwrap();
     assert_eq!(actual, expected);
+    let check_response = responses
+        .iter()
+        .find(|response| response["id"] == 3)
+        .unwrap();
+    let actual_check: serde_json::Value = serde_json::from_str(
+        check_response["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(actual_check, expected_check);
 }

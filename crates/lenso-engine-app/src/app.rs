@@ -8,6 +8,7 @@ use std::{
 use anyhow::{Context, bail};
 use clap::{Args, Subcommand};
 use lenso_app_plan::authoring::HostCatalog;
+use serde::Serialize;
 
 use crate::plugins::{load_resolved_app, project_root};
 
@@ -84,6 +85,27 @@ pub use explain::ExplainArgs;
 /// `lenso app explain --json`, without invoking a second resolver.
 pub fn inspect_app_explanation(root: impl AsRef<Path>) -> anyhow::Result<serde_json::Value> {
     explain::report(root.as_ref())
+}
+
+/// Validate one built App with the same resolver as `lenso app check`.
+pub fn inspect_app_check(root: impl AsRef<Path>) -> anyhow::Result<AppCheckReport> {
+    let resolved = load_resolved_app(root.as_ref())?;
+    Ok(AppCheckReport {
+        schema_version: 1,
+        kind: "lenso.app-check",
+        status: "passed",
+        plugin_instances: resolved.instances().len(),
+        capability_bindings: resolved.plan().capability_bindings().len(),
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct AppCheckReport {
+    pub schema_version: u32,
+    pub kind: &'static str,
+    pub status: &'static str,
+    pub plugin_instances: usize,
+    pub capability_bindings: usize,
 }
 
 /// Read exact signed linked-Cargo candidate metadata without adopting or
@@ -344,23 +366,13 @@ fn init(args: AppInitArgs) -> anyhow::Result<()> {
 
 fn check(args: ProjectArgs) -> anyhow::Result<()> {
     let root = project_root(args.root)?;
-    let resolved = load_resolved_app(&root)?;
+    let report = inspect_app_check(&root)?;
     if args.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "schema_version": 1,
-                "kind": "lenso.app-check",
-                "status": "passed",
-                "plugin_instances": resolved.instances().len(),
-                "capability_bindings": resolved.plan().capability_bindings().len(),
-            }))?
-        );
+        println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!(
             "App is valid: {} Plugin Instance(s), {} Capability binding(s).",
-            resolved.instances().len(),
-            resolved.plan().capability_bindings().len()
+            report.plugin_instances, report.capability_bindings
         );
     }
     Ok(())
