@@ -454,9 +454,8 @@ pub struct VerifiedBundle {
     pub plugin_id: String,
     pub release_version: String,
     pub manifest_digest: String,
+    /// Executable Artifact digests; V6 Cargo inputs remain in the verified Manifest closure.
     pub artifact_digests: Vec<String>,
-    /// Verified source archives that still require a new Host build.
-    pub build_input_digests: Vec<String>,
     pub product_metadata_digests: Vec<String>,
 }
 
@@ -770,12 +769,26 @@ pub fn build_source_plugin_release_bundle_v6(
             build.output.display()
         ));
     }
+    let limits = BundleVerificationLimits::default();
+    validate_verification_limits(&limits)?;
     let mut files = Vec::new();
+    let mut input_bytes = 0_u64;
     let mut implementations = Vec::with_capacity(build.implementations.len());
     for group in &build.implementations {
         let mut variants = Vec::with_capacity(group.variants.len());
         for source in &group.variants {
-            let (variant, file) = materialize_source_variant_v6(&build.contract, source)?;
+            if files.len() >= limits.max_file_count.saturating_sub(1) {
+                return invalid_bundle("V6 source inputs exceed the Bundle file-count limit");
+            }
+            let remaining = limits.max_total_bytes.saturating_sub(input_bytes);
+            let (variant, file) = materialize_source_variant_v6(
+                &build.contract,
+                source,
+                limits.max_file_bytes.min(remaining),
+            )?;
+            input_bytes = input_bytes
+                .checked_add(u64::try_from(file.2.len()).unwrap_or(u64::MAX))
+                .ok_or_else(|| BundleError::InvalidBundle("V6 source size overflow".to_owned()))?;
             variants.push(variant);
             files.push(file);
         }
@@ -793,6 +806,13 @@ pub fn build_source_plugin_release_bundle_v6(
     };
     validate_v6_manifest(&manifest)?;
     let bytes = canonical_manifest_bytes(&PluginManifest::V6(manifest))?;
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > limits.max_manifest_bytes
+        || input_bytes
+            .checked_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX))
+            .is_none_or(|total| total > limits.max_total_bytes)
+    {
+        return invalid_bundle("V6 source closure exceeds the Bundle size limits");
+    }
 
     let parent = build.output.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent).map_err(io_error)?;
@@ -816,6 +836,7 @@ type SourceVariantFileV6 = (PathBuf, String, Vec<u8>, bool);
 fn materialize_source_variant_v6(
     contract: &PluginContract,
     source: &SourcePluginVariantV6,
+    max_file_bytes: u64,
 ) -> Result<(PluginVariantV6, SourceVariantFileV6), BundleError> {
     let (path, bundle_path, is_executable) = match &source.input {
         SourcePluginVariantInputV6::Artifact {
@@ -832,7 +853,7 @@ fn materialize_source_variant_v6(
             path, bundle_path, ..
         } => (path, bundle_path, false),
     };
-    let bytes = read_regular_file(path, "Plugin variant input")?;
+    let bytes = read_regular_file_bounded(path, "Plugin variant input", max_file_bytes)?;
     let digest = sha256_digest(&bytes);
     let size = u64::try_from(bytes.len())
         .map_err(|_| BundleError::InvalidBundle("Input size exceeds u64".to_owned()))?;
@@ -1057,7 +1078,6 @@ fn verify_profiled_bundle_files<'a>(
         release_version: contract.release_version().to_owned(),
         manifest_digest: manifest_digest.to_owned(),
         artifact_digests,
-        build_input_digests: Vec::new(),
         product_metadata_digests: Vec::new(),
     })
 }
@@ -1141,7 +1161,7 @@ fn verify_v6_bundle_files(
                 .map(|summary| (artifact.path.clone(), summary.clone()))
         })
         .collect::<BTreeMap<_, _>>();
-    let mut verified = verify_profiled_bundle_files(
+    let verified = verify_profiled_bundle_files(
         root,
         &manifest.contract,
         artifacts.iter().copied(),
@@ -1167,9 +1187,6 @@ fn verify_v6_bundle_files(
             limits.max_file_bytes,
         )?;
         verify_cargo_build_input(&bytes, build_input, manifest.contract.plugin_id())?;
-        verified
-            .build_input_digests
-            .push(build_input.digest.clone());
     }
     Ok(verified)
 }
@@ -1239,7 +1256,6 @@ fn verify_source_bundle_files(
         release_version: manifest.value.release_version.clone(),
         manifest_digest: manifest.digest.clone(),
         artifact_digests: vec![artifact.digest.clone()],
-        build_input_digests: Vec::new(),
         product_metadata_digests: Vec::new(),
     })
 }
@@ -3756,10 +3772,6 @@ root-slot = "tools"
             output: output.clone(),
         })
         .unwrap();
-        assert_eq!(
-            verified.build_input_digests,
-            vec![sha256_digest(&crate_bytes)]
-        );
         assert_eq!(verified.artifact_digests.len(), 1);
         assert_eq!(verify_bundle_directory(&output).unwrap(), verified);
         let manifest = read_bundle_manifest(&output).unwrap();
@@ -3767,6 +3779,11 @@ root-slot = "tools"
             panic!("V6 builder must emit the V6 wire model");
         };
         assert_eq!(manifest_value.implementations[0].variants.len(), 2);
+        let linked = &manifest_value.implementations[0].variants[0];
+        let PluginVariantInputV6::CargoBuildInput { build_input } = &linked.input else {
+            panic!("linked variant must remain a build input");
+        };
+        assert_eq!(build_input.digest, sha256_digest(&crate_bytes));
         let native = ImplementationPolicy {
             host_target: "aarch64-apple-darwin".to_owned(),
             runtimes: vec![RuntimeAdmission::new(
@@ -3909,5 +3926,45 @@ root-slot = "tools"
             validate_v6_manifest(&manifest),
             Err(BundleError::InvalidManifest(detail)) if detail.contains("requires a Cargo build input")
         ));
+    }
+
+    #[test]
+    fn v6_builder_rejects_oversized_source_before_creating_output() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("oversized.crate");
+        fs::File::create(&source)
+            .unwrap()
+            .set_len(BundleVerificationLimits::default().max_file_bytes + 1)
+            .unwrap();
+        let output = root.path().join("oversized.lenso-plugin");
+        let error = build_source_plugin_release_bundle_v6(&SourcePluginReleaseBuildV6 {
+            contract: PluginContract::new("example.oversized", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![SourcePluginImplementationGroupV6 {
+                id: "native".to_owned(),
+                variants: vec![SourcePluginVariantV6 {
+                    id: "linked".to_owned(),
+                    host_targets: vec!["*".to_owned()],
+                    input: SourcePluginVariantInputV6::CargoBuildInput {
+                        path: source.clone(),
+                        bundle_path: "native/oversized.crate".to_owned(),
+                        package: "oversized".to_owned(),
+                        version: "1.0.0".to_owned(),
+                    },
+                    entrypoint: "linked-factory".to_owned(),
+                    execution_class: ExecutionClassId::new("lenso.native-rust@1"),
+                    runtime_profile: "lenso.native-rust@1".to_owned(),
+                    required_target_capabilities: Vec::new(),
+                }],
+            }],
+            output: output.clone(),
+        })
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            BundleError::InvalidBundle(detail) if detail.contains("configured size limit")
+        ));
+        assert!(!output.exists());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
     }
 }
