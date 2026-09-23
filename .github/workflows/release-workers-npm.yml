@@ -22,6 +22,11 @@ on:
         description: Publish using the configured npm Trusted Publisher
         type: boolean
         default: false
+      reviewed_archive_sha256:
+        description: SHA-256 reported by the reviewed dry run; required for publish
+        required: false
+        default: ''
+        type: string
 
 permissions: {}
 
@@ -56,7 +61,16 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           git fetch origin main --no-tags
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main
-          node --input-type=module -e 'import fs from "node:fs"; const p = JSON.parse(fs.readFileSync(process.env.PACKAGE_PATH + "/package.json")); if (p.version !== process.env.RELEASE_VERSION || p.private) process.exit(1);'
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const names = {
+              "crates/lenso-http-egress-plugin/js": "@lenso/http-egress-workers",
+              "crates/lenso-web-ingress-plugin/js": "@lenso/web-ingress-workers",
+            };
+            const path = process.env.PACKAGE_PATH;
+            const manifest = JSON.parse(fs.readFileSync(path + "/package.json"));
+            if (manifest.name !== names[path] || manifest.version !== process.env.RELEASE_VERSION || manifest.private) process.exit(1);
+          '
       - name: Install test dependencies without lifecycle scripts
         run: npm install --prefix "$PACKAGE_PATH" --ignore-scripts --package-lock=false
       - name: Test and pack reviewed artifact
@@ -101,10 +115,13 @@ jobs:
       - name: Verify reviewed archive bytes
         env:
           EXPECTED_SHA256: ${{ needs.verify.outputs.archive_sha256 }}
+          REVIEWED_SHA256: ${{ inputs.reviewed_archive_sha256 }}
           RELEASE_SHA: ${{ inputs.source_sha }}
         run: |
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$REVIEWED_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test "$EXPECTED_SHA256" = "$REVIEWED_SHA256"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           shopt -s nullglob
           archives=(release-artifacts/*.tgz)
