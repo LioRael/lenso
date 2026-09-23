@@ -1099,8 +1099,15 @@ fn collect_plugin_descriptors(
     bytes: &[u8],
     descriptors: &mut Vec<Vec<u8>>,
 ) -> Result<(), BundleError> {
+    let mut top_level_encoding = None;
     for payload in wasmparser::Parser::new(0).parse_all(bytes) {
         match payload.map_err(|error| BundleError::Wasm(error.to_string()))? {
+            wasmparser::Payload::Version { encoding, .. } if top_level_encoding.is_none() => {
+                top_level_encoding = Some(encoding);
+                if encoding != wasmparser::Encoding::Component {
+                    return invalid_bundle("Plugin Wasm Artifact must be a Component");
+                }
+            }
             wasmparser::Payload::CustomSection(section)
                 if section.name() == PLUGIN_DESCRIPTOR_SECTION =>
             {
@@ -1111,6 +1118,9 @@ fn collect_plugin_descriptors(
             }
             _ => {}
         }
+    }
+    if top_level_encoding.is_none() {
+        return invalid_bundle("Plugin Wasm Artifact has no Component header");
     }
     Ok(())
 }
@@ -1779,7 +1789,22 @@ mod tests {
                 data: Cow::Borrowed(descriptor),
             });
         }
-        module.finish()
+        let mut component = wasm_encoder::Component::new();
+        component.section(&wasm_encoder::ModuleSection(&module));
+        component.finish()
+    }
+
+    #[test]
+    fn core_module_with_descriptor_is_not_a_component() {
+        let mut module = wasm_encoder::Module::new();
+        module.section(&wasm_encoder::CustomSection {
+            name: Cow::Borrowed(PLUGIN_DESCRIPTOR_SECTION),
+            data: Cow::Borrowed(br#"{"profile":"one"}"#),
+        });
+        assert!(matches!(
+            extract_plugin_descriptor(&module.finish()),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("must be a Component")
+        ));
     }
 
     #[test]
