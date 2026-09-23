@@ -11,6 +11,7 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod identity;
+pub mod linked_cargo;
 
 #[cfg(feature = "bundle-verification")]
 mod native;
