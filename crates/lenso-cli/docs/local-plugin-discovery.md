@@ -78,6 +78,11 @@ lenso app start --from ./dist-release
 
 Build creates a new output directory; it never overwrites an existing one. Source
 builds use the existing Plugin builders and normal installed language dependencies.
+Existing Cargo, Bun, npm, pnpm and Yarn lockfiles at the App and selected
+project roots are pinned from build planning through output publication. If a
+package manager changes one during the build, the build rejects publication;
+update the lockfile explicitly and retry. A first build may generate a
+previously absent lockfile.
 Native Plugins need Cargo and expose the SDK-generated `link_plugin` anchor.
 Their normal Cargo contract dependencies supply typed runtime codecs; no parallel
 handwritten Capability schema is required. Incompatible codec cohorts fail with

@@ -821,6 +821,64 @@ pub(super) fn input_digest(root: &Path) -> anyhow::Result<String> {
     ))
 }
 
+/// Existing dependency locks are authoritative build inputs. A first build may
+/// create an absent lock, but it may not silently replace one seen at planning.
+pub(super) fn dependency_lock_digests<'a>(
+    roots: impl IntoIterator<Item = &'a Path>,
+) -> anyhow::Result<BTreeMap<PathBuf, String>> {
+    let mut locks = BTreeMap::new();
+    for root in roots {
+        for name in [
+            "Cargo.lock",
+            "bun.lock",
+            "bun.lockb",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "npm-shrinkwrap.json",
+        ] {
+            let path = root.join(name);
+            let metadata = match fs::symlink_metadata(&path) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error.into()),
+            };
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                bail!("dependency lock is not a regular file: {}", path.display());
+            }
+            if metadata.len() > 32 * 1024 * 1024 {
+                bail!("dependency lock exceeds 32 MiB: {}", path.display());
+            }
+            locks.insert(path.clone(), digest(&path)?);
+        }
+    }
+    Ok(locks)
+}
+
+pub(super) fn verify_dependency_lock_digests(
+    expected: &BTreeMap<PathBuf, String>,
+) -> anyhow::Result<()> {
+    for (path, digest_before) in expected {
+        let metadata = fs::symlink_metadata(path).with_context(|| {
+            format!(
+                "dependency lock disappeared during build: {}",
+                path.display()
+            )
+        })?;
+        if !metadata.is_file()
+            || metadata.file_type().is_symlink()
+            || metadata.len() > 32 * 1024 * 1024
+            || digest(path)? != *digest_before
+        {
+            bail!(
+                "dependency lock changed during build: {}; update the lock and retry",
+                path.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn host_arguments(root: &Path) -> anyhow::Result<Vec<&'static str>> {
     match fs::read_to_string(root.join(".lenso/host-mode"))?.as_str() {
         "native" => Ok(Vec::new()),
@@ -842,7 +900,34 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{collect_local_lenso_patch, web_ingress_dependency};
+    use super::{
+        collect_local_lenso_patch, dependency_lock_digests, verify_dependency_lock_digests,
+        web_ingress_dependency,
+    };
+
+    #[test]
+    fn existing_dependency_lock_change_is_rejected_but_first_lock_is_allowed() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("Cargo.lock");
+        let absent = dependency_lock_digests([root.path()]).unwrap();
+        assert!(absent.is_empty());
+        std::fs::write(&path, b"first lock").unwrap();
+        verify_dependency_lock_digests(&absent).unwrap();
+
+        let pinned = dependency_lock_digests([root.path()]).unwrap();
+        verify_dependency_lock_digests(&pinned).unwrap();
+        std::fs::write(&path, b"changed lock").unwrap();
+        assert!(verify_dependency_lock_digests(&pinned).is_err());
+        std::fs::remove_file(&path).unwrap();
+        assert!(verify_dependency_lock_digests(&pinned).is_err());
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(root.path().join("other.lock"), &path).unwrap();
+            assert!(dependency_lock_digests([root.path()]).is_err());
+            assert!(verify_dependency_lock_digests(&pinned).is_err());
+        }
+    }
 
     fn local_package(name: &str, id: &str, manifest: &str) -> serde_json::Value {
         json!({

@@ -30,11 +30,26 @@ impl Plugin for AppProject {
                 fingerprints.insert(root.clone(), super::local_host::input_digest(root)?);
             }
         }
+        let dependency_locks = super::local_host::dependency_lock_digests(
+            std::iter::once(self.root.as_path())
+                .chain(
+                    report
+                        .candidates
+                        .iter()
+                        .map(|candidate| candidate.project.as_path()),
+                )
+                .chain(conventions.compilations.iter().flat_map(|compilation| {
+                    [
+                        compilation.owner_project.as_path(),
+                        compilation.compiler_project.as_path(),
+                    ]
+                })),
+        )?;
         Ok(vec![Step {
             id: "app/build".into(),
             inputs: vec![],
             after: vec![],
-            options: serde_json::json!({"root":self.root,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints}),
+            options: serde_json::json!({"root":self.root,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks}),
         }])
     }
     fn process(&self, context: &ContextView<'_>) -> anyhow::Result<BTreeMap<String, Resource>> {
@@ -48,6 +63,9 @@ impl Plugin for AppProject {
                 anyhow::bail!("App inputs changed after planning; replan before execution");
             }
         }
+        let dependency_locks: BTreeMap<PathBuf, String> =
+            serde_json::from_value(context.step.options["dependency_locks"].clone())?;
+        super::local_host::verify_dependency_lock_digests(&dependency_locks)?;
         let _cancellation = CancellationGuard::enter(context.cancelled.clone());
         let _runtime = RuntimeGuard::enter(self.runtime_executable.clone());
         let info = super::build_command(&self.runtime_executable)

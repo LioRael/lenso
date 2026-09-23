@@ -49,6 +49,21 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     super::convention_authoring::linked_catalog::verify_sources(&root, &report.candidates)?;
     let convention_plan = lenso_app_authoring::discovery::conventions::plan(&report)?;
     let selection_bytes = serde_json::to_vec(&convention_plan)?;
+    let dependency_locks = super::local_host::dependency_lock_digests(
+        std::iter::once(root.as_path())
+            .chain(
+                report
+                    .candidates
+                    .iter()
+                    .map(|candidate| candidate.project.as_path()),
+            )
+            .chain(convention_plan.compilations.iter().flat_map(|compilation| {
+                [
+                    compilation.owner_project.as_path(),
+                    compilation.compiler_project.as_path(),
+                ]
+            })),
+    )?;
     let destination = std::path::absolute(&args.out)?;
     if fs::symlink_metadata(&destination).is_ok() {
         bail!("Host output already exists: {}", destination.display());
@@ -336,6 +351,7 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             );
         }
     }
+    super::local_host::verify_dependency_lock_digests(&dependency_locks)?;
     fs::write(
         stage.path().join("local-sources.json"),
         serde_json::to_vec_pretty(&json!({
