@@ -2726,6 +2726,118 @@ root-slot = "tools"
     }
 
     #[test]
+    fn v5_artifact_format_requires_the_actual_host_mechanism() {
+        let variant = |id: &str, media_type: &str, target: &str, class: &str| {
+            let digest = sha256_digest(id.as_bytes());
+            PluginVariantV5 {
+                id: id.to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact: PluginArtifactV2 {
+                    path: format!("implementations/{id}/artifact"),
+                    digest: digest.clone(),
+                    size: id.len() as u64,
+                    media_type: media_type.to_owned(),
+                    target: target.to_owned(),
+                },
+                runtime: PluginImplementation::new(
+                    "example.mechanism",
+                    digest,
+                    "plugin",
+                    ExecutionClassId::new(class),
+                )
+                .with_runtime_profile(class),
+            }
+        };
+        let manifest = PluginManifest::V5(PluginManifestV5 {
+            schema_version: 5,
+            contract: PluginContract::new("example.mechanism", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV5 {
+                id: "portable".to_owned(),
+                variants: vec![
+                    variant(
+                        "process",
+                        "application/vnd.lenso.process",
+                        "x86_64-unknown-linux-gnu",
+                        "lenso.process@1",
+                    ),
+                    variant(
+                        "component",
+                        "application/wasm",
+                        "wasm32-unknown-unknown",
+                        "lenso.wasm-component@1",
+                    ),
+                ],
+            }],
+        });
+        let wire = canonical_manifest_bytes(&manifest).unwrap();
+        let parsed = ManifestDocument::parse(&wire).unwrap();
+        let request_only = ImplementationPolicy {
+            host_target: "x86_64-unknown-linux-gnu".to_owned(),
+            runtimes: ["lenso.process@1", "lenso.wasm-component@1"]
+                .into_iter()
+                .map(|class| {
+                    RuntimeAdmission::new(
+                        ExecutionClassId::new(class),
+                        class,
+                        ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+                    )
+                })
+                .collect(),
+        };
+        let explanation = explain_implementation(&parsed.value, &request_only).unwrap();
+        assert!(!explanation.is_selected());
+        assert!(explanation.rejected.iter().any(|rejection| matches!(
+            &rejection.reason,
+            ImplementationRejectionReason::MissingTargetCapabilities { requirements }
+                if rejection.variant_id.as_deref() == Some("process")
+                    && requirements.iter().any(|requirement| requirement.feature == ExecutionTargetCapability::NativeProcess)
+        )));
+        assert!(explanation.rejected.iter().any(|rejection| matches!(
+            &rejection.reason,
+            ImplementationRejectionReason::MissingTargetCapabilities { requirements }
+                if rejection.variant_id.as_deref() == Some("component")
+                    && requirements.iter().any(|requirement| requirement.feature == ExecutionTargetCapability::WasmComponent)
+        )));
+        let process_policy = ImplementationPolicy {
+            host_target: request_only.host_target.clone(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.process@1"),
+                "lenso.process@1",
+                ExecutionTargetCapabilities::new([
+                    ExecutionTargetCapability::Request,
+                    ExecutionTargetCapability::NativeProcess,
+                ]),
+            )],
+        };
+        assert_eq!(
+            resolve_implementation(&parsed.value, &process_policy)
+                .unwrap()
+                .variant_id
+                .as_deref(),
+            Some("process")
+        );
+        let component_policy = ImplementationPolicy {
+            host_target: request_only.host_target,
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.wasm-component@1"),
+                "lenso.wasm-component@1",
+                ExecutionTargetCapabilities::new([
+                    ExecutionTargetCapability::Request,
+                    ExecutionTargetCapability::WasmComponent,
+                ]),
+            )],
+        };
+        assert_eq!(
+            resolve_implementation(&parsed.value, &component_policy)
+                .unwrap()
+                .variant_id
+                .as_deref(),
+            Some("component")
+        );
+    }
+
+    #[test]
     fn v5_equal_priority_variants_are_ambiguous() {
         let variants = ["first", "second"]
             .into_iter()

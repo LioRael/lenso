@@ -226,6 +226,7 @@ pub fn explain_implementation(
                 artifact: value.artifact.clone(),
                 descriptor,
                 artifact_matches_wasm: value.artifact.media_type == "application/wasm",
+                enforce_artifact_capability: false,
             };
             Ok(explain_candidates(&[candidate], policy))
         }
@@ -265,6 +266,7 @@ pub fn explain_implementation(
                         artifact: variant.artifact.clone(),
                         descriptor: value.contract.resolve(&variant.runtime),
                         artifact_matches_wasm: false,
+                        enforce_artifact_capability: true,
                     })
                 })
                 .collect::<Vec<_>>();
@@ -281,6 +283,7 @@ struct Candidate {
     artifact: PluginArtifactV2,
     descriptor: PluginDescriptor,
     artifact_matches_wasm: bool,
+    enforce_artifact_capability: bool,
 }
 
 fn explain_profiled_implementation<'a>(
@@ -303,6 +306,7 @@ fn explain_profiled_implementation<'a>(
             artifact: artifact.clone(),
             descriptor: contract.resolve(runtime),
             artifact_matches_wasm: false,
+            enforce_artifact_capability: false,
         })
         .collect::<Vec<_>>();
     explain_candidates(&candidates, policy)
@@ -432,7 +436,7 @@ fn record_capability_match(
     admission: &RuntimeAdmission,
     rejected: &mut Vec<RejectedPluginImplementation>,
 ) -> bool {
-    let requirements = match target_requirements(&candidate.descriptor) {
+    let requirements = match target_requirements(candidate) {
         Ok(requirements) => requirements,
         Err(feature) => {
             rejected.push(rejected_candidate(
@@ -478,9 +482,8 @@ fn record_unadmitted_runtimes(
     }
 }
 
-fn target_requirements(
-    descriptor: &PluginDescriptor,
-) -> Result<Vec<TargetCapabilityRequirement>, String> {
+fn target_requirements(candidate: &Candidate) -> Result<Vec<TargetCapabilityRequirement>, String> {
+    let descriptor = &candidate.descriptor;
     // Explicit implementation requirements cover target mechanics that cannot
     // be inferred from a Capability operation (for example Workers, a native
     // process, or Host imports). Capability operation requirements remain
@@ -498,6 +501,22 @@ fn target_requirements(
                 feature,
             },
         );
+    }
+    if candidate.enforce_artifact_capability {
+        let inherent = match candidate.artifact.media_type.as_str() {
+            "application/wasm" => Some(ExecutionTargetCapability::WasmComponent),
+            "application/vnd.lenso.process" => Some(ExecutionTargetCapability::NativeProcess),
+            _ => None,
+        };
+        if let Some(feature) = inherent {
+            requirements
+                .entry(feature)
+                .or_insert(TargetCapabilityRequirement {
+                    capability_id: descriptor.plugin_id().to_owned(),
+                    operation: "<artifact>".to_owned(),
+                    feature,
+                });
+        }
     }
     for endpoint in descriptor.provided_capabilities() {
         for operation in endpoint.operations() {
@@ -569,6 +588,11 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
                             "`{}` required by implementation `{}`",
                             requirement.feature.as_str(),
                             requirement.capability_id
+                        )
+                    } else if requirement.operation == "<artifact>" {
+                        format!(
+                            "`{}` required by artifact format",
+                            requirement.feature.as_str()
                         )
                     } else {
                         format!(

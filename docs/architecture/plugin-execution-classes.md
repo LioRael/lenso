@@ -90,6 +90,13 @@ may set `group = "portable"`; when any entry does, every entry must name a
 group, and `id` names its variant within that group. V2–V4 wire bytes and
 their digest rules remain unchanged. Selection evidence records both IDs and
 the exact Artifact; equal-priority compatible variants are an error.
+For V5, the Artifact format itself also imposes target mechanics: a Wasm-typed
+Artifact requires a Host-admitted `WasmComponent` capability and a native
+process Artifact requires `NativeProcess`, even when the publisher omitted an
+explicit requirement. A Request-only target cannot select either variant.
+This capability check does not itself prove that Wasm bytes are a valid
+Component; Artifact validation remains separate. Legacy V2–V4 candidates
+retain their signed selection semantics.
 
 Selection is not runtime fallback. If the selected implementation fails its
 Ready Gate or later invocation, the Generation fails through its ordinary
