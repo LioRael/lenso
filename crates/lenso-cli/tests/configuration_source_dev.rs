@@ -150,6 +150,29 @@ fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> 
     }
 }
 
+fn await_source_outage(dev: &mut Child, log: &Path, from: usize) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let bytes = fs::read(log).unwrap_or_default();
+        if bytes.len() > from
+            && String::from_utf8_lossy(&bytes[from..])
+                .contains("Configuration source unavailable or rejected")
+        {
+            return;
+        }
+        assert!(
+            dev.try_wait().unwrap().is_none(),
+            "App development supervisor exited during source outage"
+        );
+        assert!(
+            Instant::now() < deadline,
+            "source outage was not observed: {}",
+            String::from_utf8_lossy(&bytes)
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 #[test]
 fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     let temporary = tempfile::tempdir().unwrap();
@@ -214,14 +237,48 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
 
     write_snapshot(&snapshot, 2, "");
     await_revision(&source, &mut dev.0, 2, &log);
-    write_snapshot(&snapshot, 3, "unauthorized = 'no'\n");
-    std::thread::sleep(Duration::from_secs(2));
+
+    // Unlike the initial missing source, this outage happens after a real
+    // Host has activated. Poll failure must retain that Host and its receipt;
+    // restoring a later revision must use the same built distribution.
+    let log_offset = fs::metadata(&log).unwrap().len() as usize;
+    fs::remove_file(&snapshot).unwrap();
+    await_source_outage(&mut dev.0, &log, log_offset);
+    assert_eq!(generation(&source).unwrap(), output);
     let state: serde_json::Value = serde_json::from_slice(
         &fs::read(output.join("intent/.lenso/configuration-source-state.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(state["desired"]["revision"], 2);
     assert_eq!(state["last_activated"]["revision"], 2);
+    let status = Command::new(cli)
+        .args(["app", "config-status", "--root"])
+        .arg(&output)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(status.status.success());
+    let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(status["state"], "last_activated");
+    assert_eq!(status["desired_revision"], 2);
+    assert_eq!(status["last_activated_revision"], 2);
+    assert_eq!(status["pending_activation"], false);
+    assert!(
+        !fs::read_to_string(&log)
+            .unwrap()
+            .contains("Local Host exited")
+    );
+
+    write_snapshot(&snapshot, 3, "");
+    assert_eq!(await_revision(&source, &mut dev.0, 3, &log), output);
+    write_snapshot(&snapshot, 4, "unauthorized = 'no'\n");
+    std::thread::sleep(Duration::from_secs(2));
+    let state: serde_json::Value = serde_json::from_slice(
+        &fs::read(output.join("intent/.lenso/configuration-source-state.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(state["desired"]["revision"], 3);
+    assert_eq!(state["last_activated"]["revision"], 3);
     assert!(dev.0.try_wait().unwrap().is_none());
     assert!(
         dev.stop(),
