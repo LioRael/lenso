@@ -395,6 +395,61 @@ implementations = [
 }
 
 #[test]
+#[ignore = "clean-room test downloads Plugin SDK crates and compiles two Process variants"]
+fn clean_room_grouped_plugin_pack_produces_v5_archive() {
+    let root = tempfile::tempdir().unwrap();
+    let project = root.path().join("grouped");
+    fs::create_dir_all(project.join("src")).unwrap();
+    fs::write(project.join("src/lib.rs"), "pub fn source_root() {}\n").unwrap();
+    fs::write(
+        project.join("Cargo.toml"),
+        r#"[package]
+name = "grouped"
+version = "0.1.0"
+edition = "2024"
+publish = false
+[package.metadata.lenso]
+plugin-id = "example.grouped"
+root-slot = "tool-providers"
+[package.metadata.lenso-cli]
+implementations = [
+  { id = "first", group = "portable", path = "first", runtime = "process" },
+  { id = "second", group = "portable", path = "second", runtime = "process" },
+]
+[workspace]
+"#,
+    )
+    .unwrap();
+    for variant in ["first", "second"] {
+        let directory = project.join(variant);
+        for (relative, content) in process_plugin_scaffold("example.grouped") {
+            let path = directory.join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, content).unwrap();
+        }
+    }
+    let output = root.path().join("grouped.lenso-plugin");
+
+    pack(PluginPackArgs {
+        repo_root: Some(project),
+        output: Some(output.clone()),
+        json: true,
+    })
+    .unwrap();
+    let manifest = with_bundle_directory(&output, |directory| {
+        read_bundle_manifest(directory).map_err(Into::into)
+    })
+    .unwrap();
+    assert!(matches!(
+        manifest,
+        PluginManifest::V5(value)
+            if value.implementations.len() == 1
+                && value.implementations[0].id == "portable"
+                && value.implementations[0].variants.len() == 2
+    ));
+}
+
+#[test]
 fn process_artifacts_use_the_canonical_rust_host_target() {
     assert_eq!(
         rust_host_target(Path::new(".")).unwrap(),

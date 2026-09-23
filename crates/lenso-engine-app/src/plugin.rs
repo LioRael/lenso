@@ -948,6 +948,7 @@ fn materialize_declared_implementation(
     match declaration.runtime.as_str() {
         "process" => {
             let implementation_package = read_package(&implementation_root.join("Cargo.toml"))?;
+            synchronize_plugin_lock(&implementation_root, &implementation_package)?;
             let target_directory = cargo_target_directory(&implementation_root)?;
             materialize_process(
                 &implementation_root,
