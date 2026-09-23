@@ -974,7 +974,13 @@ fn relevant(path: &Path) -> bool {
 }
 
 fn rebuild_event(event: &notify::Event) -> bool {
-    !event.kind.is_access() && event.paths.iter().any(|path| relevant(path))
+    let write_closed = matches!(
+        event.kind,
+        notify::EventKind::Access(notify::event::AccessKind::Close(
+            notify::event::AccessMode::Write
+        ))
+    );
+    (write_closed || !event.kind.is_access()) && event.paths.iter().any(|path| relevant(path))
 }
 
 #[cfg(test)]
@@ -1316,7 +1322,7 @@ mod tests {
     }
 
     #[test]
-    fn app_watch_ignores_access_but_rebuilds_on_mutation() {
+    fn app_watch_ignores_read_access_but_rebuilds_on_write_close() {
         use notify::event::{AccessKind, AccessMode, ModifyKind};
 
         let source = PathBuf::from("/app/src/lib.rs");
@@ -1327,11 +1333,16 @@ mod tests {
             AccessMode::Read,
         )))
         .add_path(source.clone());
+        let closed_after_write = notify::Event::new(notify::EventKind::Access(AccessKind::Close(
+            AccessMode::Write,
+        )))
+        .add_path(source.clone());
         let modified =
             notify::Event::new(notify::EventKind::Modify(ModifyKind::Any)).add_path(source);
 
         assert!(!rebuild_event(&opened));
         assert!(!rebuild_event(&closed_after_read));
+        assert!(rebuild_event(&closed_after_write));
         assert!(rebuild_event(&modified));
     }
 }
