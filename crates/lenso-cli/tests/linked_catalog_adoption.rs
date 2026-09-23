@@ -419,6 +419,80 @@ fn prove_removed_build_when_requested(cli: &str, root: &std::path::Path) {
     );
 }
 
+fn adopt_next_exact_version(
+    cli: &str,
+    root: &std::path::Path,
+    fixture_root: &std::path::Path,
+    trust_path: &std::path::Path,
+    key: &SigningKey,
+    now: u64,
+) {
+    let bytes = crate_archive("example-web-plugin", "0.4.6", "example.web");
+    let archive = fixture_root.join("plugin-0.4.6.crate");
+    fs::write(&archive, &bytes).unwrap();
+    let release = LinkedCargoRelease {
+        plugin_id: "example.web".into(),
+        version: "0.4.6".into(),
+        publisher_id: "example".into(),
+        title: "Web".into(),
+        summary: "Native Web Plugin".into(),
+        source_url: "https://example.com/web".into(),
+        source_revision: "b".repeat(40),
+        license: "MIT".into(),
+        package: "example-web-plugin".into(),
+        registry_url: "https://crates.io".into(),
+        crate_digest: lenso_plugin_catalog::digest(&bytes),
+        integration: LinkedCargoIntegration::LinkedPlugin,
+        targets: vec![lenso_engine_authoring::native_host_target().into()],
+        availability: Availability::Listed,
+        documentation: Vec::new(),
+    };
+    let snapshot =
+        LinkedCargoSnapshot::new("test-catalog".into(), 2, now - 1, now + 3600, vec![release]);
+    let snapshot_path = fixture_root.join("snapshot-0.4.6.json");
+    fs::write(&snapshot_path, sign(&snapshot, "test-key", key).unwrap()).unwrap();
+    let added = Command::new(cli)
+        .args(["app", "add", "example.web@0.4.6", "--root"])
+        .arg(root)
+        .arg("--linked-snapshot")
+        .arg(&snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--crate")
+        .arg(&archive)
+        .output()
+        .unwrap();
+    assert!(
+        added.status.success(),
+        "{}",
+        String::from_utf8_lossy(&added.stderr)
+    );
+    let discovered = Command::new(cli)
+        .args(["app", "discover", "--json", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(discovered.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&discovered.stdout).unwrap();
+    let candidates = report["candidates"].as_array().unwrap();
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0]["plugin_id"], "example.web");
+    assert_eq!(candidates[0]["release_version"], "0.4.6");
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join("lenso.toml")).unwrap()).unwrap();
+    assert_eq!(
+        config["plugin_sources"].as_array().unwrap().len(),
+        1,
+        "the old version must not remain selected"
+    );
+    assert_eq!(
+        config["plugin_sources"][0].as_str(),
+        Some("vendor/lenso/example.web/0.4.6")
+    );
+    assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+    assert!(root.join("plugins/example.web/default.toml").exists());
+}
+
 fn assert_host_provided_rejected(
     cli: &str,
     temp: &std::path::Path,
@@ -671,4 +745,5 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     );
     unadopt_exact_source(cli, &root);
     prove_removed_build_when_requested(cli, &root);
+    adopt_next_exact_version(cli, &root, temp.path(), &trust_path, &key, now);
 }
