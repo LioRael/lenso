@@ -6,7 +6,7 @@ CLI build containing the local App workflow; older published CLI versions do not
 provide it.
 
 ```sh
-lenso app create my-app --runtime bun
+lenso app create my-app
 cd my-app
 lenso app dev
 # In another terminal, or after stopping development:
@@ -15,11 +15,13 @@ lenso app start --from dist
 ```
 
 No App configuration file, Host declaration, preset, or activation flag is required.
-`app/` contains App-owned Plugins. `plugins/` retains instance configuration,
-disabled markers, and named dependency choices. `app create --web` creates a native
-Rust Web Plugin with a Plugin-owned HTML page. `--runtime process` is the default;
-`bun`, `wasm`, `multi`, and `empty` are also available. `--no-install` leaves normal
-language dependency installation to the developer.
+By default, `app create` makes the root Cargo package an App-owned native Web Plugin
+with a Plugin-owned HTML page. Additional App-owned Plugin projects live in `app/`.
+`plugins/` retains instance configuration, disabled markers, and named dependency
+choices. `app create --web` keeps the nested Web scaffold. `--runtime process`
+explicitly selects the nested Process starter; `bun`, `wasm`, `multi`, and `empty`
+are also available. `--no-install` leaves normal language dependency installation
+to the developer.
 
 Add **local discovery sources** only when needed:
 
@@ -193,12 +195,13 @@ contract; the handshake is not a general browser-flow test.
 | QuickJS / dylib | Discovery can inspect verified Bundles | Local source/runtime integration deferred |
 | Python / other languages | No SDK path established here | Not claimed by this workflow |
 
-The current executable profile supports macOS ARM64 and Linux x86_64. Other
-platforms fail explicitly instead of choosing a different runtime. Pure portable
-Capabilities support Request interactions through verified generated Descriptor
-evidence. Stream/Event boundaries require typed codecs from native contract
-projections. Old Bun archives without embedded generated Descriptor evidence need
-repacking for the generic portable Host; custom typed Hosts remain available.
+The current executable profile supports macOS ARM64, Linux x86_64, and Linux
+ARM64. Other platforms fail explicitly instead of choosing a different runtime.
+Pure portable Capabilities support Request interactions through verified
+generated Descriptor evidence. Stream/Event boundaries require typed codecs
+from native contract projections. Old Bun archives without embedded generated
+Descriptor evidence need repacking for the generic portable Host; custom typed
+Hosts remain available.
 
 ## Discovery contract
 
