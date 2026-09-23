@@ -260,8 +260,27 @@ mod tests {
                 .map(clap::Command::get_name)
                 .collect::<Vec<_>>(),
             [
-                "add", "plugin", "contract", "build", "create", "start", "dev", "prepare", "init",
-                "check", "show", "explain", "discover", "inspect", "facts", "assemble"
+                "add",
+                "unadopt",
+                "config-sync",
+                "config-status",
+                "plugin",
+                "contract",
+                "build",
+                "create",
+                "start",
+                "dev",
+                "prepare",
+                "init",
+                "check",
+                "show",
+                "explain",
+                "discover",
+                "linked-catalog",
+                "linked-doc",
+                "inspect",
+                "facts",
+                "assemble"
             ]
         );
     }

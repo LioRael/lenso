@@ -36,6 +36,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"diagnostics","limit":0}}}"#,
         r#"{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"project_check","arguments":{}}}"#,
         r#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"without-owner-authorization"}}}"#,
+        r#"{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"project_change_apply","arguments":{"proposal_digest":"sha256:unknown","request_id":"without-owner-authorization"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -55,12 +56,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 12, "{frames}");
+    assert_eq!(responses.len(), 13, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 12);
+    assert_eq!(by_id.len(), 13);
     let tools = by_id[&2]["result"]["tools"].as_array().unwrap();
     let names = tools
         .iter()
@@ -75,6 +76,8 @@ fn stdio_exposes_bounded_read_only_app_facts() {
             "project_build",
             "project_build_cancel",
             "project_build_status",
+            "project_change_apply",
+            "project_change_preview",
             "project_explain",
             "project_facts",
         ]
@@ -86,9 +89,6 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(facts["schema_version"], 3);
     assert_eq!(facts["status"], "invalid");
     assert_eq!(facts["runtime"]["status"], "not_observed");
-    assert!(by_id[&4]["error"].is_object());
-    assert!(by_id[&5]["error"].is_object());
-    assert!(by_id[&6]["error"].is_object());
     let first_page: serde_json::Value =
         serde_json::from_str(by_id[&7]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(first_page["kind"], "lenso.app-facts-page");
@@ -103,10 +103,9 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(second_page["offset"], 1);
     assert_eq!(second_page["items"].as_array().unwrap().len(), 1);
     assert_ne!(first_page["items"][0], second_page["items"][0]);
-    assert!(by_id[&9]["error"].is_object());
-    assert!(by_id[&10]["error"].is_object());
-    assert!(by_id[&11]["error"].is_object());
-    assert!(by_id[&12]["error"].is_object());
+    for id in [4, 5, 6, 9, 10, 11, 12, 13] {
+        assert!(by_id[&id]["error"].is_object(), "response {id}");
+    }
     assert!(!root.path().join("dist").exists());
 }
 
@@ -297,6 +296,105 @@ fn stdio_authorized_build_reports_the_same_app_check() {
     assert!(checked.status.success());
     let expected: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
     assert_eq!(final_status["check"], expected);
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn stdio_configuration_preview_and_apply_use_plugin_root_authority() {
+    use lenso_app_plan::authoring::{
+        HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
+    };
+
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".lenso")).unwrap();
+    let host = HostCatalog::new(
+        [HostSlot::one("agent")],
+        [HostPluginRelease::new(
+            PluginDescriptor::new("example.agent", "1.0.0", "agent").with_configuration_schema(
+                serde_json::json!({
+                    "type":"object",
+                    "properties":{"greeting":{"type":"string"}},
+                    "additionalProperties":false
+                }),
+            ),
+        )],
+        [HostDefaultPlugin::new("example.agent", "default")],
+    );
+    fs::write(
+        temp.path().join(".lenso/host-catalog.json"),
+        serde_json::to_vec(&host).unwrap(),
+    )
+    .unwrap();
+    let base = lenso_app_authoring::inspect_plugin_root(temp.path())
+        .unwrap()
+        .revision()
+        .as_str()
+        .to_owned();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_lenso"))
+        .args(["mcp", "--root"])
+        .arg(temp.path())
+        .arg("--allow-changes")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let call = |stdin: &mut std::process::ChildStdin,
+                stdout: &mut BufReader<std::process::ChildStdout>,
+                request: serde_json::Value|
+     -> serde_json::Value {
+        writeln!(stdin, "{request}").unwrap();
+        stdin.flush().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        serde_json::from_str(&line).unwrap()
+    };
+    let initialized = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    assert_eq!(initialized["id"], 1);
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .unwrap();
+    let preview_response = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_change_preview","arguments":{"base_revision":base,"plugin_id":"example.agent","instance":"default","toml":"greeting = 'secret-value'\n"}}}),
+    );
+    assert!(preview_response["error"].is_null(), "{preview_response}");
+    let preview_text = preview_response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap();
+    assert!(!preview_text.contains("secret-value"));
+    let preview: serde_json::Value = serde_json::from_str(preview_text).unwrap();
+    assert_eq!(preview["status"], "ready");
+    assert_eq!(preview["changed_fields"], serde_json::json!(["greeting"]));
+    let path = temp.path().join("plugins/example.agent/default.toml");
+    assert!(!path.exists());
+    let digest = preview["proposal_digest"].as_str().unwrap();
+    let apply = serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_change_apply","arguments":{"proposal_digest":digest,"request_id":"apply-stdio"}}});
+    let first = call(&mut stdin, &mut stdout, apply.clone());
+    assert!(first["error"].is_null(), "{first}");
+    let first_result: serde_json::Value =
+        serde_json::from_str(first["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(first_result["state"], "published");
+    assert_eq!(first_result["activation"], "not_observed");
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        "greeting = 'secret-value'\n"
+    );
+    let replay = call(&mut stdin, &mut stdout, apply);
+    let replay_result: serde_json::Value =
+        serde_json::from_str(replay["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(replay_result, first_result);
     drop(stdin);
     assert!(child.wait().unwrap().success());
 }

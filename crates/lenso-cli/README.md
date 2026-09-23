@@ -254,7 +254,18 @@ the same operation; an existing `dist` is never overwritten. Status returns a
 diagnostic code rather than raw build logs, which may contain private data.
 The build environment filters ambient credentials but is not a filesystem
 sandbox; only enable builds for source packages you trust to compile locally.
-Installing or editing Plugin intent is not exposed by this MCP server.
+
+`project_change_preview` reviews one Instance TOML change against an exact
+Plugin Root revision and returns the proposal digest, changed field names,
+validation status, and required application step without exposing values. It
+requires a built or installed Host authority at the Plugin Root; a source-only
+App must first be built.
+`project_change_apply` requires a separate `--allow-changes` startup flag, the
+exact proposal digest, and a client `request_id`. It uses the same Host and
+source-fenced authority as ordinary Plugin configuration publication; a
+successful publication does not claim that a running Generation activated.
+This local bridge keeps proposal and request history only for its process
+lifetime. Installing a Plugin or editing ordinary source code is not exposed.
 
 `project_facts` with `{}` retains the full `lenso app facts --json` shape for
 small projects. For a large project, request `section: "plugins"`,

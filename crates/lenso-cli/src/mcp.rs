@@ -14,6 +14,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 mod build;
+mod change;
 
 #[derive(Clone, Debug, Args)]
 pub(crate) struct McpArgs {
@@ -35,6 +36,9 @@ pub(crate) struct McpArgs {
     /// Explicitly permit bounded App builds under --root.
     #[arg(long)]
     allow_build: bool,
+    /// Explicitly permit publication of reviewed Plugin Root configuration proposals.
+    #[arg(long)]
+    allow_changes: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -46,6 +50,8 @@ struct AppTools {
     allow_document_fetch: bool,
     allow_build: bool,
     builds: Arc<build::BuildController>,
+    allow_changes: bool,
+    changes: Arc<change::ChangeController>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -107,10 +113,83 @@ struct ProjectBuildIdentity {
     request_id: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ProjectChangePreviewQuery {
+    base_revision: String,
+    plugin_id: String,
+    instance: String,
+    toml: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ProjectChangeApplyQuery {
+    proposal_digest: String,
+    request_id: String,
+}
+
 const MAX_MCP_TEXT_BYTES: usize = 128 * 1024;
 
 #[tool_router]
 impl AppTools {
+    #[tool(
+        description = "Preview one typed Plugin Instance configuration change against an exact Plugin Root revision; values are redacted and no file is changed"
+    )]
+    fn project_change_preview(
+        &self,
+        Parameters(request): Parameters<ProjectChangePreviewQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        let preview = self
+            .changes
+            .preview(
+                &request.base_revision,
+                &request.plugin_id,
+                &request.instance,
+                &request.toml,
+            )
+            .map_err(|_| {
+                McpError::invalid_request(
+                    "Plugin Root proposal failed; inspect the exact revision and Host authority locally",
+                    None,
+                )
+            })?;
+        let json = serde_json::to_string(&preview)
+            .map_err(|_| McpError::internal_error("serialize Plugin Root preview", None))?;
+        if json.len() > MAX_MCP_TEXT_BYTES {
+            return Err(McpError::invalid_request(
+                "Plugin Root preview exceeds MCP output limit",
+                None,
+            ));
+        }
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+    }
+
+    #[tool(
+        description = "Publish one exact reviewed Plugin Root configuration proposal; requires --allow-changes and a new client request_id"
+    )]
+    fn project_change_apply(
+        &self,
+        Parameters(request): Parameters<ProjectChangeApplyQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.allow_changes {
+            return Err(McpError::invalid_request(
+                "MCP Plugin Root changes were not explicitly enabled",
+                None,
+            ));
+        }
+        let result = self
+            .changes
+            .apply(&request.proposal_digest, &request.request_id)
+            .map_err(|_| {
+                McpError::invalid_request(
+                    "Plugin Root publication request is invalid; preview the exact change again",
+                    None,
+                )
+            })?;
+        let json = serde_json::to_string(&result)
+            .map_err(|_| McpError::internal_error("serialize Plugin Root publication", None))?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+    }
+
     #[tool(
         description = "Start one bounded App build at the configured root; requires --allow-build, uses a client request_id, and never overwrites dist"
     )]
@@ -458,6 +537,12 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
     if !root.is_dir() {
         anyhow::bail!("MCP App root must be a directory");
     }
+    let change_root =
+        if root.join("intent").is_dir() && root.join(".lenso/host-build.json").is_file() {
+            root.join("intent")
+        } else {
+            root.clone()
+        };
     let service = AppTools {
         root,
         host_build: args.host_build,
@@ -466,6 +551,8 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         allow_document_fetch: args.allow_document_fetch,
         allow_build: args.allow_build,
         builds: Arc::new(build::BuildController::default()),
+        allow_changes: args.allow_changes,
+        changes: Arc::new(change::ChangeController::new(change_root)),
     }
     .serve(stdio())
     .await?;

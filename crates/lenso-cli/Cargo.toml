@@ -48,6 +48,7 @@ required-features = ["js-integration"]
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = { workspace = true }
 clap = { version = "4", features = ["derive", "string"], optional = true }
 tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "signal"], optional = true }
 rmcp = { version = "=3.4.0", default-features = false, features = ["macros", "server", "transport-io"], optional = true }
@@ -67,7 +68,6 @@ ed25519-dalek = "2.2"
 hex = "0.4"
 flate2 = "1"
 tar = "0.4"
-toml = { workspace = true }
 tempfile = "3.23"
 
 [lints.rust]
