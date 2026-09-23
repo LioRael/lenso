@@ -141,8 +141,12 @@ dependency without rewriting its signed source. An existing App-owned exclusion
 is retained. `app unadopt` removes only an exclusion marked as created by
 `app add`; if that entry was edited, unadoption stops and preserves the source
 and App manifest for review.
+An App nested under another Cargo workspace needs its own root `[workspace]`
+before linked adoption; otherwise the CLI stops before selecting the source
+rather than editing the enclosing repository's manifest.
 If the signed `.crate` contains a root `Cargo.lock`, its bytes remain part of
-the adopted source evidence. Contract dependency inspection uses `--locked`,
+the adopted source evidence. Contract and Native Host dependency inspection
+use `--locked`,
 and a changed archive lock fails source verification. When the archive has no lock,
 Cargo may generate one locally without changing the signed source identity.
 For a V6 Bundle carrying the `.crate` as a `CargoBuildInput`, use mutually
