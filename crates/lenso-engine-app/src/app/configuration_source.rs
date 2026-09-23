@@ -30,9 +30,12 @@ fn digest_policy(bytes: &[u8]) -> String {
 
 #[derive(Clone, Debug, Args)]
 pub struct SyncArgs {
-    /// Built App distribution containing the exact Host authority.
+    /// Built App distribution, or an external Plugin Root with --host-build.
     #[arg(long)]
     root: PathBuf,
+    /// Exact distribution Host build for an external Plugin Root.
+    #[arg(long)]
+    host_build: Option<PathBuf>,
     /// Host-operator-owned source address and writable field scopes.
     #[arg(long)]
     policy: PathBuf,
@@ -111,7 +114,11 @@ struct ActivatedConfiguration {
 
 pub fn sync_command(args: SyncArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(&args.root)?;
-    sync(&root, &args.policy)?;
+    if let Some(host_build) = args.host_build {
+        sync_external_configuration(&root, &host_build, &args.policy)?;
+    } else {
+        sync(&root, &args.policy)?;
+    }
     println!(
         "External configuration accepted for {}; Host activation remains separate",
         root.display()
@@ -204,6 +211,27 @@ pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
     sync_with_https_poll(root, policy_path, |source, cursor| source.poll(cursor))
 }
 
+/// Reconciles an operator-owned source into an external Plugin Root against one
+/// immutable distribution Host build. Product Hosts may call this before
+/// resolving a candidate Generation; this does not activate it.
+pub fn sync_external_configuration(
+    plugin_root: &Path,
+    distribution_host_build: &Path,
+    policy_path: &Path,
+) -> anyhow::Result<()> {
+    sync_for_intent(
+        plugin_root,
+        Authority::ExternalHostBuild(distribution_host_build),
+        policy_path,
+        |source, cursor| source.poll(cursor),
+    )
+}
+
+enum Authority<'a> {
+    Distribution(&'a Path),
+    ExternalHostBuild(&'a Path),
+}
+
 fn sync_with_https_poll<F>(root: &Path, policy_path: &Path, poll: F) -> anyhow::Result<()>
 where
     F: FnOnce(
@@ -212,7 +240,27 @@ where
     ) -> anyhow::Result<PluginConfigurationSnapshotPoll>,
 {
     let root = fs::canonicalize(root)?;
-    let intent = root.join("intent");
+    sync_for_intent(
+        &root.join("intent"),
+        Authority::Distribution(&root),
+        policy_path,
+        poll,
+    )
+}
+
+fn sync_for_intent<F>(
+    intent: &Path,
+    authority: Authority<'_>,
+    policy_path: &Path,
+    poll: F,
+) -> anyhow::Result<()>
+where
+    F: FnOnce(
+        &HttpsPluginConfigurationSnapshotSource,
+        Option<&PluginConfigurationSnapshotCursor>,
+    ) -> anyhow::Result<PluginConfigurationSnapshotPoll>,
+{
+    let intent = fs::canonicalize(intent)?;
     ensure!(
         fs::symlink_metadata(&intent)?.file_type().is_dir(),
         "App runtime intent must be a real directory"
@@ -224,7 +272,12 @@ where
     );
     let lock = open_lock(&control.join("configuration-source.lock"))?;
     lock.lock()?;
-    verify_intent_authority(&root, &intent)?;
+    match authority {
+        Authority::Distribution(root) => verify_intent_authority(root, &intent)?,
+        Authority::ExternalHostBuild(host_build) => {
+            verify_external_host_authority(host_build, &intent)?;
+        }
+    }
 
     let policy_bytes = read_bounded(policy_path, MAX_POLICY_BYTES)?;
     let policy_digest = digest_policy(&policy_bytes);
@@ -351,9 +404,34 @@ fn verify_intent_authority(distribution: &Path, intent: &Path) -> anyhow::Result
             .any(|path| path != selected && distribution.join(path).exists()),
         "built App has competing Host authorities"
     );
-    let source = distribution.join(selected);
+    verify_authority_copy(&distribution.join(selected), intent, selected)
+}
+
+fn verify_external_host_authority(host_build: &Path, intent: &Path) -> anyhow::Result<()> {
+    ensure!(
+        fs::symlink_metadata(host_build)?.file_type().is_file(),
+        "distribution Host build must be a regular file"
+    );
+    verify_authority_copy(host_build, intent, ".lenso/host-build.json")
+}
+
+fn verify_authority_copy(source: &Path, intent: &Path, selected: &str) -> anyhow::Result<()> {
+    for path in [".lenso/host-build.json", ".lenso/host-catalog.json"] {
+        if path != selected {
+            match fs::symlink_metadata(intent.join(path)) {
+                Ok(_) => bail!("runtime intent has a competing Host authority"),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
     let destination = intent.join(selected);
-    let original = read_bounded(&source, 16 * 1024 * 1024)?;
+    let original = read_bounded(source, 16 * 1024 * 1024)?;
+    if selected == ".lenso/host-build.json" {
+        let build: lenso_app_authoring::host_authoring::GeneratedHostBuild =
+            serde_json::from_slice(&original).context("invalid distribution Host build")?;
+        build.validate()?;
+    }
     match fs::symlink_metadata(&destination) {
         Ok(_) => ensure!(
             read_bounded(&destination, 16 * 1024 * 1024)? == original,
@@ -525,6 +603,7 @@ fn open_regular(_path: &Path) -> anyhow::Result<fs::File> {
 mod tests {
     use std::fs;
 
+    use lenso_app_authoring::host_authoring::{GeneratedHostBuild, HostPluginInput};
     use lenso_app_authoring::{VersionedPluginConfiguration, VersionedPluginConfigurationSnapshot};
     use lenso_app_plan::authoring::{
         HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
@@ -570,6 +649,71 @@ mod tests {
             "revision": revision,
             "configurations": [{"plugin_id": "example.agent", "instance_key": "default", "toml": toml}]
         })).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn external_root_reconciles_only_against_exact_distribution_host_build() {
+        let distribution = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        fs::create_dir(distribution.path().join(".lenso")).unwrap();
+        fs::create_dir(external.path().join(".lenso")).unwrap();
+        let descriptor = PluginDescriptor::new("example.agent", "1.0.0", "agent")
+            .with_configuration_schema(serde_json::json!({
+                "type": "object",
+                "properties": {"greeting": {"type": "string"}},
+                "additionalProperties": false
+            }));
+        let host = GeneratedHostBuild::lower(
+            "example.app",
+            vec![HostPluginInput {
+                descriptor,
+                instance: "default".into(),
+                configuration: serde_json::json!({}),
+                source: "fixture".into(),
+            }],
+            vec![],
+        )
+        .unwrap();
+        let host_build = distribution.path().join(".lenso/host-build.json");
+        fs::write(&host_build, b"{}").unwrap();
+        let source = distribution.path().join("snapshot.json");
+        let policy = distribution.path().join("policy.json");
+        let rejected = sync_external_configuration(external.path(), &host_build, &policy);
+        assert!(rejected.is_err());
+        assert!(!external.path().join(".lenso/host-build.json").exists());
+        fs::write(&host_build, serde_json::to_vec(&host).unwrap()).unwrap();
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": POLICY_SCHEMA,
+                "source_reference": "operator-settings",
+                "source": {"type": "file", "path": source},
+                "objects": [{
+                    "plugin_id": "example.agent",
+                    "instance_key": "default",
+                    "fields": ["greeting"]
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        snapshot(&source, 1, "greeting = 'first'\n");
+        sync_external_configuration(external.path(), &host_build, &policy).unwrap();
+        assert_eq!(
+            fs::read(external.path().join(".lenso/host-build.json")).unwrap(),
+            fs::read(&host_build).unwrap()
+        );
+        let instance = external.path().join("plugins/example.agent/default.toml");
+        assert!(fs::read_to_string(&instance).unwrap().contains("first"));
+        snapshot(&source, 2, "greeting = 'second'\n");
+        sync_external_configuration(external.path(), &host_build, &policy).unwrap();
+        assert!(fs::read_to_string(&instance).unwrap().contains("second"));
+
+        fs::write(external.path().join(".lenso/host-build.json"), b"{}").unwrap();
+        snapshot(&source, 3, "greeting = 'third'\n");
+        let error = sync_external_configuration(external.path(), &host_build, &policy).unwrap_err();
+        assert!(error.to_string().contains("Host authority differs"));
+        assert!(fs::read_to_string(&instance).unwrap().contains("second"));
     }
 
     #[test]

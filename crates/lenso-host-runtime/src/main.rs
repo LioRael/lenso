@@ -3,13 +3,14 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env,
     path::{Path, PathBuf},
+    process::Stdio,
     sync::{Mutex, OnceLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use lenso::host::{self, FileControlStateStore, HostBuilder, KernelGenerationRuntime};
 use lenso_bun_adapter::{BunAdapter, BunAdapterConfig, BunCapabilityCodec, BunWire};
-use lenso_host_distribution::VerifiedDistribution;
+use lenso_host_distribution::{PreparedHostGeneration, VerifiedDistribution};
 use lenso_kernel::{ExecutionAdapterCatalog, RuntimeFailure};
 use lenso_plugin_control_plane::{
     AppGenerationTransitionSpec, CanonicalDocument, CatalogFactory, ControlLifecycle,
@@ -56,6 +57,7 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
         };
         let reconcile_distribution = distribution.clone();
         let reconcile_root = app_root.clone();
+        let reconcile_policy = arguments.configuration_policy.clone();
         host::control::serve_with_reconcile(
             options,
             tokio::io::stdin(),
@@ -64,6 +66,7 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
                 start_host(
                     distribution,
                     app_root,
+                    arguments.configuration_policy.clone(),
                     arguments.startup_timeout,
                     arguments.stop_timeout,
                 )
@@ -71,12 +74,11 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
             move || {
                 let distribution = reconcile_distribution.clone();
                 let root = reconcile_root.clone();
+                let policy = reconcile_policy.clone();
                 async move {
-                    tokio::task::spawn_blocking(move || distribution.resolve(root))
+                    prepare_generation(&distribution, &root, policy.as_deref())
                         .await
-                        .map_err(host_failure)?
                         .map(|prepared| prepared.generation)
-                        .map_err(host_failure)
                 }
             },
         )
@@ -88,18 +90,14 @@ fn run(arguments: &Arguments) -> Result<(), Box<dyn std::error::Error>> {
 async fn start_host(
     distribution: VerifiedDistribution,
     app_root: PathBuf,
+    configuration_policy: Option<PathBuf>,
     startup_timeout: Duration,
     stop_timeout: Duration,
 ) -> Result<(host::Host<lenso_kernel::NativeApp>, ResolvedGeneration), ControlPlaneError> {
     let app_id = distribution.app_id().to_owned();
     let bun = distribution.root().join("runtime/bun");
-    let resolution_distribution = distribution.clone();
-    let resolution_root = app_root.clone();
     let prepared =
-        tokio::task::spawn_blocking(move || resolution_distribution.resolve(resolution_root))
-            .await
-            .map_err(host_failure)?
-            .map_err(host_failure)?;
+        prepare_generation(&distribution, &app_root, configuration_policy.as_deref()).await?;
     let factory = HostCatalogFactory::new(bun, app_root.clone(), &prepared.generation)?;
     let runtime = KernelGenerationRuntime::new(factory);
     let store = FileControlStateStore::open(app_root.join(".lenso/runtime-control"))?;
@@ -140,6 +138,54 @@ async fn start_host(
         ));
     };
     Ok((host, candidate))
+}
+
+async fn prepare_generation(
+    distribution: &VerifiedDistribution,
+    app_root: &Path,
+    policy: Option<&Path>,
+) -> Result<PreparedHostGeneration, ControlPlaneError> {
+    if let Some(policy) = policy {
+        let mut command =
+            tokio::process::Command::new(distribution.root().join("runtime/lenso-resolver"));
+        command
+            .args(["app", "config-sync", "--root"])
+            .arg(app_root)
+            .arg("--host-build")
+            .arg(distribution.root().join(".lenso/host-build.json"))
+            .arg("--policy")
+            .arg(policy)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        let mut child = command.spawn().map_err(host_failure)?;
+        let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+            .await
+            .map_err(host_failure)?
+            .map_err(host_failure)?;
+        if !status.success() {
+            return Err(host_failure(
+                "external configuration was not accepted; active Generation is unchanged",
+            ));
+        }
+    } else {
+        match std::fs::symlink_metadata(app_root.join(".lenso/configuration-source-state.json")) {
+            Ok(_) => {
+                return Err(host_failure(
+                    "external configuration is active; --configuration-policy is required",
+                ));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(host_failure(error)),
+        }
+    }
+    let distribution = distribution.clone();
+    let app_root = app_root.to_path_buf();
+    tokio::task::spawn_blocking(move || distribution.resolve(app_root))
+        .await
+        .map_err(host_failure)?
+        .map_err(host_failure)
 }
 
 async fn activate_initial(
@@ -431,6 +477,7 @@ fn host_failure(error: impl std::fmt::Display) -> ControlPlaneError {
 struct Arguments {
     distribution_lock: PathBuf,
     app_root: PathBuf,
+    configuration_policy: Option<PathBuf>,
     startup_timeout: Duration,
     stop_timeout: Duration,
 }
@@ -439,6 +486,7 @@ fn parse_arguments() -> Result<Arguments, Box<dyn std::error::Error>> {
     let mut arguments = env::args_os().skip(1);
     let mut distribution_lock = None;
     let mut app_root = None;
+    let mut configuration_policy = None;
     let mut startup_timeout = None;
     let mut stop_timeout = None;
     while let Some(argument) = arguments.next() {
@@ -449,6 +497,13 @@ fn parse_arguments() -> Result<Arguments, Box<dyn std::error::Error>> {
             Some("--root") if app_root.is_none() => {
                 app_root = arguments.next().map(PathBuf::from);
             }
+            Some("--configuration-policy") if configuration_policy.is_none() => {
+                configuration_policy = Some(PathBuf::from(
+                    arguments
+                        .next()
+                        .ok_or("--configuration-policy needs an absolute path")?,
+                ));
+            }
             Some("--startup-ms") if startup_timeout.is_none() => {
                 startup_timeout = Some(parse_budget(arguments.next(), "--startup-ms")?);
             }
@@ -458,9 +513,16 @@ fn parse_arguments() -> Result<Arguments, Box<dyn std::error::Error>> {
             _ => return Err("usage: lenso-host-runtime --distribution LOCK --root ROOT".into()),
         }
     }
+    if configuration_policy
+        .as_ref()
+        .is_some_and(|path: &PathBuf| !path.is_absolute())
+    {
+        return Err("--configuration-policy needs an absolute path".into());
+    }
     Ok(Arguments {
         distribution_lock: distribution_lock.ok_or("missing --distribution")?,
         app_root: app_root.ok_or("missing --root")?,
+        configuration_policy,
         startup_timeout: startup_timeout.unwrap_or(STARTUP_TIMEOUT),
         stop_timeout: stop_timeout.unwrap_or(STOP_TIMEOUT),
     })

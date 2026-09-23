@@ -3,8 +3,13 @@ use std::{fs, process::Command};
 use lenso_app_plan::authoring::{
     HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
 };
+use lenso_engine_authoring::host_authoring::{GeneratedHostBuild, HostPluginInput};
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the public CLI scenario verifies sync, facts, and mandatory startup policy together"
+)]
 fn external_file_source_reconciles_through_public_app_commands() {
     let root = tempfile::tempdir().unwrap();
     fs::create_dir(root.path().join(".lenso")).unwrap();
@@ -117,4 +122,115 @@ fn external_file_source_reconciles_through_public_app_commands() {
         .unwrap();
     assert!(!missing_policy.status.success());
     assert!(String::from_utf8_lossy(&missing_policy.stderr).contains("configuration-policy"));
+}
+
+#[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "the public CLI scenario verifies exact Host authority through sync and resolution"
+)]
+fn external_plugin_root_sync_uses_the_distributions_exact_host_build() {
+    let distribution = tempfile::tempdir().unwrap();
+    let app = tempfile::tempdir().unwrap();
+    fs::create_dir(distribution.path().join(".lenso")).unwrap();
+    fs::create_dir(app.path().join(".lenso")).unwrap();
+    let host = GeneratedHostBuild::lower(
+        "example.app",
+        vec![HostPluginInput {
+            descriptor: PluginDescriptor::new("example.agent", "1.0.0", "agent")
+                .with_configuration_schema(serde_json::json!({
+                    "type": "object",
+                    "properties": {"greeting": {"type": "string"}},
+                    "additionalProperties": false
+                })),
+            instance: "default".into(),
+            configuration: serde_json::json!({}),
+            source: "fixture".into(),
+        }],
+        vec![],
+    )
+    .unwrap();
+    let host_build = distribution.path().join(".lenso/host-build.json");
+    fs::write(&host_build, serde_json::to_vec(&host).unwrap()).unwrap();
+    let snapshot = distribution.path().join("snapshot.json");
+    fs::write(
+        &snapshot,
+        serde_json::to_vec(&serde_json::json!({
+            "schema": "lenso.plugin-configuration-snapshot.v1",
+            "revision": 1,
+            "configurations": [{
+                "plugin_id": "example.agent",
+                "instance_key": "default",
+                "toml": "greeting = 'accepted'\n"
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let policy = distribution.path().join("policy.json");
+    fs::write(
+        &policy,
+        serde_json::to_vec(&serde_json::json!({
+            "schema": "lenso.configuration-source-policy.v1",
+            "source_reference": "operator-settings",
+            "source": {"type": "file", "path": snapshot},
+            "objects": [{
+                "plugin_id": "example.agent",
+                "instance_key": "default",
+                "fields": ["greeting"]
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let synced = Command::new(cli)
+        .args(["app", "config-sync", "--root"])
+        .arg(app.path())
+        .arg("--host-build")
+        .arg(&host_build)
+        .arg("--policy")
+        .arg(&policy)
+        .output()
+        .unwrap();
+    assert!(
+        synced.status.success(),
+        "{}",
+        String::from_utf8_lossy(&synced.stderr)
+    );
+    let resolved = Command::new(cli)
+        .args(["app", "show", "--root"])
+        .arg(app.path())
+        .arg("--host-build")
+        .arg(&host_build)
+        .arg("--runtime-json")
+        .output()
+        .unwrap();
+    assert!(
+        resolved.status.success(),
+        "{}",
+        String::from_utf8_lossy(&resolved.stderr)
+    );
+    let resolution: serde_json::Value = serde_json::from_slice(&resolved.stdout).unwrap();
+    assert_eq!(resolution["app_id"], "example.app");
+    assert_eq!(
+        resolution["plan"]["plugin_instances"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        fs::read_to_string(app.path().join("plugins/example.agent/default.toml"))
+            .unwrap()
+            .contains("accepted")
+    );
+    let facts = Command::new(cli)
+        .args(["app", "facts", "--root"])
+        .arg(app.path())
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(facts.status.success());
+    assert!(!String::from_utf8_lossy(&facts.stdout).contains("accepted"));
 }

@@ -67,7 +67,18 @@ same status alongside the resolved Plugin and binding facts from `dist/intent`.
 The status identifies the source kind, but omits configuration values, source
 addresses, and digests; it does not report whether the last activated Host
 process is currently running.
-There is no background polling or live switch yet; rerun the reconciliation and
-Host readiness flow to consume an update. Keep secret material with its provider:
+For the generated native App, there is no background polling or live switch yet;
+rerun the reconciliation and Host readiness flow to consume an update. Keep secret material with its provider:
 the snapshot contains only authorized references for schema-marked sensitive
 fields, and normal diagnostics do not print values.
+
+An external Plugin Root used by the prepared TypeScript Host has a separate
+operator path: `lenso app config-sync --root APP --host-build
+DIST/.lenso/host-build.json --policy POLICY`. This copies only the exact
+distribution Host authority into the external Root before publishing approved
+fields. `lenso-host-runtime --configuration-policy POLICY` performs that sync
+before its initial resolution and before each revision-fenced `reconcile`
+request. A failed source sync or candidate transition does not report success;
+the current healthy Generation remains selected. This private control path
+does not automatically poll the source, and it is not yet wired into the
+generated native Host or a public App-handle update operation.

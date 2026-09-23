@@ -47,19 +47,28 @@ fn read_frame(reader: &mut impl Read) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str, update: Option<&str>) {
-    let mut child = Command::new(runtime)
+fn run_session(
+    runtime: &Path,
+    lock: &Path,
+    app: &Path,
+    identity: &str,
+    policy: &Path,
+    update: Option<&str>,
+) {
+    let mut command = Command::new(runtime);
+    command
         .args([
             "--distribution",
             lock.to_str().unwrap(),
             "--root",
             app.to_str().unwrap(),
         ])
+        .arg("--configuration-policy")
+        .arg(policy)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().unwrap();
     let mut input = child.stdin.take().unwrap();
     let mut output = child.stdout.take().unwrap();
     write_frame(
@@ -77,9 +86,10 @@ fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str, update: 
     let inspected = read_frame(&mut output);
     assert_eq!(inspected["kind"], "inspected");
     assert_eq!(inspected["instances"], json!([]));
+    assert_eq!(fs::read(app.join("accepted-policy")).unwrap(), b"approved");
     let mut stop_id = 3;
     if let Some(update) = update {
-        fs::write(app.join("resolution.json"), b"invalid resolution").unwrap();
+        fs::write(policy, b"reject").unwrap();
         write_frame(
             &mut input,
             &json!({"op":"reconcile","version":1,"id":3,"revision":revision}),
@@ -93,6 +103,7 @@ fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str, update: 
             read_frame(&mut output)["generation"],
             inspected["generation"]
         );
+        fs::write(policy, b"approved").unwrap();
         fs::write(app.join("resolution.json"), update).unwrap();
         write_frame(
             &mut input,
@@ -114,6 +125,10 @@ fn run_session(runtime: &Path, lock: &Path, app: &Path, identity: &str, update: 
 }
 
 #[test]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one distribution fixture exercises source gating, reconciliation, recovery, and suspension"
+)]
 fn prepared_runtime_reaches_ready_inspects_and_suspends() {
     let temporary = tempfile::tempdir().unwrap();
     let distribution = temporary.path().join("distribution");
@@ -169,7 +184,7 @@ fn prepared_runtime_reaches_ready_inspects_and_suspends() {
     .unwrap();
     executable(
         distribution.join("runtime/lenso-resolver").as_path(),
-        b"#!/bin/sh\ncat \"$4/resolution.json\"\n",
+        b"#!/bin/sh\nif [ \"$2\" = config-sync ]; then\n  if grep -q reject \"$8\"; then exit 1; fi\n  cp \"$8\" \"$4/accepted-policy\"\n  exit 0\nfi\ncat \"$4/resolution.json\"\n",
     );
     let files = [
         (".lenso/host-build.json", "host_authority", false),
@@ -207,12 +222,15 @@ fn prepared_runtime_reaches_ready_inspects_and_suspends() {
     fs::write(&lock_path, lock).unwrap();
 
     let runtime = distribution.join("runtime/lenso-host-runtime");
+    let policy = distribution.join("policy.json");
+    fs::write(&policy, b"approved").unwrap();
     run_session(
         &runtime,
         &lock_path,
         &app,
         &identity,
+        &policy,
         Some(&updated_resolution),
     );
-    run_session(&runtime, &lock_path, &app, &identity, None);
+    run_session(&runtime, &lock_path, &app, &identity, &policy, None);
 }

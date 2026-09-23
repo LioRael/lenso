@@ -15,6 +15,7 @@ mod convention_build;
 mod explain;
 pub mod facts;
 pub use configuration_source::Status as ConfigurationStatus;
+pub use configuration_source::sync_external_configuration;
 pub use facts::{ProjectFacts, inspect_project_facts};
 mod local_dev;
 pub use local_dev::DevArgs;
