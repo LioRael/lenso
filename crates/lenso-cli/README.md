@@ -156,11 +156,27 @@ and digest are checked against the same signed release before App files change.
 Other executable variants may coexist in the Bundle; they are not selected by
 this linked-Host adoption path. The Bundle is input evidence, not an alternate
 catalog signature or a runtime-loadable native Artifact.
+`app add` keeps the last accepted signed catalog checkpoint in CLI-owned
+`.lenso/` state for that App. A later add using an older revision, a changed
+payload at the same revision, or a changed immutable release is rejected. The
+checkpoint advances even when a signed snapshot has no selectable release, so
+a revocation seen by `app add` cannot be bypassed by retrying an older snapshot.
+This is local replay protection, not a live revocation feed: an App that has
+not received a newer signed snapshot cannot know about it. Preserve the
+ignored `.lenso/` state when moving an App if replay history must carry over;
+an App owner who can remove that state can reset its local history.
+On POSIX systems the checkpoint path is opened relative to locked directory
+descriptors without following symlinks. The Windows fallback rejects existing
+symlink paths but does not defend against a hostile concurrent filesystem
+writer replacing paths; keep the App directory under one trusted local owner.
 Use `lenso app linked-catalog --linked-snapshot snapshot.json --trust trust.json
 --json` to search the same signed snapshot first. The result separates eligible
 source candidates from target, availability, Host-integration, and registry
 rejections; even an eligible entry remains `candidate_only` until the exact
 archive, dependency closure, permissions, build, and runtime are checked.
+`app linked-catalog`, `app linked-doc`, and their read-only MCP projections are
+stateless inspection, not an App adoption checkpoint or proof of the latest
+revocation state.
 For one exact versioned Markdown revision, use `lenso app linked-doc
 PLUGIN_ID@VERSION DOCUMENT_ID --revision REVISION --linked-snapshot snapshot.json
 --trust trust.json --file downloaded.md --json`. The command verifies the local

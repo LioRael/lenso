@@ -86,6 +86,9 @@ exposes `linked_catalog`. It reads the same signed source-only candidate
 projection as `app linked-catalog`, with a query, target, offset, page limit of
 20, and bounded output. It neither downloads a crate nor claims unverified
 permissions, dependency compatibility, or runtime readiness.
+Catalog and document inspection remain stateless; only `app add` stores an
+App-local accepted-catalog checkpoint, and neither path discovers revocations
+without a newer signed snapshot.
 Add `--allow-document-fetch` only when the MCP client may contact signed
 third-party HTTPS documentation URLs. The `linked_document` tool verifies the
 exact release, document revision, size, and digest before returning a bounded

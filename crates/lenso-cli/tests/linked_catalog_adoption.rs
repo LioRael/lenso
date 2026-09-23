@@ -1122,3 +1122,162 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     prove_removed_build_when_requested(cli, &root);
     adopt_next_exact_version(cli, &root, temp.path(), &trust_path, &key, now);
 }
+
+#[test]
+fn linked_catalog_add_persists_monotonic_app_checkpoint() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+
+    let archive = temp.path().join("plugin.crate");
+    let bytes = crate_archive("example-web-plugin", "0.4.5", "example.web");
+    fs::write(&archive, &bytes).unwrap();
+    let key = SigningKey::from_bytes(&[75; 32]);
+    let trust = temp.path().join("trust.json");
+    fs::write(
+        &trust,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id": "checkpoint-test", "key_id": "test-key",
+            "public_key_hex": hex::encode(key.verifying_key().to_bytes())
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let release = LinkedCargoRelease {
+        plugin_id: "example.web".into(),
+        version: "0.4.5".into(),
+        publisher_id: "example".into(),
+        title: "Web".into(),
+        summary: "Native Web Plugin".into(),
+        source_url: "https://example.com/web".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        package: "example-web-plugin".into(),
+        registry_url: "https://crates.io".into(),
+        crate_digest: lenso_plugin_catalog::digest(&bytes),
+        integration: LinkedCargoIntegration::LinkedPlugin,
+        targets: vec![lenso_engine_authoring::native_host_target().into()],
+        availability: Availability::Listed,
+        documentation: Vec::new(),
+    };
+    let first = LinkedCargoSnapshot::new(
+        "checkpoint-test".into(),
+        1,
+        now - 1,
+        now + 3600,
+        vec![release],
+    );
+    let snapshot_path = temp.path().join("snapshot.json");
+    let add = |root: &std::path::Path| {
+        Command::new(cli)
+            .args(["app", "add", "example.web@0.4.5", "--root"])
+            .arg(root)
+            .arg("--linked-snapshot")
+            .arg(&snapshot_path)
+            .arg("--trust")
+            .arg(&trust)
+            .arg("--crate")
+            .arg(&archive)
+            .output()
+            .unwrap()
+    };
+    fs::write(&snapshot_path, sign(&first, "test-key", &key).unwrap()).unwrap();
+    let accepted = add(&root);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let file_name = format!(
+        "linked-cargo-{}.json",
+        lenso_plugin_catalog::digest(b"checkpoint-test").trim_start_matches("sha256:")
+    );
+    let checkpoint_path = root.join(".lenso").join(&file_name);
+    let checkpoint = || -> serde_json::Value {
+        serde_json::from_slice(&fs::read(&checkpoint_path).unwrap()).unwrap()
+    };
+    assert_eq!(checkpoint()["checkpoint"]["revision"], 1);
+
+    let mut revoked = first.clone();
+    revoked.revision = 2;
+    revoked.releases[0].availability = Availability::Revoked;
+    fs::write(&snapshot_path, sign(&revoked, "test-key", &key).unwrap()).unwrap();
+    let rejected = add(&root);
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("not available"));
+    assert_eq!(checkpoint()["checkpoint"]["revision"], 2);
+
+    fs::write(&snapshot_path, sign(&first, "test-key", &key).unwrap()).unwrap();
+    let rollback = add(&root);
+    assert!(!rollback.status.success());
+    assert!(String::from_utf8_lossy(&rollback.stderr).contains("rollback"));
+    assert_eq!(checkpoint()["checkpoint"]["revision"], 2);
+
+    let mut equivocated = revoked.clone();
+    equivocated.releases[0].availability = Availability::Yanked;
+    fs::write(
+        &snapshot_path,
+        sign(&equivocated, "test-key", &key).unwrap(),
+    )
+    .unwrap();
+    let equivocation = add(&root);
+    assert!(!equivocation.status.success());
+    assert!(String::from_utf8_lossy(&equivocation.stderr).contains("equivocation"));
+    assert_eq!(checkpoint()["checkpoint"]["revision"], 2);
+
+    let mut forward = first.clone();
+    forward.revision = 3;
+    fs::write(&snapshot_path, sign(&forward, "test-key", &key).unwrap()).unwrap();
+    let accepted = add(&root);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    assert_eq!(checkpoint()["checkpoint"]["revision"], 3);
+    let checkpoint_bytes = fs::read(&checkpoint_path).unwrap();
+    let retried = add(&root);
+    assert!(retried.status.success());
+    assert_eq!(fs::read(&checkpoint_path).unwrap(), checkpoint_bytes);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let outside = temp.path().join("outside");
+        fs::create_dir(&outside).unwrap();
+        let sentinel = outside.join("sentinel");
+        fs::write(&sentinel, b"keep").unwrap();
+        for (name, directory_link) in [("directory-link", true), ("file-link", false)] {
+            let other = temp.path().join(name);
+            let created = Command::new(cli)
+                .args(["app", "create"])
+                .arg(&other)
+                .args(["--runtime", "empty"])
+                .output()
+                .unwrap();
+            assert!(created.status.success());
+            if directory_link {
+                symlink(&outside, other.join(".lenso")).unwrap();
+            } else {
+                fs::create_dir(other.join(".lenso")).unwrap();
+                symlink(&sentinel, other.join(".lenso").join(&file_name)).unwrap();
+            }
+            let rejected = add(&other);
+            assert!(!rejected.status.success());
+            assert_eq!(fs::read(&sentinel).unwrap(), b"keep");
+            assert!(!other.join("vendor/lenso/example.web/0.4.5").exists());
+        }
+    }
+}

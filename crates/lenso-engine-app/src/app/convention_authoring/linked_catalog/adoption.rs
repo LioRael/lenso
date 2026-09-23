@@ -50,8 +50,18 @@ pub(super) struct PreparedLinkedAdoption {
 }
 
 impl PreparedLinkedAdoption {
+    #[cfg(test)]
     pub(super) fn new(root: &Path, destination: &Path, plugin_id: &str) -> anyhow::Result<Self> {
         let app_lock = lock_app(root)?;
+        Self::new_locked(root, destination, plugin_id, app_lock)
+    }
+
+    pub(super) fn new_locked(
+        root: &Path,
+        destination: &Path,
+        plugin_id: &str,
+        app_lock: fs::File,
+    ) -> anyhow::Result<Self> {
         super::super::preflight_source_adoption(root, plugin_id)?;
         super::super::writable_path(root, Path::new("Cargo.toml"))?;
         let workspace_manifest = root.join("Cargo.toml");

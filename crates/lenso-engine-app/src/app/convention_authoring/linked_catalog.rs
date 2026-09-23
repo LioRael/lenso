@@ -19,6 +19,7 @@ use sha2::{Digest as _, Sha256};
 use super::AddArgs;
 
 mod adoption;
+mod checkpoint;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -321,6 +322,11 @@ fn read_verified(
     snapshot_path: &Path,
     trust_path: &Path,
 ) -> anyhow::Result<linked_cargo::VerifiedLinkedCargoSnapshot> {
+    let trust = read_trust(trust_path)?;
+    linked_cargo::verify(&read_envelope(snapshot_path)?, &trust, None, now()?)
+}
+
+fn read_trust(trust_path: &Path) -> anyhow::Result<Trust> {
     let mut trust_bytes = Vec::new();
     fs::File::open(trust_path)?
         .take(4097)
@@ -333,10 +339,13 @@ fn read_verified(
     let key: [u8; 32] = hex::decode(trust_file.public_key_hex)?
         .try_into()
         .map_err(|_| anyhow::anyhow!("public trust key must have 32 bytes"))?;
-    let trust = Trust {
+    Ok(Trust {
         catalog_id: trust_file.catalog_id,
         keys: BTreeMap::from([(trust_file.key_id, VerifyingKey::from_bytes(&key)?)]),
-    };
+    })
+}
+
+fn read_envelope(snapshot_path: &Path) -> anyhow::Result<Vec<u8>> {
     let mut envelope = Vec::new();
     fs::File::open(snapshot_path)?
         .take(lenso_plugin_catalog::MAX_ENVELOPE_BYTES as u64 + 1)
@@ -345,10 +354,13 @@ fn read_verified(
         envelope.len() <= lenso_plugin_catalog::MAX_ENVELOPE_BYTES,
         "linked Cargo snapshot exceeds size limit"
     );
-    let now = std::time::SystemTime::now()
+    Ok(envelope)
+}
+
+fn now() -> anyhow::Result<u64> {
+    Ok(std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
-    linked_cargo::verify(&envelope, &trust, None, now)
+        .as_secs())
 }
 
 pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
@@ -365,10 +377,17 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         .source
         .split_once('@')
         .context("linked Cargo source must be an exact PLUGIN_ID@VERSION")?;
-    let verified = read_verified(snapshot_path, trust_path)?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
+    let app_lock = adoption::lock_app(root)?;
+    let trust = read_trust(trust_path)?;
+    let previous = checkpoint::read(root, &app_lock, &trust.catalog_id)?;
+    let now = now()?;
+    let verified = linked_cargo::verify(
+        &read_envelope(snapshot_path)?,
+        &trust,
+        previous.as_ref(),
+        now,
+    )?;
+    checkpoint::persist(root, &app_lock, verified.checkpoint(), previous.as_ref())?;
     let release = verified.select(plugin_id, version, now)?;
     ensure!(
         release.integration == LinkedCargoIntegration::LinkedPlugin,
@@ -427,7 +446,8 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         "linked Cargo source does not match an adoptable native Plugin"
     );
     let destination = parent.join(version);
-    let prepared = adoption::PreparedLinkedAdoption::new(root, &destination, plugin_id)?;
+    let prepared =
+        adoption::PreparedLinkedAdoption::new_locked(root, &destination, plugin_id, app_lock)?;
     let lock = SourceLock {
         schema_version: 1,
         plugin_id: release.plugin_id.clone(),
