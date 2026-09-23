@@ -347,6 +347,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
     let mut wasm = lenso_wasm_component_adapter::WasmComponentAdapter::new(artifacts)
         .require_exact_instance_limits();
+    #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
     for (instance_key, limits) in wasm_limits {
         wasm = wasm.with_instance_limits(instance_key, limits);
     }

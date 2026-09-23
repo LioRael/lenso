@@ -604,6 +604,41 @@ mod tests {
     };
 
     #[test]
+    fn wasm_memory_admission_is_owned_only_by_an_executable_local_host() {
+        let wasm_class = lenso_wasm_component_adapter::EXECUTION_CLASS;
+        let authoring = local_implementation_policy(false).unwrap();
+        let authoring_wasm = authoring
+            .runtimes
+            .iter()
+            .find(|runtime| runtime.execution_class.as_str() == wasm_class)
+            .unwrap();
+        assert_eq!(authoring_wasm.enforced_wasm_memory_ceiling_bytes, None);
+
+        let executable = local_implementation_policy(true).unwrap();
+        let executable_wasm = executable
+            .runtimes
+            .iter()
+            .find(|runtime| runtime.execution_class.as_str() == wasm_class)
+            .unwrap();
+        assert_eq!(
+            executable_wasm.enforced_wasm_memory_ceiling_bytes,
+            Some(
+                u64::try_from(
+                    lenso_wasm_component_adapter::WasmComponentLimits::default().max_memory_bytes
+                )
+                .unwrap()
+            )
+        );
+        assert!(
+            executable
+                .runtimes
+                .iter()
+                .filter(|runtime| runtime.execution_class.as_str() != wasm_class)
+                .all(|runtime| runtime.enforced_wasm_memory_ceiling_bytes.is_none())
+        );
+    }
+
+    #[test]
     fn publishes_declared_resources_with_an_exact_inventory() {
         let temporary = tempfile::tempdir().unwrap();
         let project = temporary.path().join("plugin");
