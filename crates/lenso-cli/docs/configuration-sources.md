@@ -42,6 +42,12 @@ For HTTPS, replace `source` with
 The fetch rejects non-HTTPS, redirects, proxies, private DNS results, oversized
 responses, and unapproved origins. Both sources use the same field authorization,
 schema validation, Proposal, and Plugin Root compare-and-swap publication path.
+An HTTPS ETag cursor is saved only after the corresponding desired revision has
+been accepted and published. A 304 then confirms that exact source has not
+changed; an interrupted publication discards the cursor and fetches a complete
+snapshot on recovery. The cursor is private Host state, not App configuration.
+Changing the Host-owned policy (including field scopes or admitted origins)
+invalidates that cursor and requires a complete snapshot to be reauthorized.
 
 The accepted desired revision is persisted in the built App's private
 `intent/.lenso/configuration-source-state.json` before publication. A repeated or stale

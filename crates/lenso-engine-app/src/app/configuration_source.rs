@@ -10,18 +10,23 @@ use clap::Args;
 use lenso_app_authoring::{
     FilePluginConfigurationSnapshotSource, HttpsPluginConfigurationSnapshotSource,
     LocalPluginRootAuthority, PluginConfigurationAuthority, PluginConfigurationAuthoritySource,
-    PluginConfigurationSnapshotAuthorization, PluginConfigurationSnapshotIntent,
-    PluginConfigurationSnapshotObjectScope, PluginConfigurationSnapshotPoll,
-    PluginConfigurationSnapshotPublicationState, PluginConfigurationSnapshotReconciliation,
-    propose_versioned_plugin_configuration_snapshot,
+    PluginConfigurationSnapshotAuthorization, PluginConfigurationSnapshotCursor,
+    PluginConfigurationSnapshotIntent, PluginConfigurationSnapshotObjectScope,
+    PluginConfigurationSnapshotPoll, PluginConfigurationSnapshotPublicationState,
+    PluginConfigurationSnapshotReconciliation, propose_versioned_plugin_configuration_snapshot,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 
 const POLICY_SCHEMA: &str = "lenso.configuration-source-policy.v1";
 const STATE_SCHEMA: &str = "lenso.configuration-source-state.v1";
 const STATE_FILE: &str = "configuration-source-state.json";
 const MAX_POLICY_BYTES: u64 = 64 * 1024;
 const MAX_STATE_BYTES: u64 = 16 * 1024;
+
+fn digest_policy(bytes: &[u8]) -> String {
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
+}
 
 #[derive(Clone, Debug, Args)]
 pub struct SyncArgs {
@@ -88,10 +93,14 @@ struct State {
     schema: String,
     desired: PluginConfigurationSnapshotIntent,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    policy_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cursor: Option<PluginConfigurationSnapshotCursor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     last_activated: Option<ActivatedConfiguration>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ActivatedConfiguration {
     revision: u64,
@@ -204,8 +213,10 @@ pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
     lock.lock()?;
     verify_intent_authority(&root, &intent)?;
 
-    let policy: Policy = serde_json::from_slice(&read_bounded(policy_path, MAX_POLICY_BYTES)?)
-        .context("parse Host configuration source policy")?;
+    let policy_bytes = read_bounded(policy_path, MAX_POLICY_BYTES)?;
+    let policy_digest = digest_policy(&policy_bytes);
+    let policy: Policy =
+        serde_json::from_slice(&policy_bytes).context("parse Host configuration source policy")?;
     ensure!(
         policy.schema == POLICY_SCHEMA,
         "unsupported configuration source policy"
@@ -227,28 +238,6 @@ pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
     let authorization = PluginConfigurationSnapshotAuthorization::new(identity.clone(), scopes)?;
-    let snapshot = match policy.source {
-        Source::File { path } => {
-            ensure!(
-                path.is_absolute(),
-                "configuration snapshot path must be absolute"
-            );
-            FilePluginConfigurationSnapshotSource::new(path, identity).read()?
-        }
-        Source::Https {
-            url,
-            admitted_origins,
-        } => {
-            let source =
-                HttpsPluginConfigurationSnapshotSource::new(&url, identity, &admitted_origins)?;
-            match source.poll(None)? {
-                PluginConfigurationSnapshotPoll::Updated { snapshot, .. } => snapshot,
-                PluginConfigurationSnapshotPoll::NotModified { .. } => {
-                    bail!("configuration source returned 304 without a saved cursor")
-                }
-            }
-        }
-    };
     let state_path = control.join(STATE_FILE);
     let previous = read_state(&state_path)?;
     let authority = LocalPluginRootAuthority::new(&intent);
@@ -260,6 +249,45 @@ pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
     if let Some(previous) = &previous {
         previous.desired.publication_state(current.revision())?;
     }
+    let (snapshot, cursor) = match policy.source {
+        Source::File { path } => {
+            ensure!(
+                path.is_absolute(),
+                "configuration snapshot path must be absolute"
+            );
+            (
+                FilePluginConfigurationSnapshotSource::new(path, identity).read()?,
+                None,
+            )
+        }
+        Source::Https {
+            url,
+            admitted_origins,
+        } => {
+            let source = HttpsPluginConfigurationSnapshotSource::new(
+                &url,
+                identity.clone(),
+                &admitted_origins,
+            )?;
+            let previous_cursor = revalidation_cursor(previous.as_ref(), pending, &policy_digest);
+            match source.poll(previous_cursor)? {
+                PluginConfigurationSnapshotPoll::Updated { snapshot, cursor } => (snapshot, cursor),
+                PluginConfigurationSnapshotPoll::NotModified { .. } => {
+                    ensure!(
+                        previous_cursor.is_some(),
+                        "configuration source returned 304 without an accepted cursor"
+                    );
+                    ensure!(
+                        previous.as_ref().is_some_and(
+                            |state| state.desired.source().ok().as_ref() == Some(&identity)
+                        ),
+                        "configuration source returned 304 for a different authority"
+                    );
+                    return Ok(());
+                }
+            }
+        }
+    };
     let result = propose_versioned_plugin_configuration_snapshot(
         &authority,
         &authorization,
@@ -278,7 +306,24 @@ pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
             "pending configuration intent does not match the current source revision"
         );
     }
-    publish_result(&authority, &state_path, result)
+    let accepted_intent = result.intent().clone();
+    publish_result(&authority, &state_path, result, &policy_digest)?;
+    if source_kind == "https_poll" {
+        write_cursor(&state_path, cursor, &policy_digest, &accepted_intent)?;
+    }
+    Ok(())
+}
+
+fn revalidation_cursor<'a>(
+    previous: Option<&'a State>,
+    pending_publication: bool,
+    policy_digest: &str,
+) -> Option<&'a PluginConfigurationSnapshotCursor> {
+    previous
+        .filter(|state| {
+            !pending_publication && state.policy_digest.as_deref() == Some(policy_digest)
+        })
+        .and_then(|state| state.cursor.as_ref())
 }
 
 fn verify_intent_authority(distribution: &Path, intent: &Path) -> anyhow::Result<()> {
@@ -317,14 +362,15 @@ fn publish_result(
     authority: &LocalPluginRootAuthority,
     state_path: &Path,
     result: PluginConfigurationSnapshotReconciliation,
+    policy_digest: &str,
 ) -> anyhow::Result<()> {
     match result {
         PluginConfigurationSnapshotReconciliation::Unchanged(_) => Ok(()),
         PluginConfigurationSnapshotReconciliation::NoRootChange(intent) => {
-            write_state(state_path, &intent)
+            write_state(state_path, &intent, policy_digest)
         }
         PluginConfigurationSnapshotReconciliation::Proposed { intent, proposal } => {
-            write_state(state_path, &intent)?;
+            write_state(state_path, &intent, policy_digest)?;
             authority.publish_changes(&proposal)?;
             ensure!(
                 intent.publication_state(authority.inspect()?.revision())?
@@ -346,21 +392,61 @@ fn read_state(path: &Path) -> anyhow::Result<Option<State>> {
         "unsupported configuration source state"
     );
     state.desired.source()?;
+    if let Some(cursor) = &state.cursor {
+        ensure!(
+            cursor.source()? == state.desired.source()?,
+            "configuration cursor source differs from desired authority"
+        );
+    }
     Ok(Some(state))
 }
 
-fn write_state(path: &Path, desired: &PluginConfigurationSnapshotIntent) -> anyhow::Result<()> {
-    let last_activated = read_state(path)?.and_then(|state| state.last_activated);
-    let parent = path.parent().context("configuration state parent")?;
-    let mut stage = tempfile::NamedTempFile::new_in(parent)?;
-    serde_json::to_writer(
-        &mut stage,
+fn write_state(
+    path: &Path,
+    desired: &PluginConfigurationSnapshotIntent,
+    policy_digest: &str,
+) -> anyhow::Result<()> {
+    let previous = read_state(path)?;
+    let last_activated = previous
+        .as_ref()
+        .and_then(|state| state.last_activated.clone());
+    let cursor = previous.and_then(|state| {
+        (state.desired == *desired && state.policy_digest.as_deref() == Some(policy_digest))
+            .then_some(state.cursor)
+            .flatten()
+    });
+    persist_state(
+        path,
         &State {
             schema: STATE_SCHEMA.into(),
             desired: desired.clone(),
+            policy_digest: Some(policy_digest.to_owned()),
+            cursor,
             last_activated,
         },
-    )?;
+    )
+}
+
+fn write_cursor(
+    path: &Path,
+    cursor: Option<PluginConfigurationSnapshotCursor>,
+    policy_digest: &str,
+    expected: &PluginConfigurationSnapshotIntent,
+) -> anyhow::Result<()> {
+    let mut state = read_state(path)?.context("missing accepted configuration state")?;
+    ensure!(
+        state.desired == *expected,
+        "configuration cursor no longer matches the accepted snapshot"
+    );
+    state.policy_digest = Some(policy_digest.to_owned());
+    state.cursor = cursor;
+    persist_state(path, &state)
+}
+
+fn persist_state(path: &Path, state: &State) -> anyhow::Result<()> {
+    let parent = path.parent().context("configuration state parent")?;
+    let mut stage = tempfile::NamedTempFile::new_in(parent)?;
+    serde_json::to_writer(&mut stage, state)?;
     stage.as_file().sync_all()?;
     stage.persist(path)?;
     fs::File::open(parent)?.sync_all()?;
@@ -555,6 +641,65 @@ mod tests {
     }
 
     #[test]
+    fn etag_cursor_is_retained_only_for_the_same_accepted_snapshot() {
+        let (root, source, policy) = fixture();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        snapshot(&source, 1, "greeting = 'first'\n");
+        sync(root.path(), &policy).unwrap();
+        let cursor: PluginConfigurationSnapshotCursor = serde_json::from_value(serde_json::json!({
+            "endpoint": "https://configuration.example/snapshot",
+            "source_kind": "file_snapshot",
+            "source_reference": "development",
+            "etag": "\"revision-1\""
+        }))
+        .unwrap();
+        let digest = digest_policy(&fs::read(&policy).unwrap());
+        let desired = read_state(&state_path).unwrap().unwrap().desired;
+        write_cursor(&state_path, Some(cursor.clone()), &digest, &desired).unwrap();
+        write_state(&state_path, &desired, &digest).unwrap();
+        assert_eq!(
+            read_state(&state_path).unwrap().unwrap().cursor,
+            Some(cursor)
+        );
+        let accepted = read_state(&state_path).unwrap().unwrap();
+        assert!(revalidation_cursor(Some(&accepted), false, &digest).is_some());
+        assert!(revalidation_cursor(Some(&accepted), true, &digest).is_none());
+        assert!(revalidation_cursor(Some(&accepted), false, "sha256:changed").is_none());
+
+        snapshot(&source, 2, "greeting = 'second'\n");
+        sync(root.path(), &policy).unwrap();
+        let current = read_state(&state_path).unwrap().unwrap();
+        assert_eq!(current.desired.revision(), 2);
+        assert!(current.cursor.is_none());
+        assert!(write_cursor(&state_path, None, &digest, &desired).is_err());
+    }
+
+    #[test]
+    fn cursor_from_a_different_source_is_rejected() {
+        let (root, source, policy) = fixture();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        snapshot(&source, 1, "greeting = 'first'\n");
+        sync(root.path(), &policy).unwrap();
+        let mut state = read_state(&state_path).unwrap().unwrap();
+        state.cursor = Some(
+            serde_json::from_value(serde_json::json!({
+                "endpoint": "https://configuration.example/snapshot",
+                "source_kind": "https_poll",
+                "source_reference": "other",
+                "etag": "\"revision-1\""
+            }))
+            .unwrap(),
+        );
+        persist_state(&state_path, &state).unwrap();
+        assert!(
+            read_state(&state_path)
+                .unwrap_err()
+                .to_string()
+                .contains("cursor source")
+        );
+    }
+
+    #[test]
     fn unauthorized_field_fails_without_publication() {
         let (root, source, policy) = fixture();
         snapshot(&source, 1, "token = 'secret://test'\n");
@@ -602,6 +747,7 @@ mod tests {
         write_state(
             &root.path().join("intent/.lenso").join(STATE_FILE),
             proposal.intent(),
+            &digest_policy(&fs::read(&policy).unwrap()),
         )
         .unwrap();
         let status = inspect_status(root.path()).unwrap();
