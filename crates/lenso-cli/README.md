@@ -238,6 +238,21 @@ for the evidence contract and qualification boundary.
 Runtime Drivers and Execution Adapters remain separate because they implement
 Host mechanics, not application behavior.
 
+## Inspect an App through MCP
+
+`lenso mcp --root ./my-app` serves read-only project facts and Host admission
+explanations over stdio. Configure `--linked-snapshot` and `--trust` to enable
+signed candidate search; HTTPS documentation fetch also requires the explicit
+`--allow-document-fetch` flag. The MCP process cannot build, install, or edit
+the App.
+
+`project_facts` with `{}` retains the full `lenso app facts --json` shape for
+small projects. For a large project, request `section: "plugins"`,
+`"bindings"`, `"discovered_sources"`, or `"diagnostics"`, with `offset` and a
+`limit` of at most 20. Scoped pages report `total` and `next_offset`; MCP text
+responses are capped at 128 KiB. These views project the same inspected facts,
+not a second Agent-specific resolver.
+
 ### App commands
 
 The CLI keeps its authoring and maintenance roots static: `plugin`, `plugins`,

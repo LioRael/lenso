@@ -29,6 +29,10 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_explain","arguments":{}}}"#,
         r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"linked_catalog","arguments":{}}}"#,
         r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"linked_document","arguments":{"plugin_id":"example.web","version":"0.4.5","document_id":"readme","revision":"1"}}}"#,
+        r#"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"diagnostics","limit":1}}}"#,
+        r#"{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"diagnostics","offset":1,"limit":1}}}"#,
+        r#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"project_facts","arguments":{"offset":1}}}"#,
+        r#"{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"diagnostics","limit":0}}}"#,
     ].join("\n");
     child
         .stdin
@@ -48,12 +52,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 6, "{frames}");
+    assert_eq!(responses.len(), 10, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 6);
+    assert_eq!(by_id.len(), 10);
     let tools = by_id[&2]["result"]["tools"].as_array().unwrap();
     let names = tools
         .iter()
@@ -78,6 +82,22 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert!(by_id[&4]["error"].is_object());
     assert!(by_id[&5]["error"].is_object());
     assert!(by_id[&6]["error"].is_object());
+    let first_page: serde_json::Value =
+        serde_json::from_str(by_id[&7]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(first_page["kind"], "lenso.app-facts-page");
+    assert_eq!(first_page["section"], "diagnostics");
+    assert_eq!(first_page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        first_page["total"],
+        facts["diagnostics"].as_array().unwrap().len()
+    );
+    let second_page: serde_json::Value =
+        serde_json::from_str(by_id[&8]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(second_page["offset"], 1);
+    assert_eq!(second_page["items"].as_array().unwrap().len(), 1);
+    assert_ne!(first_page["items"][0], second_page["items"][0]);
+    assert!(by_id[&9]["error"].is_object());
+    assert!(by_id[&10]["error"].is_object());
 }
 
 #[test]

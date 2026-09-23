@@ -65,6 +65,29 @@ struct LinkedDocumentQuery {
     max_bytes: Option<usize>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum ProjectFactsSection {
+    #[default]
+    All,
+    Plugins,
+    Bindings,
+    DiscoveredSources,
+    Diagnostics,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+struct ProjectFactsQuery {
+    #[serde(default)]
+    section: ProjectFactsSection,
+    #[serde(default)]
+    offset: usize,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+const MAX_MCP_TEXT_BYTES: usize = 128 * 1024;
+
 #[tool_router]
 impl AppTools {
     #[tool(
@@ -167,7 +190,7 @@ impl AppTools {
         };
         let json = serde_json::to_string(&report)
             .map_err(|_| McpError::internal_error("serialize linked Cargo catalog", None))?;
-        if json.len() > 128 * 1024 {
+        if json.len() > MAX_MCP_TEXT_BYTES {
             return Err(McpError::invalid_params(
                 "linked Cargo page exceeds output limit; use a narrower query or smaller limit",
                 None,
@@ -188,13 +211,22 @@ impl AppTools {
         })?;
         let json = serde_json::to_string(&explanation)
             .map_err(|_| McpError::internal_error("serialize App explanation", None))?;
+        if json.len() > MAX_MCP_TEXT_BYTES {
+            return Err(McpError::invalid_request(
+                "App explanation exceeds the MCP output limit; use lenso app explain --json locally",
+                None,
+            ));
+        }
         Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
 
     #[tool(
-        description = "Inspect exact App, Plugin, source, binding and diagnostic facts without reading secret values"
+        description = "Inspect App facts without secret values; use section and pagination for large projects"
     )]
-    fn project_facts(&self) -> Result<CallToolResult, McpError> {
+    fn project_facts(
+        &self,
+        Parameters(request): Parameters<ProjectFactsQuery>,
+    ) -> Result<CallToolResult, McpError> {
         let facts = lenso_engine_app::app::facts::inspect_project_facts_with_host_build(
             &self.root,
             self.host_build.as_deref(),
@@ -202,10 +234,114 @@ impl AppTools {
         .map_err(|_| {
             McpError::internal_error("App facts are unavailable; run lenso doctor", None)
         })?;
-        let json = serde_json::to_string(&facts)
-            .map_err(|_| McpError::internal_error("serialize App facts", None))?;
+        let json = project_facts_json(&facts, &request)?;
         Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
+}
+
+fn project_facts_json(
+    facts: &lenso_engine_app::app::facts::ProjectFacts,
+    request: &ProjectFactsQuery,
+) -> Result<String, McpError> {
+    let value = match request.section {
+        ProjectFactsSection::All => {
+            if request.offset != 0 || request.limit.is_some() {
+                return Err(McpError::invalid_params(
+                    "choose a project facts section before paginating",
+                    None,
+                ));
+            }
+            serde_json::to_value(facts)
+                .map_err(|_| McpError::internal_error("serialize App facts", None))?
+        }
+        section => {
+            let limit = request.limit.unwrap_or(20);
+            if limit == 0 || limit > 20 {
+                return Err(McpError::invalid_params(
+                    "project facts page limit must be from 1 to 20",
+                    None,
+                ));
+            }
+            let (name, total, items) = match section {
+                ProjectFactsSection::Plugins => (
+                    "plugins",
+                    facts.plugins.len(),
+                    serde_json::to_value(
+                        facts
+                            .plugins
+                            .iter()
+                            .skip(request.offset)
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                ProjectFactsSection::Bindings => (
+                    "bindings",
+                    facts.bindings.len(),
+                    serde_json::to_value(
+                        facts
+                            .bindings
+                            .iter()
+                            .skip(request.offset)
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                ProjectFactsSection::DiscoveredSources => (
+                    "discovered_sources",
+                    facts.discovered_sources.len(),
+                    serde_json::to_value(
+                        facts
+                            .discovered_sources
+                            .iter()
+                            .skip(request.offset)
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                ProjectFactsSection::Diagnostics => (
+                    "diagnostics",
+                    facts.diagnostics.len(),
+                    serde_json::to_value(
+                        facts
+                            .diagnostics
+                            .iter()
+                            .skip(request.offset)
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                ProjectFactsSection::All => unreachable!(),
+            };
+            let items =
+                items.map_err(|_| McpError::internal_error("serialize App facts page", None))?;
+            let next = request.offset.saturating_add(limit);
+            serde_json::json!({
+                "schema_version": facts.schema_version,
+                "kind": "lenso.app-facts-page",
+                "status": facts.status,
+                "section": name,
+                "root": facts.root,
+                "host_target": facts.host_target,
+                "plugin_root_revision": facts.plugin_root_revision,
+                "runtime": facts.runtime,
+                "configuration": facts.configuration,
+                "total": total,
+                "offset": request.offset,
+                "next_offset": if next < total { Some(next) } else { None },
+                "items": items,
+            })
+        }
+    };
+    let json = serde_json::to_string(&value)
+        .map_err(|_| McpError::internal_error("serialize App facts", None))?;
+    if json.len() > MAX_MCP_TEXT_BYTES {
+        return Err(McpError::invalid_request(
+            "App facts exceed the MCP output limit; select a section and smaller page",
+            None,
+        ));
+    }
+    Ok(json)
 }
 
 // The SDK generates an async handler for the synchronous tool router.
