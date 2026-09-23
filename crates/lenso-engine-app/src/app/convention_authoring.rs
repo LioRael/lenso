@@ -9,6 +9,7 @@ use std::{
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
 pub(super) mod linked_catalog;
+mod openapi;
 
 #[derive(Clone, Debug, Args)]
 pub struct AddArgs {
@@ -211,7 +212,7 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
         return linked_catalog::add(&root, &args);
     }
     if args.source == "@lenso/openapi" {
-        return add_openapi(&root, args.no_install);
+        return openapi::add(&root, args.no_install);
     }
     writable_path(&root, Path::new("app"))?;
     if args.source == "@lenso/cli" {
@@ -324,80 +325,6 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
         install(&candidate.project)?;
     }
     println!("Adopted {} from {}", candidate.plugin_id, source.display());
-    Ok(())
-}
-
-/// Bundle only the source link needed to make the existing optional Plugin
-/// available to this generated Host. The App's Plugin Root selects it.
-fn add_openapi(root: &Path, no_install: bool) -> anyhow::Result<()> {
-    let relative = Path::new("support/lenso-openapi");
-    let destination = root.join(relative);
-    writable_path(root, relative)?;
-    if fs::symlink_metadata(&destination).is_ok() {
-        bail!(
-            "OpenAPI support already exists at {}",
-            destination.display()
-        );
-    }
-    let mut document = preflight_source_adoption(root, "lenso.openapi")?;
-    let source = relative.to_str().context("OpenAPI support source UTF-8")?;
-    let sources = document
-        .as_table_mut()
-        .context("lenso.toml table")?
-        .entry("plugin_sources")
-        .or_insert_with(|| toml::Value::Array(vec![]))
-        .as_array_mut()
-        .context("plugin_sources array")?;
-    if !sources.contains(&toml::Value::String(source.to_owned())) {
-        sources.push(toml::Value::String(source.to_owned()));
-    }
-    let intent = root.join("plugins/lenso.openapi");
-    if intent.exists() {
-        bail!(
-            "OpenAPI Plugin Root entry already exists at {}",
-            intent.display()
-        );
-    }
-
-    let parent = destination.parent().context("OpenAPI support parent")?;
-    fs::create_dir_all(parent)?;
-    let stage = tempfile::Builder::new()
-        .prefix(".lenso-openapi-support-")
-        .tempdir_in(parent)?;
-    let revision = crate::plugin::LENSO_FRAMEWORK_REVISION;
-    write(
-        stage.path(),
-        "Cargo.toml",
-        format!(
-            "[package]\nname = \"app-openapi-link\"\nversion = \"0.2.4\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.lenso]\nplugin-id = \"lenso.openapi\"\nroot-slot = \"http-endpoints\"\n\n[dependencies]\nlenso = {{ version = \"=0.5.25\", git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-openapi-plugin = {{ version = \"=0.2.4\", git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\n\n[patch.crates-io]\nlenso = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-app-plan = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-kernel = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-native-adapter = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\n\n[workspace]\n"
-        ),
-    )?;
-    write(
-        stage.path(),
-        "src/lib.rs",
-        "//! Links the optional OpenAPI Plugin into this App's native Host.\n\npub fn link_plugin() { lenso_openapi_plugin::link_plugin(); }\n",
-    )?;
-    if !no_install {
-        let status = super::cargo_command()
-            .args(["generate-lockfile", "--manifest-path"])
-            .arg(stage.path().join("Cargo.toml"))
-            .status()?;
-        if !status.success() {
-            bail!("OpenAPI support lockfile generation failed");
-        }
-    }
-    super::build::publish_new_output(stage.path(), &destination)?;
-    fs::create_dir_all(&intent)?;
-    fs::write(
-        intent.join("default.toml"),
-        "# Selecting this Instance publishes the public HTTP Endpoint document.\n",
-    )?;
-    let config = root.join("lenso.toml");
-    let mut staged = tempfile::NamedTempFile::new_in(root)?;
-    use std::io::Write;
-    staged.write_all(toml::to_string_pretty(&document)?.as_bytes())?;
-    staged.persist(&config)?;
-    println!("Selected optional OpenAPI Plugin at {}.", intent.display());
     Ok(())
 }
 
@@ -527,54 +454,4 @@ pub fn create_plugin(
         language,
         no_install: !install_dependencies,
     }))
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use super::{AddArgs, add};
-
-    #[test]
-    fn openapi_support_is_shared_source_selected_only_by_plugin_root() {
-        let root = tempfile::tempdir().unwrap();
-        fs::create_dir(root.path().join("plugins")).unwrap();
-        add(AddArgs {
-            source: "@lenso/openapi".into(),
-            root: Some(root.path().to_path_buf()),
-            no_install: true,
-            linked_snapshot: None,
-            trust: None,
-            crate_archive: None,
-        })
-        .unwrap();
-
-        let report = lenso_app_authoring::discovery::discover(root.path()).unwrap();
-        let [candidate] = report.candidates.as_slice() else {
-            panic!("expected exactly one optional OpenAPI source")
-        };
-        assert_eq!(candidate.plugin_id, "lenso.openapi");
-        assert_eq!(
-            candidate.role,
-            lenso_app_authoring::discovery::SourceRole::Shared
-        );
-        assert_eq!(candidate.implementations[0].runtime, "native-linked");
-        assert!(
-            root.path()
-                .join("plugins/lenso.openapi/default.toml")
-                .is_file()
-        );
-        assert!(
-            fs::read_to_string(root.path().join("lenso.toml"))
-                .unwrap()
-                .contains("support/lenso-openapi")
-        );
-        let manifest = fs::read_to_string(candidate.project.join("Cargo.toml")).unwrap();
-        assert!(manifest.contains(crate::plugin::LENSO_FRAMEWORK_REVISION));
-        assert!(
-            fs::read_to_string(candidate.project.join("src/lib.rs"))
-                .unwrap()
-                .contains("lenso_openapi_plugin::link_plugin()")
-        );
-    }
 }

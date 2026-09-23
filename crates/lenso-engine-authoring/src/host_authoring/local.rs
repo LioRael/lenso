@@ -37,6 +37,20 @@ impl GeneratedHostBuild {
         if self.schema != LOCAL_SCHEMA {
             bail!("local Root choices require the local Host profile");
         }
+        let mut policies = BTreeMap::new();
+        for policy in many_slots {
+            if let Some(previous_slot) = policies.insert(
+                (policy.consumer_plugin_id, policy.capability_id),
+                policy.provider_slot,
+            ) {
+                bail!(
+                    "duplicate local many-Slot policy for Plugin `{}` Capability `{}`: Slots `{previous_slot}` and `{}`",
+                    policy.consumer_plugin_id,
+                    policy.capability_id,
+                    policy.provider_slot
+                );
+            }
+        }
         let snapshot = crate::snapshot_plugin_root(root, &HostInput::Generated(self.clone()))?;
         let instances = self
             .catalog
@@ -57,14 +71,13 @@ impl GeneratedHostBuild {
             };
             for requirement in descriptor.required_capabilities() {
                 if requirement.cardinality() == lenso_app_plan::CapabilityCardinality::Many {
-                    if let Some(policy) = many_slots.iter().find(|policy| {
-                        policy.consumer_plugin_id == consumer.plugin_id()
-                            && policy.capability_id == requirement.capability_id()
-                    }) {
+                    if let Some(&provider_slot) =
+                        policies.get(&(consumer.plugin_id(), requirement.capability_id()))
+                    {
                         let binding = HostBinding::new(
                             consumer.clone(),
                             requirement.capability_id(),
-                            policy.provider_slot,
+                            provider_slot,
                         );
                         bindings.push(if requirement.requirement_id().starts_with('~') {
                             binding
@@ -354,6 +367,39 @@ mod tests {
                 .iter()
                 .all(|instance| instance.id().plugin_id() != "example.document")
         );
+    }
+
+    #[test]
+    fn duplicate_local_many_slot_policy_fails_before_root_resolution() {
+        let root = tempfile::tempdir().unwrap();
+        let build =
+            GeneratedHostBuild::lower_local("example.app", vec![input("example.route", true)])
+                .unwrap();
+        for second_slot in ["web", "internal"] {
+            let policies = [
+                LocalManySlotBinding {
+                    consumer_plugin_id: "example.document",
+                    capability_id: "example.http@1",
+                    provider_slot: "web",
+                },
+                LocalManySlotBinding {
+                    consumer_plugin_id: "example.document",
+                    capability_id: "example.http@1",
+                    provider_slot: second_slot,
+                },
+            ];
+            let error = build
+                .clone()
+                .with_local_root_bindings(root.path(), &policies)
+                .err()
+                .unwrap();
+            assert!(
+                error
+                    .to_string()
+                    .contains("duplicate local many-Slot policy")
+            );
+            assert!(error.to_string().contains("example.http@1"));
+        }
     }
 
     #[test]
