@@ -53,6 +53,66 @@ pub struct LinkedCatalogArgs {
     json: bool,
 }
 
+#[derive(Clone, Debug, Args)]
+pub struct LinkedDocumentArgs {
+    /// Exact signed Plugin ID and version.
+    source: String,
+    /// Exact document ID in the signed release.
+    document_id: String,
+    /// Exact immutable document revision.
+    #[arg(long)]
+    revision: String,
+    /// Exact signed source-only linked Cargo snapshot.
+    #[arg(long)]
+    linked_snapshot: PathBuf,
+    /// Local public trust configuration for the signed catalog.
+    #[arg(long)]
+    trust: PathBuf,
+    /// Local downloaded Markdown file; its bytes must match the signed metadata.
+    #[arg(long, conflicts_with = "fetch")]
+    file: Option<PathBuf>,
+    /// Explicitly fetch the signed HTTPS document URL.
+    #[arg(long, conflicts_with = "file")]
+    fetch: bool,
+    /// UTF-8 byte offset for a bounded document chunk.
+    #[arg(long, default_value_t = 0)]
+    offset: usize,
+    /// Maximum UTF-8 bytes in one chunk, from 4 to 8192.
+    #[arg(long, default_value_t = 4096)]
+    max_bytes: usize,
+    /// Emit a stable JSON report.
+    #[arg(long)]
+    json: bool,
+}
+
+pub fn linked_document(args: LinkedDocumentArgs) -> anyhow::Result<()> {
+    let (plugin_id, version) = args
+        .source
+        .split_once('@')
+        .context("document source must be exact PLUGIN_ID@VERSION")?;
+    let chunk = linked_catalog::document(linked_catalog::DocumentRequest {
+        snapshot_path: &args.linked_snapshot,
+        trust_path: &args.trust,
+        plugin_id,
+        version,
+        document_id: &args.document_id,
+        revision: &args.revision,
+        local_file: args.file.as_deref(),
+        fetch: args.fetch,
+        offset: args.offset,
+        max_bytes: args.max_bytes,
+    })?;
+    if args.json {
+        println!("{}", serde_json::to_string_pretty(&chunk)?);
+    } else {
+        print!("{}", chunk.content);
+        if let Some(next) = chunk.next_offset {
+            eprintln!("\nNext verified document offset: {next}");
+        }
+    }
+    Ok(())
+}
+
 pub fn linked_catalog(args: LinkedCatalogArgs) -> anyhow::Result<()> {
     let target = args
         .target

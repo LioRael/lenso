@@ -104,6 +104,17 @@ pub fn inspect_linked_cargo_catalog(
     )?)
 }
 
+pub use convention_authoring::linked_catalog::DocumentRequest as LinkedDocumentRequest;
+
+/// Return one UTF-8 chunk only after verifying exact signed documentation bytes.
+pub fn inspect_linked_cargo_document(
+    request: LinkedDocumentRequest<'_>,
+) -> anyhow::Result<serde_json::Value> {
+    Ok(serde_json::to_value(
+        convention_authoring::linked_catalog::document(request)?,
+    )?)
+}
+
 /// Create the same source App through an embedding or root CLI.
 pub fn create_source(args: CreateArgs) -> anyhow::Result<()> {
     local_workflow::create(args)
@@ -167,6 +178,9 @@ pub enum AppCommand {
     /// Search an exact signed source-only linked Cargo snapshot without adopting candidates.
     #[command(name = "linked-catalog")]
     LinkedCatalog(convention_authoring::LinkedCatalogArgs),
+    /// Read one exact signed Markdown revision after verifying its bytes.
+    #[command(name = "linked-doc")]
+    LinkedDocument(convention_authoring::LinkedDocumentArgs),
     /// Explain local convention support and selected surface packages without executing code.
     Inspect(ProjectArgs),
     /// Report resolved project facts for agents and other development tools.
@@ -240,6 +254,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
         AppCommand::Explain(args) => explain::run(args),
         AppCommand::Discover(args) => discover(args),
         AppCommand::LinkedCatalog(args) => convention_authoring::linked_catalog(args),
+        AppCommand::LinkedDocument(args) => convention_authoring::linked_document(args),
         AppCommand::Inspect(args) => inspect(args),
         AppCommand::Facts(args) => facts::facts(args),
         AppCommand::Assemble(args) => assemble::assemble(args),

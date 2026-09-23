@@ -68,6 +68,128 @@ pub struct LinkedCatalogCandidate {
     pub unverified: Vec<&'static str>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct LinkedDocumentChunk {
+    pub schema_version: u32,
+    pub kind: &'static str,
+    pub plugin_id: String,
+    pub version: String,
+    pub release_availability: Availability,
+    pub document_id: String,
+    pub revision: String,
+    pub source_url: String,
+    pub digest: String,
+    pub media_type: String,
+    pub total_bytes: usize,
+    pub offset: usize,
+    pub next_offset: Option<usize>,
+    pub content: String,
+    pub content_is_untrusted: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct DocumentRequest<'a> {
+    pub snapshot_path: &'a Path,
+    pub trust_path: &'a Path,
+    pub plugin_id: &'a str,
+    pub version: &'a str,
+    pub document_id: &'a str,
+    pub revision: &'a str,
+    pub local_file: Option<&'a Path>,
+    pub fetch: bool,
+    pub offset: usize,
+    pub max_bytes: usize,
+}
+
+pub fn document(request: DocumentRequest<'_>) -> anyhow::Result<LinkedDocumentChunk> {
+    ensure!(
+        (request.local_file.is_some() && !request.fetch)
+            || (request.local_file.is_none() && request.fetch),
+        "choose exactly one of a local document file or explicit HTTPS fetch"
+    );
+    ensure!(
+        (4..=8192).contains(&request.max_bytes),
+        "document chunk must be 4 to 8192 bytes"
+    );
+    let verified = read_verified(request.snapshot_path, request.trust_path)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    let snapshot = verified.snapshot();
+    ensure!(
+        now >= snapshot.issued_at && now < snapshot.expires_at,
+        "linked Cargo catalog is not current"
+    );
+    let release = snapshot
+        .releases
+        .iter()
+        .find(|release| {
+            release.plugin_id == request.plugin_id && release.version == request.version
+        })
+        .context("exact linked Cargo release is not in this catalog")?;
+    ensure!(
+        release.availability != Availability::Revoked,
+        "revoked linked Cargo documentation is unavailable"
+    );
+    let document = release
+        .documentation
+        .iter()
+        .find(|document| {
+            document.id == request.document_id && document.revision == request.revision
+        })
+        .context("exact documentation revision is not in the signed release")?;
+    let bytes = if let Some(path) = request.local_file {
+        let mut bytes = Vec::new();
+        fs::File::open(path)?
+            .take(document.size + 1)
+            .read_to_end(&mut bytes)?;
+        bytes
+    } else {
+        crate::catalog::fetch_documentation(&document.url, document.size)?
+    };
+    ensure!(
+        bytes.len() as u64 == document.size,
+        "documentation size differs from signed release"
+    );
+    ensure!(
+        lenso_plugin_catalog::digest(&bytes) == document.digest,
+        "documentation digest differs from signed release"
+    );
+    let text = std::str::from_utf8(&bytes).context("documentation is not UTF-8 Markdown")?;
+    ensure!(
+        request.offset <= text.len() && text.is_char_boundary(request.offset),
+        "document offset is outside a UTF-8 boundary"
+    );
+    let mut end = request
+        .offset
+        .saturating_add(request.max_bytes)
+        .min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    ensure!(
+        end > request.offset || request.offset == text.len(),
+        "document chunk is too small for the next character"
+    );
+    Ok(LinkedDocumentChunk {
+        schema_version: 1,
+        kind: "lenso.linked-cargo-document",
+        plugin_id: release.plugin_id.clone(),
+        version: release.version.clone(),
+        release_availability: release.availability.clone(),
+        document_id: document.id.clone(),
+        revision: document.revision.clone(),
+        source_url: document.url.clone(),
+        digest: document.digest.clone(),
+        media_type: document.media_type.clone(),
+        total_bytes: text.len(),
+        offset: request.offset,
+        next_offset: (end < text.len()).then_some(end),
+        content: text[request.offset..end].to_owned(),
+        content_is_untrusted: true,
+    })
+}
+
 pub fn inspect(
     snapshot_path: &Path,
     trust_path: &Path,

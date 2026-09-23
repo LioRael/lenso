@@ -86,6 +86,10 @@ exposes `linked_catalog`. It reads the same signed source-only candidate
 projection as `app linked-catalog`, with a query, target, offset, page limit of
 20, and bounded output. It neither downloads a crate nor claims unverified
 permissions, dependency compatibility, or runtime readiness.
+Add `--allow-document-fetch` only when the MCP client may contact signed
+third-party HTTPS documentation URLs. The `linked_document` tool verifies the
+exact release, document revision, size, and digest before returning a bounded
+Markdown chunk marked as untrusted data.
 
 ```rust,ignore
 lenso_engine_app::app::create_empty(project.clone())?;

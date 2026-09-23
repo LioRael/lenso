@@ -7,7 +7,7 @@ use std::{
 
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
-    Availability,
+    Availability, Documentation,
     linked_cargo::{LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot, sign},
 };
 
@@ -763,6 +763,156 @@ fn assert_tampered_catalog_rejected(
     assert!(!rejected.status.success());
 }
 
+fn assert_signed_document(
+    cli: &str,
+    temp: &std::path::Path,
+    snapshot: &LinkedCargoSnapshot,
+    key: &SigningKey,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+    document_path: &std::path::Path,
+) {
+    let expected = fs::read_to_string(document_path).unwrap();
+    let mut offset = 0usize;
+    let mut assembled = String::new();
+    loop {
+        let read = Command::new(cli)
+            .args([
+                "app",
+                "linked-doc",
+                "example.web@0.4.5",
+                "readme",
+                "--revision",
+                "rev-1",
+                "--linked-snapshot",
+            ])
+            .arg(snapshot_path)
+            .arg("--trust")
+            .arg(trust_path)
+            .arg("--file")
+            .arg(document_path)
+            .args([
+                "--offset",
+                &offset.to_string(),
+                "--max-bytes",
+                "16",
+                "--json",
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            read.status.success(),
+            "{}",
+            String::from_utf8_lossy(&read.stderr)
+        );
+        let chunk: serde_json::Value = serde_json::from_slice(&read.stdout).unwrap();
+        assert_eq!(chunk["content_is_untrusted"], true);
+        assert_eq!(chunk["revision"], "rev-1");
+        assembled.push_str(chunk["content"].as_str().unwrap());
+        let Some(next) = chunk["next_offset"].as_u64() else {
+            break;
+        };
+        offset = usize::try_from(next).unwrap();
+    }
+    assert_eq!(assembled, expected);
+    let mut tampered = expected.as_bytes().to_vec();
+    tampered[0] = b'!';
+    fs::write(document_path, tampered).unwrap();
+    let rejected = Command::new(cli)
+        .args([
+            "app",
+            "linked-doc",
+            "example.web@0.4.5",
+            "readme",
+            "--revision",
+            "rev-1",
+            "--linked-snapshot",
+        ])
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--file")
+        .arg(document_path)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    fs::write(document_path, &expected).unwrap();
+    let wrong_revision = Command::new(cli)
+        .args([
+            "app",
+            "linked-doc",
+            "example.web@0.4.5",
+            "readme",
+            "--revision",
+            "unknown",
+            "--linked-snapshot",
+        ])
+        .arg(snapshot_path)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--file")
+        .arg(document_path)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(!wrong_revision.status.success());
+    assert_historical_document_availability(cli, temp, snapshot, key, trust_path, document_path);
+}
+
+fn readme_metadata(document: &str) -> Documentation {
+    Documentation {
+        id: "readme".into(),
+        revision: "rev-1".into(),
+        language: "en".into(),
+        topic: "usage".into(),
+        target: None,
+        url: "https://docs.example/web/0.4.5/readme.md".into(),
+        digest: lenso_plugin_catalog::digest(document.as_bytes()),
+        size: document.len() as u64,
+        media_type: "text/markdown".into(),
+    }
+}
+
+fn assert_historical_document_availability(
+    cli: &str,
+    temp: &std::path::Path,
+    snapshot: &LinkedCargoSnapshot,
+    key: &SigningKey,
+    trust_path: &std::path::Path,
+    document_path: &std::path::Path,
+) {
+    for (availability, readable) in [(Availability::Yanked, true), (Availability::Revoked, false)] {
+        let mut historical = snapshot.clone();
+        historical.releases[0].availability = availability.clone();
+        let path = temp.join(format!("{availability:?}-snapshot.json"));
+        fs::write(&path, sign(&historical, "test-key", key).unwrap()).unwrap();
+        let read = Command::new(cli)
+            .args([
+                "app",
+                "linked-doc",
+                "example.web@0.4.5",
+                "readme",
+                "--revision",
+                "rev-1",
+                "--linked-snapshot",
+            ])
+            .arg(&path)
+            .arg("--trust")
+            .arg(trust_path)
+            .arg("--file")
+            .arg(document_path)
+            .arg("--json")
+            .output()
+            .unwrap();
+        assert_eq!(read.status.success(), readable);
+        if readable {
+            let chunk: serde_json::Value = serde_json::from_slice(&read.stdout).unwrap();
+            assert_eq!(chunk["release_availability"], "yanked");
+        }
+    }
+}
+
 fn adopt_exact_twice(
     cli: &str,
     root: &std::path::Path,
@@ -803,6 +953,9 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         .unwrap();
     assert!(created.status.success());
     let bytes = crate_archive("example-web-plugin", "0.4.5", "example.web");
+    let document = "# Web Plugin\n\nUse the signed 🦀 source.\n";
+    let document_path = temp.path().join("readme.md");
+    fs::write(&document_path, document).unwrap();
     let archive = temp.path().join("plugin.crate");
     fs::write(&archive, &bytes).unwrap();
     let key = SigningKey::from_bytes(&[62; 32]);
@@ -825,7 +978,7 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         integration: LinkedCargoIntegration::LinkedPlugin,
         targets: vec![lenso_engine_authoring::native_host_target().into()],
         availability: Availability::Listed,
-        documentation: Vec::new(),
+        documentation: vec![readme_metadata(document)],
     };
     let snapshot =
         LinkedCargoSnapshot::new("test-catalog".into(), 1, now - 1, now + 3600, vec![release]);
@@ -836,6 +989,15 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         "catalog_id": "test-catalog", "key_id": "test-key", "public_key_hex": hex::encode(key.verifying_key().to_bytes())
     })).unwrap()).unwrap();
     assert_signed_catalog_search(cli, &root, &snapshot_path, &trust_path);
+    assert_signed_document(
+        cli,
+        temp.path(),
+        &snapshot,
+        &key,
+        &snapshot_path,
+        &trust_path,
+        &document_path,
+    );
     reject_unlisted_version_and_changed_archive(cli, &root, &snapshot_path, &trust_path, &archive);
     adopt_exact_twice(cli, &root, &snapshot_path, &trust_path, &archive);
     let discovery = Command::new(cli)

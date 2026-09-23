@@ -193,8 +193,29 @@ fn fetch(url: &str, limit: u64) -> anyhow::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// Download one explicitly requested, signed-metadata Markdown resource.
+/// The caller must verify its exact size and digest before returning content.
+pub(crate) fn fetch_documentation(url: &str, limit: u64) -> anyhow::Result<Vec<u8>> {
+    let parsed = Url::parse(url).context("Plugin documentation URL is invalid")?;
+    if parsed.scheme() != "https" {
+        bail!("Plugin documentation requires HTTPS");
+    }
+    let response = request(url, "Plugin documentation")?;
+    let mut bytes = Vec::new();
+    response
+        .into_reader()
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .context("read Plugin documentation response")?;
+    if bytes.len() as u64 > limit {
+        bail!("Plugin documentation exceeds signed size");
+    }
+    Ok(bytes)
+}
+
 fn request(url: &str, label: &str) -> anyhow::Result<ureq::Response> {
     let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(45))
         .timeout_connect(Duration::from_secs(10))
         .timeout_read(Duration::from_secs(30))
         .redirects(0)

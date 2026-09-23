@@ -28,6 +28,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_facts","arguments":{}}}"#,
         r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_explain","arguments":{}}}"#,
         r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"linked_catalog","arguments":{}}}"#,
+        r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"linked_document","arguments":{"plugin_id":"example.web","version":"0.4.5","document_id":"readme","revision":"1"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -47,12 +48,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 5, "{frames}");
+    assert_eq!(responses.len(), 6, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 5);
+    assert_eq!(by_id.len(), 6);
     let tools = by_id[&2]["result"]["tools"].as_array().unwrap();
     let names = tools
         .iter()
@@ -60,7 +61,13 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(
         names,
-        ["linked_catalog", "project_explain", "project_facts"].into()
+        [
+            "linked_catalog",
+            "linked_document",
+            "project_explain",
+            "project_facts",
+        ]
+        .into()
     );
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -70,6 +77,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(facts["runtime"]["status"], "not_observed");
     assert!(by_id[&4]["error"].is_object());
     assert!(by_id[&5]["error"].is_object());
+    assert!(by_id[&6]["error"].is_object());
 }
 
 #[test]
