@@ -81,6 +81,10 @@ pub enum ImplementationRejectionReason {
         host_target: String,
         candidate_targets: Vec<String>,
     },
+    ArtifactTargetMismatch {
+        host_target: String,
+        artifact_target: String,
+    },
     RuntimeNotAdmitted,
     MissingTargetCapabilities {
         requirements: Vec<TargetCapabilityRequirement>,
@@ -367,22 +371,34 @@ fn record_target_match(
     policy: &ImplementationPolicy,
     rejected: &mut Vec<RejectedPluginImplementation>,
 ) -> bool {
-    if candidate.artifact_matches_wasm
-        || candidate
+    if !candidate.artifact_matches_wasm
+        && !candidate
             .host_targets
             .iter()
             .any(|target| target == "*" || target == &policy.host_target)
     {
-        return true;
+        rejected.push(rejected_candidate(
+            candidate,
+            ImplementationRejectionReason::HostTargetMismatch {
+                host_target: policy.host_target.clone(),
+                candidate_targets: candidate.host_targets.clone(),
+            },
+        ));
+        return false;
     }
-    rejected.push(rejected_candidate(
-        candidate,
-        ImplementationRejectionReason::HostTargetMismatch {
-            host_target: policy.host_target.clone(),
-            candidate_targets: candidate.host_targets.clone(),
-        },
-    ));
-    false
+    if candidate.artifact.media_type == "application/vnd.lenso.process"
+        && candidate.artifact.target != policy.host_target
+    {
+        rejected.push(rejected_candidate(
+            candidate,
+            ImplementationRejectionReason::ArtifactTargetMismatch {
+                host_target: policy.host_target.clone(),
+                artifact_target: candidate.artifact.target.clone(),
+            },
+        ));
+        return false;
+    }
+    true
 }
 
 fn record_capability_match(
@@ -509,6 +525,12 @@ fn render_rejection(rejection: &RejectedPluginImplementation) -> String {
         ImplementationRejectionReason::HostTargetMismatch { host_target, .. } => {
             format!("host target `{host_target}` does not match")
         }
+        ImplementationRejectionReason::ArtifactTargetMismatch {
+            host_target,
+            artifact_target,
+        } => format!(
+            "Process artifact target `{artifact_target}` does not match host target `{host_target}`"
+        ),
         ImplementationRejectionReason::RuntimeNotAdmitted => "runtime is not admitted".to_owned(),
         ImplementationRejectionReason::MissingTargetCapabilities { requirements } => format!(
             "missing target capabilities {}",

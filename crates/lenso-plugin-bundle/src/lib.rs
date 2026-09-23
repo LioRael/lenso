@@ -2375,4 +2375,68 @@ root-slot = "tools"
             "store"
         );
     }
+
+    #[test]
+    fn process_artifact_target_must_match_host_even_with_wildcard_admission() {
+        let digest = sha256_digest(b"plugin");
+        let manifest = PluginManifest::V4(PluginManifestV4 {
+            schema_version: 4,
+            contract: PluginContract::new("example.process", "1.0.0", "tools")
+                .with_authoring_version(2),
+            implementations: vec![PluginImplementationV4 {
+                id: "process".to_owned(),
+                host_targets: vec!["*".to_owned()],
+                artifact: PluginArtifactV2 {
+                    path: "plugin".to_owned(),
+                    digest: digest.clone(),
+                    size: 6,
+                    media_type: "application/vnd.lenso.process".to_owned(),
+                    target: "x86_64-unknown-linux-gnu".to_owned(),
+                },
+                runtime: PluginImplementation::new(
+                    "example.process",
+                    digest,
+                    "plugin",
+                    ExecutionClassId::new("lenso.process@1"),
+                )
+                .with_runtime_profile("lenso.process-authoring@2"),
+            }],
+        });
+        let policy = ImplementationPolicy {
+            host_target: "aarch64-apple-darwin".to_owned(),
+            runtimes: vec![RuntimeAdmission::new(
+                ExecutionClassId::new("lenso.process@1"),
+                "lenso.process-authoring@2",
+                ExecutionTargetCapabilities::none(),
+            )],
+        };
+
+        let explanation = explain_implementation(&manifest, &policy).unwrap();
+        assert!(matches!(
+            explanation.rejected.as_slice(),
+            [RejectedPluginImplementation {
+                reason: ImplementationRejectionReason::ArtifactTargetMismatch {
+                    host_target,
+                    artifact_target,
+                },
+                ..
+            }] if host_target == "aarch64-apple-darwin"
+                && artifact_target == "x86_64-unknown-linux-gnu"
+        ));
+        assert!(!explanation.is_selected());
+        assert!(matches!(
+            resolve_implementation(&manifest, &policy),
+            Err(BundleError::InvalidBundle(detail)) if detail.contains("Process artifact target")
+        ));
+        let matching_policy = ImplementationPolicy {
+            host_target: "x86_64-unknown-linux-gnu".to_owned(),
+            runtimes: policy.runtimes,
+        };
+        assert_eq!(
+            resolve_implementation(&manifest, &matching_policy)
+                .unwrap()
+                .implementation_id,
+            "process"
+        );
+    }
 }
