@@ -229,6 +229,34 @@ fn host_build_rejects_a_bun_implementation_that_requires_workers() {
     assert!(!args.out.exists());
 }
 
+#[test]
+fn ts_host_build_rejects_workers_and_wasm_targets_before_publication() {
+    let root = tempfile::tempdir().unwrap();
+    let bundle = bundle(root.path());
+    for target in [
+        "workers",
+        "cloudflare-workers",
+        "wasm32-unknown-unknown",
+        "wasm32-wasip2",
+    ] {
+        let args = HostBuildArgs {
+            source: root.path().join("not-needed.ts"),
+            target: target.to_owned(),
+            out: root.path().join(format!("output-{target}")),
+        };
+        let error = build(&args).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains(target), "{message}");
+        assert!(message.contains("Native Bun/Process Host"), "{message}");
+        assert!(!args.out.exists());
+
+        // The same check protects the internal path after TS extraction.
+        let error = materialize(declaration(bundle.clone()), &args).unwrap_err();
+        assert!(format!("{error:#}").contains(target));
+        assert!(!args.out.exists());
+    }
+}
+
 fn declaration(bundle: PathBuf) -> Declaration {
     Declaration {
         id: "company.app".into(),

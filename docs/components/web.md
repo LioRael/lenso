@@ -677,6 +677,13 @@ to each: method/path matching, non-UTF-8 request and response bytes, 404/405,
 domain rejection, and runtime failure. This is local Native Host plus Wasmtime
 evidence. It does not qualify workerd or deployed Workers, outbound HTTP,
 streaming, WebSocket, authentication, or production resource ceilings.
+The Component is executed by the Native Wasmtime Adapter. The consolidated
+workspace currently has a Workers Driver and event Ingress, but no packaged
+Workers Event Host that admits this Component through a Workers-compatible
+Execution Adapter. In particular, a Wasm Component is not automatically a
+Workers-loadable core Wasm module. The exact missing seam is Host-owned
+Component admission, invocation, and failure mapping inside a real Workers
+event; local workerd and deployed Workers require separate HTTP corpus receipts.
 
 The dispatch-only release workflow publishes an explicitly authorized package
 set from a landed `main` SHA through configured crates.io Trusted Publishers

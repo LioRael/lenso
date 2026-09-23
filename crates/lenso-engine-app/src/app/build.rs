@@ -153,6 +153,7 @@ struct Dependency {
 }
 
 pub fn build(args: &HostBuildArgs) -> anyhow::Result<()> {
+    validate_host_target(&args.target)?;
     let source = fs::canonicalize(&args.source).context("locate TS Host source")?;
     let extractor = std::env::var_os("LENSO_HOST_EXTRACTOR").context(
         "TS Host builds need the npm CLI compiler; invoke lenso through @lenso/cli (Node or Bun)",
@@ -191,9 +192,7 @@ fn materialize(declaration: Declaration, args: &HostBuildArgs) -> anyhow::Result
             "first Host authoring profile accepts at most 256 Instances, Slots, and dependency rules"
         );
     }
-    if args.target.trim().is_empty() {
-        bail!("Host implementation target must not be empty");
-    }
+    validate_host_target(&args.target)?;
     let destination = std::path::absolute(&args.out)?;
     if fs::symlink_metadata(&destination).is_ok() {
         bail!("Host output already exists: {}", destination.display());
@@ -392,6 +391,21 @@ fn materialize(declaration: Declaration, args: &HostBuildArgs) -> anyhow::Result
         resolved.plan().capability_bindings().len()
     );
     Ok(())
+}
+
+fn validate_host_target(target: &str) -> anyhow::Result<()> {
+    if target.trim().is_empty() {
+        bail!("Host implementation target must not be empty");
+    }
+    match target {
+        "workers" | "cloudflare-workers" => bail!(
+            "TS Host build cannot target `{target}`: this path assembles a Native Bun/Process Host; a Workers Event Host and target-compatible Execution Adapter are not available here"
+        ),
+        "wasm32-unknown-unknown" | "wasm32-wasip2" => bail!(
+            "TS Host build cannot target `{target}`: this path assembles a Native Bun/Process Host; a Wasm compile target does not provide a Workers Host or Component Adapter"
+        ),
+        _ => Ok(()),
+    }
 }
 
 pub(super) fn publish_new_output(

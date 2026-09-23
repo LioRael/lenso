@@ -77,12 +77,15 @@ separate from this App admission report.
 The local convention `lenso app build` constructs a Native Host for the current
 machine and does not accept `--target`. The explicit
 `app build --source HOST.ts --target TARGET --out DIR` path creates Host
-authoring data, not an executable target distribution. `app prepare` currently
+authoring data, not an executable target distribution. That build path rejects
+`workers`, `cloudflare-workers`, and Wasm target names before output publication:
+it assembles only a Native Bun/Process Host. `app prepare` currently
 admits only `aarch64-apple-darwin` and `x86_64-unknown-linux-gnu` with the
 matching runtime, owner, resolver and selected artifacts. A `workers` or Wasm
 distribution target is rejected before output publication. A selected Wasm
 Component inside a Native Host is not evidence that this App has a Workers
-Host, Workers ingress, or qualified Workers infrastructure.
+Host, Workers ingress, a Workers-compatible Component Adapter, or qualified
+Workers infrastructure.
 
 Consequently, `app explain` can report a rejected Workers-only candidate, but
 cannot prove the whole dependency/resource closure is Workers-compatible or
