@@ -142,6 +142,7 @@ pub fn linked_catalog(args: LinkedCatalogArgs) -> anyhow::Result<()> {
 }
 #[derive(Clone, Debug, Subcommand)]
 pub enum PluginCommand {
+    /// Create a CLI command Plugin; use `lenso plugin new --web` for Web Plugins.
     New(NewArgs),
 }
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -368,7 +369,10 @@ pub fn new(command: PluginCommand) -> anyhow::Result<()> {
     writable_path(&root, Path::new("app"))?;
     let support = root.join("app/lenso-terminal-cli");
     if !support.is_dir() {
-        bail!("install CLI support first: lenso app add @lenso/cli");
+        bail!(
+            "App CLI command Plugins require support from `lenso app add @lenso/cli`; \
+             for a Web Plugin, use `lenso plugin new <id> --web --repo-root <app>/app`"
+        );
     }
     let destination = root.join("app").join(&args.id);
     if destination.exists() {
@@ -461,4 +465,24 @@ pub fn create_plugin(
         language,
         no_install: !install_dependencies,
     }))
+}
+
+#[cfg(test)]
+mod plugin_new_tests {
+    use super::{Language, NewArgs, PluginCommand, new};
+
+    #[test]
+    fn app_cli_plugin_creation_points_web_authors_to_web_scaffold() {
+        let root = tempfile::tempdir().unwrap();
+        let error = new(PluginCommand::New(NewArgs {
+            id: "local.clock".into(),
+            root: Some(root.path().into()),
+            language: Language::Rust,
+            no_install: true,
+        }))
+        .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("lenso app add @lenso/cli"));
+        assert!(message.contains("lenso plugin new <id> --web --repo-root <app>/app"));
+    }
 }

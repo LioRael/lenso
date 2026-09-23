@@ -180,7 +180,7 @@ pub enum AppCommand {
     /// Inspect accepted and last-activated external configuration revisions.
     #[command(name = "config-status")]
     ConfigStatus(configuration_source::StatusArgs),
-    /// Create an App-owned Plugin with optional language-specific entries.
+    /// Create an App-owned CLI command Plugin (requires @lenso/cli support).
     Plugin {
         #[command(subcommand)]
         command: convention_authoring::PluginCommand,
