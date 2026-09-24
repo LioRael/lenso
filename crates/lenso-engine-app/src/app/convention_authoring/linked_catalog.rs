@@ -608,36 +608,49 @@ fn verified_v6_archive(
                     .any(|candidate| candidate == "*" || candidate == target)
         })
         .collect::<Vec<_>>();
-    let [(implementation, variant)] = matching.as_slice() else {
-        if matching.is_empty() {
-            bail!("V6 Bundle has no Cargo build input for Host target {target}");
-        }
+    if matching.is_empty() {
+        bail!("V6 Bundle has no Cargo build input for Host target {target}");
+    }
+    let abi_compatible = matching
+        .into_iter()
+        .filter(|(_, variant)| {
+            variant.runtime.execution_class().as_str() == "lenso.native-rust@1"
+                && variant.runtime.runtime_profile() == "lenso.native-rust@1"
+        })
+        .collect::<Vec<_>>();
+    if abi_compatible.is_empty() {
+        bail!("V6 Cargo build input requires exact native-linked Host ABI lenso.native-rust@1");
+    }
+    let compatible = abi_compatible
+        .into_iter()
+        .filter(|(_, variant)| variant.runtime.required_target_capabilities().is_empty())
+        .collect::<Vec<_>>();
+    if compatible.is_empty() {
+        bail!("V6 Cargo build input has target capability requirements without Host proof");
+    }
+    for (_, variant) in &compatible {
+        ensure!(
+            variant.execution_requirements.is_empty(),
+            "V6 Cargo build input has execution requirements without verified Host enforcement"
+        );
+        let PluginVariantInputV6::CargoBuildInput { build_input } = &variant.input else {
+            unreachable!("compatible variants have Cargo build inputs")
+        };
+        ensure!(
+            build_input.package == release.package
+                && build_input.version == release.version
+                && build_input.digest == release.crate_digest
+                && build_input.size > 0
+                && build_input.size <= MAX_CRATE_BYTES,
+            "V6 Cargo build input coordinate, size, or digest differs from signed release"
+        );
+    }
+    let [(implementation, variant)] = compatible.as_slice() else {
         bail!("V6 Bundle has ambiguous Cargo build inputs for Host target {target}");
     };
-    ensure!(
-        variant.runtime.execution_class().as_str() == "lenso.native-rust@1"
-            && variant.runtime.runtime_profile() == "lenso.native-rust@1",
-        "V6 Cargo build input requires exact native-linked Host ABI lenso.native-rust@1"
-    );
-    ensure!(
-        variant.runtime.required_target_capabilities().is_empty(),
-        "V6 Cargo build input has target capability requirements without Host proof"
-    );
-    ensure!(
-        variant.execution_requirements.is_empty(),
-        "V6 Cargo build input has execution requirements without verified Host enforcement"
-    );
     let PluginVariantInputV6::CargoBuildInput { build_input } = &variant.input else {
-        unreachable!("matching variants have Cargo build inputs")
+        unreachable!("compatible variants have Cargo build inputs")
     };
-    ensure!(
-        build_input.package == release.package
-            && build_input.version == release.version
-            && build_input.digest == release.crate_digest
-            && build_input.size > 0
-            && build_input.size <= MAX_CRATE_BYTES,
-        "V6 Cargo build input coordinate, size, or digest differs from signed release"
-    );
     let bytes = lenso_plugin_bundle::read_verified_cargo_build_input(
         bundle,
         build_input,

@@ -352,6 +352,112 @@ fn v6_bundle_cargo_input_uses_exact_signed_release_and_host_build_path() {
 }
 
 #[test]
+fn v6_bundle_ignores_incompatible_linked_abi_before_ambiguity() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let archive =
+        crate_archive("#[lenso::plugin(consumer)]\n#[derive(Clone, Debug)]\nstruct Core {}\n");
+    let (snapshot, trust) = signed_snapshot(root, &archive);
+    let bundle = bundle(
+        root,
+        &archive,
+        lenso_engine_authoring::native_host_target(),
+        "lenso.native-rust@1",
+        2,
+        &[],
+    );
+    let manifest_path = bundle.join(lenso_plugin_bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    manifest["implementations"][0]["variants"][1]["runtime"]["runtime_profile"] =
+        "lenso.native-rust@2".into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+
+    let app = root.join("app");
+    create_app(cli, &app);
+    let added = add(cli, &app, &snapshot, &trust, &bundle, "example.web@0.4.5");
+    assert!(
+        added.status.success(),
+        "{}",
+        String::from_utf8_lossy(&added.stderr)
+    );
+    assert_v6_adopted(cli, &app);
+}
+
+#[test]
+fn v6_bundle_does_not_select_another_variant_after_signed_input_mismatch() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let archive =
+        crate_archive("#[lenso::plugin(consumer)]\n#[derive(Clone, Debug)]\nstruct Core {}\n");
+    let (snapshot, trust) = signed_snapshot(root, &archive);
+    let bundle = bundle(
+        root,
+        &archive,
+        lenso_engine_authoring::native_host_target(),
+        "lenso.native-rust@1",
+        2,
+        &[],
+    );
+    let other_archive = crate_archive("pub fn changed() {}");
+    let other_digest = lenso_plugin_catalog::digest(&other_archive);
+    fs::write(
+        bundle.join("implementations/portable/native-1.crate"),
+        &other_archive,
+    )
+    .unwrap();
+    let manifest_path = bundle.join(lenso_plugin_bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    let variant = &mut manifest["implementations"][0]["variants"][1];
+    variant["input"]["build_input"]["digest"] = other_digest.clone().into();
+    variant["input"]["build_input"]["size"] = other_archive.len().into();
+    variant["runtime"]["runtime_package_revision"] = other_digest.into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    lenso_plugin_bundle::verify_bundle_directory(&bundle).unwrap();
+
+    let app = root.join("app");
+    create_app(cli, &app);
+    let rejected = add(cli, &app, &snapshot, &trust, &bundle, "example.web@0.4.5");
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("differs from signed release"));
+    assert_unmodified(&app);
+}
+
+#[test]
+fn v6_bundle_does_not_relax_unverified_controls_to_another_variant() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let archive =
+        crate_archive("#[lenso::plugin(consumer)]\n#[derive(Clone, Debug)]\nstruct Core {}\n");
+    let (snapshot, trust) = signed_snapshot(root, &archive);
+    let bundle = bundle(
+        root,
+        &archive,
+        lenso_engine_authoring::native_host_target(),
+        "lenso.native-rust@1",
+        2,
+        &[],
+    );
+    let manifest_path = bundle.join(lenso_plugin_bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    manifest["implementations"][0]["variants"][1]["execution_requirements"] =
+        serde_json::json!([{ "kind": "os_sandbox" }]);
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+
+    let app = root.join("app");
+    create_app(cli, &app);
+    let rejected = add(cli, &app, &snapshot, &trust, &bundle, "example.web@0.4.5");
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("verified Host enforcement"));
+    assert_unmodified(&app);
+}
+
+#[test]
 fn v6_bundle_rejections_leave_app_unchanged_before_adoption() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path();
