@@ -204,10 +204,11 @@ pub(super) struct DevHost {
 
 impl DevHost {
     pub(super) fn prepare(root: &Path, package: &CargoPackage) -> anyhow::Result<Self> {
+        let framework = framework_source(root)?;
         let project = tempfile::tempdir().context("create Web development Host directory")?;
         let target_directory = cargo_target_directory(root)?;
         let package_name = host_package_name(root, &package.name);
-        let manifest = host_manifest(root, package, &package_name);
+        let manifest = host_manifest(root, package, &package_name, &framework);
         fs::write(project.path().join("Cargo.toml"), manifest)
             .context("write Web development Host manifest")?;
         fs::create_dir(project.path().join("src"))
@@ -254,6 +255,123 @@ impl DevHost {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum FrameworkSource {
+    Registry,
+    Git { url: String, rev: String },
+}
+
+fn framework_source(root: &Path) -> anyhow::Result<FrameworkSource> {
+    let manifest = fs::read_to_string(root.join("Cargo.toml"))
+        .context("read Web Plugin manifest for framework source")?;
+    let manifest: toml::Value =
+        toml::from_str(&manifest).context("parse Web Plugin manifest for framework source")?;
+    source_from_manifest(&manifest)
+}
+
+fn source_from_manifest(manifest: &toml::Value) -> anyhow::Result<FrameworkSource> {
+    let dependencies = manifest
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .context("Web Plugin has no direct dependencies")?;
+    let mut source: Option<FrameworkSource> = None;
+    for (alias, dependency) in dependencies {
+        let name = dependency
+            .get("package")
+            .and_then(toml::Value::as_str)
+            .unwrap_or(alias);
+        let Some(expected) = registry_framework_version(name) else {
+            continue;
+        };
+        let version = dependency
+            .as_str()
+            .or_else(|| dependency.get("version").and_then(toml::Value::as_str));
+        let candidate = if let Some(url) = dependency.get("git").and_then(toml::Value::as_str) {
+            let rev = dependency
+                .get("rev")
+                .and_then(toml::Value::as_str)
+                .with_context(|| format!("{name} must pin a full Git commit with `rev`"))?;
+            if rev.len() != 40 || !rev.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                bail!("{name} must pin a full 40-character Git commit with `rev`");
+            }
+            if dependency.get("path").is_some()
+                || dependency.get("branch").is_some()
+                || dependency.get("tag").is_some()
+                || dependency.get("registry").is_some()
+                || dependency.get("workspace").is_some()
+            {
+                bail!("{name} has an unsupported mixed Cargo source; use one exact Git revision");
+            }
+            if matches!(name, "lenso-app-plan" | "lenso-kernel" | "lenso-web-host")
+                && version.is_some_and(|version| version.trim_start_matches('=') != expected)
+            {
+                bail!("Web development Host requires {name}@{expected} from this Git source");
+            }
+            FrameworkSource::Git {
+                url: url.to_owned(),
+                rev: rev.to_owned(),
+            }
+        } else {
+            if dependency.get("path").is_some()
+                || dependency.get("workspace").is_some()
+                || dependency.get("registry").is_some()
+            {
+                bail!("{name} uses an unsupported local or alternate-registry Lenso source");
+            }
+            let actual = version.with_context(|| format!("{name} needs an exact version"))?;
+            if actual != format!("={expected}") {
+                bail!(
+                    "Web development Host requires {name}@{expected} from crates.io, pinned as `={expected}`"
+                );
+            }
+            FrameworkSource::Registry
+        };
+        if let Some(previous) = &source
+            && previous != &candidate
+        {
+            bail!(
+                "Web Plugin mixes crates.io and Git Lenso sources or multiple Lenso Git revisions"
+            );
+        }
+        source = Some(candidate);
+    }
+    let source = source.context("Web Plugin has no direct Lenso framework dependency")?;
+    if let Some(patches) = manifest
+        .get("patch")
+        .and_then(|patch| patch.get("crates-io"))
+        && let Some(patches) = patches.as_table()
+    {
+        for (alias, patch) in patches {
+            let name = patch
+                .get("package")
+                .and_then(toml::Value::as_str)
+                .unwrap_or(alias);
+            if registry_framework_version(name).is_none() {
+                continue;
+            }
+            match &source {
+                FrameworkSource::Git { url, rev }
+                    if patch.get("git").and_then(toml::Value::as_str) == Some(url)
+                        && patch.get("rev").and_then(toml::Value::as_str) == Some(rev) => {}
+                _ => bail!("Web Plugin patch for {name} does not match its Lenso framework source"),
+            }
+        }
+    }
+    Ok(source)
+}
+
+fn registry_framework_version(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "lenso" => "0.5.26",
+        "lenso-app-plan" => "0.4.5",
+        "lenso-kernel" => "0.3.11",
+        "lenso-native-adapter" => "0.3.15",
+        "lenso-capability-http-endpoint" => "0.3.4",
+        "lenso-web-host" => "0.2.2",
+        _ => return None,
+    })
+}
+
 fn host_package_name(root: &Path, package_name: &str) -> String {
     let digest = Sha256::digest(root.to_string_lossy().as_bytes());
     let mut suffix = String::with_capacity(8);
@@ -267,9 +385,44 @@ fn host_package_name(root: &Path, package_name: &str) -> String {
     )
 }
 
-fn host_manifest(root: &Path, package: &CargoPackage, host_package_name: &str) -> String {
+fn host_manifest(
+    root: &Path,
+    package: &CargoPackage,
+    host_package_name: &str,
+    framework: &FrameworkSource,
+) -> String {
     let plugin_path =
         serde_json::to_string(&root.to_string_lossy()).expect("serialize Plugin path");
+    let (app_plan, kernel, web_host, patches) = match framework {
+        FrameworkSource::Registry => (
+            "\"=0.4.5\"".to_owned(),
+            "\"=0.3.11\"".to_owned(),
+            "\"=0.2.2\"".to_owned(),
+            String::new(),
+        ),
+        FrameworkSource::Git { url, rev } => {
+            let url = toml::Value::String(url.clone()).to_string();
+            let rev = toml::Value::String(rev.clone()).to_string();
+            let dependency =
+                |version: &str| format!("{{ version = \"={version}\", git = {url}, rev = {rev} }}");
+            let mut patches = String::from("[patch.crates-io]\n");
+            for name in [
+                "lenso",
+                "lenso-app-plan",
+                "lenso-kernel",
+                "lenso-native-adapter",
+                "lenso-capability-http-endpoint",
+            ] {
+                patches.push_str(&format!("{name} = {{ git = {url}, rev = {rev} }}\n"));
+            }
+            (
+                dependency("0.4.5"),
+                dependency("0.3.11"),
+                dependency("0.2.2"),
+                patches,
+            )
+        }
+    };
     format!(
         r#"[package]
 name = "{host_package_name}"
@@ -279,14 +432,15 @@ publish = false
 
 [dependencies]
 futures = "0.3"
-lenso-app-plan = "=0.4.5"
-lenso-kernel = "=0.3.11"
-lenso-web-host = "=0.2.2"
+lenso-app-plan = {app_plan}
+lenso-kernel = {kernel}
+lenso-web-host = {web_host}
 plugin = {{ package = "{}", path = {plugin_path} }}
 serde_json = "1"
 tokio = {{ version = "1.52", features = ["macros", "rt", "signal"] }}
 tower = "0.5"
 
+{patches}
 [workspace]
 "#,
         package.name,
@@ -345,14 +499,14 @@ async fn stop(child: &mut Child) {
 
 #[cfg(test)]
 mod tests {
-    use super::{host_manifest, host_package_name};
-    use crate::plugin::{CargoMetadata, CargoPackage, LensoMetadata};
-    use std::path::Path;
+    use super::{
+        FrameworkSource, framework_source, host_manifest, host_package_name, source_from_manifest,
+    };
+    use crate::plugin::{CargoMetadata, CargoPackage, LensoMetadata, web_plugin_scaffold};
+    use std::{fs, path::Path};
 
-    #[test]
-    fn generated_host_uses_the_real_native_web_path() {
-        let root = Path::new("/tmp/company.greetings-http");
-        let package = CargoPackage {
+    fn package() -> CargoPackage {
+        CargoPackage {
             name: "company-greetings-http".to_owned(),
             version: "0.1.0".to_owned(),
             metadata: CargoMetadata {
@@ -362,12 +516,22 @@ mod tests {
                 },
                 lenso_cli: None,
             },
-        };
+        }
+    }
+
+    fn source(manifest: &str) -> anyhow::Result<FrameworkSource> {
+        source_from_manifest(&toml::from_str(manifest).unwrap())
+    }
+
+    #[test]
+    fn generated_host_uses_the_real_native_web_path() {
+        let root = Path::new("/tmp/company.greetings-http");
+        let package = package();
         let name = host_package_name(root, &package.name);
-        let manifest = host_manifest(root, &package, &name);
+        let manifest = host_manifest(root, &package, &name, &FrameworkSource::Registry);
+        let parsed: toml::Value = toml::from_str(&manifest).unwrap();
 
         assert!(name.starts_with("lenso-web-dev-company-greetings-http-"));
-        let parsed: toml::Value = toml::from_str(&manifest).unwrap();
         for (name, version) in [
             ("lenso-web-host", "=0.2.2"),
             ("lenso-app-plan", "=0.4.5"),
@@ -380,5 +544,142 @@ mod tests {
         assert!(manifest.contains("tower = \"0.5\""));
         assert!(!manifest.contains("lenso-web-ingress-plugin"));
         assert!(manifest.contains("plugin = { package = \"company-greetings-http\""));
+    }
+
+    #[test]
+    fn generated_registry_plugin_needs_no_lock_or_network_to_select_host() {
+        let project = tempfile::tempdir().unwrap();
+        let plugin = project.path().join("plugin");
+        fs::create_dir(&plugin).unwrap();
+        fs::write(
+            project.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"plugin\"]\n",
+        )
+        .unwrap();
+        let manifest = web_plugin_scaffold("company.greetings-http")
+            .remove(Path::new("Cargo.toml"))
+            .unwrap()
+            .replace(
+                "[build-dependencies]",
+                "lenso-business-plugin = { path = \"../business\" }\n\n[build-dependencies]",
+            );
+        fs::write(plugin.join("Cargo.toml"), manifest).unwrap();
+
+        assert_eq!(
+            framework_source(&plugin).unwrap(),
+            FrameworkSource::Registry
+        );
+        assert!(!project.path().join("Cargo.lock").exists());
+        assert!(!plugin.join("Cargo.lock").exists());
+    }
+
+    #[test]
+    fn git_web_plugin_uses_its_exact_source_for_dev_host() {
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let git = "https://github.com/LioRael/lenso";
+        let manifest = format!(
+            r#"[dependencies]
+lenso = {{ version = "=0.5.25", git = "{git}", rev = "{rev}" }}
+lenso-capability-http-endpoint = {{ version = "0.3.4", git = "{git}", rev = "{rev}" }}
+
+[patch.crates-io]
+lenso = {{ git = "{git}", rev = "{rev}" }}
+lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
+"#
+        );
+        let framework = source(&manifest).unwrap();
+        assert_eq!(
+            framework,
+            FrameworkSource::Git {
+                url: git.to_owned(),
+                rev: rev.to_owned(),
+            }
+        );
+        let generated = host_manifest(
+            Path::new("/tmp/company.greetings-http"),
+            &package(),
+            "web-dev",
+            &framework,
+        );
+        let parsed: toml::Value = toml::from_str(&generated).unwrap();
+        for name in ["lenso-app-plan", "lenso-kernel", "lenso-web-host"] {
+            assert_eq!(parsed["dependencies"][name]["git"].as_str(), Some(git));
+            assert_eq!(parsed["dependencies"][name]["rev"].as_str(), Some(rev));
+        }
+        for name in [
+            "lenso",
+            "lenso-app-plan",
+            "lenso-kernel",
+            "lenso-native-adapter",
+            "lenso-capability-http-endpoint",
+        ] {
+            assert_eq!(
+                parsed["patch"]["crates-io"][name]["git"].as_str(),
+                Some(git)
+            );
+            assert_eq!(
+                parsed["patch"]["crates-io"][name]["rev"].as_str(),
+                Some(rev)
+            );
+        }
+    }
+
+    #[test]
+    fn incompatible_registry_and_mixed_sources_fail_closed() {
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let git =
+            format!("lenso = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{rev}\" }}");
+        let old_registry = "[dependencies]\nlenso = \"=0.5.25\"\n";
+        assert!(
+            source(old_registry)
+                .unwrap_err()
+                .to_string()
+                .contains("lenso@0.5.26")
+        );
+
+        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.4\"\n");
+        assert!(
+            source(&mixed)
+                .unwrap_err()
+                .to_string()
+                .contains("mixes crates.io and Git")
+        );
+
+        let local = "[dependencies]\nlenso = { path = \"../lenso\" }\n";
+        assert!(
+            source(local)
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported local")
+        );
+
+        let workspace = "[dependencies]\nlenso = { workspace = true }\n";
+        assert!(
+            source(workspace)
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported local")
+        );
+
+        let other_rev = "c9cd15629b7d65d6f6cdc12113234acd85c89a89";
+        let different = format!(
+            "[dependencies]\n{git}\nlenso-capability-http-endpoint = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{other_rev}\" }}\n"
+        );
+        assert!(
+            source(&different)
+                .unwrap_err()
+                .to_string()
+                .contains("multiple Lenso Git revisions")
+        );
+
+        let bad_patch = format!(
+            "[dependencies]\n{git}\n[patch.crates-io]\nlenso-kernel = {{ path = \"../core\" }}\n"
+        );
+        assert!(
+            source(&bad_patch)
+                .unwrap_err()
+                .to_string()
+                .contains("patch for lenso-kernel")
+        );
     }
 }
