@@ -864,16 +864,33 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
         .get("package")
         .and_then(toml::Value::as_array)
         .context("generated Host Cargo lock has no packages")?;
-    let mut seen = BTreeSet::new();
+    let mut seen_versions = BTreeSet::new();
+    let mut seen_names = BTreeSet::new();
+    let mut codec_versions = BTreeSet::new();
     for package in packages {
         if let Some(name) = package.get("name").and_then(toml::Value::as_str)
             && (name == "lenso" || name.starts_with("lenso-"))
-            && !seen.insert(name)
         {
-            bail!(
-                "generated Host resolved conflicting {name} Cargo package identities; align framework sources before linking"
-            );
+            let version = package
+                .get("version")
+                .and_then(toml::Value::as_str)
+                .with_context(|| format!("generated Host Lenso package {name} has no version"))?;
+            if !seen_versions.insert((name, version))
+                || (name != "lenso-runtime-codec" && !seen_names.insert(name))
+            {
+                bail!(
+                    "generated Host resolved conflicting {name} Cargo package identities; align framework sources before linking"
+                );
+            }
+            if name == "lenso-runtime-codec" {
+                codec_versions.insert(version);
+            }
         }
+    }
+    if codec_versions.len() > 1 && codec_versions != BTreeSet::from(["0.3.4", "0.4.2"]) {
+        bail!(
+            "generated Host resolved conflicting lenso-runtime-codec Cargo package identities; align framework sources before linking"
+        );
     }
     let (git, rev) = selected
         .source
@@ -882,11 +899,12 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
     for (name, (_, version)) in &selected.packages {
         let matches = packages
             .iter()
-            .filter(|package| package.get("name").and_then(toml::Value::as_str) == Some(name))
+            .filter(|package| {
+                package.get("name").and_then(toml::Value::as_str) == Some(name)
+                    && package.get("version").and_then(toml::Value::as_str) == Some(version)
+            })
             .collect::<Vec<_>>();
-        if matches.len() != 1
-            || matches[0].get("version").and_then(toml::Value::as_str) != Some(version)
-        {
+        if matches.len() != 1 {
             bail!(
                 "generated Host resolved conflicting {name} Cargo package identities; align framework sources before linking"
             );
@@ -1460,6 +1478,20 @@ mod tests {
         std::fs::write(
             &lock,
             format!(
+                "{git_package}\n[[package]]\nname = \"lenso-native-adapter\"\nversion = \"0.3.14\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+            ),
+        )
+        .unwrap();
+        let error = verify_git_lenso_lock(&lock, &selected).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("generated Host resolved conflicting lenso-native-adapter")
+        );
+
+        std::fs::write(
+            &lock,
+            format!(
                 "{git_package}\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.11\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.11\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
             ),
         )
@@ -1469,6 +1501,49 @@ mod tests {
             error
                 .to_string()
                 .contains("generated Host resolved conflicting lenso-kernel")
+        );
+    }
+
+    #[test]
+    fn generated_host_lock_allows_distinct_codec_versions_but_rejects_same_version_split() {
+        let root = tempfile::tempdir().unwrap();
+        let lock = root.path().join("Cargo.lock");
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-runtime-codec",
+                "version": "0.3.4",
+                "id": "git-codec-0.3.4",
+                "source": format!("git+{git}?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap();
+        let git_codec = format!(
+            "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.3.4\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n"
+        );
+        let other_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        std::fs::write(&lock, format!("{git_codec}\n{other_codec}")).unwrap();
+        verify_git_lenso_lock(&lock, &selected).unwrap();
+
+        let duplicate_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.3.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        std::fs::write(&lock, format!("{git_codec}\n{duplicate_codec}")).unwrap();
+        let error = verify_git_lenso_lock(&lock, &selected).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("generated Host resolved conflicting lenso-runtime-codec")
+        );
+
+        let unsupported_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        std::fs::write(&lock, format!("{git_codec}\n{unsupported_codec}")).unwrap();
+        let error = verify_git_lenso_lock(&lock, &selected).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("generated Host resolved conflicting lenso-runtime-codec")
         );
     }
 
