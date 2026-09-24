@@ -200,6 +200,35 @@ fn web_plugin_new_writes_the_complete_project() {
 }
 
 #[test]
+#[ignore = "clean-room test downloads pinned Web dependencies and compiles the generated Plugin"]
+fn clean_room_web_plugin_check_validates_linked_native_source() {
+    let root = tempfile::tempdir().unwrap();
+    create(PluginNewArgs {
+        plugin_id: "company.greetings-http".to_owned(),
+        repo_root: Some(root.path().to_path_buf()),
+        dir: None,
+        runtime: PluginRuntimeArg::Multi,
+        web: true,
+        no_install: true,
+        dry_run: false,
+    })
+    .unwrap();
+    let project = root.path().join("company.greetings-http");
+    run_cargo(
+        &project,
+        &["generate-lockfile"],
+        "lock generated Web Plugin",
+    )
+    .unwrap();
+
+    check(PluginCheckArgs {
+        repo_root: Some(project),
+        json: true,
+    })
+    .unwrap();
+}
+
+#[test]
 #[ignore = "clean-room test downloads pinned Web dependencies and runs generated tests"]
 fn clean_room_web_plugin_runs_generated_tests() {
     let root = tempfile::tempdir().unwrap();

@@ -331,6 +331,34 @@ pub(crate) fn create_web_scaffold(
 
 fn check(args: PluginCheckArgs) -> anyhow::Result<()> {
     let root = project_root(args.repo_root)?;
+    if web_dev::is_web_plugin(&root)? {
+        let package = read_package(&root.join("Cargo.toml"))?;
+        synchronize_plugin_lock(&root, &package)?;
+        run_cargo(
+            &root,
+            &["check", "--locked", "--all-targets"],
+            "check linked Web Plugin",
+        )?;
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "schema_version": 1,
+                    "kind": "lenso.plugin-check",
+                    "status": "passed",
+                    "plugin_id": package.metadata.lenso.plugin_id,
+                    "release_version": package.version,
+                    "distribution": "linked-native",
+                }))?
+            );
+        } else {
+            println!(
+                "Plugin check passed: {}@{} (linked native Web)",
+                package.metadata.lenso.plugin_id, package.version
+            );
+        }
+        return Ok(());
+    }
     let temporary = tempfile::tempdir().context("create Plugin check directory")?;
     let output = temporary.path().join("checked.lenso-plugin");
     let verified = materialize(&root, &output, BuildProfile::Development)?;
