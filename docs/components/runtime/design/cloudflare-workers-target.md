@@ -24,7 +24,7 @@ slice before claiming the target supports an authenticated Marketplace.
 - Target compatibility is an evidence-backed property of an implementation and
   its feature/dependency closure, not of the Plugin name or programming language.
 
-G0 execution evidence is now available in [the target audit](../evidence/workers-g0/README.md).
+G0 execution evidence is preserved in [the historical target audit](https://github.com/LioRael/lenso/blob/57d7a4ef49e768c74b2b45be37c7393ed004148f/docs/evidence/workers-g0/README.md).
 Its pinned source baselines supersede the initial inspection below for the tested components.
 
 For mixed long sessions and short requests, the
@@ -292,7 +292,7 @@ the implementation's selected compatibility date and pinned tool versions.
 ## G1 qualification evidence (2026-09-14)
 
 The bounded generic-runtime prototype is evaluated in
-[the G1 acceptance report](../evidence/workers-g1/acceptance.md), with an explicit
+[the historical G1 acceptance report](https://github.com/LioRael/lenso/blob/57d7a4ef49e768c74b2b45be37c7393ed004148f/docs/evidence/workers-g1/acceptance.md), with an explicit
 32-vector upstream mapping, fault/cleanup semantics, real request cancellation,
 platform CPU/memory observations, and resource-limit failure evidence. This does
 not promote the experimental files to supported Runtime packages or authorize

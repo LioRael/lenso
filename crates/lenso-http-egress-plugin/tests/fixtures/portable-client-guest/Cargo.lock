@@ -275,7 +275,7 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "lenso-app-plan"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runtime-codec"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "futures",
  "hex",

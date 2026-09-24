@@ -27,6 +27,8 @@ Transport queue/message limits apply independently of the business contract.
 The descriptor and schemas are authoritative; regenerate `src/generated.rs`
 with the workspace-pinned `lenso-contract-codegen`. This new 1.0.0 contract has no
 previous released revision. Native and Workers ingress use this same contract and shared frame validator.
-The duplex fixture verifies real network framing on both targets. Workers proof
-receipts are in Runtime `experiments/workers-g2/evidence/duplex.json`.
+The duplex fixture verifies real network framing on both targets. Native Web
+ingress tests remain [in this workspace](../lenso-web-ingress-plugin/tests/websocket.rs).
+The Workers receipt remains in [the historical G2 evidence](https://github.com/LioRael/lenso/blob/00b766a0d917284a0cc4fd2cbbd12902efcaaeb1/experiments/workers-g2/evidence/duplex.json);
+it does not qualify the current candidate for production.
 The contract alone does not install an ingress or select an authorization provider.

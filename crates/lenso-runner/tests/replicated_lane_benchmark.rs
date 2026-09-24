@@ -458,7 +458,7 @@ fn print_interleaved_report(
 /// Reproducible evidence command:
 /// `cargo test -p lenso-runner --test replicated_lane_benchmark lane_scaling_benchmark -- --ignored --nocapture`
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "CPU benchmark; run explicitly to refresh docs/evidence/native-lane-scaling.json"]
+#[ignore = "CPU benchmark; run explicitly when changing lane placement"]
 async fn lane_scaling_benchmark() {
     let requests = 120;
     let one = measure_shared_nothing_throughput(1, requests).await;
