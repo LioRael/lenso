@@ -1050,7 +1050,7 @@ fn write_backend_url(root: &Path, address: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn lock_dev(root: &Path) -> anyhow::Result<fs::File> {
+fn lock_dev(root: &Path) -> anyhow::Result<super::local_lock::LocalLock> {
     super::local_lock::acquire(
         root,
         "dev.lock",
@@ -1178,7 +1178,8 @@ fn signal_process_group_id(id: u32, signal: nix::sys::signal::Signal) -> anyhow:
 pub(super) fn darwin_group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
     use nix::libc;
     let mut pids = vec![0_i32; 64];
-    loop {
+    let inspection_deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
+    'snapshot: loop {
         let capacity = i32::try_from(pids.len() * std::mem::size_of::<i32>())?;
         // PROC_PGRP_ONLY is 2 in the macOS SDK's sys/proc_info.h.
         let bytes = unsafe { libc::proc_listpids(2, group_id, pids.as_mut_ptr().cast(), capacity) };
@@ -1214,10 +1215,15 @@ pub(super) fn darwin_group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
                 )
             };
             // Enumeration can race with a member's exit. An ambiguous member
-            // is not proof of a stopped group; retry until it disappears or
-            // becomes inspectable, then fail closed at the caller's deadline.
+            // is not proof of a stopped group. Re-enumerate briefly so a
+            // vanished member can disappear from the snapshot; persistent
+            // ambiguity still fails closed.
             if returned == 0 {
-                return Ok(false);
+                if std::time::Instant::now() >= inspection_deadline {
+                    return Ok(false);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                continue 'snapshot;
             }
             anyhow::ensure!(
                 returned == info_size,
@@ -2164,7 +2170,11 @@ mod tests {
         assert_eq!(fs::read(&backend).unwrap(), b"http://127.0.0.1:3001/\n");
         assert_eq!(fs::read_dir(&control).unwrap().count(), 2);
         drop(first);
-        assert!(lock_dev(root.path()).is_ok());
+        let restored = lock_dev(root.path());
+        assert!(
+            restored.is_ok(),
+            "dev lock stayed unavailable: {restored:?}"
+        );
     }
 
     #[cfg(unix)]

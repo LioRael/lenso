@@ -2,11 +2,23 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, ensure};
 
+#[derive(Debug)]
+pub(super) struct LocalLock(fs::File);
+
+impl Drop for LocalLock {
+    fn drop(&mut self) {
+        // A forked process can briefly inherit the open file description
+        // before exec closes its descriptor. Unlock before closing ours so
+        // the next App session does not inherit that transient lock window.
+        let _ = self.0.unlock();
+    }
+}
+
 pub(super) fn acquire(
     root: &Path,
     name: &str,
     occupied_message: &'static str,
-) -> anyhow::Result<fs::File> {
+) -> anyhow::Result<LocalLock> {
     let directory = root.join(".lenso");
     ensure!(
         fs::symlink_metadata(&directory)?.file_type().is_dir(),
@@ -58,5 +70,5 @@ pub(super) fn acquire(
             "App session lock path changed after acquisition"
         );
     }
-    Ok(file)
+    Ok(LocalLock(file))
 }

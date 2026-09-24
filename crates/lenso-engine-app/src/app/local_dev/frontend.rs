@@ -466,7 +466,10 @@ mod tests {
             .await
             .err()
             .unwrap();
-        assert!(format!("{error:#}").contains("exited before preview readiness"));
+        assert!(
+            format!("{error:#}").contains("exited before preview readiness"),
+            "unexpected frontend exit error: {error:#}"
+        );
         let pid: i32 = fs::read_to_string(frontend.join("child.pid"))
             .unwrap()
             .trim()
