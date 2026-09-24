@@ -85,6 +85,7 @@ struct AppTools {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct LinkedCatalogQuery {
     #[serde(default)]
     query: String,
@@ -97,6 +98,7 @@ struct LinkedCatalogQuery {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct PortableCatalogSearchQuery {
     #[serde(default)]
     query: String,
@@ -107,6 +109,7 @@ struct PortableCatalogSearchQuery {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct LinkedDocumentQuery {
     plugin_id: String,
     version: String,
@@ -148,7 +151,7 @@ struct ProjectInspectionQuery {
 #[serde(deny_unknown_fields)]
 struct ProjectFactsQuery {
     #[serde(default)]
-    scope: ProjectInspectionScope,
+    scope: Option<ProjectInspectionScope>,
     #[serde(default)]
     section: ProjectFactsSection,
     #[serde(default)]
@@ -158,6 +161,7 @@ struct ProjectFactsQuery {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectBuildQuery {
     /// Client-generated idempotency key for this fixed-root build.
     request_id: String,
@@ -167,11 +171,13 @@ struct ProjectBuildQuery {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectBuildIdentity {
     request_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectRunQuery {
     request_id: String,
     #[serde(default)]
@@ -179,11 +185,13 @@ struct ProjectRunQuery {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectRunIdentity {
     request_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectChangePreviewQuery {
     base_revision: String,
     plugin_id: String,
@@ -192,12 +200,14 @@ struct ProjectChangePreviewQuery {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectChangeApplyQuery {
     proposal_digest: String,
     request_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectSelectionPreviewQuery {
     base_revision: String,
     plugin_id: String,
@@ -769,18 +779,18 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Inspect App facts without secret values; scope=built_distribution reads only the fixed root's dist; use section and pagination for large projects"
+        description = "Inspect App facts without secret values; omitted scope observes an active MCP run's built distribution, while explicit scope=root inspects the source root; use section and pagination for large projects"
     )]
     fn project_facts(
         &self,
         Parameters(request): Parameters<ProjectFactsQuery>,
     ) -> Result<CallToolResult, McpError> {
         let active = self.runs.active_state();
-        let scope = if active.is_some() {
+        let scope = request.scope.unwrap_or(if active.is_some() {
             ProjectInspectionScope::BuiltDistribution
         } else {
-            request.scope
-        };
+            ProjectInspectionScope::Root
+        });
         let observed_root = self.inspection_root(scope)?;
         let host_build = if matches!(scope, ProjectInspectionScope::Root) {
             self.host_build.as_deref()
@@ -794,7 +804,7 @@ impl AppTools {
         .map_err(|_| {
             McpError::internal_error("App facts are unavailable; run lenso doctor", None)
         })?;
-        if let Some(state) = active {
+        if let (ProjectInspectionScope::BuiltDistribution, Some(state)) = (scope, active) {
             facts.runtime.status = state;
             facts.runtime.detail = "This MCP process observed its fixed built Host run; use project_run_status for its exact request and terminal outcome.";
         }

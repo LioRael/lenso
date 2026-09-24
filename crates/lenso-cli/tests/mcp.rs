@@ -41,6 +41,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"portable_catalog","arguments":{}}}"#,
         r#"{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"project_portable_adopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"project_portable_unadopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"without-owner-authorization"}}}"#,
+        r#"{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"wrong-root","root":"/wrong-project"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -60,12 +61,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 17, "{frames}");
+    assert_eq!(responses.len(), 18, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 17);
+    assert_eq!(by_id.len(), 18);
     assert_tools(by_id[&2]);
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -90,6 +91,13 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     for id in [4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17] {
         assert!(by_id[&id]["error"].is_object(), "response {id}");
     }
+    assert_eq!(by_id[&18]["result"]["isError"], true);
+    assert!(
+        by_id[&18]["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("unknown field `root`")
+    );
     assert!(!root.path().join("dist").exists());
 }
 
@@ -124,6 +132,13 @@ fn assert_tools(list: &serde_json::Value) {
         ]
         .into()
     );
+    for tool in tools {
+        assert_eq!(
+            tool["inputSchema"]["additionalProperties"], false,
+            "tool accepts undeclared arguments: {}",
+            tool["name"]
+        );
+    }
 }
 
 #[test]
@@ -1520,6 +1535,23 @@ fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
         observed["root"],
         root.join("dist").canonicalize().unwrap().to_str().unwrap()
     );
+    let explicit_source = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"project_facts","arguments":{"scope":"root"}}}),
+    );
+    assert!(explicit_source["error"].is_null(), "{explicit_source}");
+    let explicit_source: serde_json::Value = serde_json::from_str(
+        explicit_source["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        explicit_source["root"],
+        root.canonicalize().unwrap().to_str().unwrap()
+    );
+    assert_eq!(explicit_source["runtime"]["status"], "not_observed");
     let stopped = mcp_roundtrip(
         &mut stdin,
         &mut stdout,
