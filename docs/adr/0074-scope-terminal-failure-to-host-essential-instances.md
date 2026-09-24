@@ -19,7 +19,7 @@ it, even when the product's essential editor does not use that path.
 The Host knows the product's minimum useful operation. Neither Kernel nor a
 Plugin author should infer that policy from an arbitrary consumer's required
 binding. See the approved
-[failure-scope walkthrough](../proposals/2026-09-04-plugin-fault-scope.md)
+[historical failure-scope walkthrough](https://github.com/LioRael/lenso/blob/016c020deb5092542d7124ec66e9d916804869fa/docs/proposals/2026-09-04-plugin-fault-scope.md)
 for examples and the implementation baseline.
 
 ## Decision

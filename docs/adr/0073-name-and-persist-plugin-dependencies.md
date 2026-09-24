@@ -7,8 +7,8 @@ status: accepted
 Date: 2026-09-04.
 Status: **Accepted on 2026-09-04; implemented and released on 2026-09-05.**
 
-Read the [consolidated authoring design](../proposals/2026-09-04-plugin-usage-walkthrough.md)
-first. [Issue #695](https://github.com/LioRael/lenso/issues/695) records delivery.
+The [historical consolidated authoring design](https://github.com/LioRael/lenso/blob/016c020deb5092542d7124ec66e9d916804869fa/docs/proposals/2026-09-04-plugin-usage-walkthrough.md)
+provides context. [Issue #695](https://github.com/LioRael/lenso/issues/695) records delivery.
 This ADR records the approved dependency semantics. Per-instance choice files, exact identifier syntax,
 recovery-journal design, Plan schema 3, and Bundle V4 are no longer selected or
 reserved by this decision. Startup is read-only; configuration materializes
@@ -157,7 +157,7 @@ Partial startup remains excluded; neither change is silently enabled by this ADR
 
 ## Owners and delivery boundary
 
-The [approved adoption design](../proposals/2026-09-04-plugin-adoption-and-delivery.md)
+The [historical approved adoption design](https://github.com/LioRael/lenso/blob/016c020deb5092542d7124ec66e9d916804869fa/docs/proposals/2026-09-04-plugin-adoption-and-delivery.md)
 defines migration previews, old/new peer support, and staged delivery separately
 from SDK source syntax and Host fault-policy changes.
 
