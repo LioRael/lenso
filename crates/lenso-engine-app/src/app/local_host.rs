@@ -79,7 +79,7 @@ fn contract_dependency_alias(
             if web_contract != dependency {
                 bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
             }
-            return Ok("local-web-contract".into());
+            return Ok("local_web_contract".into());
         }
     }
     Ok(format!("local_contract_{index}"))
@@ -473,7 +473,7 @@ pub(super) fn generate(
     }
     let web = web_contract.is_some();
     if let Some(contract) = web_contract {
-        if let Some(previous) = dependencies.insert("local-web-contract".into(), contract.clone()) {
+        if let Some(previous) = dependencies.insert("local_web_contract".into(), contract.clone()) {
             if previous != contract {
                 bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
             }
@@ -1399,11 +1399,11 @@ mod tests {
             Some(&web_contract),
         )
         .unwrap();
-        assert_eq!(alias, "local-web-contract");
+        assert_eq!(alias, "local_web_contract");
 
         let mut dependencies = BTreeMap::new();
         dependencies.insert(alias, web_contract.clone());
-        dependencies.insert("local-web-contract".to_owned(), web_contract.clone());
+        dependencies.insert("local_web_contract".to_owned(), web_contract.clone());
         assert_eq!(dependencies.len(), 1);
 
         assert_eq!(
