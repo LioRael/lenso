@@ -13,6 +13,7 @@ use rmcp::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+mod adoption;
 mod build;
 mod change;
 mod run;
@@ -31,6 +32,9 @@ pub(crate) struct McpArgs {
     /// Public trust configuration for --linked-snapshot.
     #[arg(long, requires = "linked_snapshot")]
     trust: Option<PathBuf>,
+    /// Exact local .crate archive for signed linked Cargo adoption; fixed for this MCP process.
+    #[arg(long, requires_all = ["linked_snapshot", "trust"])]
+    linked_crate: Option<PathBuf>,
     /// Optional exact signed Portable snapshot for read-only metadata browsing.
     #[arg(long, requires = "portable_trust")]
     portable_snapshot: Option<PathBuf>,
@@ -63,6 +67,7 @@ struct AppTools {
     host_build: Option<PathBuf>,
     linked_snapshot: Option<PathBuf>,
     trust: Option<PathBuf>,
+    linked_crate: Option<PathBuf>,
     portable_snapshot: Option<PathBuf>,
     portable_trust: Option<PathBuf>,
     allow_document_fetch: bool,
@@ -70,6 +75,8 @@ struct AppTools {
     builds: Arc<build::BuildController>,
     runs: Arc<run::RunController>,
     changes: Arc<change::ChangeController>,
+    adoptions: Arc<adoption::AdoptionController>,
+    _fixed_linked_inputs: Option<Arc<tempfile::TempDir>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -193,10 +200,90 @@ struct ProjectSelectionPreviewQuery {
     enabled: bool,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ProjectLinkedAdoptionQuery {
+    plugin_id: String,
+    version: String,
+    request_id: String,
+}
+
 const MAX_MCP_TEXT_BYTES: usize = 128 * 1024;
 
 #[tool_router]
 impl AppTools {
+    #[tool(
+        description = "Select one exact signed linked Cargo .crate for the fixed source App; requires --allow-changes and startup --linked-snapshot, --trust, and --linked-crate. A separate build/check is required"
+    )]
+    fn project_linked_adopt(
+        &self,
+        Parameters(request): Parameters<ProjectLinkedAdoptionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_changes {
+            return Err(McpError::invalid_request(
+                "MCP source App changes were not explicitly enabled",
+                None,
+            ));
+        }
+        let inputs = adoption::LinkedInputs {
+            snapshot: self.linked_snapshot.as_deref().ok_or_else(|| {
+                McpError::invalid_request(
+                    "MCP signed linked Cargo snapshot was not configured",
+                    None,
+                )
+            })?,
+            trust: self.trust.as_deref().ok_or_else(|| {
+                McpError::invalid_request("MCP linked Cargo trust was not configured", None)
+            })?,
+            archive: self.linked_crate.as_deref().ok_or_else(|| {
+                McpError::invalid_request("MCP linked Cargo .crate was not configured", None)
+            })?,
+        };
+        let result = self
+            .adoptions
+            .apply(
+                &self.root,
+                adoption::Action::Adopt,
+                &request.plugin_id,
+                &request.version,
+                &request.request_id,
+                Some(inputs),
+            )
+            .map_err(|error| {
+                McpError::invalid_request(adoption::public_request_error(&error), None)
+            })?;
+        adoption_result(&result)
+    }
+
+    #[tool(
+        description = "Withdraw one exact previously adopted linked Cargo source from the fixed source App; requires --allow-changes. A separate rebuild/check is required"
+    )]
+    fn project_linked_unadopt(
+        &self,
+        Parameters(request): Parameters<ProjectLinkedAdoptionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_changes {
+            return Err(McpError::invalid_request(
+                "MCP source App changes were not explicitly enabled",
+                None,
+            ));
+        }
+        let result = self
+            .adoptions
+            .apply(
+                &self.root,
+                adoption::Action::Unadopt,
+                &request.plugin_id,
+                &request.version,
+                &request.request_id,
+                None,
+            )
+            .map_err(|error| {
+                McpError::invalid_request(adoption::public_request_error(&error), None)
+            })?;
+        adoption_result(&result)
+    }
+
     #[tool(
         description = "Start one bounded built App at the fixed root; requires --allow-run and a client request_id"
     )]
@@ -697,6 +784,12 @@ fn run_result(status: &run::RunStatus) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
 }
 
+fn adoption_result(result: &serde_json::Value) -> Result<CallToolResult, McpError> {
+    let json = serde_json::to_string(result)
+        .map_err(|_| McpError::internal_error("serialize linked Cargo adoption", None))?;
+    Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
+}
+
 fn project_facts_json(
     facts: &lenso_engine_app::app::facts::ProjectFacts,
     request: &ProjectFactsQuery,
@@ -813,11 +906,29 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         anyhow::bail!("MCP App root must be a directory");
     }
     let change_root = change_root(&root);
+    let (linked_snapshot, trust, linked_crate, fixed_linked_inputs) =
+        if let Some(archive) = args.linked_crate {
+            let snapshot = args
+                .linked_snapshot
+                .as_ref()
+                .context("--linked-snapshot required")?;
+            let trust = args.trust.as_ref().context("--trust required")?;
+            let frozen = adoption::freeze_inputs(snapshot, trust, &archive)?;
+            (
+                Some(frozen.snapshot),
+                Some(frozen.trust),
+                Some(frozen.archive),
+                Some(frozen.storage),
+            )
+        } else {
+            (args.linked_snapshot, args.trust, None, None)
+        };
     let service = AppTools {
         root,
         host_build: args.host_build,
-        linked_snapshot: args.linked_snapshot,
-        trust: args.trust,
+        linked_snapshot,
+        trust,
+        linked_crate,
         portable_snapshot: args.portable_snapshot,
         portable_trust: args.portable_trust,
         allow_document_fetch: args.allow_document_fetch,
@@ -825,6 +936,8 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         builds: Arc::new(build::BuildController::default()),
         runs: Arc::new(run::RunController::default()),
         changes: Arc::new(change::ChangeController::new(change_root)),
+        adoptions: Arc::new(adoption::AdoptionController::default()),
+        _fixed_linked_inputs: fixed_linked_inputs,
     }
     .serve(stdio())
     .await?;

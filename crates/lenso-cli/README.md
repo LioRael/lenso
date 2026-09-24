@@ -331,7 +331,28 @@ exact proposal digest, and a client `request_id`. It uses the same Host and
 source-fenced authority as ordinary Plugin configuration publication; a
 successful publication does not claim that a running Generation activated.
 This local bridge keeps proposal and request history only for its process
-lifetime. Installing a Plugin or editing ordinary source code is not exposed.
+lifetime. These Plugin Root proposal tools require local Host authority and do
+not edit a source App's generated `dist/intent`.
+
+For one signed linked Cargo source release, start the bridge at the source App
+with `--linked-snapshot <file> --trust <file> --linked-crate <file>
+--allow-changes`. These three input files must be regular files. The bridge
+copies bounded bytes into private storage at startup, so later changes to the
+original paths cannot change the release being selected. Call
+`project_linked_adopt` with the exact `plugin_id`, `version`, and a client
+`request_id`; the tool accepts no archive path, command, or environment input.
+It invokes the same signed catalog, `.crate` digest, target, source identity,
+and conflict checks as `lenso app add`, with dependency installation disabled.
+`project_linked_unadopt` takes the same identifiers and calls the existing
+recoverable `lenso app unadopt` path. Both tools require `--allow-changes` and
+keep at most 32 request records for process-local replay. Known admission
+failures return `rejected` with a bounded diagnostic code; other failed
+subprocesses return `outcome_uncertain`. Inspect the source App and the frozen
+signed inputs before retrying. A successful selection or
+withdrawal changes the next build only: run `project_build`, then inspect the
+built distribution with `project_check` and `project_facts`. Neither tool
+claims a running Generation changed or that a catalog listing is official.
+Arbitrary source edits and Portable Plugin installation are not exposed.
 
 `project_facts` with `{}` retains the full `lenso app facts --json` shape for
 small projects. For a large project, request `section: "plugins"`,

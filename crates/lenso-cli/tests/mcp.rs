@@ -111,6 +111,8 @@ fn assert_tools(list: &serde_json::Value) {
             "project_change_preview",
             "project_explain",
             "project_facts",
+            "project_linked_adopt",
+            "project_linked_unadopt",
             "project_run",
             "project_run_status",
             "project_run_stop",
@@ -118,6 +120,244 @@ fn assert_tools(list: &serde_json::Value) {
         ]
         .into()
     );
+}
+
+#[test]
+fn stdio_adopts_and_unadopts_only_the_fixed_signed_linked_crate() {
+    use ed25519_dalek::SigningKey;
+    use lenso_plugin_catalog::{
+        Availability,
+        linked_cargo::{LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot, sign},
+    };
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let archive = temp.path().join("example-web.crate");
+    let archive_bytes = mcp_test_crate();
+    fs::write(&archive, &archive_bytes).unwrap();
+    let key = SigningKey::from_bytes(&[94; 32]);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let release = LinkedCargoRelease {
+        plugin_id: "example.web".into(),
+        version: "0.4.5".into(),
+        publisher_id: "test-publisher".into(),
+        title: "Web".into(),
+        summary: "Signed local fixture".into(),
+        source_url: "https://example.com/source".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        package: "example-web-plugin".into(),
+        registry_url: "https://crates.io".into(),
+        crate_digest: lenso_plugin_catalog::digest(&archive_bytes),
+        integration: LinkedCargoIntegration::LinkedPlugin,
+        targets: vec![lenso_engine_authoring::native_host_target().into()],
+        availability: Availability::Listed,
+        documentation: Vec::new(),
+    };
+    let snapshot = temp.path().join("snapshot.json");
+    fs::write(
+        &snapshot,
+        sign(
+            &LinkedCargoSnapshot::new("test-catalog".into(), 1, now - 1, now + 3600, vec![release]),
+            "test-key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let trust = temp.path().join("trust.json");
+    fs::write(
+        &trust,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id": "test-catalog",
+            "key_id": "test-key",
+            "public_key_hex": hex::encode(key.verifying_key().as_bytes())
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    #[cfg(unix)]
+    {
+        let alias = temp.path().join("archive-alias.crate");
+        std::os::unix::fs::symlink(&archive, &alias).unwrap();
+        let rejected = Command::new(cli)
+            .args(["mcp", "--root"])
+            .arg(&root)
+            .arg("--linked-snapshot")
+            .arg(&snapshot)
+            .arg("--trust")
+            .arg(&trust)
+            .arg("--linked-crate")
+            .arg(&alias)
+            .arg("--allow-changes")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(!rejected.status.success());
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("regular file"));
+    }
+
+    let spawn_bridge = |allow_changes: bool| {
+        let mut command = Command::new(cli);
+        command.args(["mcp", "--root"]).arg(&root);
+        command.arg("--linked-snapshot").arg(&snapshot);
+        command.arg("--trust").arg(&trust);
+        command.arg("--linked-crate").arg(&archive);
+        if allow_changes {
+            command.arg("--allow-changes");
+        }
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        mcp_roundtrip(
+            &mut stdin,
+            &mut stdout,
+            &serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        );
+        writeln!(
+            stdin,
+            "{}",
+            serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+        )
+        .unwrap();
+        (child, stdin, stdout)
+    };
+    let adopt = |request_id: &str| serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_linked_adopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":request_id}}});
+    let (mut denied_child, mut denied_stdin, mut denied_stdout) = spawn_bridge(false);
+    let denied = mcp_roundtrip(&mut denied_stdin, &mut denied_stdout, &adopt("denied"));
+    assert!(denied["error"].is_object(), "{denied}");
+    drop(denied_stdin);
+    assert!(denied_child.wait().unwrap().success());
+    assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+
+    fs::write(&archive, b"tampered archive").unwrap();
+    let (mut bad_child, mut bad_stdin, mut bad_stdout) = spawn_bridge(true);
+    let mismatched = mcp_roundtrip(&mut bad_stdin, &mut bad_stdout, &adopt("bad-digest"));
+    let mismatched = mcp_tool_json(&mismatched);
+    assert_eq!(mismatched["state"], "rejected");
+    assert_eq!(
+        mismatched["diagnostic_code"],
+        "LENSO_ADOPTION_CRATE_DIGEST_MISMATCH"
+    );
+    assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+    drop(bad_stdin);
+    assert!(bad_child.wait().unwrap().success());
+    fs::write(&archive, &archive_bytes).unwrap();
+
+    let (mut child, mut stdin, mut stdout) = spawn_bridge(true);
+    let injected_path = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_linked_adopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"path","archive_path":"/tmp/other.crate"}}}),
+    );
+    assert_eq!(injected_path["result"]["isError"], true, "{injected_path}");
+    let wrong_version = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_linked_adopt","arguments":{"plugin_id":"example.web","version":"0.4.6","request_id":"wrong-version"}}}),
+    );
+    let wrong_version = mcp_tool_json(&wrong_version);
+    assert_eq!(wrong_version["state"], "rejected");
+    assert_eq!(
+        wrong_version["diagnostic_code"],
+        "LENSO_ADOPTION_VERSION_NOT_LISTED"
+    );
+    assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+
+    fs::write(&archive, b"changed after MCP startup").unwrap();
+    let selected = mcp_roundtrip(&mut stdin, &mut stdout, &adopt("adopt-1"));
+    let selected = mcp_tool_json(&selected);
+    assert_eq!(selected["state"], "selected");
+    assert_eq!(selected["application"], "build_required");
+    let source_lock = root.join("vendor/lenso/example.web/0.4.5/.lenso-linked-source.json");
+    let original_lock = fs::read(&source_lock).unwrap();
+    let original_config = fs::read(root.join("lenso.toml")).unwrap();
+    assert_eq!(
+        mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt("adopt-1"))),
+        selected
+    );
+    assert_eq!(
+        mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt("adopt-2")))["state"],
+        "selected"
+    );
+    assert_eq!(fs::read(&source_lock).unwrap(), original_lock);
+    assert_eq!(fs::read(root.join("lenso.toml")).unwrap(), original_config);
+    let reused = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"project_linked_unadopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"adopt-1"}}}),
+    );
+    assert!(reused["error"].is_object(), "{reused}");
+    let removed = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"project_linked_unadopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"remove-1"}}}),
+    );
+    let removed = mcp_tool_json(&removed);
+    assert_eq!(removed["state"], "unadopted");
+    assert!(!root.join("vendor/lenso/example.web/0.4.5").exists());
+    assert!(!root.join("plugins/example.web").exists());
+    assert_eq!(
+        mcp_tool_json(&mcp_roundtrip(
+            &mut stdin,
+            &mut stdout,
+            &serde_json::json!({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"project_linked_unadopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"remove-1"}}}),
+        )),
+        removed
+    );
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
+fn mcp_test_crate() -> Vec<u8> {
+    let manifest = "[package]\nname='example-web-plugin'\nversion='0.4.5'\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.web'\nroot-slot='tools'\n[dependencies]\nlenso='=0.5.25'\n";
+    let source = b"#[lenso::plugin(consumer)]\n#[derive(Clone, Debug)]\nstruct Core {}\n";
+    let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    let mut builder = tar::Builder::new(encoder);
+    for (name, bytes) in [
+        ("Cargo.toml", manifest.as_bytes()),
+        ("src/lib.rs", source.as_slice()),
+    ] {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(
+                &mut header,
+                format!("example-web-plugin-0.4.5/{name}"),
+                bytes,
+            )
+            .unwrap();
+    }
+    builder.into_inner().unwrap().finish().unwrap()
+}
+
+fn mcp_tool_json(response: &serde_json::Value) -> serde_json::Value {
+    assert!(response["error"].is_null(), "{response}");
+    serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
 }
 
 #[test]
