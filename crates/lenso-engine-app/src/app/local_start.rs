@@ -583,24 +583,37 @@ mod tests {
 
     use super::*;
 
-    struct DetachedTestChild(i32);
+    struct DetachedTestChild(PathBuf);
 
     impl Drop for DetachedTestChild {
         fn drop(&mut self) {
+            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            let pid = loop {
+                if let Ok(contents) = fs::read_to_string(&self.0)
+                    && let Ok(pid) = contents.parse::<i32>()
+                    && pid > 0
+                {
+                    break pid;
+                }
+                if std::time::Instant::now() >= deadline {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            };
             let Ok(output) = StdCommand::new("ps")
-                .args(["-o", "pgid=,command=", "-p", &self.0.to_string()])
+                .args(["-o", "pgid=,command=", "-p", &pid.to_string()])
                 .output()
             else {
                 return;
             };
             let process = String::from_utf8_lossy(&output.stdout);
             let mut fields = process.split_whitespace();
-            let group = self.0.to_string();
+            let group = pid.to_string();
             if fields.next() == Some(group.as_str())
                 && process.contains("detached_descendant_helper")
             {
                 let _ = nix::sys::signal::kill(
-                    nix::unistd::Pid::from_raw(self.0),
+                    nix::unistd::Pid::from_raw(pid),
                     nix::sys::signal::Signal::SIGKILL,
                 );
             }
@@ -903,6 +916,7 @@ mod tests {
         );
         fs::write(&host, script).unwrap();
         fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
+        let detached_guard = DetachedTestChild(root.join("detached-pid"));
         let ready = root.join("supervisor-ready");
         let supervised = tokio::spawn(run(root.clone(), policy.clone(), Some(ready.clone())));
         tokio::time::timeout(Duration::from_secs(5), async {
@@ -920,7 +934,6 @@ mod tests {
             .unwrap()
             .parse()
             .unwrap();
-        let detached_guard = DetachedTestChild(detached_pid);
         nix::sys::signal::kill(Pid::from_raw(host_pid), Signal::SIGTERM).unwrap();
         let first = tokio::time::timeout(Duration::from_secs(4), supervised)
             .await
