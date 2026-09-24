@@ -48,7 +48,7 @@ tokio = { version = "1.52", default-features = false, features = ["macros", "syn
 
 [dev-dependencies]
 hex.workspace = true
-lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "0.4.2" }
+lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "0.4.3" }
 lenso-wasm-component-adapter = { path = "../lenso-wasm-component-adapter", version = "0.2.16" }
 lenso-portable-http-endpoint-fixture = { path = "../../tests/fixtures/portable-http-endpoint" }
 lenso-web-duplex-fixture = { path = "../../tests/fixtures/duplex-endpoint-plugin" }

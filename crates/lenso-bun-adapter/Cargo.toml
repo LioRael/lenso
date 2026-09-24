@@ -22,7 +22,7 @@ jsonrpsee = { version = "0.26", default-features = false, features = ["http-clie
 lenso-app-plan = { version = "=0.4.6", path = "../lenso-app-plan" }
 lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }
 lenso-process-protocol = { version = "=0.2.3", path = "../lenso-process-protocol" }
-lenso-runtime-codec = { version = "=0.4.2", path = "../lenso-runtime-codec" }
+lenso-runtime-codec = { version = "=0.4.3", path = "../lenso-runtime-codec" }
 lenso-process-sdk = { version = "0.2.0", path = "../lenso-process-sdk", optional = true }
 reqwest.workspace = true
 serde.workspace = true
@@ -36,9 +36,9 @@ command-fds.workspace = true
 nix = { version = "0.31", features = ["signal"] }
 
 [dev-dependencies]
-lenso-native-adapter = { version = "=0.3.15", path = "../lenso-native-adapter" }
+lenso-native-adapter = { version = "=0.3.16", path = "../lenso-native-adapter" }
 lenso-plugin-bundle = { version = "=0.6.0", path = "../lenso-plugin-bundle" }
-lenso-process-adapter = { version = "=0.3.12", path = "../lenso-process-adapter" }
+lenso-process-adapter = { version = "=0.3.13", path = "../lenso-process-adapter" }
 tempfile = "3"
 time.workspace = true
 

@@ -117,8 +117,8 @@ pub(super) fn generate(
         ("tempfile", "3"),
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.11"),
-        ("lenso-native-adapter", "=0.3.15"),
-        ("lenso-runner", "=0.2.17"),
+        ("lenso-native-adapter", "=0.3.16"),
+        ("lenso-runner", "=0.2.18"),
     ] {
         dependencies.insert(name.into(), json!(version));
         if name.starts_with("lenso-") {
@@ -322,9 +322,9 @@ pub(super) fn generate(
         ],
         "0.4" => [
             ("lenso-bun-adapter", "=0.1.14"),
-            ("lenso-process-adapter", "=0.3.12"),
+            ("lenso-process-adapter", "=0.3.13"),
             ("lenso-wasm-component-adapter", "=0.2.16"),
-            ("lenso-runtime-codec", "=0.4.2"),
+            ("lenso-runtime-codec", "=0.4.3"),
         ],
         other => bail!("unsupported typed Codec cohort {other}; use a custom Host"),
     };
@@ -354,7 +354,7 @@ pub(super) fn generate(
     if cohort == "0.3" {
         dependencies.insert(
             "native-resources".into(),
-            json!({"package":"lenso-runtime-codec","version":"=0.4.2"}),
+            json!({"package":"lenso-runtime-codec","version":"=0.4.3"}),
         );
         host_framework_dependencies.insert("native-resources".into());
     }

@@ -26,7 +26,7 @@ lenso-contract-runtime = { version = "0.2.0", path = "../lenso-contract-runtime"
 lenso-guest-sdk = { version = "0.5.0", path = "../lenso-guest-sdk" }
 lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }
 lenso-plugin-authoring = { version = "0.2.0", path = "../lenso-plugin-authoring" }
-lenso-runtime-codec = { version = "0.4.2", path = "../lenso-runtime-codec" }
+lenso-runtime-codec = { version = "0.4.3", path = "../lenso-runtime-codec" }
 serde.workspace = true
 serde_json.workspace = true
 serde_urlencoded.workspace = true

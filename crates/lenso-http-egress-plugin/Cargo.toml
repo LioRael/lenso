@@ -46,7 +46,7 @@ hyper = { version = "1", features = ["http2", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 lenso-app-plan.workspace = true
 lenso-runner.workspace = true
-lenso-runtime-codec = { version = "0.4.2", path = "../lenso-runtime-codec" }
+lenso-runtime-codec = { version = "0.4.3", path = "../lenso-runtime-codec" }
 lenso-wasm-component-adapter = { version = "0.2.16", path = "../lenso-wasm-component-adapter" }
 sha2.workspace = true
 tempfile = "3"

@@ -365,8 +365,8 @@ fn registry_framework_version(name: &str) -> Option<&'static str> {
         "lenso" => "0.5.26",
         "lenso-app-plan" => "0.4.6",
         "lenso-kernel" => "0.3.11",
-        "lenso-native-adapter" => "0.3.15",
-        "lenso-runner" => "0.2.17",
+        "lenso-native-adapter" => "0.3.16",
+        "lenso-runner" => "0.2.18",
         "lenso-contract-runtime" => "0.2.0",
         "lenso-capability-http-endpoint" => "0.3.4",
         "lenso-capability-http-stream-endpoint" => "0.1.2",
@@ -426,7 +426,7 @@ fn host_manifest(
                 patches.push_str(&format!("{name} = {{ git = {url}, rev = {rev} }}\n"));
             }
             (
-                dependency("0.4.5"),
+                dependency("0.4.6"),
                 dependency("0.3.11"),
                 dependency("0.2.2"),
                 patches,
@@ -706,7 +706,7 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
             ("lenso-capability-http-stream-endpoint", "0.1.2"),
             ("lenso-capability-websocket-endpoint", "0.1.1"),
             ("lenso-web-ingress-plugin", "0.4.7"),
-            ("lenso-runner", "0.2.17"),
+            ("lenso-runner", "0.2.18"),
             ("lenso-contract-runtime", "0.2.0"),
         ] {
             let dependency = format!(
