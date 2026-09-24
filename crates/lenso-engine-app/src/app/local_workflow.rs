@@ -125,14 +125,27 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
                 }
             }
         } else {
-            for (path, contents) in crate::plugin::web_plugin_scaffold("local.starter") {
+            for (path, contents) in process_notes_scaffold() {
                 let file = staging.path().join(path);
                 if let Some(parent) = file.parent() {
                     fs::create_dir_all(parent)?;
                 }
                 fs::write(file, contents)?;
             }
-            prepare_web_starter(staging.path(), args.no_install)?;
+            if !args.no_install {
+                let manifest = staging.path().join("Cargo.toml");
+                for arguments in [vec!["generate-lockfile"], vec!["check"]] {
+                    if !super::cargo_command()
+                        .args(arguments)
+                        .arg("--manifest-path")
+                        .arg(&manifest)
+                        .status()?
+                        .success()
+                    {
+                        bail!("Process notes starter compile check failed");
+                    }
+                }
+            }
         }
     }
     fs::write(
@@ -144,15 +157,22 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
     } else {
         "Add Plugin source projects under `app/`."
     };
-    let web_routes = if args.web || root_package {
+    let web_routes = if args.web {
         "The starter Web Plugin keeps one handler per `src/routes/*.rs` file. Add or remove a file and rebuild; duplicate route IDs or method/path pairs fail during compilation. The built Host never scans route source.\n\n"
+    } else if root_package {
+        "The root Process Plugin provides `POST /notes` and `GET /notes/{id}` through the typed HTTP Endpoint Capability. Notes are in-memory development data and do not survive a restart. Process Plugins are trusted native executables, not sandboxed.\n\nThe generated Guest pins published `lenso-process-sdk = 0.2.0` and `lenso-capability-http-endpoint = 0.3.2`; the latter has the same Endpoint Descriptor version and digest as the precompiled Host's 0.3.4 codec. The current Host and codec changes are local release candidates, not proof that those newer packages are published. Keep using the same Lenso CLI binary for build and start; source-mode path patches are only for candidate verification, not a registry-only distribution claim. Editing Guest source rebuilds its Process artifact while reusing that Host binary.\n\nTo remove the Web surface from a built App, disable both `local.starter/default` and `lenso.web-ingress/default` under the built Plugin Root, then run `lenso app start --from dist --root dist`. Ingress without any Endpoint routes deliberately refuses readiness. Plain `--from dist` keeps the immutable build snapshot.\n\n"
+    } else {
+        ""
+    };
+    let openapi = if args.web {
+        "For a public API document, run `lenso app add @lenso/openapi --root .` before building. This selects the optional `lenso.openapi` Plugin and links it from the same pinned Rust cohort as the starter Web Plugin. Fetch `/openapi.json` from the running App and pass that actual document to `lenso-web-client generate openapi.json src/generated/lenso-api.ts`.\n\n"
     } else {
         ""
     };
     fs::write(
         staging.path().join("README.md"),
         format!(
-            "# Local Lenso App\n\nRun `lenso dev` to build and watch this App. Run `lenso app build` to produce an offline executable, then `lenso app start --from dist`.\n\n{business_source} Keep instance configuration and explicit dependency choices in `plugins/`. No App configuration file is required. Optional `plugin_sources` in `lenso.toml` adds shared local candidates; an explicit Plugin Root instance is required to select them.\n\n{web_routes}For a public API document, run `lenso app add @lenso/openapi --root .` before building. This selects the ordinary optional `lenso.openapi` Plugin and links it from the same pinned Rust cohort as the starter Web Plugin. The generated Host binds its many Endpoint requirement to the `web` Slot, excluding the document Endpoint itself. It documents Web routes exposed by this App; do not put a private HTTP route in this public `web` Slot. Fetch `/openapi.json` from the running App and pass that actual document to `lenso-web-client generate openapi.json src/generated/lenso-api.ts`. After building, run `lenso plugins disable lenso.openapi default --root dist`, then `lenso app start --from dist --root dist` to use the changed Plugin Root and remove the route without changing business Endpoints. The plain `--from dist` form continues to use the immutable build snapshot. Do not expose internal Capability contracts as browser APIs.\n\nThe generated Host selects only execution adapters required by this App's declared candidates. Existing custom Host authoring remains available through `lenso app build --source ... --target ...`.\n"
+            "# Local Lenso App\n\nRun `lenso dev` to build and watch this App. Run `lenso app build` to produce an offline executable, then `lenso app start --from dist`.\n\n{business_source} Keep instance configuration and explicit dependency choices in `plugins/`. No App configuration file is required. Optional `plugin_sources` in `lenso.toml` adds shared local candidates; an explicit Plugin Root instance is required to select them.\n\n{web_routes}{openapi}The Host selects only execution adapters required by this App's declared candidates. Existing custom Host authoring remains available through `lenso app build --source ... --target ...`.\n"
         ),
     )?;
     super::build::publish_new_output(staging.path(), &destination)?;
@@ -177,6 +197,193 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
         destination.display()
     );
     Ok(())
+}
+
+fn process_notes_scaffold() -> Vec<(PathBuf, &'static str)> {
+    vec![
+        (
+            PathBuf::from("Cargo.toml"),
+            r#"[package]
+name = "local-starter"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.lenso]
+plugin-id = "local.starter"
+root-slot = "web"
+
+[package.metadata.lenso-cli]
+runtime = "process"
+
+[dependencies]
+lenso-process-sdk = "=0.2.0"
+lenso-capability-http-endpoint = "=0.3.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace]
+"#,
+        ),
+        (
+            PathBuf::from("src/main.rs"),
+            "fn main() { local_starter::serve(); }\n",
+        ),
+        (
+            PathBuf::from("src/lib.rs"),
+            r###"use std::{cell::{Cell, RefCell}, collections::BTreeMap};
+
+use lenso_capability_http_endpoint::{
+    Bytes, CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, HANDLE_OPERATION,
+    DescribeResponse, DescribeResponseRoutesItem, HandleRequest, HandleResponse,
+    HandleResponseHeadersItem,
+};
+use lenso_process_sdk::{ProcessOutcome, ProcessPlugin};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateNote { title: String, body: String }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Note { id: String, title: String, body: String }
+
+#[derive(Debug, Default)]
+pub struct Notes {
+    next_id: Cell<u64>,
+    notes: RefCell<BTreeMap<String, Note>>,
+}
+
+impl Notes {
+    fn describe() -> ProcessOutcome {
+        let routes = [
+            ("notes.create", "POST", "/notes"),
+            ("notes.read", "GET", "/notes/{id}"),
+        ].into_iter().map(|(route_id, method, path)| DescribeResponseRoutesItem {
+            route_id: route_id.into(), method: method.into(), path: path.into(), openapi: None,
+        }).collect();
+        Self::success(DescribeResponse { routes })
+    }
+
+    fn success(value: impl Serialize) -> ProcessOutcome {
+        match serde_json::to_value(value) {
+            Ok(value) => ProcessOutcome::Success(value),
+            Err(error) => ProcessOutcome::Failure(error.to_string()),
+        }
+    }
+
+    fn response(status: i64, value: impl Serialize) -> ProcessOutcome {
+        let body = match serde_json::to_vec(&value) {
+            Ok(body) => body,
+            Err(error) => return ProcessOutcome::Failure(error.to_string()),
+        };
+        Self::success(HandleResponse {
+            status,
+            headers: vec![HandleResponseHeadersItem {
+                name: "content-type".into(), value: "application/json; charset=utf-8".into(),
+            }],
+            body: Bytes::from(body),
+        })
+    }
+
+    fn handle(&self, request: Value) -> ProcessOutcome {
+        let request: HandleRequest = match serde_json::from_value(request) {
+            Ok(request) => request,
+            Err(error) => return ProcessOutcome::Failure(format!("invalid Endpoint request: {error}")),
+        };
+        match request.route_id.as_str() {
+            "notes.create" if request.method == "POST" => {
+                let input: CreateNote = match serde_json::from_slice(request.body.as_ref()) {
+                    Ok(input) => input,
+                    Err(_) => return Self::response(400, json!({"error":"invalid JSON note"})),
+                };
+                if input.title.trim().is_empty() {
+                    return Self::response(400, json!({"error":"title is required"}));
+                }
+                let id = (self.next_id.get() + 1).to_string();
+                self.next_id.set(self.next_id.get() + 1);
+                let note = Note { id: id.clone(), title: input.title, body: input.body };
+                self.notes.borrow_mut().insert(id, note.clone());
+                Self::response(201, note)
+            }
+            "notes.read" if request.method == "GET" => {
+                let id = request.path_parameters.iter()
+                    .find(|parameter| parameter.name == "id")
+                    .map(|parameter| parameter.value.as_str());
+                match id.and_then(|id| self.notes.borrow().get(id).cloned()) {
+                    Some(note) => Self::response(200, note),
+                    None => Self::response(404, json!({"error":"note not found"})),
+                }
+            }
+            _ => ProcessOutcome::Failure("unknown notes route".into()),
+        }
+    }
+}
+
+impl ProcessPlugin for Notes {
+    fn descriptor(&self) -> Value {
+        json!({
+            "abi": "lenso.json-request@1",
+            "capabilities": [{
+                "capability_id": CAPABILITY_ID,
+                "descriptor_version": DESCRIPTOR_VERSION,
+                "request_operations": [DESCRIBE_OPERATION, HANDLE_OPERATION],
+            }],
+        })
+    }
+
+    fn invoke(&self, capability: &str, operation: &str, request: Value) -> ProcessOutcome {
+        if capability != CAPABILITY_ID {
+            return ProcessOutcome::Failure("unknown Capability".into());
+        }
+        match operation {
+            DESCRIBE_OPERATION => Self::describe(),
+            HANDLE_OPERATION => self.handle(request),
+            _ => ProcessOutcome::Failure("unknown Endpoint operation".into()),
+        }
+    }
+}
+
+pub fn serve() {
+    lenso_process_sdk::serve(&Notes::default()).expect("serve trusted Process Plugin");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lenso_capability_http_endpoint::{HandleRequestPathParametersItem, DescribeResponse};
+
+    #[test]
+    fn notes_create_then_read_via_endpoint_contract() {
+        let notes = Notes::default();
+        let ProcessOutcome::Success(described) = notes.invoke(CAPABILITY_ID, DESCRIBE_OPERATION, json!({})) else { panic!("describe failed") };
+        let routes: DescribeResponse = serde_json::from_value(described).unwrap();
+        assert_eq!(routes.routes.len(), 2);
+
+        let request = |route_id: &str, method: &str, body: Vec<u8>, path_parameters: Vec<HandleRequestPathParametersItem>| HandleRequest {
+            route_id: route_id.into(), method: method.into(), body: Bytes::from(body),
+            path: "/notes".into(), path_parameters, headers: vec![], credential: None,
+            query: None, request_id: "test".into(),
+        };
+        let ProcessOutcome::Success(created) = notes.invoke(CAPABILITY_ID, HANDLE_OPERATION,
+            serde_json::to_value(request("notes.create", "POST", br#"{"title":"First","body":"Hello"}"#.to_vec(), vec![])).unwrap()) else { panic!("create failed") };
+        let created: HandleResponse = serde_json::from_value(created).unwrap();
+        assert_eq!(created.status, 201);
+        let note: Note = serde_json::from_slice(created.body.as_ref()).unwrap();
+        let ProcessOutcome::Success(found) = notes.invoke(CAPABILITY_ID, HANDLE_OPERATION,
+            serde_json::to_value(request("notes.read", "GET", vec![], vec![HandleRequestPathParametersItem {
+                name: "id".into(), value: note.id.clone(),
+            }])).unwrap()) else { panic!("read failed") };
+        let found: HandleResponse = serde_json::from_value(found).unwrap();
+        assert_eq!(found.status, 200);
+        let read: Note = serde_json::from_slice(found.body.as_ref()).unwrap();
+        assert_eq!(read.title, "First");
+    }
+}
+"###,
+        ),
+    ]
 }
 
 #[derive(Clone, Debug, Args)]
@@ -489,10 +696,22 @@ mod tests {
 
         assert!(destination.join("Cargo.toml").is_file());
         assert!(destination.join("src/lib.rs").is_file());
+        assert!(destination.join("src/main.rs").is_file());
+        let manifest = fs::read_to_string(destination.join("Cargo.toml")).unwrap();
+        assert!(manifest.contains("runtime = \"process\""));
+        assert!(manifest.contains("root-slot = \"web\""));
+        let source = fs::read_to_string(destination.join("src/lib.rs")).unwrap();
+        assert!(source.contains("notes.create"));
+        assert!(source.contains("notes.read"));
+        let readme = fs::read_to_string(destination.join("README.md")).unwrap();
+        assert!(readme.contains("in-memory development data"));
+        assert!(readme.contains("disable both"));
+        assert!(readme.contains("local release candidates"));
         assert!(!destination.join("app/local.starter").exists());
         let report = lenso_app_authoring::discovery::discover(&destination).unwrap();
         assert_eq!(report.candidates.len(), 1);
         assert_eq!(report.candidates[0].plugin_id, "local.starter");
+        assert_eq!(report.candidates[0].implementations[0].runtime, "process");
         assert_eq!(
             report.candidates[0].project,
             fs::canonicalize(destination).unwrap()

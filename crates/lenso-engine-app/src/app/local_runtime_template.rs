@@ -6,7 +6,6 @@ use lenso_app_plan::ResolvedAppPlan;
 #[cfg(generated_native_host)]
 use lenso_app_plan::authoring::HostCatalog;
 use lenso_kernel::{ExecutionAdapterCatalog, Kernel, ShutdownOutcome};
-#[cfg(generated_native_host)]
 use lenso_native_adapter::NativePluginRegistry;
 use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle};
 use serde::Deserialize;
@@ -177,7 +176,98 @@ fn main() -> anyhow::Result<()> {
     run(std::env::args().skip(1).collect())
 }
 
+#[cfg(not(generated_native_host))]
+fn portable_web_proof() -> anyhow::Result<serde_json::Value> {
+    use lenso_capability_http_endpoint as endpoint;
+    use lenso_app_plan::authoring::{HostCatalog, HostPluginRelease};
+
+    let ingress = lenso_web_ingress_plugin::WebIngressFactory::plugin_descriptor();
+    let registry = NativePluginRegistry::new()
+        .with_factory(lenso_web_ingress_plugin::WebIngressFactory::new());
+    let factories = registry.factories().collect::<Vec<_>>();
+    if factories.len() != 1
+        || factories[0].package_id() != ingress.plugin_id()
+        || factories[0].package_version() != ingress.release_version()
+        || factories[0].factory_identity()
+            != format!("{}@{}", ingress.plugin_id(), ingress.release_version())
+    {
+        bail!("precompiled portable Host does not contain the declared Web Ingress factory");
+    }
+    let catalog = HostCatalog::new([], [HostPluginRelease::new(ingress.clone())], []);
+
+    Ok(serde_json::json!({
+        "schema": "lenso.portable-web-host.v1",
+        "target": lenso_app_authoring::native_host_target(),
+        "catalog": catalog,
+        "ingress": ingress,
+        "endpoint_codec": {
+            "capability_id": endpoint::CAPABILITY_ID,
+            "descriptor_version": endpoint::DESCRIPTOR_VERSION,
+            "descriptor_digest": endpoint::DESCRIPTOR_DIGEST,
+            "request_operations": [endpoint::DESCRIBE_OPERATION, endpoint::HANDLE_OPERATION],
+        },
+        "execution_classes": ["lenso.process@1"],
+    }))
+}
+
+#[cfg(not(generated_native_host))]
+pub(super) fn probe_portable_web(executable: &std::path::Path) -> anyhow::Result<lenso_app_plan::authoring::PluginDescriptor> {
+    let output = super::build_command(executable)
+        .args(["app", "__run-local", "--", "--probe-portable-web"])
+        .output()
+        .with_context(|| format!("probe precompiled portable Host {}", executable.display()))?;
+    if !output.status.success() {
+        bail!("precompiled portable Host has no compatible Web Ingress and HTTP Endpoint codec: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    let actual: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .context("decode precompiled portable Host Web probe")?;
+    validate_portable_web_proof(actual)
+}
+
+#[cfg(not(generated_native_host))]
+fn validate_portable_web_proof(actual: serde_json::Value) -> anyhow::Result<lenso_app_plan::authoring::PluginDescriptor> {
+    if actual != portable_web_proof()? {
+        bail!("precompiled portable Host Web Ingress, Endpoint codec, target, or Adapter identity mismatch");
+    }
+    let catalog: lenso_app_plan::authoring::HostCatalog = serde_json::from_value(actual["catalog"].clone())
+        .context("decode precompiled portable Host catalog")?;
+    let [release] = catalog.plugins() else {
+        bail!("precompiled portable Host catalog has no sole Web Ingress release");
+    };
+    let ingress = release.descriptor().clone();
+    if ingress.plugin_id() != "lenso.web-ingress"
+        || serde_json::to_value(&ingress)? != actual["ingress"]
+    {
+        bail!("precompiled portable Host catalog does not admit Web Ingress");
+    }
+    Ok(ingress)
+}
+
+#[cfg(all(test, not(generated_native_host)))]
+mod portable_web_tests {
+    use super::{portable_web_proof, validate_portable_web_proof};
+
+    #[test]
+    fn rejects_missing_ingress_catalog_and_codec_drift() {
+        let proof = portable_web_proof().unwrap();
+        assert_eq!(validate_portable_web_proof(proof.clone()).unwrap().plugin_id(), "lenso.web-ingress");
+
+        let mut missing = proof.clone();
+        missing["catalog"]["plugins"] = serde_json::json!([]);
+        assert!(validate_portable_web_proof(missing).is_err());
+
+        let mut drifted = proof;
+        drifted["endpoint_codec"]["descriptor_digest"] = serde_json::json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+        assert!(validate_portable_web_proof(drifted).is_err());
+    }
+}
+
 pub fn run(args: Vec<String>) -> anyhow::Result<()> {
+    #[cfg(not(generated_native_host))]
+    if args == ["--probe-portable-web"] {
+        println!("{}", portable_web_proof()?);
+        return Ok(());
+    }
     #[cfg(generated_native_host)]
     if args == ["--describe"] {
         let catalog: HostCatalog =
@@ -425,6 +515,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             .with_linked_factories()
             .with_resources(resources)
     };
+    #[cfg(not(generated_native_host))]
+    let ingress = lenso_web_ingress_plugin::WebIngressFactory::new();
+    #[cfg(not(generated_native_host))]
+    let native = NativePluginRegistry::new().with_factory(ingress.clone());
     // LENSO_RUNTIME_WEB
     let _ = &artifacts;
     #[cfg(any(not(generated_native_host), generated_bun_adapter))]
@@ -443,6 +537,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let typed = std::collections::BTreeSet::from([
         super::terminal::command::CAPABILITY_ID,
         super::terminal::provider::CAPABILITY_ID,
+        lenso_capability_http_endpoint::CAPABILITY_ID,
     ]);
     #[cfg(not(generated_native_host))]
     let bun = bun
@@ -451,7 +546,8 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     #[cfg(not(generated_native_host))]
     let process = process
         .with_codec(super::terminal::command::CommandJsonCodec)
-        .with_codec(super::terminal::provider::CommandProviderJsonCodec);
+        .with_codec(super::terminal::provider::CommandProviderJsonCodec)
+        .with_codec(lenso_capability_http_endpoint::EndpointJsonCodec);
     #[cfg(not(generated_native_host))]
     let wasm = wasm
         .with_codec(super::terminal::command::CommandJsonCodec)
@@ -490,7 +586,6 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         let _ = codec;
     }
     let catalog = ExecutionAdapterCatalog::new();
-    #[cfg(generated_native_host)]
     let catalog = catalog
         .with_adapter(native)
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -525,7 +620,12 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 let outcome = app.shutdown(Duration::from_secs(10)).await;
                 bail!("record Host activation: {error}; shutdown: {outcome:?}");
             }
+            #[cfg(generated_native_host)]
             let local_web_url: Option<String> = None;
+            #[cfg(not(generated_native_host))]
+            let local_web_url = ingress.local_address().map(|address| format!("http://{address}/"));
+            #[cfg(not(generated_native_host))]
+            if let Some(address) = &local_web_url { eprintln!("Listening on {address}"); }
             // LENSO_WEB_READY
             if let Some(path) = web_address_file {
                 let address = local_web_url.context("frontend dev requires a ready Web Ingress")?;
@@ -610,11 +710,45 @@ pub fn validate(
     plan: &ResolvedAppPlan,
     evidence: &std::collections::BTreeMap<String, serde_json::Value>,
 ) -> anyhow::Result<()> {
+    for instance in plan.plugin_instances() {
+        for capability in instance.provided_capabilities() {
+            if capability.capability_id() != lenso_capability_http_endpoint::CAPABILITY_ID {
+                continue;
+            }
+            if instance.execution_class().as_str() != "lenso.process@1" {
+                bail!("precompiled portable Web Host currently admits HTTP Endpoint only from a trusted Process Plugin");
+            }
+            let operations = capability.request_operations().into_iter().collect::<std::collections::BTreeSet<_>>();
+            if capability.descriptor_version() != lenso_capability_http_endpoint::DESCRIPTOR_VERSION
+                || operations != std::collections::BTreeSet::from([
+                    lenso_capability_http_endpoint::DESCRIBE_OPERATION,
+                    lenso_capability_http_endpoint::HANDLE_OPERATION,
+                ])
+                || !capability.stream_operations().is_empty()
+                || !capability.event_operations().is_empty()
+            {
+                bail!("portable HTTP Endpoint does not match the precompiled Host contract");
+            }
+            let declared_digest = evidence
+                .get(instance.package_id())
+                .and_then(|descriptor| descriptor["capabilities"].as_array())
+                .and_then(|capabilities| capabilities.iter().find(|provided| {
+                    provided["capability_id"] == lenso_capability_http_endpoint::CAPABILITY_ID
+                }))
+                .and_then(|provided| provided["descriptor_digest"].as_str());
+            if instance.authoring_version() == 2
+                && declared_digest != Some(lenso_capability_http_endpoint::DESCRIPTOR_DIGEST)
+            {
+                bail!("portable HTTP Endpoint Descriptor digest differs from the precompiled Host codec");
+            }
+        }
+    }
     portable_codecs(
         plan,
         &std::collections::BTreeSet::from([
             super::terminal::command::CAPABILITY_ID,
             super::terminal::provider::CAPABILITY_ID,
+            lenso_capability_http_endpoint::CAPABILITY_ID,
         ]),
         evidence,
     )

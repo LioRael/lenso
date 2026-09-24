@@ -144,6 +144,11 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     super::contracts::synchronize(&root, &compiled_conventions.candidates)?;
     let generated_resources = compiled_conventions.resources;
     candidates.extend(compiled_conventions.candidates);
+    if precompiled.is_some() && !candidates.iter().any(super::local_host::is_native) {
+        bail!(
+            "development_host is not used for a portable-only App; remove it or select a matching native Plugin"
+        );
+    }
     let source_digests = candidates
         .iter()
         .map(|candidate| {
@@ -335,6 +340,44 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             app_owned: candidate.role == SourceRole::AppOwned || candidate.surface_owner.is_some(),
             source: candidate.project.display().to_string(),
         });
+    }
+    let portable_web = inputs.iter().any(|input| {
+        input.descriptor.execution_class().as_str() != "lenso.native-rust@1"
+            && input
+                .descriptor
+                .provided_capabilities()
+                .iter()
+                .any(|capability| {
+                    capability.capability_id() == lenso_capability_http_endpoint::CAPABILITY_ID
+                })
+    });
+    if portable_web {
+        if !native.is_empty() {
+            bail!(
+                "portable HTTP Endpoint needs the precompiled Web Host; mixed linked-native Host composition is not yet admitted"
+            );
+        }
+        let executable = super::preset::runtime_executable()?;
+        let ingress = super::portable_runtime::probe_portable_web(&executable)?;
+        inputs.insert(
+            0,
+            LocalPluginInput {
+                descriptor: ingress,
+                manifest_digest: super::local_host::digest(&executable)?,
+                app_owned: inputs.iter().any(|input| {
+                    input.app_owned
+                        && input
+                            .descriptor
+                            .provided_capabilities()
+                            .iter()
+                            .any(|capability| {
+                                capability.capability_id()
+                                    == lenso_capability_http_endpoint::CAPABILITY_ID
+                            })
+                }),
+                source: "lenso.portable-web-host.v1 precompiled Web ingress".into(),
+            },
+        );
     }
     let openapi_bindings = if inputs
         .iter()

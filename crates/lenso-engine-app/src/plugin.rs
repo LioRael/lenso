@@ -31,6 +31,7 @@ mod dev;
 mod scaffold;
 mod web_dev;
 
+#[cfg(test)]
 pub(crate) use scaffold::web_plugin_scaffold;
 
 const WASM_TARGET: &str = "wasm32-unknown-unknown";
