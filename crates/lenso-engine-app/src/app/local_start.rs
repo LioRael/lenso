@@ -545,8 +545,16 @@ mod tests {
         let (temporary, snapshot, policy) = fixture();
         let root = temporary.path().to_path_buf();
         write_policy(&policy, &snapshot, 10);
-        let supervised = tokio::spawn(run(root.clone(), policy.clone(), None));
+        let ready = root.join("supervisor-ready");
+        let supervised = tokio::spawn(run(root.clone(), policy.clone(), Some(ready.clone())));
         wait_for_activation(&root, 1).await;
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !ready.is_file() {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .unwrap();
         fs::remove_file(&snapshot).unwrap();
         write_policy(&policy, &snapshot, 11);
         let result = tokio::time::timeout(Duration::from_secs(2), supervised)
