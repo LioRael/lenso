@@ -4188,11 +4188,11 @@ root-slot = "tools"
             ),
             (
                 ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 100 },
-                "pauses during Host imports",
+                "a blocking Host callback can outlive the deadline",
             ),
             (
                 ExecutionAdmissionRequirementV6::TurnDeadline { max_millis: 2_000 },
-                "pauses during Host imports",
+                "a blocking Host callback can outlive the deadline",
             ),
         ];
         for (requirement, explanation_detail) in cases {
