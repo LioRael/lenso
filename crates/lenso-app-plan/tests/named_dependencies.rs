@@ -246,3 +246,66 @@ fn proposal_materializes_unique_or_absent_choices_and_saved_intent_never_falls_b
         1
     );
 }
+
+#[test]
+fn saved_optional_absence_survives_a_temporarily_unavailable_provider() {
+    let consumer_id = PluginInstanceId::new("consumer", "default");
+    let absence = DependencyChoice {
+        consumer: consumer_id.clone(),
+        requirement_id: "source".into(),
+        provider: None,
+    };
+    let without_provider = HostCatalog::new(
+        [HostSlot::one("consumer"), HostSlot::many("storage")],
+        [HostPluginRelease::new(
+            PluginDescriptor::new("consumer", "1", "consumer")
+                .with_authoring(2, "lenso.native-authoring@2")
+                .with_requirement(
+                    CapabilityRequirementPlan::optional(CAP, "1").with_requirement_id("source"),
+                ),
+        )],
+        [HostDefaultPlugin::new("consumer", "default")],
+    );
+    let root = PluginRootSnapshot::default().with_dependency_choices(vec![absence.clone()]);
+    let resolved = resolve_plugin_root(&without_provider, &root).unwrap();
+    assert_eq!(resolved.dependency_choices(), &[absence.clone()]);
+    assert!(resolved.plan().capability_bindings().is_empty());
+
+    let mut bound_to_missing = absence.clone();
+    bound_to_missing.provider = Some(PluginInstanceId::new("storage", "missing"));
+    assert!(
+        resolve_plugin_root(
+            &without_provider,
+            &PluginRootSnapshot::default().with_dependency_choices(vec![bound_to_missing]),
+        )
+        .is_err()
+    );
+    let mut unknown_requirement = absence.clone();
+    unknown_requirement.requirement_id = "unknown".into();
+    assert!(
+        resolve_plugin_root(
+            &without_provider,
+            &PluginRootSnapshot::default().with_dependency_choices(vec![unknown_requirement]),
+        )
+        .is_err()
+    );
+
+    let required_without_provider = HostCatalog::new(
+        [HostSlot::one("consumer")],
+        [HostPluginRelease::new(
+            PluginDescriptor::new("consumer", "1", "consumer")
+                .with_authoring(2, "lenso.native-authoring@2")
+                .with_requirement(
+                    CapabilityRequirementPlan::one(CAP, "1").with_requirement_id("source"),
+                ),
+        )],
+        [HostDefaultPlugin::new("consumer", "default")],
+    );
+    assert!(resolve_plugin_root(&required_without_provider, &root).is_err());
+
+    let with_provider = selectable_host();
+    let root = PluginRootSnapshot::new([], [PluginRootInstance::new("storage", "a")], [])
+        .with_dependency_choices(vec![absence]);
+    let resolved = resolve_plugin_root(&with_provider, &root).unwrap();
+    assert!(resolved.plan().capability_bindings().is_empty());
+}

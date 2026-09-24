@@ -1152,6 +1152,9 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lenso_app_authoring::host_authoring::{GeneratedHostBuild, LocalPluginInput};
+    use lenso_app_plan::authoring::{DependencyChoice, PluginDescriptor, PluginInstanceId};
+    use lenso_app_plan::{CapabilityEndpointPlan, CapabilityRequirementPlan};
 
     fn adopted_source() -> tempfile::TempDir {
         let root = tempfile::tempdir().unwrap();
@@ -1203,6 +1206,104 @@ mod tests {
                 .unwrap()
                 .contains("vendor/lenso/example.web/0.4.5")
         );
+    }
+
+    #[test]
+    fn unadopt_preserves_optional_absence_and_unrelated_saved_binding() {
+        let root = adopted_source();
+        let consumer_id = PluginInstanceId::new("example.consumer", "default");
+        let auditor_id = PluginInstanceId::new("example.auditor", "default");
+        let choices = vec![
+            DependencyChoice {
+                consumer: consumer_id.clone(),
+                requirement_id: "audit".into(),
+                provider: Some(auditor_id),
+            },
+            DependencyChoice {
+                consumer: consumer_id,
+                requirement_id: "jobs".into(),
+                provider: None,
+            },
+        ];
+        let path = root.path().join("plugins/.dependencies.json");
+        let before =
+            serde_json::to_vec_pretty(&lenso_app_authoring::DependencySelectionsDocument {
+                schema_version: lenso_app_authoring::DEPENDENCY_SELECTIONS_SCHEMA_VERSION,
+                choices: choices.clone(),
+            })
+            .unwrap();
+        fs::write(&path, &before).unwrap();
+
+        let input = |descriptor: PluginDescriptor, app_owned| LocalPluginInput {
+            source: descriptor.plugin_id().into(),
+            descriptor,
+            manifest_digest: format!("sha256:{}", "a".repeat(64)),
+            app_owned,
+        };
+        let consumer = input(
+            PluginDescriptor::new("example.consumer", "1.0.0", "tools")
+                .with_authoring(2, "lenso.native-authoring@2")
+                .with_requirement(
+                    CapabilityRequirementPlan::optional("example.audit@1", "1")
+                        .with_requirement_id("audit"),
+                )
+                .with_requirement(
+                    CapabilityRequirementPlan::optional("example.jobs@1", "1")
+                        .with_requirement_id("jobs"),
+                ),
+            true,
+        );
+        let auditor = input(
+            PluginDescriptor::new("example.auditor", "1.0.0", "tools").with_capability(
+                CapabilityEndpointPlan::new("example.audit@1", "1", ["check"]),
+            ),
+            true,
+        );
+        let jobs = input(
+            PluginDescriptor::new("example.web", "0.4.5", "tools").with_capability(
+                CapabilityEndpointPlan::new("example.jobs@1", "1", ["enqueue"]),
+            ),
+            false,
+        );
+        let (_, before_removal) =
+            GeneratedHostBuild::lower_local("example.app", vec![consumer, auditor, jobs])
+                .unwrap()
+                .with_local_root(root.path())
+                .unwrap();
+        assert_eq!(before_removal.dependency_choices(), choices);
+        assert_eq!(before_removal.plan().capability_bindings().len(), 1);
+
+        unadopt(root.path(), "example.web@0.4.5").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), before);
+        let (_, after_removal) = GeneratedHostBuild::lower_local(
+            "example.app",
+            vec![
+                input(
+                    PluginDescriptor::new("example.consumer", "1.0.0", "tools")
+                        .with_authoring(2, "lenso.native-authoring@2")
+                        .with_requirement(
+                            CapabilityRequirementPlan::optional("example.audit@1", "1")
+                                .with_requirement_id("audit"),
+                        )
+                        .with_requirement(
+                            CapabilityRequirementPlan::optional("example.jobs@1", "1")
+                                .with_requirement_id("jobs"),
+                        ),
+                    true,
+                ),
+                input(
+                    PluginDescriptor::new("example.auditor", "1.0.0", "tools").with_capability(
+                        CapabilityEndpointPlan::new("example.audit@1", "1", ["check"]),
+                    ),
+                    true,
+                ),
+            ],
+        )
+        .unwrap()
+        .with_local_root(root.path())
+        .unwrap();
+        assert_eq!(after_removal.dependency_choices(), choices);
+        assert_eq!(after_removal.plan().capability_bindings().len(), 1);
     }
 
     #[test]

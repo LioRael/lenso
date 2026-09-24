@@ -27,7 +27,7 @@ hex = "0.4"
 hmac = "0.12"
 inventory = "0.3"
 lenso = { path = "crates/lenso", version = "=0.5.26" }
-lenso-app-plan = { path = "crates/lenso-app-plan", version = "=0.4.5" }
+lenso-app-plan = { path = "crates/lenso-app-plan", version = "=0.4.6" }
 lenso-contract-authoring = { path = "crates/lenso-contract-authoring", version = "=0.1.1" }
 lenso-contract-runtime = { path = "crates/lenso-contract-runtime", version = "=0.2.0" }
 lenso-kernel = { path = "crates/lenso-kernel", version = "=0.3.11" }

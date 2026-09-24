@@ -14,7 +14,7 @@ anyhow = "1.0"
 futures = { version = "0.3" }
 shell-words = { version = "1.1" }
 clap = { version = "4", features = ["derive", "string"] }
-lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.5" }
+lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.6" }
 lenso-bun-adapter = { path = "../lenso-bun-adapter", version = "=0.1.14" }
 lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "=0.3.4" }
 lenso-contract-authoring-next = { package = "lenso-contract-authoring", path = "../lenso-contract-authoring", version = "0.1.1" }

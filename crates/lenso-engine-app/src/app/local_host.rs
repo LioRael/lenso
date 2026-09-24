@@ -115,7 +115,7 @@ pub(super) fn generate(
         ("serde_json", "1"),
         ("sha2", "0.10"),
         ("tempfile", "3"),
-        ("lenso-app-plan", "=0.4.5"),
+        ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.11"),
         ("lenso-native-adapter", "=0.3.15"),
         ("lenso-runner", "=0.2.17"),
@@ -1879,7 +1879,7 @@ mod tests {
             "version": "=0.2.16"
         });
         let mut dependencies = BTreeMap::from([
-            ("lenso-app-plan".into(), json!("=0.4.5")),
+            ("lenso-app-plan".into(), json!("=0.4.6")),
             (
                 "lenso-native-adapter".into(),
                 json!({"version":"=0.3.15", "features":["test-support"]}),
@@ -1902,7 +1902,7 @@ mod tests {
         assert_eq!(dependencies["local_plugin_0"], vendor);
         assert_eq!(dependencies["lenso-wasm-component-adapter"], local_adapter);
         assert!(dependencies["local_plugin_1"].get("git").is_none());
-        assert_eq!(dependencies["lenso-app-plan"]["version"], "=0.4.5");
+        assert_eq!(dependencies["lenso-app-plan"]["version"], "=0.4.6");
         assert_eq!(dependencies["lenso-app-plan"]["git"], git);
         assert_eq!(dependencies["lenso-app-plan"]["rev"], rev);
         assert_eq!(
@@ -1923,7 +1923,7 @@ mod tests {
         );
         assert_eq!(
             parsed["dependencies"]["lenso-app-plan"]["version"].as_str(),
-            Some("=0.4.5")
+            Some("=0.4.6")
         );
     }
 

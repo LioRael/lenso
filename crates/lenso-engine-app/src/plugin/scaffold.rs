@@ -129,7 +129,7 @@ syn = {{ version = "2", features = ["full"] }}
 bytes = "1"
 futures = "0.3"
 http = "1"
-lenso-app-plan = "=0.4.5"
+lenso-app-plan = "=0.4.6"
 lenso-kernel = "=0.3.11"
 lenso-test = "=0.1.2"
 lenso-web-host = "=0.2.2"

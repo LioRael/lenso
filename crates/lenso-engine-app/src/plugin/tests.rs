@@ -148,7 +148,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     for (name, version) in [
         ("lenso", "=0.5.26"),
         ("lenso-capability-http-endpoint", "=0.3.4"),
-        ("lenso-app-plan", "=0.4.5"),
+        ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.11"),
         ("lenso-test", "=0.1.2"),
         ("lenso-web-host", "=0.2.2"),

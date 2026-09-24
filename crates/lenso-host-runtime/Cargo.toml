@@ -19,7 +19,7 @@ serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-lenso-app-plan = { version = "=0.4.5", path = "../lenso-app-plan" }
+lenso-app-plan = { version = "=0.4.6", path = "../lenso-app-plan" }
 sha2.workspace = true
 tempfile = "3"
 

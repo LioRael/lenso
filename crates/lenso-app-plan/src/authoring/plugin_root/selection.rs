@@ -69,10 +69,23 @@ pub(super) fn select_requirement(
     root: &PluginRootSnapshot,
     propose: bool,
 ) -> Result<Option<DependencyChoice>, PluginRootResolutionError> {
+    let id = requirement.requirement_id();
+    let saved = root
+        .dependency_choices
+        .iter()
+        .find(|choice| &choice.consumer == consumer && choice.requirement_id == id);
+    if rule.is_none()
+        && candidates.is_empty()
+        && requirement.cardinality() == CapabilityCardinality::Optional
+        && saved.is_some_and(|choice| choice.provider.is_none())
+    {
+        // A provider's removal leaves explicit optional absence unchanged.
+        // Retain it so re-adopting a provider cannot silently select it.
+        return Ok(saved.cloned());
+    }
     let Some(rule) = rule.filter(|rule| rule.selection == DependencySelection::Selectable) else {
         return Ok(None);
     };
-    let id = requirement.requirement_id();
     if !crate::schema::valid_requirement_id(id)
         || requirement.cardinality() == CapabilityCardinality::Many
         || rule.provider_instance.is_some()
@@ -97,10 +110,6 @@ pub(super) fn select_requirement(
             "default provider for requirement `{id}` is unavailable or forbidden"
         )));
     }
-    let saved = root
-        .dependency_choices
-        .iter()
-        .find(|choice| &choice.consumer == consumer && choice.requirement_id == id);
     if let Some(saved) = saved {
         if saved
             .provider

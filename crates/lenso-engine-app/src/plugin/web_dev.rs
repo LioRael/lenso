@@ -363,7 +363,7 @@ fn source_from_manifest(manifest: &toml::Value) -> anyhow::Result<FrameworkSourc
 fn registry_framework_version(name: &str) -> Option<&'static str> {
     Some(match name {
         "lenso" => "0.5.26",
-        "lenso-app-plan" => "0.4.5",
+        "lenso-app-plan" => "0.4.6",
         "lenso-kernel" => "0.3.11",
         "lenso-native-adapter" => "0.3.15",
         "lenso-runner" => "0.2.17",
@@ -400,7 +400,7 @@ fn host_manifest(
         serde_json::to_string(&root.to_string_lossy()).expect("serialize Plugin path");
     let (app_plan, kernel, web_host, patches) = match framework {
         FrameworkSource::Registry => (
-            "\"=0.4.5\"".to_owned(),
+            "\"=0.4.6\"".to_owned(),
             "\"=0.3.11\"".to_owned(),
             "\"=0.2.2\"".to_owned(),
             String::new(),
@@ -544,7 +544,7 @@ mod tests {
         assert!(name.starts_with("lenso-web-dev-company-greetings-http-"));
         for (name, version) in [
             ("lenso-web-host", "=0.2.2"),
-            ("lenso-app-plan", "=0.4.5"),
+            ("lenso-app-plan", "=0.4.6"),
             ("lenso-kernel", "=0.3.11"),
         ] {
             assert_eq!(parsed["dependencies"][name].as_str(), Some(version));
