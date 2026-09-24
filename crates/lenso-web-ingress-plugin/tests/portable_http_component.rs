@@ -1,7 +1,7 @@
 //! Real native loopback HTTP and Wasmtime Component requests over one business handler.
 //! This is a Native Environment receipt, not workerd or deployed Workers evidence.
 
-use std::{process::Command, rc::Rc, time::Duration};
+use std::{process::Command, time::Duration};
 
 use bytes::Bytes;
 use http::{Request, Response};
@@ -12,19 +12,11 @@ use lenso_app_plan::{
     ExecutionClassId, PluginInstancePlan, ResolvedAppPlan,
 };
 use lenso_capability_http_endpoint::{
-    CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, DescribeRequest, DescribeResponse,
-    DescribeResponseRoutesItem, EndpointDescribe, EndpointEndpoint, EndpointHandle,
-    EndpointJsonCodec, EndpointProvider, HANDLE_OPERATION, HandleError, HandleRequest,
-    HandleResponse,
+    CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, EndpointJsonCodec, HANDLE_OPERATION,
 };
-use lenso_kernel::{
-    ExecutionAdapterCatalog, InvocationContext, Kernel, NativeRequestFuture, RuntimeFailure,
-    ShutdownOutcome,
-};
-use lenso_native_adapter::{
-    NativePluginFactory, NativePluginFactoryContext, NativePluginInstance, NativePluginRegistry,
-};
-use lenso_portable_http_endpoint_fixture as handler;
+use lenso_kernel::{ExecutionAdapterCatalog, Kernel, ShutdownOutcome};
+use lenso_native_adapter::NativePluginRegistry;
+use lenso_portable_http_endpoint_fixture::linked::{NativeEndpointFactory, PACKAGE_ID};
 use lenso_runner::TokioDriver;
 use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle};
 use lenso_wasm_component_adapter::{EXECUTION_CLASS, WasmComponentAdapter};
@@ -32,77 +24,7 @@ use lenso_web_ingress_plugin::{WebIngressConfig, WebIngressFactory};
 use sha2::{Digest, Sha256};
 use tokio::{net::TcpStream, task::LocalSet};
 
-const PACKAGE_ID: &str = "fixture.portable-http";
 type HttpCase<'a> = (&'a str, &'a str, &'a [u8], u16, &'a [u8]);
-
-#[derive(Debug)]
-struct NativeEndpoint;
-
-impl EndpointProvider for NativeEndpoint {
-    fn describe(
-        &self,
-        _: InvocationContext,
-        _: DescribeRequest,
-    ) -> NativeRequestFuture<EndpointDescribe> {
-        let routes = handler::ROUTES
-            .into_iter()
-            .map(|(route_id, method, path)| DescribeResponseRoutesItem {
-                route_id: route_id.to_owned(),
-                method: method.to_owned(),
-                path: path.to_owned(),
-                openapi: None,
-            })
-            .collect();
-        Box::pin(async move { Ok(Ok(DescribeResponse { routes })) })
-    }
-
-    fn handle(
-        &self,
-        _: InvocationContext,
-        request: HandleRequest,
-    ) -> NativeRequestFuture<EndpointHandle> {
-        Box::pin(async move {
-            match handler::handle(
-                &request.route_id,
-                &request.method,
-                &request.path,
-                &request.body,
-            ) {
-                handler::Reply::Bytes(body) => Ok(Ok(HandleResponse {
-                    status: 200,
-                    headers: Vec::new(),
-                    body: body.into(),
-                })),
-                handler::Reply::DomainError => Ok(Err(HandleError::Rejected)),
-                handler::Reply::RuntimeFailure => Err(RuntimeFailure::PluginFailure {
-                    detail: "portable HTTP fixture failure".to_owned(),
-                }),
-            }
-        })
-    }
-}
-
-#[derive(Debug)]
-struct NativeEndpointFactory;
-
-impl NativePluginFactory for NativeEndpointFactory {
-    fn package_id(&self) -> &'static str {
-        PACKAGE_ID
-    }
-
-    fn package_version(&self) -> &'static str {
-        "0.0.0"
-    }
-
-    fn instantiate(
-        &self,
-        _: NativePluginFactoryContext<'_>,
-    ) -> Result<NativePluginInstance, RuntimeFailure> {
-        Ok(NativePluginInstance::new(vec![Rc::new(
-            EndpointEndpoint::new(NativeEndpoint),
-        )]))
-    }
-}
 
 fn plan(wasm: bool) -> ResolvedAppPlan {
     let mut endpoint = PluginInstancePlan::new("endpoint", PACKAGE_ID).with_capability(

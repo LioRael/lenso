@@ -12,10 +12,12 @@ bytes.workspace = true
 futures.workspace = true
 http.workspace = true
 lenso-app-plan.workspace = true
+lenso-capability-http-endpoint = { path = "../../../crates/lenso-capability-http-endpoint" }
 lenso-capability-http-client = { path = "../../../crates/lenso-capability-http-client" }
 lenso-http-egress-plugin = { path = "../../../crates/lenso-http-egress-plugin", default-features = false, features = ["workers"] }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
+lenso-portable-http-endpoint-fixture = { path = "../portable-http-endpoint" }
 lenso-web-http-parity-fixture = { path = "../http-parity-plugin" }
 lenso-web-ingress-plugin = { path = "../../../crates/lenso-web-ingress-plugin", default-features = false }
 lenso-workers-driver = { path = "../../../crates/lenso-workers-driver" }

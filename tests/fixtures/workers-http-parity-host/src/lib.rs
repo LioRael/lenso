@@ -11,6 +11,7 @@ use lenso_app_plan::{
 use lenso_capability_http_client::{
     self as http_client, Client, SEND_OPERATION, SendError, SendRequest, SendResponse,
 };
+use lenso_capability_http_endpoint as http_endpoint;
 use lenso_http_egress_plugin::{HttpEgressConfig, HttpEgressEventFactory};
 use lenso_kernel::{
     CancellationToken, InvocationContext, Kernel, RuntimeDriver, RuntimeFailure, ShutdownOutcome,
@@ -18,6 +19,7 @@ use lenso_kernel::{
 use lenso_native_adapter::{
     NativePluginFactory, NativePluginFactoryContext, NativePluginInstance, NativePluginRegistry,
 };
+use lenso_portable_http_endpoint_fixture::linked as shared_endpoint;
 use lenso_web_http_parity_fixture::{HttpParityEndpointFactory, plan};
 use lenso_web_ingress_plugin::{SessionCookieConfig, WebIngressConfig, WebIngressEventFactory};
 use lenso_workers_driver::WorkersDriver;
@@ -189,6 +191,47 @@ fn egress_plan(config: &HttpEgressConfig) -> Result<ResolvedAppPlan, JsValue> {
     .map_err(error)
 }
 
+fn shared_endpoint_plan(configuration: String) -> Result<ResolvedAppPlan, JsValue> {
+    AppComposition::new(
+        vec![
+            PluginInstancePlan::new("endpoint", shared_endpoint::PACKAGE_ID).with_capability(
+                CapabilityEndpointPlan::new(
+                    http_endpoint::CAPABILITY_ID,
+                    http_endpoint::DESCRIPTOR_VERSION,
+                    [
+                        http_endpoint::DESCRIBE_OPERATION,
+                        http_endpoint::HANDLE_OPERATION,
+                    ],
+                ),
+            ),
+            PluginInstancePlan::new("ingress", lenso_web_ingress_plugin::PACKAGE_ID)
+                .with_configuration(configuration)
+                .with_requirement(CapabilityRequirementPlan::many(
+                    http_endpoint::CAPABILITY_ID,
+                    http_endpoint::DESCRIPTOR_VERSION,
+                )),
+        ],
+        vec![CapabilityBinding::new(
+            "ingress",
+            http_endpoint::CAPABILITY_ID,
+            http_endpoint::DESCRIPTOR_VERSION,
+            "endpoint",
+        )],
+    )
+    .resolve()
+    .map_err(error)
+}
+
+fn strip_shared_fixture_prefix(mut request: Request<Bytes>) -> Result<Request<Bytes>, JsValue> {
+    let original = request.uri().to_string();
+    let path = original
+        .strip_prefix("/_shared")
+        .filter(|path| path.starts_with('/'))
+        .ok_or_else(|| error("invalid shared fixture path"))?;
+    *request.uri_mut() = path.parse().map_err(error)?;
+    Ok(request)
+}
+
 fn egress_outcome(
     result: Result<Result<SendResponse, SendError>, RuntimeFailure>,
 ) -> serde_json::Value {
@@ -307,21 +350,36 @@ pub async fn handle_http(input: String, scope: JsValue) -> Result<String, JsValu
     if request.uri().path().starts_with("/egress/") {
         return egress_probe(request.uri().path(), scope).await;
     }
+    let shared = request.uri().path().starts_with("/_shared/");
+    let request = if shared {
+        strip_shared_fixture_prefix(request)?
+    } else {
+        request
+    };
     let configuration = configuration()?;
     let ingress = WebIngressEventFactory::new();
     let driver = WorkersDriver::new();
     let _event = EventGuard(driver.clone());
     let cancellation = CancellationToken::new();
     let _cancellation = CancellationGuard::new(scope, cancellation.clone());
-    let app = Kernel::start_native(
-        plan(configuration),
-        driver,
-        NativePluginRegistry::new()
-            .with_factory(HttpParityEndpointFactory)
-            .with_factory(ingress.clone()),
-    )
-    .await
-    .map_err(error)?;
+    let (plan, registry) = if shared {
+        (
+            shared_endpoint_plan(configuration)?,
+            NativePluginRegistry::new()
+                .with_factory(shared_endpoint::NativeEndpointFactory)
+                .with_factory(ingress.clone()),
+        )
+    } else {
+        (
+            plan(configuration),
+            NativePluginRegistry::new()
+                .with_factory(HttpParityEndpointFactory)
+                .with_factory(ingress.clone()),
+        )
+    };
+    let app = Kernel::start_native(plan, driver, registry)
+        .await
+        .map_err(error)?;
     let ready = app.is_ready() && app.is_accepting();
     if !ready {
         let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;

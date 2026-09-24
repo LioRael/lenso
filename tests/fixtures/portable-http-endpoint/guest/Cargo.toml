@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 base64 = "0.22"
 lenso-guest-sdk = { path = "../../../../crates/lenso-guest-sdk" }
-lenso-portable-http-endpoint-fixture = { path = ".." }
+lenso-portable-http-endpoint-fixture = { path = "..", default-features = false }
 serde_json = "1"
 wit-bindgen = "0.60"
 

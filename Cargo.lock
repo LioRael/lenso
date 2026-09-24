@@ -2662,6 +2662,11 @@ dependencies = [
 [[package]]
 name = "lenso-portable-http-endpoint-fixture"
 version = "0.0.0"
+dependencies = [
+ "lenso-capability-http-endpoint",
+ "lenso-kernel",
+ "lenso-native-adapter",
+]
 
 [[package]]
 name = "lenso-process-adapter"
@@ -2965,9 +2970,11 @@ dependencies = [
  "js-sys",
  "lenso-app-plan",
  "lenso-capability-http-client",
+ "lenso-capability-http-endpoint",
  "lenso-http-egress-plugin",
  "lenso-kernel",
  "lenso-native-adapter",
+ "lenso-portable-http-endpoint-fixture",
  "lenso-web-http-parity-fixture",
  "lenso-web-ingress-plugin",
  "lenso-workers-driver",
