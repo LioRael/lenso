@@ -160,7 +160,9 @@ closure, Contract identity and root Slot, native-linked ABI, target, Cargo
 coordinate, size, and digest are checked against the exact signed `.crate`
 before App source selection changes. The full Bundle Contract and selected
 entrypoint are recorded in the source lock and compared with the compiled
-native Descriptor before Host resolution. `app add` never compiles the source;
+native Descriptor before Host resolution; its native execution class, authoring
+profile, package identity, and target requirements are checked again there.
+`app add` never compiles the source;
 an older V6 lock without that Contract binding needs an exact signed retry.
 Other executable variants may coexist in the Bundle; they are not selected by
 this linked-Host adoption path. The Bundle is input evidence, not an alternate

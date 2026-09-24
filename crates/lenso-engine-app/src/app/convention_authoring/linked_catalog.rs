@@ -804,6 +804,27 @@ pub(crate) fn verify_native_descriptor(
         descriptor.entrypoint() == entrypoint,
         "compiled native Plugin Descriptor differs from V6 Bundle selected entrypoint"
     );
+    ensure!(
+        descriptor.authoring_version() == 2,
+        "compiled native Plugin Descriptor requires authoring version 2"
+    );
+    ensure!(
+        descriptor.execution_class().as_str() == "lenso.native-rust@1",
+        "compiled native Plugin Descriptor requires native-linked execution class"
+    );
+    ensure!(
+        descriptor.runtime_profile() == "lenso.native-authoring@2",
+        "compiled native Plugin Descriptor has incompatible runtime profile"
+    );
+    ensure!(
+        descriptor.required_target_capabilities().is_empty(),
+        "compiled native Plugin Descriptor has unproven target capabilities"
+    );
+    ensure!(
+        descriptor.runtime_package_id() == candidate.plugin_id
+            && descriptor.runtime_package_revision() == candidate.release_version,
+        "compiled native Plugin Descriptor differs from V6 linked Cargo package identity"
+    );
     Ok(())
 }
 
@@ -1456,6 +1477,15 @@ mod tests {
         fs::write(&lock_path, serde_json::to_vec_pretty(&lock).unwrap()).unwrap();
         let error = verify_native_descriptor(&root, &candidate, &descriptor).unwrap_err();
         assert!(format!("{error:#}").contains("selected entrypoint"));
+
+        lock.v6.as_mut().unwrap().entrypoint = Some("default".into());
+        fs::write(&lock_path, serde_json::to_vec_pretty(&lock).unwrap()).unwrap();
+        verify_native_descriptor(&root, &candidate, &descriptor).unwrap();
+        let profile_drift = descriptor
+            .clone()
+            .with_authoring(2, "lenso.native-authoring@1");
+        let error = verify_native_descriptor(&root, &candidate, &profile_drift).unwrap_err();
+        assert!(format!("{error:#}").contains("runtime profile"));
     }
 
     #[test]
