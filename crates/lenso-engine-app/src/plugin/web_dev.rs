@@ -366,8 +366,13 @@ fn registry_framework_version(name: &str) -> Option<&'static str> {
         "lenso-app-plan" => "0.4.5",
         "lenso-kernel" => "0.3.11",
         "lenso-native-adapter" => "0.3.15",
+        "lenso-runner" => "0.2.17",
+        "lenso-contract-runtime" => "0.2.0",
         "lenso-capability-http-endpoint" => "0.3.4",
+        "lenso-capability-http-stream-endpoint" => "0.1.2",
+        "lenso-capability-websocket-endpoint" => "0.1.1",
         "lenso-web-host" => "0.2.2",
+        "lenso-web-ingress-plugin" => "0.4.7",
         _ => return None,
     })
 }
@@ -412,6 +417,11 @@ fn host_manifest(
                 "lenso-kernel",
                 "lenso-native-adapter",
                 "lenso-capability-http-endpoint",
+                "lenso-capability-http-stream-endpoint",
+                "lenso-capability-websocket-endpoint",
+                "lenso-web-ingress-plugin",
+                "lenso-runner",
+                "lenso-contract-runtime",
             ] {
                 patches.push_str(&format!("{name} = {{ git = {url}, rev = {rev} }}\n"));
             }
@@ -612,6 +622,11 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
             "lenso-kernel",
             "lenso-native-adapter",
             "lenso-capability-http-endpoint",
+            "lenso-capability-http-stream-endpoint",
+            "lenso-capability-websocket-endpoint",
+            "lenso-web-ingress-plugin",
+            "lenso-runner",
+            "lenso-contract-runtime",
         ] {
             assert_eq!(
                 parsed["patch"]["crates-io"][name]["git"].as_str(),
@@ -681,5 +696,33 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
                 .to_string()
                 .contains("patch for lenso-kernel")
         );
+    }
+
+    #[test]
+    fn web_host_identity_dependencies_cannot_mix_git_and_registry_sources() {
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let git = "https://github.com/LioRael/lenso";
+        for (name, version) in [
+            ("lenso-capability-http-stream-endpoint", "0.1.2"),
+            ("lenso-capability-websocket-endpoint", "0.1.1"),
+            ("lenso-web-ingress-plugin", "0.4.7"),
+            ("lenso-runner", "0.2.17"),
+            ("lenso-contract-runtime", "0.2.0"),
+        ] {
+            let dependency = format!(
+                "{name} = {{ version = \"={version}\", git = \"{git}\", rev = \"{rev}\" }}"
+            );
+            let registry_root = format!("[dependencies]\nlenso = \"=0.5.26\"\n{dependency}\n");
+            let git_root = format!(
+                "[dependencies]\nlenso = {{ version = \"=0.5.25\", git = \"{git}\", rev = \"{rev}\" }}\n{name} = \"={version}\"\n"
+            );
+            for manifest in [registry_root, git_root] {
+                let error = source(&manifest).unwrap_err();
+                assert!(
+                    error.to_string().contains("mixes crates.io and Git"),
+                    "{name}: {error:#}"
+                );
+            }
+        }
     }
 }
