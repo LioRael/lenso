@@ -8,6 +8,7 @@ use std::{
 use anyhow::{Context as _, bail, ensure};
 use ed25519_dalek::VerifyingKey;
 use lenso_app_authoring::discovery::Candidate;
+use lenso_app_plan::authoring::{PluginContract, PluginDescriptor};
 use lenso_plugin_bundle::{BundleVerificationLimits, PluginManifest, PluginVariantInputV6};
 use lenso_plugin_catalog::{
     Availability, Trust,
@@ -34,6 +35,8 @@ const MAX_CRATE_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_UNPACKED_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_FILES: usize = 4096;
 const SOURCE_LOCK: &str = ".lenso-linked-source.json";
+const MAX_SOURCE_LOCK_BYTES: u64 = 256 * 1024;
+const MAX_V5_SOURCE_LOCK_BYTES: u64 = 4096;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -80,6 +83,35 @@ fn legacy_source_lock_bytes(new_lock: &[u8]) -> anyhow::Result<Vec<u8>> {
     })?)
 }
 
+fn legacy_v6_source_lock_bytes(
+    new_lock: &[u8],
+    legacy_root_fields: bool,
+) -> anyhow::Result<Option<Vec<u8>>> {
+    let mut lock: SourceLock = serde_json::from_slice(new_lock)?;
+    let Some(v6) = lock.v6.as_mut() else {
+        return Ok(None);
+    };
+    v6.contract = None;
+    v6.entrypoint = None;
+    let bytes = serde_json::to_vec_pretty(&lock)?;
+    if legacy_root_fields {
+        return legacy_source_lock_bytes(&bytes).map(Some);
+    }
+    Ok(Some(bytes))
+}
+
+fn canonical_prior_source_lock_matches(expected: &[u8], actual: &[u8]) -> anyhow::Result<bool> {
+    if actual == legacy_source_lock_bytes(expected)? {
+        return Ok(true);
+    }
+    for legacy_root_fields in [false, true] {
+        if legacy_v6_source_lock_bytes(expected, legacy_root_fields)?.as_deref() == Some(actual) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 fn is_false(value: &bool) -> bool {
     !value
 }
@@ -90,11 +122,36 @@ struct V6BuildInputLock {
     bundle_manifest_digest: String,
     implementation_id: String,
     variant_id: String,
+    /// Missing on an older V6 lock; an exact signed retry upgrades it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    contract: Option<PluginContract>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    entrypoint: Option<String>,
 }
 
 struct SelectedV6Archive {
     bytes: Vec<u8>,
     lock: V6BuildInputLock,
+}
+
+fn read_source_lock(path: &Path) -> anyhow::Result<SourceLock> {
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .with_context(|| format!("read linked Cargo source lock {}", path.display()))?
+        .take(MAX_SOURCE_LOCK_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    ensure!(
+        u64::try_from(bytes.len())? <= MAX_SOURCE_LOCK_BYTES,
+        "linked Cargo source lock exceeds size limit"
+    );
+    let lock: SourceLock = serde_json::from_slice(&bytes)?;
+    if lock.v6.is_none() {
+        ensure!(
+            u64::try_from(bytes.len())? <= MAX_V5_SOURCE_LOCK_BYTES,
+            "linked Cargo source lock exceeds size limit"
+        );
+    }
+    Ok(lock)
 }
 
 /// One signed source-only catalog, without any claim that its crate can build.
@@ -449,6 +506,19 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
                 .any(|entry| entry.runtime == "native-linked"),
         "linked Cargo source does not match an adoptable native Plugin"
     );
+    if let Some(v6) = &v6_lock {
+        let manifest: toml::Value =
+            toml::from_str(&fs::read_to_string(stage.path().join("Cargo.toml"))?)?;
+        let source_slot = manifest["package"]["metadata"]["lenso"]["root-slot"]
+            .as_str()
+            .context("linked Cargo source has no root Slot")?;
+        ensure!(
+            v6.contract
+                .as_ref()
+                .is_some_and(|contract| contract.root_slot() == source_slot),
+            "V6 Bundle Contract root Slot differs from exact Cargo source"
+        );
+    }
     let prepared = if let Some(previous) = previous {
         PreparedSelection::Replacement(replacement::PreparedLinkedReplacement::new_locked(
             root,
@@ -475,10 +545,17 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         workspace_exclude_owned: prepared.workspace_exclude_owned(),
         v6: v6_lock,
     };
-    fs::write(
-        stage.path().join(SOURCE_LOCK),
-        serde_json::to_vec_pretty(&lock)?,
-    )?;
+    let lock_bytes = serde_json::to_vec_pretty(&lock)?;
+    let lock_limit = if lock.v6.is_some() {
+        MAX_SOURCE_LOCK_BYTES
+    } else {
+        MAX_V5_SOURCE_LOCK_BYTES
+    };
+    ensure!(
+        u64::try_from(lock_bytes.len())? <= lock_limit,
+        "linked Cargo source lock exceeds size limit"
+    );
+    fs::write(stage.path().join(SOURCE_LOCK), lock_bytes)?;
     prepared
         .commit(stage.path())
         .with_context(|| format!(
@@ -674,8 +751,60 @@ fn verified_v6_directory(
             bundle_manifest_digest: verified.manifest_digest,
             implementation_id: implementation.id.clone(),
             variant_id: variant.id.clone(),
+            contract: Some(manifest.contract.clone()),
+            entrypoint: Some(variant.runtime.entrypoint().to_owned()),
         },
     })
+}
+
+pub(crate) fn verify_native_descriptor(
+    root: &Path,
+    candidate: &Candidate,
+    descriptor: &PluginDescriptor,
+) -> anyhow::Result<()> {
+    let adopted = root
+        .join("vendor/lenso")
+        .join(&candidate.plugin_id)
+        .join(&candidate.release_version);
+    let metadata = match fs::symlink_metadata(&adopted) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let lock = read_source_lock(&adopted.join(SOURCE_LOCK))?;
+    let Some(v6) = lock.v6.as_ref() else {
+        return Ok(());
+    };
+    ensure!(
+        metadata.file_type().is_dir() && candidate.project == fs::canonicalize(&adopted)?,
+        "adopted linked Cargo source path differs from discovered Plugin source"
+    );
+    ensure!(
+        lock.schema_version == 1
+            && lock.plugin_id == candidate.plugin_id
+            && lock.version == candidate.release_version,
+        "V6 linked Cargo source lock differs from discovered Plugin identity"
+    );
+    ensure!(
+        source_digest(&adopted)? == lock.source_digest,
+        "V6 linked Cargo source changed after adoption"
+    );
+    verify_archive_cargo_lock(&adopted, &lock)?;
+    let contract = v6.contract.as_ref().context(
+        "V6 linked Cargo source lock lacks its expected Contract; retry exact signed app add",
+    )?;
+    let entrypoint = v6.entrypoint.as_ref().context(
+        "V6 linked Cargo source lock lacks its selected entrypoint; retry exact signed app add",
+    )?;
+    ensure!(
+        descriptor.contract() == *contract,
+        "compiled native Plugin Descriptor differs from V6 Bundle Contract"
+    );
+    ensure!(
+        descriptor.entrypoint() == entrypoint,
+        "compiled native Plugin Descriptor differs from V6 Bundle selected entrypoint"
+    );
+    Ok(())
 }
 
 pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::Result<()> {
@@ -690,17 +819,7 @@ pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::R
             continue;
         }
         let lock_path = candidate.project.join(SOURCE_LOCK);
-        let bytes = fs::read(&lock_path).with_context(|| {
-            format!(
-                "linked Cargo source lacks lock: {}",
-                candidate.project.display()
-            )
-        })?;
-        ensure!(
-            bytes.len() <= 4096,
-            "linked Cargo source lock exceeds size limit"
-        );
-        let lock: SourceLock = serde_json::from_slice(&bytes)?;
+        let lock = read_source_lock(&lock_path)?;
         ensure!(
             lock.schema_version == 1
                 && lock.plugin_id == candidate.plugin_id
@@ -879,13 +998,8 @@ fn unadopt_with(
         super::writable_path(root, path)?;
     }
     ensure!(source_path.is_dir(), "linked Cargo source is not adopted");
-    let lock_bytes =
-        fs::read(source_path.join(SOURCE_LOCK)).context("linked Cargo source lock is missing")?;
-    ensure!(
-        lock_bytes.len() <= 4096,
-        "linked Cargo source lock exceeds size limit"
-    );
-    let lock: SourceLock = serde_json::from_slice(&lock_bytes)?;
+    let lock = read_source_lock(&source_path.join(SOURCE_LOCK))
+        .context("linked Cargo source lock is missing")?;
     ensure!(
         lock.schema_version == 1 && lock.plugin_id == plugin_id && lock.version == version,
         "linked Cargo source lock does not match requested identity"
@@ -1224,7 +1338,7 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
             }
             let expected_len = fs::metadata(&expected_child)?.len();
             if root && name == SOURCE_LOCK {
-                if metadata.len() > 4096 || expected_len > 4096 {
+                if metadata.len() > MAX_SOURCE_LOCK_BYTES || expected_len > MAX_SOURCE_LOCK_BYTES {
                     return Ok(false);
                 }
             } else if metadata.len() != expected_len {
@@ -1235,7 +1349,7 @@ fn same_tree_children(expected: &Path, actual: &Path, root: bool) -> anyhow::Res
             if actual_bytes != expected_bytes
                 && !(root
                     && name == SOURCE_LOCK
-                    && actual_bytes == legacy_source_lock_bytes(&expected_bytes)?)
+                    && canonical_prior_source_lock_matches(&expected_bytes, &actual_bytes)?)
             {
                 return Ok(false);
             }
@@ -1301,6 +1415,47 @@ mod tests {
                 .unwrap()
                 .contains("vendor/lenso/example.web/0.4.5")
         );
+    }
+
+    #[test]
+    fn v6_native_descriptor_requires_contract_and_selected_entrypoint() {
+        let app = adopted_source();
+        let root = fs::canonicalize(app.path()).unwrap();
+        let source = fs::canonicalize(root.join("vendor/lenso/example.web/0.4.5")).unwrap();
+        let candidate = Candidate {
+            surface_owner: None,
+            composite: None,
+            plugin_id: "example.web".into(),
+            release_version: "0.4.5".into(),
+            project: source.clone(),
+            metadata: source.join("Cargo.toml"),
+            format: "cargo".into(),
+            role: lenso_app_authoring::discovery::SourceRole::Shared,
+            implementations: Vec::new(),
+            published_resources: Vec::new(),
+            evidence: "test".into(),
+        };
+        let descriptor = PluginDescriptor::new("example.web", "0.4.5", "web")
+            .with_authoring(2, "lenso.native-authoring@2");
+        let lock_path = source.join(SOURCE_LOCK);
+        let mut lock = read_source_lock(&lock_path).unwrap();
+        lock.v6 = Some(V6BuildInputLock {
+            bundle_manifest_digest: format!("sha256:{}", "a".repeat(64)),
+            implementation_id: "native".into(),
+            variant_id: "cargo".into(),
+            contract: None,
+            entrypoint: None,
+        });
+        fs::write(&lock_path, serde_json::to_vec_pretty(&lock).unwrap()).unwrap();
+        let error = verify_native_descriptor(&root, &candidate, &descriptor).unwrap_err();
+        assert!(format!("{error:#}").contains("lacks its expected Contract"));
+
+        let v6 = lock.v6.as_mut().unwrap();
+        v6.contract = Some(descriptor.contract());
+        v6.entrypoint = Some("forged-entrypoint".into());
+        fs::write(&lock_path, serde_json::to_vec_pretty(&lock).unwrap()).unwrap();
+        let error = verify_native_descriptor(&root, &candidate, &descriptor).unwrap_err();
+        assert!(format!("{error:#}").contains("selected entrypoint"));
     }
 
     #[test]

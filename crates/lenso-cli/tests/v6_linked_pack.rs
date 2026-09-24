@@ -1,6 +1,7 @@
 use std::{
     fmt::Write as _,
     fs,
+    path::Path,
     process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -113,14 +114,84 @@ fn signed_snapshot(
     (snapshot_path, trust_path)
 }
 
+fn assert_mismatched_contract_fails_build(
+    root: &Path,
+    output: &Path,
+    snapshot: &Path,
+    trust: &Path,
+) {
+    let mismatched = root.join("mismatched-contract");
+    let input = mismatched.join("implementations/native/example-linked-web-0.4.5.crate");
+    fs::create_dir_all(input.parent().unwrap()).unwrap();
+    lenso_app_authoring::bundle_archive::with_bundle_directory(output, |directory| {
+        fs::copy(
+            directory.join(lenso_plugin_bundle::MANIFEST_FILE),
+            mismatched.join(lenso_plugin_bundle::MANIFEST_FILE),
+        )?;
+        fs::copy(
+            directory.join("implementations/native/example-linked-web-0.4.5.crate"),
+            &input,
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let manifest_path = mismatched.join(lenso_plugin_bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    manifest["contract"]["configuration_schema"] = serde_json::json!({
+        "type": "object", "properties": {"ghost": {"type": "string"}}
+    });
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    lenso_plugin_bundle::verify_bundle_directory(&mismatched).unwrap();
+
+    let forged_app = root.join("forged-app");
+    let created = Command::new(env!("CARGO_BIN_EXE_lenso"))
+        .args(["app", "create"])
+        .arg(&forged_app)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    let adopted = Command::new(env!("CARGO_BIN_EXE_lenso"))
+        .args(["app", "add", "example.linked-web@0.4.5", "--root"])
+        .arg(&forged_app)
+        .arg("--linked-snapshot")
+        .arg(snapshot)
+        .arg("--trust")
+        .arg(trust)
+        .arg("--bundle")
+        .arg(&mismatched)
+        .output()
+        .unwrap();
+    assert!(
+        adopted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&adopted.stderr)
+    );
+    let built = Command::new(env!("CARGO_BIN_EXE_lenso"))
+        .current_dir(root)
+        .args(["app", "build", "--root", "forged-app", "--out"])
+        .arg(root.join("forged-output"))
+        .output()
+        .unwrap();
+    assert!(!built.status.success());
+    assert!(
+        String::from_utf8_lossy(&built.stderr).contains("V6 Bundle Contract"),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+}
+
 #[test]
 fn ordinary_plugin_pack_emits_a_verified_native_cargo_input_from_exact_crate() {
     let root = tempfile::tempdir().unwrap();
-    let archive = package_archive(root.path());
+    let source = root.path().join("source");
+    fs::create_dir(&source).unwrap();
+    let archive = package_archive(&source);
     let output = root.path().join("release.lenso-plugin");
     let packed = Command::new(env!("CARGO_BIN_EXE_lenso"))
         .args(["plugin", "pack", "--repo-root"])
-        .arg(root.path())
+        .arg(&source)
         .arg("--linked-crate")
         .arg(&archive)
         .arg("--output")
@@ -199,6 +270,8 @@ fn ordinary_plugin_pack_emits_a_verified_native_cargo_input_from_exact_crate() {
     .unwrap();
     assert_eq!(source_lock["v6"]["implementation_id"], "native");
     assert_eq!(source_lock["v6"]["variant_id"], "cargo");
+
+    assert_mismatched_contract_fails_build(root.path(), &output, &snapshot, &trust);
 }
 
 #[test]

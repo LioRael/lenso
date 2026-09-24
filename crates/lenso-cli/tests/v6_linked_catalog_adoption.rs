@@ -101,7 +101,7 @@ fn bundle(
                 package: "example-web-plugin".to_owned(),
                 version: "0.4.5".to_owned(),
             },
-            entrypoint: "linked-factory".to_owned(),
+            entrypoint: "default".to_owned(),
             execution_class: ExecutionClassId::new("lenso.native-rust@1"),
             runtime_profile: runtime_profile.to_owned(),
             required_target_capabilities: Vec::new(),
@@ -305,6 +305,23 @@ fn v6_bundle_cargo_input_uses_exact_signed_release_and_host_build_path() {
     assert!(String::from_utf8_lossy(&added.stdout).contains("Host compilation"));
     assert_v6_adopted(cli, &app);
 
+    let lock_path = app.join("vendor/lenso/example.web/0.4.5/.lenso-linked-source.json");
+    let mut old_lock: serde_json::Value =
+        serde_json::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+    old_lock["v6"].as_object_mut().unwrap().remove("contract");
+    old_lock["v6"].as_object_mut().unwrap().remove("entrypoint");
+    fs::write(&lock_path, serde_json::to_vec_pretty(&old_lock).unwrap()).unwrap();
+    let upgraded = add(cli, &app, &snapshot, &trust, &bundle, "example.web@0.4.5");
+    assert!(
+        upgraded.status.success(),
+        "{}",
+        String::from_utf8_lossy(&upgraded.stderr)
+    );
+    let upgraded_lock: serde_json::Value =
+        serde_json::from_slice(&fs::read(&lock_path).unwrap()).unwrap();
+    assert_eq!(upgraded_lock["v6"]["contract"]["root_slot"], "tools");
+    assert_eq!(upgraded_lock["v6"]["entrypoint"], "default");
+
     // The catalog signs the .crate, not arbitrary Bundle metadata. A second
     // valid V6 wrapper around the same archive cannot silently replace the
     // previously reviewed exact variant selection.
@@ -383,6 +400,37 @@ fn v6_bundle_ignores_incompatible_linked_abi_before_ambiguity() {
         String::from_utf8_lossy(&added.stderr)
     );
     assert_v6_adopted(cli, &app);
+}
+
+#[test]
+fn v6_bundle_rejects_a_contract_root_slot_different_from_exact_crate() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let archive =
+        crate_archive("#[lenso::plugin(consumer)]\n#[derive(Clone, Debug)]\nstruct Core {}\n");
+    let (snapshot, trust) = signed_snapshot(root, &archive);
+    let bundle = bundle(
+        root,
+        &archive,
+        lenso_engine_authoring::native_host_target(),
+        "lenso.native-rust@1",
+        1,
+        &[],
+    );
+    let manifest_path = bundle.join(lenso_plugin_bundle::MANIFEST_FILE);
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+    manifest["contract"]["root_slot"] = "web".into();
+    fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    lenso_plugin_bundle::verify_bundle_directory(&bundle).unwrap();
+
+    let app = root.join("app");
+    create_app(cli, &app);
+    let rejected = add(cli, &app, &snapshot, &trust, &bundle, "example.web@0.4.5");
+    assert!(!rejected.status.success());
+    assert!(String::from_utf8_lossy(&rejected.stderr).contains("root Slot"));
+    assert_unmodified(&app);
 }
 
 #[test]

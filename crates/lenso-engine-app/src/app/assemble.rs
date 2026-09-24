@@ -237,6 +237,11 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
                     candidate.project.display()
                 );
             }
+            super::convention_authoring::linked_catalog::verify_native_descriptor(
+                &root,
+                &candidate,
+                &descriptor,
+            )?;
             inputs.push(LocalPluginInput {
                 descriptor,
                 manifest_digest: super::local_host::digest(&stage.path().join(".lenso/host"))?,

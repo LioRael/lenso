@@ -213,7 +213,7 @@ impl PreparedLinkedAdoption {
                 .context("linked Cargo source lock disappeared during adoption")?;
             if before != expected {
                 ensure!(
-                    before == super::legacy_source_lock_bytes(&expected)?,
+                    super::canonical_prior_source_lock_matches(&expected, &before)?,
                     "existing linked Cargo source lock differs from canonical prior adoption"
                 );
                 let mut staged = NamedTempFile::new_in(&self.destination)?;

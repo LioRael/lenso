@@ -156,8 +156,12 @@ and a changed archive lock fails source verification. When the archive has no lo
 Cargo may generate one locally without changing the signed source identity.
 For a V6 Bundle carrying the `.crate` as a `CargoBuildInput`, use mutually
 exclusive `--bundle release.lenso-plugin` instead of `--crate`. The Bundle
-closure, exact Contract, native-linked ABI, target, Cargo coordinate, size,
-and digest are checked against the same signed release before App files change.
+closure, Contract identity and root Slot, native-linked ABI, target, Cargo
+coordinate, size, and digest are checked against the exact signed `.crate`
+before App source selection changes. The full Bundle Contract and selected
+entrypoint are recorded in the source lock and compared with the compiled
+native Descriptor before Host resolution. `app add` never compiles the source;
+an older V6 lock without that Contract binding needs an exact signed retry.
 Other executable variants may coexist in the Bundle; they are not selected by
 this linked-Host adoption path. The Bundle is input evidence, not an alternate
 catalog signature or a runtime-loadable native Artifact.
