@@ -482,6 +482,7 @@ fn stdio_authorized_build_reports_the_same_app_check() {
         .args(["mcp", "--root"])
         .arg(&root)
         .arg("--allow-build")
+        .arg("--allow-changes")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -616,6 +617,49 @@ fn stdio_authorized_build_reports_the_same_app_check() {
     .unwrap();
     assert_eq!(actual_facts, expected_facts);
     assert_eq!(actual_facts["root"], final_status["output"]);
+
+    let source_configuration = root.join("plugins/local.starter/default.toml");
+    let generated_configuration = root.join("dist/intent/plugins/local.starter/default.toml");
+    let source_readme = root.join("README.md");
+    let generated_authority = root.join("dist/intent/.lenso/host-build.json");
+    let source_before = fs::read(&source_configuration).ok();
+    let generated_before = fs::read(&generated_configuration).ok();
+    let source_readme_before = fs::read(&source_readme).unwrap();
+    let generated_authority_before = fs::read(&generated_authority).unwrap();
+    let revision = &actual_facts["plugin_root_revision"];
+    for (id, name, arguments) in [
+        (
+            10,
+            "project_change_preview",
+            serde_json::json!({"base_revision":revision,"plugin_id":"local.starter","instance":"default","toml":"greeting = 'source-only'\n"}),
+        ),
+        (
+            11,
+            "project_selection_preview",
+            serde_json::json!({"base_revision":revision,"plugin_id":"local.starter","instance":"default","enabled":false}),
+        ),
+        (
+            12,
+            "project_change_apply",
+            serde_json::json!({"proposal_digest":"sha256:unknown","request_id":"source-app-must-not-publish"}),
+        ),
+    ] {
+        let rejected = call(
+            &mut stdin,
+            &mut stdout,
+            serde_json::json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":arguments}}),
+        );
+        let message = rejected["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("durable source plugins"), "{rejected}");
+        assert!(message.contains("dist/intent"), "{rejected}");
+    }
+    assert_eq!(fs::read(&source_configuration).ok(), source_before);
+    assert_eq!(fs::read(&generated_configuration).ok(), generated_before);
+    assert_eq!(fs::read(&source_readme).unwrap(), source_readme_before);
+    assert_eq!(
+        fs::read(&generated_authority).unwrap(),
+        generated_authority_before
+    );
 
     let invalid_scope = call(
         &mut stdin,

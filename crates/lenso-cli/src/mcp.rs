@@ -258,6 +258,7 @@ impl AppTools {
         &self,
         Parameters(request): Parameters<ProjectSelectionPreviewQuery>,
     ) -> Result<CallToolResult, McpError> {
+        self.require_local_change_authority()?;
         let preview = self
             .changes
             .preview_selection(
@@ -290,6 +291,7 @@ impl AppTools {
         &self,
         Parameters(request): Parameters<ProjectChangePreviewQuery>,
     ) -> Result<CallToolResult, McpError> {
+        self.require_local_change_authority()?;
         let preview = self
             .changes
             .preview(
@@ -328,6 +330,7 @@ impl AppTools {
                 None,
             ));
         }
+        self.require_local_change_authority()?;
         let result = self
             .changes
             .apply(&request.proposal_digest, &request.request_id)
@@ -634,6 +637,21 @@ impl AppTools {
         Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
 
+    fn require_local_change_authority(&self) -> Result<(), McpError> {
+        let control = change_root(&self.root).join(".lenso");
+        let has_authority = ["host-build.json", "host-catalog.json"].iter().any(|name| {
+            std::fs::symlink_metadata(control.join(name))
+                .is_ok_and(|metadata| metadata.file_type().is_file())
+        });
+        if !has_authority {
+            return Err(McpError::invalid_request(
+                "MCP change tools require a Plugin Root with local Host authority. For a source App, edit durable source plugins or use `lenso app add/unadopt`, then rebuild; generated dist/intent is not a durable source.",
+                None,
+            ));
+        }
+        Ok(())
+    }
+
     fn inspection_root(&self, scope: ProjectInspectionScope) -> Result<PathBuf, McpError> {
         if matches!(scope, ProjectInspectionScope::Root) || is_distribution_root(&self.root) {
             return Ok(self.root.clone());
@@ -657,6 +675,14 @@ fn is_distribution_root(root: &std::path::Path) -> bool {
         && ["host-build.json", "host-catalog.json"]
             .iter()
             .any(|name| root.join(".lenso").join(name).is_file())
+}
+
+fn change_root(root: &std::path::Path) -> PathBuf {
+    if root.join("intent").is_dir() && root.join(".lenso/host-build.json").is_file() {
+        root.join("intent")
+    } else {
+        root.to_path_buf()
+    }
 }
 
 fn build_result(status: &build::BuildStatus) -> Result<CallToolResult, McpError> {
@@ -786,12 +812,7 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
     if !root.is_dir() {
         anyhow::bail!("MCP App root must be a directory");
     }
-    let change_root =
-        if root.join("intent").is_dir() && root.join(".lenso/host-build.json").is_file() {
-            root.join("intent")
-        } else {
-            root.clone()
-        };
+    let change_root = change_root(&root);
     let service = AppTools {
         root,
         host_build: args.host_build,
