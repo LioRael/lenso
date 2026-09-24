@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -1140,6 +1141,9 @@ pub(super) fn input_digest(root: &Path) -> anyhow::Result<String> {
             for entry in fs::read_dir(path)? {
                 let entry = entry?;
                 let name = entry.file_name();
+                if entry.path().parent() == Some(root) && generated_distribution(&entry.path())? {
+                    continue;
+                }
                 if name.to_str().is_some_and(|name| {
                     [
                         ".git",
@@ -1198,6 +1202,79 @@ pub(super) fn input_digest(root: &Path) -> anyhow::Result<String> {
             .map(|b| format!("{b:02x}"))
             .collect::<String>()
     ))
+}
+
+fn generated_distribution(path: &Path) -> anyhow::Result<bool> {
+    if !fs::symlink_metadata(path)?.is_dir() {
+        return Ok(false);
+    }
+    let control = path.join(".lenso");
+    let Ok(metadata) = fs::symlink_metadata(&control) else {
+        return Ok(false);
+    };
+    if !metadata.is_dir() {
+        return Ok(false);
+    }
+    let lock_path = control.join("distribution.lock.json");
+    let authority_path = control.join("host-build.json");
+    let Some(lock_bytes) = distribution_marker(&lock_path, 8 * 1024 * 1024)? else {
+        return Ok(false);
+    };
+    let Some(authority_bytes) = distribution_marker(&authority_path, 64 * 1024 * 1024)? else {
+        return Ok(false);
+    };
+    let Ok(lock) = serde_json::from_slice::<Value>(&lock_bytes) else {
+        return Ok(false);
+    };
+    let runtime = match lock["schema"].as_str() {
+        Some("lenso.local-host-distribution.v1") => ".lenso/host",
+        Some("lenso.host-distribution.v1") => "runtime/lenso-host-runtime",
+        _ => return Ok(false),
+    };
+    let Some(files) = lock["files"].as_array() else {
+        return Ok(false);
+    };
+    let Some(app_id) = lock["app_id"].as_str() else {
+        return Ok(false);
+    };
+    if files.len() > 2048
+        || !files.iter().any(|file| {
+            file["path"] == ".lenso/host-build.json" && file["role"] == "host_authority"
+        })
+        || !files
+            .iter()
+            .any(|file| file["path"] == runtime && file["role"] == "host_runtime")
+    {
+        return Ok(false);
+    }
+    match fs::symlink_metadata(path.join(runtime)) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => return Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    }
+    let Ok(authority) = serde_json::from_slice::<
+        lenso_app_authoring::host_authoring::GeneratedHostBuild,
+    >(&authority_bytes) else {
+        return Ok(false);
+    };
+    Ok(authority.host_id() == app_id && authority.validate().is_ok())
+}
+
+fn distribution_marker(path: &Path, max_bytes: u64) -> anyhow::Result<Option<Vec<u8>>> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Ok(None);
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(max_bytes + 1)
+        .read_to_end(&mut bytes)?;
+    Ok((bytes.len() as u64 <= max_bytes).then_some(bytes))
 }
 
 /// Existing dependency locks are authoritative build inputs. A first build may
@@ -1600,6 +1677,58 @@ mod tests {
 
         std::fs::write(root.path().join("src.rs"), b"real source edit").unwrap();
         assert_ne!(input_digest(root.path()).unwrap(), before);
+    }
+
+    #[test]
+    fn completed_distribution_does_not_count_as_app_source() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("source.rs"), b"authored source").unwrap();
+        let before = input_digest(root.path()).unwrap();
+
+        let distribution = root.path().join("dist-review");
+        std::fs::create_dir_all(distribution.join(".lenso")).unwrap();
+        std::fs::create_dir(distribution.join("runtime")).unwrap();
+        let host_build = lenso_app_authoring::host_authoring::GeneratedHostBuild::lower_local(
+            "local.app",
+            vec![],
+        )
+        .unwrap();
+        std::fs::write(
+            distribution.join(".lenso/host-build.json"),
+            serde_json::to_vec(&host_build).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(distribution.join(".lenso/host"), b"host").unwrap();
+        std::fs::File::create(distribution.join("runtime/lenso-resolver"))
+            .unwrap()
+            .set_len(257 * 1024 * 1024)
+            .unwrap();
+        std::fs::write(
+            distribution.join(".lenso/distribution.lock.json"),
+            serde_json::to_vec(&json!({
+                "schema": "lenso.local-host-distribution.v1",
+                "app_id": "local.app",
+                "files": [
+                    {"path": ".lenso/host-build.json", "role": "host_authority"},
+                    {"path": ".lenso/host", "role": "host_runtime"},
+                    {"path": "runtime/lenso-resolver", "role": "runtime_resolver"}
+                ]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(input_digest(root.path()).unwrap(), before);
+
+        std::fs::write(root.path().join("source.rs"), b"changed source").unwrap();
+        assert_ne!(input_digest(root.path()).unwrap(), before);
+
+        std::fs::remove_file(distribution.join(".lenso/distribution.lock.json")).unwrap();
+        assert!(
+            input_digest(root.path())
+                .unwrap_err()
+                .to_string()
+                .contains("source input exceeds 256 MiB")
+        );
     }
 
     #[test]
