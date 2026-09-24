@@ -61,14 +61,14 @@ impl CrashFence {
         Ok(())
     }
 
-    fn clear_after_confirmed_stop(&mut self) -> anyhow::Result<()> {
+    fn clear_after_failed_spawn(&mut self) -> anyhow::Result<()> {
         ensure!(self.marked, "supervised start crash fence was not marked");
         let metadata = fs::symlink_metadata(&self.path)?;
         ensure!(
             metadata.file_type().is_file()
                 && metadata.len() == u64::try_from(UNCERTAIN_RECEIPT.len())?
                 && fs::read(&self.path)? == UNCERTAIN_RECEIPT,
-            "supervised start crash fence changed while Host was running"
+            "supervised start crash fence changed after staging"
         );
         fs::remove_file(&self.path)?;
         fs::File::open(
@@ -148,15 +148,11 @@ pub(super) async fn run(
                     return Err(error).context("watch supervised App shutdown signal");
                 }
                 stop_group(&mut active.child, active.group_id).await?;
-                crash_fence.clear_after_confirmed_stop()?;
                 return Ok(());
             }
             status = wait_for_exit_unreaped(&mut active.child, active.group_id) => {
                 let exit = kill_group(&mut active.child, active.group_id).await?;
                 status?;
-                if exit.success() {
-                    crash_fence.clear_after_confirmed_stop()?;
-                }
                 bail!("supervised App exited: {exit}");
             }
             _ = tokio::time::sleep_until(next_policy_check) => {
@@ -296,7 +292,7 @@ async fn launch(
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
-            crash_fence.clear_after_confirmed_stop()?;
+            crash_fence.clear_after_failed_spawn()?;
             return Err(error).context("start supervised local Host");
         }
     };
@@ -587,6 +583,30 @@ mod tests {
 
     use super::*;
 
+    struct DetachedTestChild(i32);
+
+    impl Drop for DetachedTestChild {
+        fn drop(&mut self) {
+            let Ok(output) = StdCommand::new("ps")
+                .args(["-o", "pgid=,command=", "-p", &self.0.to_string()])
+                .output()
+            else {
+                return;
+            };
+            let process = String::from_utf8_lossy(&output.stdout);
+            let mut fields = process.split_whitespace();
+            let group = self.0.to_string();
+            if fields.next() == Some(group.as_str())
+                && process.contains("detached_descendant_helper")
+            {
+                let _ = nix::sys::signal::kill(
+                    nix::unistd::Pid::from_raw(self.0),
+                    nix::sys::signal::Signal::SIGKILL,
+                );
+            }
+        }
+    }
+
     fn fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path();
@@ -809,7 +829,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn confirmed_host_stop_allows_a_new_supervised_start() {
+    async fn clean_host_exit_still_requires_manual_recovery_before_restart() {
         use nix::{sys::signal::Signal, unistd::Pid};
 
         let (temporary, snapshot, policy) = fixture();
@@ -842,29 +862,113 @@ mod tests {
             .unwrap()
             .unwrap_err();
         assert!(first_result.to_string().contains("supervised App exited"));
-        assert!(!root.join(".lenso/supervised-start.uncertain").exists());
+        assert!(root.join(".lenso/supervised-start.uncertain").is_file());
+        let retry = run(root, policy, None).await.unwrap_err();
+        assert!(retry.to_string().contains("unconfirmed"), "{retry:#}");
+    }
 
-        let second_ready = root.join("second-supervisor-ready");
-        let second = tokio::spawn(run(root.clone(), policy, Some(second_ready.clone())));
+    #[tokio::test]
+    async fn failed_spawn_without_child_clears_uncertain_fence() {
+        let (temporary, _snapshot, policy) = fixture();
+        let root = temporary.path();
+        let host = root.join(".lenso/host");
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o600)).unwrap();
+        let error = run(root.to_path_buf(), policy, None).await.unwrap_err();
+        assert!(error.to_string().contains("start supervised local Host"));
+        assert!(!root.join(".lenso/supervised-start.uncertain").exists());
+    }
+
+    #[test]
+    fn detached_descendant_helper() {
+        let Some(pid_file) = std::env::var_os("LENSO_TEST_DETACHED_PID_FILE") else {
+            return;
+        };
+        assert!(unsafe { nix::libc::setsid() } > 0);
+        fs::write(pid_file, std::process::id().to_string()).unwrap();
+        std::thread::sleep(Duration::from_secs(20));
+    }
+
+    #[tokio::test]
+    async fn clean_host_exit_cannot_clear_fence_for_detached_descendant() {
+        use nix::{sys::signal::Signal, unistd::Pid};
+
+        let (temporary, snapshot, policy) = fixture();
+        let root = temporary.path().to_path_buf();
+        write_policy(&policy, &snapshot, 10);
+        let test_binary = std::env::current_exe().unwrap();
+        let quoted_binary = test_binary.to_string_lossy().replace('\'', "'\\''");
+        let host = root.join(".lenso/host");
+        let script = format!(
+            "#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname \"$0\")/..\" && pwd)\ntrap 'exit 0' TERM\nif [ ! -f \"$root/previous-pid\" ]; then\n  LENSO_TEST_DETACHED_PID_FILE=\"$root/detached-pid\" '{quoted_binary}' --exact app::local_start::tests::detached_descendant_helper >/dev/null 2>&1 &\n  tries=0\n  while [ ! -s \"$root/detached-pid\" ]; do\n    tries=$((tries + 1))\n    [ \"$tries\" -lt 200 ] || exit 1\n    sleep 0.01\n  done\nfi\nwhile [ \"$1\" != --ready-file ]; do shift; done\nprintf '%s' \"$$\" > \"$root/previous-pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\nwhile :; do sleep 0.1; done\n"
+        );
+        fs::write(&host, script).unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
+        let ready = root.join("supervisor-ready");
+        let supervised = tokio::spawn(run(root.clone(), policy.clone(), Some(ready.clone())));
         tokio::time::timeout(Duration::from_secs(5), async {
-            while !second_ready.is_file() {
+            while !ready.is_file() {
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
         })
         .await
         .unwrap();
-        let second_pid: i32 = fs::read_to_string(root.join("previous-pid"))
+        let host_pid: i32 = fs::read_to_string(root.join("previous-pid"))
             .unwrap()
             .parse()
             .unwrap();
-        nix::sys::signal::kill(Pid::from_raw(second_pid), Signal::SIGTERM).unwrap();
-        let second_result = tokio::time::timeout(Duration::from_secs(4), second)
+        let detached_pid: i32 = fs::read_to_string(root.join("detached-pid"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        let detached_guard = DetachedTestChild(detached_pid);
+        nix::sys::signal::kill(Pid::from_raw(host_pid), Signal::SIGTERM).unwrap();
+        let first = tokio::time::timeout(Duration::from_secs(4), supervised)
             .await
-            .expect("second supervisor should observe clean Host exit")
+            .expect("supervisor should observe clean Host exit")
             .unwrap()
             .unwrap_err();
-        assert!(second_result.to_string().contains("supervised App exited"));
-        assert!(!root.join(".lenso/supervised-start.uncertain").exists());
+        assert!(first.to_string().contains("supervised App exited"));
+
+        let observed = StdCommand::new("ps")
+            .args([
+                "-o",
+                "state=,pgid=,command=",
+                "-p",
+                &detached_pid.to_string(),
+            ])
+            .output()
+            .unwrap();
+        let process = String::from_utf8_lossy(&observed.stdout);
+        let mut fields = process.split_whitespace();
+        let state = fields.next().unwrap_or_default();
+        let group = fields.next().unwrap_or_default();
+        let owned = !state.starts_with('Z')
+            && group == detached_pid.to_string()
+            && process.contains("detached_descendant_helper");
+        let retry =
+            tokio::time::timeout(Duration::from_secs(1), run(root.clone(), policy, None)).await;
+        assert!(owned, "expected detached test child still live: {process}");
+        let retry = retry
+            .expect("second start should be rejected promptly")
+            .expect_err("second start must not launch with detached child live");
+        assert!(retry.to_string().contains("unconfirmed"), "{retry:#}");
+        assert!(root.join(".lenso/supervised-start.uncertain").is_file());
+        drop(detached_guard);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let output = StdCommand::new("ps")
+                    .args(["-o", "state=", "-p", &detached_pid.to_string()])
+                    .output()
+                    .unwrap();
+                let state = String::from_utf8_lossy(&output.stdout);
+                if state.trim().is_empty() || state.trim().starts_with('Z') {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .expect("detached test child remained live after cleanup");
     }
 
     #[tokio::test]

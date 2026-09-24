@@ -49,17 +49,22 @@ Without a policy, `app start` retains its ordinary one-shot behavior.
 
 Only one supervised `app start` may own a built distribution at a time. Before
 starting a Host, the supervisor durably writes
-`dist/.lenso/supervised-start.uncertain`; it removes that marker only after the
-Host exits cleanly through cooperative shutdown and its process group is
-confirmed stopped. A supervisor crash, hard kill, expiry, revocation, or
-abnormal Host exit leaves the marker. A subsequent supervised start refuses to
-run even though its session lock was released. This is a fail-closed crash
+`dist/.lenso/supervised-start.uncertain`. Once a Host has been spawned, the
+marker remains even after a clean Host exit or normal supervisor shutdown:
+the Host process group cannot prove that a Plugin or descendant did not start
+a process in a separate group or session. Only a failed spawn that created no
+Host clears the marker automatically. A subsequent supervised start refuses
+to run even though its session lock was released. This is a fail-closed crash
 fence, not a rollback of side effects the Host may already have performed.
 To recover, first verify that **every Host process and descendant for this
 exact distribution** has stopped; checking only the former leader PID is
 insufficient. Then manually remove the marker and restart. The CLI does not
 automatically kill processes identified only by an old PID or clear an
 uncertain marker.
+
+Automatic restart after a normal stop is also a remaining W4 capability gap.
+Do not treat exit status zero or the absence of the former Host process group
+as proof that all descendants are gone.
 
 `lenso app config-sync --root dist --policy /etc/my-app/policy.json` performs
 only source reconciliation, without starting the Host. Inspect the runtime App with
