@@ -7,6 +7,8 @@ license.workspace = true
 publish = true
 repository.workspace = true
 rust-version.workspace = true
+# These integration tests use unpublished workspace fixtures.
+exclude = ["tests/repository_web_host.rs", "tests/simulated_web_host.rs"]
 
 [dependencies]
 bytes = "1"

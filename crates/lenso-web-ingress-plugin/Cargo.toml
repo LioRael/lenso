@@ -7,7 +7,14 @@ license.workspace = true
 publish = true
 repository.workspace = true
 rust-version.workspace = true
-exclude = ["tests/repository_ownership.rs"]
+# These integration tests use unpublished workspace fixtures.
+exclude = [
+    "tests/repository_ownership.rs",
+    "tests/http_parity.rs",
+    "tests/plugin_query_endpoint.rs",
+    "tests/portable_http_component.rs",
+    "tests/websocket.rs",
+]
 
 [package.metadata.lenso]
 plugin-id = "lenso.web-ingress"
