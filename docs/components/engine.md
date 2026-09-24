@@ -73,26 +73,36 @@ The MCP server accepts the same optional `--host-build` when its fixed root is
 external to the distribution. Both paths use the same resolver-backed facts
 projection and omit configuration values.
 
-The server fixes one App root for its lifetime and exposes read-only
-`project_facts` and `project_explain` tools. `project_explain` requires a built
-Host root containing the persisted bundle inventory and returns the same
-`lenso.app-explain.v1` projection as `app explain --json`; `--host-build` for an
-external Plugin Root applies only to `project_facts`. Neither tool mutates an
-App, starts a Host, or infers runtime readiness. These tools are not the
-complete Agent operation set (create, change, build, run, diagnose, and publish).
+The server fixes one App root for its lifetime. Without permission flags,
+`project_facts`, `project_explain`, and `project_check` inspect it without
+changing files. `project_explain` requires a built Host root containing the
+persisted bundle inventory and returns the same `lenso.app-explain.v1`
+projection as `app explain --json`; `project_check` uses the same resolver as
+`app check --json`. The `--host-build` option for an external Plugin Root
+applies only to `project_facts`. Selection and configuration previews do not
+publish changes and require local Host authority. Inspection does not infer
+runtime readiness.
 
 An opt-in `lenso mcp --root APP --linked-snapshot SNAPSHOT --trust TRUST` also
 exposes `linked_catalog`. It reads the same signed source-only candidate
 projection as `app linked-catalog`, with a query, target, offset, page limit of
 20, and bounded output. It neither downloads a crate nor claims unverified
 permissions, dependency compatibility, or runtime readiness.
-Catalog and document inspection remain stateless; only `app add` stores an
-App-local accepted-catalog checkpoint, and neither path discovers revocations
-without a newer signed snapshot.
+Catalog and document inspection remain stateless. `app add` and opt-in MCP
+linked adoption store an App-local accepted-catalog checkpoint; neither
+inspection path discovers revocations without a newer signed snapshot.
 Add `--allow-document-fetch` only when the MCP client may contact signed
 third-party HTTPS documentation URLs. The `linked_document` tool verifies the
 exact release, document revision, size, and digest before returning a bounded
 Markdown chunk marked as untrusted data.
+
+`--allow-changes` enables reviewed Plugin Root proposal application and exact
+linked Cargo adoption or withdrawal. Adoption also requires a fixed
+`--linked-snapshot`, `--trust`, and `--linked-crate` at server startup, and a
+separate build and check before use. `--allow-build` enables bounded App build,
+status, and cancellation tools. `--allow-run` enables start, status, and stop
+for a built App, with readiness reported from that run. These operations use
+client request IDs; none publishes a release or deploys an App.
 
 ```rust,ignore
 lenso_engine_app::app::create_empty(project.clone())?;
