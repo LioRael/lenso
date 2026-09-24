@@ -12,9 +12,13 @@ it does not imply a socket host or Tokio runtime.
 
 Create a new `WebIngressEventFactory` per event App, register a clone alongside
 explicit Endpoint factories, and boot the resolved Plan with the host's Driver.
-Call `handle(http::Request<bytes::Bytes>, CancellationToken)` after Ready. It
-returns `Result<http::Response<bytes::Bytes>, RuntimeFailure>`. Then drain and
-shut down the event App with the Runner's bounded shutdown mechanism.
+For buffered responses, call
+`handle(http::Request<bytes::Bytes>, CancellationToken)` after Ready; it
+returns `Result<http::Response<bytes::Bytes>, RuntimeFailure>`. For Stream or
+WebSocket routes, call `handle_response` instead and retain the event App until
+the returned body or session terminates. Then drain and shut down the App with
+the Runner's bounded shutdown mechanism. `handle` does not collect a streaming
+response into bytes.
 
 The factory rejects a second instantiation: a new event or generation needs a
 fresh factory, credentials, cancellation token and request-ID sequence. Calling
@@ -34,9 +38,10 @@ The host must:
 - Preserve multiple Set-Cookie response values. Serialize bodyless responses
   without supplying a body to Fetch `Response` for HEAD, 204 and 304.
 - Bind cancellation to the event-owned I/O scope, bound response serialization
-  and run bounded shutdown. The existing Endpoint schema has no response size
-  ceiling; this seam does not invent one or claim that a buffered body is bounded
-  by the schema. Hosts requiring a response cap must declare their policy.
+  and run bounded shutdown after any Stream or WebSocket session closes. The
+  buffered Endpoint schema has no response size ceiling; this seam does not
+  invent one or claim that a buffered body is bounded by the schema. Hosts
+  requiring a response cap must declare their policy.
 
 `ingress.rs` owns credential isolation, ingress-owned header filtering,
 request-ID replacement, middleware wrapping, error projection and response
@@ -53,8 +58,8 @@ not change the active event's middleware.
 | Native defaults | Existing `WebIngressFactory`, descriptor and configuration defaults remain available |
 | TCP, keepalive, head/body reads | Native listener owns these; an event host owns its platform reads and has no listener |
 | Buffered HTTP | Same generated `lenso.http.endpoint@1` descriptor version 1.1.0 and byte bodies |
-| Streaming | Native support remains; event activation rejects any Stream Endpoint binding |
-| CONNECT / Upgrade | Shared dispatch rejects unsupported upgrades/tunnels with 501 |
+| Streaming | Event ingress binds Stream Endpoint providers; `handle_response` returns a pull-based response stream, while buffered `handle` rejects a streaming result without collecting it |
+| CONNECT / Upgrade | CONNECT and Upgrade without an explicit WebSocket policy return 501; an authorized WebSocket route uses the shared handshake and `handle_response` session, subject to Host transport support |
 | Raw paths | Passed unchanged to existing matchit routing, including percent escapes; no second decoding pass |
 | Malformed percent escapes | Existing router treats `%ZZ` literally; the host URL parser may reject/normalize before Rust |
 | Repeated headers | HeaderMap preserves host-exposed entries; Fetch may combine ordinary fields and restrict methods/headers |
@@ -73,8 +78,8 @@ values. Additional tests cover event body limits, deadlines, cancellation,
 readiness admission and clean shutdown. Existing native auth, streaming,
 replication and HTTP regressions remain required.
 
-A successful Wasm compile and the native event harness do not qualify real
-Workers. The Runtime owner's G2 probe must run the corpus on local workerd and a
-deployed Worker, record edge/Fetch normalization restrictions, and demonstrate
-actual event cancellation and cleanup. Auth/Marketplace portability remains a
-separate qualification gate.
+A successful Wasm compile and the native event harness do not qualify the
+current Workers Host. Target claims need receipts for the exact build on local
+workerd and a deployed Worker, with edge/Fetch normalization restrictions and
+actual event cancellation and cleanup recorded. Auth/Marketplace portability
+remains a separate qualification gate.
