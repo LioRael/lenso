@@ -255,6 +255,16 @@ lenso run
 
 Configuration lives at `plugins/<plugin-id>/<instance>.toml`; an empty file
 enables package defaults. `<instance>.disabled` is the explicit absence marker.
+The `plugins disable/enable` commands validate against a built Host authority,
+so point `--root` at a built distribution, not its source App. To change an
+App-owned source Plugin before rebuilding, first confirm its exact identity with
+`lenso app discover --root SOURCE`. Add a zero-byte regular (not symlink)
+`SOURCE/plugins/<plugin-id>/<instance>.disabled` file to disable it, or remove
+that file to re-enable it. Do not use this source path for Host defaults. Then
+run `lenso app build --root SOURCE --out NEW_DIST`, followed by `app check` and
+`app show` against `NEW_DIST`; the previous distribution is unchanged. To run
+a changed built Plugin Root, use `lenso app start --from DIST --root DIST`;
+plain `--from DIST` uses its immutable build intent.
 Optional structured files live beside it under
 `plugins/<plugin-id>/<instance>/`; `app check` validates the bounded regular-file
 tree before the Host snapshots it into a Generation.

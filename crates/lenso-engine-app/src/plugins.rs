@@ -470,6 +470,12 @@ fn enable(args: InstanceArgs) -> anyhow::Result<()> {
 
 fn set_disabled(args: InstanceArgs, disabled_state: bool) -> anyhow::Result<()> {
     let root = project_root(args.root)?;
+    if source_app_without_host_authority(&root)? {
+        bail!(
+            "source App has no Host authority at {}; `lenso plugins disable/enable` validates a built Plugin Root and cannot change source intent. Run `lenso app discover --root <source>` to confirm the exact App-owned Plugin, then create (disable) or remove (enable) its zero-byte regular `plugins/<plugin-id>/<instance>.disabled` source marker. Run `lenso app build`, then `lenso app check` and `lenso app show` on the new distribution. For an already built distribution, use `--root <dist>`; do not use source markers for Host defaults",
+            root.join(".lenso/host-build.json").display()
+        );
+    }
     set_instance_disabled(&root, &args.plugin_id, &args.instance, disabled_state)?;
     let id = PluginInstanceId::new(&args.plugin_id, &args.instance);
     if disabled_state {
@@ -478,6 +484,22 @@ fn set_disabled(args: InstanceArgs, disabled_state: bool) -> anyhow::Result<()> 
         println!("Enabled Plugin Instance `{id}`.");
     }
     Ok(())
+}
+
+fn source_app_without_host_authority(root: &Path) -> anyhow::Result<bool> {
+    Ok(authority_absent(&root.join(".lenso/host-build.json"))?
+        && authority_absent(&root.join(".lenso/host-catalog.json"))?
+        && (root.join("app").is_dir() || root.join("lenso.toml").is_file()))
+}
+
+fn authority_absent(path: &Path) -> anyhow::Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(false),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => {
+            Err(error).with_context(|| format!("inspect Host authority {}", path.display()))
+        }
+    }
 }
 
 fn remove(args: RemoveArgs) -> anyhow::Result<()> {
