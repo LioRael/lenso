@@ -68,6 +68,23 @@ fn write_generated_host_file(path: &Path, contents: &[u8]) -> anyhow::Result<()>
         .with_context(|| format!("write generated Host file {}", path.display()))
 }
 
+fn contract_dependency_alias(
+    capability: &str,
+    index: usize,
+    dependency: &Value,
+    web_contract: Option<&Value>,
+) -> anyhow::Result<String> {
+    if capability == "lenso.http.endpoint@1" {
+        if let Some(web_contract) = web_contract {
+            if web_contract != dependency {
+                bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
+            }
+            return Ok("local-web-contract".into());
+        }
+    }
+    Ok(format!("local_contract_{index}"))
+}
+
 pub(super) fn generate(
     stage: &Path,
     cache: &Path,
@@ -373,7 +390,8 @@ pub(super) fn generate(
     let mut terminal_aliases = BTreeMap::new();
     let mut register = format!("let typed = std::collections::BTreeSet::<&str>::from([{ids}]);\n");
     for (index, (capability, (_, dependency))) in codecs.into_iter().enumerate() {
-        let alias = format!("local_contract_{index}");
+        let alias =
+            contract_dependency_alias(&capability, index, &dependency, web_contract.as_ref())?;
         dependencies.insert(alias.clone(), dependency);
         if capability == "lenso.terminal.command@1"
             || capability == "lenso.terminal.command-provider@1"
@@ -455,7 +473,11 @@ pub(super) fn generate(
     }
     let web = web_contract.is_some();
     if let Some(contract) = web_contract {
-        dependencies.insert("local-web-contract".into(), contract.clone());
+        if let Some(previous) = dependencies.insert("local-web-contract".into(), contract.clone()) {
+            if previous != contract {
+                bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
+            }
+        }
         // A Git-pinned Endpoint contract must bring the matching Ingress from
         // that exact Web source too. Otherwise Cargo may select a registry
         // Ingress with incompatible Host/Kernel identities.
@@ -1358,11 +1380,46 @@ mod tests {
 
     use super::{
         AdapterSet, GitLensoSources, collect_git_lenso_source, collect_local_lenso_patch,
-        dependency, dependency_lock_digests, input_digest, local_framework_crates_dir,
-        local_framework_dependency, merge_lenso_patches, pin_host_framework_versions,
-        verify_dependency_lock_digests, verify_git_lenso_lock, web_ingress_dependency,
-        write_generated_host_file,
+        contract_dependency_alias, dependency, dependency_lock_digests, input_digest,
+        local_framework_crates_dir, local_framework_dependency, merge_lenso_patches,
+        pin_host_framework_versions, verify_dependency_lock_digests, verify_git_lenso_lock,
+        web_ingress_dependency, write_generated_host_file,
     };
+
+    #[test]
+    fn generated_host_reuses_web_contract_alias_for_endpoint_codec() {
+        let web_contract = json!({
+            "package": "lenso-capability-http-endpoint",
+            "path": "/framework/lenso/crates/lenso-capability-http-endpoint"
+        });
+        let alias = contract_dependency_alias(
+            "lenso.http.endpoint@1",
+            1,
+            &web_contract,
+            Some(&web_contract),
+        )
+        .unwrap();
+        assert_eq!(alias, "local-web-contract");
+
+        let mut dependencies = BTreeMap::new();
+        dependencies.insert(alias, web_contract.clone());
+        dependencies.insert("local-web-contract".to_owned(), web_contract.clone());
+        assert_eq!(dependencies.len(), 1);
+
+        assert_eq!(
+            contract_dependency_alias("lenso.http.endpoint@1", 1, &web_contract, None).unwrap(),
+            "local_contract_1"
+        );
+        assert!(
+            contract_dependency_alias(
+                "lenso.http.endpoint@1",
+                1,
+                &json!({"package": "lenso-capability-http-endpoint", "version": "0.3.4"}),
+                Some(&web_contract),
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn generated_host_patches_selected_git_framework_for_registry_transitives() {
