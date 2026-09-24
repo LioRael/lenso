@@ -155,18 +155,11 @@ fn assert_external_source_bootstraps_before_start(cli: &str, distribution: &std:
         "source": {"type": "file", "path": source},
         "objects": [{"plugin_id": "example.web", "instance_key": "default", "fields": ["unused"]}]
     })).unwrap()).unwrap();
-    let started = Command::new(cli)
-        .args(["app", "start", "--from"])
-        .arg(distribution)
-        .arg("--configuration-policy")
-        .arg(&policy)
-        .arg("--check")
-        .output()
-        .unwrap();
+    let synced = sync_external_snapshot(cli, distribution, &policy);
     assert!(
-        started.status.success(),
+        synced.status.success(),
         "{}",
-        String::from_utf8_lossy(&started.stderr)
+        String::from_utf8_lossy(&synced.stderr)
     );
     assert!(
         distribution
@@ -177,7 +170,7 @@ fn assert_external_source_bootstraps_before_start(cli: &str, distribution: &std:
     let state: serde_json::Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
     assert!(
         state.get("last_activated").is_none(),
-        "--check must not claim activation"
+        "config-sync must not claim Host activation"
     );
     let report = config_status(cli, distribution);
     assert_eq!(report["state"], "pending_activation");
@@ -282,8 +275,45 @@ fn start_and_observe_activation(
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    host.kill().unwrap();
-    host.wait().unwrap();
+    #[cfg(unix)]
+    {
+        nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(i32::try_from(host.id()).unwrap()),
+            nix::sys::signal::Signal::SIGTERM,
+        )
+        .unwrap();
+        let shutdown_deadline = Instant::now() + Duration::from_secs(15);
+        let status = loop {
+            if let Some(status) = host.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= shutdown_deadline {
+                host.kill().unwrap();
+                host.wait().unwrap();
+                panic!("supervised Host did not shut down after SIGTERM");
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        };
+        assert!(
+            status.success(),
+            "supervised Host did not stop cleanly: {status}"
+        );
+        // The controlled fixture has no independently grouped descendants.
+        // Clear its conservative crash fence only after the supervisor proves
+        // that its Host process group has stopped, before the next revision.
+        let fence = distribution.join(".lenso/supervised-start.uncertain");
+        assert!(fs::symlink_metadata(&fence).unwrap().file_type().is_file());
+        assert_eq!(
+            fs::read(&fence).unwrap(),
+            b"lenso.supervised-start-uncertain.v1\n"
+        );
+        fs::remove_file(fence).unwrap();
+    }
+    #[cfg(not(unix))]
+    {
+        host.kill().unwrap();
+        host.wait().unwrap();
+    }
 }
 
 fn config_status(cli: &str, distribution: &std::path::Path) -> serde_json::Value {
