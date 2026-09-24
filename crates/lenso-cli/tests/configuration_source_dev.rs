@@ -2,6 +2,8 @@
 
 use std::{
     fs::{self, File},
+    io::{Read as _, Write as _},
+    net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     time::{Duration, Instant},
@@ -55,6 +57,50 @@ fn write_snapshot(path: &Path, revision: u64, toml: &str) {
         .unwrap(),
     )
     .unwrap();
+}
+
+fn write_openapi_snapshot(path: &Path, revision: u64, toml: &str) {
+    fs::write(
+        path,
+        serde_json::to_vec(&serde_json::json!({
+            "schema": "lenso.plugin-configuration-snapshot.v1",
+            "revision": revision,
+            "configurations": [{
+                "plugin_id": "lenso.openapi", "instance_key": "default", "toml": toml
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+}
+
+fn openapi_title(log: &Path) -> String {
+    let output = fs::read_to_string(log).unwrap();
+    let address: SocketAddr = output
+        .lines()
+        .rev()
+        .find_map(|line| line.strip_prefix("Listening on http://"))
+        .and_then(|address| address.strip_suffix('/'))
+        .unwrap_or_else(|| panic!("App has no Web listener: {output}"))
+        .parse()
+        .unwrap();
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(2)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    write!(
+        stream,
+        "GET /openapi.json HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    let (head, body) = response.split_once("\r\n\r\n").unwrap();
+    assert!(head.starts_with("HTTP/1.1 200"), "{response}");
+    serde_json::from_str::<serde_json::Value>(body).unwrap()["info"]["title"]
+        .as_str()
+        .unwrap()
+        .to_owned()
 }
 
 fn generations(source: &Path) -> Vec<PathBuf> {
@@ -280,6 +326,86 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     assert_eq!(state["desired"]["revision"], 3);
     assert_eq!(state["last_activated"]["revision"], 3);
     assert!(dev.0.try_wait().unwrap().is_none());
+    assert!(
+        dev.stop(),
+        "App development supervisor did not stop cleanly"
+    );
+}
+
+#[test]
+fn external_configuration_changes_the_running_apps_openapi_title_without_a_rebuild() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("source");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let added = Command::new(cli)
+        .args(["app", "add", "@lenso/openapi", "--root"])
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(
+        added.status.success(),
+        "{}",
+        String::from_utf8_lossy(&added.stderr)
+    );
+
+    let snapshot = temporary.path().join("snapshot.json");
+    let policy = temporary.path().join("policy.json");
+    let log = temporary.path().join("dev.log");
+    write_openapi_snapshot(&snapshot, 1, "title = 'First API'\n");
+    fs::write(
+        &policy,
+        serde_json::to_vec(&serde_json::json!({
+            "schema": "lenso.configuration-source-policy.v1",
+            "source_reference": "openapi-development",
+            "source": {"type": "file", "path": snapshot},
+            "objects": [{
+                "plugin_id": "lenso.openapi", "instance_key": "default", "fields": ["title"]
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let mut dev = DevGuard(
+        Command::new(cli)
+            .args(["app", "dev", "--root"])
+            .arg(&source)
+            .arg("--configuration-policy")
+            .arg(&policy)
+            .args(["--configuration-poll-seconds", "1"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(File::create(&log).unwrap()))
+            .spawn()
+            .unwrap(),
+    );
+
+    let first = await_revision(&source, &mut dev.0, 1, &log);
+    assert_eq!(openapi_title(&log), "First API");
+
+    write_openapi_snapshot(&snapshot, 2, "title = 'Second API'\n");
+    assert_eq!(await_revision(&source, &mut dev.0, 2, &log), first);
+    assert_eq!(openapi_title(&log), "Second API");
+    assert_eq!(generations(&source), vec![first.clone()]);
+
+    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
+    write_openapi_snapshot(&snapshot, 3, "title = 'Rejected API'\nversion = '2.0.0'\n");
+    await_source_outage(&mut dev.0, &log, log_offset);
+    assert_eq!(openapi_title(&log), "Second API");
+    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
+    write_openapi_snapshot(&snapshot, 1, "title = 'Stale API'\n");
+    await_source_outage(&mut dev.0, &log, log_offset);
+    let active = await_revision(&source, &mut dev.0, 2, &log);
+    assert_eq!(active, first);
+    assert_eq!(openapi_title(&log), "Second API");
     assert!(
         dev.stop(),
         "App development supervisor did not stop cleanly"
