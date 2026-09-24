@@ -1,6 +1,6 @@
 use super::scaffold::{
-    LENSO_FRAMEWORK_REVISION, bun_plugin_scaffold, create, multi_plugin_scaffold, plugin_scaffold,
-    process_plugin_scaffold, web_plugin_scaffold,
+    bun_plugin_scaffold, create, multi_plugin_scaffold, plugin_scaffold, process_plugin_scaffold,
+    web_plugin_scaffold,
 };
 use super::*;
 use std::process::Command;
@@ -144,17 +144,24 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
 
     assert!(manifest.contains("plugin-id = \"company.greetings-http\""));
     assert!(manifest.contains("root-slot = \"web\""));
-    assert!(manifest.contains("lenso-capability-http-endpoint"));
-    assert!(manifest.contains("version = \"0.3.4\""));
-    assert!(manifest.contains("lenso = { version = \"=0.5.26\""));
-    assert!(manifest.contains(LENSO_FRAMEWORK_REVISION));
-    assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.5\""));
-    assert!(manifest.contains("lenso-kernel = { version = \"=0.3.11\""));
-    assert!(manifest.contains("[patch.crates-io]"));
-    assert!(manifest.contains("lenso-native-adapter"));
-    assert!(manifest.contains("lenso-test = { version = \"=0.1.2\""));
-    assert!(manifest.contains("lenso-web-host"));
-    assert!(manifest.contains("lenso-test"));
+    let parsed: toml::Value = toml::from_str(manifest).unwrap();
+    for (name, version) in [
+        ("lenso", "=0.5.26"),
+        ("lenso-capability-http-endpoint", "=0.3.4"),
+        ("lenso-app-plan", "=0.4.5"),
+        ("lenso-kernel", "=0.3.11"),
+        ("lenso-test", "=0.1.2"),
+        ("lenso-web-host", "=0.2.2"),
+    ] {
+        let section = if matches!(name, "lenso" | "lenso-capability-http-endpoint") {
+            "dependencies"
+        } else {
+            "dev-dependencies"
+        };
+        assert_eq!(parsed[section][name].as_str(), Some(version));
+    }
+    assert!(parsed.get("patch").is_none());
+    assert!(!manifest.contains("git ="));
     assert!(manifest.contains("schemars = \"1.2\""));
     assert!(manifest.contains("syn = { version = \"2\", features = [\"full\"] }"));
     assert!(source.contains("#[lenso::plugin]"));
@@ -181,7 +188,8 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(golden_path.contains("business Capability"));
     assert!(golden_path.contains("open_stream"));
     assert!(golden_path.contains("lenso-test@0.1.2"));
-    assert!(golden_path.contains("root patch"));
+    assert!(golden_path.contains("exact registry versions"));
+    assert!(golden_path.contains("must all be published"));
     assert!(!source.contains("NativeModuleFactory"));
     assert!(!readme.contains("lenso plugin pack"));
     assert!(readme.contains("lenso plugin dev"));

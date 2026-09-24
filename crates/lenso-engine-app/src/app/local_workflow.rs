@@ -425,8 +425,17 @@ mod tests {
 
         let plugin = destination.join("app/local.starter");
         let manifest = fs::read_to_string(plugin.join("Cargo.toml")).unwrap();
-        assert!(manifest.contains("lenso-web-host"));
-        assert!(manifest.contains("lenso-test = { version = \"=0.1.2\""));
+        let parsed: toml::Value = toml::from_str(&manifest).unwrap();
+        assert_eq!(
+            parsed["dev-dependencies"]["lenso-web-host"].as_str(),
+            Some("=0.2.2")
+        );
+        assert_eq!(
+            parsed["dev-dependencies"]["lenso-test"].as_str(),
+            Some("=0.1.2")
+        );
+        assert!(parsed.get("patch").is_none());
+        assert!(!manifest.contains("git ="));
         assert!(plugin.join("tests/simulated_web.rs").is_file());
         assert!(plugin.join("public/index.html").is_file());
         assert!(plugin.join("src/routes/home.rs").is_file());

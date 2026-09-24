@@ -958,9 +958,9 @@ fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
             return Ok(dependency);
         }
     }
-    // A standalone local Endpoint package still uses the matching published
-    // Ingress dependency, recorded exactly in the generated Cargo lock.
-    Ok(json!("=0.4.6"))
+    // A registry Endpoint or standalone local package uses the matching
+    // published Ingress, recorded exactly in the generated Cargo lock.
+    Ok(json!("=0.4.7"))
 }
 
 fn codec_name(capability: &str) -> anyhow::Result<String> {
@@ -2128,5 +2128,15 @@ mod tests {
         .unwrap();
         assert_eq!(dependency["path"], ingress.to_string_lossy().as_ref());
         assert_eq!(dependency["version"], "=0.4.7");
+    }
+
+    #[test]
+    fn registry_endpoint_uses_the_web_host_ingress_version() {
+        let dependency = web_ingress_dependency(&json!({
+            "package": "lenso-capability-http-endpoint",
+            "version": "=0.3.4"
+        }))
+        .unwrap();
+        assert_eq!(dependency, json!("=0.4.7"));
     }
 }

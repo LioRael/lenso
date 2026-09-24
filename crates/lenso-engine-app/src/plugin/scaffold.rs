@@ -9,8 +9,6 @@ use lenso_app_authoring::identity::validate_plugin_id_v1;
 
 use super::{PluginNewArgs, PluginRuntimeArg, WASM_TARGET, run_bun, run_cargo};
 
-pub(crate) const LENSO_FRAMEWORK_REVISION: &str = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
-
 pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
     validate_plugin_id_v1(&args.plugin_id)?;
     let base = args.repo_root.unwrap_or(env::current_dir()?);
@@ -118,8 +116,8 @@ plugin-id = "{plugin_id}"
 root-slot = "web"
 
 [dependencies]
-lenso = {{ version = "=0.5.26", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-capability-http-endpoint = {{ version = "0.3.4", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso = "=0.5.26"
+lenso-capability-http-endpoint = "=0.3.4"
 serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
 
@@ -131,17 +129,10 @@ syn = {{ version = "2", features = ["full"] }}
 bytes = "1"
 futures = "0.3"
 http = "1"
-lenso-app-plan = {{ version = "=0.4.5", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-kernel = {{ version = "=0.3.11", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-test = {{ version = "=0.1.2", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-web-host = {{ version = "0.2.2", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-
-[patch.crates-io]
-lenso = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-app-plan = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-kernel = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-native-adapter = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
-lenso-test = {{ git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso-app-plan = "=0.4.5"
+lenso-kernel = "=0.3.11"
+lenso-test = "=0.1.2"
+lenso-web-host = "=0.2.2"
 
 [workspace]
 "#
@@ -512,13 +503,13 @@ async fn search(
         "## Keep public OpenAPI honest\n\n",
         "`create` and `search` are marked with `#[openapi_contract]`. Their JSON request bodies, success values, and stable `invalid_name`/`invalid_term` problem codes are derived from the same typed handler values. Search uses POST so its JSON body is expressible in OpenAPI 3.1. In a generated App, run `lenso app add @lenso/openapi --root .` to select the optional OpenAPI Plugin before building. Fetch the running App's `/openapi.json` and feed that document to `lenso-web-client generate openapi.json src/generated/lenso-api.ts`. Activation rejects a document that drifts from the handler. This local Host profile binds the document to all selected `web` Slot Endpoint providers, not to internal Capability contracts. Routes without `#[openapi]` still receive an undocumented-response fallback when their provider is selected; place private routes in a separate unbound Host profile rather than assuming omission hides them.\n\n",
         "## Exercise the real Web path locally\n\n",
-        "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest Git-pins `lenso-web-host@0.2.2`, Endpoint `0.3.4`, `lenso@0.5.26`, `lenso-test@0.1.2`, App Plan `0.4.5`, and Kernel `0.3.11`; its root patch makes the Host, Plugin, adapter, and TestApp share those exact type identities. Run it with `cargo test --locked`. Do not replace those pins with independent registry ranges until the cohort release validation says they are published together.\n\n",
+        "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest requires exact registry versions of `lenso-web-host@0.2.2`, Endpoint `0.3.4`, `lenso@0.5.26`, `lenso-test@0.1.2`, App Plan `0.4.5`, and Kernel `0.3.11`. These versions must all be published before `cargo test --locked` can run; then inspect the generated lockfile to confirm the Host, Plugin, adapter, and TestApp use one framework type identity. Keep that lockfile with the App.\n\n",
         "## Add a stream deliberately\n\n",
         "Buffered HTTP and a long-lived stream are separate public interactions. When a route needs backpressure or a persistent session, add the dedicated `lenso-capability-http-stream-endpoint` contract and test it through `SimulatedWebHost::open_stream`. Keep its route identifier and typed protocol next to the business Capability it invokes; do not turn a buffered `#[endpoint]` handler into an ad-hoc socket loop. The same surface also exposes `open_websocket` when a bidirectional protocol is the actual requirement.\n",
     )
     .to_owned();
     let readme = format!(
-        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`. Each `src/routes/*.rs` file contains one handler; the build script combines selected files into one immutable Endpoint. Add or delete a route file, then rebuild. Duplicate IDs or method/path pairs fail with both filenames.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations and the real event Ingress without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n\nSee [the Web golden path](WEB_GOLDEN_PATH.md) to add an authenticated business Capability, strict public OpenAPI, a simulated Host test, or a streaming endpoint without making the basic route depend on Runtime internals.\n"
+        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`. Each `src/routes/*.rs` file contains one handler; the build script combines selected files into one immutable Endpoint. Add or delete a route file, then rebuild. Duplicate IDs or method/path pairs fail with both filenames.\n\nThe exact Lenso crate versions in `Cargo.toml` must be available on crates.io before installing or building this project. Keep its generated `Cargo.lock`; do not mix framework versions or sources.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations and the real event Ingress without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n\nSee [the Web golden path](WEB_GOLDEN_PATH.md) to add an authenticated business Capability, strict public OpenAPI, a simulated Host test, or a streaming endpoint without making the basic route depend on Runtime internals.\n"
     );
 
     BTreeMap::from([

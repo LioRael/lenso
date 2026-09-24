@@ -43,13 +43,25 @@ pub(super) fn add(root: &Path, no_install: bool) -> anyhow::Result<()> {
     let stage = tempfile::Builder::new()
         .prefix(".lenso-openapi-support-")
         .tempdir_in(parent)?;
-    let revision = crate::plugin::LENSO_FRAMEWORK_REVISION;
     write(
         stage.path(),
         "Cargo.toml",
-        format!(
-            "[package]\nname = \"app-openapi-link\"\nversion = \"0.2.4\"\nedition = \"2024\"\npublish = false\n\n[package.metadata.lenso]\nplugin-id = \"lenso.openapi\"\nroot-slot = \"http-endpoints\"\n\n[dependencies]\nlenso = {{ version = \"=0.5.26\", git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-openapi-plugin = {{ version = \"=0.2.4\", git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\n\n[patch.crates-io]\nlenso = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-app-plan = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-kernel = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\nlenso-native-adapter = {{ git = \"https://github.com/LioRael/lenso\", rev = \"{revision}\" }}\n\n[workspace]\n"
-        ),
+        r#"[package]
+name = "app-openapi-link"
+version = "0.2.4"
+edition = "2024"
+publish = false
+
+[package.metadata.lenso]
+plugin-id = "lenso.openapi"
+root-slot = "http-endpoints"
+
+[dependencies]
+lenso = "=0.5.26"
+lenso-openapi-plugin = "=0.2.4"
+
+[workspace]
+"#,
     )?;
     write(
         stage.path(),
@@ -150,7 +162,10 @@ mod tests {
                 .contains("support/lenso-openapi")
         );
         let manifest = fs::read_to_string(candidate.project.join("Cargo.toml")).unwrap();
-        assert!(manifest.contains(crate::plugin::LENSO_FRAMEWORK_REVISION));
+        assert!(manifest.contains("lenso = \"=0.5.26\""));
+        assert!(manifest.contains("lenso-openapi-plugin = \"=0.2.4\""));
+        assert!(!manifest.contains("git ="));
+        assert!(!manifest.contains("[patch.crates-io]"));
         assert!(
             fs::read_to_string(candidate.project.join("src/lib.rs"))
                 .unwrap()
