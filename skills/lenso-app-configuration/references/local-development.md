@@ -21,7 +21,13 @@ nested starter path, not the default Rust project layout. `plugins/` keeps
 Instance intent. Only additional shared directories/globs/bundles need
 `plugin_sources` in `lenso.toml`. These sources are not marketplace endpoints;
 shared candidates require explicit Root selection. App-owned Plugins have
-disableable default Instances.
+disableable default Instances. In a source App, use
+`lenso plugins disable <plugin-id> default --root <source>` or the matching
+`enable` command to change only that App-owned source marker. These commands
+reject shared Plugins and Host defaults;
+an existing `dist` keeps its previous state. Run `lenso app build`, then
+`lenso app check` and `lenso app show` on the new distribution to verify the
+change. Use `--root <dist>` for an existing built Plugin Root.
 
 For an exact signed linked Cargo release, inspect `lenso app add --help` and
 adopt the selected version with its signed snapshot, trust file, and matching
