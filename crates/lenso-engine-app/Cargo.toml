@@ -1,6 +1,6 @@
 [package]
 name = "lenso-engine-app"
-version = "0.2.3"
+version = "0.3.0"
 publish = true
 edition = "2024"
 license = "MIT"
@@ -8,7 +8,7 @@ description = "Optional Lenso App authoring preset"
 include = ["/src/**", "/assets/**", "/examples/**", "/tests/**", "/build.rs", "/Cargo.toml"]
 
 [dependencies]
-lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "0.1.2" }
+lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "0.2.0" }
 lenso-engine = { path = "../lenso-engine", version = "0.2.0" }
 anyhow = "1.0"
 futures = { version = "0.3" }
