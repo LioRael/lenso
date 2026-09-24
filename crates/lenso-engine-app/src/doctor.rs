@@ -31,10 +31,7 @@ struct Check {
 pub fn doctor(args: DoctorArgs) -> anyhow::Result<()> {
     let root = project_root(args.root)?;
     let mut checks = Vec::new();
-    checks.push(path_check(
-        "host_catalog",
-        &root.join(".lenso/host-catalog.json"),
-    ));
+    checks.push(host_authority_check(&root));
     checks.push(path_check("host_executable", &root.join(".lenso/host")));
     let resolution = load_resolved_app(&root);
     if let Ok(app) = &resolution {
@@ -160,6 +157,21 @@ fn path_check(name: &'static str, path: &Path) -> Check {
             name,
             status: "failed",
             detail: format!("{}: {error}", path.display()),
+        },
+    }
+}
+
+fn host_authority_check(root: &Path) -> Check {
+    let generated = root.join(".lenso/host-build.json");
+    match generated.symlink_metadata() {
+        Ok(_) => path_check("host_build", &generated),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            path_check("host_catalog", &root.join(".lenso/host-catalog.json"))
+        }
+        Err(error) => Check {
+            name: "host_build",
+            status: "failed",
+            detail: format!("{}: {error}", generated.display()),
         },
     }
 }

@@ -61,6 +61,21 @@ fn empty_portable_host_emits_dev_readiness_only_after_startup() {
         fs::read_to_string(distribution.join(".lenso/host-mode")).unwrap(),
         "portable"
     );
+    let diagnosed = Command::new(cli)
+        .args(["doctor", "--root"])
+        .arg(&distribution)
+        .arg("--json")
+        .output()
+        .unwrap();
+    assert!(
+        diagnosed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&diagnosed.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&diagnosed.stdout).unwrap();
+    assert_eq!(report["status"], "passed");
+    assert_eq!(report["checks"][0]["name"], "host_build");
+    assert_eq!(report["checks"][0]["status"], "passed");
     let marker = distribution.join(".lenso/ready-test");
     let mut host = Command::new(distribution.join(".lenso/host"))
         .args(["app", "__run-local", "--", "--ready-file"])
