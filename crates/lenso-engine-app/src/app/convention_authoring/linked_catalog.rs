@@ -535,7 +535,7 @@ fn preflight_selected_identity(
     else {
         ensure!(
             !replace,
-            "--replace requires an already selected signed linked Cargo Plugin"
+            "--replace requires an already selected linked Cargo Plugin source"
         );
         return Ok(None);
     };

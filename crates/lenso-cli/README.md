@@ -170,23 +170,26 @@ This is local replay protection, not a live revocation feed: an App that has
 not received a newer signed snapshot cannot know about it. Preserve the
 ignored `.lenso/` state when moving an App if replay history must carry over;
 an App owner who can remove that state can reset its local history.
-To switch an already selected signed linked Cargo Plugin to another exact
+To switch an already selected linked Cargo Plugin source to another exact
 version, use the same signed `app add` inputs with `--replace`. The command
 verifies the new signed `.crate` or Bundle before changing App source selection,
-refuses an edited old source or conflicting new source, and changes only that
-Plugin's `plugin_sources` entry. It preserves the old vendor source, customized
-Plugin Root, and existing `dist` for recovery. A failed selection rolls back
-the App config and workspace exclusion when their bytes are still the CLI's;
+refuses an old source that differs from its local lock or a conflicting new
+source, and changes only that Plugin's `plugin_sources` entry. It preserves the
+old vendor source, customized Plugin Root, and existing `dist` for recovery. A
+failed selection rolls back the App config and workspace exclusion when their
+bytes are still the CLI's;
 an already published but unselected new source may remain for an exact retry.
 If the App owns a Cargo workspace, the old version's `workspace.exclude` entry
 stays in place while its source is retained. `app unadopt` applies only to the
 currently selected exact version; it will not silently retire an older,
 unselected vendor directory or discard customized Plugin Root intent. Review
 and archive that old source and its exclusion explicitly when no longer needed.
-`--replace` never bypasses the signed catalog checkpoint or accepts a local
-unsigned Plugin as the prior selection. It is a source-App edit, not an atomic
-runtime upgrade or data migration: the previous built Host remains runnable
-until a later `app build` succeeds and its new distribution is activated.
+`--replace` verifies the new signed release and checks the selected old source
+against its local lock. Because that lock is App-writable, the command does not
+prove the old source came from a signed release or enforce the same publisher.
+It is a source-App edit, not a verified signed-to-signed upgrade, atomic runtime
+upgrade, or data migration. The previous built Host remains runnable until a
+later `app build` succeeds and its new distribution is activated.
 On POSIX systems the checkpoint path is opened relative to locked directory
 descriptors without following symlinks. The Windows fallback rejects existing
 symlink paths but does not defend against a hostile concurrent filesystem

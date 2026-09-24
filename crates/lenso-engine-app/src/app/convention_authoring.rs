@@ -30,7 +30,7 @@ pub struct AddArgs {
     /// Verified V6 Bundle carrying the signed .crate as a Host build input.
     #[arg(long, conflicts_with = "crate_archive")]
     bundle: Option<PathBuf>,
-    /// Explicitly replace the selected version of the same signed linked Cargo Plugin.
+    /// Replace the selected linked Cargo Plugin version using signed new-release inputs.
     #[arg(long)]
     replace: bool,
 }

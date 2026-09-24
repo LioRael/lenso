@@ -1,4 +1,4 @@
-//! Explicit version switch for an already selected signed linked-Cargo Plugin.
+//! Explicit version switch for an already selected linked-Cargo Plugin source.
 //! The old source and Plugin Root remain untouched; only App source selection changes.
 
 use std::{
