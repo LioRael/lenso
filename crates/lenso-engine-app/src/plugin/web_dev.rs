@@ -127,7 +127,8 @@ pub(super) fn is_web_plugin(root: &Path) -> anyhow::Result<bool> {
     if !manifest.is_file() {
         return Ok(false);
     }
-    Ok(read_package(&manifest)?.metadata.lenso.root_slot == "web")
+    let package = read_package(&manifest)?;
+    Ok(package.metadata.lenso.root_slot == "web" && package.metadata.lenso_cli.is_none())
 }
 
 pub(super) async fn run(args: PluginDevArgs) -> anyhow::Result<()> {

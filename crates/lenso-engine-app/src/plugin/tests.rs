@@ -6,6 +6,23 @@ use super::*;
 use std::process::Command;
 
 #[test]
+fn portable_web_plugin_is_not_checked_as_linked_native() {
+    let root = tempfile::tempdir().unwrap();
+    let manifest = web_plugin_scaffold("company.web")
+        .remove(std::path::Path::new("Cargo.toml"))
+        .unwrap();
+    fs::write(root.path().join("Cargo.toml"), &manifest).unwrap();
+    assert!(web_dev::is_web_plugin(root.path()).unwrap());
+
+    fs::write(
+        root.path().join("Cargo.toml"),
+        format!("{manifest}\n[package.metadata.lenso-cli]\nruntime = \"wasm\"\n"),
+    )
+    .unwrap();
+    assert!(!web_dev::is_web_plugin(root.path()).unwrap());
+}
+
+#[test]
 fn bun_descriptor_lowers_named_dependencies_into_the_plugin_contract() {
     let descriptor = parse_descriptor_bytes(
         br#"{
