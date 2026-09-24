@@ -1175,7 +1175,7 @@ fn signal_process_group_id(id: u32, signal: nix::sys::signal::Signal) -> anyhow:
 }
 
 #[cfg(target_os = "macos")]
-fn darwin_group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
+pub(super) fn darwin_group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
     use nix::libc;
     let mut pids = vec![0_i32; 64];
     loop {
@@ -1213,9 +1213,15 @@ fn darwin_group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
                     info_size,
                 )
             };
+            // Enumeration can race with a member's exit. An ambiguous member
+            // is not proof of a stopped group; retry until it disappears or
+            // becomes inspectable, then fail closed at the caller's deadline.
+            if returned == 0 {
+                return Ok(false);
+            }
             anyhow::ensure!(
                 returned == info_size,
-                "cannot inspect supervised process-group member"
+                "cannot inspect supervised process-group member {pid}"
             );
             let info = unsafe { info.assume_init() };
             if info.pbsi_pgid != group_id {
