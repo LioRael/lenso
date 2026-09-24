@@ -240,3 +240,38 @@ fn rejects_tampered_runtime_selection_evidence() {
     assert!(format!("{error:#}").contains("selection evidence differs"));
     assert!(!temporary.path().join("out").exists());
 }
+
+#[test]
+fn rejects_a_forged_adapter_target_profile_before_distribution_publication() {
+    let temporary = tempfile::tempdir().unwrap();
+    let build = authoring(temporary.path());
+    let inventory_path = build.join("bundles.json");
+    let mut inventory: serde_json::Value =
+        serde_json::from_slice(&fs::read(&inventory_path).unwrap()).unwrap();
+    inventory[0]["target_capability_profile"]["capabilities"] =
+        serde_json::json!(["native-process", "request", "stream", "workers"]);
+    fs::write(
+        &inventory_path,
+        serde_json::to_vec_pretty(&inventory).unwrap(),
+    )
+    .unwrap();
+
+    let out = temporary.path().join("out");
+    let error = prepare(PrepareArgs {
+        build,
+        target: "aarch64-apple-darwin".into(),
+        runtime: temporary.path().join("runtime"),
+        owner: temporary.path().join("owner"),
+        resolver: temporary.path().join("resolver"),
+        bun: Some(temporary.path().join("bun")),
+        notices: temporary.path().join("notices"),
+        out: out.clone(),
+        library: Some(temporary.path().join("library")),
+    })
+    .unwrap_err();
+    assert!(
+        format!("{error:#}").contains("differs from concrete Adapter admission"),
+        "{error:#}"
+    );
+    assert!(!out.exists());
+}

@@ -349,6 +349,18 @@ fn validate_bundle(
             bundle.execution_class
         );
     }
+    let concrete_admission = concrete_adapter_admission(bundle)?;
+    if bundle.target_capability_profile != concrete_admission.capability_profile() {
+        bail!(
+            "Plugin `{}` target capability profile differs from concrete Adapter admission",
+            bundle.plugin_id
+        );
+    }
+    let admission = crate::target_profile::admission_from_profile(
+        concrete_admission.execution_class,
+        &concrete_admission.runtime_profile,
+        &bundle.target_capability_profile,
+    )?;
     let bundle_path = regular_file(&build_root.join(&bundle.path), false)
         .with_context(|| format!("validate Plugin bundle {}", bundle.path))?;
     with_bundle_directory(&bundle_path, |directory| {
@@ -364,11 +376,7 @@ fn validate_bundle(
             &manifest,
             &ImplementationPolicy {
                 host_target: args.target.clone(),
-                runtimes: vec![crate::target_profile::admission_from_profile(
-                    ExecutionClassId::new(&bundle.execution_class),
-                    &bundle.runtime_profile,
-                    &bundle.target_capability_profile,
-                )?],
+                runtimes: vec![admission],
             },
         )?;
         if selected.implementation.implementation_id != bundle.implementation_id
@@ -398,6 +406,44 @@ fn validate_bundle(
     })
     .with_context(|| format!("re-verify distribution bundle {}", bundle.path))?;
     Ok(bundle.execution_class == "lenso.bun-process@1")
+}
+
+fn concrete_adapter_admission(
+    bundle: &BundleInventory,
+) -> anyhow::Result<lenso_plugin_bundle::RuntimeAdmission> {
+    match bundle.execution_class.as_str() {
+        "lenso.bun-process@1" => {
+            let admission = crate::target_profile::bun_admission()?;
+            if bundle.runtime_profile != admission.runtime_profile {
+                bail!(
+                    "Plugin `{}` runtime profile differs from concrete Bun Adapter admission",
+                    bundle.plugin_id
+                );
+            }
+            Ok(admission)
+        }
+        "lenso.process@1"
+            if matches!(
+                bundle.runtime_profile.as_str(),
+                lenso_process_adapter::RUNTIME_PROFILE_V1
+                    | lenso_process_adapter::RUNTIME_PROFILE_V2
+            ) =>
+        {
+            Ok(crate::target_profile::request_native_process_admission(
+                ExecutionClassId::new(&bundle.execution_class),
+                &bundle.runtime_profile,
+            ))
+        }
+        "lenso.process@1" => bail!(
+            "Plugin `{}` runtime profile `{}` is not admitted by the Process Adapter",
+            bundle.plugin_id,
+            bundle.runtime_profile
+        ),
+        _ => bail!(
+            "unsupported distribution execution class `{}`",
+            bundle.execution_class
+        ),
+    }
 }
 
 fn stage_selected_artifact(
