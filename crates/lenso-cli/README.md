@@ -338,7 +338,8 @@ For one signed linked Cargo source release, start the bridge at the source App
 with `--linked-snapshot <file> --trust <file> --linked-crate <file>
 --allow-changes`. These three input files must be regular files. The bridge
 copies bounded bytes into private storage at startup, so later changes to the
-original paths cannot change the release being selected. Call
+original paths cannot change the release being selected. This mutation lane
+currently requires Unix no-follow file admission. Call
 `project_linked_adopt` with the exact `plugin_id`, `version`, and a client
 `request_id`; the tool accepts no archive path, command, or environment input.
 It invokes the same signed catalog, `.crate` digest, target, source identity,
