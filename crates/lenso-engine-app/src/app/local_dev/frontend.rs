@@ -21,47 +21,109 @@ const CONFIG: &str = "frontend/lenso.dev.toml";
 pub(super) struct FrontendProcess {
     child: Child,
     group_id: u32,
+    kill_group_on_drop: bool,
+}
+
+impl Drop for FrontendProcess {
+    fn drop(&mut self) {
+        if !self.kill_group_on_drop {
+            return;
+        }
+        #[cfg(unix)]
+        {
+            use nix::{
+                sys::signal::{Signal, killpg},
+                unistd::Pid,
+            };
+            // WNOWAIT leaves even an exited leader owned until the signal.
+            if super::exited_unreaped(self.group_id).is_ok()
+                && let Ok(group) = i32::try_from(self.group_id)
+            {
+                let _ = killpg(Pid::from_raw(group), Signal::SIGKILL);
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = self.child.start_kill();
+        }
+    }
 }
 
 impl FrontendProcess {
-    pub(super) fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
-        self.child.try_wait()
+    pub(super) fn exited_unreaped(&mut self) -> anyhow::Result<bool> {
+        #[cfg(unix)]
+        {
+            super::exited_unreaped(self.group_id)
+        }
+        #[cfg(not(unix))]
+        {
+            Ok(self.child.try_wait()?.is_some())
+        }
     }
 }
 
 pub(super) async fn stop(process: &mut FrontendProcess) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
-        use nix::{
-            sys::signal::{Signal, killpg},
-            unistd::Pid,
+        use nix::sys::signal::Signal;
+        super::exited_unreaped(process.group_id)?;
+        super::signal_process_group_id(process.group_id, Signal::SIGTERM)?;
+        // Observe without reaping: the numeric PGID remains ours until the
+        // final group signal, including when only descendants remain.
+        let waited = tokio::time::timeout(
+            Duration::from_secs(12),
+            super::wait_for_exit_unreaped(process.group_id),
+        )
+        .await;
+        let timed_out = match waited {
+            Ok(Ok(())) => false,
+            Ok(Err(error)) => return Err(error),
+            Err(_) => true,
         };
-        let group = Pid::from_raw(i32::try_from(process.group_id)?);
-        if let Err(error) = killpg(group, Signal::SIGTERM)
-            && error != nix::errno::Errno::ESRCH
-        {
-            return Err(error.into());
-        }
-        let waited = tokio::time::timeout(Duration::from_secs(12), process.child.wait()).await;
-        if let Err(error) = killpg(group, Signal::SIGKILL)
-            && error != nix::errno::Errno::ESRCH
-        {
-            return Err(error.into());
-        }
-        match waited {
-            Ok(result) => {
-                result?;
-            }
-            Err(_) => {
-                process.child.wait().await?;
-                bail!("frontend dev process group did not stop within its shutdown budget");
-            }
+        super::signal_process_group_id(process.group_id, Signal::SIGKILL)?;
+        tokio::time::timeout(Duration::from_secs(2), process.child.wait())
+            .await
+            .context("frontend did not exit after group stop")??;
+        process.kill_group_on_drop = false;
+        if timed_out {
+            bail!("frontend dev process group did not stop within its shutdown budget");
         }
         Ok(())
     }
     #[cfg(not(unix))]
     {
-        super::stop(&mut process.child, true).await
+        super::stop(&mut process.child, true).await?;
+        process.kill_group_on_drop = false;
+        Ok(())
+    }
+}
+
+/// Immediately retire a frontend when its Host authority or source freshness
+/// is no longer valid. Normal developer shutdown continues to use `stop`.
+pub(super) async fn stop_now(process: &mut FrontendProcess) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        super::exited_unreaped(process.group_id)?;
+        if let Err(error) =
+            super::signal_process_group_id(process.group_id, nix::sys::signal::Signal::SIGKILL)
+        {
+            let _ = process.child.start_kill();
+            return Err(error);
+        }
+        tokio::time::timeout(Duration::from_secs(2), process.child.wait())
+            .await
+            .context("frontend did not exit after immediate stop")??;
+        process.kill_group_on_drop = false;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        process.child.start_kill()?;
+        tokio::time::timeout(Duration::from_secs(2), process.child.wait())
+            .await
+            .context("frontend did not exit after immediate stop")??;
+        process.kill_group_on_drop = false;
+        Ok(())
     }
 }
 
@@ -167,19 +229,20 @@ impl FrontendConfig {
         let mut process = FrontendProcess {
             group_id: child.id().context("frontend dev process ID")?,
             child,
+            kill_group_on_drop: true,
         };
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         loop {
-            if let Some(status) = process.try_wait()? {
+            if process.exited_unreaped()? {
                 stop(&mut process).await?;
-                bail!("frontend dev command exited before preview readiness: {status}");
+                bail!("frontend dev command exited before preview readiness");
             }
             if probe(address, "/", None).await.unwrap_or(false)
                 && probe(address, "/__lenso/backend", Some(backend_url))
                     .await
                     .unwrap_or(false)
             {
-                if process.try_wait()?.is_some() {
+                if process.exited_unreaped()? {
                     stop(&mut process).await?;
                     bail!("frontend dev command exited at preview readiness");
                 }
@@ -208,8 +271,8 @@ impl FrontendConfig {
         let address = self.address()?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         loop {
-            if let Some(status) = process.try_wait()? {
-                bail!("frontend dev process exited before backend refresh: {status}");
+            if process.exited_unreaped()? {
+                bail!("frontend dev process exited before backend refresh");
             }
             if probe(address, "/__lenso/backend", Some(backend_url))
                 .await
@@ -427,7 +490,11 @@ mod tests {
         command.arg("./wrapper.sh").current_dir(&frontend);
         let child = command.spawn().unwrap();
         let group_id = child.id().unwrap();
-        let mut process = Some(FrontendProcess { child, group_id });
+        let mut process = Some(FrontendProcess {
+            child,
+            group_id,
+            kill_group_on_drop: true,
+        });
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while !frontend.join("child.pid").is_file() {
             assert!(tokio::time::Instant::now() < deadline);
@@ -448,6 +515,81 @@ mod tests {
         .unwrap_err();
         assert!(format!("{error:#}").contains("simulated rebuild failure"));
         assert!(process.is_none());
+        assert_process_stopped(pid).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn immediate_stop_kills_frontend_process_group() {
+        let root = tempfile::tempdir().unwrap();
+        let script = root.path().join("wrapper.sh");
+        let child_pid = root.path().join("child.pid");
+        fs::write(
+            &script,
+            "sleep 30 &\nprintf '%s\\n' \"$!\" > \"$1\"\nwait\n",
+        )
+        .unwrap();
+        let mut command = super::super::command(PathBuf::from("/bin/sh"));
+        command.arg(&script).arg(&child_pid);
+        let child = command.spawn().unwrap();
+        let mut process = FrontendProcess {
+            group_id: child.id().unwrap(),
+            child,
+            kill_group_on_drop: true,
+        };
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while !child_pid.is_file() {
+            assert!(tokio::time::Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let pid: i32 = fs::read_to_string(&child_pid)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        stop_now(&mut process).await.unwrap();
+        assert_process_stopped(pid).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelled_frontend_readiness_kills_its_process_group() {
+        let root = tempfile::tempdir().unwrap();
+        let frontend = root.path().join("frontend");
+        fs::create_dir(&frontend).unwrap();
+        let script = frontend.join("wrapper.sh");
+        let child_pid = frontend.join("child.pid");
+        fs::write(
+            &script,
+            "sleep 30 &\nprintf '%s\\n' \"$!\" > child.pid\nwait\n",
+        )
+        .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let config = FrontendConfig {
+            schema: "lenso.frontend-dev.v1".into(),
+            command: vec!["/bin/sh".into(), "./wrapper.sh".into()],
+            url: format!("http://127.0.0.1:{port}/"),
+            backend_url_mode: "file".into(),
+        };
+        assert!(
+            super::super::run_until(
+                Some(tokio::time::Instant::now() + Duration::from_millis(200)),
+                config.launch(
+                    root.path(),
+                    "http://127.0.0.1:3001/",
+                    &root.path().join(".lenso/dev-backend-url"),
+                ),
+            )
+            .await
+            .is_err()
+        );
+        let pid: i32 = fs::read_to_string(&child_pid)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         assert_process_stopped(pid).await;
     }
 }

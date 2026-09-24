@@ -23,6 +23,12 @@ const STATE_SCHEMA: &str = "lenso.configuration-source-state.v2";
 const STATE_FILE: &str = "configuration-source-state.json";
 const MAX_POLICY_BYTES: u64 = 64 * 1024;
 const MAX_STATE_BYTES: u64 = 64 * 1024 * 1024;
+const DEFAULT_MAX_STALE_SECONDS: u64 = 300;
+const MAX_STALE_SECONDS: u64 = 86_400;
+
+const fn default_max_stale_seconds() -> u64 {
+    DEFAULT_MAX_STALE_SECONDS
+}
 
 fn digest_policy(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
@@ -85,6 +91,38 @@ struct Policy {
     source_reference: String,
     source: Source,
     objects: Vec<ObjectScope>,
+    #[serde(default = "default_max_stale_seconds")]
+    max_stale_seconds: u64,
+}
+
+/// A successful source observation bound to the exact Host policy and desired
+/// Plugin Root revision. A persisted cursor or activation receipt alone is not
+/// a freshness proof.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct AcceptedSourceProof {
+    pub source: PluginConfigurationAuthoritySource,
+    pub policy_digest: String,
+    pub revision: u64,
+    pub snapshot_digest: String,
+    pub plugin_root_revision: String,
+    pub max_stale_seconds: u64,
+}
+
+impl AcceptedSourceProof {
+    fn new(
+        intent: &PluginConfigurationSnapshotIntent,
+        policy_digest: &str,
+        max_stale_seconds: u64,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            source: intent.source()?,
+            policy_digest: policy_digest.to_owned(),
+            revision: intent.revision(),
+            snapshot_digest: intent.snapshot_digest().to_owned(),
+            plugin_root_revision: intent.candidate_plugin_root_revision().to_owned(),
+            max_stale_seconds,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -373,7 +411,46 @@ pub(super) fn policy_changed_since_active(
 }
 
 pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
-    sync_with_https_poll(root, policy_path, |source, cursor| source.poll(cursor))
+    sync_with_proof(root, policy_path).map(|_| ())
+}
+
+pub(super) fn sync_with_proof(
+    root: &Path,
+    policy_path: &Path,
+) -> anyhow::Result<AcceptedSourceProof> {
+    sync_with_https_poll_proof(root, policy_path, |source, cursor| source.poll(cursor))
+}
+
+/// Check that a previously accepted proof still names the current Host policy
+/// and published desired Root. This does not fetch the source or extend age.
+pub(super) fn proof_matches_current(
+    root: &Path,
+    policy_path: &Path,
+    proof: &AcceptedSourceProof,
+) -> anyhow::Result<bool> {
+    let root = fs::canonicalize(root)?;
+    let intent = fs::canonicalize(root.join("intent"))?;
+    let control = intent.join(".lenso");
+    let lock = open_lock(&control.join("configuration-source.lock"))?;
+    lock.lock()?;
+    verify_intent_authority(&root, &intent)?;
+    if digest_policy(&read_bounded(policy_path, MAX_POLICY_BYTES)?) != proof.policy_digest {
+        return Ok(false);
+    }
+    let Some(state) = read_state(&control.join(STATE_FILE))? else {
+        return Ok(false);
+    };
+    let current = LocalPluginRootAuthority::new(intent).inspect()?;
+    Ok(state.policy_digest.as_deref() == Some(&proof.policy_digest)
+        && state.desired.source()? == proof.source
+        && state.desired.revision() == proof.revision
+        && state.desired.snapshot_digest() == proof.snapshot_digest
+        && state.desired.candidate_plugin_root_revision() == proof.plugin_root_revision
+        && matches!(
+            state.desired.publication_state(current.revision())?,
+            PluginConfigurationSnapshotPublicationState::Published
+                | PluginConfigurationSnapshotPublicationState::NoRootChange
+        ))
 }
 
 /// Reconciles an operator-owned source into an external Plugin Root against one
@@ -390,6 +467,7 @@ pub fn sync_external_configuration(
         policy_path,
         |source, cursor| source.poll(cursor),
     )
+    .map(|_| ())
 }
 
 enum Authority<'a> {
@@ -397,7 +475,22 @@ enum Authority<'a> {
     ExternalHostBuild(&'a Path),
 }
 
+#[cfg(test)]
 fn sync_with_https_poll<F>(root: &Path, policy_path: &Path, poll: F) -> anyhow::Result<()>
+where
+    F: FnOnce(
+        &HttpsPluginConfigurationSnapshotSource,
+        Option<&PluginConfigurationSnapshotCursor>,
+    ) -> anyhow::Result<PluginConfigurationSnapshotPoll>,
+{
+    sync_with_https_poll_proof(root, policy_path, poll).map(|_| ())
+}
+
+fn sync_with_https_poll_proof<F>(
+    root: &Path,
+    policy_path: &Path,
+    poll: F,
+) -> anyhow::Result<AcceptedSourceProof>
 where
     F: FnOnce(
         &HttpsPluginConfigurationSnapshotSource,
@@ -418,7 +511,7 @@ fn sync_for_intent<F>(
     authority: Authority<'_>,
     policy_path: &Path,
     poll: F,
-) -> anyhow::Result<()>
+) -> anyhow::Result<AcceptedSourceProof>
 where
     F: FnOnce(
         &HttpsPluginConfigurationSnapshotSource,
@@ -452,6 +545,11 @@ where
         policy.schema == POLICY_SCHEMA,
         "unsupported configuration source policy"
     );
+    ensure!(
+        (1..=MAX_STALE_SECONDS).contains(&policy.max_stale_seconds),
+        "configuration source max_stale_seconds must be between 1 and {MAX_STALE_SECONDS}"
+    );
+    let max_stale_seconds = policy.max_stale_seconds;
     let source_kind = match policy.source {
         Source::File { .. } => "file_snapshot",
         Source::Https { .. } => "https_poll",
@@ -514,7 +612,11 @@ where
                         ),
                         "configuration source returned 304 for a different authority"
                     );
-                    return Ok(());
+                    return AcceptedSourceProof::new(
+                        &previous.expect("accepted cursor requires state").desired,
+                        &policy_digest,
+                        max_stale_seconds,
+                    );
                 }
             }
         }
@@ -551,7 +653,7 @@ where
     if source_kind == "https_poll" {
         write_cursor(&state_path, cursor, &policy_digest, &accepted_intent)?;
     }
-    Ok(())
+    AcceptedSourceProof::new(&accepted_intent, &policy_digest, max_stale_seconds)
 }
 
 fn revalidation_cursor<'a>(
@@ -851,6 +953,50 @@ mod tests {
     }
 
     #[test]
+    fn host_policy_bounds_source_staleness_and_defaults_to_five_minutes() {
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'first'\n");
+        let original: serde_json::Value =
+            serde_json::from_slice(&fs::read(&policy).unwrap()).unwrap();
+        let default = sync_with_proof(root.path(), &policy).unwrap();
+        assert_eq!(default.max_stale_seconds, 300);
+        assert!(proof_matches_current(root.path(), &policy, &default).unwrap());
+
+        for limit in [1, MAX_STALE_SECONDS] {
+            let mut document = original.clone();
+            document["max_stale_seconds"] = limit.into();
+            fs::write(&policy, serde_json::to_vec(&document).unwrap()).unwrap();
+            let proof = sync_with_proof(root.path(), &policy).unwrap();
+            assert_eq!(proof.max_stale_seconds, limit);
+            assert!(proof_matches_current(root.path(), &policy, &proof).unwrap());
+        }
+        for limit in [0, MAX_STALE_SECONDS + 1] {
+            let mut document = original.clone();
+            document["max_stale_seconds"] = limit.into();
+            fs::write(&policy, serde_json::to_vec(&document).unwrap()).unwrap();
+            let error = sync_with_proof(root.path(), &policy).unwrap_err();
+            assert!(error.to_string().contains("max_stale_seconds"));
+        }
+    }
+
+    #[test]
+    fn accepted_proof_is_fenced_to_policy_and_desired_root() {
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'first'\n");
+        let first = sync_with_proof(root.path(), &policy).unwrap();
+        assert!(proof_matches_current(root.path(), &policy, &first).unwrap());
+        snapshot(&source, 2, "greeting = 'second'\n");
+        let second = sync_with_proof(root.path(), &policy).unwrap();
+        assert!(!proof_matches_current(root.path(), &policy, &first).unwrap());
+        assert!(proof_matches_current(root.path(), &policy, &second).unwrap());
+        let mut document: serde_json::Value =
+            serde_json::from_slice(&fs::read(&policy).unwrap()).unwrap();
+        document["max_stale_seconds"] = 301.into();
+        fs::write(&policy, serde_json::to_vec(&document).unwrap()).unwrap();
+        assert!(!proof_matches_current(root.path(), &policy, &second).unwrap());
+    }
+
+    #[test]
     fn external_root_reconciles_only_against_exact_distribution_host_build() {
         let distribution = tempfile::tempdir().unwrap();
         let external = tempfile::tempdir().unwrap();
@@ -1116,7 +1262,7 @@ mod tests {
             .unwrap()
         };
         let first = cursor("\"revision-1\"");
-        sync_with_https_poll(root.path(), &policy, |source, previous| {
+        let accepted = sync_with_https_poll_proof(root.path(), &policy, |source, previous| {
             assert_eq!(source.url().as_str(), url);
             assert!(previous.is_none());
             Ok(PluginConfigurationSnapshotPoll::Updated {
@@ -1125,6 +1271,8 @@ mod tests {
             })
         })
         .unwrap();
+        assert_eq!(accepted.revision, 1);
+        assert_eq!(accepted.max_stale_seconds, 300);
         let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
         let current = read_state(&state_path).unwrap().unwrap();
         assert_eq!(current.desired.revision(), 1);
@@ -1138,13 +1286,14 @@ mod tests {
             .contains("first")
         );
 
-        sync_with_https_poll(root.path(), &policy, |_, previous| {
+        let revalidated = sync_with_https_poll_proof(root.path(), &policy, |_, previous| {
             assert_eq!(previous, Some(&first));
             Ok(PluginConfigurationSnapshotPoll::NotModified {
                 cursor: first.clone(),
             })
         })
         .unwrap();
+        assert_eq!(revalidated, accepted);
         assert!(
             sync_with_https_poll(root.path(), &policy, |_, previous| {
                 assert_eq!(previous, Some(&first));

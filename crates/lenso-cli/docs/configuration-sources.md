@@ -12,6 +12,7 @@ For a local file source, create an absolute-path policy such as:
 {
   "schema": "lenso.configuration-source-policy.v1",
   "source_reference": "production-settings",
+  "max_stale_seconds": 300,
   "source": { "type": "file", "path": "/etc/my-app/configuration-snapshot.json" },
   "objects": [
     { "plugin_id": "company.agent", "instance_key": "default", "fields": ["model"] }
@@ -32,10 +33,33 @@ The source file is a regular, non-symlink JSON document:
 ```
 
 Run `lenso app start --from dist --configuration-policy /etc/my-app/policy.json`.
-Use `--check` to exercise Host readiness and exit. `lenso app config-sync --root
-dist --policy /etc/my-app/policy.json` performs only the source reconciliation,
-without starting the Host. Inspect the runtime App with
+With a policy, `app start` supervises the generated Host for its lifetime:
+it polls the source, stops the current Host if source proof becomes too old or
+the Host policy changes, and starts an accepted replacement after stopping the
+old Host. Switching therefore has a downtime window. The generated Host may
+perform Kernel side effects before its Ready marker; the switch is not an
+atomic cross-system rollback or a pre-activation gate. One-shot `--check` and
+terminal `-- ...` arguments are rejected with `--configuration-policy` because
+they cannot provide continuous supervision. Without a policy, `app start`
+retains its ordinary one-shot behavior.
+
+`lenso app config-sync --root dist --policy /etc/my-app/policy.json` performs
+only source reconciliation, without starting the Host. Inspect the runtime App with
 `app check/show --root dist/intent`; the generated Host reads this same Root.
+
+`max_stale_seconds` is a Host-policy limit, currently defaulting to 300 seconds
+when omitted and accepting explicit values from 1 through 86400. A successful
+validated full fetch or an accepted HTTPS 304 renews the proof for the exact
+source, policy, snapshot revision, and Plugin Root. Transient outages keep the
+current Host only while that proof is fresh; an outage past the limit stops it
+instead of serving indefinitely. A process restart cannot reuse an old
+in-memory proof to start offline: it needs a new accepted source response.
+The in-process limit uses a monotonic clock, including time spent building,
+checking, and waiting for Host readiness. A proof that expires while preparing
+a replacement cannot authorize it. A policy edit or unverifiable policy
+stops the active Host at the next supervisor check, without waiting for the
+stale deadline. Detection is bounded by the check interval, not atomic with
+the edit.
 
 For HTTPS, replace `source` with
 `{"type":"https","url":"https://config.example/snapshot","admitted_origins":["https://config.example/"]}`.
@@ -49,6 +73,18 @@ snapshot on recovery. The cursor is private Host state, not App configuration.
 Changing the Host-owned policy (including field scopes or admitted origins)
 invalidates that cursor and requires a complete snapshot to be reauthorized.
 
+For a local preview, `lenso app dev --configuration-policy POLICY` applies the
+same freshness boundary to both the Host and its configured frontend dev
+process. It shortens a longer requested source poll interval to at most half
+the stale limit (and logs the adjustment), so a healthy source is revalidated
+before the deadline. On expiry or detected policy revocation it force-stops
+both process groups without a graceful-shutdown allowance and removes the
+published dev backend URL. An accepted
+replacement stops the old preview before running the candidate's readiness
+check, because that check can itself start the Kernel; expect a downtime
+window, including if the candidate fails. Ordinary source read failures do
+not stop a still-fresh preview.
+
 The accepted desired revision is persisted in the built App's private
 `intent/.lenso/configuration-source-state.json` before publication. A repeated or stale
 revision cannot silently replace newer content; an interrupted publication is
@@ -56,7 +92,7 @@ reconciled only against the same snapshot. Once a distribution has a source,
 `app start` requires its policy on every subsequent start, including after a
 network outage. A failed initial fetch prevents startup. The state separates
 accepted `desired` configuration from `last_activated`: the latter is written
-only after native Kernel startup, never by `--check` or source reconciliation.
+only after supervised Host readiness, never by `--check` or source reconciliation.
 It records the last successful activation, **not** a claim that a Generation
 is still running. A new desired revision preserves the previous activation
 record until the new Host is ready.
@@ -67,8 +103,8 @@ same status alongside the resolved Plugin and binding facts from `dist/intent`.
 The status identifies the source kind, but omits configuration values, source
 addresses, and digests; it does not report whether the last activated Host
 process is currently running.
-For the generated native App, there is no background polling or live switch yet;
-rerun the reconciliation and Host readiness flow to consume an update. Keep secret material with its provider:
+The receipt is historical and does not establish current process health or
+freshness. Keep secret material with its provider:
 the snapshot contains only authorized references for schema-marked sensitive
 fields, and normal diagnostics do not print values.
 

@@ -1,17 +1,20 @@
-//! Local development rebuilds complete App generations. A failed build leaves
-//! the running generation alone; replacement waits for the new Host Ready Gate
-//! before draining the previous Host.
+//! Local development rebuilds complete App generations. Without external
+//! configuration, a failed candidate leaves the current preview running.
+//! Policy-supervised replacement stops the old preview before candidate
+//! readiness because even `--check` can activate Kernel side effects.
 use anyhow::{Context, bail};
 use clap::Args;
 use notify::{RecursiveMode, Watcher};
 use std::{
     fs,
+    future::Future,
     path::{Path, PathBuf},
     time::Duration,
 };
 use tokio::{
     process::{Child, Command},
     sync::mpsc,
+    time::Instant,
 };
 
 mod frontend;
@@ -32,6 +35,22 @@ pub struct DevArgs {
     args: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+struct TimedProof {
+    accepted: super::configuration_source::AcceptedSourceProof,
+    received_at: Instant,
+}
+
+impl TimedProof {
+    fn deadline(&self) -> Instant {
+        self.received_at + Duration::from_secs(self.accepted.max_stale_seconds)
+    }
+
+    fn is_fresh(&self) -> bool {
+        Instant::now() < self.deadline()
+    }
+}
+
 pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
     anyhow::ensure!(
         (1..=3600).contains(&args.configuration_poll_seconds),
@@ -40,7 +59,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
     let root = crate::plugins::project_root(args.root)?;
     let policy = args
         .configuration_policy
-        .map(fs::canonicalize)
+        .map(absolute_configuration_policy)
         .transpose()?;
     fs::create_dir_all(root.join(".lenso"))?;
     let _dev_lock = lock_dev(&root)?;
@@ -55,7 +74,10 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
     let mut active_backend_url: Option<String> = None;
     let mut revision = 0;
     let mut current_output: Option<PathBuf> = None;
-    let mut poll = tokio::time::interval(Duration::from_secs(args.configuration_poll_seconds));
+    let mut active: Option<TimedProof> = None;
+    let configured_poll = Duration::from_secs(args.configuration_poll_seconds);
+    let mut effective_poll = configured_poll;
+    let mut poll = tokio::time::interval(configured_poll);
     poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     poll.tick().await;
     let result: anyhow::Result<()> = async {
@@ -69,65 +91,105 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
             .arg("--out")
             .arg(&output);
         let mut child = build.spawn().context("start local App build")?;
-        let status = tokio::select! {
-            status = child.wait() => status?,
-            signal = tokio::signal::ctrl_c() => {
-                signal?;
-                stop(&mut child, true).await?;
-                stop_active(&mut host, &mut frontend_process).await?;
-                return Ok(());
+        let status = loop {
+            let deadline = active.as_ref().map(TimedProof::deadline);
+            tokio::select! {
+                biased;
+                () = sleep_until_optional(deadline) => {
+                    expire_active_if_needed(
+                        &root,
+                        &mut active, &mut host, &mut frontend_process,
+                        &mut active_backend_url,
+                    ).await?;
+                }
+                status = child.wait() => break status?,
+                signal = tokio::signal::ctrl_c() => {
+                    signal?;
+                    stop(&mut child, true).await?;
+                    stop_active(&mut host, &mut frontend_process).await?;
+                    return Ok(());
+                }
+                _ = poll.tick(), if policy.is_some() => {
+                    let policy = policy.as_deref().expect("poll branch requires policy");
+                    if retire_active_on_policy_change(
+                        &root, current_output.as_deref(), policy, &mut host,
+                        &mut frontend_process, &mut active_backend_url,
+                    ).await? {
+                        active = None;
+                    }
+                    if let Some(current) = current_output.as_deref() {
+                        match sync_source_with_deadline(
+                            &root, current, policy, current_output.as_deref(),
+                            &mut active, &mut host,
+                            &mut frontend_process, &mut active_backend_url,
+                        ).await {
+                            Ok(proof) => {
+                                update_poll_interval(
+                                    &mut poll, &mut effective_poll, configured_poll,
+                                    proof.accepted.max_stale_seconds,
+                                ).await;
+                                refresh_active_if_matching(&mut active, &proof);
+                            }
+                            Err(error) => eprintln!(
+                                "Configuration source unavailable during rebuild: {error:#}"
+                            ),
+                        }
+                    }
+                }
             }
         };
         let built = status.success();
         watch_dependencies(&root, &mut watcher)?;
+        expire_active_if_needed(
+            &root,
+            &mut active, &mut host, &mut frontend_process, &mut active_backend_url,
+        ).await?;
         if let Some(policy) = &policy {
-            retire_active_on_policy_change(
+            if retire_active_on_policy_change(
+                &root,
                 current_output.as_deref(),
                 policy,
                 &mut host,
                 &mut frontend_process,
                 &mut active_backend_url,
             )
-            .await?;
+            .await? {
+                active = None;
+            }
         }
-        let ready = if built {
-            if let Some(policy) = &policy
-                && let Err(error) = super::configuration_source::sync(&output, policy)
-            {
-                eprintln!(
-                    "App configuration source rejected; candidate not activated: {error:#}"
-                );
-                false
-            } else {
-                match preflight(&output).await {
-                    Ok(()) => true,
+        if built {
+            let activation = if let Some(policy) = &policy {
+                match sync_source_with_deadline(
+                    &root, &output, policy, current_output.as_deref(),
+                    &mut active, &mut host,
+                    &mut frontend_process, &mut active_backend_url,
+                ).await {
+                    Ok(proof) => {
+                        update_poll_interval(
+                            &mut poll, &mut effective_poll, configured_poll,
+                            proof.accepted.max_stale_seconds,
+                        ).await;
+                        activate_supervised_candidate(
+                            &root, &output, policy, &args.args, frontend_config.as_ref(),
+                            proof, &mut host, &mut frontend_process,
+                            &mut active_backend_url, &mut active,
+                        ).await?
+                    }
                     Err(error) => {
-                        eprintln!(
-                            "App candidate failed readiness; candidate not activated: {error:#}"
-                        );
-                        false
+                        eprintln!("App configuration source rejected; candidate not activated: {error:#}");
+                        Some(false)
                     }
                 }
-            }
-        } else {
-            eprintln!("App rebuild failed; edit the source to retry.");
-            false
-        };
-        if ready {
-            let activation = if let Some(config) = &frontend_config {
+            } else if let Err(error) = preflight(&output).await {
+                eprintln!("App candidate failed readiness; candidate not activated: {error:#}");
+                Some(false)
+            } else if let Some(config) = &frontend_config {
                 activate_candidate_with_frontend(
-                    &root,
-                    &output,
-                    &args.args,
-                    &mut host,
-                    &mut frontend_process,
-                    &mut active_backend_url,
-                    policy.is_some(),
-                    config,
-                )
-                .await?
+                    &root, &output, &args.args, &mut host,
+                    &mut frontend_process, &mut active_backend_url, false, config,
+                ).await?
             } else {
-                activate_candidate(&output, &args.args, &mut host, policy.is_some(), false).await?
+                activate_candidate(&output, &args.args, &mut host, false, false).await?
             };
             match activation {
                 Some(true) => {
@@ -143,9 +205,20 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                     return Ok(());
                 }
             }
+        } else {
+            eprintln!("App rebuild failed; edit the source to retry.");
         }
         loop {
+            let deadline = active.as_ref().map(TimedProof::deadline);
             tokio::select! {
+                biased;
+                () = sleep_until_optional(deadline) => {
+                    expire_active_if_needed(
+                        &root,
+                        &mut active, &mut host, &mut frontend_process,
+                        &mut active_backend_url,
+                    ).await?;
+                }
                 signal = tokio::signal::ctrl_c() => {
                     signal?;
                     stop_active(&mut host, &mut frontend_process).await?;
@@ -164,7 +237,16 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                                 // Its source edits do not invalidate the Rust Host distribution.
                                 continue;
                             }
-                            tokio::time::sleep(Duration::from_millis(150)).await;
+                            if run_until(
+                                active.as_ref().map(TimedProof::deadline),
+                                tokio::time::sleep(Duration::from_millis(150)),
+                            ).await.is_err() {
+                                expire_active_if_needed(
+                                    &root,
+                                    &mut active, &mut host, &mut frontend_process,
+                                    &mut active_backend_url,
+                                ).await?;
+                            }
                             while events.try_recv().is_ok() {}
                             // Configuration edits may add a previously unwatched shared source.
                             match watch(&root) {
@@ -181,18 +263,31 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                     }
                 }
                 () = tokio::time::sleep(Duration::from_millis(200)) => {
-                    if let Some(process) = &mut host
-                        && let Some(status) = process.try_wait()? {
+                    #[cfg(unix)]
+                    let host_exit = if let Some(process) = &mut host {
+                        match process.id() { Some(id) => exited_unreaped(id)?, None => false }
+                    } else { false };
+                    #[cfg(not(unix))]
+                    let host_exit = if let Some(process) = &mut host {
+                        process.try_wait()?.is_some()
+                    } else { false };
+                    if host_exit {
+                            #[cfg(unix)]
+                            if let Some(process) = &mut host { signal_process_group_now(process)?; }
+                            let status = host.as_mut().context("exited Host")?.wait().await?;
                             eprintln!("Local Host exited ({status}); edit the source to restart.");
                             host = None;
                             if let Some(frontend) = &mut frontend_process { frontend::stop(frontend).await?; }
                             frontend_process = None;
                             active_backend_url = None;
-                        }
+                            active = None;
+                            if policy.is_some() { restore_backend_url(&root, None)?; }
+                    }
                     if let Some(process) = &mut frontend_process
-                        && let Some(status) = process.try_wait()? {
-                            stop_active(&mut host, &mut frontend_process).await?;
-                            bail!("Frontend dev process exited ({status}); preview is no longer ready");
+                        && process.exited_unreaped()? {
+                            stop_active_now(&mut host, &mut frontend_process).await?;
+                            if policy.is_some() { restore_backend_url(&root, None)?; }
+                            bail!("Frontend dev process exited; preview is no longer ready");
                         }
                 }
                 _ = poll.tick(), if policy.is_some() => {
@@ -211,45 +306,52 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                         continue;
                     };
                     let policy = policy.as_deref().expect("poll branch requires policy");
-                    retire_active_on_policy_change(
+                    if retire_active_on_policy_change(
+                        &root,
                         current_output.as_deref(),
                         policy,
                         &mut host,
                         &mut frontend_process,
                         &mut active_backend_url,
                     )
-                    .await?;
-                    match super::configuration_source::sync(&target, policy) {
-                        Ok(()) => match super::configuration_source::inspect_status(&target) {
-                            Ok(status) if !status.pending_publication && (status.pending_activation || host.is_none() || current_output.as_deref() != Some(target.as_path())) => {
-                                match preflight(&target).await {
-                                    Ok(()) => {
-                                        let activation = if let Some(config) = &frontend_config {
-                                            activate_candidate_with_frontend(
-                                                &root, &target, &args.args, &mut host,
-                                                &mut frontend_process, &mut active_backend_url,
-                                                true, config,
-                                            ).await?
-                                        } else {
-                                            activate_candidate(&target, &args.args, &mut host, true, false).await?
-                                        };
-                                        match activation {
-                                        Some(true) => {
-                                            select_output(&mut current_output, &target);
-                                        },
+                    .await? {
+                        active = None;
+                    }
+                    match sync_source_with_deadline(
+                        &root, &target, policy, current_output.as_deref(),
+                        &mut active, &mut host,
+                        &mut frontend_process, &mut active_backend_url,
+                    ).await {
+                        Ok(proof) => {
+                            update_poll_interval(
+                                &mut poll, &mut effective_poll, configured_poll,
+                                proof.accepted.max_stale_seconds,
+                            ).await;
+                            if current_output.as_deref() == Some(target.as_path()) {
+                                refresh_active_if_matching(&mut active, &proof);
+                            }
+                            match super::configuration_source::inspect_status(&target) {
+                                Ok(status) if !status.pending_publication &&
+                                    (status.pending_activation || host.is_none() ||
+                                     current_output.as_deref() != Some(target.as_path())) => {
+                                    match activate_supervised_candidate(
+                                        &root, &target, policy, &args.args,
+                                        frontend_config.as_ref(), proof, &mut host,
+                                        &mut frontend_process, &mut active_backend_url,
+                                        &mut active,
+                                    ).await? {
+                                        Some(true) => select_output(&mut current_output, &target),
                                         Some(false) => {},
                                         None => {
                                             stop_active(&mut host, &mut frontend_process).await?;
                                             return Ok(());
                                         }
-                                        }
-                                    },
-                                    Err(error) => eprintln!("Configuration candidate failed readiness; candidate not activated: {error:#}"),
+                                    }
                                 }
+                                Ok(_) => {}
+                                Err(error) => eprintln!("Configuration status is invalid; candidate not activated: {error:#}"),
                             }
-                            Ok(_) => {}
-                            Err(error) => eprintln!("Configuration status is invalid; candidate not activated: {error:#}"),
-                        },
+                        }
                         Err(error) => eprintln!("Configuration source unavailable or rejected; candidate not activated: {error:#}"),
                     }
                 }
@@ -261,6 +363,10 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
     }
     .await;
     finish_dev(result, &mut host, &mut frontend_process).await
+}
+
+fn absolute_configuration_policy(path: PathBuf) -> anyhow::Result<PathBuf> {
+    Ok(std::path::absolute(path)?)
 }
 
 async fn finish_dev(
@@ -278,6 +384,228 @@ async fn finish_dev(
     }
 }
 
+async fn expire_active_if_needed(
+    root: &Path,
+    active: &mut Option<TimedProof>,
+    host: &mut Option<Child>,
+    frontend: &mut Option<frontend::FrontendProcess>,
+    active_backend_url: &mut Option<String>,
+) -> anyhow::Result<bool> {
+    if !active.as_ref().is_some_and(|proof| !proof.is_fresh()) {
+        return Ok(false);
+    }
+    eprintln!("Configuration source freshness expired; stopping the running preview");
+    stop_active_now(host, frontend).await?;
+    *active_backend_url = None;
+    restore_backend_url(root, None)?;
+    *active = None;
+    Ok(true)
+}
+
+fn refresh_active_if_matching(active: &mut Option<TimedProof>, proof: &TimedProof) {
+    if proof.is_fresh()
+        && active
+            .as_ref()
+            .is_some_and(|current| current.accepted == proof.accepted)
+    {
+        *active = Some(proof.clone());
+    }
+}
+
+async fn sync_source_with_deadline(
+    root: &Path,
+    output: &Path,
+    policy: &Path,
+    active_output: Option<&Path>,
+    active: &mut Option<TimedProof>,
+    host: &mut Option<Child>,
+    frontend: &mut Option<frontend::FrontendProcess>,
+    active_backend_url: &mut Option<String>,
+) -> anyhow::Result<TimedProof> {
+    let output = output.to_path_buf();
+    let policy_path = policy.to_path_buf();
+    run_source_sync_with_deadline(
+        root,
+        Some((active_output, policy)),
+        move || super::configuration_source::sync_with_proof(&output, &policy_path),
+        active,
+        host,
+        frontend,
+        active_backend_url,
+    )
+    .await
+}
+
+async fn run_source_sync_with_deadline<F>(
+    root: &Path,
+    policy_check: Option<(Option<&Path>, &Path)>,
+    sync: F,
+    active: &mut Option<TimedProof>,
+    host: &mut Option<Child>,
+    frontend: &mut Option<frontend::FrontendProcess>,
+    active_backend_url: &mut Option<String>,
+) -> anyhow::Result<TimedProof>
+where
+    F: FnOnce() -> anyhow::Result<super::configuration_source::AcceptedSourceProof>
+        + Send
+        + 'static,
+{
+    let started_at = Instant::now();
+    let mut job = tokio::task::spawn_blocking(move || {
+        sync().map(|accepted| TimedProof {
+            accepted,
+            received_at: started_at,
+        })
+    });
+    let mut check = tokio::time::interval(Duration::from_millis(250));
+    check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        let deadline = active.as_ref().map(TimedProof::deadline);
+        tokio::select! {
+            result = &mut job => {
+                if let Some((active_output, policy)) = policy_check
+                    && retire_active_on_policy_change(
+                        root, active_output, policy, host, frontend, active_backend_url,
+                    ).await? { *active = None; }
+                expire_active_if_needed(root, active, host, frontend, active_backend_url).await?;
+                return result.context("configuration source task failed")?;
+            }
+            _ = check.tick(), if policy_check.is_some() => {
+                let (active_output, policy) = policy_check.expect("policy check branch");
+                if retire_active_on_policy_change(
+                    root, active_output, policy, host, frontend, active_backend_url,
+                ).await? { *active = None; }
+            }
+            () = async {
+                if let Some(deadline) = deadline {
+                    tokio::time::sleep_until(deadline).await;
+                } else {
+                    std::future::pending::<()>().await;
+                }
+            } => {
+                expire_active_if_needed(root, active, host, frontend, active_backend_url).await?;
+            }
+        }
+    }
+}
+
+fn proof_still_usable(output: &Path, policy: &Path, proof: &TimedProof) -> bool {
+    proof.is_fresh()
+        && matches!(
+            super::configuration_source::proof_matches_current(output, policy, &proof.accepted),
+            Ok(true)
+        )
+}
+
+async fn run_until<T>(
+    source_deadline: Option<Instant>,
+    operation: impl Future<Output = T>,
+) -> Result<T, tokio::time::error::Elapsed> {
+    if let Some(deadline) = source_deadline {
+        tokio::time::timeout_at(deadline, operation).await
+    } else {
+        Ok(operation.await)
+    }
+}
+
+async fn activate_supervised_candidate(
+    root: &Path,
+    output: &Path,
+    policy: &Path,
+    args: &[String],
+    config: Option<&frontend::FrontendConfig>,
+    proof: TimedProof,
+    host: &mut Option<Child>,
+    frontend_process: &mut Option<frontend::FrontendProcess>,
+    active_backend_url: &mut Option<String>,
+    active: &mut Option<TimedProof>,
+) -> anyhow::Result<Option<bool>> {
+    if !proof_still_usable(output, policy, &proof) {
+        if host.is_some() || frontend_process.is_some() {
+            stop_active_now(host, frontend_process).await?;
+            *active_backend_url = None;
+            *active = None;
+            restore_backend_url(root, None)?;
+        }
+        eprintln!("Configuration source proof changed or expired; candidate not activated");
+        return Ok(Some(false));
+    }
+    if host.is_some() || frontend_process.is_some() {
+        eprintln!(
+            "Stopping the old preview before checking a replacement; configuration switching has a downtime window"
+        );
+        stop_active_now(host, frontend_process).await?;
+        *active_backend_url = None;
+        *active = None;
+        restore_backend_url(root, None)?;
+    }
+    if let Err(error) = preflight_until(output, Some(proof.deadline())).await {
+        eprintln!("Configuration candidate failed readiness; candidate not activated: {error:#}");
+        return Ok(Some(false));
+    }
+    if !proof_still_usable(output, policy, &proof) {
+        eprintln!(
+            "Configuration source proof changed or expired during readiness; candidate not activated"
+        );
+        return Ok(Some(false));
+    }
+    let activation = if let Some(config) = config {
+        activate_candidate_with_frontend_until(
+            root,
+            output,
+            args,
+            host,
+            frontend_process,
+            active_backend_url,
+            true,
+            config,
+            Some(proof.deadline()),
+        )
+        .await?
+    } else {
+        activate_candidate_until(output, args, host, true, false, Some(proof.deadline())).await?
+    };
+    if activation == Some(true) {
+        if !proof_still_usable(output, policy, &proof) {
+            eprintln!(
+                "Configuration source proof changed or expired before selecting the new preview"
+            );
+            stop_active_now(host, frontend_process).await?;
+            *active_backend_url = None;
+            restore_backend_url(root, None)?;
+            return Ok(Some(false));
+        }
+        *active = Some(proof);
+    }
+    Ok(activation)
+}
+
+fn effective_poll_interval(configured: Duration, max_stale_seconds: u64) -> Duration {
+    configured.min((Duration::from_secs(max_stale_seconds) / 2).max(Duration::from_millis(1)))
+}
+
+async fn update_poll_interval(
+    poll: &mut tokio::time::Interval,
+    current: &mut Duration,
+    configured: Duration,
+    max_stale_seconds: u64,
+) {
+    let next = effective_poll_interval(configured, max_stale_seconds);
+    if next == *current {
+        return;
+    }
+    if next < configured {
+        eprintln!(
+            "Configuration poll interval shortened to {} ms to fit max_stale_seconds={max_stale_seconds}",
+            next.as_millis()
+        );
+    }
+    *poll = tokio::time::interval(next);
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    poll.tick().await;
+    *current = next;
+}
+
 async fn activate_candidate_with_frontend(
     root: &Path,
     output: &Path,
@@ -287,6 +615,31 @@ async fn activate_candidate_with_frontend(
     active_backend_url: &mut Option<String>,
     supervised_configuration: bool,
     config: &frontend::FrontendConfig,
+) -> anyhow::Result<Option<bool>> {
+    activate_candidate_with_frontend_until(
+        root,
+        output,
+        args,
+        host,
+        frontend_process,
+        active_backend_url,
+        supervised_configuration,
+        config,
+        None,
+    )
+    .await
+}
+
+async fn activate_candidate_with_frontend_until(
+    root: &Path,
+    output: &Path,
+    args: &[String],
+    host: &mut Option<Child>,
+    frontend_process: &mut Option<frontend::FrontendProcess>,
+    active_backend_url: &mut Option<String>,
+    supervised_configuration: bool,
+    config: &frontend::FrontendConfig,
+    source_deadline: Option<Instant>,
 ) -> anyhow::Result<Option<bool>> {
     let revision = if supervised_configuration {
         match super::configuration_source::desired_root_revision(output) {
@@ -301,7 +654,15 @@ async fn activate_candidate_with_frontend(
     } else {
         None
     };
-    let mut candidate = match launch_ready(output, args, supervised_configuration, true).await {
+    let mut candidate = match launch_ready_until(
+        output,
+        args,
+        supervised_configuration,
+        true,
+        source_deadline,
+    )
+    .await
+    {
         Ok(Some(candidate)) => candidate,
         Ok(None) => return Ok(None),
         Err(error) => {
@@ -322,6 +683,19 @@ async fn activate_candidate_with_frontend(
     let previous_url = active_backend_url.clone();
     let address_file = root.join(".lenso/dev-backend-url");
     let mut staged_frontend = None;
+    if source_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        expire_frontend_candidate_now(
+            root,
+            &mut candidate,
+            &mut staged_frontend,
+            host,
+            frontend_process,
+            active_backend_url,
+        )
+        .await?;
+        eprintln!("Configuration source proof expired during frontend startup");
+        return Ok(Some(false));
+    }
     if frontend_process.is_none() {
         let initial_url = previous_url.as_deref().unwrap_or(&next_url);
         if let Err(error) = write_backend_url(root, initial_url) {
@@ -339,9 +713,14 @@ async fn activate_candidate_with_frontend(
             );
             return Ok(Some(false));
         }
-        match config.launch(root, initial_url, &address_file).await {
-            Ok(Some(process)) => staged_frontend = Some(process),
-            Ok(None) => {
+        match run_until(
+            source_deadline,
+            config.launch(root, initial_url, &address_file),
+        )
+        .await
+        {
+            Ok(Ok(Some(process))) => staged_frontend = Some(process),
+            Ok(Ok(None)) => {
                 rollback_frontend_candidate(
                     root,
                     previous_url.as_deref(),
@@ -353,7 +732,7 @@ async fn activate_candidate_with_frontend(
                 .await?;
                 return Ok(None);
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 rollback_frontend_candidate(
                     root,
                     previous_url.as_deref(),
@@ -366,6 +745,19 @@ async fn activate_candidate_with_frontend(
                 eprintln!(
                     "Frontend candidate failed readiness; candidate not activated: {error:#}"
                 );
+                return Ok(Some(false));
+            }
+            Err(_) => {
+                expire_frontend_candidate_now(
+                    root,
+                    &mut candidate,
+                    &mut staged_frontend,
+                    host,
+                    frontend_process,
+                    active_backend_url,
+                )
+                .await?;
+                eprintln!("Configuration source proof expired during frontend readiness");
                 return Ok(Some(false));
             }
         }
@@ -397,9 +789,27 @@ async fn activate_candidate_with_frontend(
         .await?;
         bail!("frontend candidate is missing after launch");
     };
-    match config.verify_backend(selected_frontend, &next_url).await {
-        Ok(true) => {}
-        result => {
+    match run_until(
+        source_deadline,
+        config.verify_backend(selected_frontend, &next_url),
+    )
+    .await
+    {
+        Ok(Ok(true)) => {}
+        Err(_) => {
+            expire_frontend_candidate_now(
+                root,
+                &mut candidate,
+                &mut staged_frontend,
+                host,
+                frontend_process,
+                active_backend_url,
+            )
+            .await?;
+            eprintln!("Configuration source proof expired during frontend backend verification");
+            return Ok(Some(false));
+        }
+        Ok(result) => {
             rollback_frontend_candidate(
                 root,
                 previous_url.as_deref(),
@@ -475,13 +885,47 @@ async fn activate_candidate_with_frontend(
         eprintln!("Retaining the previous Host because it did not stop cleanly");
         return Ok(Some(false));
     }
+    if source_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        expire_frontend_candidate_now(
+            root,
+            &mut candidate,
+            &mut staged_frontend,
+            host,
+            frontend_process,
+            active_backend_url,
+        )
+        .await?;
+        eprintln!("Configuration source proof expired before frontend activation");
+        return Ok(Some(false));
+    }
     if let Some(revision) = revision
         && let Err(error) =
             super::configuration_source::record_distribution_activation(output, &revision)
     {
-        eprintln!(
-            "Local Host is ready, but configuration activation could not be recorded: {error:#}"
-        );
+        eprintln!("Configuration activation receipt failed; stopping the candidate: {error:#}");
+        expire_frontend_candidate_now(
+            root,
+            &mut candidate,
+            &mut staged_frontend,
+            host,
+            frontend_process,
+            active_backend_url,
+        )
+        .await?;
+        return Ok(Some(false));
+    }
+    if source_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        expire_frontend_candidate_now(
+            root,
+            &mut candidate,
+            &mut staged_frontend,
+            host,
+            frontend_process,
+            active_backend_url,
+        )
+        .await?;
+        eprintln!("Configuration source proof expired before frontend activation");
+        return Ok(Some(false));
     }
     *host = Some(candidate);
     if let Some(process) = staged_frontend {
@@ -499,25 +943,21 @@ async fn activate_candidate_with_frontend(
 }
 
 fn candidate_still_running(candidate: &mut Child) -> anyhow::Result<bool> {
-    let group_id = candidate.id();
-    match candidate.try_wait()? {
-        None => Ok(true),
-        Some(_) => {
-            #[cfg(unix)]
-            if let Some(group_id) = group_id {
-                use nix::{
-                    sys::signal::{Signal, killpg},
-                    unistd::Pid,
-                };
-                let group = Pid::from_raw(i32::try_from(group_id)?);
-                if let Err(error) = killpg(group, Signal::SIGKILL)
-                    && error != nix::errno::Errno::ESRCH
-                {
-                    return Err(error.into());
-                }
-            }
-            Ok(false)
+    #[cfg(unix)]
+    {
+        let Some(group_id) = candidate.id() else {
+            return Ok(false);
+        };
+        if !exited_unreaped(group_id)? {
+            return Ok(true);
         }
+        signal_process_group_now(candidate)?;
+        let _ = candidate.try_wait()?;
+        Ok(false)
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(candidate.try_wait()?.is_none())
     }
 }
 
@@ -558,6 +998,31 @@ async fn rollback_frontend_candidate(
     candidate_stopped.context("stop rejected Host")?;
     staged_stopped.context("stop rejected frontend")?;
     Ok(())
+}
+
+async fn expire_frontend_candidate_now(
+    root: &Path,
+    candidate: &mut Child,
+    staged_frontend: &mut Option<frontend::FrontendProcess>,
+    host: &mut Option<Child>,
+    frontend_process: &mut Option<frontend::FrontendProcess>,
+    active_backend_url: &mut Option<String>,
+) -> anyhow::Result<()> {
+    let signal = signal_process_group_now(candidate);
+    let previous = stop_active_now(host, frontend_process).await;
+    let staged = if let Some(process) = staged_frontend.as_mut() {
+        frontend::stop_now(process).await
+    } else {
+        Ok(())
+    };
+    let reaped = reap_killed(candidate).await;
+    *active_backend_url = None;
+    let address = restore_backend_url(root, None);
+    signal?;
+    previous?;
+    staged?;
+    reaped?;
+    address
 }
 
 fn restore_backend_url(root: &Path, previous_url: Option<&str>) -> anyhow::Result<()> {
@@ -686,7 +1151,189 @@ async fn stop_active(
     Ok(())
 }
 
+/// Revoke a running preview without its normal graceful-shutdown allowance.
+async fn stop_active_now(
+    host: &mut Option<Child>,
+    frontend: &mut Option<frontend::FrontendProcess>,
+) -> anyhow::Result<()> {
+    let host_signal = if let Some(process) = host.as_mut() {
+        signal_process_group_now(process)
+    } else {
+        Ok(())
+    };
+    let frontend_result = if let Some(process) = frontend.as_mut() {
+        frontend::stop_now(process).await
+    } else {
+        Ok(())
+    };
+    let host_result = if let Some(process) = host.as_mut() {
+        reap_killed(process).await
+    } else {
+        Ok(())
+    };
+    *host = None;
+    *frontend = None;
+    host_signal?;
+    frontend_result?;
+    host_result
+}
+
+fn signal_process_group_now(process: &mut Child) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        let result = match process.id() {
+            Some(id) => signal_process_group_id_now(id),
+            None => Ok(()),
+        };
+        if result.is_err() {
+            let _ = process.start_kill();
+        }
+        result
+    }
+    #[cfg(not(unix))]
+    {
+        process.start_kill().map_err(anyhow::Error::from)
+    }
+}
+
+#[cfg(unix)]
+fn signal_process_group_id_now(id: u32) -> anyhow::Result<()> {
+    signal_process_group_id(id, nix::sys::signal::Signal::SIGKILL)
+}
+
+#[cfg(unix)]
+fn signal_process_group_id(id: u32, signal: nix::sys::signal::Signal) -> anyhow::Result<()> {
+    use nix::{sys::signal::killpg, unistd::Pid};
+    let group = Pid::from_raw(i32::try_from(id)?);
+    match killpg(group, signal) {
+        Ok(()) | Err(nix::errno::Errno::ESRCH) => Ok(()),
+        // Darwin reports EPERM for a zombie-only group. Do not treat a
+        // permission failure as revocation while any member is live.
+        #[cfg(target_os = "macos")]
+        Err(nix::errno::Errno::EPERM) if exited_unreaped(id)? && darwin_group_only_zombies(id)? => {
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn darwin_group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
+    use nix::libc;
+    let mut pids = vec![0_i32; 64];
+    loop {
+        let capacity = i32::try_from(pids.len() * std::mem::size_of::<i32>())?;
+        // PROC_PGRP_ONLY is 2 in the macOS SDK's sys/proc_info.h.
+        let bytes = unsafe { libc::proc_listpids(2, group_id, pids.as_mut_ptr().cast(), capacity) };
+        anyhow::ensure!(bytes >= 0, "cannot enumerate supervised process group");
+        if bytes >= capacity {
+            anyhow::ensure!(
+                pids.len() < 16384,
+                "supervised process group is too large to inspect"
+            );
+            pids.resize(pids.len() * 2, 0);
+            continue;
+        }
+        let mut saw_leader = false;
+        for &pid in &pids[..usize::try_from(bytes)? / std::mem::size_of::<i32>()] {
+            if pid <= 0 {
+                continue;
+            }
+            if u32::try_from(pid)? == group_id {
+                // WNOWAIT above has already established this exact owned
+                // leader is a zombie; libproc omits its BSD info on Darwin.
+                saw_leader = true;
+                continue;
+            }
+            let mut info = std::mem::MaybeUninit::<libc::proc_bsdshortinfo>::zeroed();
+            let info_size = i32::try_from(std::mem::size_of::<libc::proc_bsdshortinfo>())?;
+            let returned = unsafe {
+                libc::proc_pidinfo(
+                    pid,
+                    libc::PROC_PIDT_SHORTBSDINFO,
+                    0,
+                    info.as_mut_ptr().cast(),
+                    info_size,
+                )
+            };
+            anyhow::ensure!(
+                returned == info_size,
+                "cannot inspect supervised process-group member"
+            );
+            let info = unsafe { info.assume_init() };
+            if info.pbsi_pgid != group_id {
+                continue;
+            }
+            if info.pbsi_status != libc::SZOMB {
+                return Ok(false);
+            }
+        }
+        anyhow::ensure!(
+            saw_leader,
+            "supervised process-group leader disappeared during inspection"
+        );
+        return Ok(true);
+    }
+}
+
+#[cfg(unix)]
+fn exited_unreaped(group_id: u32) -> anyhow::Result<bool> {
+    use nix::libc;
+    let id = i32::try_from(group_id)?;
+    let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
+    let result = unsafe {
+        libc::waitid(
+            libc::P_PID,
+            id as libc::id_t,
+            info.as_mut_ptr(),
+            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+        )
+    };
+    if result == -1 {
+        let error = std::io::Error::last_os_error();
+        if error.kind() == std::io::ErrorKind::Interrupted {
+            return Ok(false);
+        }
+        return Err(error).context("observe local process exit without reaping");
+    }
+    Ok(unsafe { info.assume_init().si_pid() } == id)
+}
+
+#[cfg(unix)]
+async fn wait_for_exit_unreaped(group_id: u32) -> anyhow::Result<()> {
+    loop {
+        if exited_unreaped(group_id)? {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+async fn reap_killed(process: &mut Child) -> anyhow::Result<()> {
+    match tokio::time::timeout(Duration::from_secs(2), process.wait()).await {
+        Ok(status) => {
+            status?;
+            Ok(())
+        }
+        Err(_) => {
+            process.start_kill()?;
+            tokio::time::timeout(Duration::from_secs(2), process.wait())
+                .await
+                .context("local process did not exit after immediate stop")??;
+            Ok(())
+        }
+    }
+}
+
+async fn kill_process_group_now(process: &mut Child) -> anyhow::Result<()> {
+    let signal = signal_process_group_now(process);
+    let reap = reap_killed(process).await;
+    signal?;
+    reap
+}
+
 async fn retire_active_on_policy_change(
+    root: &Path,
     active_output: Option<&Path>,
     policy: &Path,
     host: &mut Option<Child>,
@@ -714,8 +1361,9 @@ async fn retire_active_on_policy_change(
         eprintln!(
             "Host configuration policy changed; stopping the running generation until a new candidate is ready"
         );
-        stop_active(host, frontend).await?;
+        stop_active_now(host, frontend).await?;
         *active_backend_url = None;
+        restore_backend_url(root, None)?;
     }
     Ok(changed)
 }
@@ -741,6 +1389,25 @@ async fn activate_candidate(
     supervised_configuration: bool,
     frontend_enabled: bool,
 ) -> anyhow::Result<Option<bool>> {
+    activate_candidate_until(
+        output,
+        args,
+        host,
+        supervised_configuration,
+        frontend_enabled,
+        None,
+    )
+    .await
+}
+
+async fn activate_candidate_until(
+    output: &Path,
+    args: &[String],
+    host: &mut Option<Child>,
+    supervised_configuration: bool,
+    frontend_enabled: bool,
+    source_deadline: Option<Instant>,
+) -> anyhow::Result<Option<bool>> {
     let revision = if supervised_configuration {
         match super::configuration_source::desired_root_revision(output) {
             Ok(revision) => revision,
@@ -754,8 +1421,14 @@ async fn activate_candidate(
     } else {
         None
     };
-    let mut candidate = match launch_ready(output, args, supervised_configuration, frontend_enabled)
-        .await
+    let mut candidate = match launch_ready_until(
+        output,
+        args,
+        supervised_configuration,
+        frontend_enabled,
+        source_deadline,
+    )
+    .await
     {
         Ok(Some(candidate)) => candidate,
         Ok(None) => return Ok(None),
@@ -764,6 +1437,11 @@ async fn activate_candidate(
             return Ok(Some(false));
         }
     };
+    if source_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        kill_process_group_now(&mut candidate).await?;
+        eprintln!("Configuration source proof expired before Host activation");
+        return Ok(Some(false));
+    }
     let old_stopped = if let Some(previous_host) = host {
         match stop(previous_host, false).await {
             Ok(()) => true,
@@ -780,25 +1458,43 @@ async fn activate_candidate(
         eprintln!("Retaining the previous Host because it did not stop cleanly");
         return Ok(Some(false));
     }
+    if !candidate_still_running(&mut candidate)? {
+        eprintln!("App candidate exited before activation; candidate not activated");
+        return Ok(Some(false));
+    }
     if let Some(revision) = revision
         && let Err(error) =
             super::configuration_source::record_distribution_activation(output, &revision)
     {
-        // The candidate is already live. Keep it supervised and report that
-        // its activation receipt could not be fenced against current intent.
-        eprintln!(
-            "Local Host is ready, but configuration activation could not be recorded: {error:#}"
-        );
+        eprintln!("Configuration activation receipt failed; stopping the candidate: {error:#}");
+        kill_process_group_now(&mut candidate).await?;
+        return Ok(Some(false));
+    }
+    if source_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+        kill_process_group_now(&mut candidate).await?;
+        eprintln!("Configuration source proof expired before Host activation");
+        return Ok(Some(false));
     }
     *host = Some(candidate);
     Ok(Some(true))
 }
 
+#[cfg(test)]
 async fn launch_ready(
     output: &Path,
     args: &[String],
     defer_activation: bool,
     frontend_enabled: bool,
+) -> anyhow::Result<Option<Child>> {
+    launch_ready_until(output, args, defer_activation, frontend_enabled, None).await
+}
+
+async fn launch_ready_until(
+    output: &Path,
+    args: &[String],
+    defer_activation: bool,
+    frontend_enabled: bool,
+    source_deadline: Option<Instant>,
 ) -> anyhow::Result<Option<Child>> {
     // A fresh path is essential when restarting a Host from one distribution:
     // an old readiness file must never certify a new process.
@@ -827,6 +1523,19 @@ async fn launch_ready(
     let mut candidate = candidate.spawn().context("start generated local Host")?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
+        if source_deadline.is_some_and(|source_deadline| Instant::now() >= source_deadline) {
+            kill_process_group_now(&mut candidate).await?;
+            bail!("configuration source proof expired during Host startup");
+        }
+        #[cfg(unix)]
+        if let Some(group_id) = candidate.id()
+            && exited_unreaped(group_id)?
+        {
+            signal_process_group_now(&mut candidate)?;
+            let status = candidate.wait().await?;
+            bail!("generated local Host exited before readiness: {status}");
+        }
+        #[cfg(not(unix))]
         if let Some(status) = candidate.try_wait()? {
             bail!("generated local Host exited before readiness: {status}");
         }
@@ -835,11 +1544,11 @@ async fn launch_ready(
                 if !metadata.file_type().is_file()
                     || fs::read(&marker)? != b"lenso.local-host-ready.v1\n"
                 {
-                    stop(&mut candidate, true).await?;
+                    kill_process_group_now(&mut candidate).await?;
                     bail!("generated local Host returned an invalid readiness receipt");
                 }
                 if frontend_enabled && let Err(error) = backend_url(output) {
-                    stop(&mut candidate, true).await?;
+                    kill_process_group_now(&mut candidate).await?;
                     return Err(error)
                         .context("generated local Host did not report a usable Web Ingress");
                 }
@@ -852,10 +1561,15 @@ async fn launch_ready(
             }
         }
         if tokio::time::Instant::now() >= deadline {
-            stop(&mut candidate, true).await?;
+            kill_process_group_now(&mut candidate).await?;
             bail!("generated local Host did not become ready within 60 seconds");
         }
         tokio::select! {
+            biased;
+            () = sleep_until_optional(source_deadline) => {
+                kill_process_group_now(&mut candidate).await?;
+                bail!("configuration source proof expired during Host startup");
+            }
             signal = tokio::signal::ctrl_c() => {
                 signal?;
                 stop(&mut candidate, true).await?;
@@ -867,6 +1581,10 @@ async fn launch_ready(
 }
 
 async fn preflight(output: &Path) -> anyhow::Result<()> {
+    preflight_until(output, None).await
+}
+
+async fn preflight_until(output: &Path, source_deadline: Option<Instant>) -> anyhow::Result<()> {
     let mut candidate = command(output.join(".lenso/host"));
     candidate
         .args(super::local_host::host_arguments(output)?)
@@ -874,14 +1592,54 @@ async fn preflight(output: &Path) -> anyhow::Result<()> {
     let mut candidate = candidate
         .spawn()
         .context("start App candidate readiness check")?;
-    match tokio::time::timeout(Duration::from_secs(60), candidate.wait()).await {
-        Ok(Ok(status)) if status.success() => Ok(()),
-        Ok(Ok(status)) => bail!("App candidate readiness check failed: {status}"),
-        Ok(Err(error)) => Err(error).context("wait for App candidate readiness"),
-        Err(_) => {
-            stop(&mut candidate, true).await?;
+    let readiness_deadline = Instant::now() + Duration::from_secs(60);
+    #[cfg(unix)]
+    let group_id = candidate.id().context("candidate process ID")?;
+    #[cfg(unix)]
+    tokio::select! {
+        biased;
+        () = sleep_until_optional(source_deadline) => {
+            kill_process_group_now(&mut candidate).await?;
+            bail!("configuration source proof expired during candidate readiness")
+        }
+        () = tokio::time::sleep_until(readiness_deadline) => {
+            kill_process_group_now(&mut candidate).await?;
             bail!("App candidate did not become ready within 60 seconds")
         }
+        result = wait_for_exit_unreaped(group_id) => {
+            result.context("wait for App candidate readiness")?;
+            signal_process_group_now(&mut candidate)?;
+            let status = candidate.wait().await?;
+            if status.success() { Ok(()) }
+            else {
+                bail!("App candidate readiness check failed: {status}")
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    tokio::select! {
+        biased;
+        () = sleep_until_optional(source_deadline) => {
+            kill_process_group_now(&mut candidate).await?;
+            bail!("configuration source proof expired during candidate readiness")
+        }
+        () = tokio::time::sleep_until(readiness_deadline) => {
+            kill_process_group_now(&mut candidate).await?;
+            bail!("App candidate did not become ready within 60 seconds")
+        }
+        status = candidate.wait() => {
+            let status = status.context("wait for App candidate readiness")?;
+            if status.success() { Ok(()) }
+            else { bail!("App candidate readiness check failed: {status}") }
+        }
+    }
+}
+
+async fn sleep_until_optional(deadline: Option<Instant>) {
+    if let Some(deadline) = deadline {
+        tokio::time::sleep_until(deadline).await;
+    } else {
+        std::future::pending::<()>().await;
     }
 }
 
@@ -896,39 +1654,46 @@ fn command(executable: PathBuf) -> Command {
 }
 
 async fn stop(child: &mut Child, whole_group: bool) -> anyhow::Result<()> {
-    if child.try_wait()?.is_some() {
-        return Ok(());
-    }
     #[cfg(unix)]
     {
         use nix::{
             sys::signal::{Signal, kill, killpg},
             unistd::Pid,
         };
-        let id = i32::try_from(child.id().context("child process ID")?)?;
-        let pid = Pid::from_raw(id);
-        let result = if whole_group {
-            killpg(pid, Signal::SIGTERM)
-        } else {
-            kill(pid, Signal::SIGTERM)
+        let Some(child_id) = child.id() else {
+            return Ok(());
         };
-        if let Err(error) = result
-            && error != nix::errno::Errno::ESRCH
-        {
-            return Err(error.into());
+        let id = i32::try_from(child_id)?;
+        let pid = Pid::from_raw(id);
+        if !exited_unreaped(child_id)? {
+            let result = if whole_group {
+                killpg(pid, Signal::SIGTERM)
+            } else {
+                kill(pid, Signal::SIGTERM)
+            };
+            if let Err(error) = result
+                && error != nix::errno::Errno::ESRCH
+            {
+                return Err(error.into());
+            }
         }
-        match tokio::time::timeout(Duration::from_secs(12), child.wait()).await {
-            Ok(result) => {
-                let status = result?;
-                if !whole_group && !status.success() {
-                    bail!("local Host shutdown failed: {status}");
-                }
-            }
-            Err(_) => {
-                let _ = killpg(pid, Signal::SIGKILL);
-                child.wait().await?;
-                bail!("local process did not stop within its shutdown budget");
-            }
+        let within_budget =
+            tokio::time::timeout(Duration::from_secs(12), wait_for_exit_unreaped(child_id)).await;
+        let timed_out = match within_budget {
+            Ok(Ok(())) => false,
+            Ok(Err(error)) => return Err(error),
+            Err(_) => true,
+        };
+        // The child remains unreaped until all group descendants are stopped.
+        signal_process_group_id(child_id, Signal::SIGKILL)?;
+        let status = tokio::time::timeout(Duration::from_secs(2), child.wait())
+            .await
+            .context("local process did not exit after group stop")??;
+        if timed_out {
+            bail!("local process did not stop within its shutdown budget");
+        }
+        if !whole_group && !status.success() {
+            bail!("local Host shutdown failed: {status}");
         }
     }
     #[cfg(not(unix))]
@@ -1034,6 +1799,264 @@ fn rebuild_event(event: &notify::Event) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn accepted_proof(
+        max_stale_seconds: u64,
+    ) -> super::super::configuration_source::AcceptedSourceProof {
+        super::super::configuration_source::AcceptedSourceProof {
+            source: lenso_app_authoring::PluginConfigurationAuthoritySource::new(
+                "file_snapshot",
+                "test",
+            )
+            .unwrap(),
+            policy_digest: "sha256:test".into(),
+            revision: 1,
+            snapshot_digest: "sha256:snapshot".into(),
+            plugin_root_revision: "root-revision".into(),
+            max_stale_seconds,
+        }
+    }
+
+    #[test]
+    fn poll_interval_is_shorter_than_the_stale_limit() {
+        assert_eq!(
+            effective_poll_interval(Duration::from_secs(3600), 300),
+            Duration::from_secs(150)
+        );
+        assert_eq!(
+            effective_poll_interval(Duration::from_secs(3600), 1),
+            Duration::from_millis(500)
+        );
+    }
+
+    #[tokio::test]
+    async fn slow_source_read_cannot_start_a_new_stale_window() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join(".lenso")).unwrap();
+        let mut active = None;
+        let mut host = None;
+        let mut frontend = None;
+        let mut active_backend_url = None;
+        let proof = run_source_sync_with_deadline(
+            root.path(),
+            None,
+            || {
+                std::thread::sleep(Duration::from_millis(1100));
+                Ok(accepted_proof(1))
+            },
+            &mut active,
+            &mut host,
+            &mut frontend,
+            &mut active_backend_url,
+        )
+        .await
+        .unwrap();
+        assert!(!proof.is_fresh());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn blocked_source_read_does_not_delay_policy_retirement() {
+        use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join(".lenso")).unwrap();
+        fs::write(
+            root.path().join(".lenso/dev-backend-url"),
+            "http://127.0.0.1:3001/\n",
+        )
+        .unwrap();
+        let mut process = command(PathBuf::from("/bin/sleep"));
+        process.arg("30");
+        let process = process.spawn().unwrap();
+        let pid = process.id().unwrap();
+        let observed = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(600)).await;
+            kill(Pid::from_raw(i32::try_from(pid).unwrap()), None) == Err(Errno::ESRCH)
+        });
+        let mut active = Some(TimedProof {
+            accepted: accepted_proof(10),
+            received_at: Instant::now(),
+        });
+        let mut host = Some(process);
+        let mut frontend = None;
+        let mut active_backend_url = Some("http://127.0.0.1:3001/".into());
+        let policy = root.path().join("policy.json");
+        let _ = run_source_sync_with_deadline(
+            root.path(),
+            Some((None, &policy)),
+            || {
+                std::thread::sleep(Duration::from_millis(1100));
+                Ok(accepted_proof(10))
+            },
+            &mut active,
+            &mut host,
+            &mut frontend,
+            &mut active_backend_url,
+        )
+        .await
+        .unwrap();
+        assert!(observed.await.unwrap());
+        assert!(host.is_none());
+        assert!(active.is_none());
+        assert!(!root.path().join(".lenso/dev-backend-url").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dev_policy_path_keeps_symlink_visible_to_host_validation() {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir().unwrap();
+        let policy = root.path().join("policy.json");
+        let link = root.path().join("policy-link.json");
+        fs::write(&policy, b"{}").unwrap();
+        symlink(&policy, &link).unwrap();
+        let selected = absolute_configuration_policy(link.clone()).unwrap();
+        assert_eq!(selected, link);
+        assert!(
+            fs::symlink_metadata(selected)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[cfg(unix)]
+    async fn assert_pid_stopped(pid: i32) {
+        use nix::{
+            errno::Errno,
+            sys::signal::{Signal, kill},
+            unistd::Pid,
+        };
+        let pid = Pid::from_raw(pid);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if kill(pid, None) == Err(Errno::ESRCH) {
+                return;
+            }
+            if Instant::now() >= deadline {
+                let _ = kill(pid, Some(Signal::SIGKILL));
+                panic!("Host process-group child remained live");
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn expired_active_proof_kills_host_process_group() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join(".lenso")).unwrap();
+        fs::write(
+            root.path().join(".lenso/dev-backend-url"),
+            "http://127.0.0.1:3001/\n",
+        )
+        .unwrap();
+        let script = root.path().join("group.sh");
+        let child_pid = root.path().join("child.pid");
+        fs::write(
+            &script,
+            "sleep 30 &\nprintf '%s\\n' \"$!\" > \"$1\"\nwait\n",
+        )
+        .unwrap();
+        let mut command = command(PathBuf::from("/bin/sh"));
+        command.arg(&script).arg(&child_pid);
+        let process = command.spawn().unwrap();
+        let mut host = Some(process);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !child_pid.is_file() {
+            assert!(Instant::now() < deadline);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let pid: i32 = fs::read_to_string(&child_pid)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut frontend = None;
+        let mut active_backend_url = Some("http://127.0.0.1:3001/".to_owned());
+        let mut active = Some(TimedProof {
+            accepted: accepted_proof(1),
+            received_at: Instant::now() - Duration::from_secs(2),
+        });
+        assert!(
+            expire_active_if_needed(
+                root.path(),
+                &mut active,
+                &mut host,
+                &mut frontend,
+                &mut active_backend_url,
+            )
+            .await
+            .unwrap()
+        );
+        assert!(host.is_none());
+        assert!(active.is_none());
+        assert!(active_backend_url.is_none());
+        assert!(!root.path().join(".lenso/dev-backend-url").exists());
+        assert_pid_stopped(pid).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn proof_expiry_interrupts_side_effecting_preflight() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let control = root.path().join(".lenso");
+        fs::create_dir(&control).unwrap();
+        fs::write(control.join("host-mode"), "native").unwrap();
+        let child_pid = root.path().join("child.pid");
+        let host = control.join("host");
+        fs::write(
+            &host,
+            format!(
+                "#!/bin/sh\nsleep 30 &\nprintf '%s\\n' \"$!\" > \"{}\"\nwait\n",
+                child_pid.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o755)).unwrap();
+        let error = preflight_until(
+            root.path(),
+            Some(Instant::now() + Duration::from_millis(200)),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("proof expired"));
+        let pid: i32 = fs::read_to_string(&child_pid)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_pid_stopped(pid).await;
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exited_preflight_leader_stops_its_live_descendant_before_reaping() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let control = root.path().join(".lenso");
+        fs::create_dir(&control).unwrap();
+        fs::write(control.join("host-mode"), "native").unwrap();
+        let child_pid = root.path().join("child.pid");
+        let host = control.join("host");
+        fs::write(
+            &host,
+            format!(
+                "#!/bin/sh\nsleep 30 &\nprintf '%s\\n' \"$!\" > \"{}\"\nexit 23\n",
+                child_pid.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(preflight(root.path()).await.is_err());
+        let pid: i32 = fs::read_to_string(&child_pid)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert_pid_stopped(pid).await;
+    }
 
     #[cfg(unix)]
     fn mock_host(output: &Path, ready: bool) {
@@ -1237,7 +2260,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn configuration_candidate_moves_receipt_only_after_ready_replacement() {
+    async fn supervised_configuration_stops_old_before_preflight_and_records_only_ready_host() {
         use lenso_app_plan::authoring::{
             HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
         };
@@ -1288,20 +2311,39 @@ mod tests {
             .unwrap();
         };
         write_snapshot(1, "greeting = 'first'\n");
-        super::super::configuration_source::sync(output.path(), &policy).unwrap();
+        let accepted =
+            super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
         let mut host = None;
+        let mut frontend_process = None;
+        let mut active_backend_url = None;
+        let mut active = None;
         assert!(
-            activate_candidate(output.path(), &[], &mut host, true, false)
-                .await
-                .unwrap()
-                .unwrap()
+            activate_supervised_candidate(
+                output.path(),
+                output.path(),
+                &policy,
+                &[],
+                None,
+                TimedProof {
+                    accepted,
+                    received_at: Instant::now()
+                },
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+                &mut active,
+            )
+            .await
+            .unwrap()
+            .unwrap()
         );
         let first = host.as_ref().unwrap().id();
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
         assert_eq!(status.last_activated_revision, Some(1));
 
         write_snapshot(2, "greeting = 'second'\n");
-        super::super::configuration_source::sync(output.path(), &policy).unwrap();
+        let accepted =
+            super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
         assert!(
             fs::read_to_string(
                 output
@@ -1313,24 +2355,59 @@ mod tests {
         );
         mock_host(output.path(), false);
         assert!(
-            !activate_candidate(output.path(), &[], &mut host, true, false)
-                .await
-                .unwrap()
-                .unwrap()
+            !activate_supervised_candidate(
+                output.path(),
+                output.path(),
+                &policy,
+                &[],
+                None,
+                TimedProof {
+                    accepted,
+                    received_at: Instant::now()
+                },
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+                &mut active,
+            )
+            .await
+            .unwrap()
+            .unwrap()
         );
-        assert_eq!(host.as_ref().unwrap().id(), first);
-        assert!(host.as_mut().unwrap().try_wait().unwrap().is_none());
+        assert!(host.is_none());
+        assert!(active.is_none());
+        use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+        assert_eq!(
+            kill(Pid::from_raw(i32::try_from(first.unwrap()).unwrap()), None),
+            Err(Errno::ESRCH)
+        );
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
         assert_eq!(status.desired_revision, Some(2));
         assert_eq!(status.last_activated_revision, Some(1));
         assert!(status.pending_activation);
 
         mock_host(output.path(), true);
+        let accepted =
+            super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
         assert!(
-            activate_candidate(output.path(), &[], &mut host, true, false)
-                .await
-                .unwrap()
-                .unwrap()
+            activate_supervised_candidate(
+                output.path(),
+                output.path(),
+                &policy,
+                &[],
+                None,
+                TimedProof {
+                    accepted,
+                    received_at: Instant::now()
+                },
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+                &mut active,
+            )
+            .await
+            .unwrap()
+            .unwrap()
         );
         assert_ne!(host.as_ref().unwrap().id(), first);
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
@@ -1346,10 +2423,9 @@ mod tests {
         assert_eq!(status.last_activated_revision, Some(2));
         assert!(host.as_mut().unwrap().try_wait().unwrap().is_none());
 
-        let mut frontend_process = None;
-        let mut active_backend_url = None;
         assert!(
             !retire_active_on_policy_change(
+                output.path(),
                 Some(output.path()),
                 &policy,
                 &mut host,
@@ -1375,6 +2451,7 @@ mod tests {
         super::super::configuration_source::sync(output.path(), &policy).unwrap();
         assert!(
             retire_active_on_policy_change(
+                output.path(),
                 Some(output.path()),
                 &policy,
                 &mut host,
