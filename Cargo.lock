@@ -2955,7 +2955,12 @@ name = "lenso-workers-http-parity-host"
 version = "0.0.0"
 dependencies = [
  "bytes",
+ "futures",
  "http",
+ "js-sys",
+ "lenso-app-plan",
+ "lenso-capability-http-client",
+ "lenso-http-egress-plugin",
  "lenso-kernel",
  "lenso-native-adapter",
  "lenso-web-http-parity-fixture",
