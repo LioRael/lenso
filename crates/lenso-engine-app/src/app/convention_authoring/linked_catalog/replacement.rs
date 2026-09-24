@@ -36,6 +36,8 @@ pub(super) struct PreparedLinkedReplacement {
     staged_workspace: Option<NamedTempFile>,
     rollback_workspace: Option<NamedTempFile>,
     workspace_exclude_owned: bool,
+    workspace_published: bool,
+    config_published: bool,
 }
 
 impl PreparedLinkedReplacement {
@@ -173,6 +175,8 @@ impl PreparedLinkedReplacement {
             staged_workspace,
             rollback_workspace,
             workspace_exclude_owned,
+            workspace_published: false,
+            config_published: false,
         })
     }
 
@@ -232,6 +236,7 @@ impl PreparedLinkedReplacement {
         self.ensure_workspace_is(&self.workspace_before)?;
         if let Some(staged) = self.staged_workspace.take() {
             staged.persist(&self.workspace_manifest)?;
+            self.workspace_published = true;
         }
         checkpoint(CommitCheckpoint::WorkspaceExcluded)?;
 
@@ -242,13 +247,16 @@ impl PreparedLinkedReplacement {
             .take()
             .context("replacement config was not staged")?;
         staged.persist(&self.config)?;
+        self.config_published = true;
         checkpoint(CommitCheckpoint::ConfigSelected)?;
         Ok(())
     }
 
     fn rollback_selection(&mut self) -> anyhow::Result<()> {
         let config_result = (|| {
-            if adoption::read_optional_regular(&self.config)? == Some(self.config_after.clone()) {
+            if self.config_published
+                && adoption::read_optional_regular(&self.config)? == Some(self.config_after.clone())
+            {
                 let staged = self
                     .rollback_config
                     .take()
@@ -259,8 +267,9 @@ impl PreparedLinkedReplacement {
         })();
         let workspace_result = (|| {
             if self.workspace_before != self.workspace_after {
-                if adoption::read_optional_regular(&self.workspace_manifest)?
-                    == self.workspace_after
+                if self.workspace_published
+                    && adoption::read_optional_regular(&self.workspace_manifest)?
+                        == self.workspace_after
                 {
                     let staged = self
                         .rollback_workspace
@@ -587,6 +596,45 @@ mod tests {
         assert_eq!(
             fs::read(root.path().join("Cargo.toml")).unwrap(),
             workspace_before
+        );
+        assert!(old.join(SOURCE_LOCK).is_file());
+    }
+
+    #[test]
+    fn same_bytes_concurrent_edits_before_publication_are_not_rolled_back() {
+        let (root, old, new) = app();
+        let prepared = PreparedLinkedReplacement::new_locked(
+            root.path(),
+            &old,
+            &new,
+            "example.web",
+            adoption::lock_app(root.path()).unwrap(),
+        )
+        .unwrap();
+        let expected_config = prepared.config_after.clone();
+        let expected_workspace = prepared.workspace_after.clone().unwrap();
+        let stage = source_stage(root.path(), "0.4.6");
+        let failed = prepared.commit_with(stage.path(), |step| {
+            if step == CommitCheckpoint::SourceReady {
+                fs::write(root.path().join("lenso.toml"), &expected_config)?;
+                fs::write(root.path().join("Cargo.toml"), &expected_workspace)?;
+                bail!("concurrent same-bytes edit");
+            }
+            Ok(())
+        });
+        assert!(
+            failed
+                .unwrap_err()
+                .to_string()
+                .contains("rollback incomplete")
+        );
+        assert_eq!(
+            fs::read(root.path().join("lenso.toml")).unwrap(),
+            expected_config
+        );
+        assert_eq!(
+            fs::read(root.path().join("Cargo.toml")).unwrap(),
+            expected_workspace
         );
         assert!(old.join(SOURCE_LOCK).is_file());
     }
