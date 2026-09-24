@@ -101,15 +101,18 @@ async fn request(
     method: &str,
     uri: &str,
     body: &[u8],
+    headers: &[(&str, &str)],
 ) -> Response<Bytes> {
     let stream = TcpStream::connect(address).await.unwrap();
     let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
         .await
         .unwrap();
     tokio::task::spawn_local(async move { connection.await.unwrap() });
-    let request = Request::builder()
-        .method(method)
-        .uri(uri)
+    let mut builder = Request::builder().method(method).uri(uri);
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
+    let request = builder
         .body(Full::new(Bytes::copy_from_slice(body)))
         .unwrap();
     let response = sender.send_request(request).await.unwrap();
@@ -149,6 +152,38 @@ async fn one_http_endpoint_runs_through_native_and_real_wasm_component() {
                 .await
                 .unwrap();
 
+            for (label, address) in [
+                ("native", native_ingress.local_address().unwrap()),
+                ("wasm", wasm_ingress.local_address().unwrap()),
+            ] {
+                let evidence = request(
+                    address,
+                    "GET",
+                    "/evidence",
+                    b"",
+                    &[("x-test", "alpha"), ("authorization", "Bearer test-token")],
+                )
+                .await;
+                assert_eq!(evidence.status().as_u16(), 200, "{label} evidence");
+                assert_eq!(
+                    evidence.body().as_ref(),
+                    b"bearer:alpha",
+                    "{label} evidence"
+                );
+                let ambiguous = request(
+                    address,
+                    "GET",
+                    "/evidence",
+                    b"",
+                    &[
+                        ("authorization", "Bearer first"),
+                        ("authorization", "Bearer second"),
+                    ],
+                )
+                .await;
+                assert_eq!(ambiguous.status().as_u16(), 400, "{label} ambiguous bearer");
+            }
+
             let cases: [HttpCase<'_>; 6] = [
                 ("GET", "/method/42", b"", 200, b"GET /method/42"),
                 (
@@ -182,9 +217,22 @@ async fn one_http_endpoint_runs_through_native_and_real_wasm_component() {
                 ),
             ];
             for (method, uri, body, status, expected_body) in cases {
-                let native =
-                    request(native_ingress.local_address().unwrap(), method, uri, body).await;
-                let wasm = request(wasm_ingress.local_address().unwrap(), method, uri, body).await;
+                let native = request(
+                    native_ingress.local_address().unwrap(),
+                    method,
+                    uri,
+                    body,
+                    &[],
+                )
+                .await;
+                let wasm = request(
+                    wasm_ingress.local_address().unwrap(),
+                    method,
+                    uri,
+                    body,
+                    &[],
+                )
+                .await;
                 assert_eq!(native.status().as_u16(), status, "native {method} {uri}");
                 assert_eq!(wasm.status().as_u16(), status, "wasm {method} {uri}");
                 assert_eq!(

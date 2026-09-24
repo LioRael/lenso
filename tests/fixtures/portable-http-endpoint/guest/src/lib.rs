@@ -38,6 +38,17 @@ impl Guest for GuestComponent {
                     request["method"].as_str().unwrap(),
                     request["path"].as_str().unwrap(),
                     &body,
+                    request["credential"]["scheme"].as_str(),
+                    request["headers"]
+                        .as_array()
+                        .and_then(|headers| {
+                            headers.iter().find(|header| {
+                                header["name"]
+                                    .as_str()
+                                    .is_some_and(|name| name.eq_ignore_ascii_case("x-test"))
+                            })
+                        })
+                        .and_then(|header| header["value"].as_str()),
                 ) {
                     handler::Reply::Bytes(body) => Ok(json!({
                         "status": 200,

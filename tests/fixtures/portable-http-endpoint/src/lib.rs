@@ -1,10 +1,11 @@
 //! Business behavior compiled unchanged into Native, Component, and Workers fixtures.
 
-pub const ROUTES: [(&str, &str, &str); 4] = [
+pub const ROUTES: [(&str, &str, &str); 5] = [
     ("method", "GET", "/method/{item}"),
     ("bytes", "POST", "/bytes"),
     ("reject", "GET", "/reject"),
     ("failure", "GET", "/failure"),
+    ("evidence", "GET", "/evidence"),
 ];
 
 /// One outcome of the target-independent business handler.
@@ -16,13 +17,28 @@ pub enum Reply {
 }
 
 /// Handles one already-routed HTTP request without using a host API.
-pub fn handle(route_id: &str, method: &str, path: &str, body: &[u8]) -> Reply {
+pub fn handle(
+    route_id: &str,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    credential_scheme: Option<&str>,
+    x_test: Option<&str>,
+) -> Reply {
     match (route_id, method, path) {
         ("method", "GET", path) if path.starts_with("/method/") => {
             Reply::Bytes(format!("{method} {path}").into_bytes())
         }
         ("bytes", "POST", "/bytes") => Reply::Bytes(body.to_vec()),
         ("failure", "GET", "/failure") => Reply::RuntimeFailure,
+        ("evidence", "GET", "/evidence") => Reply::Bytes(
+            format!(
+                "{}:{}",
+                credential_scheme.unwrap_or("none"),
+                x_test.unwrap_or("none")
+            )
+            .into_bytes(),
+        ),
         // The declared reject route and invalid internal dispatches both
         // become intentional domain errors at the HTTP boundary.
         _ => Reply::DomainError,
@@ -79,6 +95,15 @@ pub mod linked {
                     &request.method,
                     &request.path,
                     &request.body,
+                    request
+                        .credential
+                        .as_ref()
+                        .map(|value| value.scheme.as_str()),
+                    request
+                        .headers
+                        .iter()
+                        .find(|header| header.name.eq_ignore_ascii_case("x-test"))
+                        .map(|header| header.value.as_str()),
                 ) {
                     Reply::Bytes(body) => Ok(Ok(HandleResponse {
                         status: 200,
