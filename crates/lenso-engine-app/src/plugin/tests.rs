@@ -151,7 +151,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.11"),
         ("lenso-test", "=0.1.2"),
-        ("lenso-web-host", "=0.2.2"),
+        ("lenso-web-host", "=0.2.3"),
     ] {
         let section = if matches!(name, "lenso" | "lenso-capability-http-endpoint") {
             "dependencies"

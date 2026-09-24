@@ -2011,7 +2011,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-bun-adapter"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -2118,7 +2118,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-websocket-endpoint"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "futures",
  "lenso-contract-codegen",
@@ -2527,7 +2527,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-openapi-plugin"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "futures",
  "lenso",
@@ -2566,7 +2566,7 @@ version = "0.2.0"
 
 [[package]]
 name = "lenso-plugin-bundle"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "flate2",
  "hex",
@@ -2737,7 +2737,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runner"
-version = "0.2.18"
+version = "0.2.19"
 dependencies = [
  "cpu-time",
  "fs2",
@@ -2849,7 +2849,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-web-host"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "bytes",
  "futures",
@@ -2892,7 +2892,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-web-ingress-plugin"
-version = "0.4.7"
+version = "0.4.8"
 dependencies = [
  "axum",
  "base64 0.22.1",

@@ -118,7 +118,7 @@ pub(super) fn generate(
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.11"),
         ("lenso-native-adapter", "=0.3.16"),
-        ("lenso-runner", "=0.2.18"),
+        ("lenso-runner", "=0.2.19"),
     ] {
         dependencies.insert(name.into(), json!(version));
         if name.starts_with("lenso-") {
@@ -321,7 +321,7 @@ pub(super) fn generate(
             ("lenso-runtime-codec", "=0.3.4"),
         ],
         "0.4" => [
-            ("lenso-bun-adapter", "=0.1.14"),
+            ("lenso-bun-adapter", "=0.1.15"),
             ("lenso-process-adapter", "=0.3.13"),
             ("lenso-wasm-component-adapter", "=0.2.16"),
             ("lenso-runtime-codec", "=0.4.3"),
@@ -975,14 +975,14 @@ fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
             let (dependency, _) = local_framework_dependency(
                 path.parent().context("Endpoint crates directory")?,
                 "lenso-web-ingress-plugin",
-                "=0.4.7",
+                "=0.4.8",
             )?;
             return Ok(dependency);
         }
     }
     // A registry Endpoint or standalone local package uses the matching
     // published Ingress, recorded exactly in the generated Cargo lock.
-    Ok(json!("=0.4.7"))
+    Ok(json!("=0.4.8"))
 }
 
 fn codec_name(capability: &str) -> anyhow::Result<String> {
@@ -2211,7 +2211,7 @@ mod tests {
         std::fs::create_dir_all(&ingress).unwrap();
         std::fs::write(
             ingress.join("Cargo.toml"),
-            "[package]\nname = \"lenso-web-ingress-plugin\"\nversion = \"0.4.7\"\n",
+            "[package]\nname = \"lenso-web-ingress-plugin\"\nversion = \"0.4.8\"\n",
         )
         .unwrap();
         let dependency = web_ingress_dependency(&json!({
@@ -2220,7 +2220,7 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(dependency["path"], ingress.to_string_lossy().as_ref());
-        assert_eq!(dependency["version"], "=0.4.7");
+        assert_eq!(dependency["version"], "=0.4.8");
     }
 
     #[test]
@@ -2230,6 +2230,6 @@ mod tests {
             "version": "=0.3.4"
         }))
         .unwrap();
-        assert_eq!(dependency, json!("=0.4.7"));
+        assert_eq!(dependency, json!("=0.4.8"));
     }
 }

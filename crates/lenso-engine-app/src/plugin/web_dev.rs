@@ -389,13 +389,13 @@ fn registry_framework_version(name: &str) -> Option<&'static str> {
         "lenso-app-plan" => "0.4.6",
         "lenso-kernel" => "0.3.11",
         "lenso-native-adapter" => "0.3.16",
-        "lenso-runner" => "0.2.18",
+        "lenso-runner" => "0.2.19",
         "lenso-contract-runtime" => "0.2.0",
         "lenso-capability-http-endpoint" => "0.3.4",
         "lenso-capability-http-stream-endpoint" => "0.1.2",
-        "lenso-capability-websocket-endpoint" => "0.1.1",
-        "lenso-web-host" => "0.2.2",
-        "lenso-web-ingress-plugin" => "0.4.7",
+        "lenso-capability-websocket-endpoint" => "0.1.2",
+        "lenso-web-host" => "0.2.3",
+        "lenso-web-ingress-plugin" => "0.4.8",
         _ => return None,
     })
 }
@@ -426,7 +426,7 @@ fn host_manifest(
             "\"=0.4.6\"".to_owned(),
             "\"=0.3.11\"".to_owned(),
             "\"=0.3.16\"".to_owned(),
-            "\"=0.2.2\"".to_owned(),
+            "\"=0.2.3\"".to_owned(),
             String::new(),
         ),
         FrameworkSource::Git { url, rev } => {
@@ -453,7 +453,7 @@ fn host_manifest(
                 dependency("0.4.6"),
                 dependency("0.3.11"),
                 dependency("0.3.16"),
-                dependency("0.2.2"),
+                dependency("0.2.3"),
                 patches,
             )
         }
@@ -569,7 +569,7 @@ mod tests {
 
         assert!(name.starts_with("lenso-web-dev-company-greetings-http-"));
         for (name, version) in [
-            ("lenso-web-host", "=0.2.2"),
+            ("lenso-web-host", "=0.2.3"),
             ("lenso-app-plan", "=0.4.6"),
             ("lenso-kernel", "=0.3.11"),
         ] {
@@ -730,9 +730,9 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
         let git = "https://github.com/LioRael/lenso";
         for (name, version) in [
             ("lenso-capability-http-stream-endpoint", "0.1.2"),
-            ("lenso-capability-websocket-endpoint", "0.1.1"),
-            ("lenso-web-ingress-plugin", "0.4.7"),
-            ("lenso-runner", "0.2.18"),
+            ("lenso-capability-websocket-endpoint", "0.1.2"),
+            ("lenso-web-ingress-plugin", "0.4.8"),
+            ("lenso-runner", "0.2.19"),
             ("lenso-contract-runtime", "0.2.0"),
         ] {
             let dependency = format!(
