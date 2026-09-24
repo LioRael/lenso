@@ -32,7 +32,7 @@ pub enum PluginsCommand {
     List(ProjectArgs),
     /// Add one exact Plugin Bundle after candidate validation.
     Add(AddArgs),
-    /// Write direct configuration for one Plugin Instance.
+    /// Write direct configuration for one built Plugin Root Instance.
     Configure(ConfigureArgs),
     /// Save one exact provider choice for a named Plugin dependency.
     Bind(BindArgs),
@@ -290,6 +290,14 @@ fn add_from_directory(args: AddArgs, bundle: &Path) -> anyhow::Result<()> {
 
 fn configure(args: ConfigureArgs) -> anyhow::Result<()> {
     let root = project_root(args.root)?;
+    if root.join("lenso.toml").is_file()
+        && !root.join(".lenso/host-catalog.json").is_file()
+        && !root.join(".lenso/host-build.json").is_file()
+    {
+        bail!(
+            "this is a source App, not a built Plugin Root; edit its App-owned plugins/<plugin-id>/<instance>.toml, then run `lenso app build`. `lenso plugins configure` applies to a built distribution"
+        );
+    }
     let bytes = args.file.map_or_else(
         || Ok(Vec::new()),
         |path| fs::read(&path).with_context(|| format!("read {}", path.display())),
@@ -298,6 +306,33 @@ fn configure(args: ConfigureArgs) -> anyhow::Result<()> {
     let id = PluginInstanceId::new(&args.plugin_id, &args.instance);
     println!("Configured Plugin Instance `{id}`.");
     Ok(())
+}
+
+#[cfg(test)]
+mod configure_tests {
+    use super::*;
+
+    #[test]
+    fn source_app_configuration_requires_app_owned_file_before_first_build() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("lenso.toml"), "").unwrap();
+        let file = root.path().join("input.toml");
+        fs::write(&file, "[references]\nprobe = \"TEST_ONLY\"\n").unwrap();
+        let error = configure(ConfigureArgs {
+            plugin_id: "lenso.secrets.env".to_owned(),
+            instance: "default".to_owned(),
+            file: Some(file),
+            root: Some(root.path().to_path_buf()),
+        })
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("App-owned plugins/<plugin-id>/<instance>.toml"),
+            "{error:#}"
+        );
+        assert!(!root.path().join("plugins").exists());
+    }
 }
 
 fn bind(args: BindArgs) -> anyhow::Result<()> {
