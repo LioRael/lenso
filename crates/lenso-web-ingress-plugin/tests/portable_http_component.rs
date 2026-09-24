@@ -1,7 +1,7 @@
 //! Real native loopback HTTP and Wasmtime Component requests over one business handler.
 //! This is a Native Environment receipt, not workerd or deployed Workers evidence.
 
-use std::{any::Any, process::Command, rc::Rc, time::Duration};
+use std::{process::Command, rc::Rc, time::Duration};
 
 use bytes::Bytes;
 use http::{Request, Response};
@@ -12,9 +12,10 @@ use lenso_app_plan::{
     ExecutionClassId, PluginInstancePlan, ResolvedAppPlan,
 };
 use lenso_capability_http_endpoint::{
-    CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, DescribeError, DescribeRequest,
-    DescribeResponse, DescribeResponseRoutesItem, EndpointDescribe, EndpointEndpoint,
-    EndpointHandle, EndpointProvider, HANDLE_OPERATION, HandleError, HandleRequest, HandleResponse,
+    CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, DescribeRequest, DescribeResponse,
+    DescribeResponseRoutesItem, EndpointDescribe, EndpointEndpoint, EndpointHandle,
+    EndpointJsonCodec, EndpointProvider, HANDLE_OPERATION, HandleError, HandleRequest,
+    HandleResponse,
 };
 use lenso_kernel::{
     ExecutionAdapterCatalog, InvocationContext, Kernel, NativeRequestFuture, RuntimeFailure,
@@ -25,10 +26,9 @@ use lenso_native_adapter::{
 };
 use lenso_portable_http_endpoint_fixture as handler;
 use lenso_runner::TokioDriver;
-use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle, JsonCapabilityCodec};
+use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle};
 use lenso_wasm_component_adapter::{EXECUTION_CLASS, WasmComponentAdapter};
 use lenso_web_ingress_plugin::{WebIngressConfig, WebIngressFactory};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tokio::{net::TcpStream, task::LocalSet};
 
@@ -101,74 +101,6 @@ impl NativePluginFactory for NativeEndpointFactory {
         Ok(NativePluginInstance::new(vec![Rc::new(
             EndpointEndpoint::new(NativeEndpoint),
         )]))
-    }
-}
-
-#[derive(Debug)]
-struct HttpEndpointCodec;
-
-impl HttpEndpointCodec {
-    fn invalid() -> RuntimeFailure {
-        RuntimeFailure::ProtocolViolation {
-            capability: CAPABILITY_ID,
-        }
-    }
-}
-
-impl JsonCapabilityCodec for HttpEndpointCodec {
-    fn capability_id(&self) -> &'static str {
-        CAPABILITY_ID
-    }
-
-    fn descriptor_version(&self) -> &'static str {
-        DESCRIPTOR_VERSION
-    }
-
-    fn request_operations(&self) -> &'static [&'static str] {
-        &[DESCRIBE_OPERATION, HANDLE_OPERATION]
-    }
-
-    fn encode_request(&self, operation: &str, request: &dyn Any) -> Result<Value, RuntimeFailure> {
-        match operation {
-            DESCRIBE_OPERATION => request
-                .downcast_ref::<DescribeRequest>()
-                .and_then(|request| serde_json::to_value(request).ok()),
-            HANDLE_OPERATION => request
-                .downcast_ref::<HandleRequest>()
-                .and_then(|request| serde_json::to_value(request).ok()),
-            _ => None,
-        }
-        .ok_or_else(Self::invalid)
-    }
-
-    fn decode_response(
-        &self,
-        operation: &str,
-        value: Value,
-    ) -> Result<Box<dyn Any>, RuntimeFailure> {
-        match operation {
-            DESCRIBE_OPERATION => serde_json::from_value::<DescribeResponse>(value)
-                .map(|value| Box::new(value) as Box<dyn Any>),
-            HANDLE_OPERATION => serde_json::from_value::<HandleResponse>(value)
-                .map(|value| Box::new(value) as Box<dyn Any>),
-            _ => return Err(Self::invalid()),
-        }
-        .map_err(|_| Self::invalid())
-    }
-
-    fn decode_domain_error(
-        &self,
-        operation: &str,
-        value: Value,
-    ) -> Result<Box<dyn Any>, RuntimeFailure> {
-        match operation {
-            DESCRIBE_OPERATION => serde_json::from_value::<DescribeError>(value)
-                .map(|value| Box::new(value) as Box<dyn Any>),
-            HANDLE_OPERATION => serde_json::from_value::<HandleError>(value)
-                .map(|value| Box::new(value) as Box<dyn Any>),
-            _ => return Err(Self::invalid()),
-        }
-        .map_err(|_| Self::invalid())
     }
 }
 
@@ -285,7 +217,7 @@ async fn one_http_endpoint_runs_through_native_and_real_wasm_component() {
                     .with_artifact("endpoint", artifact)
                     .unwrap(),
             )
-            .with_codec(HttpEndpointCodec);
+            .with_codec(EndpointJsonCodec);
             let adapters = ExecutionAdapterCatalog::new()
                 .with_adapter(NativePluginRegistry::new().with_factory(wasm_ingress.clone()))
                 .unwrap()
