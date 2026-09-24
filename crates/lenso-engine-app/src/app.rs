@@ -26,6 +26,7 @@ pub use facts::{ProjectFacts, inspect_project_facts};
 mod local_dev;
 pub use local_dev::DevArgs;
 mod local_host;
+mod local_start;
 mod local_workflow;
 pub use local_workflow::CreateArgs;
 mod portable_runtime {
@@ -282,7 +283,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
         AppCommand::Contract { command } => contracts::scaffold::run(command),
         AppCommand::Build(args) => local_workflow::build(args),
         AppCommand::Create(args) => local_workflow::create(args),
-        AppCommand::Start(args) => local_workflow::start(args),
+        AppCommand::Start(args) => local_workflow::start_command(args).await,
         AppCommand::Dev(args) => local_dev::dev(args).await,
         AppCommand::Runtime { args } => std::thread::spawn(move || portable_runtime::run(args))
             .join()

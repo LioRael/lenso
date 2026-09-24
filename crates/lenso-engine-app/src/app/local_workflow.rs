@@ -187,17 +187,17 @@ pub struct StartArgs {
     /// External App root whose plugins/ intent replaces the build snapshot.
     #[arg(long)]
     root: Option<PathBuf>,
-    /// Host-operator policy for one versioned external configuration source.
+    /// Continuously supervised Host policy; incompatible with --check or terminal arguments.
     #[arg(long, conflicts_with = "root")]
     configuration_policy: Option<PathBuf>,
     /// Start, validate readiness and shut down immediately.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "configuration_policy")]
     check: bool,
     /// Local control-plane readiness receipt; not an App-authored input.
     #[arg(long, hide = true, conflicts_with = "check")]
     ready_file: Option<PathBuf>,
     /// Arguments passed to installed terminal support.
-    #[arg(last = true, conflicts_with = "check")]
+    #[arg(last = true, conflicts_with_all = ["check", "configuration_policy"])]
     args: Vec<String>,
 }
 pub(super) fn start_built_local_app(from: PathBuf, args: Vec<String>) -> anyhow::Result<()> {
@@ -210,6 +210,21 @@ pub(super) fn start_built_local_app(from: PathBuf, args: Vec<String>) -> anyhow:
         args,
     })
 }
+
+pub(super) async fn start_command(args: StartArgs) -> anyhow::Result<()> {
+    if let Some(policy) = args.configuration_policy.as_ref() {
+        // A one-shot Host would bypass policy revocation and the freshness
+        // deadline; replaying a terminal command could repeat side effects.
+        if args.check || !args.args.is_empty() {
+            bail!(
+                "--configuration-policy requires a continuously supervised App; --check and terminal arguments are unsupported"
+            );
+        }
+        return super::local_start::run(args.from, policy.clone(), args.ready_file).await;
+    }
+    start(args)
+}
+
 pub fn start(args: StartArgs) -> anyhow::Result<()> {
     super::configuration_source::require_or_sync(&args.from, args.configuration_policy.as_deref())?;
     let executable = fs::canonicalize(args.from.join(".lenso/host"))
@@ -361,7 +376,37 @@ pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Resu
 mod tests {
     use std::fs;
 
-    use super::{AppLanguage, CreateArgs, create, prepare_web_starter};
+    use super::{AppLanguage, CreateArgs, StartArgs, create, prepare_web_starter, start_command};
+
+    #[tokio::test]
+    async fn policy_start_rejects_one_shot_modes_before_sync() {
+        let base = StartArgs {
+            from: "missing-distribution".into(),
+            root: None,
+            configuration_policy: Some("missing-policy".into()),
+            check: false,
+            ready_file: None,
+            args: Vec::new(),
+        };
+        let mut check = base.clone();
+        check.check = true;
+        assert!(
+            start_command(check)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("continuously supervised")
+        );
+        let mut terminal = base;
+        terminal.args = vec!["status".into()];
+        assert!(
+            start_command(terminal)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("terminal arguments are unsupported")
+        );
+    }
 
     #[test]
     fn web_app_create_uses_the_native_web_scaffold() {
