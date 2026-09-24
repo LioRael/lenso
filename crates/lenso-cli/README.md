@@ -178,6 +178,11 @@ Plugin's `plugin_sources` entry. It preserves the old vendor source, customized
 Plugin Root, and existing `dist` for recovery. A failed selection rolls back
 the App config and workspace exclusion when their bytes are still the CLI's;
 an already published but unselected new source may remain for an exact retry.
+If the App owns a Cargo workspace, the old version's `workspace.exclude` entry
+stays in place while its source is retained. `app unadopt` applies only to the
+currently selected exact version; it will not silently retire an older,
+unselected vendor directory or discard customized Plugin Root intent. Review
+and archive that old source and its exclusion explicitly when no longer needed.
 `--replace` never bypasses the signed catalog checkpoint or accepts a local
 unsigned Plugin as the prior selection. It is a source-App edit, not an atomic
 runtime upgrade or data migration: the previous built Host remains runnable

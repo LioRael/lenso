@@ -762,6 +762,121 @@ fn replace_next_exact_version(
         String::from_utf8_lossy(&stale.stderr)
     );
     assert_eq!(fs::read(&intent).unwrap(), b"# App-owned custom intent\n");
+    prove_replaced_build_and_removal_when_requested(cli, &root, &old);
+}
+
+fn prove_replaced_build_and_removal_when_requested(
+    cli: &str,
+    root: &std::path::Path,
+    old: &std::path::Path,
+) {
+    if std::env::var_os("LENSO_LINKED_BUILD_PROOF").is_none() {
+        return;
+    }
+    let output = root.join("dist-replaced");
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(root)
+        .arg("--out")
+        .arg(&output)
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let intent_root = output.join("intent");
+    let checked = Command::new(cli)
+        .args(["app", "check", "--json", "--root"])
+        .arg(&intent_root)
+        .output()
+        .unwrap();
+    assert!(
+        checked.status.success(),
+        "{}",
+        String::from_utf8_lossy(&checked.stderr)
+    );
+    let check: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
+    assert_eq!(check["plugin_instances"], 1);
+    let shown = Command::new(cli)
+        .args(["app", "show", "--json", "--root"])
+        .arg(&intent_root)
+        .output()
+        .unwrap();
+    assert!(
+        shown.status.success(),
+        "{}",
+        String::from_utf8_lossy(&shown.stderr)
+    );
+    let show: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+    assert_eq!(show["instances"].as_array().unwrap().len(), 1);
+    let facts = Command::new(cli)
+        .args(["app", "facts", "--json", "--root"])
+        .arg(&intent_root)
+        .output()
+        .unwrap();
+    assert!(
+        facts.status.success(),
+        "{}",
+        String::from_utf8_lossy(&facts.stderr)
+    );
+    let facts: serde_json::Value = serde_json::from_slice(&facts.stdout).unwrap();
+    assert_eq!(facts["plugins"][0]["release_version"], "0.4.6");
+    let started = Command::new(cli)
+        .args(["app", "start", "--from"])
+        .arg(&output)
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+
+    // Unadopt must not discard customized App-owned intent implicitly.
+    let customized = Command::new(cli)
+        .args(["app", "unadopt", "example.web@0.4.6", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(!customized.status.success());
+    assert!(
+        String::from_utf8_lossy(&customized.stderr).contains("Plugin Root intent has user changes")
+    );
+    fs::write(
+        root.join("plugins/example.web/default.toml"),
+        b"# Explicit local Plugin adoption\n",
+    )
+    .unwrap();
+    let removed = Command::new(cli)
+        .args(["app", "unadopt", "example.web@0.4.6", "--root"])
+        .arg(root)
+        .output()
+        .unwrap();
+    assert!(
+        removed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&removed.stderr)
+    );
+    assert!(
+        old.join(".lenso-linked-source.json").is_file(),
+        "prior version is retained for explicit recovery"
+    );
+    assert!(!root.join("vendor/lenso/example.web/0.4.6").exists());
+    prove_removed_build_when_requested(cli, root);
+    let removed_host = Command::new(cli)
+        .args(["app", "start", "--from"])
+        .arg(root.join("dist-removed"))
+        .arg("--check")
+        .output()
+        .unwrap();
+    assert!(
+        removed_host.status.success(),
+        "{}",
+        String::from_utf8_lossy(&removed_host.stderr)
+    );
 }
 
 fn assert_host_provided_rejected(
