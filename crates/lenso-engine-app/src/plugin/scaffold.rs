@@ -118,7 +118,7 @@ plugin-id = "{plugin_id}"
 root-slot = "web"
 
 [dependencies]
-lenso = {{ version = "=0.5.25", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
+lenso = {{ version = "=0.5.26", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
 lenso-capability-http-endpoint = {{ version = "0.3.4", git = "https://github.com/LioRael/lenso", rev = "{LENSO_FRAMEWORK_REVISION}" }}
 serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
@@ -512,7 +512,7 @@ async fn search(
         "## Keep public OpenAPI honest\n\n",
         "`create` and `search` are marked with `#[openapi_contract]`. Their JSON request bodies, success values, and stable `invalid_name`/`invalid_term` problem codes are derived from the same typed handler values. Search uses POST so its JSON body is expressible in OpenAPI 3.1. In a generated App, run `lenso app add @lenso/openapi --root .` to select the optional OpenAPI Plugin before building. Fetch the running App's `/openapi.json` and feed that document to `lenso-web-client generate openapi.json src/generated/lenso-api.ts`. Activation rejects a document that drifts from the handler. This local Host profile binds the document to all selected `web` Slot Endpoint providers, not to internal Capability contracts. Routes without `#[openapi]` still receive an undocumented-response fallback when their provider is selected; place private routes in a separate unbound Host profile rather than assuming omission hides them.\n\n",
         "## Exercise the real Web path locally\n\n",
-        "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest Git-pins `lenso-web-host@0.2.2`, Endpoint `0.3.4`, `lenso@0.5.25`, `lenso-test@0.1.2`, App Plan `0.4.5`, and Kernel `0.3.11`; its root patch makes the Host, Plugin, adapter, and TestApp share those exact type identities. Run it with `cargo test --locked`. Do not replace those pins with independent registry ranges until the cohort release validation says they are published together.\n\n",
+        "`tests/simulated_web.rs` starts a `TestApp` with the exact Host-generated plan and registry, then sends a request through `SimulatedWebHost`. It does not open a socket and does not call a handler directly. The generated manifest Git-pins `lenso-web-host@0.2.2`, Endpoint `0.3.4`, `lenso@0.5.26`, `lenso-test@0.1.2`, App Plan `0.4.5`, and Kernel `0.3.11`; its root patch makes the Host, Plugin, adapter, and TestApp share those exact type identities. Run it with `cargo test --locked`. Do not replace those pins with independent registry ranges until the cohort release validation says they are published together.\n\n",
         "## Add a stream deliberately\n\n",
         "Buffered HTTP and a long-lived stream are separate public interactions. When a route needs backpressure or a persistent session, add the dedicated `lenso-capability-http-stream-endpoint` contract and test it through `SimulatedWebHost::open_stream`. Keep its route identifier and typed protocol next to the business Capability it invokes; do not turn a buffered `#[endpoint]` handler into an ad-hoc socket loop. The same surface also exposes `open_websocket` when a bidirectional protocol is the actual requirement.\n",
     )

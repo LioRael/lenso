@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Prepared-distribution runtime for TypeScript-authored Lenso Hosts."
 
 [dependencies]
-lenso = { version = "=0.5.25", path = "../lenso", features = ["host"] }
+lenso = { version = "=0.5.26", path = "../lenso", features = ["host"] }
 lenso-bun-adapter = { version = "=0.1.14", path = "../lenso-bun-adapter" }
 lenso-host-distribution = { version = "=0.1.23", path = "../lenso-host-distribution" }
 lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }

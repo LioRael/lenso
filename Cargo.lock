@@ -1956,7 +1956,7 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "lenso"
-version = "0.5.25"
+version = "0.5.26"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -2216,7 +2216,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "glob",
@@ -2317,7 +2317,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-markdown"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "lenso-engine",
@@ -2347,7 +2347,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-worker"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "lenso-engine",

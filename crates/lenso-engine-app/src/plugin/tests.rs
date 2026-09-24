@@ -146,7 +146,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(manifest.contains("root-slot = \"web\""));
     assert!(manifest.contains("lenso-capability-http-endpoint"));
     assert!(manifest.contains("version = \"0.3.4\""));
-    assert!(manifest.contains("lenso = { version = \"=0.5.25\""));
+    assert!(manifest.contains("lenso = { version = \"=0.5.26\""));
     assert!(manifest.contains(LENSO_FRAMEWORK_REVISION));
     assert!(manifest.contains("lenso-app-plan = { version = \"=0.4.5\""));
     assert!(manifest.contains("lenso-kernel = { version = \"=0.3.11\""));

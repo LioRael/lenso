@@ -501,7 +501,7 @@ name = "local-starter"
 version = "0.1.0"
 
 [dependencies]
-lenso = { version = "=0.5.25", git = "https://github.com/LioRael/lenso", rev = "runtime-pin" }
+lenso = { version = "=0.5.26", git = "https://github.com/LioRael/lenso", rev = "runtime-pin" }
 lenso-capability-http-endpoint = { version = "0.3.4", git = "https://github.com/LioRael/lenso", rev = "c9cd15629b7d65d6f6cdc12113234acd85c89a89" }
 "#,
         )
@@ -515,7 +515,7 @@ lenso-capability-http-endpoint = { version = "0.3.4", git = "https://github.com/
         prepare_web_starter(root.path(), true).unwrap();
 
         let manifest = fs::read_to_string(root.path().join("Cargo.toml")).unwrap();
-        assert!(manifest.contains("lenso = { version = \"=0.5.25\""));
+        assert!(manifest.contains("lenso = { version = \"=0.5.26\""));
         assert!(manifest.contains("https://github.com/LioRael/lenso"));
         assert!(manifest.contains("runtime-pin"));
         assert!(manifest.contains("lenso-capability-http-endpoint"));

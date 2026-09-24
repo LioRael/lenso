@@ -1,6 +1,6 @@
 [package]
 name = "lenso"
-version = "0.5.25"
+version = "0.5.26"
 edition.workspace = true
 license.workspace = true
 publish = true
@@ -32,8 +32,8 @@ required-features = ["host"]
 
 [dev-dependencies]
 lenso-app-plan.workspace = true
-lenso-runtime-codec = { path = "../lenso-runtime-codec" }
-lenso-test = { path = "../lenso-test" }
+lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.2" }
+lenso-test = { path = "../lenso-test", version = "=0.1.2" }
 
 [lints]
 workspace = true

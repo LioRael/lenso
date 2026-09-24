@@ -1995,7 +1995,7 @@ mod tests {
             &mut patches,
             &local_package(
                 "lenso",
-                "path+file:///work/lenso/crates/lenso#0.5.25",
+                "path+file:///work/lenso/crates/lenso#0.5.26",
                 &crates.join("lenso/Cargo.toml").to_string_lossy(),
             ),
         )
@@ -2037,7 +2037,7 @@ mod tests {
             &mut patches,
             &local_package(
                 "lenso",
-                "path+file:///first/crates/lenso#0.5.25",
+                "path+file:///first/crates/lenso#0.5.26",
                 &first
                     .path()
                     .join("crates/lenso/Cargo.toml")
