@@ -41,6 +41,9 @@ pub(crate) struct McpArgs {
     /// Public trust configuration for --portable-snapshot.
     #[arg(long, requires = "portable_snapshot")]
     portable_trust: Option<PathBuf>,
+    /// Exact local Portable archive for signed source App adoption; fixed for this MCP process.
+    #[arg(long, requires_all = ["portable_snapshot", "portable_trust"])]
+    portable_archive: Option<PathBuf>,
     /// Explicitly permit signed HTTPS documentation fetches by MCP tools.
     #[arg(long, requires_all = ["linked_snapshot", "trust"])]
     allow_document_fetch: bool,
@@ -70,6 +73,7 @@ struct AppTools {
     linked_crate: Option<PathBuf>,
     portable_snapshot: Option<PathBuf>,
     portable_trust: Option<PathBuf>,
+    portable_archive: Option<PathBuf>,
     allow_document_fetch: bool,
     permissions: McpMutationAccess,
     builds: Arc<build::BuildController>,
@@ -77,6 +81,7 @@ struct AppTools {
     changes: Arc<change::ChangeController>,
     adoptions: Arc<adoption::AdoptionController>,
     _fixed_linked_inputs: Option<Arc<tempfile::TempDir>>,
+    _fixed_portable_inputs: Option<Arc<tempfile::TempDir>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -202,7 +207,7 @@ struct ProjectSelectionPreviewQuery {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct ProjectLinkedAdoptionQuery {
+struct ProjectSignedAdoptionQuery {
     plugin_id: String,
     version: String,
     request_id: String,
@@ -217,7 +222,7 @@ impl AppTools {
     )]
     fn project_linked_adopt(
         &self,
-        Parameters(request): Parameters<ProjectLinkedAdoptionQuery>,
+        Parameters(request): Parameters<ProjectSignedAdoptionQuery>,
     ) -> Result<CallToolResult, McpError> {
         if !self.permissions.allow_changes {
             return Err(McpError::invalid_request(
@@ -225,7 +230,7 @@ impl AppTools {
                 None,
             ));
         }
-        let inputs = adoption::LinkedInputs {
+        let inputs = adoption::SignedInputs {
             snapshot: self.linked_snapshot.as_deref().ok_or_else(|| {
                 McpError::invalid_request(
                     "MCP signed linked Cargo snapshot was not configured",
@@ -243,6 +248,7 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
+                adoption::Distribution::LinkedCargo,
                 adoption::Action::Adopt,
                 &request.plugin_id,
                 &request.version,
@@ -260,7 +266,7 @@ impl AppTools {
     )]
     fn project_linked_unadopt(
         &self,
-        Parameters(request): Parameters<ProjectLinkedAdoptionQuery>,
+        Parameters(request): Parameters<ProjectSignedAdoptionQuery>,
     ) -> Result<CallToolResult, McpError> {
         if !self.permissions.allow_changes {
             return Err(McpError::invalid_request(
@@ -272,6 +278,78 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
+                adoption::Distribution::LinkedCargo,
+                adoption::Action::Unadopt,
+                &request.plugin_id,
+                &request.version,
+                &request.request_id,
+                None,
+            )
+            .map_err(|error| {
+                McpError::invalid_request(adoption::public_request_error(&error), None)
+            })?;
+        adoption_result(&result)
+    }
+
+    #[tool(
+        description = "Select one exact signed Portable archive for the fixed source App; requires --allow-changes and startup --portable-snapshot, --portable-trust, and --portable-archive. A separate build/check is required"
+    )]
+    fn project_portable_adopt(
+        &self,
+        Parameters(request): Parameters<ProjectSignedAdoptionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_changes {
+            return Err(McpError::invalid_request(
+                "MCP source App changes were not explicitly enabled",
+                None,
+            ));
+        }
+        let inputs = adoption::SignedInputs {
+            snapshot: self.portable_snapshot.as_deref().ok_or_else(|| {
+                McpError::invalid_request("MCP signed Portable snapshot was not configured", None)
+            })?,
+            trust: self.portable_trust.as_deref().ok_or_else(|| {
+                McpError::invalid_request("MCP Portable trust was not configured", None)
+            })?,
+            archive: self.portable_archive.as_deref().ok_or_else(|| {
+                McpError::invalid_request("MCP Portable archive was not configured", None)
+            })?,
+        };
+        let result = self
+            .adoptions
+            .apply(
+                &self.root,
+                adoption::Distribution::Portable,
+                adoption::Action::Adopt,
+                &request.plugin_id,
+                &request.version,
+                &request.request_id,
+                Some(inputs),
+            )
+            .map_err(|error| {
+                McpError::invalid_request(adoption::public_request_error(&error), None)
+            })?;
+        adoption_result(&result)
+    }
+
+    #[tool(
+        description = "Unselect one exact signed Portable source from the fixed source App, retaining its verified archive; requires --allow-changes. A separate rebuild/check is required"
+    )]
+    fn project_portable_unadopt(
+        &self,
+        Parameters(request): Parameters<ProjectSignedAdoptionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_changes {
+            return Err(McpError::invalid_request(
+                "MCP source App changes were not explicitly enabled",
+                None,
+            ));
+        }
+        let result = self
+            .adoptions
+            .apply(
+                &self.root,
+                adoption::Distribution::Portable,
                 adoption::Action::Unadopt,
                 &request.plugin_id,
                 &request.version,
@@ -913,7 +991,12 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
                 .as_ref()
                 .context("--linked-snapshot required")?;
             let trust = args.trust.as_ref().context("--trust required")?;
-            let frozen = adoption::freeze_inputs(snapshot, trust, &archive)?;
+            let frozen = adoption::freeze_inputs(
+                snapshot,
+                trust,
+                &archive,
+                adoption::Distribution::LinkedCargo,
+            )?;
             (
                 Some(frozen.snapshot),
                 Some(frozen.trust),
@@ -923,14 +1006,40 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         } else {
             (args.linked_snapshot, args.trust, None, None)
         };
+    let (portable_snapshot, portable_trust, portable_archive, fixed_portable_inputs) =
+        if let Some(archive) = args.portable_archive {
+            let snapshot = args
+                .portable_snapshot
+                .as_ref()
+                .context("--portable-snapshot required")?;
+            let trust = args
+                .portable_trust
+                .as_ref()
+                .context("--portable-trust required")?;
+            let frozen = adoption::freeze_inputs(
+                snapshot,
+                trust,
+                &archive,
+                adoption::Distribution::Portable,
+            )?;
+            (
+                Some(frozen.snapshot),
+                Some(frozen.trust),
+                Some(frozen.archive),
+                Some(frozen.storage),
+            )
+        } else {
+            (args.portable_snapshot, args.portable_trust, None, None)
+        };
     let service = AppTools {
         root,
         host_build: args.host_build,
         linked_snapshot,
         trust,
         linked_crate,
-        portable_snapshot: args.portable_snapshot,
-        portable_trust: args.portable_trust,
+        portable_snapshot,
+        portable_trust,
+        portable_archive,
         allow_document_fetch: args.allow_document_fetch,
         permissions: args.permissions,
         builds: Arc::new(build::BuildController::default()),
@@ -938,6 +1047,7 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         changes: Arc::new(change::ChangeController::new(change_root)),
         adoptions: Arc::new(adoption::AdoptionController::default()),
         _fixed_linked_inputs: fixed_linked_inputs,
+        _fixed_portable_inputs: fixed_portable_inputs,
     }
     .serve(stdio())
     .await?;

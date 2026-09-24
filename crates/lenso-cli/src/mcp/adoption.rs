@@ -20,15 +20,21 @@ pub(super) enum Action {
     Unadopt,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum Distribution {
+    LinkedCargo,
+    Portable,
+}
+
 #[derive(Clone, Copy, Debug)]
-pub(super) struct LinkedInputs<'a> {
+pub(super) struct SignedInputs<'a> {
     pub(super) snapshot: &'a Path,
     pub(super) trust: &'a Path,
     pub(super) archive: &'a Path,
 }
 
 #[derive(Debug)]
-pub(super) struct FrozenLinkedInputs {
+pub(super) struct FrozenSignedInputs {
     pub(super) storage: Arc<tempfile::TempDir>,
     pub(super) snapshot: PathBuf,
     pub(super) trust: PathBuf,
@@ -37,6 +43,7 @@ pub(super) struct FrozenLinkedInputs {
 
 #[derive(Debug)]
 struct Record {
+    distribution: Distribution,
     action: Action,
     plugin_id: String,
     version: String,
@@ -52,20 +59,22 @@ impl AdoptionController {
     pub(super) fn apply(
         &self,
         root: &Path,
+        distribution: Distribution,
         action: Action,
         plugin_id: &str,
         version: &str,
         request_id: &str,
-        inputs: Option<LinkedInputs<'_>>,
+        inputs: Option<SignedInputs<'_>>,
     ) -> anyhow::Result<serde_json::Value> {
         validate_request(plugin_id, version, request_id)?;
         let mut records = self.records.lock().expect("MCP adoption state lock");
         if let Some(record) = records.get(request_id) {
             ensure!(
-                record.action == action
+                record.distribution == distribution
+                    && record.action == action
                     && record.plugin_id == plugin_id
                     && record.version == version,
-                "request_id was already used for another linked Cargo operation"
+                "request_id was already used for another signed adoption operation"
             );
             return Ok(record.result.clone());
         }
@@ -89,20 +98,35 @@ impl AdoptionController {
         command.arg("app");
         match action {
             Action::Adopt => {
-                let inputs = inputs.context("signed linked Cargo inputs are not configured")?;
-                command
-                    .args(["add", &source, "--root"])
-                    .arg(root)
-                    .arg("--linked-snapshot")
-                    .arg(inputs.snapshot)
-                    .arg("--trust")
-                    .arg(inputs.trust)
-                    .arg("--crate")
-                    .arg(inputs.archive)
-                    .arg("--no-install");
+                let inputs = inputs.context("signed adoption inputs are not configured")?;
+                command.args(["add", &source, "--root"]).arg(root);
+                match distribution {
+                    Distribution::LinkedCargo => {
+                        command
+                            .arg("--linked-snapshot")
+                            .arg(inputs.snapshot)
+                            .arg("--trust")
+                            .arg(inputs.trust)
+                            .arg("--crate")
+                            .arg(inputs.archive)
+                            .arg("--no-install");
+                    }
+                    Distribution::Portable => {
+                        command
+                            .arg("--portable-snapshot")
+                            .arg(inputs.snapshot)
+                            .arg("--trust")
+                            .arg(inputs.trust)
+                            .arg("--archive")
+                            .arg(inputs.archive);
+                    }
+                }
             }
             Action::Unadopt => {
                 command.args(["unadopt", &source, "--root"]).arg(root);
+                if distribution == Distribution::Portable {
+                    command.arg("--portable");
+                }
             }
         }
         command.current_dir(root);
@@ -116,10 +140,13 @@ impl AdoptionController {
         );
         // The CLI may have published files before an I/O or timeout error. Keep
         // that outcome explicit, and never return its raw stderr over MCP.
-        let (state, diagnostic_code) = classify_outcome(action, &outcome);
+        let (state, diagnostic_code) = classify_outcome(distribution, action, &outcome);
         let result = serde_json::json!({
             "schema_version": 1,
-            "kind": "lenso.mcp-linked-cargo-adoption",
+            "kind": match distribution {
+                Distribution::LinkedCargo => "lenso.mcp-linked-cargo-adoption",
+                Distribution::Portable => "lenso.mcp-portable-adoption",
+            },
             "request_id": request_id,
             "plugin_id": plugin_id,
             "version": version,
@@ -132,6 +159,7 @@ impl AdoptionController {
         records.insert(
             request_id.to_owned(),
             Record {
+                distribution,
                 action,
                 plugin_id: plugin_id.to_owned(),
                 version: version.to_owned(),
@@ -143,6 +171,7 @@ impl AdoptionController {
 }
 
 fn classify_outcome(
+    distribution: Distribution,
     action: Action,
     outcome: &anyhow::Result<Vec<u8>>,
 ) -> (&'static str, Option<&'static str>) {
@@ -156,7 +185,7 @@ fn classify_outcome(
         );
     };
     let message = error.to_string();
-    let preflight_rejection = [
+    let linked_rejection = [
         (
             "crate archive digest does not match signed catalog",
             "LENSO_ADOPTION_CRATE_DIGEST_MISMATCH",
@@ -175,7 +204,22 @@ fn classify_outcome(
         ),
         ("App already selects", "LENSO_ADOPTION_SOURCE_CONFLICT"),
     ];
-    for (needle, code) in preflight_rejection {
+    let portable_rejection = [
+        (
+            "archive size or digest mismatch",
+            "LENSO_ADOPTION_ARCHIVE_DIGEST_MISMATCH",
+        ),
+        (
+            "exact release is not in this catalog",
+            "LENSO_ADOPTION_VERSION_NOT_LISTED",
+        ),
+        ("already supplied by", "LENSO_ADOPTION_SOURCE_CONFLICT"),
+    ];
+    let rejections: &[(&str, &str)] = match distribution {
+        Distribution::LinkedCargo => &linked_rejection,
+        Distribution::Portable => &portable_rejection,
+    };
+    for &(needle, code) in rejections {
         if message.contains(needle) {
             return ("rejected", Some(code));
         }
@@ -194,19 +238,33 @@ pub(super) fn freeze_inputs(
     snapshot: &Path,
     trust: &Path,
     archive: &Path,
-) -> anyhow::Result<FrozenLinkedInputs> {
+    distribution: Distribution,
+) -> anyhow::Result<FrozenSignedInputs> {
     let storage = Arc::new(
         tempfile::Builder::new()
-            .prefix("lenso-mcp-linked-")
+            .prefix(match distribution {
+                Distribution::LinkedCargo => "lenso-mcp-linked-",
+                Distribution::Portable => "lenso-mcp-portable-",
+            })
             .tempdir()?,
     );
     let snapshot_path = storage.path().join("snapshot.json");
     let trust_path = storage.path().join("trust.json");
-    let archive_path = storage.path().join("plugin.crate");
+    let archive_path = storage.path().join(match distribution {
+        Distribution::LinkedCargo => "plugin.crate",
+        Distribution::Portable => "plugin.lenso-plugin",
+    });
     freeze_file(snapshot, &snapshot_path, 4 * 1024 * 1024)?;
     freeze_file(trust, &trust_path, 64 * 1024)?;
-    freeze_file(archive, &archive_path, 32 * 1024 * 1024)?;
-    Ok(FrozenLinkedInputs {
+    freeze_file(
+        archive,
+        &archive_path,
+        match distribution {
+            Distribution::LinkedCargo => 32 * 1024 * 1024,
+            Distribution::Portable => 128 * 1024 * 1024,
+        },
+    )?;
+    Ok(FrozenSignedInputs {
         storage,
         snapshot: snapshot_path,
         trust: trust_path,
@@ -247,24 +305,24 @@ fn freeze_file(source: &Path, destination: &Path, max_bytes: u64) -> anyhow::Res
 
 #[cfg(not(unix))]
 fn freeze_file(_source: &Path, _destination: &Path, _max_bytes: u64) -> anyhow::Result<()> {
-    anyhow::bail!("MCP signed linked Cargo adoption requires Unix no-follow file admission")
+    anyhow::bail!("MCP signed adoption requires Unix no-follow file admission")
 }
 
 fn ensure_source_root(root: &Path) -> anyhow::Result<()> {
     ensure!(
         fs::symlink_metadata(root)?.file_type().is_dir(),
-        "MCP linked Cargo adoption requires a real source App root"
+        "MCP signed adoption requires a real source App root"
     );
     ensure!(
         fs::symlink_metadata(root.join("plugins"))?
             .file_type()
             .is_dir(),
-        "MCP linked Cargo adoption requires a source App with a real plugins directory"
+        "MCP signed adoption requires a source App with a real plugins directory"
     );
     ensure!(
         !root.join(".lenso/host-build.json").exists()
             && !root.join(".lenso/host-catalog.json").exists(),
-        "MCP linked Cargo adoption requires a source App, not a built Host distribution"
+        "MCP signed adoption requires a source App, not a built Host distribution"
     );
     Ok(())
 }
@@ -293,7 +351,7 @@ fn validate_request(plugin_id: &str, version: &str, request_id: &str) -> anyhow:
 pub(super) fn public_request_error(error: &anyhow::Error) -> &'static str {
     let message = error.to_string();
     if message.contains("request_id was already used") {
-        "request_id was already used for a different linked Cargo operation; choose a new request_id"
+        "request_id was already used for a different signed adoption operation; choose a new request_id"
     } else if message.contains("request_id must") {
         "request_id must be 1 to 128 ASCII letters, digits, dots, hyphens or underscores"
     } else if message.contains("version must") || message.contains("Plugin ID") {
@@ -305,6 +363,6 @@ pub(super) fn public_request_error(error: &anyhow::Error) -> &'static str {
     } else if message.contains("history is full") {
         "MCP adoption request history is full; restart the bridge"
     } else {
-        "linked Cargo request is invalid; inspect the fixed source App and signed inputs locally"
+        "signed adoption request is invalid; inspect the fixed source App and signed inputs locally"
     }
 }

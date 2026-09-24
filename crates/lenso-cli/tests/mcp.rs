@@ -39,6 +39,8 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"project_change_apply","arguments":{"proposal_digest":"sha256:unknown","request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"project_run","arguments":{"request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"portable_catalog","arguments":{}}}"#,
+        r#"{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"project_portable_adopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"without-owner-authorization"}}}"#,
+        r#"{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"project_portable_unadopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"without-owner-authorization"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -58,12 +60,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 15, "{frames}");
+    assert_eq!(responses.len(), 17, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 15);
+    assert_eq!(by_id.len(), 17);
     assert_tools(by_id[&2]);
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -85,7 +87,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(second_page["offset"], 1);
     assert_eq!(second_page["items"].as_array().unwrap().len(), 1);
     assert_ne!(first_page["items"][0], second_page["items"][0]);
-    for id in [4, 5, 6, 9, 10, 11, 12, 13, 14, 15] {
+    for id in [4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17] {
         assert!(by_id[&id]["error"].is_object(), "response {id}");
     }
     assert!(!root.path().join("dist").exists());
@@ -113,6 +115,8 @@ fn assert_tools(list: &serde_json::Value) {
             "project_facts",
             "project_linked_adopt",
             "project_linked_unadopt",
+            "project_portable_adopt",
+            "project_portable_unadopt",
             "project_run",
             "project_run_status",
             "project_run_stop",
@@ -325,6 +329,275 @@ fn stdio_adopts_and_unadopts_only_the_fixed_signed_linked_crate() {
             &mut stdout,
             &serde_json::json!({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"project_linked_unadopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"remove-1"}}}),
         )),
+        removed
+    );
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn stdio_adopts_and_unadopts_only_the_fixed_signed_portable_archive() {
+    use ed25519_dalek::SigningKey;
+    use lenso_app_plan::{
+        CapabilityEndpointPlan, ExecutionClassId, ExecutionTargetCapability,
+        authoring::PluginContract,
+    };
+    use lenso_engine_authoring::bundle_archive::{PluginArchiveIdentity, VerifiedPluginArchive};
+    use lenso_plugin_bundle::{
+        SourcePluginImplementation, SourcePluginReleaseBuild, build_source_plugin_release_bundle,
+    };
+    use lenso_plugin_catalog::{Artifact, Availability, Release, Snapshot, digest, sign};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+
+    let artifact = temp.path().join("plugin.js");
+    fs::write(&artifact, "throw new Error('adoption must not run this');").unwrap();
+    let bundle = temp.path().join("bundle");
+    build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+        contract: PluginContract::new("example.portable", "1.0.0", "tools")
+            .with_authoring_version(2)
+            .with_capability(CapabilityEndpointPlan::new(
+                "example.portable@1",
+                "1",
+                ["get"],
+            )),
+        implementations: vec![SourcePluginImplementation {
+            id: "bun".into(),
+            host_targets: vec!["*".into()],
+            artifact,
+            bundle_path: "implementations/bun/plugin.js".into(),
+            media_type: "application/javascript".into(),
+            target: "javascript-bun".into(),
+            entrypoint: "plugin.js".into(),
+            execution_class: ExecutionClassId::bun_child_process(),
+            runtime_profile: lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE.into(),
+            required_target_capabilities: vec![ExecutionTargetCapability::NativeProcess],
+        }],
+        output: bundle.clone(),
+    })
+    .unwrap();
+    let archive = temp.path().join("plugin.lenso-plugin");
+    lenso_app_authoring::bundle_archive::archive_bundle(&bundle, &archive).unwrap();
+    let bytes = fs::read(&archive).unwrap();
+    let verified = VerifiedPluginArchive::read(
+        bytes.as_slice(),
+        &PluginArchiveIdentity {
+            size: bytes.len() as u64,
+            sha256: digest(&bytes),
+        },
+    )
+    .unwrap();
+    let key = SigningKey::from_bytes(&[28; 32]);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let snapshot = temp.path().join("snapshot.json");
+    fs::write(
+        &snapshot,
+        sign(
+            &Snapshot::new(
+                "portable-test".into(),
+                1,
+                now - 1,
+                now + 3600,
+                vec![Release {
+                    plugin_id: "example.portable".into(),
+                    version: "1.0.0".into(),
+                    publisher_id: "test-publisher".into(),
+                    title: "Portable".into(),
+                    summary: "Signed local fixture".into(),
+                    description: String::new(),
+                    presentation: None,
+                    source_url: "https://example.com/source".into(),
+                    source_revision: "a".repeat(40),
+                    license: "MIT".into(),
+                    artifact: Artifact {
+                        url: "https://example.com/plugin.lenso-plugin".into(),
+                        digest: digest(&bytes),
+                        size: bytes.len() as u64,
+                        manifest_digest: verified.bundle().manifest_digest.clone(),
+                    },
+                    availability: Availability::Listed,
+                }],
+            ),
+            "test-key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let trust = temp.path().join("trust.json");
+    fs::write(
+        &trust,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id": "portable-test",
+            "key_id": "test-key",
+            "public_key_hex": hex::encode(key.verifying_key().as_bytes()),
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    #[cfg(unix)]
+    {
+        let alias = temp.path().join("archive-alias.lenso-plugin");
+        std::os::unix::fs::symlink(&archive, &alias).unwrap();
+        let rejected = Command::new(cli)
+            .args(["mcp", "--root"])
+            .arg(&root)
+            .arg("--portable-snapshot")
+            .arg(&snapshot)
+            .arg("--portable-trust")
+            .arg(&trust)
+            .arg("--portable-archive")
+            .arg(&alias)
+            .arg("--allow-changes")
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(!rejected.status.success());
+        assert!(String::from_utf8_lossy(&rejected.stderr).contains("regular file"));
+    }
+
+    let spawn_bridge = |allow_changes: bool| {
+        let mut command = Command::new(cli);
+        command
+            .args(["mcp", "--root"])
+            .arg(&root)
+            .arg("--portable-snapshot")
+            .arg(&snapshot)
+            .arg("--portable-trust")
+            .arg(&trust)
+            .arg("--portable-archive")
+            .arg(&archive);
+        if allow_changes {
+            command.arg("--allow-changes");
+        }
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdin = child.stdin.take().unwrap();
+        let mut stdout = BufReader::new(child.stdout.take().unwrap());
+        mcp_roundtrip(
+            &mut stdin,
+            &mut stdout,
+            &serde_json::json!({
+                "jsonrpc":"2.0", "id":1, "method":"initialize", "params":{
+                    "protocolVersion":"2025-11-25", "capabilities":{},
+                    "clientInfo":{"name":"test", "version":"1"}
+                }
+            }),
+        );
+        writeln!(
+            stdin,
+            "{}",
+            serde_json::json!({"jsonrpc":"2.0", "method":"notifications/initialized"})
+        )
+        .unwrap();
+        (child, stdin, stdout)
+    };
+    let adopt = |request_id: &str| {
+        serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+            "name":"project_portable_adopt", "arguments":{
+                "plugin_id":"example.portable", "version":"1.0.0", "request_id":request_id
+            }
+        }})
+    };
+    let (mut denied_child, mut denied_stdin, mut denied_stdout) = spawn_bridge(false);
+    assert!(
+        mcp_roundtrip(&mut denied_stdin, &mut denied_stdout, &adopt("denied"))["error"].is_object()
+    );
+    drop(denied_stdin);
+    assert!(denied_child.wait().unwrap().success());
+    assert!(
+        !root
+            .join("vendor/lenso/portable/example.portable/1.0.0.lenso-plugin")
+            .exists()
+    );
+
+    fs::write(&archive, b"tampered archive").unwrap();
+    let (mut bad_child, mut bad_stdin, mut bad_stdout) = spawn_bridge(true);
+    let mismatched = mcp_tool_json(&mcp_roundtrip(
+        &mut bad_stdin,
+        &mut bad_stdout,
+        &adopt("bad-digest"),
+    ));
+    assert_eq!(mismatched["state"], "rejected", "{mismatched}");
+    assert_eq!(
+        mismatched["diagnostic_code"],
+        "LENSO_ADOPTION_ARCHIVE_DIGEST_MISMATCH"
+    );
+    drop(bad_stdin);
+    assert!(bad_child.wait().unwrap().success());
+    fs::write(&archive, &bytes).unwrap();
+
+    let (mut child, mut stdin, mut stdout) = spawn_bridge(true);
+    let wrong_version = mcp_tool_json(&mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+            "name":"project_portable_adopt", "arguments":{
+                "plugin_id":"example.portable", "version":"1.0.1", "request_id":"wrong-version"
+            }
+        }}),
+    ));
+    assert_eq!(wrong_version["state"], "rejected", "{wrong_version}");
+    assert_eq!(
+        wrong_version["diagnostic_code"],
+        "LENSO_ADOPTION_VERSION_NOT_LISTED"
+    );
+    fs::write(&archive, b"changed after MCP startup").unwrap();
+    let selected = mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt("adopt-1")));
+    assert_eq!(selected["state"], "selected", "{selected}");
+    assert_eq!(selected["kind"], "lenso.mcp-portable-adoption");
+    let retained = root.join("vendor/lenso/portable/example.portable/1.0.0.lenso-plugin");
+    assert_eq!(fs::read(&retained).unwrap(), bytes);
+    assert_eq!(
+        mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt("adopt-1"))),
+        selected
+    );
+    let reused = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0","id":4,"method":"tools/call","params":{
+                "name":"project_linked_unadopt", "arguments":{
+                    "plugin_id":"example.portable", "version":"1.0.0", "request_id":"adopt-1"
+                }
+            }
+        }),
+    );
+    assert!(reused["error"].is_object(), "{reused}");
+    let unadopt = || {
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{
+            "name":"project_portable_unadopt", "arguments":{
+                "plugin_id":"example.portable", "version":"1.0.0", "request_id":"remove-1"
+            }
+        }})
+    };
+    let removed = mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &unadopt()));
+    assert_eq!(removed["state"], "unadopted", "{removed}");
+    assert_eq!(fs::read(&retained).unwrap(), bytes);
+    assert_eq!(
+        mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &unadopt())),
         removed
     );
     drop(stdin);

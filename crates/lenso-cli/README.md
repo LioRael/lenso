@@ -368,25 +368,31 @@ not edit a source App's generated `dist/intent`.
 
 For one signed linked Cargo source release, start the bridge at the source App
 with `--linked-snapshot <file> --trust <file> --linked-crate <file>
---allow-changes`. These three input files must be regular files. The bridge
-copies bounded bytes into private storage at startup, so later changes to the
-original paths cannot change the release being selected. This mutation lane
-currently requires Unix no-follow file admission. Call
+--allow-changes`. For a signed Portable source release, use
+`--portable-snapshot <file> --portable-trust <file> --portable-archive <file>
+--allow-changes` instead. The three input files for either lane must be regular
+files. The bridge copies bounded bytes into private storage at startup, so
+later changes to the original paths cannot change the release being selected.
+These mutation lanes currently require Unix no-follow file admission. Call
 `project_linked_adopt` with the exact `plugin_id`, `version`, and a client
 `request_id`; the tool accepts no archive path, command, or environment input.
 It invokes the same signed catalog, `.crate` digest, target, source identity,
 and conflict checks as `lenso app add`, with dependency installation disabled.
 `project_linked_unadopt` takes the same identifiers and calls the existing
-recoverable `lenso app unadopt` path. Both tools require `--allow-changes` and
-keep at most 32 request records for process-local replay. Known admission
+recoverable `lenso app unadopt` path. The Portable tools are
+`project_portable_adopt` and `project_portable_unadopt`; they use the same source
+App CLI paths, including exact signed archive checks. Unadoption retains the
+verified Portable archive. All four tools require `--allow-changes` and share
+at most 32 request records for process-local replay. A request ID cannot be
+reused across the linked and Portable lanes. Known admission
 failures return `rejected` with a bounded diagnostic code; other failed
 subprocesses return `outcome_uncertain`. Inspect the source App and the frozen
 signed inputs before retrying. A successful selection or
 withdrawal changes the next build only: run `project_build`, then inspect the
 built distribution with `project_check` and `project_facts`. Neither tool
 claims a running Generation changed or that a catalog listing is official.
-Arbitrary source edits and Portable Plugin installation are not exposed through
-these read-only/linked-source MCP tools.
+Arbitrary source edits and built-Host Portable installation are not exposed
+through these source-App MCP tools.
 
 `project_facts` with `{}` retains the full `lenso app facts --json` shape for
 small projects. For a large project, request `section: "plugins"`,

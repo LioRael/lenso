@@ -128,9 +128,11 @@ pub struct PluginVariantV6 {
 
 /// An execution control a variant requires the Host to prove before activation.
 ///
-/// The current runtime admission profile does not prove any of these controls.
-/// Ordinary processes, Bun and `QuickJS` are not OS sandboxes; a Wasm Component
-/// marker alone does not prove a requested permission or resource ceiling.
+/// A Host can prove the Wasm aggregate-memory ceiling when its exact Adapter
+/// limit is bound. Permission grants, OS sandboxing, and a deadline that can
+/// stop blocking Host callbacks remain unproven. Ordinary processes, Bun, and
+/// `QuickJS` are not OS sandboxes; a Wasm Component marker alone proves none
+/// of these controls.
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExecutionAdmissionRequirementV6 {
