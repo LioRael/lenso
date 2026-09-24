@@ -89,7 +89,7 @@ pub(super) fn generate(
     // otherwise admit a registry copy alongside a path copy and split the
     // native Plugin registration inventory.
     let mut local_lenso_patches = BTreeMap::<String, (String, Value)>::new();
-    let mut git_lenso_source = None;
+    let mut git_lenso_source = GitLensoSources::default();
     let mut host_framework_dependencies = BTreeSet::<String>::new();
     for (name, version) in [
         ("anyhow", "1"),
@@ -508,13 +508,14 @@ pub(super) fn generate(
             ""
         },
     );
-    if let Some((git, rev)) = git_lenso_source {
-        pin_host_framework_versions(&mut dependencies, &host_framework_dependencies, &git, &rev);
+    if let Some((git, rev)) = &git_lenso_source.source {
+        pin_host_framework_versions(&mut dependencies, &host_framework_dependencies, git, rev);
     }
-    let patches = local_lenso_patches
-        .into_iter()
-        .map(|(name, (_, dependency))| (name, dependency))
-        .collect::<BTreeMap<_, _>>();
+    let patches = merge_lenso_patches(
+        local_lenso_patches,
+        &git_lenso_source,
+        local_crates.is_some(),
+    )?;
     let manifest = json!({"package":{"name":"lenso-generated-local-host", "version":"0.0.0", "edition":"2024"}, "workspace":{}, "dependencies": dependencies, "patch":{"crates-io":patches}});
     write_generated_host_file(
         &generated.join("Cargo.toml"),
@@ -551,6 +552,7 @@ pub(super) fn generate(
     if !output.status.success() {
         bail!("generated local Host build failed");
     }
+    verify_git_lenso_lock(&generated.join("Cargo.lock"), &git_lenso_source)?;
     for (path, before) in &local_inputs {
         if &input_digest(path)? != before {
             bail!(
@@ -777,10 +779,13 @@ fn local_framework_dependency(
     Ok((json!({"package":name,"path":path,"version":version}), path))
 }
 
-fn collect_git_lenso_source(
-    selected: &mut Option<(String, String)>,
-    package: &Value,
-) -> anyhow::Result<()> {
+#[derive(Default)]
+struct GitLensoSources {
+    source: Option<(String, String)>,
+    packages: BTreeMap<String, (String, String)>,
+}
+
+fn collect_git_lenso_source(selected: &mut GitLensoSources, package: &Value) -> anyhow::Result<()> {
     let name = package["name"].as_str().context("Cargo package name")?;
     if name != "lenso" && !name.starts_with("lenso-") {
         return Ok(());
@@ -791,6 +796,7 @@ fn collect_git_lenso_source(
     };
     let source = (git.to_owned(), rev.to_owned());
     if selected
+        .source
         .as_ref()
         .is_some_and(|previous| previous != &source)
     {
@@ -798,7 +804,104 @@ fn collect_git_lenso_source(
             "native Plugins use incompatible Lenso Git source revisions; align their dependencies before generating one Host"
         );
     }
-    *selected = Some(source);
+    let id = package["id"].as_str().context("Cargo package ID")?;
+    let version = package["version"]
+        .as_str()
+        .context("Cargo package version")?;
+    if selected
+        .packages
+        .get(name)
+        .is_some_and(|previous| previous != &(id.to_owned(), version.to_owned()))
+    {
+        bail!(
+            "native Plugins use incompatible {name} Git package identities; align their dependencies before generating one Host"
+        );
+    }
+    selected
+        .packages
+        .insert(name.to_owned(), (id.to_owned(), version.to_owned()));
+    selected.source = Some(source);
+    Ok(())
+}
+
+fn merge_lenso_patches(
+    local: BTreeMap<String, (String, Value)>,
+    git: &GitLensoSources,
+    local_framework: bool,
+) -> anyhow::Result<BTreeMap<String, Value>> {
+    if local_framework && git.source.is_some() {
+        bail!(
+            "native Plugins mix local and Git Lenso framework sources; align their dependencies before generating one Host"
+        );
+    }
+    let mut patches = local
+        .into_iter()
+        .map(|(name, (_, dependency))| (name, dependency))
+        .collect::<BTreeMap<_, _>>();
+    if let Some((url, rev)) = &git.source {
+        for (name, (_, version)) in &git.packages {
+            if patches.contains_key(name) {
+                bail!(
+                    "native Plugins use conflicting local and Git {name} patch sources; align their dependencies before generating one Host"
+                );
+            }
+            patches.insert(
+                name.clone(),
+                json!({"git":url, "rev":rev, "version":format!("={version}")}),
+            );
+        }
+    }
+    Ok(patches)
+}
+
+fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Result<()> {
+    if selected.packages.is_empty() {
+        return Ok(());
+    }
+    let lock: toml::Value = toml::from_str(&fs::read_to_string(path)?)
+        .with_context(|| format!("read generated Host Cargo lock {}", path.display()))?;
+    let packages = lock
+        .get("package")
+        .and_then(toml::Value::as_array)
+        .context("generated Host Cargo lock has no packages")?;
+    let mut seen = BTreeSet::new();
+    for package in packages {
+        if let Some(name) = package.get("name").and_then(toml::Value::as_str)
+            && (name == "lenso" || name.starts_with("lenso-"))
+            && !seen.insert(name)
+        {
+            bail!(
+                "generated Host resolved conflicting {name} Cargo package identities; align framework sources before linking"
+            );
+        }
+    }
+    let (git, rev) = selected
+        .source
+        .as_ref()
+        .context("selected Git Lenso packages have no source")?;
+    for (name, (_, version)) in &selected.packages {
+        let matches = packages
+            .iter()
+            .filter(|package| package.get("name").and_then(toml::Value::as_str) == Some(name))
+            .collect::<Vec<_>>();
+        if matches.len() != 1
+            || matches[0].get("version").and_then(toml::Value::as_str) != Some(version)
+        {
+            bail!(
+                "generated Host resolved conflicting {name} Cargo package identities; align framework sources before linking"
+            );
+        }
+        let source = matches[0]
+            .get("source")
+            .and_then(toml::Value::as_str)
+            .context("generated Host Lenso package has no Cargo source")?;
+        let dependency = dependency(&json!({"name":name,"version":version,"source":source}))?;
+        if dependency["git"].as_str() != Some(git) || dependency["rev"].as_str() != Some(rev) {
+            bail!(
+                "generated Host resolved conflicting {name} Cargo package identities; align framework sources before linking"
+            );
+        }
+    }
     Ok(())
 }
 
@@ -1154,10 +1257,220 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        AdapterSet, collect_local_lenso_patch, dependency, dependency_lock_digests, input_digest,
-        local_framework_crates_dir, local_framework_dependency, pin_host_framework_versions,
-        verify_dependency_lock_digests, web_ingress_dependency, write_generated_host_file,
+        AdapterSet, GitLensoSources, collect_git_lenso_source, collect_local_lenso_patch,
+        dependency, dependency_lock_digests, input_digest, local_framework_crates_dir,
+        local_framework_dependency, merge_lenso_patches, pin_host_framework_versions,
+        verify_dependency_lock_digests, verify_git_lenso_lock, web_ingress_dependency,
+        write_generated_host_file,
     };
+
+    #[test]
+    fn generated_host_patches_selected_git_framework_for_registry_transitives() {
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.15",
+                "id": "git+https://github.com/LioRael/lenso#lenso-native-adapter@0.3.15",
+                "source": format!("git+{git}?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap();
+
+        let vendor = json!({
+            "package": "lenso-secrets-env-plugin",
+            "path": "/app/vendor/lenso/lenso.secrets.env/0.1.8",
+        });
+        let local = BTreeMap::from([(
+            "lenso-secrets-env-plugin".to_owned(),
+            ("path-signed-vendor".to_owned(), vendor.clone()),
+        )]);
+        let patches = merge_lenso_patches(local, &selected, false).unwrap();
+        assert_eq!(
+            patches["lenso-native-adapter"],
+            json!({"git": git, "rev": rev, "version": "=0.3.15"})
+        );
+        assert_eq!(patches["lenso-secrets-env-plugin"], vendor);
+        let manifest = json!({"patch": {"crates-io": patches}});
+        let rendered = toml::to_string_pretty(&manifest).unwrap();
+        let parsed: toml::Value = toml::from_str(&rendered).unwrap();
+        assert_eq!(
+            parsed["patch"]["crates-io"]["lenso-native-adapter"]["version"].as_str(),
+            Some("=0.3.15")
+        );
+    }
+
+    #[test]
+    fn selected_git_framework_patches_a_reachable_registry_duplicate() {
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let git_id = "git+https://github.com/LioRael/lenso#lenso-native-adapter@0.3.15";
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.15",
+                "id": git_id,
+                "source": format!("git+https://github.com/LioRael/lenso?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.15",
+                "id": "registry+https://github.com/rust-lang/crates.io-index#lenso-native-adapter@0.3.15",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+            }),
+        )
+        .unwrap();
+
+        let patches = merge_lenso_patches(BTreeMap::new(), &selected, false).unwrap();
+        assert_eq!(patches["lenso-native-adapter"]["version"], "=0.3.15");
+        assert_eq!(patches["lenso-native-adapter"]["rev"], rev);
+    }
+
+    #[test]
+    fn selected_git_framework_rejects_conflicting_revisions_and_versions() {
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let other_rev = "c9cd15629b7d65d6f6cdc12113234acd85c89a89";
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.15",
+                "id": "git-adapter-0.3.15",
+                "source": format!("git+{git}?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap();
+
+        let error = collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-kernel",
+                "version": "0.3.11",
+                "id": "git-kernel-other-revision",
+                "source": format!("git+{git}?rev={other_rev}#{other_rev}"),
+            }),
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("incompatible Lenso Git source revisions")
+        );
+
+        let error = collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.16",
+                "id": "git-adapter-0.3.16",
+                "source": format!("git+{git}?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("incompatible lenso-native-adapter Git package identities")
+        );
+    }
+
+    #[test]
+    fn selected_git_framework_rejects_conflicting_local_patch_source() {
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.15",
+                "id": "git-adapter-0.3.15",
+                "source": format!("git+https://github.com/LioRael/lenso?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap();
+        let local = BTreeMap::from([(
+            "lenso-native-adapter".to_owned(),
+            (
+                "path-adapter-0.3.15".to_owned(),
+                json!({"path":"/work/lenso/crates/lenso-native-adapter"}),
+            ),
+        )]);
+
+        let error = merge_lenso_patches(local, &selected, false).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("conflicting local and Git lenso-native-adapter patch sources")
+        );
+        let error = merge_lenso_patches(BTreeMap::new(), &selected, true).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("mix local and Git Lenso framework sources")
+        );
+    }
+
+    #[test]
+    fn generated_host_lock_rejects_split_git_and_registry_framework() {
+        let root = tempfile::tempdir().unwrap();
+        let lock = root.path().join("Cargo.lock");
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.15",
+                "id": "git-adapter-0.3.15",
+                "source": format!("git+{git}?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap();
+        let git_package = format!(
+            "[[package]]\nname = \"lenso-native-adapter\"\nversion = \"0.3.15\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n"
+        );
+        std::fs::write(
+            &lock,
+            format!(
+                "{git_package}\n[[package]]\nname = \"lenso-native-adapter\"\nversion = \"0.3.15\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+            ),
+        )
+        .unwrap();
+
+        let error = verify_git_lenso_lock(&lock, &selected).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("generated Host resolved conflicting lenso-native-adapter")
+        );
+        std::fs::write(&lock, &git_package).unwrap();
+        verify_git_lenso_lock(&lock, &selected).unwrap();
+
+        std::fs::write(
+            &lock,
+            format!(
+                "{git_package}\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.11\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.11\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+            ),
+        )
+        .unwrap();
+        let error = verify_git_lenso_lock(&lock, &selected).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("generated Host resolved conflicting lenso-kernel")
+        );
+    }
 
     #[test]
     fn generated_host_stage_does_not_change_root_cargo_source_digest() {
