@@ -161,6 +161,18 @@ and digest are checked against the same signed release before App files change.
 Other executable variants may coexist in the Bundle; they are not selected by
 this linked-Host adoption path. The Bundle is input evidence, not an alternate
 catalog signature or a runtime-loadable native Artifact.
+For a trusted, locally authored linked Web Plugin, `lenso plugin pack
+--linked-crate path/to/exact.crate` creates that V6 Bundle from the exact Cargo
+archive. It checks archive containment and package identity, compiles a
+temporary Host from the archive to read the source-generated Plugin Contract,
+then verifies the Bundle after archiving. The build can execute Cargo build
+scripts and is **not** an OS sandbox; do not use this authoring command on
+untrusted source outside your own isolation environment. Packing does not sign
+the catalog, publish the `.crate`, or prove that a future Host dependency
+cohort can compile it. When the `.crate` has no Cargo.lock, the temporary
+build resolves a local lock; the Bundle freezes source bytes, not the future
+transitive dependency closure. Adoption still requires an independently signed
+linked Cargo release with the same coordinate and digest.
 `app add` keeps the last accepted signed catalog checkpoint in CLI-owned
 `.lenso/` state for that App. A later add using an older revision, a changed
 payload at the same revision, or a changed immutable release is rejected. The

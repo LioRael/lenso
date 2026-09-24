@@ -28,6 +28,7 @@ use lenso_app_authoring::identity::{
 use lenso_app_authoring::native_host_target;
 
 mod dev;
+mod linked_pack;
 mod scaffold;
 mod web_dev;
 
@@ -157,6 +158,10 @@ pub struct PluginPackArgs {
     /// Output `.lenso-plugin` archive. Defaults under `dist/`.
     #[arg(long)]
     output: Option<PathBuf>,
+    /// Trusted local `.crate` generated from this linked Web Plugin source.
+    /// Building it may execute Cargo build scripts and is not an OS sandbox.
+    #[arg(long)]
+    linked_crate: Option<PathBuf>,
     /// Emit a stable JSON result.
     #[arg(long)]
     json: bool,
@@ -385,6 +390,16 @@ fn check(args: PluginCheckArgs) -> anyhow::Result<()> {
 
 fn pack(args: PluginPackArgs) -> anyhow::Result<()> {
     let root = project_root(args.repo_root)?;
+    if let Some(archive) = args.linked_crate {
+        let package = read_package(&root.join("Cargo.toml"))?;
+        let output = args.output.unwrap_or_else(|| {
+            root.join("dist").join(format!(
+                "{}-{}.lenso-plugin",
+                package.metadata.lenso.plugin_id, package.version
+            ))
+        });
+        return linked_pack::pack(&root, &package, &archive, &output, args.json);
+    }
     let bun_package = read_bun_package(&root)?;
     let (plugin_id, version) = if let Some(package) = bun_package.as_ref() {
         (&package.metadata.plugin_id, &package.version)

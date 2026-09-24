@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
-pub(super) mod linked_catalog;
+pub(crate) mod linked_catalog;
 mod openapi;
 
 #[derive(Clone, Debug, Args)]

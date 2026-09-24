@@ -575,6 +575,16 @@ fn verified_v6_archive(
     release: &linked_cargo::LinkedCargoRelease,
     target: &str,
 ) -> anyhow::Result<SelectedV6Archive> {
+    crate::archive::with_bundle_directory(bundle, |directory| {
+        verified_v6_directory(directory, release, target)
+    })
+}
+
+fn verified_v6_directory(
+    bundle: &Path,
+    release: &linked_cargo::LinkedCargoRelease,
+    target: &str,
+) -> anyhow::Result<SelectedV6Archive> {
     let limits = BundleVerificationLimits {
         max_file_bytes: MAX_CRATE_BYTES,
         max_total_bytes: MAX_UNPACKED_BYTES,
@@ -1082,7 +1092,25 @@ fn unpack(
     stage: &Path,
     release: &linked_cargo::LinkedCargoRelease,
 ) -> anyhow::Result<()> {
-    let root = format!("{}-{}/", release.package, release.version);
+    unpack_archive(
+        bytes,
+        stage,
+        &release.package,
+        &release.version,
+        &release.plugin_id,
+    )
+}
+
+/// Extracts one exact Cargo source archive into an empty authoring directory.
+/// Every member is constrained to the declared package root before it is written.
+pub(crate) fn unpack_archive(
+    bytes: &[u8],
+    stage: &Path,
+    package: &str,
+    version: &str,
+    plugin_id: &str,
+) -> anyhow::Result<()> {
+    let root = format!("{package}-{version}/");
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
     let mut files = 0usize;
     let mut total = 0u64;
@@ -1135,16 +1163,15 @@ fn unpack(
     );
     let manifest: toml::Value = toml::from_str(&manifest)?;
     ensure!(
-        manifest["package"]["name"].as_str() == Some(release.package.as_str()),
+        manifest["package"]["name"].as_str() == Some(package),
         "crate package name does not match signed release"
     );
     ensure!(
-        manifest["package"]["version"].as_str() == Some(release.version.as_str()),
+        manifest["package"]["version"].as_str() == Some(version),
         "crate package version does not match signed release"
     );
     ensure!(
-        manifest["package"]["metadata"]["lenso"]["plugin-id"].as_str()
-            == Some(release.plugin_id.as_str()),
+        manifest["package"]["metadata"]["lenso"]["plugin-id"].as_str() == Some(plugin_id),
         "crate Plugin ID does not match signed release"
     );
     Ok(())

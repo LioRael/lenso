@@ -582,6 +582,7 @@ implementations = [
     pack(PluginPackArgs {
         repo_root: Some(project),
         output: Some(output.clone()),
+        linked_crate: None,
         json: true,
     })
     .unwrap();
@@ -700,6 +701,7 @@ async fn clean_room_plugin_runs_new_check_dev_and_pack() {
     pack(PluginPackArgs {
         repo_root: Some(project.clone()),
         output: Some(output.clone()),
+        linked_crate: None,
         json: true,
     })
     .unwrap();
@@ -713,6 +715,7 @@ async fn clean_room_plugin_runs_new_check_dev_and_pack() {
         pack(PluginPackArgs {
             repo_root: Some(project),
             output: Some(output),
+            linked_crate: None,
             json: false,
         })
         .is_err()
@@ -784,6 +787,7 @@ async fn clean_room_process_plugin_runs_new_check_dev_and_pack() {
     pack(PluginPackArgs {
         repo_root: Some(project),
         output: Some(output.clone()),
+        linked_crate: None,
         json: true,
     })
     .unwrap();

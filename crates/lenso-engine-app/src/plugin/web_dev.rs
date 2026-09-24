@@ -20,6 +20,7 @@ use super::{
 
 const HOST_SOURCE: &str = r#"
 use lenso_kernel::RuntimeFailure;
+use lenso_native_adapter::NativePluginRegistry;
 use lenso_web_host::{
     NativeWebHost, TowerMiddlewareOutcome, WebIngressDiagnostics, WebIngressEndpointFailure,
 };
@@ -56,6 +57,13 @@ impl WebIngressDiagnostics for DevDiagnostics {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), String> {
+    if std::env::args().skip(1).collect::<Vec<_>>() == ["--describe"] {
+        plugin::link();
+        let catalog = NativePluginRegistry::host_catalog([], [])
+            .map_err(|error| format!("describe linked Plugin: {error:?}"))?;
+        println!("{}", serde_json::to_string(&catalog).map_err(|error| error.to_string())?);
+        return Ok(());
+    }
     LocalSet::new().run_until(run()).await
 }
 
@@ -243,6 +251,21 @@ impl DevHost {
         )
     }
 
+    pub(super) fn describe(&self) -> anyhow::Result<lenso_app_plan::authoring::HostCatalog> {
+        let output = crate::app::build_command(&self.executable)
+            .arg("--describe")
+            .current_dir(&self.project_root)
+            .output()
+            .context("describe exact linked Web Plugin Host")?;
+        if !output.status.success() {
+            bail!(
+                "describe exact linked Web Plugin Host failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        serde_json::from_slice(&output.stdout).context("parse exact linked Web Plugin Catalog")
+    }
+
     fn spawn(&self, json: bool) -> anyhow::Result<Child> {
         let mut command = TokioCommand::new(&self.executable);
         command.current_dir(&self.project_root).kill_on_drop(true);
@@ -398,10 +421,11 @@ fn host_manifest(
 ) -> String {
     let plugin_path =
         serde_json::to_string(&root.to_string_lossy()).expect("serialize Plugin path");
-    let (app_plan, kernel, web_host, patches) = match framework {
+    let (app_plan, kernel, native_adapter, web_host, patches) = match framework {
         FrameworkSource::Registry => (
             "\"=0.4.6\"".to_owned(),
             "\"=0.3.11\"".to_owned(),
+            "\"=0.3.16\"".to_owned(),
             "\"=0.2.2\"".to_owned(),
             String::new(),
         ),
@@ -428,6 +452,7 @@ fn host_manifest(
             (
                 dependency("0.4.6"),
                 dependency("0.3.11"),
+                dependency("0.3.16"),
                 dependency("0.2.2"),
                 patches,
             )
@@ -444,6 +469,7 @@ publish = false
 futures = "0.3"
 lenso-app-plan = {app_plan}
 lenso-kernel = {kernel}
+lenso-native-adapter = {native_adapter}
 lenso-web-host = {web_host}
 plugin = {{ package = "{}", path = {plugin_path} }}
 serde_json = "1"
