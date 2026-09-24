@@ -208,6 +208,24 @@ pub(super) async fn run(
                     active.observed_at = observed_at;
                     continue;
                 }
+                if proof.source == active.proof.source
+                    && proof.policy_digest == active.proof.policy_digest
+                    && proof.plugin_root_revision == active.proof.plugin_root_revision
+                {
+                    // A newer source revision can resolve to the exact Root
+                    // already served by this Host. It needs fresh source and
+                    // authority proof, but no new Host activation receipt.
+                    let new_deadline = observed_at + Duration::from_secs(proof.max_stale_seconds);
+                    let still_current = proof_matches(&from, &policy, &proof, new_deadline).await;
+                    if !matches!(&still_current, Ok(true)) {
+                        kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
+                        still_current.context("unchanged active Root cannot be verified")?;
+                        bail!("external configuration Root changed; App was stopped");
+                    }
+                    active.proof = proof;
+                    active.observed_at = observed_at;
+                    continue;
+                }
                 // A newer accepted source revision may revoke a value or scope.
                 // The generated Host has no traffic gate before its Ready Gate,
                 // so hard-stop the old process before any further activation.
@@ -733,14 +751,60 @@ mod tests {
             first_pid
         );
         assert!(root.join(".lenso/supervised-start.uncertain").is_file());
-        assert_eq!(
-            configuration_source::inspect_status(&root)
-                .unwrap()
-                .last_activated_revision,
-            Some(1)
-        );
+        let status = configuration_source::inspect_status(&root).unwrap();
+        assert_eq!(status.last_activated_revision, Some(1));
+        assert!(!status.desired_matches_last_activated_root_and_policy);
         let retry = run(root, policy, None).await.unwrap_err();
         assert!(retry.to_string().contains("unconfirmed"), "{retry:#}");
+    }
+
+    #[tokio::test]
+    async fn accepted_revision_with_unchanged_root_keeps_current_host() {
+        let (temporary, snapshot, policy) = fixture();
+        let root = temporary.path().to_path_buf();
+        let supervised = tokio::spawn(run(root.clone(), policy, None));
+        wait_for_activation(&root, 1).await;
+        let first_pid = fs::read_to_string(root.join("previous-pid")).unwrap();
+
+        write_snapshot(&snapshot, 2, "first");
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if configuration_source::inspect_status(&root)
+                    .ok()
+                    .and_then(|status| status.desired_revision)
+                    == Some(2)
+                {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .unwrap();
+
+        // Let the supervisor consume the accepted poll result and complete
+        // another revalidation cycle before asserting that it kept serving.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        assert!(!supervised.is_finished(), "unchanged Root stopped the Host");
+        assert_eq!(
+            fs::read_to_string(root.join("previous-pid")).unwrap(),
+            first_pid
+        );
+        assert!(!root.join("overlap").exists());
+        let status = configuration_source::inspect_status(&root).unwrap();
+        assert_eq!(status.desired_revision, Some(2));
+        assert_eq!(status.last_activated_revision, Some(1));
+        assert!(status.desired_matches_last_activated_root_and_policy);
+        assert!(status.pending_activation);
+
+        write_snapshot(&snapshot, 3, "second");
+        let result = tokio::time::timeout(Duration::from_secs(6), supervised)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(result.unwrap_err().to_string().contains("hard-stopped"));
+        assert!(root.join(".lenso/supervised-start.uncertain").is_file());
     }
 
     #[tokio::test]

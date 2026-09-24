@@ -80,6 +80,7 @@ pub struct Status {
     pub source_kind: Option<String>,
     pub desired_revision: Option<u64>,
     pub last_activated_revision: Option<u64>,
+    pub desired_matches_last_activated_root_and_policy: bool,
     pub pending_publication: bool,
     pub pending_activation: bool,
 }
@@ -340,6 +341,11 @@ fn status_for_intent(intent: &Path) -> anyhow::Result<Status> {
         let pending_publication = state.desired.publication_state(current.revision())?
             == PluginConfigurationSnapshotPublicationState::AwaitingPublication;
         let last = state.last_activated.as_ref();
+        let desired_matches_last_activated_root_and_policy = last.is_some_and(|last| {
+            last.plugin_root_revision == state.desired.candidate_plugin_root_revision()
+                && state.policy_digest.is_some()
+                && last.policy_digest == state.policy_digest
+        });
         let pending = last.is_none_or(|last| {
             last.revision != state.desired.revision()
                 || last.snapshot_digest != state.desired.snapshot_digest()
@@ -359,6 +365,7 @@ fn status_for_intent(intent: &Path) -> anyhow::Result<Status> {
             desired_revision: Some(state.desired.revision()),
             source_kind: Some(state.desired.source()?.kind().to_owned()),
             last_activated_revision: last.map(|last| last.revision),
+            desired_matches_last_activated_root_and_policy,
             pending_publication,
             pending_activation: pending,
         }
@@ -369,6 +376,7 @@ fn status_for_intent(intent: &Path) -> anyhow::Result<Status> {
             desired_revision: None,
             source_kind: None,
             last_activated_revision: None,
+            desired_matches_last_activated_root_and_policy: false,
             pending_publication: false,
             pending_activation: false,
         }

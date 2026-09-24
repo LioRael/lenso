@@ -47,6 +47,15 @@ gate. One-shot `--check` and terminal `-- ...` arguments are rejected with
 `--configuration-policy` because they cannot provide continuous supervision.
 Without a policy, `app start` retains its ordinary one-shot behavior.
 
+A newer accepted source revision that resolves to the exact same Plugin Root
+under the same Host policy renews the running Host's source proof without a
+restart. It does not forge a new activation receipt: `config-status` keeps the
+new `desired_revision` separate from the historical `last_activated_revision`,
+sets `desired_matches_last_activated_root_and_policy` to true, and still marks
+`pending_activation`. That field compares stored Root and policy identities;
+it is not a live-process health check. A changed Root or policy still requires
+the hard-stop and recovery path above.
+
 Only one supervised `app start` may own a built distribution at a time. Before
 starting a Host, the supervisor durably writes
 `dist/.lenso/supervised-start.uncertain`. Once a Host has been spawned, the
