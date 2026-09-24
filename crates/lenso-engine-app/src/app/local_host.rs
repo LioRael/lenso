@@ -871,6 +871,11 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
         if let Some(name) = package.get("name").and_then(toml::Value::as_str)
             && (name == "lenso" || name.starts_with("lenso-"))
         {
+            // Codegen is a build-only tool. Git and registry copies may coexist
+            // without splitting the linked native Plugin's runtime identity.
+            if name == "lenso-contract-codegen" && !selected.packages.contains_key(name) {
+                continue;
+            }
             let version = package
                 .get("version")
                 .and_then(toml::Value::as_str)
@@ -1545,6 +1550,33 @@ mod tests {
                 .to_string()
                 .contains("generated Host resolved conflicting lenso-runtime-codec")
         );
+    }
+
+    #[test]
+    fn generated_host_lock_allows_build_only_codegen_source_split() {
+        let root = tempfile::tempdir().unwrap();
+        let lock = root.path().join("Cargo.lock");
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({
+                "name": "lenso-native-adapter",
+                "version": "0.3.15",
+                "id": "git-adapter-0.3.15",
+                "source": format!("git+{git}?rev={rev}#{rev}"),
+            }),
+        )
+        .unwrap();
+        std::fs::write(
+            &lock,
+            format!(
+                "[[package]]\nname = \"lenso-native-adapter\"\nversion = \"0.3.15\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n\n[[package]]\nname = \"lenso-contract-codegen\"\nversion = \"0.9.0\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n\n[[package]]\nname = \"lenso-contract-codegen\"\nversion = \"0.9.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+            ),
+        )
+        .unwrap();
+        verify_git_lenso_lock(&lock, &selected).unwrap();
     }
 
     #[test]
