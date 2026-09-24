@@ -1020,6 +1020,8 @@ pub(super) fn digest(path: &Path) -> anyhow::Result<String> {
 
 pub(super) fn finalize(stage: &Path, runtime_artifacts: Vec<Value>) -> anyhow::Result<()> {
     fs::create_dir_all(stage.join("runtime"))?;
+    // Keep Host and Resolver on separate inodes: an in-place Resolver overwrite
+    // on a hard link can replace the Host before lock verification and falsely pass --check.
     let native = stage.join(".lenso/host").is_file();
     if !native {
         fs::copy(
