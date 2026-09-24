@@ -4,8 +4,8 @@ use anyhow::{Context as _, bail, ensure};
 use url::Url;
 
 use super::{
-    BusinessSnapshotSourceId, MAX_DOCUMENT_BYTES, SourceDocument, VersionedBusinessSnapshot,
-    snapshot_from_document,
+    BusinessSnapshotSourceBinding, BusinessSnapshotSourceId, MAX_DOCUMENT_BYTES, SourceDocument,
+    SourceLocation, VersionedBusinessSnapshot, snapshot_from_document,
 };
 use crate::{
     archive_download::{checked_url, public_resolve, restricted_https_agent_builder},
@@ -48,7 +48,7 @@ impl fmt::Debug for BusinessSnapshotCursor {
 
 pub(super) enum PollOutcome {
     Updated {
-        snapshot: VersionedBusinessSnapshot,
+        snapshot: Box<VersionedBusinessSnapshot>,
         cursor: Option<BusinessSnapshotCursor>,
     },
     NotModified {
@@ -120,6 +120,13 @@ impl HttpsBusinessSnapshotSource {
 
     pub fn source(&self) -> &BusinessSnapshotSourceId {
         &self.source
+    }
+
+    pub fn binding(&self) -> BusinessSnapshotSourceBinding {
+        BusinessSnapshotSourceBinding {
+            source: self.source.clone(),
+            location: SourceLocation::Https(self.url.as_str().to_owned()),
+        }
     }
 
     pub fn poll(
@@ -205,7 +212,7 @@ impl HttpsBusinessSnapshotSource {
             .map_err(|_| anyhow::anyhow!("business snapshot HTTPS response is invalid JSON"))?;
         Ok(BusinessSnapshotPoll {
             outcome: PollOutcome::Updated {
-                snapshot: snapshot_from_document(self.source.clone(), document)?,
+                snapshot: Box::new(snapshot_from_document(self.binding(), document)?),
                 cursor,
             },
         })
@@ -284,7 +291,7 @@ mod tests {
         .unwrap();
         let object =
             BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy").unwrap();
-        let authority = authority(source_id.clone(), Duration::from_secs(60));
+        let authority = authority(source.binding(), Duration::from_secs(60));
         let first = source.poll_with_agent(None, &server.agent).unwrap();
         assert_eq!(first.revision(), Some(7));
         assert_eq!(
@@ -338,6 +345,7 @@ mod tests {
             .accept(
                 VersionedBusinessSnapshot::new(
                     source_id,
+                    source.binding().location,
                     object,
                     8,
                     json!({ "excerpt_limit": 48 }),
@@ -399,7 +407,7 @@ mod tests {
                 .ascii_serialization()],
         )
         .unwrap();
-        let authority = authority(source_id, Duration::from_millis(20));
+        let authority = authority(source.binding(), Duration::from_millis(20));
         authority
             .accept_poll(source.poll_with_agent(None, &server.agent).unwrap(), None)
             .unwrap();
@@ -417,14 +425,14 @@ mod tests {
     }
 
     fn authority(
-        source: BusinessSnapshotSourceId,
+        binding: BusinessSnapshotSourceBinding,
         max_stale: Duration,
     ) -> BusinessSnapshotAuthority<ExcerptPolicy> {
         BusinessSnapshotAuthority::new(
             BusinessSnapshotAuthorization::new(
                 BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy")
                     .unwrap(),
-                source,
+                binding,
                 json!({
                     "type": "object",
                     "properties": { "excerpt_limit": { "type": "integer", "minimum": 16, "maximum": 512 } },

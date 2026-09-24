@@ -130,9 +130,39 @@ impl fmt::Debug for BusinessSnapshotSourceId {
     }
 }
 
+#[derive(Clone, Eq, PartialEq)]
+enum SourceLocation {
+    File(PathBuf),
+    Https(String),
+}
+
+/// An exact reader binding selected by the Host, not asserted by a source document.
+#[derive(Clone, Eq, PartialEq)]
+pub struct BusinessSnapshotSourceBinding {
+    source: BusinessSnapshotSourceId,
+    location: SourceLocation,
+}
+
+impl BusinessSnapshotSourceBinding {
+    pub fn source(&self) -> &BusinessSnapshotSourceId {
+        &self.source
+    }
+}
+
+impl fmt::Debug for BusinessSnapshotSourceBinding {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BusinessSnapshotSourceBinding")
+            .field("source", &self.source)
+            .field("location", &"<redacted>")
+            .finish()
+    }
+}
+
 /// Untrusted source data, still requiring exact Host authorization before use.
 pub struct VersionedBusinessSnapshot {
     source: BusinessSnapshotSourceId,
+    location: SourceLocation,
     object: BusinessSnapshotObjectId,
     revision: u64,
     value: Value,
@@ -140,8 +170,9 @@ pub struct VersionedBusinessSnapshot {
 }
 
 impl VersionedBusinessSnapshot {
-    pub fn new(
+    fn new(
         source: BusinessSnapshotSourceId,
+        location: SourceLocation,
         object: BusinessSnapshotObjectId,
         revision: u64,
         value: Value,
@@ -154,6 +185,7 @@ impl VersionedBusinessSnapshot {
         );
         Ok(Self {
             source,
+            location,
             object,
             revision,
             value,
@@ -187,9 +219,13 @@ impl fmt::Debug for VersionedBusinessSnapshot {
 }
 
 /// Host policy for one exact business object and source, using an existing bounded schema profile.
+///
+/// Construct this only from a locked Plugin-owned schema and Host deployment
+/// policy, never from fields supplied by the snapshot document.
 pub struct BusinessSnapshotAuthorization<T> {
     object: BusinessSnapshotObjectId,
     source: BusinessSnapshotSourceId,
+    binding: BusinessSnapshotSourceBinding,
     fields: BTreeSet<String>,
     validator: jsonschema::Validator,
     max_stale: Duration,
@@ -199,7 +235,7 @@ pub struct BusinessSnapshotAuthorization<T> {
 impl<T> BusinessSnapshotAuthorization<T> {
     pub fn new(
         object: BusinessSnapshotObjectId,
-        source: BusinessSnapshotSourceId,
+        binding: BusinessSnapshotSourceBinding,
         schema: Value,
         fields: impl IntoIterator<Item = impl Into<String>>,
         max_stale: Duration,
@@ -232,7 +268,8 @@ impl<T> BusinessSnapshotAuthorization<T> {
             .map_err(|_| anyhow::anyhow!("business snapshot schema is invalid"))?;
         Ok(Self {
             object,
-            source,
+            source: binding.source.clone(),
+            binding,
             fields,
             validator,
             max_stale,
@@ -247,6 +284,7 @@ impl<T> fmt::Debug for BusinessSnapshotAuthorization<T> {
             .debug_struct("BusinessSnapshotAuthorization")
             .field("object", &self.object)
             .field("source", &self.source)
+            .field("binding", &self.binding)
             .field("fields", &self.fields)
             .field("max_stale", &self.max_stale)
             .finish_non_exhaustive()
@@ -304,7 +342,7 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
                         "business snapshot ETag belongs to a different source"
                     );
                 }
-                self.accept_with_cursor(snapshot, expected_active_revision, cursor)
+                self.accept_with_cursor(*snapshot, expected_active_revision, cursor)
             }
             PollOutcome::NotModified {
                 cursor,
@@ -334,7 +372,7 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
                     observed_at.elapsed() <= self.authorization.max_stale,
                     "business snapshot HTTPS proof expired before acceptance"
                 );
-                active.refreshed_at = observed_at;
+                active.refreshed_at = active.refreshed_at.max(observed_at);
                 Ok(BusinessSnapshotAcceptance::Unchanged)
             }
         }
@@ -351,6 +389,16 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
             .and_then(|active| active.cursor.clone()))
     }
 
+    /// Returns the fenced revision even when its source proof has expired.
+    pub fn active_revision(&self) -> anyhow::Result<Option<u64>> {
+        Ok(self
+            .active
+            .read()
+            .map_err(|_| anyhow::anyhow!("business snapshot state is unavailable"))?
+            .as_ref()
+            .map(|active| active.revision))
+    }
+
     fn accept_with_cursor(
         &self,
         candidate: VersionedBusinessSnapshot,
@@ -360,6 +408,10 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
         ensure!(
             candidate.source == self.authorization.source,
             "business snapshot source is not authorized"
+        );
+        ensure!(
+            candidate.location == self.authorization.binding.location,
+            "business snapshot reader is not authorized"
         );
         ensure!(
             candidate.object == self.authorization.object,
@@ -403,7 +455,7 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
                     fingerprint == current.value_fingerprint,
                     "business snapshot revision was reused with changed content"
                 );
-                current.refreshed_at = candidate.observed_at;
+                current.refreshed_at = current.refreshed_at.max(candidate.observed_at);
                 current.cursor = cursor;
                 return Ok(BusinessSnapshotAcceptance::Unchanged);
             }
@@ -539,6 +591,13 @@ impl FileBusinessSnapshotSource {
         &self.path
     }
 
+    pub fn binding(&self) -> BusinessSnapshotSourceBinding {
+        BusinessSnapshotSourceBinding {
+            source: self.source.clone(),
+            location: SourceLocation::File(self.path.clone()),
+        }
+    }
+
     pub fn read(&self) -> anyhow::Result<VersionedBusinessSnapshot> {
         ensure!(
             self.path.is_absolute(),
@@ -560,17 +619,23 @@ impl FileBusinessSnapshotSource {
         );
         let document: SourceDocument = serde_json::from_slice(&bytes)
             .map_err(|_| anyhow::anyhow!("business snapshot file is invalid JSON"))?;
-        snapshot_from_document(self.source.clone(), document)
+        snapshot_from_document(self.binding(), document)
     }
 }
 
 fn snapshot_from_document(
-    source: BusinessSnapshotSourceId,
+    binding: BusinessSnapshotSourceBinding,
     document: SourceDocument,
 ) -> anyhow::Result<VersionedBusinessSnapshot> {
     ensure!(
         document.schema == DOCUMENT_SCHEMA,
         "business snapshot document schema is unsupported"
     );
-    VersionedBusinessSnapshot::new(source, document.object, document.revision, document.value)
+    VersionedBusinessSnapshot::new(
+        binding.source,
+        binding.location,
+        document.object,
+        document.revision,
+        document.value,
+    )
 }

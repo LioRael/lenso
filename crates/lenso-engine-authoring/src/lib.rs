@@ -58,8 +58,8 @@ mod selection_authority;
 pub use business_snapshot::{
     BusinessRequestSnapshot, BusinessSnapshotAcceptance, BusinessSnapshotAuthority,
     BusinessSnapshotAuthorization, BusinessSnapshotCursor, BusinessSnapshotObjectId,
-    BusinessSnapshotPoll, BusinessSnapshotSourceId, FileBusinessSnapshotSource,
-    HttpsBusinessSnapshotSource, VersionedBusinessSnapshot,
+    BusinessSnapshotPoll, BusinessSnapshotSourceBinding, BusinessSnapshotSourceId,
+    FileBusinessSnapshotSource, HttpsBusinessSnapshotSource, VersionedBusinessSnapshot,
 };
 pub use configuration_authority::{
     LocalPluginRootAuthority, PluginConfigurationApplication, PluginConfigurationAuthority,

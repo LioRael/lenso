@@ -1,4 +1,10 @@
-use std::{fs, thread, time::Duration};
+use std::{
+    fs,
+    path::Path,
+    sync::{Arc, Barrier},
+    thread,
+    time::Duration,
+};
 
 use lenso_engine_authoring::{
     BusinessSnapshotAcceptance, BusinessSnapshotAuthority, BusinessSnapshotAuthorization,
@@ -13,16 +19,13 @@ struct ExcerptPolicy {
     excerpt_limit: u32,
 }
 
-fn authorization() -> BusinessSnapshotAuthorization<ExcerptPolicy> {
-    authorization_with_stale_limit(Duration::from_secs(60))
-}
-
-fn authorization_with_stale_limit(
+fn authorization(
+    source: &FileBusinessSnapshotSource,
     max_stale: Duration,
 ) -> BusinessSnapshotAuthorization<ExcerptPolicy> {
     BusinessSnapshotAuthorization::new(
         BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy").unwrap(),
-        BusinessSnapshotSourceId::new("file", "operator-settings").unwrap(),
+        source.binding(),
         json!({
             "type": "object",
             "properties": { "excerpt_limit": { "type": "integer", "minimum": 16, "maximum": 512 } },
@@ -35,25 +38,28 @@ fn authorization_with_stale_limit(
     .unwrap()
 }
 
-fn candidate(revision: u64, excerpt_limit: u32) -> VersionedBusinessSnapshot {
-    VersionedBusinessSnapshot::new(
+fn file_source(path: &Path) -> FileBusinessSnapshotSource {
+    FileBusinessSnapshotSource::new(
+        path,
         BusinessSnapshotSourceId::new("file", "operator-settings").unwrap(),
-        BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy").unwrap(),
-        revision,
-        json!({ "excerpt_limit": excerpt_limit }),
     )
-    .unwrap()
+}
+
+fn candidate(
+    source: &FileBusinessSnapshotSource,
+    revision: u64,
+    value: serde_json::Value,
+) -> VersionedBusinessSnapshot {
+    fs::write(source.path(), document_value(revision, value)).unwrap();
+    source.read().unwrap()
 }
 
 #[test]
 fn request_keeps_its_authorized_business_revision_after_file_update() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("settings.json");
-    let source = FileBusinessSnapshotSource::new(
-        &path,
-        BusinessSnapshotSourceId::new("file", "operator-settings").unwrap(),
-    );
-    let authority = BusinessSnapshotAuthority::new(authorization());
+    let source = file_source(&path);
+    let authority = BusinessSnapshotAuthority::new(authorization(&source, Duration::from_secs(60)));
     assert!(authority.capture_request().is_err());
 
     fs::write(&path, document(1, 96)).unwrap();
@@ -69,9 +75,14 @@ fn request_keeps_its_authorized_business_revision_after_file_update() {
     assert_eq!(first_request.revision(), 1);
     assert_eq!(next_request.value().excerpt_limit, 48);
     assert_eq!(next_request.revision(), 2);
+    assert!(!format!("{next_request:?}").contains("excerpt_limit"));
 }
 
 fn document(revision: u64, excerpt_limit: u32) -> String {
+    document_value(revision, json!({ "excerpt_limit": excerpt_limit }))
+}
+
+fn document_value(revision: u64, value: serde_json::Value) -> String {
     json!({
         "schema": "lenso.business-snapshot.v1",
         "revision": revision,
@@ -80,7 +91,7 @@ fn document(revision: u64, excerpt_limit: u32) -> String {
             "instance_key": "default",
             "object_key": "excerpt-policy"
         },
-        "value": { "excerpt_limit": excerpt_limit }
+        "value": value
     })
     .to_string()
 }
@@ -114,34 +125,64 @@ fn https_source_requires_one_exact_host_admitted_origin() {
 
 #[test]
 fn rejected_scope_stale_reuse_and_cas_leave_the_active_business_value_intact() {
-    let authority = BusinessSnapshotAuthority::new(authorization());
+    let directory = tempfile::tempdir().unwrap();
+    let source = file_source(&directory.path().join("settings.json"));
+    let authority = BusinessSnapshotAuthority::new(authorization(&source, Duration::from_secs(60)));
     assert_eq!(
-        authority.accept(candidate(2, 96), None).unwrap(),
+        authority
+            .accept(candidate(&source, 2, json!({ "excerpt_limit": 96 })), None)
+            .unwrap(),
         BusinessSnapshotAcceptance::Activated
     );
     assert_eq!(
-        authority.accept(candidate(2, 96), Some(2)).unwrap(),
+        authority
+            .accept(
+                candidate(&source, 2, json!({ "excerpt_limit": 96 })),
+                Some(2)
+            )
+            .unwrap(),
         BusinessSnapshotAcceptance::Unchanged
     );
-    assert!(authority.accept(candidate(2, 48), Some(2)).is_err());
-    assert!(authority.accept(candidate(1, 48), Some(2)).is_err());
-    assert!(authority.accept(candidate(3, 48), Some(1)).is_err());
-    assert!(authority.accept(candidate(3, 600), Some(2)).is_err());
-    let other_source = VersionedBusinessSnapshot::new(
-        BusinessSnapshotSourceId::new("file", "another-source").unwrap(),
-        BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy").unwrap(),
-        999,
-        json!({ "excerpt_limit": 48 }),
-    )
-    .unwrap();
+    assert!(
+        authority
+            .accept(
+                candidate(&source, 2, json!({ "excerpt_limit": 48 })),
+                Some(2)
+            )
+            .is_err()
+    );
+    assert!(
+        authority
+            .accept(
+                candidate(&source, 1, json!({ "excerpt_limit": 48 })),
+                Some(2)
+            )
+            .is_err()
+    );
+    assert!(
+        authority
+            .accept(
+                candidate(&source, 3, json!({ "excerpt_limit": 48 })),
+                Some(1)
+            )
+            .is_err()
+    );
+    assert!(
+        authority
+            .accept(
+                candidate(&source, 3, json!({ "excerpt_limit": 600 })),
+                Some(2)
+            )
+            .is_err()
+    );
+    let other_source = file_source(&directory.path().join("other-settings.json"));
+    let other_source = candidate(&other_source, 999, json!({ "excerpt_limit": 48 }));
     assert!(authority.accept(other_source, Some(2)).is_err());
-    let extra_field = VersionedBusinessSnapshot::new(
-        BusinessSnapshotSourceId::new("file", "operator-settings").unwrap(),
-        BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy").unwrap(),
+    let extra_field = candidate(
+        &source,
         3,
         json!({ "excerpt_limit": 48, "allowed_origins": ["https://evil.example"] }),
-    )
-    .unwrap();
+    );
     assert!(authority.accept(extra_field, Some(2)).is_err());
     assert_eq!(
         authority.capture_request().unwrap().value().excerpt_limit,
@@ -181,22 +222,55 @@ fn file_reader_rejects_links_and_public_debug_redacts_values() {
 }
 
 #[test]
+fn concurrent_business_revisions_allow_one_cas_winner() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = file_source(&directory.path().join("settings.json"));
+    let authority = Arc::new(BusinessSnapshotAuthority::new(authorization(
+        &source,
+        Duration::from_secs(60),
+    )));
+    authority
+        .accept(candidate(&source, 1, json!({ "excerpt_limit": 96 })), None)
+        .unwrap();
+    let candidates = [(2, 48), (3, 64)]
+        .map(|(revision, limit)| candidate(&source, revision, json!({ "excerpt_limit": limit })));
+    let barrier = Arc::new(Barrier::new(3));
+    let workers = candidates
+        .into_iter()
+        .map(|candidate| {
+            let authority = Arc::clone(&authority);
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                barrier.wait();
+                authority.accept(candidate, Some(1))
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    let winners = workers
+        .into_iter()
+        .map(|worker| worker.join().unwrap().is_ok())
+        .filter(|won| *won)
+        .count();
+    assert_eq!(winners, 1);
+    assert!(matches!(authority.active_revision().unwrap(), Some(2 | 3)));
+}
+
+#[test]
 fn source_outage_keeps_a_pinned_request_but_expires_new_admission() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("settings.json");
     fs::write(&path, document(1, 96)).unwrap();
-    let source = FileBusinessSnapshotSource::new(
-        &path,
-        BusinessSnapshotSourceId::new("file", "operator-settings").unwrap(),
-    );
+    let source = file_source(&path);
     let authority =
-        BusinessSnapshotAuthority::new(authorization_with_stale_limit(Duration::from_millis(20)));
+        BusinessSnapshotAuthority::new(authorization(&source, Duration::from_millis(20)));
     authority.accept(source.read().unwrap(), None).unwrap();
     let admitted = authority.capture_request().unwrap();
     fs::remove_file(path).unwrap();
     assert!(source.read().is_err());
     thread::sleep(Duration::from_millis(50));
     assert!(authority.capture_request().is_err());
+    assert_eq!(authority.active_revision().unwrap(), Some(1));
     assert_eq!(admitted.value().excerpt_limit, 96);
     assert_eq!(admitted.revision(), 1);
 }
