@@ -18,6 +18,8 @@ pub struct BusinessSnapshotCursor {
     endpoint: String,
     source: BusinessSnapshotSourceId,
     etag: String,
+    revision: u64,
+    generation: u64,
 }
 
 impl BusinessSnapshotCursor {
@@ -25,10 +27,25 @@ impl BusinessSnapshotCursor {
         &self.source
     }
 
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(super) const fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub(super) fn bind_generation(mut self, generation: u64) -> Self {
+        self.generation = generation;
+        self
+    }
+
     fn validate_for(&self, source: &HttpsBusinessSnapshotSource) -> anyhow::Result<()> {
         validate_etag(&self.etag)?;
         ensure!(
-            self.endpoint == source.url.as_str() && self.source == source.source,
+            self.generation > 0
+                && self.endpoint == source.url.as_str()
+                && self.source == source.source,
             "business snapshot ETag cursor belongs to a different source"
         );
         Ok(())
@@ -40,6 +57,7 @@ impl fmt::Debug for BusinessSnapshotCursor {
         formatter
             .debug_struct("BusinessSnapshotCursor")
             .field("source", &self.source)
+            .field("revision", &self.revision)
             .field("endpoint", &"<redacted>")
             .field("etag", &"<redacted>")
             .finish()
@@ -187,17 +205,7 @@ impl HttpsBusinessSnapshotSource {
                 "business snapshot response length exceeds its bound"
             );
         }
-        let cursor = response
-            .header("ETag")
-            .map(|etag| {
-                validate_etag(etag)?;
-                Ok::<_, anyhow::Error>(BusinessSnapshotCursor {
-                    endpoint: self.url.as_str().to_owned(),
-                    source: self.source.clone(),
-                    etag: etag.to_owned(),
-                })
-            })
-            .transpose()?;
+        let etag = response.header("ETag").map(str::to_owned);
         let mut bytes = Vec::new();
         response
             .into_reader()
@@ -210,9 +218,22 @@ impl HttpsBusinessSnapshotSource {
         );
         let document: SourceDocument = serde_json::from_slice(&bytes)
             .map_err(|_| anyhow::anyhow!("business snapshot HTTPS response is invalid JSON"))?;
+        let snapshot = snapshot_from_document(self.binding(), document)?;
+        let cursor = etag
+            .map(|etag| {
+                validate_etag(&etag)?;
+                Ok::<_, anyhow::Error>(BusinessSnapshotCursor {
+                    endpoint: self.url.as_str().to_owned(),
+                    source: self.source.clone(),
+                    etag,
+                    revision: snapshot.revision(),
+                    generation: 0,
+                })
+            })
+            .transpose()?;
         Ok(BusinessSnapshotPoll {
             outcome: PollOutcome::Updated {
-                snapshot: Box::new(snapshot_from_document(self.binding(), document)?),
+                snapshot: Box::new(snapshot),
                 cursor,
             },
         })
@@ -341,31 +362,121 @@ mod tests {
             96
         );
 
+        let same_revision_cursor = BusinessSnapshotCursor {
+            generation: 0,
+            ..cursor.clone()
+        };
         authority
-            .accept(
-                VersionedBusinessSnapshot::new(
-                    source_id,
-                    source.binding().location,
-                    object,
-                    8,
-                    json!({ "excerpt_limit": 48 }),
-                )
-                .unwrap(),
+            .accept_poll(
+                BusinessSnapshotPoll {
+                    outcome: PollOutcome::Updated {
+                        snapshot: Box::new(
+                            VersionedBusinessSnapshot::new(
+                                source_id.clone(),
+                                source.binding().location,
+                                object.clone(),
+                                7,
+                                json!({ "excerpt_limit": 96 }),
+                            )
+                            .unwrap(),
+                        ),
+                        cursor: Some(same_revision_cursor),
+                    },
+                },
                 Some(7),
             )
             .unwrap();
+        let accepted_same_revision = authority.cursor().unwrap().unwrap();
+        assert_eq!(accepted_same_revision.revision(), 7);
+        assert!(accepted_same_revision.generation() > cursor.generation());
+        let before_stale_304 = authority
+            .active
+            .read()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .refreshed_at;
         assert!(
             authority
                 .accept_poll(
                     BusinessSnapshotPoll {
                         outcome: PollOutcome::NotModified {
-                            cursor,
+                            cursor: cursor.clone(),
+                            observed_at: Instant::now(),
+                        },
+                    },
+                    Some(7),
+                )
+                .is_err()
+        );
+        assert_eq!(
+            authority
+                .active
+                .read()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .refreshed_at,
+            before_stale_304
+        );
+        let next_cursor = BusinessSnapshotCursor {
+            revision: 8,
+            generation: 0,
+            ..cursor.clone()
+        };
+        assert_eq!(next_cursor.etag, cursor.etag);
+        authority
+            .accept_poll(
+                BusinessSnapshotPoll {
+                    outcome: PollOutcome::Updated {
+                        snapshot: Box::new(
+                            VersionedBusinessSnapshot::new(
+                                source_id,
+                                source.binding().location,
+                                object,
+                                8,
+                                json!({ "excerpt_limit": 48 }),
+                            )
+                            .unwrap(),
+                        ),
+                        cursor: Some(next_cursor.clone()),
+                    },
+                },
+                Some(7),
+            )
+            .unwrap();
+        let accepted_next = authority.cursor().unwrap().unwrap();
+        assert_eq!(accepted_next.revision(), 8);
+        assert!(accepted_next.generation() > accepted_same_revision.generation());
+        let before_stale_304 = authority
+            .active
+            .read()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .refreshed_at;
+        assert!(
+            authority
+                .accept_poll(
+                    BusinessSnapshotPoll {
+                        outcome: PollOutcome::NotModified {
+                            cursor: accepted_same_revision,
                             observed_at: Instant::now(),
                         },
                     },
                     Some(8),
                 )
                 .is_err()
+        );
+        assert_eq!(
+            authority
+                .active
+                .read()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .refreshed_at,
+            before_stale_304
         );
         assert_eq!(
             authority.capture_request().unwrap().value().excerpt_limit,

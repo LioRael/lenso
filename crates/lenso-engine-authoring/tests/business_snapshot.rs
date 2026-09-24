@@ -26,16 +26,20 @@ fn authorization(
     BusinessSnapshotAuthorization::new(
         BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy").unwrap(),
         source.binding(),
-        json!({
-            "type": "object",
-            "properties": { "excerpt_limit": { "type": "integer", "minimum": 16, "maximum": 512 } },
-            "required": ["excerpt_limit"],
-            "additionalProperties": false
-        }),
+        schema(),
         ["excerpt_limit"],
         max_stale,
     )
     .unwrap()
+}
+
+fn schema() -> serde_json::Value {
+    json!({
+        "type": "object",
+        "properties": { "excerpt_limit": { "type": "integer", "minimum": 16, "maximum": 512 } },
+        "required": ["excerpt_limit"],
+        "additionalProperties": false
+    })
 }
 
 fn file_source(path: &Path) -> FileBusinessSnapshotSource {
@@ -273,4 +277,36 @@ fn source_outage_keeps_a_pinned_request_but_expires_new_admission() {
     assert_eq!(authority.active_revision().unwrap(), Some(1));
     assert_eq!(admitted.value().excerpt_limit, 96);
     assert_eq!(admitted.revision(), 1);
+}
+
+#[test]
+fn authorization_rejects_invalid_deserialized_identity_and_unbounded_staleness() {
+    let directory = tempfile::tempdir().unwrap();
+    let source = file_source(&directory.path().join("settings.json"));
+    let malformed: BusinessSnapshotObjectId = serde_json::from_value(json!({
+        "plugin_id": "company.notes",
+        "instance_key": "default",
+        "object_key": "../other"
+    }))
+    .unwrap();
+    assert!(
+        BusinessSnapshotAuthorization::<ExcerptPolicy>::new(
+            malformed,
+            source.binding(),
+            schema(),
+            ["excerpt_limit"],
+            Duration::from_secs(60)
+        )
+        .is_err()
+    );
+    assert!(
+        BusinessSnapshotAuthorization::<ExcerptPolicy>::new(
+            BusinessSnapshotObjectId::new("company.notes", "default", "excerpt-policy").unwrap(),
+            source.binding(),
+            schema(),
+            ["excerpt_limit"],
+            Duration::from_secs(24 * 60 * 60 + 1)
+        )
+        .is_err()
+    );
 }

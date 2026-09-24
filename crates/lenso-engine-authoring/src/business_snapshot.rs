@@ -2,7 +2,7 @@
 
 use std::{
     collections::BTreeSet,
-    fmt,
+    fmt, fs,
     io::Read as _,
     marker::PhantomData,
     path::{Path, PathBuf},
@@ -27,6 +27,7 @@ use crate::{
 const DOCUMENT_SCHEMA: &str = "lenso.business-snapshot.v1";
 const MAX_DOCUMENT_BYTES: u64 = 1024 * 1024;
 const MAX_VALUE_BYTES: usize = 256 * 1024;
+const MAX_STALE: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Exact Plugin-owned business object. It is not a Plugin Root configuration field.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -240,9 +241,10 @@ impl<T> BusinessSnapshotAuthorization<T> {
         fields: impl IntoIterator<Item = impl Into<String>>,
         max_stale: Duration,
     ) -> anyhow::Result<Self> {
+        object.validate()?;
         ensure!(
-            !max_stale.is_zero(),
-            "business snapshot stale limit must be positive"
+            !max_stale.is_zero() && max_stale <= MAX_STALE,
+            "business snapshot stale limit must be positive and at most 24 hours"
         );
         let fields = fields.into_iter().map(Into::into).collect::<BTreeSet<_>>();
         ensure!(
@@ -293,6 +295,7 @@ impl<T> fmt::Debug for BusinessSnapshotAuthorization<T> {
 
 struct ActiveBusinessSnapshot<T> {
     revision: u64,
+    generation: u64,
     value_fingerprint: [u8; 32],
     value: Arc<T>,
     refreshed_at: Instant,
@@ -338,8 +341,10 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
             PollOutcome::Updated { snapshot, cursor } => {
                 if let Some(cursor) = &cursor {
                     ensure!(
-                        cursor.source() == snapshot.source(),
-                        "business snapshot ETag belongs to a different source"
+                        cursor.source() == snapshot.source()
+                            && cursor.revision() == snapshot.revision()
+                            && cursor.generation() == 0,
+                        "business snapshot ETag belongs to a different source or revision"
                     );
                 }
                 self.accept_with_cursor(*snapshot, expected_active_revision, cursor)
@@ -361,7 +366,9 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
                 );
                 ensure!(
                     active.cursor.as_ref() == Some(&cursor)
-                        && cursor.source() == &self.authorization.source,
+                        && cursor.source() == &self.authorization.source
+                        && cursor.revision() == active.revision
+                        && cursor.generation() == active.generation,
                     "business snapshot HTTP 304 does not match the accepted ETag"
                 );
                 ensure!(
@@ -446,6 +453,11 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
             active.as_ref().map(|current| current.revision) == expected_active_revision,
             "business snapshot active revision changed before publication"
         );
+        let generation = active
+            .as_ref()
+            .map_or(Some(1), |current| current.generation.checked_add(1))
+            .context("business snapshot generation is exhausted")?;
+        let cursor = cursor.map(|cursor| cursor.bind_generation(generation));
         if let Some(current) = active.as_mut() {
             if candidate.revision < current.revision {
                 bail!("business snapshot revision is stale");
@@ -456,12 +468,14 @@ impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
                     "business snapshot revision was reused with changed content"
                 );
                 current.refreshed_at = current.refreshed_at.max(candidate.observed_at);
+                current.generation = generation;
                 current.cursor = cursor;
                 return Ok(BusinessSnapshotAcceptance::Unchanged);
             }
         }
         *active = Some(ActiveBusinessSnapshot {
             revision: candidate.revision,
+            generation,
             value_fingerprint: fingerprint,
             value: Arc::new(typed),
             refreshed_at: candidate.observed_at,
@@ -573,7 +587,9 @@ struct SourceDocument {
     value: Value,
 }
 
-/// Bounded regular-file input. Path admission and filesystem confinement remain Host duties.
+/// Bounded regular-file input. Producers must publish by atomic replacement,
+/// not by rewriting the active inode. Path admission and filesystem confinement
+/// remain Host duties; metadata checks cannot stop a hostile paused writer.
 pub struct FileBusinessSnapshotSource {
     path: PathBuf,
     source: BusinessSnapshotSourceId,
@@ -599,6 +615,13 @@ impl FileBusinessSnapshotSource {
     }
 
     pub fn read(&self) -> anyhow::Result<VersionedBusinessSnapshot> {
+        self.read_with_after_bytes(|| {})
+    }
+
+    fn read_with_after_bytes(
+        &self,
+        after_bytes: impl FnOnce(),
+    ) -> anyhow::Result<VersionedBusinessSnapshot> {
         ensure!(
             self.path.is_absolute(),
             "business snapshot file path must be absolute"
@@ -610,16 +633,49 @@ impl FileBusinessSnapshotSource {
             "business snapshot file exceeds its bound"
         );
         let mut bytes = Vec::new();
-        file.take(MAX_DOCUMENT_BYTES + 1)
+        (&file)
+            .take(MAX_DOCUMENT_BYTES + 1)
             .read_to_end(&mut bytes)
             .context("read business snapshot file")?;
         ensure!(
             u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_DOCUMENT_BYTES,
             "business snapshot file exceeds its bound"
         );
+        after_bytes();
+        let after = file.metadata().context("inspect business snapshot file")?;
+        ensure!(
+            u64::try_from(bytes.len()).ok() == Some(metadata.len())
+                && same_file_version(&metadata, &after),
+            "business snapshot file changed while reading"
+        );
         let document: SourceDocument = serde_json::from_slice(&bytes)
             .map_err(|_| anyhow::anyhow!("business snapshot file is invalid JSON"))?;
         snapshot_from_document(self.binding(), document)
+    }
+}
+
+fn same_file_version(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    let (Ok(before_modified), Ok(after_modified)) = (before.modified(), after.modified()) else {
+        return false;
+    };
+    if !before.file_type().is_file()
+        || !after.file_type().is_file()
+        || before.len() != after.len()
+        || before_modified != after_modified
+    {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        before.dev() == after.dev()
+            && before.ino() == after.ino()
+            && before.ctime() == after.ctime()
+            && before.ctime_nsec() == after.ctime_nsec()
+    }
+    #[cfg(not(unix))]
+    {
+        true
     }
 }
 
@@ -638,4 +694,75 @@ fn snapshot_from_document(
         document.revision,
         document.value,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, thread, time::Duration};
+
+    use serde_json::json;
+
+    use super::{BusinessSnapshotSourceId, FileBusinessSnapshotSource};
+
+    fn document(revision: u64, excerpt_limit: u32) -> String {
+        json!({
+            "schema": "lenso.business-snapshot.v1",
+            "revision": revision,
+            "object": {
+                "plugin_id": "company.notes",
+                "instance_key": "default",
+                "object_key": "excerpt-policy"
+            },
+            "value": { "excerpt_limit": excerpt_limit }
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn file_reader_rejects_detected_same_inode_rewrite() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        let original = document(1, 96);
+        let replacement = document(2, 48);
+        assert_eq!(original.len(), replacement.len());
+        fs::write(&path, original).unwrap();
+        let before = fs::metadata(&path).unwrap();
+        let source = FileBusinessSnapshotSource::new(
+            &path,
+            BusinessSnapshotSourceId::new("file", "operator-settings").unwrap(),
+        );
+        let read = source.read_with_after_bytes(|| {
+            thread::sleep(Duration::from_millis(20));
+            fs::write(&path, replacement).unwrap();
+        });
+        let after = fs::metadata(&path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
+        }
+        assert!(
+            read.unwrap_err()
+                .to_string()
+                .contains("changed while reading")
+        );
+    }
+
+    #[test]
+    fn atomic_file_replacement_never_exposes_mixed_document() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        let replacement = directory.path().join("settings-next.json");
+        fs::write(&path, document(1, 96)).unwrap();
+        fs::write(&replacement, document(2, 48)).unwrap();
+        let source = FileBusinessSnapshotSource::new(
+            &path,
+            BusinessSnapshotSourceId::new("file", "operator-settings").unwrap(),
+        );
+        let read = source.read_with_after_bytes(|| fs::rename(&replacement, &path).unwrap());
+        if let Ok(snapshot) = read {
+            assert_eq!(snapshot.revision(), 1);
+        }
+        assert_eq!(source.read().unwrap().revision(), 2);
+    }
 }
