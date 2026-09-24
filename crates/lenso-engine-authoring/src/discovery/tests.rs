@@ -298,6 +298,39 @@ fn rejects_corrupt_local_archives_without_installation() {
     assert!(!root.path().join("plugins").exists());
 }
 
+#[test]
+fn convention_plan_accepts_one_file_bundle_without_scanning_it_as_a_directory() {
+    let root = tempfile::tempdir().unwrap();
+    let archive = root.path().join("vendor/example.lenso-plugin");
+    write(
+        root.path(),
+        "vendor/example.lenso-plugin",
+        "verified by discovery",
+    );
+    let report = DiscoveryReport {
+        schema_version: 1,
+        kind: "lenso.app-discovery",
+        root: root.path().to_path_buf(),
+        candidates: vec![Candidate {
+            composite: None,
+            surface_owner: None,
+            plugin_id: "example.bundle".into(),
+            release_version: "0.1.0".into(),
+            project: archive.clone(),
+            metadata: archive,
+            format: "bundle".into(),
+            role: SourceRole::Shared,
+            implementations: vec![],
+            published_resources: vec![],
+            evidence: "fixture".into(),
+        }],
+    };
+    let plan = conventions::plan(&report).unwrap();
+    assert_eq!(plan.candidates.len(), 1);
+    assert!(plan.surfaces.is_empty());
+    assert!(plan.compilations.is_empty());
+}
+
 #[cfg(unix)]
 #[test]
 fn nested_symlinks_do_not_escape_sources_or_loop() {

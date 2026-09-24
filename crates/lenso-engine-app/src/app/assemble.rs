@@ -44,7 +44,7 @@ pub struct AssembleArgs {
 }
 
 pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
-    let root = crate::plugins::project_root(args.root)?;
+    let root = fs::canonicalize(crate::plugins::project_root(args.root)?)?;
     let report = discover(&root)?;
     super::convention_authoring::linked_catalog::verify_sources(&root, &report.candidates)?;
     let convention_plan = lenso_app_authoring::discovery::conventions::plan(&report)?;
@@ -252,7 +252,13 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         }
         let archive_path = format!("bundles/{}.lenso-plugin", candidate.plugin_id);
         let archive = stage.path().join(&archive_path);
-        if candidate.format == "bundle" {
+        if candidate.format == "bundle"
+            && candidate
+                .project
+                .starts_with(root.join("vendor/lenso/portable"))
+        {
+            crate::plugins::signed_install::stage_source_archive(&root, &candidate, &archive)?;
+        } else if candidate.format == "bundle" {
             with_bundle_directory(&candidate.project, |directory| {
                 archive_bundle(directory, &archive)
             })?;

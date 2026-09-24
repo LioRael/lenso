@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     fs,
     io::{Read as _, Write as _},
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context as _, bail, ensure};
@@ -657,8 +657,13 @@ fn verified_v6_archive(
 
 pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::Result<()> {
     let vendor_root = fs::canonicalize(root)?.join("vendor/lenso");
+    verify_selected_portable_paths(root, candidates)?;
     for candidate in candidates {
         if !candidate.project.starts_with(&vendor_root) {
+            continue;
+        }
+        if candidate.project.starts_with(vendor_root.join("portable")) {
+            crate::plugins::signed_install::verify_source_candidate(root, candidate)?;
             continue;
         }
         let lock_path = candidate.project.join(SOURCE_LOCK);
@@ -686,6 +691,56 @@ pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::R
             candidate.project.display()
         );
         verify_archive_cargo_lock(&candidate.project, &lock)?;
+    }
+    Ok(())
+}
+
+fn verify_selected_portable_paths(root: &Path, candidates: &[Candidate]) -> anyhow::Result<()> {
+    let root = fs::canonicalize(root)?;
+    let config = root.join("lenso.toml");
+    let document: toml::Value = match fs::read_to_string(&config) {
+        Ok(text) => toml::from_str(&text)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    let Some(sources) = document
+        .get("plugin_sources")
+        .and_then(toml::Value::as_array)
+    else {
+        return Ok(());
+    };
+    for source in sources {
+        let source = source
+            .as_str()
+            .context("Plugin source must be a path string")?;
+        let relative = Path::new(source);
+        if !relative.starts_with("vendor/lenso/portable") {
+            continue;
+        }
+        ensure!(
+            relative
+                .components()
+                .all(|component| matches!(component, Component::Normal(_))),
+            "signed Portable source path must be a direct relative path"
+        );
+        let mut path = root.clone();
+        for component in relative.components() {
+            path.push(component.as_os_str());
+            ensure!(
+                !fs::symlink_metadata(&path)?.file_type().is_symlink(),
+                "signed Portable source path cannot traverse a symlink: {}",
+                path.display()
+            );
+        }
+        ensure!(
+            fs::symlink_metadata(&path)?.file_type().is_file(),
+            "signed Portable source must be a regular archive: {}",
+            path.display()
+        );
+        ensure!(
+            candidates.iter().any(|candidate| candidate.project == path),
+            "selected signed Portable source was not discovered"
+        );
     }
     Ok(())
 }

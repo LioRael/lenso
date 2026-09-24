@@ -26,6 +26,8 @@ use crate::{
 };
 use lenso_app_authoring::identity::{validate_plugin_id_v1, validate_release_version};
 
+pub(crate) mod signed_install;
+
 #[derive(Clone, Debug, Subcommand)]
 pub enum PluginsCommand {
     /// List the Plugin Instances in the derived App.
@@ -46,6 +48,8 @@ pub enum PluginsCommand {
     Search(SearchArgs),
     /// Browse one explicitly trusted signed Portable catalog snapshot.
     SignedSearch(SignedSearchArgs),
+    /// Adopt one exact Release from a trusted signed Portable snapshot.
+    SignedInstall(signed_install::SignedInstallArgs),
     /// Install one exact catalog Release.
     Install(CatalogMutationArgs),
     /// Replace a root Bundle with one exact catalog Release.
@@ -225,6 +229,7 @@ pub fn plugins(command: PluginsCommand) -> anyhow::Result<()> {
         PluginsCommand::Remove(args) => remove(args),
         PluginsCommand::Search(args) => search(args),
         PluginsCommand::SignedSearch(args) => signed_search(args),
+        PluginsCommand::SignedInstall(args) => signed_install::install(args),
         PluginsCommand::Install(args) => install(args, false),
         PluginsCommand::Update(args) => install(args, true),
         PluginsCommand::History(args) => history(args),

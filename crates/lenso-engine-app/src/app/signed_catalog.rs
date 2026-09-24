@@ -81,16 +81,8 @@ pub fn inspect(request: PortableCatalogQuery<'_>) -> anyhow::Result<PortableCata
         (1..=MAX_PAGE_SIZE).contains(&request.limit),
         "signed Portable catalog page limit must be from 1 to 20"
     );
-    let trust: TrustFile = serde_json::from_slice(&read_bounded(request.trust, MAX_TRUST_BYTES)?)
-        .context("decode signed Portable catalog trust")?;
-    let key: [u8; 32] = hex::decode(trust.public_key_hex)?
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("public trust key must have 32 bytes"))?;
-    let trust = Trust {
-        catalog_id: trust.catalog_id,
-        keys: BTreeMap::from([(trust.key_id, VerifyingKey::from_bytes(&key)?)]),
-    };
-    let bytes = read_bounded(request.snapshot, u64::try_from(MAX_ENVELOPE_BYTES)?)?;
+    let trust = read_trust(request.trust)?;
+    let bytes = read_snapshot(request.snapshot)?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .context("system time is before Unix epoch")?
@@ -150,6 +142,22 @@ pub fn inspect(request: PortableCatalogQuery<'_>) -> anyhow::Result<PortableCata
         next_offset: (next < total_releases).then_some(next),
         releases,
     })
+}
+
+pub(crate) fn read_trust(path: &Path) -> anyhow::Result<Trust> {
+    let trust: TrustFile = serde_json::from_slice(&read_bounded(path, MAX_TRUST_BYTES)?)
+        .context("decode signed Portable catalog trust")?;
+    let key: [u8; 32] = hex::decode(trust.public_key_hex)?
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("public trust key must have 32 bytes"))?;
+    Ok(Trust {
+        catalog_id: trust.catalog_id,
+        keys: BTreeMap::from([(trust.key_id, VerifyingKey::from_bytes(&key)?)]),
+    })
+}
+
+pub(crate) fn read_snapshot(path: &Path) -> anyhow::Result<Vec<u8>> {
+    read_bounded(path, u64::try_from(MAX_ENVELOPE_BYTES)?)
 }
 
 fn read_bounded(path: &Path, max_bytes: u64) -> anyhow::Result<Vec<u8>> {

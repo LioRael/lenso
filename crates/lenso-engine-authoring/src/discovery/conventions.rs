@@ -271,7 +271,9 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
                 )?,
             )
         };
-        if surfaces.is_empty() {
+        let archive_file =
+            owner.format == "bundle" && fs::symlink_metadata(&base)?.file_type().is_file();
+        if surfaces.is_empty() && !archive_file {
             discover_entries(&base, &base, &known_entries, &mut surfaces, &mut 0, 0)?;
         }
         if surfaces.len() > 256 {

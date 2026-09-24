@@ -14,24 +14,19 @@ impl Plugin for AppProject {
     }
     fn plan(&self, _: &Snapshot) -> anyhow::Result<Vec<Step>> {
         let report = lenso_app_authoring::discovery::discover(&self.root)?;
-        super::convention_authoring::linked_catalog::verify_sources(
-            &self.root,
-            &report.candidates,
-        )?;
+        let root = &report.root;
+        super::convention_authoring::linked_catalog::verify_sources(root, &report.candidates)?;
         // Domain-specific source inspection belongs to this optional preset.
         let conventions = lenso_app_authoring::discovery::conventions::plan(&report)?;
         let mut fingerprints = BTreeMap::new();
-        fingerprints.insert(
-            self.root.clone(),
-            super::local_host::input_digest(&self.root)?,
-        );
+        fingerprints.insert(root.clone(), super::local_host::input_digest(root)?);
         for compilation in &conventions.compilations {
             for root in [&compilation.owner_project, &compilation.compiler_project] {
                 fingerprints.insert(root.clone(), super::local_host::input_digest(root)?);
             }
         }
         let dependency_locks = super::local_host::dependency_lock_digests(
-            std::iter::once(self.root.as_path())
+            std::iter::once(root.as_path())
                 .chain(
                     report
                         .candidates
@@ -49,7 +44,7 @@ impl Plugin for AppProject {
             id: "app/build".into(),
             inputs: vec![],
             after: vec![],
-            options: serde_json::json!({"root":self.root,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks}),
+            options: serde_json::json!({"root":root,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks}),
         }])
     }
     fn process(&self, context: &ContextView<'_>) -> anyhow::Result<BTreeMap<String, Resource>> {

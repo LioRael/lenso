@@ -16,7 +16,7 @@ mod assemble;
 mod build;
 mod configuration_source;
 mod contracts;
-mod convention_authoring;
+pub(crate) mod convention_authoring;
 mod convention_build;
 mod explain;
 pub mod facts;
@@ -40,6 +40,9 @@ mod preset;
 pub use preset::AppProject;
 mod signed_catalog;
 pub use signed_catalog::{PortableCatalogPage, PortableCatalogQuery};
+pub(crate) use signed_catalog::{
+    read_snapshot as read_signed_portable_snapshot, read_trust as read_signed_portable_trust,
+};
 #[allow(dead_code)]
 mod terminal;
 

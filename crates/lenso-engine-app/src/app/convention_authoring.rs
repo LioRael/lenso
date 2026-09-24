@@ -21,6 +21,9 @@ pub struct AddArgs {
     /// Exact signed source-only linked Cargo snapshot.
     #[arg(long)]
     linked_snapshot: Option<PathBuf>,
+    /// Exact signed Portable snapshot for a source App Bundle adoption.
+    #[arg(long, conflicts_with = "linked_snapshot")]
+    portable_snapshot: Option<PathBuf>,
     /// Local public trust configuration for the signed catalog.
     #[arg(long)]
     trust: Option<PathBuf>,
@@ -30,14 +33,23 @@ pub struct AddArgs {
     /// Verified V6 Bundle carrying the signed .crate as a Host build input.
     #[arg(long, conflicts_with = "crate_archive")]
     bundle: Option<PathBuf>,
+    /// Exact downloaded Portable archive matching the signed snapshot.
+    #[arg(long, conflicts_with = "origin")]
+    archive: Option<PathBuf>,
+    /// Independently allowed HTTPS origin for the signed Portable archive.
+    #[arg(long, conflicts_with = "archive")]
+    origin: Option<String>,
     /// Replace the selected linked Cargo Plugin version using signed new-release inputs.
     #[arg(long)]
     replace: bool,
 }
 #[derive(Clone, Debug, Args)]
 pub struct UnadoptArgs {
-    /// Exact linked Cargo Plugin ID and version originally adopted by app add.
+    /// Exact signed Plugin ID and version originally adopted by app add.
     source: String,
+    /// Unselect a signed Portable source App Bundle, retaining its exact archive.
+    #[arg(long)]
+    portable: bool,
     #[arg(long)]
     root: Option<PathBuf>,
 }
@@ -169,7 +181,7 @@ fn write(root: &Path, name: &str, bytes: impl AsRef<[u8]>) -> anyhow::Result<()>
     fs::write(path, bytes)?;
     Ok(())
 }
-fn writable_path(root: &Path, relative: &Path) -> anyhow::Result<()> {
+pub(crate) fn writable_path(root: &Path, relative: &Path) -> anyhow::Result<()> {
     let mut path = root.to_path_buf();
     for part in relative.components() {
         path.push(part);
@@ -214,6 +226,24 @@ fn tsconfig(root: &Path, source: &str) -> anyhow::Result<()> {
 
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(crate::plugins::project_root(args.root.clone())?)?;
+    if args.portable_snapshot.is_some() || args.archive.is_some() || args.origin.is_some() {
+        if args.linked_snapshot.is_some() || args.crate_archive.is_some() || args.bundle.is_some() {
+            bail!(
+                "signed Portable adoption cannot use linked Cargo snapshot, crate, or Bundle inputs"
+            );
+        }
+        return crate::plugins::signed_install::adopt_source(
+            &root,
+            &args.source,
+            args.portable_snapshot
+                .as_deref()
+                .context("--portable-snapshot required")?,
+            args.trust.as_deref().context("--trust required")?,
+            args.archive.as_deref(),
+            args.origin.as_deref(),
+            args.replace,
+        );
+    }
     if args.linked_snapshot.is_some()
         || args.trust.is_some()
         || args.crate_archive.is_some()
@@ -341,7 +371,10 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn preflight_source_adoption(root: &Path, plugin_id: &str) -> anyhow::Result<toml::Value> {
+pub(crate) fn preflight_source_adoption(
+    root: &Path,
+    plugin_id: &str,
+) -> anyhow::Result<toml::Value> {
     writable_path(root, Path::new("app"))?;
     writable_path(root, Path::new("lenso.toml"))?;
     let intent_relative = Path::new("plugins").join(plugin_id);
@@ -365,6 +398,9 @@ fn preflight_source_adoption(root: &Path, plugin_id: &str) -> anyhow::Result<tom
 
 pub fn unadopt(args: UnadoptArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(crate::plugins::project_root(args.root)?)?;
+    if args.portable {
+        return crate::plugins::signed_install::unadopt_source(&root, &args.source);
+    }
     linked_catalog::unadopt(&root, &args.source)
 }
 
@@ -454,9 +490,12 @@ pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyho
         source,
         no_install: !install_dependencies,
         linked_snapshot: None,
+        portable_snapshot: None,
         trust: None,
         crate_archive: None,
         bundle: None,
+        archive: None,
+        origin: None,
         replace: false,
     })
 }

@@ -65,7 +65,9 @@ retagged fixture metadata using the same executable, not a new runtime behavior.
 Build the archive with this CLI checkout so its target vocabulary matches the
 Host; archives from older packers may be valid but incompatible.
 
-This source API is pending CLI publication. Marketplace's
+This source API is wired to this CLI checkout's explicit `plugins signed-install`
+and `app add --portable-snapshot` paths; publication of the CLI build is
+separate. Marketplace's
 `verify-archive-handoff.sh` compiles an explicit source integration proof without
 adding a permanent sibling-checkout dependency. Network acquisition policy,
 Agent's remote proposal API, durable operations and online Ready proof remain

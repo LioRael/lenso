@@ -95,6 +95,60 @@ unadopt/add/build/check sequence for two exact versions, not a runtime fallback
 or implicit semver selection. A signed catalog listing alone does not prove a
 release is installed, buildable, or running.
 
+## Exact signed Portable catalog adoption
+
+`plugins signed-search` only browses a signed Portable snapshot. To select
+one exact listed Bundle for a source App, provide the same snapshot, its
+independently configured public trust file, and the exact archive bytes:
+
+```sh
+lenso plugins signed-search --snapshot ./portable.json --trust ./catalog-trust.json --json
+lenso app add example.tools@0.1.0 --root ./my-app \
+  --portable-snapshot ./portable.json --trust ./catalog-trust.json \
+  --archive ./example-tools-0.1.0.lenso-plugin
+lenso app build --root ./my-app --out ./dist-tools
+lenso app check --root ./dist-tools/intent --json
+lenso app show --root ./dist-tools/intent --json
+lenso app start --from ./dist-tools --check
+```
+
+`--origin HTTPS_ORIGIN` may replace `--archive`; it explicitly permits only
+that HTTPS origin for the signed artifact URL. A listing or URL alone never
+grants download, source selection, or Host installation authority. Adoption
+verifies the original signed payload bytes, accepted catalog history,
+availability, exact ID/version, archive size and SHA-256, and Bundle manifest
+identity before changing the App. It vendors the archive under
+`vendor/lenso/portable/`, writes an exact artifact lock, and selects the
+source with `lenso.toml` plus `plugins/<id>/default.toml`. A failed validation
+does not add source or Plugin Root intent. Retry with the same bytes is
+idempotent; a conflicting existing source is preserved, not replaced.
+
+To remove the source App selection, use `lenso app unadopt
+example.tools@0.1.0 --portable --root ./my-app`, then build to a new output
+and check/show that output. This moves the unmodified generated intent to
+`.lenso/trash/portable/` and retains the exact archive under `vendor/` for
+audit or explicit cleanup. It refuses user-modified intent. Source App
+upgrades use explicit unadopt/add/build/check, not `--replace` or runtime
+fallback. During later builds, the local lock detects archive drift; it is
+not an independent signature authority if the App owner changes both the
+archive and lock. Keep the public trust decision outside untrusted source
+edits when signer provenance matters.
+
+For an already built Plugin Root, use the separate Host mutation:
+
+```sh
+lenso plugins signed-install example.tools --version 0.1.0 \
+  --snapshot ./portable.json --trust ./catalog-trust.json \
+  --archive ./example-tools-0.1.0.lenso-plugin --root ./dist-tools/intent
+lenso plugins configure example.tools default --root ./dist-tools/intent
+lenso app check --root ./dist-tools/intent --json
+```
+
+Built-root installation does not silently create an Instance; configuration
+and dependency choices remain App-owned. Both commands use the same signed
+release and archive verification, but source adoption and built-root mutation
+are different permissions and artifacts.
+
 ## Build, inspect, and run
 
 ```sh

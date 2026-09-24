@@ -1308,6 +1308,27 @@ pub(super) fn dependency_lock_digests<'a>(
 ) -> anyhow::Result<BTreeMap<PathBuf, String>> {
     let mut locks = BTreeMap::new();
     for root in roots {
+        let root_metadata = fs::symlink_metadata(root)?;
+        if root_metadata.is_file() && !root_metadata.file_type().is_symlink() {
+            if root
+                .extension()
+                .is_some_and(|extension| extension == "lenso-plugin")
+            {
+                // A verified archive is one immutable source input, not a
+                // package directory with its own dependency lockfiles.
+                continue;
+            }
+            bail!(
+                "dependency lock root is not a Plugin archive: {}",
+                root.display()
+            );
+        }
+        if !root_metadata.is_dir() || root_metadata.file_type().is_symlink() {
+            bail!(
+                "dependency lock root is not a regular directory: {}",
+                root.display()
+            );
+        }
         for name in [
             "Cargo.lock",
             "bun.lock",
@@ -1994,6 +2015,19 @@ mod tests {
             assert!(dependency_lock_digests([root.path()]).is_err());
             assert!(verify_dependency_lock_digests(&pinned).is_err());
         }
+    }
+
+    #[test]
+    fn verified_archive_source_is_one_file_not_a_dependency_lock_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("plugin.lenso-plugin");
+        std::fs::write(&archive, b"verified separately by the Bundle reader").unwrap();
+        let locks = dependency_lock_digests([root.path(), archive.as_path()]).unwrap();
+        assert!(locks.is_empty());
+
+        let unexpected = root.path().join("unrelated.txt");
+        std::fs::write(&unexpected, b"not a Plugin archive").unwrap();
+        assert!(dependency_lock_digests([unexpected.as_path()]).is_err());
     }
 
     fn local_package(name: &str, id: &str, manifest: &str) -> serde_json::Value {
