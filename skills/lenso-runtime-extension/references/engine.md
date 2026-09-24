@@ -2,10 +2,8 @@
 
 Read this for generic convention processing, discovery, authoring sessions or
 embedding the DX layer in a non-App tool. Engine packages and the consuming CLI
-live under `crates/` in this Rust workspace; their API boundaries remain
-independent. Follow
-[ADR 0077](../../../docs/adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md)
-for repository ownership.
+live under `crates/` in the `LioRael/lenso` Rust workspace; their API boundaries
+remain independent. JavaScript and TypeScript SDKs live in `LioRael/lenso-js`.
 
 The core plans immutable inputs and selected processors, tracks dependencies and
 sessions, and publishes resources. App composition lives in optional

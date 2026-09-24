@@ -13,12 +13,23 @@ and Console kit releases are separate delivery streams: inspect their actual
 release assets and the installed command help before claiming availability.
 Use an explicitly supplied local build when requested.
 
-With a matching CLI, `lenso app create my-app --runtime bun`, `app dev`,
-`app build`, and `app start --from dist` form the ordinary source workflow.
-The default source is `app/`; `plugins/` keeps Instance intent. Only additional
-local directories/globs/bundles need `plugin_sources` in `lenso.toml`. These
-sources are not marketplace endpoints. Shared candidates require explicit Root
-selection; App-owned Plugins have disableable default Instances.
+With a matching source CLI, `lenso app create my-app --lang rust`, `app dev`,
+`app build`, and `app start --from dist` form the default Rust workflow. The
+root Cargo package is the App-owned business Plugin; `app/` remains available
+for additional local Plugins. `--runtime bun|process|wasm|multi` is the legacy
+nested starter path, not the default Rust project layout. `plugins/` keeps
+Instance intent. Only additional shared directories/globs/bundles need
+`plugin_sources` in `lenso.toml`. These sources are not marketplace endpoints;
+shared candidates require explicit Root selection. App-owned Plugins have
+disableable default Instances.
+
+For an exact signed linked Cargo release, inspect `lenso app add --help` and
+adopt the selected version with its signed snapshot, trust file, and matching
+`.crate` or V6 Bundle. Rebuild, then run `app check` and `app show`; use
+`app unadopt` to withdraw that source from the next build. Check registry
+availability separately: a locally built CLI may select package versions that
+have not yet been published, and a source-mode path dependency is not a
+packaged-consumer result.
 
 Inspect the source App with `app discover --json`. Run `app check` and
 `app show` against the built distribution, whose Host Catalog now exists.
