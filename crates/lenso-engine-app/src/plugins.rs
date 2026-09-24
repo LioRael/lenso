@@ -36,9 +36,9 @@ pub enum PluginsCommand {
     Configure(ConfigureArgs),
     /// Save one exact provider choice for a named Plugin dependency.
     Bind(BindArgs),
-    /// Disable one Plugin Instance without deleting its configuration.
+    /// Disable one Instance; source App-owned defaults apply after the next build.
     Disable(InstanceArgs),
-    /// Re-enable one disabled Plugin Instance.
+    /// Re-enable one Instance; source App-owned defaults apply after the next build.
     Enable(InstanceArgs),
     /// Remove one Instance difference or an entire root-supplied Plugin.
     Remove(RemoveArgs),
@@ -471,10 +471,17 @@ fn enable(args: InstanceArgs) -> anyhow::Result<()> {
 fn set_disabled(args: InstanceArgs, disabled_state: bool) -> anyhow::Result<()> {
     let root = project_root(args.root)?;
     if source_app_without_host_authority(&root)? {
-        bail!(
-            "source App has no Host authority at {}; `lenso plugins disable/enable` validates a built Plugin Root and cannot change source intent. Run `lenso app discover --root <source>` to confirm the exact App-owned Plugin, then create (disable) or remove (enable) its zero-byte regular `plugins/<plugin-id>/<instance>.disabled` source marker. Run `lenso app build`, then `lenso app check` and `lenso app show` on the new distribution. For an already built distribution, use `--root <dist>`; do not use source markers for Host defaults",
-            root.join(".lenso/host-build.json").display()
+        set_source_default_disabled(&root, &args.plugin_id, &args.instance, disabled_state)?;
+        let action = if disabled_state {
+            "Disabled"
+        } else {
+            "Enabled"
+        };
+        println!(
+            "{action} source App-owned Plugin Instance `{}/default` for the next build. Run `lenso app build`, then `lenso app check` and `lenso app show` on the new distribution; any existing distribution is unchanged.",
+            args.plugin_id
         );
+        return Ok(());
     }
     set_instance_disabled(&root, &args.plugin_id, &args.instance, disabled_state)?;
     let id = PluginInstanceId::new(&args.plugin_id, &args.instance);
@@ -486,10 +493,95 @@ fn set_disabled(args: InstanceArgs, disabled_state: bool) -> anyhow::Result<()> 
     Ok(())
 }
 
+fn set_source_default_disabled(
+    root: &Path,
+    plugin_id: &str,
+    instance: &str,
+    disabled_state: bool,
+) -> anyhow::Result<()> {
+    validate_existing_cli_plugin_id(plugin_id)?;
+    if instance != "default" {
+        bail!(
+            "source App toggles only the App-owned `default` Instance; use a built Plugin Root for `{plugin_id}/{instance}`"
+        );
+    }
+    let discovery = lenso_app_authoring::discovery::discover(root)?;
+    if !discovery.candidates.iter().any(|candidate| {
+        candidate.plugin_id == plugin_id
+            && candidate.role == lenso_app_authoring::discovery::SourceRole::AppOwned
+    }) {
+        bail!(
+            "`{plugin_id}` is not an App-owned local Plugin in this source App; discovery candidates and Host defaults do not grant source toggle authority. Run `lenso app discover --root <source>` or use `--root <dist>` for a built Plugin Root"
+        );
+    }
+    let plugins = discovery.root.join("plugins");
+    ensure_source_directory(&plugins, disabled_state)?;
+    let plugin = plugins.join(plugin_id);
+    ensure_source_directory(&plugin, disabled_state)?;
+    let marker = plugin.join("default.disabled");
+    match fs::symlink_metadata(&marker) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_file() || metadata.len() != 0 {
+                bail!(
+                    "source disabled marker must be an empty regular file: {}",
+                    marker.display()
+                );
+            }
+            if !disabled_state {
+                fs::remove_file(&marker).with_context(|| {
+                    format!("remove source disabled marker {}", marker.display())
+                })?;
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if !disabled_state {
+                bail!("source Plugin Instance `{plugin_id}/default` is not disabled");
+            }
+            fs::File::options()
+                .write(true)
+                .create_new(true)
+                .open(&marker)
+                .with_context(|| format!("create source disabled marker {}", marker.display()))?
+                .sync_all()?;
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("inspect source marker {}", marker.display()));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_source_directory(path: &Path, create: bool) -> anyhow::Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_dir() => Ok(()),
+        Ok(_) => bail!(
+            "source Plugin Root path must be a regular directory: {}",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {
+            fs::create_dir(path)
+                .with_context(|| format!("create source Plugin Root directory {}", path.display()))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            bail!(
+                "source Plugin Root directory is missing: {}",
+                path.display()
+            )
+        }
+        Err(error) => {
+            Err(error).with_context(|| format!("inspect source Plugin Root {}", path.display()))
+        }
+    }
+}
+
 fn source_app_without_host_authority(root: &Path) -> anyhow::Result<bool> {
     Ok(authority_absent(&root.join(".lenso/host-build.json"))?
         && authority_absent(&root.join(".lenso/host-catalog.json"))?
-        && (root.join("app").is_dir() || root.join("lenso.toml").is_file()))
+        && (root.join("app").is_dir()
+            || root.join("lenso.toml").is_file()
+            || root.join("Cargo.toml").is_file()
+            || root.join("package.json").is_file()))
 }
 
 fn authority_absent(path: &Path) -> anyhow::Result<bool> {
