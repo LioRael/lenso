@@ -150,7 +150,7 @@ Capability description and handler dispatch:
 ```rust,ignore
 #[lenso::plugin]
 #[derive(Clone, Debug)]
-struct OrdersHttp;
+struct OrdersHttp {}
 
 #[derive(serde::Deserialize)]
 struct CreateOrder {

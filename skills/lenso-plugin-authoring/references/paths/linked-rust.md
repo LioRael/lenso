@@ -5,6 +5,8 @@ Read the exact `lenso` facade and generated Capability projection selected by
 the owner repository.
 
 - `#[lenso::plugin]` defines Plugin identity and generated descriptor/factory.
+- Declare a named-field struct, using `struct HealthHttp {}` when it has no state;
+  the Plugin macro rejects unit structs.
 - `#[lenso::provides(...)]` lowers typed Capability implementations.
 - `PluginConfig` derives strict typed configuration.
 - `Port<Client>` or `ManyPort<Client>` fields declare requirements and
