@@ -511,6 +511,12 @@ fn stdio_authorized_build_reports_the_same_app_check() {
         serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
     )
     .unwrap();
+    let before_build = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_check","arguments":{"scope":"built_distribution"}}}),
+    );
+    assert!(before_build["error"].is_object(), "{before_build}");
     let start = call(
         &mut stdin,
         &mut stdout,
@@ -549,8 +555,129 @@ fn stdio_authorized_build_reports_the_same_app_check() {
     assert!(checked.status.success());
     let expected: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
     assert_eq!(final_status["check"], expected);
+    assert_eq!(
+        final_status["output"],
+        root.join("dist").canonicalize().unwrap().to_str().unwrap()
+    );
+    let checked_via_mcp = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"project_check","arguments":{"scope":"built_distribution"}}}),
+    );
+    assert!(checked_via_mcp["error"].is_null(), "{checked_via_mcp}");
+    let actual: serde_json::Value = serde_json::from_str(
+        checked_via_mcp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(actual, expected);
+
+    let explained = Command::new(cli)
+        .args(["app", "explain", "--json", "--root"])
+        .arg(root.join("dist"))
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let expected_explanation: serde_json::Value =
+        serde_json::from_slice(&explained.stdout).unwrap();
+    let explained_via_mcp = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"project_explain","arguments":{"scope":"built_distribution"}}}),
+    );
+    assert!(explained_via_mcp["error"].is_null(), "{explained_via_mcp}");
+    let actual_explanation: serde_json::Value = serde_json::from_str(
+        explained_via_mcp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(actual_explanation, expected_explanation);
+
+    let facts = Command::new(cli)
+        .args(["app", "facts", "--json", "--root"])
+        .arg(root.join("dist"))
+        .output()
+        .unwrap();
+    assert!(facts.status.success());
+    let expected_facts: serde_json::Value = serde_json::from_slice(&facts.stdout).unwrap();
+    let facts_via_mcp = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"project_facts","arguments":{"scope":"built_distribution"}}}),
+    );
+    assert!(facts_via_mcp["error"].is_null(), "{facts_via_mcp}");
+    let actual_facts: serde_json::Value = serde_json::from_str(
+        facts_via_mcp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(actual_facts, expected_facts);
+    assert_eq!(actual_facts["root"], final_status["output"]);
+
+    let invalid_scope = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"project_check","arguments":{"scope":"../elsewhere"}}}),
+    );
+    assert_eq!(invalid_scope["result"]["isError"], true, "{invalid_scope}");
+    let arbitrary_path = call(
+        &mut stdin,
+        &mut stdout,
+        serde_json::json!({"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"project_facts","arguments":{"scope":"built_distribution","path":"../elsewhere"}}}),
+    );
+    assert_eq!(
+        arbitrary_path["result"]["isError"], true,
+        "{arbitrary_path}"
+    );
     drop(stdin);
     assert!(child.wait().unwrap().success());
+}
+
+#[cfg(unix)]
+#[test]
+fn stdio_rejects_symlinked_fixed_root_distribution() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    fs::create_dir(&root).unwrap();
+    symlink(temp.path(), root.join("dist")).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_lenso"))
+        .args(["mcp", "--root"])
+        .arg(&root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let input = [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_facts","arguments":{"scope":"built_distribution"}}}"#,
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"project_check","arguments":{"scope":"built_distribution"}}}"#,
+        r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_explain","arguments":{"scope":"built_distribution"}}}"#,
+    ]
+    .join("\n");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(format!("{input}\n").as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success());
+    let responses = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(responses.len(), 4);
+    for response in responses.iter().skip(1) {
+        assert!(response["error"].is_object(), "{response}");
+    }
 }
 
 #[test]

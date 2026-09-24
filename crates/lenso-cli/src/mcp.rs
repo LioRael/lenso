@@ -117,8 +117,26 @@ enum ProjectFactsSection {
     Diagnostics,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+enum ProjectInspectionScope {
+    #[default]
+    Root,
+    BuiltDistribution,
+}
+
 #[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ProjectInspectionQuery {
+    #[serde(default)]
+    scope: ProjectInspectionScope,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct ProjectFactsQuery {
+    #[serde(default)]
+    scope: ProjectInspectionScope,
     #[serde(default)]
     section: ProjectFactsSection,
     #[serde(default)]
@@ -539,10 +557,14 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Explain persisted Host target admission, implementation selection, and consumer requirements for a built App"
+        description = "Explain persisted Host target admission, implementation selection, and consumer requirements; scope=built_distribution reads only the fixed root's dist"
     )]
-    fn project_explain(&self) -> Result<CallToolResult, McpError> {
-        let explanation = lenso_engine_app::app::inspect_app_explanation(&self.root).map_err(|_| {
+    fn project_explain(
+        &self,
+        Parameters(request): Parameters<ProjectInspectionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        let root = self.inspection_root(request.scope)?;
+        let explanation = lenso_engine_app::app::inspect_app_explanation(&root).map_err(|_| {
             McpError::internal_error(
                 "App explanation is unavailable; run lenso app explain --json on the built Host root",
                 None,
@@ -560,10 +582,14 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Run the same read-only built-App resolution check as lenso app check --json"
+        description = "Run the same read-only resolution check as lenso app check --json; scope=built_distribution reads only the fixed root's dist"
     )]
-    fn project_check(&self) -> Result<CallToolResult, McpError> {
-        let report = lenso_engine_app::app::inspect_app_check(&self.root).map_err(|_| {
+    fn project_check(
+        &self,
+        Parameters(request): Parameters<ProjectInspectionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        let root = self.inspection_root(request.scope)?;
+        let report = lenso_engine_app::app::inspect_app_check(&root).map_err(|_| {
             McpError::internal_error(
                 "App check failed; inspect project_facts diagnostics or run lenso app check locally",
                 None,
@@ -575,22 +601,23 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Inspect App facts without secret values; use section and pagination for large projects"
+        description = "Inspect App facts without secret values; scope=built_distribution reads only the fixed root's dist; use section and pagination for large projects"
     )]
     fn project_facts(
         &self,
         Parameters(request): Parameters<ProjectFactsQuery>,
     ) -> Result<CallToolResult, McpError> {
         let active = self.runs.active_state();
-        let observed_root = if active.is_some() {
-            self.root.join("dist")
+        let scope = if active.is_some() {
+            ProjectInspectionScope::BuiltDistribution
         } else {
-            self.root.clone()
+            request.scope
         };
-        let host_build = if active.is_some() {
-            None
-        } else {
+        let observed_root = self.inspection_root(scope)?;
+        let host_build = if matches!(scope, ProjectInspectionScope::Root) {
             self.host_build.as_deref()
+        } else {
+            None
         };
         let mut facts = lenso_engine_app::app::facts::inspect_project_facts_with_host_build(
             &observed_root,
@@ -606,6 +633,30 @@ impl AppTools {
         let json = project_facts_json(&facts, &request)?;
         Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
+
+    fn inspection_root(&self, scope: ProjectInspectionScope) -> Result<PathBuf, McpError> {
+        if matches!(scope, ProjectInspectionScope::Root) || is_distribution_root(&self.root) {
+            return Ok(self.root.clone());
+        }
+        let distribution = self.root.join("dist");
+        let metadata = std::fs::symlink_metadata(&distribution).map_err(|_| {
+            McpError::invalid_params("fixed-root built distribution is unavailable", None)
+        })?;
+        if !metadata.file_type().is_dir() {
+            return Err(McpError::invalid_params(
+                "fixed-root built distribution must be a real directory",
+                None,
+            ));
+        }
+        Ok(distribution)
+    }
+}
+
+fn is_distribution_root(root: &std::path::Path) -> bool {
+    root.join("intent").is_dir()
+        && ["host-build.json", "host-catalog.json"]
+            .iter()
+            .any(|name| root.join(".lenso").join(name).is_file())
 }
 
 fn build_result(status: &build::BuildStatus) -> Result<CallToolResult, McpError> {

@@ -296,6 +296,15 @@ diagnostic code rather than raw build logs, which may contain private data.
 The build environment filters ambient credentials but is not a filesystem
 sandbox; only enable builds for source packages you trust to compile locally.
 
+Inspection tools keep `scope: "root"` as their default, so existing Host-root
+queries do not silently switch to a potentially stale build. When `--root`
+names a source App, request `scope: "built_distribution"` on `project_check`,
+`project_explain`, or `project_facts` to inspect only that root's real `dist/`
+directory after `project_build` succeeds. The selected root then matches the
+build status `output`; no arbitrary path is accepted from an MCP client. A
+missing or symlinked `dist/` is rejected. These tools call the same App check,
+explanation, and facts functions as their CLI counterparts.
+
 After an App is built, `--allow-run` separately enables `project_run`,
 `project_run_status`, and `project_run_stop`. The bridge starts only the fixed
 root's checked `dist`, waits for the Host's actual Ready receipt, accepts one
@@ -306,8 +315,9 @@ another Host; runs have a maximum one-hour lifetime. This is local process
 control, not deployment or proof of a browser flow.
 While this bridge owns a live run, `project_facts` reads that run's built
 distribution and reports its observed startup/running/stopping state. Once the
-run ends, facts return to the ordinary project inspection; a build artifact
-alone never counts as an observed process.
+run ends, facts return to the ordinary project inspection unless the caller
+explicitly selects `scope: "built_distribution"`. A build artifact alone never
+counts as an observed process.
 
 `project_change_preview` reviews one Instance TOML change against an exact
 Plugin Root revision and returns the proposal digest, changed field names,
