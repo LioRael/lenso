@@ -27,7 +27,10 @@ struct Activation {
 }
 
 #[cfg(unix)]
-fn begin_activation(distribution: &std::path::Path, intent: &std::path::Path) -> anyhow::Result<Option<Activation>> {
+fn begin_activation(
+    distribution: &std::path::Path,
+    intent: &std::path::Path,
+) -> anyhow::Result<Option<Activation>> {
     let built_intent = distribution.join("intent");
     if fs::canonicalize(intent)? != fs::canonicalize(&built_intent)? {
         return Ok(None);
@@ -40,32 +43,57 @@ fn begin_activation(distribution: &std::path::Path, intent: &std::path::Path) ->
     match fs::symlink_metadata(&path) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.into()),
-        Ok(metadata) if !metadata.file_type().is_file() => bail!("configuration state must be a regular file"),
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            bail!("configuration state must be a regular file")
+        }
         Ok(_) => {}
     }
     let lock = {
         use rustix::fs::{Mode, OFlags};
-        let descriptor = rustix::fs::open(control.join("configuration-source.lock"), OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW, Mode::RUSR | Mode::WUSR)?;
+        let descriptor = rustix::fs::open(
+            control.join("configuration-source.lock"),
+            OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+            Mode::RUSR | Mode::WUSR,
+        )?;
         let file = fs::File::from(descriptor);
-        if !file.metadata()?.file_type().is_file() { bail!("configuration lock must be a regular file"); }
+        if !file.metadata()?.file_type().is_file() {
+            bail!("configuration lock must be a regular file");
+        }
         file
     };
     lock.lock()?;
     use std::io::Read as _;
     let mut bytes = Vec::new();
-    let descriptor = rustix::fs::open(&path, rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC | rustix::fs::OFlags::NOFOLLOW, rustix::fs::Mode::empty())?;
+    let descriptor = rustix::fs::open(
+        &path,
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC | rustix::fs::OFlags::NOFOLLOW,
+        rustix::fs::Mode::empty(),
+    )?;
     let file = fs::File::from(descriptor);
-    file.take(16 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
-    if bytes.len() > 16 * 1024 * 1024 { bail!("configuration state exceeds runtime limit"); }
+    file.take(64 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        bail!("configuration state exceeds runtime limit");
+    }
     let state: serde_json::Value = serde_json::from_slice(&bytes)?;
-    if state.get("schema").and_then(|v| v.as_str()) != Some("lenso.configuration-source-state.v1") { bail!("unsupported configuration state"); }
-    Ok(Some(Activation { _lock: lock, path, state }))
+    if state.get("schema").and_then(|v| v.as_str()) != Some("lenso.configuration-source-state.v2") {
+        bail!("unsupported configuration state");
+    }
+    Ok(Some(Activation {
+        _lock: lock,
+        path,
+        state,
+    }))
 }
 
 #[cfg(not(unix))]
-fn begin_activation(distribution: &std::path::Path, intent: &std::path::Path) -> anyhow::Result<Option<Activation>> {
+fn begin_activation(
+    distribution: &std::path::Path,
+    intent: &std::path::Path,
+) -> anyhow::Result<Option<Activation>> {
     if fs::canonicalize(intent)? == fs::canonicalize(distribution.join("intent"))?
-        && intent.join(".lenso/configuration-source-state.json").exists()
+        && intent
+            .join(".lenso/configuration-source-state.json")
+            .exists()
     {
         bail!("external configuration startup is unsupported on this platform");
     }
@@ -73,18 +101,38 @@ fn begin_activation(distribution: &std::path::Path, intent: &std::path::Path) ->
 }
 
 fn mark_activated(mut activation: Activation, root_revision: &str) -> anyhow::Result<()> {
-    let desired = activation.state.get("desired").context("missing desired configuration")?;
-    let selected = desired.get("candidate_plugin_root_revision").and_then(|v| v.as_str()).context("missing desired Root revision")?;
-    if selected != root_revision { bail!("Host resolved a different Root revision than the desired configuration"); }
+    let desired = activation
+        .state
+        .get("desired")
+        .context("missing desired configuration")?;
+    let selected = desired
+        .get("candidate_plugin_root_revision")
+        .and_then(|v| v.as_str())
+        .context("missing desired Root revision")?;
+    if selected != root_revision {
+        bail!("Host resolved a different Root revision than the desired configuration");
+    }
     let last_activated = serde_json::json!({
         "revision": desired.get("revision").and_then(|v| v.as_u64()).context("missing desired revision")?,
         "snapshot_digest": desired.get("snapshot_digest").and_then(|v| v.as_str()).context("missing snapshot digest")?,
         "plugin_root_revision": root_revision,
+        "policy_digest": activation.state.get("policy_digest").and_then(|v| v.as_str()).context("missing accepted Host policy digest")?,
     });
-    activation.state.as_object_mut().context("configuration state must be an object")?.insert("last_activated".into(), last_activated);
-    let parent = activation.path.parent().context("configuration state parent")?;
+    activation
+        .state
+        .as_object_mut()
+        .context("configuration state must be an object")?
+        .insert("last_activated".into(), last_activated);
+    let bytes = serde_json::to_vec(&activation.state)?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        bail!("configuration state exceeds runtime limit");
+    }
+    let parent = activation
+        .path
+        .parent()
+        .context("configuration state parent")?;
     let mut stage = tempfile::NamedTempFile::new_in(parent)?;
-    serde_json::to_writer(&mut stage, &activation.state)?;
+    std::io::Write::write_all(&mut stage, &bytes)?;
     stage.as_file().sync_all()?;
     stage.persist(&activation.path)?;
     fs::File::open(parent)?.sync_all()?;
@@ -160,13 +208,20 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             "--defer-activation" => defer_activation = true,
             "--ready-file" => {
                 index += 1;
-                ready_file = Some(PathBuf::from(args.get(index).context("--ready-file needs a path")?));
-            },
+                ready_file = Some(PathBuf::from(
+                    args.get(index).context("--ready-file needs a path")?,
+                ));
+            }
             "--web-address-file" => {
                 index += 1;
-                web_address_file = Some(PathBuf::from(args.get(index).context("--web-address-file needs a path")?));
-            },
-            "--" => { command_args = Some(args[index + 1..].to_vec()); break; },
+                web_address_file = Some(PathBuf::from(
+                    args.get(index).context("--web-address-file needs a path")?,
+                ));
+            }
+            "--" => {
+                command_args = Some(args[index + 1..].to_vec());
+                break;
+            }
             other => bail!("unknown Host argument: {other}"),
         }
         index += 1;
@@ -252,12 +307,20 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             _ => false,
         };
         if !supported {
-            bail!("Host has no built Execution Adapter for {}", instance.execution_class().as_str());
+            bail!(
+                "Host has no built Execution Adapter for {}",
+                instance.execution_class().as_str()
+            );
         }
     }
     if let Some(active) = &activation {
-        let selected = active.state.pointer("/desired/candidate_plugin_root_revision").and_then(|v| v.as_str());
-        if selected != Some(&resolution.plugin_root_revision) { bail!("configuration changed during Host resolution"); }
+        let selected = active
+            .state
+            .pointer("/desired/candidate_plugin_root_revision")
+            .and_then(|v| v.as_str());
+        if selected != Some(&resolution.plugin_root_revision) {
+            bail!("configuration changed during Host resolution");
+        }
     }
     // A check-only or supervised candidate has no Host-side activation write.
     // Release the configuration lock before Plugin startup and the long-lived
@@ -283,24 +346,40 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             || artifact.selection.selected.execution_class != artifact.execution_class
             || artifact.selection.selected.runtime_profile != artifact.runtime_profile
         {
-            bail!("selected runtime identity differs from locked artifact inventory for {}", instance.package_id());
+            bail!(
+                "selected runtime identity differs from locked artifact inventory for {}",
+                instance.package_id()
+            );
         }
         if instance.execution_class().as_str() == "lenso.wasm-component@1" {
             #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
             {
-            let ceiling = artifact.selection.selected.enforced_wasm_memory_ceiling_bytes
-                .context("Wasm Component memory ceiling is absent from locked selection")?;
-            let ceiling = usize::try_from(ceiling).context("Wasm Component memory ceiling exceeds Host address space")?;
-            if ceiling == 0 { bail!("Wasm Component memory ceiling must be positive"); }
-            wasm_limits.insert(instance.instance_key().to_owned(),
-                lenso_wasm_component_adapter::WasmComponentLimits {
-                    max_memory_bytes: ceiling,
-                    ..lenso_wasm_component_adapter::WasmComponentLimits::default()
-                });
+                let ceiling = artifact
+                    .selection
+                    .selected
+                    .enforced_wasm_memory_ceiling_bytes
+                    .context("Wasm Component memory ceiling is absent from locked selection")?;
+                let ceiling = usize::try_from(ceiling)
+                    .context("Wasm Component memory ceiling exceeds Host address space")?;
+                if ceiling == 0 {
+                    bail!("Wasm Component memory ceiling must be positive");
+                }
+                wasm_limits.insert(
+                    instance.instance_key().to_owned(),
+                    lenso_wasm_component_adapter::WasmComponentLimits {
+                        max_memory_bytes: ceiling,
+                        ..lenso_wasm_component_adapter::WasmComponentLimits::default()
+                    },
+                );
             }
             #[cfg(all(generated_native_host, not(generated_wasm_adapter)))]
             bail!("Host has no built Wasm Component Adapter");
-        } else if artifact.selection.selected.enforced_wasm_memory_ceiling_bytes.is_some() {
+        } else if artifact
+            .selection
+            .selected
+            .enforced_wasm_memory_ceiling_bytes
+            .is_some()
+        {
             bail!("non-Wasm artifact advertises a Wasm Component memory ceiling");
         }
         let path = format!("runtime/artifacts/{}", artifact.plugin_id);
@@ -361,13 +440,22 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         wasm = wasm.with_instance_limits(instance_key, limits);
     }
     #[cfg(not(generated_native_host))]
-    let typed = std::collections::BTreeSet::from([super::terminal::command::CAPABILITY_ID, super::terminal::provider::CAPABILITY_ID]);
+    let typed = std::collections::BTreeSet::from([
+        super::terminal::command::CAPABILITY_ID,
+        super::terminal::provider::CAPABILITY_ID,
+    ]);
     #[cfg(not(generated_native_host))]
-    let bun = bun.with_authoring_codec(super::terminal::command::CommandJsonCodec).with_authoring_codec(super::terminal::provider::CommandProviderJsonCodec);
+    let bun = bun
+        .with_authoring_codec(super::terminal::command::CommandJsonCodec)
+        .with_authoring_codec(super::terminal::provider::CommandProviderJsonCodec);
     #[cfg(not(generated_native_host))]
-    let process = process.with_codec(super::terminal::command::CommandJsonCodec).with_codec(super::terminal::provider::CommandProviderJsonCodec);
+    let process = process
+        .with_codec(super::terminal::command::CommandJsonCodec)
+        .with_codec(super::terminal::provider::CommandProviderJsonCodec);
     #[cfg(not(generated_native_host))]
-    let wasm = wasm.with_codec(super::terminal::command::CommandJsonCodec).with_codec(super::terminal::provider::CommandProviderJsonCodec);
+    let wasm = wasm
+        .with_codec(super::terminal::command::CommandJsonCodec)
+        .with_codec(super::terminal::provider::CommandProviderJsonCodec);
     // LENSO_REGISTER_CODECS
     let evidence = serde_json::from_slice(&fs::read(root.join("runtime-codecs.json"))?)?;
     #[cfg(any(not(generated_native_host), generated_bun_adapter))]
@@ -391,7 +479,14 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         {
             wasm = wasm.with_codec(codec);
         }
-        #[cfg(all(generated_native_host, not(any(generated_bun_adapter, generated_process_adapter, generated_wasm_adapter))))]
+        #[cfg(all(
+            generated_native_host,
+            not(any(
+                generated_bun_adapter,
+                generated_process_adapter,
+                generated_wasm_adapter
+            ))
+        ))]
         let _ = codec;
     }
     let catalog = ExecutionAdapterCatalog::new();
@@ -400,11 +495,17 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         .with_adapter(native)
         .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     #[cfg(any(not(generated_native_host), generated_bun_adapter))]
-    let catalog = catalog.with_adapter(bun).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let catalog = catalog
+        .with_adapter(bun)
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     #[cfg(any(not(generated_native_host), generated_process_adapter))]
-    let catalog = catalog.with_adapter(process).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let catalog = catalog
+        .with_adapter(process)
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     #[cfg(any(not(generated_native_host), generated_wasm_adapter))]
-    let catalog = catalog.with_adapter(wasm).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let catalog = catalog
+        .with_adapter(wasm)
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     // Drive the local Kernel outside Tokio's block_on execution context: Bun's
     // synchronous startup handshake owns a separate RPC runtime. Tokio workers
     // still service I/O/timers, and LocalSet retains thread-local Plugin state.
@@ -509,5 +610,13 @@ pub fn validate(
     plan: &ResolvedAppPlan,
     evidence: &std::collections::BTreeMap<String, serde_json::Value>,
 ) -> anyhow::Result<()> {
-    portable_codecs(plan, &std::collections::BTreeSet::from([super::terminal::command::CAPABILITY_ID, super::terminal::provider::CAPABILITY_ID]), evidence).map(|_| ())
+    portable_codecs(
+        plan,
+        &std::collections::BTreeSet::from([
+            super::terminal::command::CAPABILITY_ID,
+            super::terminal::provider::CAPABILITY_ID,
+        ]),
+        evidence,
+    )
+    .map(|_| ())
 }

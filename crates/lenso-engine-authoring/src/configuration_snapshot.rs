@@ -26,17 +26,28 @@ const SNAPSHOT_SCHEMA: &str = "lenso.plugin-configuration-snapshot.v1";
 const SNAPSHOT_DIGEST_SCHEMA: &str = "lenso.plugin-configuration-snapshot-digest.v1";
 const MAX_SNAPSHOT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_SNAPSHOT_CONFIGURATIONS: usize = 4_096;
+const MAX_DISPLACED_FIELDS_BYTES: usize = 16 * 1024 * 1024;
 
 /// One schema-validated Plugin configuration carried by an external snapshot.
 ///
 /// Package fields marked `x-lenso-sensitive` accept secret references rather
 /// than raw secret material through the ordinary Host admission path.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct VersionedPluginConfiguration {
     plugin_id: String,
     instance_key: String,
     toml: String,
+}
+
+/// Values displaced by one source-owned field, including absence. Unrelated
+/// App-owned fields stay in the Root and are not copied to source state.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PluginConfigurationFieldBase {
+    plugin_id: String,
+    instance_key: String,
+    fields: BTreeMap<String, Option<String>>,
 }
 
 impl VersionedPluginConfiguration {
@@ -641,6 +652,8 @@ pub struct PluginConfigurationSnapshotIntent {
     snapshot_digest: String,
     base_plugin_root_revision: String,
     candidate_plugin_root_revision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    displaced_fields: Option<Vec<PluginConfigurationFieldBase>>,
 }
 
 impl PluginConfigurationSnapshotIntent {
@@ -664,7 +677,8 @@ impl PluginConfigurationSnapshotIntent {
         &self.candidate_plugin_root_revision
     }
 
-    fn validate(&self) -> anyhow::Result<()> {
+    /// Validate a persisted intent before using it for recovery or activation.
+    pub fn validate(&self) -> anyhow::Result<()> {
         PluginConfigurationAuthoritySource::new(&self.source_kind, &self.source_reference)?;
         ensure!(
             self.revision > 0,
@@ -673,6 +687,46 @@ impl PluginConfigurationSnapshotIntent {
         validate_sha256(&self.snapshot_digest, "snapshot digest")?;
         PluginRootRevision::from_str(&self.base_plugin_root_revision)?;
         PluginRootRevision::from_str(&self.candidate_plugin_root_revision)?;
+        let bases = self.displaced_fields.as_ref().context(
+            "external configuration intent lacks the App-owned base needed to revoke source fields",
+        )?;
+        ensure!(
+            bases.len() <= MAX_SNAPSHOT_CONFIGURATIONS,
+            "external configuration base exceeds its object limit"
+        );
+        let mut objects = BTreeSet::new();
+        for base in bases {
+            validate_existing_plugin_id(&base.plugin_id)?;
+            validate_instance_filename(&base.instance_key)?;
+            ensure!(
+                objects.insert((&base.plugin_id, &base.instance_key)),
+                "duplicate external configuration base object"
+            );
+            ensure!(
+                base.fields.len() <= 256,
+                "external configuration base has an invalid field count"
+            );
+            ensure!(
+                base.fields.keys().all(|field| {
+                    !field.is_empty() && field.len() <= 256 && !field.chars().any(char::is_control)
+                }),
+                "external configuration base contains an invalid field"
+            );
+            for (field, value) in &base.fields {
+                if let Some(value) = value {
+                    let table: toml::Table = toml::from_str(value)
+                        .context("external configuration base field TOML is invalid")?;
+                    ensure!(
+                        table.len() == 1 && table.contains_key(field),
+                        "external configuration base field has a different key"
+                    );
+                }
+            }
+        }
+        ensure!(
+            serde_json::to_vec(bases)?.len() <= MAX_DISPLACED_FIELDS_BYTES,
+            "external configuration base exceeds its size limit"
+        );
         Ok(())
     }
 
@@ -782,22 +836,92 @@ pub fn propose_versioned_plugin_configuration_snapshot(
         }
     }
 
-    let mut changes = PluginRootChangeSet::new();
+    let previous_bases = previous
+        .map(|intent| {
+            intent.displaced_fields.as_ref().context(
+                "external configuration intent lacks the App-owned base needed to revoke source fields",
+            )
+        })
+        .transpose()?
+        .into_iter()
+        .flatten()
+        .map(|base| {
+            (
+                (base.plugin_id.clone(), base.instance_key.clone()),
+                base.fields.clone(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut current_bases = BTreeMap::new();
+    let mut incoming = BTreeMap::new();
     for configuration in &snapshot.configurations {
-        let mut merged = current_root_configuration(
-            &current,
-            &configuration.plugin_id,
-            &configuration.instance_key,
-        )?;
-        let incoming: toml::Table = toml::from_str(&configuration.toml)
+        let key = (
+            configuration.plugin_id.clone(),
+            configuration.instance_key.clone(),
+        );
+        let supplied: toml::Table = toml::from_str(&configuration.toml)
             .map_err(|_| anyhow::anyhow!("external Plugin configuration TOML is invalid"))?;
-        for (field, value) in incoming {
-            merged.insert(field, value);
+        let current_table = current_root_configuration(&current, &key.0, &key.1)?;
+        let base = supplied
+            .keys()
+            .map(|field| {
+                let prior = previous_bases
+                    .get(&key)
+                    .and_then(|fields| fields.get(field))
+                    .cloned();
+                let original = match prior {
+                    Some(prior) => prior,
+                    None => current_table
+                        .get(field)
+                        .map(|value| {
+                            let mut field_table = toml::Table::new();
+                            field_table.insert(field.clone(), value.clone());
+                            toml::to_string(&field_table)
+                                .context("encode displaced App-owned field")
+                        })
+                        .transpose()?,
+                };
+                Ok((field.clone(), original))
+            })
+            .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
+        ensure!(
+            incoming.insert(key.clone(), supplied).is_none(),
+            "duplicate external configuration object"
+        );
+        current_bases.insert(key, base);
+    }
+    let objects = previous_bases
+        .keys()
+        .chain(current_bases.keys())
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let mut changes = PluginRootChangeSet::new();
+    for (plugin_id, instance_key) in objects {
+        let key = (plugin_id.clone(), instance_key.clone());
+        let mut merged = current_root_configuration(&current, &plugin_id, &instance_key)?;
+        if let Some(base) = previous_bases.get(&key) {
+            for (field, value) in base {
+                if let Some(value) = value {
+                    let table: toml::Table = toml::from_str(value)
+                        .context("external configuration base field TOML is invalid")?;
+                    let original = table
+                        .get(field)
+                        .context("external configuration base field has a different key")?;
+                    merged.insert(field.clone(), original.clone());
+                } else {
+                    merged.remove(field);
+                }
+            }
+        }
+        if let Some(supplied) = incoming.get(&key) {
+            for (field, value) in supplied {
+                merged.insert(field.clone(), value.clone());
+            }
         }
         let toml = toml::to_string(&merged).context("encode merged Plugin configuration")?;
         changes = changes.with_configuration(PluginRootConfigurationChange::new(
-            &configuration.plugin_id,
-            &configuration.instance_key,
+            plugin_id,
+            instance_key,
             toml.into_bytes(),
         ));
     }
@@ -820,7 +944,20 @@ pub fn propose_versioned_plugin_configuration_snapshot(
         snapshot_digest,
         base_plugin_root_revision: proposal.base_revision().as_str().to_owned(),
         candidate_plugin_root_revision: proposal.candidate_revision().as_str().to_owned(),
+        displaced_fields: Some(
+            current_bases
+                .into_iter()
+                .map(
+                    |((plugin_id, instance_key), fields)| PluginConfigurationFieldBase {
+                        plugin_id,
+                        instance_key,
+                        fields,
+                    },
+                )
+                .collect(),
+        ),
     };
+    intent.validate()?;
     if intent.base_plugin_root_revision == intent.candidate_plugin_root_revision {
         return Ok(PluginConfigurationSnapshotReconciliation::NoRootChange(
             intent,
@@ -939,6 +1076,22 @@ mod tests {
             .unwrap()],
         )
         .unwrap()
+    }
+
+    #[test]
+    fn displaced_toml_datetime_survives_json_state_round_trip() {
+        let original: toml::Table = toml::from_str("when = 1979-05-27T07:32:00Z\n").unwrap();
+        let base = PluginConfigurationFieldBase {
+            plugin_id: "example.agent".into(),
+            instance_key: "default".into(),
+            fields: BTreeMap::from([("when".into(), Some(toml::to_string(&original).unwrap()))]),
+        };
+        let restored: PluginConfigurationFieldBase =
+            serde_json::from_slice(&serde_json::to_vec(&base).unwrap()).unwrap();
+        let field: toml::Table =
+            toml::from_str(restored.fields["when"].as_deref().unwrap()).unwrap();
+        assert_eq!(field, original);
+        assert!(matches!(field["when"], toml::Value::Datetime(_)));
     }
 
     fn write_snapshot(path: &Path, revision: u64, greeting: &str) {

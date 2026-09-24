@@ -80,12 +80,22 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         };
         let built = status.success();
         watch_dependencies(&root, &mut watcher)?;
+        if let Some(policy) = &policy {
+            retire_active_on_policy_change(
+                current_output.as_deref(),
+                policy,
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+            )
+            .await?;
+        }
         let ready = if built {
             if let Some(policy) = &policy
                 && let Err(error) = super::configuration_source::sync(&output, policy)
             {
                 eprintln!(
-                    "App configuration source rejected; retaining the running generation: {error:#}"
+                    "App configuration source rejected; candidate not activated: {error:#}"
                 );
                 false
             } else {
@@ -93,7 +103,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                     Ok(()) => true,
                     Err(error) => {
                         eprintln!(
-                            "App candidate failed readiness; retaining the running generation: {error:#}"
+                            "App candidate failed readiness; candidate not activated: {error:#}"
                         );
                         false
                     }
@@ -201,6 +211,14 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                         continue;
                     };
                     let policy = policy.as_deref().expect("poll branch requires policy");
+                    retire_active_on_policy_change(
+                        current_output.as_deref(),
+                        policy,
+                        &mut host,
+                        &mut frontend_process,
+                        &mut active_backend_url,
+                    )
+                    .await?;
                     match super::configuration_source::sync(&target, policy) {
                         Ok(()) => match super::configuration_source::inspect_status(&target) {
                             Ok(status) if !status.pending_publication && (status.pending_activation || host.is_none() || current_output.as_deref() != Some(target.as_path())) => {
@@ -226,13 +244,13 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                                         }
                                         }
                                     },
-                                    Err(error) => eprintln!("Configuration candidate failed readiness; retaining the running generation: {error:#}"),
+                                    Err(error) => eprintln!("Configuration candidate failed readiness; candidate not activated: {error:#}"),
                                 }
                             }
                             Ok(_) => {}
-                            Err(error) => eprintln!("Configuration status is invalid; retaining the running generation: {error:#}"),
+                            Err(error) => eprintln!("Configuration status is invalid; candidate not activated: {error:#}"),
                         },
-                        Err(error) => eprintln!("Configuration source unavailable or rejected; retaining the running generation: {error:#}"),
+                        Err(error) => eprintln!("Configuration source unavailable or rejected; candidate not activated: {error:#}"),
                     }
                 }
             }
@@ -275,7 +293,7 @@ async fn activate_candidate_with_frontend(
             Ok(revision) => revision,
             Err(error) => {
                 eprintln!(
-                    "Configuration candidate changed before startup; retaining the running generation: {error:#}"
+                    "Configuration candidate changed before startup; candidate not activated: {error:#}"
                 );
                 return Ok(Some(false));
             }
@@ -287,9 +305,7 @@ async fn activate_candidate_with_frontend(
         Ok(Some(candidate)) => candidate,
         Ok(None) => return Ok(None),
         Err(error) => {
-            eprintln!(
-                "App candidate failed actual startup; retaining the running generation: {error:#}"
-            );
+            eprintln!("App candidate failed actual startup; candidate not activated: {error:#}");
             return Ok(Some(false));
         }
     };
@@ -298,7 +314,7 @@ async fn activate_candidate_with_frontend(
         Err(error) => {
             stop(&mut candidate, true).await?;
             eprintln!(
-                "App candidate did not report a usable Web Ingress; retaining the running generation: {error:#}"
+                "App candidate did not report a usable Web Ingress; candidate not activated: {error:#}"
             );
             return Ok(Some(false));
         }
@@ -319,7 +335,7 @@ async fn activate_candidate_with_frontend(
             )
             .await?;
             eprintln!(
-                "Frontend backend URL could not be published; retaining the running generation: {error:#}"
+                "Frontend backend URL could not be published; candidate not activated: {error:#}"
             );
             return Ok(Some(false));
         }
@@ -348,7 +364,7 @@ async fn activate_candidate_with_frontend(
                 )
                 .await?;
                 eprintln!(
-                    "Frontend candidate failed readiness; retaining the running generation: {error:#}"
+                    "Frontend candidate failed readiness; candidate not activated: {error:#}"
                 );
                 return Ok(Some(false));
             }
@@ -365,7 +381,7 @@ async fn activate_candidate_with_frontend(
         )
         .await?;
         eprintln!(
-            "Frontend backend URL could not be published; retaining the running generation: {error:#}"
+            "Frontend backend URL could not be published; candidate not activated: {error:#}"
         );
         return Ok(Some(false));
     }
@@ -397,7 +413,7 @@ async fn activate_candidate_with_frontend(
                 Ok(false) => return Ok(None),
                 Err(error) => {
                     eprintln!(
-                        "Frontend did not accept candidate backend; retaining the running generation: {error:#}"
+                        "Frontend did not accept candidate backend; candidate not activated: {error:#}"
                     );
                     return Ok(Some(false));
                 }
@@ -419,10 +435,10 @@ async fn activate_candidate_with_frontend(
             .await?;
             match result {
                 Ok(false) => eprintln!(
-                    "App candidate exited during frontend readiness; retaining the running generation"
+                    "App candidate exited during frontend readiness; candidate not activated"
                 ),
                 Err(error) => eprintln!(
-                    "App candidate state could not be checked before switch; retaining the running generation: {error:#}"
+                    "App candidate state could not be checked before switch; candidate not activated: {error:#}"
                 ),
                 Ok(true) => unreachable!(),
             }
@@ -670,6 +686,40 @@ async fn stop_active(
     Ok(())
 }
 
+async fn retire_active_on_policy_change(
+    active_output: Option<&Path>,
+    policy: &Path,
+    host: &mut Option<Child>,
+    frontend: &mut Option<frontend::FrontendProcess>,
+    active_backend_url: &mut Option<String>,
+) -> anyhow::Result<bool> {
+    if host.is_none() && frontend.is_none() {
+        return Ok(false);
+    }
+    let changed = match active_output {
+        Some(output) => {
+            match super::configuration_source::policy_changed_since_active(output, policy) {
+                Ok(changed) => changed,
+                Err(error) => {
+                    eprintln!(
+                        "Cannot verify active configuration policy; stopping the running generation: {error:#}"
+                    );
+                    true
+                }
+            }
+        }
+        None => true,
+    };
+    if changed {
+        eprintln!(
+            "Host configuration policy changed; stopping the running generation until a new candidate is ready"
+        );
+        stop_active(host, frontend).await?;
+        *active_backend_url = None;
+    }
+    Ok(changed)
+}
+
 fn select_output(current_output: &mut Option<PathBuf>, output: &Path) {
     if current_output.as_deref() == Some(output) {
         return;
@@ -696,7 +746,7 @@ async fn activate_candidate(
             Ok(revision) => revision,
             Err(error) => {
                 eprintln!(
-                    "Configuration candidate no longer matches its published Root; retaining the running generation: {error:#}"
+                    "Configuration candidate no longer matches its published Root; candidate not activated: {error:#}"
                 );
                 return Ok(Some(false));
             }
@@ -710,9 +760,7 @@ async fn activate_candidate(
         Ok(Some(candidate)) => candidate,
         Ok(None) => return Ok(None),
         Err(error) => {
-            eprintln!(
-                "App candidate failed actual startup; retaining the running generation: {error:#}"
-            );
+            eprintln!("App candidate failed actual startup; candidate not activated: {error:#}");
             return Ok(Some(false));
         }
     };
@@ -1297,7 +1345,46 @@ mod tests {
         assert_eq!(status.desired_revision, Some(2));
         assert_eq!(status.last_activated_revision, Some(2));
         assert!(host.as_mut().unwrap().try_wait().unwrap().is_none());
-        stop(host.as_mut().unwrap(), false).await.unwrap();
+
+        let mut frontend_process = None;
+        let mut active_backend_url = None;
+        assert!(
+            !retire_active_on_policy_change(
+                Some(output.path()),
+                &policy,
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+            )
+            .await
+            .unwrap()
+        );
+        assert!(host.as_mut().unwrap().try_wait().unwrap().is_none());
+        write_snapshot(2, "greeting = 'second'\n");
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": "lenso.configuration-source-policy.v1",
+                "source_reference": "test",
+                "source": {"type": "file", "path": source},
+                "objects": [{"plugin_id": "example.agent", "instance_key": "default", "fields": ["greeting", "token"]}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        super::super::configuration_source::sync(output.path(), &policy).unwrap();
+        assert!(
+            retire_active_on_policy_change(
+                Some(output.path()),
+                &policy,
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+            )
+            .await
+            .unwrap()
+        );
+        assert!(host.is_none());
     }
 
     #[test]

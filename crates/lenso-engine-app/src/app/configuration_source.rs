@@ -19,10 +19,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 const POLICY_SCHEMA: &str = "lenso.configuration-source-policy.v1";
-const STATE_SCHEMA: &str = "lenso.configuration-source-state.v1";
+const STATE_SCHEMA: &str = "lenso.configuration-source-state.v2";
 const STATE_FILE: &str = "configuration-source-state.json";
 const MAX_POLICY_BYTES: u64 = 64 * 1024;
-const MAX_STATE_BYTES: u64 = 16 * 1024;
+const MAX_STATE_BYTES: u64 = 64 * 1024 * 1024;
 
 fn digest_policy(bytes: &[u8]) -> String {
     format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
@@ -113,6 +113,8 @@ struct State {
     schema: String,
     desired: PluginConfigurationSnapshotIntent,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    prior_desired: Option<PluginConfigurationSnapshotIntent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     policy_digest: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     cursor: Option<PluginConfigurationSnapshotCursor>,
@@ -126,6 +128,8 @@ struct ActivatedConfiguration {
     revision: u64,
     snapshot_digest: String,
     plugin_root_revision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    policy_digest: Option<String>,
 }
 
 pub fn sync_command(args: SyncArgs) -> anyhow::Result<()> {
@@ -233,6 +237,12 @@ fn record_activation_locked(intent: &Path, expected_revision: &str) -> anyhow::R
         revision: state.desired.revision(),
         snapshot_digest: state.desired.snapshot_digest().to_owned(),
         plugin_root_revision: expected_revision.to_owned(),
+        policy_digest: Some(
+            state
+                .policy_digest
+                .clone()
+                .context("accepted configuration has no Host policy digest")?,
+        ),
     });
     persist_state(&path, &state)
 }
@@ -296,6 +306,8 @@ fn status_for_intent(intent: &Path) -> anyhow::Result<Status> {
             last.revision != state.desired.revision()
                 || last.snapshot_digest != state.desired.snapshot_digest()
                 || last.plugin_root_revision != state.desired.candidate_plugin_root_revision()
+                || state.policy_digest.is_none()
+                || last.policy_digest != state.policy_digest
         });
         Status {
             schema: "lenso.configuration-status.v1",
@@ -339,6 +351,25 @@ pub(super) fn require_or_sync(root: &Path, policy: Option<&Path>) -> anyhow::Res
         }
     }
     Ok(())
+}
+
+/// A local supervisor must retire an active Generation when its Host policy
+/// changes, even when the newly scoped source cannot yet produce an accepted
+/// replacement. Source outages under the same policy do not require this.
+pub(super) fn policy_changed_since_active(
+    distribution: &Path,
+    policy_path: &Path,
+) -> anyhow::Result<bool> {
+    let distribution = fs::canonicalize(distribution)?;
+    let intent = fs::canonicalize(distribution.join("intent"))?;
+    verify_intent_authority(&distribution, &intent)?;
+    let state = read_state(&intent.join(".lenso").join(STATE_FILE))?
+        .context("active App has no accepted configuration source state")?;
+    let active = state
+        .last_activated
+        .context("active App has no configuration activation receipt")?;
+    let policy_digest = digest_policy(&read_bounded(policy_path, MAX_POLICY_BYTES)?);
+    Ok(active.policy_digest.as_deref() != Some(&policy_digest))
 }
 
 pub(super) fn sync(root: &Path, policy_path: &Path) -> anyhow::Result<()> {
@@ -488,14 +519,17 @@ where
             }
         }
     };
+    let prior_desired = if pending {
+        previous
+            .as_ref()
+            .and_then(|state| state.prior_desired.as_ref())
+    } else {
+        previous.as_ref().map(|state| &state.desired)
+    };
     let result = propose_versioned_plugin_configuration_snapshot(
         &authority,
         &authorization,
-        if pending {
-            None
-        } else {
-            previous.as_ref().map(|state| &state.desired)
-        },
+        prior_desired,
         &snapshot,
     )?;
     if pending {
@@ -507,7 +541,13 @@ where
         );
     }
     let accepted_intent = result.intent().clone();
-    publish_result(&authority, &state_path, result, &policy_digest)?;
+    publish_result(
+        &authority,
+        &state_path,
+        result,
+        &policy_digest,
+        prior_desired,
+    )?;
     if source_kind == "https_poll" {
         write_cursor(&state_path, cursor, &policy_digest, &accepted_intent)?;
     }
@@ -588,14 +628,23 @@ fn publish_result(
     state_path: &Path,
     result: PluginConfigurationSnapshotReconciliation,
     policy_digest: &str,
+    prior_desired: Option<&PluginConfigurationSnapshotIntent>,
 ) -> anyhow::Result<()> {
     match result {
-        PluginConfigurationSnapshotReconciliation::Unchanged(_) => Ok(()),
+        PluginConfigurationSnapshotReconciliation::Unchanged(intent) => {
+            let state = read_state(state_path)?.context("missing accepted configuration state")?;
+            if state.policy_digest.as_deref() != Some(policy_digest)
+                || state.prior_desired.is_some()
+            {
+                write_state(state_path, &intent, policy_digest, None)?;
+            }
+            Ok(())
+        }
         PluginConfigurationSnapshotReconciliation::NoRootChange(intent) => {
-            write_state(state_path, &intent, policy_digest)
+            write_state(state_path, &intent, policy_digest, None)
         }
         PluginConfigurationSnapshotReconciliation::Proposed { intent, proposal } => {
-            write_state(state_path, &intent, policy_digest)?;
+            write_state(state_path, &intent, policy_digest, prior_desired)?;
             authority.publish_changes(&proposal)?;
             ensure!(
                 intent.publication_state(authority.inspect()?.revision())?
@@ -616,7 +665,14 @@ fn read_state(path: &Path) -> anyhow::Result<Option<State>> {
         state.schema == STATE_SCHEMA,
         "unsupported configuration source state"
     );
-    state.desired.source()?;
+    state.desired.validate()?;
+    if let Some(prior) = &state.prior_desired {
+        prior.validate()?;
+        ensure!(
+            prior.source()? == state.desired.source()?,
+            "previous configuration intent belongs to a different authority"
+        );
+    }
     if let Some(cursor) = &state.cursor {
         ensure!(
             cursor.source()? == state.desired.source()?,
@@ -630,6 +686,7 @@ fn write_state(
     path: &Path,
     desired: &PluginConfigurationSnapshotIntent,
     policy_digest: &str,
+    prior_desired: Option<&PluginConfigurationSnapshotIntent>,
 ) -> anyhow::Result<()> {
     let previous = read_state(path)?;
     let last_activated = previous
@@ -645,6 +702,7 @@ fn write_state(
         &State {
             schema: STATE_SCHEMA.into(),
             desired: desired.clone(),
+            prior_desired: prior_desired.cloned(),
             policy_digest: Some(policy_digest.to_owned()),
             cursor,
             last_activated,
@@ -671,7 +729,12 @@ fn write_cursor(
 fn persist_state(path: &Path, state: &State) -> anyhow::Result<()> {
     let parent = path.parent().context("configuration state parent")?;
     let mut stage = tempfile::NamedTempFile::new_in(parent)?;
-    serde_json::to_writer(&mut stage, state)?;
+    let bytes = serde_json::to_vec(state)?;
+    ensure!(
+        u64::try_from(bytes.len())? <= MAX_STATE_BYTES,
+        "configuration state exceeds its size limit"
+    );
+    std::io::Write::write_all(&mut stage, &bytes)?;
     stage.as_file().sync_all()?;
     stage.persist(path)?;
     fs::File::open(parent)?.sync_all()?;
@@ -753,6 +816,8 @@ mod tests {
             .with_configuration_schema(serde_json::json!({
                 "type": "object", "properties": {
                     "greeting": {"type": "string"},
+                    "ephemeral": {"type": "string"},
+                    "owner": {"type": "string"},
                     "token": {"x-lenso-sensitive": true}
                 }, "additionalProperties": false
             }));
@@ -911,6 +976,7 @@ mod tests {
             revision: state.desired.revision(),
             snapshot_digest: state.desired.snapshot_digest().to_owned(),
             plugin_root_revision: state.desired.candidate_plugin_root_revision().to_owned(),
+            policy_digest: state.policy_digest.clone(),
         });
         fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
         let activated = inspect_status(root.path()).unwrap();
@@ -969,7 +1035,7 @@ mod tests {
         let digest = digest_policy(&fs::read(&policy).unwrap());
         let desired = read_state(&state_path).unwrap().unwrap().desired;
         write_cursor(&state_path, Some(cursor.clone()), &digest, &desired).unwrap();
-        write_state(&state_path, &desired, &digest).unwrap();
+        write_state(&state_path, &desired, &digest, None).unwrap();
         assert_eq!(
             read_state(&state_path).unwrap().unwrap().cursor,
             Some(cursor)
@@ -1141,6 +1207,222 @@ mod tests {
     }
 
     #[test]
+    fn narrower_policy_restores_app_owned_values_and_removes_old_source_values() {
+        let (root, source, policy) = fixture();
+        let configuration = root
+            .path()
+            .join("intent/plugins/example.agent/default.toml");
+        fs::create_dir_all(configuration.parent().unwrap()).unwrap();
+        fs::write(&configuration, "greeting = 'app'\nowner = 'keep'\n").unwrap();
+
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": POLICY_SCHEMA,
+                "source_reference": "development",
+                "source": {"type": "file", "path": source},
+                "objects": [{"plugin_id": "example.agent", "instance_key": "default", "fields": ["greeting", "ephemeral"]}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        snapshot(
+            &source,
+            1,
+            "greeting = 'external'\nephemeral = 'source-only'\n",
+        );
+        sync(root.path(), &policy).unwrap();
+        let first: toml::Table =
+            toml::from_str(&fs::read_to_string(&configuration).unwrap()).unwrap();
+        assert_eq!(first["greeting"].as_str(), Some("external"));
+        assert_eq!(first["ephemeral"].as_str(), Some("source-only"));
+        assert_eq!(first["owner"].as_str(), Some("keep"));
+        assert!(
+            !fs::read_to_string(root.path().join("intent/.lenso").join(STATE_FILE))
+                .unwrap()
+                .contains("keep")
+        );
+
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": POLICY_SCHEMA,
+                "source_reference": "development",
+                "source": {"type": "file", "path": source},
+                "objects": [{"plugin_id": "example.agent", "instance_key": "default", "fields": ["token"]}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        snapshot(&source, 2, "token = { secret_ref = 'credential' }\n");
+        sync(root.path(), &policy).unwrap();
+        let second: toml::Table =
+            toml::from_str(&fs::read_to_string(&configuration).unwrap()).unwrap();
+        assert_eq!(second["greeting"].as_str(), Some("app"));
+        assert!(!second.contains_key("ephemeral"));
+        assert_eq!(second["owner"].as_str(), Some("keep"));
+        assert_eq!(second["token"]["secret_ref"].as_str(), Some("credential"));
+        assert_eq!(
+            inspect_status(root.path()).unwrap().desired_revision,
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn policy_only_narrowing_blocks_a_new_start_when_the_source_still_sends_revoked_fields() {
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'external'\n");
+        sync(root.path(), &policy).unwrap();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        let first = read_state(&state_path).unwrap().unwrap();
+
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": POLICY_SCHEMA,
+                "source_reference": "development",
+                "source": {"type": "file", "path": source},
+                "objects": [{"plugin_id": "example.agent", "instance_key": "default", "fields": ["token"]}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let error = require_or_sync(root.path(), Some(&policy)).unwrap_err();
+        assert!(error.to_string().contains("authorized scope"));
+        let after = read_state(&state_path).unwrap().unwrap();
+        assert_eq!(after.desired, first.desired);
+        assert_eq!(after.last_activated.as_ref().map(|v| v.revision), None);
+    }
+
+    #[test]
+    fn same_revision_reauthorization_updates_desired_policy_but_not_the_active_receipt() {
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'external'\n");
+        sync(root.path(), &policy).unwrap();
+        let revision = desired_root_revision(root.path()).unwrap().unwrap();
+        record_distribution_activation(root.path(), &revision).unwrap();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        let original = read_state(&state_path).unwrap().unwrap();
+
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": POLICY_SCHEMA,
+                "source_reference": "development",
+                "source": {"type": "file", "path": source},
+                "objects": [{"plugin_id": "example.agent", "instance_key": "default", "fields": ["greeting", "token"]}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        sync(root.path(), &policy).unwrap();
+        let updated = read_state(&state_path).unwrap().unwrap();
+        assert_eq!(updated.desired, original.desired);
+        assert_eq!(
+            updated.policy_digest,
+            Some(digest_policy(&fs::read(&policy).unwrap()))
+        );
+        assert_eq!(
+            updated.last_activated.unwrap().policy_digest,
+            original.policy_digest
+        );
+        let pending = inspect_status(root.path()).unwrap();
+        assert_eq!(pending.state, "pending_activation");
+        assert!(pending.pending_activation);
+        assert!(policy_changed_since_active(root.path(), &policy).unwrap());
+        record_distribution_activation(root.path(), &revision).unwrap();
+        let activated = inspect_status(root.path()).unwrap();
+        assert_eq!(activated.state, "last_activated");
+        assert!(!activated.pending_activation);
+    }
+
+    #[test]
+    fn concurrent_app_owned_edit_is_not_replaced_by_a_stale_source_base() {
+        let (root, source, policy) = fixture();
+        let configuration = root
+            .path()
+            .join("intent/plugins/example.agent/default.toml");
+        fs::create_dir_all(configuration.parent().unwrap()).unwrap();
+        fs::write(&configuration, "owner = 'first'\n").unwrap();
+        snapshot(&source, 1, "greeting = 'external'\n");
+        sync(root.path(), &policy).unwrap();
+
+        fs::write(
+            &configuration,
+            "greeting = 'external'\nowner = 'new-app-value'\n",
+        )
+        .unwrap();
+        snapshot(&source, 2, "greeting = 'second'\n");
+        let error = sync(root.path(), &policy).unwrap_err();
+        assert!(error.to_string().contains("Plugin Root no longer matches"));
+        let current: toml::Table =
+            toml::from_str(&fs::read_to_string(&configuration).unwrap()).unwrap();
+        assert_eq!(current["owner"].as_str(), Some("new-app-value"));
+        assert_eq!(current["greeting"].as_str(), Some("external"));
+        assert_eq!(
+            inspect_status(root.path()).unwrap_err().to_string(),
+            error.to_string()
+        );
+    }
+
+    #[test]
+    fn legacy_intent_without_provenance_fails_closed_before_replacement() {
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'external'\n");
+        sync(root.path(), &policy).unwrap();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        let mut state: serde_json::Value =
+            serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+        state["desired"]
+            .as_object_mut()
+            .unwrap()
+            .remove("displaced_fields");
+        fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
+
+        snapshot(&source, 2, "greeting = 'second'\n");
+        let error = sync(root.path(), &policy).unwrap_err();
+        assert!(error.to_string().contains("lacks the App-owned base"));
+        let raw: serde_json::Value =
+            serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+        assert_eq!(raw["desired"]["revision"], 1);
+        assert!(
+            fs::read_to_string(
+                root.path()
+                    .join("intent/plugins/example.agent/default.toml")
+            )
+            .unwrap()
+            .contains("external")
+        );
+    }
+
+    #[test]
+    fn old_configuration_state_schema_requires_a_new_distribution() {
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'external'\n");
+        sync(root.path(), &policy).unwrap();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        let mut state: serde_json::Value =
+            serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+        state["schema"] = "lenso.configuration-source-state.v1".into();
+        fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
+
+        let error = require_or_sync(root.path(), Some(&policy)).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported configuration source state")
+        );
+        assert!(
+            fs::read_to_string(
+                root.path()
+                    .join("intent/plugins/example.agent/default.toml")
+            )
+            .unwrap()
+            .contains("external")
+        );
+    }
+
+    #[test]
     fn unauthorized_field_fails_without_publication() {
         let (root, source, policy) = fixture();
         snapshot(&source, 1, "token = 'secret://test'\n");
@@ -1189,6 +1471,7 @@ mod tests {
             &root.path().join("intent/.lenso").join(STATE_FILE),
             proposal.intent(),
             &digest_policy(&fs::read(&policy).unwrap()),
+            None,
         )
         .unwrap();
         let status = inspect_status(root.path()).unwrap();
@@ -1209,6 +1492,73 @@ mod tests {
             root.path()
                 .join("intent/plugins/example.agent/default.toml")
                 .exists()
+        );
+    }
+
+    #[test]
+    fn pending_second_revision_recovers_with_the_previous_app_owned_base() {
+        let (root, source, policy) = fixture();
+        let configuration = root
+            .path()
+            .join("intent/plugins/example.agent/default.toml");
+        fs::create_dir_all(configuration.parent().unwrap()).unwrap();
+        fs::write(&configuration, "greeting = 'app'\nowner = 'keep'\n").unwrap();
+        snapshot(&source, 1, "greeting = 'external'\n");
+        sync(root.path(), &policy).unwrap();
+        let state_path = root.path().join("intent/.lenso").join(STATE_FILE);
+        let first = read_state(&state_path).unwrap().unwrap().desired;
+
+        snapshot(&source, 2, "token = { secret_ref = 'credential' }\n");
+        fs::write(
+            &policy,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": POLICY_SCHEMA,
+                "source_reference": "development",
+                "source": {"type": "file", "path": source},
+                "objects": [{"plugin_id": "example.agent", "instance_key": "default", "fields": ["token"]}]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let identity =
+            PluginConfigurationAuthoritySource::new("file_snapshot", "development").unwrap();
+        let authorization = PluginConfigurationSnapshotAuthorization::new(
+            identity.clone(),
+            [
+                PluginConfigurationSnapshotObjectScope::new("example.agent", "default", ["token"])
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+        let incoming = FilePluginConfigurationSnapshotSource::new(&source, identity)
+            .read()
+            .unwrap();
+        let authority = LocalPluginRootAuthority::new(root.path().join("intent"));
+        let proposal = propose_versioned_plugin_configuration_snapshot(
+            &authority,
+            &authorization,
+            Some(&first),
+            &incoming,
+        )
+        .unwrap();
+        write_state(
+            &state_path,
+            proposal.intent(),
+            &digest_policy(&fs::read(&policy).unwrap()),
+            Some(&first),
+        )
+        .unwrap();
+        assert!(inspect_status(root.path()).unwrap().pending_publication);
+
+        sync(root.path(), &policy).unwrap();
+        let current: toml::Table =
+            toml::from_str(&fs::read_to_string(&configuration).unwrap()).unwrap();
+        assert_eq!(current["greeting"].as_str(), Some("app"));
+        assert_eq!(current["owner"].as_str(), Some("keep"));
+        assert_eq!(current["token"]["secret_ref"].as_str(), Some("credential"));
+        assert_eq!(
+            inspect_status(root.path()).unwrap().desired_revision,
+            Some(2)
         );
     }
 }
