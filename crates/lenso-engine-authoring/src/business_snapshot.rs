@@ -1,0 +1,576 @@
+//! Host-authorized, versioned business data that never rewrites a Plugin Root.
+
+use std::{
+    collections::BTreeSet,
+    fmt,
+    io::Read as _,
+    marker::PhantomData,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
+};
+
+mod https;
+use https::PollOutcome;
+pub use https::{BusinessSnapshotCursor, BusinessSnapshotPoll, HttpsBusinessSnapshotSource};
+
+use anyhow::{Context as _, bail, ensure};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+    configuration_snapshot::open_regular_snapshot, host_authoring::compile_ceiling,
+    validate_existing_plugin_id, validate_instance_filename,
+};
+
+const DOCUMENT_SCHEMA: &str = "lenso.business-snapshot.v1";
+const MAX_DOCUMENT_BYTES: u64 = 1024 * 1024;
+const MAX_VALUE_BYTES: usize = 256 * 1024;
+
+/// Exact Plugin-owned business object. It is not a Plugin Root configuration field.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BusinessSnapshotObjectId {
+    plugin_id: String,
+    instance_key: String,
+    object_key: String,
+}
+
+impl BusinessSnapshotObjectId {
+    pub fn new(
+        plugin_id: impl Into<String>,
+        instance_key: impl Into<String>,
+        object_key: impl Into<String>,
+    ) -> anyhow::Result<Self> {
+        let object = Self {
+            plugin_id: plugin_id.into(),
+            instance_key: instance_key.into(),
+            object_key: object_key.into(),
+        };
+        object.validate()?;
+        Ok(object)
+    }
+
+    fn validate(&self) -> anyhow::Result<()> {
+        validate_existing_plugin_id(&self.plugin_id)?;
+        validate_instance_filename(&self.instance_key)?;
+        ensure!(
+            !self.object_key.is_empty()
+                && self.object_key.len() <= 128
+                && self.object_key.bytes().all(|byte| {
+                    byte.is_ascii_lowercase()
+                        || byte.is_ascii_digit()
+                        || matches!(byte, b'.' | b'-' | b'_')
+                }),
+            "business snapshot object key is invalid"
+        );
+        Ok(())
+    }
+
+    pub fn plugin_id(&self) -> &str {
+        &self.plugin_id
+    }
+
+    pub fn instance_key(&self) -> &str {
+        &self.instance_key
+    }
+
+    pub fn object_key(&self) -> &str {
+        &self.object_key
+    }
+}
+
+/// Exact identity of a Host-selected dynamic source. Revisions are comparable only within it.
+#[derive(Clone, Eq, PartialEq)]
+pub struct BusinessSnapshotSourceId {
+    kind: String,
+    reference: String,
+}
+
+impl BusinessSnapshotSourceId {
+    pub fn new(kind: impl Into<String>, reference: impl Into<String>) -> anyhow::Result<Self> {
+        let kind = kind.into();
+        let reference = reference.into();
+        ensure!(
+            !kind.is_empty()
+                && kind.len() <= 64
+                && kind.bytes().all(|byte| {
+                    byte.is_ascii_lowercase()
+                        || byte.is_ascii_digit()
+                        || matches!(byte, b'_' | b'-' | b'.')
+                }),
+            "business snapshot source kind is invalid"
+        );
+        ensure!(
+            !reference.is_empty()
+                && reference.len() <= 256
+                && !reference.chars().any(char::is_control),
+            "business snapshot source reference is invalid"
+        );
+        Ok(Self { kind, reference })
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn reference(&self) -> &str {
+        &self.reference
+    }
+}
+
+impl fmt::Debug for BusinessSnapshotSourceId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BusinessSnapshotSourceId")
+            .field("kind", &self.kind)
+            .field("reference", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Untrusted source data, still requiring exact Host authorization before use.
+pub struct VersionedBusinessSnapshot {
+    source: BusinessSnapshotSourceId,
+    object: BusinessSnapshotObjectId,
+    revision: u64,
+    value: Value,
+    observed_at: Instant,
+}
+
+impl VersionedBusinessSnapshot {
+    pub fn new(
+        source: BusinessSnapshotSourceId,
+        object: BusinessSnapshotObjectId,
+        revision: u64,
+        value: Value,
+    ) -> anyhow::Result<Self> {
+        object.validate()?;
+        ensure!(revision > 0, "business snapshot revision must be positive");
+        ensure!(
+            serde_json::to_vec(&value)?.len() <= MAX_VALUE_BYTES,
+            "business snapshot value exceeds its bound"
+        );
+        Ok(Self {
+            source,
+            object,
+            revision,
+            value,
+            observed_at: Instant::now(),
+        })
+    }
+
+    pub fn source(&self) -> &BusinessSnapshotSourceId {
+        &self.source
+    }
+
+    pub fn object(&self) -> &BusinessSnapshotObjectId {
+        &self.object
+    }
+
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+}
+
+impl fmt::Debug for VersionedBusinessSnapshot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("VersionedBusinessSnapshot")
+            .field("source", &self.source)
+            .field("object", &self.object)
+            .field("revision", &self.revision)
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Host policy for one exact business object and source, using an existing bounded schema profile.
+pub struct BusinessSnapshotAuthorization<T> {
+    object: BusinessSnapshotObjectId,
+    source: BusinessSnapshotSourceId,
+    fields: BTreeSet<String>,
+    validator: jsonschema::Validator,
+    max_stale: Duration,
+    typed: PhantomData<fn() -> T>,
+}
+
+impl<T> BusinessSnapshotAuthorization<T> {
+    pub fn new(
+        object: BusinessSnapshotObjectId,
+        source: BusinessSnapshotSourceId,
+        schema: Value,
+        fields: impl IntoIterator<Item = impl Into<String>>,
+        max_stale: Duration,
+    ) -> anyhow::Result<Self> {
+        ensure!(
+            !max_stale.is_zero(),
+            "business snapshot stale limit must be positive"
+        );
+        let fields = fields.into_iter().map(Into::into).collect::<BTreeSet<_>>();
+        ensure!(
+            !fields.is_empty() && fields.len() <= 256,
+            "business snapshot authorization must name 1 to 256 fields"
+        );
+        let properties = schema
+            .as_object()
+            .filter(|root| {
+                root.get("type").and_then(Value::as_str) == Some("object")
+                    && root.get("additionalProperties") == Some(&Value::Bool(false))
+            })
+            .and_then(|root| root.get("properties"))
+            .and_then(Value::as_object)
+            .context("business snapshot schema must be a closed object with properties")?;
+        ensure!(
+            fields.iter().all(|field| {
+                !field.is_empty() && field.len() <= 256 && properties.contains_key(field)
+            }),
+            "business snapshot scope contains an undeclared field"
+        );
+        let validator = compile_ceiling(&schema)
+            .map_err(|_| anyhow::anyhow!("business snapshot schema is invalid"))?;
+        Ok(Self {
+            object,
+            source,
+            fields,
+            validator,
+            max_stale,
+            typed: PhantomData,
+        })
+    }
+}
+
+impl<T> fmt::Debug for BusinessSnapshotAuthorization<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BusinessSnapshotAuthorization")
+            .field("object", &self.object)
+            .field("source", &self.source)
+            .field("fields", &self.fields)
+            .field("max_stale", &self.max_stale)
+            .finish_non_exhaustive()
+    }
+}
+
+struct ActiveBusinessSnapshot<T> {
+    revision: u64,
+    value_fingerprint: [u8; 32],
+    value: Arc<T>,
+    refreshed_at: Instant,
+    cursor: Option<BusinessSnapshotCursor>,
+}
+
+/// Host-owned atomic publication and request capture for one authorized object.
+pub struct BusinessSnapshotAuthority<T> {
+    authorization: BusinessSnapshotAuthorization<T>,
+    active: RwLock<Option<ActiveBusinessSnapshot<T>>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BusinessSnapshotAcceptance {
+    Activated,
+    Unchanged,
+}
+
+impl<T: DeserializeOwned> BusinessSnapshotAuthority<T> {
+    pub fn new(authorization: BusinessSnapshotAuthorization<T>) -> Self {
+        Self {
+            authorization,
+            active: RwLock::new(None),
+        }
+    }
+
+    /// Validates before replacing the active value, then fences publication with CAS.
+    pub fn accept(
+        &self,
+        candidate: VersionedBusinessSnapshot,
+        expected_active_revision: Option<u64>,
+    ) -> anyhow::Result<BusinessSnapshotAcceptance> {
+        self.accept_with_cursor(candidate, expected_active_revision, None)
+    }
+
+    /// Accepts one actual HTTPS poll result. A 304 can refresh only its accepted ETag.
+    pub fn accept_poll(
+        &self,
+        poll: BusinessSnapshotPoll,
+        expected_active_revision: Option<u64>,
+    ) -> anyhow::Result<BusinessSnapshotAcceptance> {
+        match poll.outcome {
+            PollOutcome::Updated { snapshot, cursor } => {
+                if let Some(cursor) = &cursor {
+                    ensure!(
+                        cursor.source() == snapshot.source(),
+                        "business snapshot ETag belongs to a different source"
+                    );
+                }
+                self.accept_with_cursor(snapshot, expected_active_revision, cursor)
+            }
+            PollOutcome::NotModified {
+                cursor,
+                observed_at,
+            } => {
+                let mut active = self
+                    .active
+                    .write()
+                    .map_err(|_| anyhow::anyhow!("business snapshot state is unavailable"))?;
+                let active = active
+                    .as_mut()
+                    .context("business snapshot HTTP 304 has no accepted revision")?;
+                ensure!(
+                    Some(active.revision) == expected_active_revision,
+                    "business snapshot active revision changed before revalidation"
+                );
+                ensure!(
+                    active.cursor.as_ref() == Some(&cursor)
+                        && cursor.source() == &self.authorization.source,
+                    "business snapshot HTTP 304 does not match the accepted ETag"
+                );
+                ensure!(
+                    active.refreshed_at.elapsed() <= self.authorization.max_stale,
+                    "business snapshot source proof has expired; fetch a complete snapshot"
+                );
+                ensure!(
+                    observed_at.elapsed() <= self.authorization.max_stale,
+                    "business snapshot HTTPS proof expired before acceptance"
+                );
+                active.refreshed_at = observed_at;
+                Ok(BusinessSnapshotAcceptance::Unchanged)
+            }
+        }
+    }
+
+    /// Returns only the ETag cursor of the currently accepted HTTPS value.
+    pub fn cursor(&self) -> anyhow::Result<Option<BusinessSnapshotCursor>> {
+        Ok(self
+            .active
+            .read()
+            .map_err(|_| anyhow::anyhow!("business snapshot state is unavailable"))?
+            .as_ref()
+            .filter(|active| active.refreshed_at.elapsed() <= self.authorization.max_stale)
+            .and_then(|active| active.cursor.clone()))
+    }
+
+    fn accept_with_cursor(
+        &self,
+        candidate: VersionedBusinessSnapshot,
+        expected_active_revision: Option<u64>,
+        cursor: Option<BusinessSnapshotCursor>,
+    ) -> anyhow::Result<BusinessSnapshotAcceptance> {
+        ensure!(
+            candidate.source == self.authorization.source,
+            "business snapshot source is not authorized"
+        );
+        ensure!(
+            candidate.object == self.authorization.object,
+            "business snapshot object is not authorized"
+        );
+        ensure!(
+            candidate.observed_at.elapsed() <= self.authorization.max_stale,
+            "business snapshot source proof expired before acceptance"
+        );
+        let value = candidate
+            .value
+            .as_object()
+            .context("business snapshot value must be an object")?;
+        ensure!(
+            value
+                .keys()
+                .all(|field| self.authorization.fields.contains(field)),
+            "business snapshot contains a field outside its authorized scope"
+        );
+        ensure!(
+            self.authorization.validator.is_valid(&candidate.value),
+            "business snapshot value is invalid"
+        );
+        let typed: T = serde_json::from_value(candidate.value.clone())
+            .map_err(|_| anyhow::anyhow!("business snapshot typed value is invalid"))?;
+        let fingerprint = fingerprint(&candidate.value);
+        let mut active = self
+            .active
+            .write()
+            .map_err(|_| anyhow::anyhow!("business snapshot state is unavailable"))?;
+        ensure!(
+            active.as_ref().map(|current| current.revision) == expected_active_revision,
+            "business snapshot active revision changed before publication"
+        );
+        if let Some(current) = active.as_mut() {
+            if candidate.revision < current.revision {
+                bail!("business snapshot revision is stale");
+            }
+            if candidate.revision == current.revision {
+                ensure!(
+                    fingerprint == current.value_fingerprint,
+                    "business snapshot revision was reused with changed content"
+                );
+                current.refreshed_at = candidate.observed_at;
+                current.cursor = cursor;
+                return Ok(BusinessSnapshotAcceptance::Unchanged);
+            }
+        }
+        *active = Some(ActiveBusinessSnapshot {
+            revision: candidate.revision,
+            value_fingerprint: fingerprint,
+            value: Arc::new(typed),
+            refreshed_at: candidate.observed_at,
+            cursor,
+        });
+        Ok(BusinessSnapshotAcceptance::Activated)
+    }
+
+    /// Captures one immutable value and version for the entire business request.
+    pub fn capture_request(&self) -> anyhow::Result<BusinessRequestSnapshot<T>> {
+        let active = self
+            .active
+            .read()
+            .map_err(|_| anyhow::anyhow!("business snapshot state is unavailable"))?;
+        let active = active
+            .as_ref()
+            .context("business snapshot has no admitted active revision")?;
+        ensure!(
+            active.refreshed_at.elapsed() <= self.authorization.max_stale,
+            "business snapshot source proof has expired"
+        );
+        Ok(BusinessRequestSnapshot {
+            object: self.authorization.object.clone(),
+            source: self.authorization.source.clone(),
+            revision: active.revision,
+            value: Arc::clone(&active.value),
+        })
+    }
+}
+
+fn fingerprint(value: &Value) -> [u8; 32] {
+    fn write(value: &Value, digest: &mut Sha256) {
+        match value {
+            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+                digest.update(serde_json::to_vec(value).expect("JSON value serializes"));
+            }
+            Value::Array(items) => {
+                digest.update(b"[");
+                for item in items {
+                    write(item, digest);
+                    digest.update(b",");
+                }
+                digest.update(b"]");
+            }
+            Value::Object(object) => {
+                digest.update(b"{");
+                let mut keys = object.keys().collect::<Vec<_>>();
+                keys.sort();
+                for key in keys {
+                    digest.update(serde_json::to_vec(key).expect("JSON key serializes"));
+                    digest.update(b":");
+                    write(&object[key], digest);
+                    digest.update(b",");
+                }
+                digest.update(b"}");
+            }
+        }
+    }
+
+    let mut digest = Sha256::new();
+    write(value, &mut digest);
+    digest.finalize().into()
+}
+
+/// One request-pinned version; later publications cannot alter its value.
+pub struct BusinessRequestSnapshot<T> {
+    object: BusinessSnapshotObjectId,
+    source: BusinessSnapshotSourceId,
+    revision: u64,
+    value: Arc<T>,
+}
+
+impl<T> BusinessRequestSnapshot<T> {
+    pub fn object(&self) -> &BusinessSnapshotObjectId {
+        &self.object
+    }
+
+    pub fn source(&self) -> &BusinessSnapshotSourceId {
+        &self.source
+    }
+
+    pub const fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn value(&self) -> &T {
+        &self.value
+    }
+}
+
+impl<T> fmt::Debug for BusinessRequestSnapshot<T> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BusinessRequestSnapshot")
+            .field("object", &self.object)
+            .field("source", &self.source)
+            .field("revision", &self.revision)
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceDocument {
+    schema: String,
+    revision: u64,
+    object: BusinessSnapshotObjectId,
+    value: Value,
+}
+
+/// Bounded regular-file input. Path admission and filesystem confinement remain Host duties.
+pub struct FileBusinessSnapshotSource {
+    path: PathBuf,
+    source: BusinessSnapshotSourceId,
+}
+
+impl FileBusinessSnapshotSource {
+    pub fn new(path: impl Into<PathBuf>, source: BusinessSnapshotSourceId) -> Self {
+        Self {
+            path: path.into(),
+            source,
+        }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn read(&self) -> anyhow::Result<VersionedBusinessSnapshot> {
+        ensure!(
+            self.path.is_absolute(),
+            "business snapshot file path must be absolute"
+        );
+        let file = open_regular_snapshot(&self.path)?;
+        let metadata = file.metadata().context("inspect business snapshot file")?;
+        ensure!(
+            metadata.len() <= MAX_DOCUMENT_BYTES,
+            "business snapshot file exceeds its bound"
+        );
+        let mut bytes = Vec::new();
+        file.take(MAX_DOCUMENT_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .context("read business snapshot file")?;
+        ensure!(
+            u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_DOCUMENT_BYTES,
+            "business snapshot file exceeds its bound"
+        );
+        let document: SourceDocument = serde_json::from_slice(&bytes)
+            .map_err(|_| anyhow::anyhow!("business snapshot file is invalid JSON"))?;
+        snapshot_from_document(self.source.clone(), document)
+    }
+}
+
+fn snapshot_from_document(
+    source: BusinessSnapshotSourceId,
+    document: SourceDocument,
+) -> anyhow::Result<VersionedBusinessSnapshot> {
+    ensure!(
+        document.schema == DOCUMENT_SCHEMA,
+        "business snapshot document schema is unsupported"
+    );
+    VersionedBusinessSnapshot::new(source, document.object, document.revision, document.value)
+}

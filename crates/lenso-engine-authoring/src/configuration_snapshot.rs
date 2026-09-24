@@ -349,7 +349,7 @@ fn snapshot_from_document(
 }
 
 #[cfg(unix)]
-fn open_regular_snapshot(path: &Path) -> anyhow::Result<fs::File> {
+pub(crate) fn open_regular_snapshot(path: &Path) -> anyhow::Result<fs::File> {
     use rustix::fs::{Mode, OFlags};
 
     let descriptor = rustix::fs::open(
@@ -591,7 +591,7 @@ impl PluginConfigurationSnapshotPoll {
     }
 }
 
-fn validate_etag(etag: &str) -> anyhow::Result<()> {
+pub(crate) fn validate_etag(etag: &str) -> anyhow::Result<()> {
     ensure!(
         !etag.is_empty() && etag.len() <= 512 && !etag.chars().any(char::is_control),
         "configuration snapshot ETag is invalid"
@@ -610,7 +610,7 @@ fn validate_etag(etag: &str) -> anyhow::Result<()> {
 }
 
 #[cfg(windows)]
-fn open_regular_snapshot(path: &Path) -> anyhow::Result<fs::File> {
+pub(crate) fn open_regular_snapshot(path: &Path) -> anyhow::Result<fs::File> {
     use std::os::windows::fs::OpenOptionsExt as _;
 
     // FILE_FLAG_OPEN_REPARSE_POINT makes the handle name the link itself

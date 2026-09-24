@@ -22,7 +22,7 @@ pub struct SlotAdmission {
 }
 
 /// A local, bounded JSON Schema profile. No retrievers, regexes, or format callbacks.
-pub(super) fn compile_ceiling(schema: &Value) -> anyhow::Result<jsonschema::Validator> {
+pub(crate) fn compile_ceiling(schema: &Value) -> anyhow::Result<jsonschema::Validator> {
     check_schema(schema, 0, &mut 0)?;
     jsonschema::draft202012::options()
         .build(schema)
