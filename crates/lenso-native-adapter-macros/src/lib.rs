@@ -1033,21 +1033,45 @@ fn expand_provides(
                         detail: "synchronous Host initialization requires struct authoring v1".into(),
                     });
                 }
-                    let mut value = super::#plugin_ident::__lenso_construct(context)?;
-                    initialize(&mut value)?;
-                    let plugin = ::std::rc::Rc::new(value);
-                    let lifecycle = super::#lifecycle { plugin: plugin.clone() };
-                    let plugin = #sdk::__private::PluginObject::from_value(plugin);
+                let mut value = super::#plugin_ident::__lenso_construct(context)?;
+                initialize(&mut value)?;
+                let plugin = ::std::rc::Rc::new(value);
+                let lifecycle = super::#lifecycle { plugin: plugin.clone() };
+                let plugin = #sdk::__private::PluginObject::from_value(plugin);
+                let mut request_endpoints = Vec::new();
+                let mut stream_endpoints = Vec::new();
+                let mut event_endpoints = Vec::new();
+                #(#endpoint_contributions)*
+                Ok(#sdk::__private::NativePluginInstance::with_all_endpoints(
+                    request_endpoints,
+                    stream_endpoints,
+                    event_endpoints,
+                    lifecycle,
+                ))
+            }
+
+            pub(super) fn instantiate_with_host_binding(
+                context: #sdk::__private::NativePluginFactoryContext<'_>,
+                initialize: ::std::rc::Rc<dyn Fn(&mut super::#plugin_ident) -> Result<(), #sdk::__private::RuntimeFailure>>,
+            ) -> Result<#sdk::__private::NativePluginInstance, #sdk::__private::RuntimeFailure> {
+                if super::#plugin_ident::__LENSO_AUTHORING_VERSION == 2 {
+                    let plugin = #sdk::__private::PluginObject::<super::#plugin_ident>::empty();
+                    let lifecycle = #sdk::__private::CompleteObjectLifecycle::linked(
+                        plugin.clone(),
+                        context.configuration(),
+                    )?.with_initialize(move |value| initialize(value));
                     let mut request_endpoints = Vec::new();
                     let mut stream_endpoints = Vec::new();
                     let mut event_endpoints = Vec::new();
-                    #(#endpoint_contributions)*
-                    Ok(#sdk::__private::NativePluginInstance::with_all_endpoints(
+                    #(#v2_endpoint_contributions)*
+                    return Ok(#sdk::__private::NativePluginInstance::with_all_endpoints(
                         request_endpoints,
                         stream_endpoints,
                         event_endpoints,
                         lifecycle,
-                    ))
+                    ));
+                }
+                instantiate_with(context, initialize.as_ref())
             }
 
             pub(super) fn factory() -> ::std::rc::Rc<dyn #sdk::__private::NativePluginFactory> {
@@ -1072,6 +1096,12 @@ fn expand_provides(
                 initialize: &dyn Fn(&mut Self) -> Result<(), #sdk::__private::RuntimeFailure>,
             ) -> Result<#sdk::__private::NativePluginInstance, #sdk::__private::RuntimeFailure> {
                 #generated_plugin::instantiate_with(context, initialize)
+            }
+            fn instantiate_with_host_binding(
+                context: #sdk::__private::NativePluginFactoryContext<'_>,
+                initialize: ::std::rc::Rc<dyn Fn(&mut Self) -> Result<(), #sdk::__private::RuntimeFailure>>,
+            ) -> Result<#sdk::__private::NativePluginInstance, #sdk::__private::RuntimeFailure> {
+                #generated_plugin::instantiate_with_host_binding(context, initialize)
             }
         }
 
@@ -1390,6 +1420,24 @@ fn expand_plugin_struct(
                     Ok(#sdk::__private::NativePluginInstance::with_lifecycle(Vec::new(), lifecycle))
                 }
 
+                pub(super) fn instantiate_with_host_binding(
+                    context: #sdk::__private::NativePluginFactoryContext<'_>,
+                    initialize: ::std::rc::Rc<dyn Fn(&mut super::#name) -> Result<(), #sdk::__private::RuntimeFailure>>,
+                ) -> Result<#sdk::__private::NativePluginInstance, #sdk::__private::RuntimeFailure> {
+                    if super::#name::__LENSO_AUTHORING_VERSION == 2 {
+                        let object = #sdk::__private::PluginObject::<super::#name>::empty();
+                        let lifecycle = #sdk::__private::CompleteObjectLifecycle::linked(
+                            object,
+                            context.configuration(),
+                        )?.with_initialize(move |value| initialize(value));
+                        return Ok(#sdk::__private::NativePluginInstance::with_lifecycle(
+                            Vec::new(),
+                            lifecycle,
+                        ));
+                    }
+                    instantiate_with(context, initialize.as_ref())
+                }
+
                 pub(super) fn factory() -> ::std::rc::Rc<dyn #sdk::__private::NativePluginFactory> {
                     ::std::rc::Rc::new(Factory)
                 }
@@ -1412,6 +1460,12 @@ fn expand_plugin_struct(
                     initialize: &dyn Fn(&mut Self) -> Result<(), #sdk::__private::RuntimeFailure>,
                 ) -> Result<#sdk::__private::NativePluginInstance, #sdk::__private::RuntimeFailure> {
                     #generated_plugin::instantiate_with(context, initialize)
+                }
+                fn instantiate_with_host_binding(
+                    context: #sdk::__private::NativePluginFactoryContext<'_>,
+                    initialize: ::std::rc::Rc<dyn Fn(&mut Self) -> Result<(), #sdk::__private::RuntimeFailure>>,
+                ) -> Result<#sdk::__private::NativePluginInstance, #sdk::__private::RuntimeFailure> {
+                    #generated_plugin::instantiate_with_host_binding(context, initialize)
                 }
             }
 

@@ -291,6 +291,14 @@ pub trait NativePluginDefinition: Sized + 'static {
         context: NativePluginFactoryContext<'_>,
         initialize: &dyn Fn(&mut Self) -> Result<(), RuntimeFailure>,
     ) -> Result<NativePluginInstance, RuntimeFailure>;
+
+    /// Keeps a Host binding alive through asynchronous complete-object construction.
+    fn instantiate_with_host_binding(
+        context: NativePluginFactoryContext<'_>,
+        initialize: Rc<dyn Fn(&mut Self) -> Result<(), RuntimeFailure>>,
+    ) -> Result<NativePluginInstance, RuntimeFailure> {
+        Self::instantiate_with(context, initialize.as_ref())
+    }
 }
 
 /// Explicitly retains one generated Plugin without referring to generated symbols.
@@ -300,7 +308,7 @@ pub fn link_plugin<P: NativePluginDefinition>() {
 
 /// A generated Plugin factory with event-owned private Host bindings.
 pub struct ConfiguredPluginFactory<P, F> {
-    initialize: F,
+    initialize: Rc<F>,
     plugin: std::marker::PhantomData<fn() -> P>,
 }
 
@@ -317,7 +325,7 @@ impl<P: NativePluginDefinition, F: Fn(&mut P) -> Result<(), RuntimeFailure> + 's
 {
     pub fn new(initialize: F) -> Self {
         Self {
-            initialize,
+            initialize: Rc::new(initialize),
             plugin: std::marker::PhantomData,
         }
     }
@@ -339,7 +347,7 @@ impl<P: NativePluginDefinition, F: Fn(&mut P) -> Result<(), RuntimeFailure> + 's
         &self,
         context: NativePluginFactoryContext<'_>,
     ) -> Result<NativePluginInstance, RuntimeFailure> {
-        P::instantiate_with(context, &self.initialize)
+        P::instantiate_with_host_binding(context, self.initialize.clone())
     }
 }
 

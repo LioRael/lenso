@@ -126,6 +126,7 @@ impl fmt::Debug for LinkedPluginConstruction {
 inventory::collect!(LinkedPluginConstruction);
 
 type Constructor<T> = Rc<dyn Fn(ConstructionContext) -> ConstructionFuture<T>>;
+type Initializer<T> = Rc<dyn Fn(&mut T) -> Result<(), RuntimeFailure>>;
 type Stopper<T> = Rc<dyn Fn(Rc<T>, LifecycleContext) -> PluginFuture>;
 
 /// Shared reference to the one object owned by a Plugin instance generation.
@@ -190,6 +191,7 @@ pub struct CompleteObjectLifecycle<T> {
     object: PluginObject<T>,
     configuration: String,
     constructor: Constructor<T>,
+    initializer: Option<Initializer<T>>,
     stopper: Option<Stopper<T>>,
     construction_started: Cell<bool>,
     stop_attempted: Cell<bool>,
@@ -206,6 +208,7 @@ impl<T> CompleteObjectLifecycle<T> {
             object,
             configuration: configuration.into(),
             constructor: Rc::new(constructor),
+            initializer: None,
             stopper: None,
             construction_started: Cell::new(false),
             stop_attempted: Cell::new(false),
@@ -281,6 +284,17 @@ impl<T> CompleteObjectLifecycle<T> {
         self.stopper = Some(Rc::new(stopper));
         self
     }
+
+    /// Applies one Host-private binding to the complete object before it is
+    /// published to providers or declared ready.
+    #[must_use]
+    pub fn with_initialize(
+        mut self,
+        initialize: impl Fn(&mut T) -> Result<(), RuntimeFailure> + 'static,
+    ) -> Self {
+        self.initializer = Some(Rc::new(initialize));
+        self
+    }
 }
 
 impl<T> fmt::Debug for CompleteObjectLifecycle<T> {
@@ -303,6 +317,7 @@ impl<T: 'static> PluginLifecycle for CompleteObjectLifecycle<T> {
             )));
         }
         let object = self.object.clone();
+        let initializer = self.initializer.clone();
         let construction = (self.constructor)(ConstructionContext::new(
             self.configuration.clone(),
             &context,
@@ -312,7 +327,15 @@ impl<T: 'static> PluginLifecycle for CompleteObjectLifecycle<T> {
             if cancellation.is_cancelled() {
                 return Err(RuntimeFailure::AdmissionClosed);
             }
-            let value = construction.await?;
+            let mut value = construction.await?;
+            if let Some(initialize) = initializer {
+                let unique =
+                    Rc::get_mut(&mut value).ok_or_else(|| RuntimeFailure::InvalidResolvedPlan {
+                        detail: "Host binding requires an exclusively constructed Plugin object"
+                            .to_owned(),
+                    })?;
+                initialize(unique)?;
+            }
             object.install(value)?;
             if cancellation.is_cancelled() {
                 return Err(RuntimeFailure::AdmissionClosed);

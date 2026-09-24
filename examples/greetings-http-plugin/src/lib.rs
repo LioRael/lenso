@@ -27,14 +27,61 @@ struct GreetingPath {
 struct Greeting {
     id: String,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    policy_revision: Option<u64>,
+}
+
+/// Plugin-owned shape for one Host-authorized business object.
+#[derive(Clone, Debug, Deserialize, lenso::PluginConfig)]
+#[serde(deny_unknown_fields)]
+pub struct GreetingPolicy {
+    pub exclamation_count: u8,
+}
+
+/// A request-pinned policy value; another Host publication cannot alter it.
+pub struct PinnedGreetingPolicy {
+    pub revision: u64,
+    pub value: GreetingPolicy,
+}
+
+impl std::fmt::Debug for PinnedGreetingPolicy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PinnedGreetingPolicy")
+            .field("revision", &self.revision)
+            .field("value", &"<redacted>")
+            .finish()
+    }
+}
+
+/// The Host supplies this private binding only when it selects a dynamic source.
+pub trait GreetingPolicySource {
+    fn capture(&self) -> Result<PinnedGreetingPolicy, ()>;
 }
 
 #[lenso::plugin]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct GreetingsHttp {
     // `HttpEndpoint` dispatch clones the provider; `Rc` keeps one store.
     next_id: Rc<Cell<u64>>,
     greetings: Rc<RefCell<BTreeMap<String, Greeting>>>,
+    policy: Option<Rc<dyn GreetingPolicySource>>,
+}
+
+impl std::fmt::Debug for GreetingsHttp {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GreetingsHttp")
+            .field("business_policy_bound", &self.policy.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl GreetingsHttp {
+    /// Binds one Host-owned authority without changing the resolved App Plan.
+    pub fn bind_business_policy(&mut self, source: Rc<dyn GreetingPolicySource>) {
+        self.policy = Some(source);
+    }
 }
 
 #[endpoint]
@@ -45,6 +92,18 @@ impl GreetingsHttp {
         &self,
         Json(input): Json<CreateGreeting>,
     ) -> Result<(StatusCode, Json<Greeting>), Problem> {
+        let policy = self
+            .policy
+            .as_ref()
+            .map(|source| source.capture())
+            .transpose()
+            .map_err(|()| {
+                Problem::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "business_policy_unavailable",
+                    "the authorized business policy is unavailable",
+                )
+            })?;
         let name = input.name.trim();
         if name.is_empty() {
             return Err(Problem::new(
@@ -58,7 +117,15 @@ impl GreetingsHttp {
         self.next_id.set(sequence);
         let greeting = Greeting {
             id: format!("greeting-{sequence}"),
-            message: format!("Hello, {name}!"),
+            message: format!(
+                "Hello, {name}{}",
+                "!".repeat(
+                    policy
+                        .as_ref()
+                        .map_or(1, |policy| usize::from(policy.value.exclamation_count))
+                )
+            ),
+            policy_revision: policy.map(|policy| policy.revision),
         };
         self.greetings
             .borrow_mut()

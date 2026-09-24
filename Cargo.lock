@@ -2837,8 +2837,14 @@ dependencies = [
 name = "lenso-web-greetings-app-example"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "lenso-engine-authoring",
  "lenso-web-greetings-plugin-example",
  "lenso-web-host",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
 ]
 

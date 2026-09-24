@@ -44,7 +44,9 @@ use lenso_kernel::{
     CancellationToken, ExecutionAdapter, ExecutionAdapterCatalog, ExecutionAdapterCatalogError,
     Kernel, NativeApp, RuntimeFailure, ShutdownOutcome,
 };
-use lenso_native_adapter::{NativePluginDefinition, NativePluginFactory, NativePluginRegistry};
+use lenso_native_adapter::{
+    ConfiguredPluginFactory, NativePluginDefinition, NativePluginFactory, NativePluginRegistry,
+};
 use lenso_runner::{
     CrossLaneTransferCatalog, ReplicatedNativeApp, ReplicatedRunnerError, TokioDriver,
 };
@@ -172,8 +174,8 @@ pub struct NativeWebHost {
 
 struct FactoryInstaller {
     package_id: &'static str,
-    descriptor: PluginDescriptor,
-    install: Box<dyn FnOnce(NativePluginRegistry) -> NativePluginRegistry>,
+    descriptor: Option<PluginDescriptor>,
+    install: Box<dyn FnOnce(NativePluginRegistry) -> Result<NativePluginRegistry, RuntimeFailure>>,
 }
 
 struct EventHostComponents {
@@ -341,10 +343,30 @@ impl NativeWebHost {
         let package_id = factory.package_id();
         self.factory_installers.push(FactoryInstaller {
             package_id,
-            descriptor,
-            install: Box::new(move |registry| registry.with_factory(factory)),
+            descriptor: Some(descriptor),
+            install: Box::new(move |registry| Ok(registry.with_factory(factory))),
         });
         self.push_instance(package_id, INSTANCE_KEY, empty_configuration(), None)
+    }
+
+    /// Links a generated Plugin and replaces its exact native factory with one
+    /// explicit Host binding. The binding is private to this Host, not a Plugin
+    /// configuration value or an Adapter-wide service locator.
+    #[must_use]
+    pub fn configured_plugin<P, F>(mut self, initialize: F) -> Self
+    where
+        P: NativePluginDefinition,
+        F: Fn(&mut P) -> Result<(), RuntimeFailure> + 'static,
+    {
+        P::link();
+        self.factory_installers.push(FactoryInstaller {
+            package_id: P::PACKAGE_ID,
+            descriptor: None,
+            install: Box::new(move |registry| {
+                registry.with_factory_override(ConfiguredPluginFactory::<P, _>::new(initialize))
+            }),
+        });
+        self.push_instance(P::PACKAGE_ID, INSTANCE_KEY, empty_configuration(), None)
     }
 
     /// Admits one extra Plugin Descriptor without enabling an Instance.
@@ -524,7 +546,7 @@ impl NativeWebHost {
         let extra_releases = self
             .factory_installers
             .iter()
-            .map(|installer| HostPluginRelease::new(installer.descriptor.clone()))
+            .filter_map(|installer| installer.descriptor.clone().map(HostPluginRelease::new))
             .chain(self.extra_releases.iter().cloned())
             .collect::<Vec<_>>();
         resolve_web_plan(
@@ -550,7 +572,7 @@ impl NativeWebHost {
         }
         let mut registry = NativePluginRegistry::new().with_factory(ingress.clone());
         for installer in self.factory_installers {
-            registry = (installer.install)(registry);
+            registry = (installer.install)(registry).map_err(WebHostError::Runtime)?;
         }
         Ok(EventHostComponents {
             plan,
@@ -576,7 +598,7 @@ impl NativeWebHost {
         }
         let mut registry = NativePluginRegistry::new().with_factory(ingress.clone());
         for installer in self.factory_installers {
-            registry = (installer.install)(registry);
+            registry = (installer.install)(registry).map_err(WebHostError::Runtime)?;
         }
         let registry = registry.with_linked_factories();
         let mut catalog = ExecutionAdapterCatalog::single(registry);
