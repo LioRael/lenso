@@ -154,6 +154,18 @@ async fn assert_policy_boundaries(app: &lenso_kernel::NativeApp, origin: &str) {
         .unwrap()
         .unwrap_err();
     assert_eq!(oversized, SendError::ResponseTooLarge);
+
+    let head = app
+        .invoke::<Client>(
+            "caller",
+            SEND_OPERATION,
+            request("HEAD", &format!("{origin}/large"), &[], b""),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(head.status, 200);
+    assert!(head.body.is_empty(), "HEAD transfers no response body");
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -373,6 +385,12 @@ impl lenso_http_egress_plugin::HttpEventTransport for RecordingEventTransport {
             if input.request.uri().path() == "/large" {
                 return Ok(http::Response::new(bytes::Bytes::from(vec![0; 33])));
             }
+            if input.request.uri().path() == "/head-metadata" {
+                return Ok(http::Response::builder()
+                    .header("content-length", "128")
+                    .body(bytes::Bytes::new())
+                    .unwrap());
+            }
             let status = if input.request.uri().path() == "/redirect" {
                 307
             } else {
@@ -487,6 +505,17 @@ async fn event_egress_shares_exact_origin_and_response_policy() {
                 2,
                 "no implicit redirect or retry"
             );
+            let head = app
+                .invoke::<Client>(
+                    "caller",
+                    SEND_OPERATION,
+                    request("HEAD", "https://allowed.test/head-metadata", &[], b""),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(head.status, 200);
+            assert!(head.body.is_empty());
             assert_eq!(
                 app.invoke::<Client>(
                     "caller",
