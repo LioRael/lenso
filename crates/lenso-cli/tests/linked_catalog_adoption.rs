@@ -530,6 +530,210 @@ fn adopt_next_exact_version(
     assert!(root.join("plugins/example.web/default.toml").exists());
 }
 
+fn replace_next_exact_version(
+    cli: &str,
+    fixture_root: &std::path::Path,
+    first_snapshot: &std::path::Path,
+    first_archive: &std::path::Path,
+    trust_path: &std::path::Path,
+    key: &SigningKey,
+    now: u64,
+) {
+    let root = fixture_root.join("replacement-app");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    let first = Command::new(cli)
+        .args(["app", "add", "example.web@0.4.5", "--root"])
+        .arg(&root)
+        .arg("--linked-snapshot")
+        .arg(first_snapshot)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--crate")
+        .arg(first_archive)
+        .output()
+        .unwrap();
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let intent = root.join("plugins/example.web/default.toml");
+    fs::write(&intent, b"# App-owned custom intent\n").unwrap();
+    let old = root.join("vendor/lenso/example.web/0.4.5");
+    let old_lock = fs::read(old.join(".lenso-linked-source.json")).unwrap();
+    let unsigned = Command::new(cli)
+        .args(["app", "add", "example.web@0.4.6", "--replace", "--root"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(!unsigned.status.success());
+    assert!(
+        String::from_utf8_lossy(&unsigned.stderr)
+            .contains("--replace requires an exact signed linked Cargo source")
+    );
+
+    if std::env::var_os("LENSO_LINKED_BUILD_PROOF").is_some() {
+        let built = Command::new(cli)
+            .args(["app", "build", "--root"])
+            .arg(&root)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        let started = Command::new(cli)
+            .args(["app", "start", "--from"])
+            .arg(root.join("dist"))
+            .arg("--check")
+            .output()
+            .unwrap();
+        assert!(
+            started.status.success(),
+            "{}",
+            String::from_utf8_lossy(&started.stderr)
+        );
+    }
+    let dist_before = root
+        .join("dist/.lenso/host-build.json")
+        .is_file()
+        .then(|| fs::read(root.join("dist/.lenso/host-build.json")).unwrap());
+
+    let bytes = crate_archive("example-web-plugin", "0.4.6", "example.web");
+    let archive = fixture_root.join("replacement-0.4.6.crate");
+    fs::write(&archive, &bytes).unwrap();
+    let release = LinkedCargoRelease {
+        plugin_id: "example.web".into(),
+        version: "0.4.6".into(),
+        publisher_id: "example".into(),
+        title: "Web".into(),
+        summary: "Native Web Plugin".into(),
+        source_url: "https://example.com/web".into(),
+        source_revision: "b".repeat(40),
+        license: "MIT".into(),
+        package: "example-web-plugin".into(),
+        registry_url: "https://crates.io".into(),
+        crate_digest: lenso_plugin_catalog::digest(&bytes),
+        integration: LinkedCargoIntegration::LinkedPlugin,
+        targets: vec![lenso_engine_authoring::native_host_target().into()],
+        availability: Availability::Listed,
+        documentation: Vec::new(),
+    };
+    let snapshot =
+        LinkedCargoSnapshot::new("test-catalog".into(), 2, now - 1, now + 3600, vec![release]);
+    let snapshot_path = fixture_root.join("replacement-snapshot-0.4.6.json");
+    fs::write(&snapshot_path, sign(&snapshot, "test-key", key).unwrap()).unwrap();
+    let add = |archive_path: &std::path::Path, replace: bool| {
+        let mut command = Command::new(cli);
+        command
+            .args(["app", "add", "example.web@0.4.6", "--root"])
+            .arg(&root);
+        if replace {
+            command.arg("--replace");
+        }
+        command
+            .arg("--linked-snapshot")
+            .arg(&snapshot_path)
+            .arg("--trust")
+            .arg(trust_path)
+            .arg("--crate")
+            .arg(archive_path)
+            .output()
+            .unwrap()
+    };
+    let without_flag = add(&archive, false);
+    assert!(!without_flag.status.success());
+    assert!(String::from_utf8_lossy(&without_flag.stderr).contains("--replace"));
+    let changed = fixture_root.join("replacement-changed.crate");
+    fs::write(&changed, b"not the signed archive").unwrap();
+    let wrong_archive = add(&changed, true);
+    assert!(!wrong_archive.status.success());
+    assert!(!root.join("vendor/lenso/example.web/0.4.6").exists());
+
+    let old_source_file = old.join("src/lib.rs");
+    let old_source = fs::read(&old_source_file).unwrap();
+    fs::write(&old_source_file, b"user edited old source\n").unwrap();
+    let edited_old = add(&archive, true);
+    assert!(!edited_old.status.success());
+    assert!(!root.join("vendor/lenso/example.web/0.4.6").exists());
+    fs::write(&old_source_file, old_source).unwrap();
+
+    let replaced = add(&archive, true);
+    assert!(
+        replaced.status.success(),
+        "{}",
+        String::from_utf8_lossy(&replaced.stderr)
+    );
+    let sources: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join("lenso.toml")).unwrap()).unwrap();
+    assert_eq!(sources["plugin_sources"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        sources["plugin_sources"][0].as_str(),
+        Some("vendor/lenso/example.web/0.4.6")
+    );
+    assert_eq!(fs::read(&intent).unwrap(), b"# App-owned custom intent\n");
+    assert_eq!(
+        fs::read(old.join(".lenso-linked-source.json")).unwrap(),
+        old_lock
+    );
+    assert!(
+        root.join("vendor/lenso/example.web/0.4.6/.lenso-linked-source.json")
+            .exists()
+    );
+    if let Some(before) = dist_before {
+        assert_eq!(
+            fs::read(root.join("dist/.lenso/host-build.json")).unwrap(),
+            before
+        );
+        let new_source = root.join("vendor/lenso/example.web/0.4.6/src/lib.rs");
+        let original = fs::read(&new_source).unwrap();
+        fs::write(&new_source, b"invalid new source\n").unwrap();
+        let failed_build = Command::new(cli)
+            .args(["app", "build", "--root"])
+            .arg(&root)
+            .output()
+            .unwrap();
+        assert!(!failed_build.status.success());
+        let old_host = Command::new(cli)
+            .args(["app", "start", "--from"])
+            .arg(root.join("dist"))
+            .arg("--check")
+            .output()
+            .unwrap();
+        assert!(
+            old_host.status.success(),
+            "{}",
+            String::from_utf8_lossy(&old_host.stderr)
+        );
+        fs::write(new_source, original).unwrap();
+    }
+    let stale = Command::new(cli)
+        .args(["app", "add", "example.web@0.4.5", "--replace", "--root"])
+        .arg(&root)
+        .arg("--linked-snapshot")
+        .arg(first_snapshot)
+        .arg("--trust")
+        .arg(trust_path)
+        .arg("--crate")
+        .arg(first_archive)
+        .output()
+        .unwrap();
+    assert!(!stale.status.success());
+    assert!(
+        String::from_utf8_lossy(&stale.stderr).contains("catalog rollback rejected"),
+        "{}",
+        String::from_utf8_lossy(&stale.stderr)
+    );
+    assert_eq!(fs::read(&intent).unwrap(), b"# App-owned custom intent\n");
+}
+
 fn assert_host_provided_rejected(
     cli: &str,
     temp: &std::path::Path,
@@ -1145,6 +1349,60 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
     unadopt_exact_source(cli, &root);
     prove_removed_build_when_requested(cli, &root);
     adopt_next_exact_version(cli, &root, temp.path(), &trust_path, &key, now, false);
+}
+
+#[test]
+fn linked_catalog_explicit_replacement_preserves_previous_generation() {
+    let temp = tempfile::tempdir().unwrap();
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let bytes = crate_archive("example-web-plugin", "0.4.5", "example.web");
+    let archive = temp.path().join("replacement-old.crate");
+    fs::write(&archive, &bytes).unwrap();
+    let key = SigningKey::from_bytes(&[62; 32]);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let release = LinkedCargoRelease {
+        plugin_id: "example.web".into(),
+        version: "0.4.5".into(),
+        publisher_id: "example".into(),
+        title: "Web".into(),
+        summary: "Native Web Plugin".into(),
+        source_url: "https://example.com/web".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        package: "example-web-plugin".into(),
+        registry_url: "https://crates.io".into(),
+        crate_digest: lenso_plugin_catalog::digest(&bytes),
+        integration: LinkedCargoIntegration::LinkedPlugin,
+        targets: vec![lenso_engine_authoring::native_host_target().into()],
+        availability: Availability::Listed,
+        documentation: Vec::new(),
+    };
+    let snapshot =
+        LinkedCargoSnapshot::new("test-catalog".into(), 1, now - 1, now + 3600, vec![release]);
+    let snapshot_path = temp.path().join("replacement-old-snapshot.json");
+    fs::write(&snapshot_path, sign(&snapshot, "test-key", &key).unwrap()).unwrap();
+    let trust_path = temp.path().join("replacement-trust.json");
+    fs::write(
+        &trust_path,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id": "test-catalog", "key_id": "test-key",
+            "public_key_hex": hex::encode(key.verifying_key().to_bytes())
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    replace_next_exact_version(
+        cli,
+        temp.path(),
+        &snapshot_path,
+        &archive,
+        &trust_path,
+        &key,
+        now,
+    );
 }
 
 #[test]

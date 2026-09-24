@@ -170,6 +170,18 @@ This is local replay protection, not a live revocation feed: an App that has
 not received a newer signed snapshot cannot know about it. Preserve the
 ignored `.lenso/` state when moving an App if replay history must carry over;
 an App owner who can remove that state can reset its local history.
+To switch an already selected signed linked Cargo Plugin to another exact
+version, use the same signed `app add` inputs with `--replace`. The command
+verifies the new signed `.crate` or Bundle before changing App source selection,
+refuses an edited old source or conflicting new source, and changes only that
+Plugin's `plugin_sources` entry. It preserves the old vendor source, customized
+Plugin Root, and existing `dist` for recovery. A failed selection rolls back
+the App config and workspace exclusion when their bytes are still the CLI's;
+an already published but unselected new source may remain for an exact retry.
+`--replace` never bypasses the signed catalog checkpoint or accepts a local
+unsigned Plugin as the prior selection. It is a source-App edit, not an atomic
+runtime upgrade or data migration: the previous built Host remains runnable
+until a later `app build` succeeds and its new distribution is activated.
 On POSIX systems the checkpoint path is opened relative to locked directory
 descriptors without following symlinks. The Windows fallback rejects existing
 symlink paths but does not defend against a hostile concurrent filesystem

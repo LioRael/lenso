@@ -20,6 +20,7 @@ use super::AddArgs;
 
 mod adoption;
 mod checkpoint;
+mod replacement;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -428,7 +429,8 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         &Path::new("vendor/lenso").join(plugin_id).join(version),
     )?;
     let destination = parent.join(version);
-    preflight_selected_identity(root, plugin_id, version, &destination)?;
+    let previous =
+        preflight_selected_identity(root, plugin_id, version, &destination, args.replace)?;
     let stage = tempfile::Builder::new()
         .prefix(".linked-cargo-")
         .tempdir_in(root)?;
@@ -447,8 +449,22 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
                 .any(|entry| entry.runtime == "native-linked"),
         "linked Cargo source does not match an adoptable native Plugin"
     );
-    let prepared =
-        adoption::PreparedLinkedAdoption::new_locked(root, &destination, plugin_id, app_lock)?;
+    let prepared = if let Some(previous) = previous {
+        PreparedSelection::Replacement(replacement::PreparedLinkedReplacement::new_locked(
+            root,
+            &previous,
+            &destination,
+            plugin_id,
+            app_lock,
+        )?)
+    } else {
+        PreparedSelection::Adoption(adoption::PreparedLinkedAdoption::new_locked(
+            root,
+            &destination,
+            plugin_id,
+            app_lock,
+        )?)
+    };
     let lock = SourceLock {
         schema_version: 1,
         plugin_id: release.plugin_id.clone(),
@@ -466,7 +482,7 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     prepared
         .commit(stage.path())
         .with_context(|| format!(
-            "linked Cargo adoption may be incomplete; retry the same exact signed app add input after resolving any filesystem conflict; source={}, cargo={}, config={}, intent={}",
+            "linked Cargo source selection failed; inspect the error and retry the same exact signed app add input after resolving any filesystem conflict; source={}, cargo={}, config={}, intent={}",
             destination.display(),
             root.join("Cargo.toml").display(),
             root.join("lenso.toml").display(),
@@ -482,12 +498,34 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+enum PreparedSelection {
+    Adoption(adoption::PreparedLinkedAdoption),
+    Replacement(replacement::PreparedLinkedReplacement),
+}
+
+impl PreparedSelection {
+    fn workspace_exclude_owned(&self) -> bool {
+        match self {
+            Self::Adoption(prepared) => prepared.workspace_exclude_owned(),
+            Self::Replacement(prepared) => prepared.workspace_exclude_owned(),
+        }
+    }
+
+    fn commit(self, source_stage: &Path) -> anyhow::Result<()> {
+        match self {
+            Self::Adoption(prepared) => prepared.commit(source_stage),
+            Self::Replacement(prepared) => prepared.commit(source_stage),
+        }
+    }
+}
+
 fn preflight_selected_identity(
     root: &Path,
     plugin_id: &str,
     version: &str,
     destination: &Path,
-) -> anyhow::Result<()> {
+    replace: bool,
+) -> anyhow::Result<Option<PathBuf>> {
     let current = lenso_app_authoring::discovery::discover(root)
         .context("inspect current App Plugin selection before linked Cargo adoption")?;
     let Some(selected) = current
@@ -495,18 +533,30 @@ fn preflight_selected_identity(
         .iter()
         .find(|candidate| candidate.plugin_id == plugin_id)
     else {
-        return Ok(());
+        ensure!(
+            !replace,
+            "--replace requires an already selected signed linked Cargo Plugin"
+        );
+        return Ok(None);
     };
     if selected.project == destination && selected.release_version == version {
-        return Ok(());
+        ensure!(
+            !replace,
+            "--replace requires a different exact Plugin version"
+        );
+        return Ok(None);
     }
     let signed_source = root
         .join("vendor/lenso")
         .join(plugin_id)
         .join(&selected.release_version);
     if selected.project == signed_source {
+        if replace {
+            verify_sources(root, std::slice::from_ref(selected))?;
+            return Ok(Some(signed_source));
+        }
         bail!(
-            "App already selects {plugin_id}@{} from {}; run `lenso app unadopt {plugin_id}@{} --root {}` before adding {plugin_id}@{version}; automatic replacement is not supported",
+            "App already selects {plugin_id}@{} from {}; run `lenso app add {plugin_id}@{version} --replace` with the exact signed inputs, or `lenso app unadopt {plugin_id}@{} --root {}` before adding; automatic replacement is not supported",
             selected.release_version,
             selected.project.display(),
             selected.release_version,

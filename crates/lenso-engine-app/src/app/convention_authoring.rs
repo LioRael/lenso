@@ -30,6 +30,9 @@ pub struct AddArgs {
     /// Verified V6 Bundle carrying the signed .crate as a Host build input.
     #[arg(long, conflicts_with = "crate_archive")]
     bundle: Option<PathBuf>,
+    /// Explicitly replace the selected version of the same signed linked Cargo Plugin.
+    #[arg(long)]
+    replace: bool,
 }
 #[derive(Clone, Debug, Args)]
 pub struct UnadoptArgs {
@@ -217,6 +220,9 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
         || args.bundle.is_some()
     {
         return linked_catalog::add(&root, &args);
+    }
+    if args.replace {
+        bail!("--replace requires an exact signed linked Cargo source");
     }
     if args.source == "@lenso/openapi" {
         return openapi::add(&root, args.no_install);
@@ -451,6 +457,7 @@ pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyho
         trust: None,
         crate_archive: None,
         bundle: None,
+        replace: false,
     })
 }
 pub fn create_plugin(

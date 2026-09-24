@@ -293,13 +293,13 @@ fn managed_exclude(value: &Value) -> bool {
         .is_some_and(|prefix| prefix.contains(OWNED_EXCLUDE))
 }
 
-fn workspace_document(bytes: &[u8]) -> anyhow::Result<DocumentMut> {
+pub(super) fn workspace_document(bytes: &[u8]) -> anyhow::Result<DocumentMut> {
     std::str::from_utf8(bytes)?
         .parse::<DocumentMut>()
         .context("parse App Cargo.toml")
 }
 
-fn ensure_no_enclosing_workspace(root: &Path) -> anyhow::Result<()> {
+pub(super) fn ensure_no_enclosing_workspace(root: &Path) -> anyhow::Result<()> {
     for ancestor in root.ancestors().skip(1) {
         let manifest = ancestor.join("Cargo.toml");
         let Some(bytes) = read_optional_regular(&manifest)? else {
@@ -315,7 +315,7 @@ fn ensure_no_enclosing_workspace(root: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn add_workspace_exclude(
+pub(super) fn add_workspace_exclude(
     before: Option<&[u8]>,
     source_relative: &Path,
 ) -> anyhow::Result<(Option<Vec<u8>>, bool)> {
