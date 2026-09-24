@@ -1051,54 +1051,11 @@ fn write_backend_url(root: &Path, address: &str) -> anyhow::Result<()> {
 }
 
 fn lock_dev(root: &Path) -> anyhow::Result<fs::File> {
-    let directory = root.join(".lenso");
-    anyhow::ensure!(
-        fs::symlink_metadata(&directory)?.file_type().is_dir(),
-        "App development control directory must be a real directory"
-    );
-    let path = directory.join("dev.lock");
-    let mut options = fs::OpenOptions::new();
-    options.read(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(nix::libc::O_NOFOLLOW);
-    }
-    let file = match options.create_new(true).open(&path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            anyhow::ensure!(
-                fs::symlink_metadata(&path)?.file_type().is_file(),
-                "App development lock must be a regular file"
-            );
-            let mut existing = fs::OpenOptions::new();
-            existing.read(true).write(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                existing.custom_flags(nix::libc::O_NOFOLLOW);
-            }
-            existing.open(&path)?
-        }
-        Err(error) => return Err(error).context("open App development lock"),
-    };
-    anyhow::ensure!(
-        file.metadata()?.is_file() && fs::symlink_metadata(&path)?.file_type().is_file(),
-        "App development lock must remain a regular file"
-    );
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        let opened = file.metadata()?;
-        let current = fs::symlink_metadata(&path)?;
-        anyhow::ensure!(
-            opened.dev() == current.dev() && opened.ino() == current.ino(),
-            "App development lock path changed while opening"
-        );
-    }
-    file.try_lock()
-        .context("another lenso app dev session may already own this App development lock")?;
-    Ok(file)
+    super::local_lock::acquire(
+        root,
+        "dev.lock",
+        "another lenso app dev session may already own this App development lock",
+    )
 }
 
 fn backend_url(output: &Path) -> anyhow::Result<String> {

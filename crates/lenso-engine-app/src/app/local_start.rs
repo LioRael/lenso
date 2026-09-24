@@ -39,6 +39,11 @@ pub(super) async fn run(
     ready_file: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let from = fs::canonicalize(from).context("locate built App distribution")?;
+    let _start_lock = super::local_lock::acquire(
+        &from,
+        "supervised-start.lock",
+        "App distribution is already supervised by another lenso app start session",
+    )?;
     let policy = std::path::absolute(policy)?;
     let executable = fs::canonicalize(from.join(".lenso/host"))
         .context("locate built local Host; run lenso app build first")?;
@@ -563,6 +568,36 @@ mod tests {
             .unwrap();
         let error = result.unwrap_err();
         assert!(error.to_string().contains("policy changed"), "{error:#}");
+    }
+
+    #[tokio::test]
+    async fn second_supervised_start_of_same_distribution_is_rejected_before_host_launch() {
+        let (temporary, snapshot, policy) = fixture();
+        let root = temporary.path().to_path_buf();
+        let ready = root.join("first-supervisor-ready");
+        let first = tokio::spawn(run(root.clone(), policy.clone(), Some(ready.clone())));
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !ready.is_file() {
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .unwrap();
+
+        let second =
+            tokio::time::timeout(Duration::from_secs(1), run(root.clone(), policy, None)).await;
+        fs::remove_file(snapshot).unwrap();
+        let _ = tokio::time::timeout(Duration::from_secs(6), first)
+            .await
+            .expect("first supervisor should retire at its freshness deadline");
+        let error = second
+            .expect("second supervisor should be rejected promptly")
+            .expect_err("second supervisor should not start another Host");
+        assert!(
+            error.to_string().contains("already supervised"),
+            "{error:#}"
+        );
+        assert!(!root.join("overlap").exists(), "a second Host was launched");
     }
 
     #[tokio::test]
