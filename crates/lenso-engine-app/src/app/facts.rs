@@ -326,15 +326,13 @@ pub fn inspect_project_facts_with_host_build(
     if distribution {
         match provenance::inspect(&root, &report.host_target, &report.plugins) {
             Ok(build_provenance) => report.build_provenance = build_provenance,
-            Err(_) => {
+            Err(error) => {
                 report.status = "invalid";
                 report.diagnostics.push(Diagnostic {
                     code: "LENSO_BUILD_PROVENANCE_UNVERIFIED",
                     severity: "error",
                     message: "The built source or generated Host provenance could not be verified.",
-                    source: Some(SourceLocation {
-                        path: root.join("local-sources.json"),
-                    }),
+                    source: Some(provenance::failure_source(&error, &root)),
                     help: "Run `lenso app check --root DIST` and rebuild the distribution if its locked files changed.",
                 });
             }
@@ -899,6 +897,51 @@ root-slot = "agent"
             !serde_json::to_string(&report)
                 .unwrap()
                 .contains("SECRET_MARKER")
+        );
+    }
+
+    #[test]
+    fn built_distribution_blames_tampered_legacy_generated_file() {
+        let temporary = app_root();
+        let intent = temporary.path().join("intent");
+        fs::create_dir_all(intent.join(".lenso")).unwrap();
+        fs::copy(
+            temporary.path().join(".lenso/host-catalog.json"),
+            intent.join(".lenso/host-catalog.json"),
+        )
+        .unwrap();
+        let generated_path = ".lenso/generated-host/src/main.rs";
+        fs::create_dir_all(temporary.path().join(".lenso/generated-host/src")).unwrap();
+        fs::write(temporary.path().join(generated_path), b"tampered").unwrap();
+        let lock = serde_json::json!({
+            "schema": "lenso.host-distribution.v1",
+            "target": "aarch64-apple-darwin",
+            "files": [{
+                "path": generated_path,
+                "role": "build_provenance",
+                "size": 8,
+                "sha256": format!("sha256:{}", "0".repeat(64))
+            }]
+        });
+        fs::write(
+            temporary.path().join(".lenso/distribution.lock.json"),
+            serde_json::to_vec(&lock).unwrap(),
+        )
+        .unwrap();
+
+        let report = inspect_project_facts(temporary.path()).unwrap();
+        assert_eq!(report.status, "invalid");
+        assert!(report.build_provenance.is_none());
+        let diagnostic = report
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == "LENSO_BUILD_PROVENANCE_UNVERIFIED")
+            .unwrap();
+        assert_eq!(
+            diagnostic.source.as_ref().unwrap().path,
+            fs::canonicalize(temporary.path())
+                .unwrap()
+                .join(generated_path)
         );
     }
 }

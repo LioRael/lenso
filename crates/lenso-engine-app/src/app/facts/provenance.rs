@@ -1,8 +1,8 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt::Write as _,
+    fmt::{Display, Formatter, Write as _},
     fs,
-    path::{Component, Path},
+    path::{Component, Path, PathBuf},
 };
 
 use anyhow::{Context as _, Result, ensure};
@@ -19,6 +19,24 @@ const MAX_GENERATED_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_TOTAL_GENERATED_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_BUILD_SOURCES: usize = 256;
 const MAX_GENERATED_ARTIFACTS: usize = 64;
+
+#[derive(Debug)]
+struct ProvenancePath(PathBuf);
+
+impl Display for ProvenancePath {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "build provenance file `{}`", self.0.display())
+    }
+}
+
+pub(super) fn failure_source(error: &anyhow::Error, root: &Path) -> SourceLocation {
+    let relative = error
+        .downcast_ref::<ProvenancePath>()
+        .map_or_else(|| Path::new("local-sources.json"), |path| path.0.as_path());
+    SourceLocation {
+        path: root.join(relative),
+    }
+}
 
 #[derive(Deserialize)]
 struct DistributionLock {
@@ -60,60 +78,85 @@ pub(super) fn inspect(
     let source_path = root.join("local-sources.json");
     let lock_path = root.join(".lenso/distribution.lock.json");
     let source_present = present(&source_path)?;
-    let lock_present = present(&lock_path)?;
+    let lock_present = present(&lock_path)
+        .with_context(|| ProvenancePath(PathBuf::from(".lenso/distribution.lock.json")))?;
     if !source_present && !lock_present {
         return Ok(None);
     }
-    ensure!(lock_present, "build provenance has no distribution lock");
-    ensure_regular_file_path(root, Path::new(".lenso/distribution.lock.json"))?;
-    let lock: DistributionLock =
-        serde_json::from_slice(&super::read_bounded(&lock_path, MAX_LOCK_BYTES)?)?;
-    ensure!(
-        lock.schema == "lenso.local-host-distribution.v1"
-            || lock.schema == "lenso.host-distribution.v1",
-        "unsupported distribution lock schema"
-    );
-    ensure!(lock.target == host_target, "Host target changed");
-    ensure!(lock.files.len() <= 2048, "distribution has too many files");
-
-    let mut seen = BTreeSet::new();
-    let mut source_entry = None;
-    let mut generated = Vec::new();
-    for file in &lock.files {
-        ensure!(safe_relative(&file.path), "invalid distribution file path");
+    let lock: DistributionLock = (|| {
+        ensure!(lock_present, "build provenance has no distribution lock");
+        ensure_regular_file_path(root, Path::new(".lenso/distribution.lock.json"))?;
+        let lock: DistributionLock =
+            serde_json::from_slice(&super::read_bounded(&lock_path, MAX_LOCK_BYTES)?)?;
         ensure!(
-            seen.insert(file.path.as_str()),
-            "duplicate distribution file"
+            lock.schema == "lenso.local-host-distribution.v1"
+                || lock.schema == "lenso.host-distribution.v1",
+            "unsupported distribution lock schema"
         );
-        if file.path == "local-sources.json" {
-            ensure!(file.role == "source_provenance", "source role changed");
-            source_entry = Some(file);
-        } else if file.path.starts_with(".lenso/generated-host/") {
+        ensure!(lock.target == host_target, "Host target changed");
+        ensure!(lock.files.len() <= 2048, "distribution has too many files");
+        Ok(lock)
+    })()
+    .with_context(|| ProvenancePath(PathBuf::from(".lenso/distribution.lock.json")))?;
+
+    let (source_entry, generated) = (|| {
+        let mut seen = BTreeSet::new();
+        let mut source_entry = None;
+        let mut generated = Vec::new();
+        for file in &lock.files {
+            ensure!(safe_relative(&file.path), "invalid distribution file path");
             ensure!(
-                file.role == "build_provenance",
-                "generated Host role changed"
+                seen.insert(file.path.as_str()),
+                "duplicate distribution file"
             );
-            generated.push(file);
+            if file.path == "local-sources.json" {
+                ensure!(file.role == "source_provenance", "source role changed");
+                source_entry = Some(file);
+            } else if file.path.starts_with(".lenso/generated-host/") {
+                ensure!(
+                    file.role == "build_provenance",
+                    "generated Host role changed"
+                );
+                generated.push(file);
+            }
         }
+        ensure!(
+            generated.len() <= MAX_GENERATED_ARTIFACTS,
+            "too many generated Host files"
+        );
+        ensure!(
+            generated
+                .iter()
+                .try_fold(0_u64, |total, file| total.checked_add(file.size))
+                .is_some_and(|total| total <= MAX_TOTAL_GENERATED_BYTES),
+            "generated Host files exceed the size limit"
+        );
+        Ok((source_entry, generated))
+    })()
+    .with_context(|| ProvenancePath(PathBuf::from(".lenso/distribution.lock.json")))?;
+    let mut generated_artifacts = Vec::with_capacity(generated.len());
+    for file in generated {
+        verified_file(root, file, MAX_GENERATED_BYTES)
+            .with_context(|| ProvenancePath(PathBuf::from(&file.path)))?;
+        generated_artifacts.push(GeneratedArtifactFacts {
+            path: file.path.clone(),
+            owner: "lenso_host_build",
+            role: file.role.clone(),
+            sha256: file.sha256.clone(),
+            size: file.size,
+        });
     }
-    ensure!(
-        generated.len() <= MAX_GENERATED_ARTIFACTS,
-        "too many generated Host files"
-    );
-    ensure!(
-        generated
-            .iter()
-            .try_fold(0_u64, |total, file| total.checked_add(file.size))
-            .is_some_and(|total| total <= MAX_TOTAL_GENERATED_BYTES),
-        "generated Host files exceed the size limit"
-    );
+    generated_artifacts.sort_by(|left, right| left.path.cmp(&right.path));
+
     let Some(source_entry) = source_entry else {
         ensure!(!source_present, "unlocked local source provenance");
         return Ok(None);
     };
     ensure!(source_present, "locked source provenance is missing");
-    let source_bytes = verified_file(root, source_entry, MAX_SOURCE_BYTES)?;
-    let sources: LocalSources = serde_json::from_slice(&source_bytes)?;
+    let source_bytes = verified_file(root, source_entry, MAX_SOURCE_BYTES)
+        .with_context(|| ProvenancePath(PathBuf::from("local-sources.json")))?;
+    let sources: LocalSources = serde_json::from_slice(&source_bytes)
+        .with_context(|| ProvenancePath(PathBuf::from("local-sources.json")))?;
     ensure!(
         sources.schema == "lenso.local-sources.v1",
         "source schema changed"
@@ -170,19 +213,6 @@ pub(super) fn inspect(
     }
     ensure!(remaining_digests.is_empty(), "unused build source digests");
     build_sources.sort_by(|left, right| left.plugin_id.cmp(&right.plugin_id));
-
-    let mut generated_artifacts = Vec::with_capacity(generated.len());
-    for file in generated {
-        verified_file(root, file, MAX_GENERATED_BYTES)?;
-        generated_artifacts.push(GeneratedArtifactFacts {
-            path: file.path.clone(),
-            owner: "lenso_host_build",
-            role: file.role.clone(),
-            sha256: file.sha256.clone(),
-            size: file.size,
-        });
-    }
-    generated_artifacts.sort_by(|left, right| left.path.cmp(&right.path));
 
     Ok(Some(BuildProvenanceFacts {
         source_location: SourceLocation { path: source_path },
@@ -272,7 +302,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{inspect, sha256_digest};
+    use super::{failure_source, inspect, sha256_digest};
     use crate::app::facts::{PluginFacts, SourceLocation};
 
     fn fixture(root: &Path) {
@@ -366,6 +396,54 @@ mod tests {
             inspect(root.path(), "aarch64-apple-darwin", &[])
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn legacy_generated_files_without_local_sources_are_still_verified() {
+        let root = tempfile::tempdir().unwrap();
+        let generated_path = ".lenso/generated-host/src/main.rs";
+        fs::create_dir_all(root.path().join(".lenso/generated-host/src")).unwrap();
+        let generated = b"legacy generated Host source";
+        fs::write(root.path().join(generated_path), generated).unwrap();
+        let lock = json!({
+            "schema": "lenso.host-distribution.v1",
+            "target": "aarch64-apple-darwin",
+            "files": [{
+                "path": generated_path,
+                "role": "build_provenance",
+                "size": generated.len(),
+                "sha256": sha256_digest(generated)
+            }]
+        });
+        fs::write(
+            root.path().join(".lenso/distribution.lock.json"),
+            serde_json::to_vec(&lock).unwrap(),
+        )
+        .unwrap();
+
+        assert!(
+            inspect(root.path(), "aarch64-apple-darwin", &[])
+                .unwrap()
+                .is_none()
+        );
+
+        fs::write(
+            root.path().join(generated_path),
+            b"tampered generated Host source",
+        )
+        .unwrap();
+        let error = inspect(root.path(), "aarch64-apple-darwin", &[]).unwrap_err();
+        assert_eq!(
+            failure_source(&error, root.path()).path,
+            root.path().join(generated_path)
+        );
+
+        fs::remove_file(root.path().join(generated_path)).unwrap();
+        let error = inspect(root.path(), "aarch64-apple-darwin", &[]).unwrap_err();
+        assert_eq!(
+            failure_source(&error, root.path()).path,
+            root.path().join(generated_path)
         );
     }
 
