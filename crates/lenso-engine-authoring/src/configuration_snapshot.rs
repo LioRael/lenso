@@ -194,6 +194,24 @@ pub struct VersionedPluginConfigurationSnapshot {
 }
 
 impl VersionedPluginConfigurationSnapshot {
+    /// Parses a bounded source result before App resolution. The caller must
+    /// supply the Host-issued identity; source bytes cannot choose their own
+    /// identity or grant themselves writable fields. Pass the result through
+    /// `propose_versioned_plugin_configuration_snapshot` with Host-issued
+    /// authorization before publishing any Plugin Root change.
+    pub fn from_host_authorized_json(
+        source: PluginConfigurationAuthoritySource,
+        bytes: &[u8],
+    ) -> anyhow::Result<Self> {
+        ensure!(
+            u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_SNAPSHOT_BYTES,
+            "configuration snapshot exceeds {MAX_SNAPSHOT_BYTES} bytes"
+        );
+        let document: FileSnapshotDocument = serde_json::from_slice(bytes)
+            .map_err(|_| anyhow::anyhow!("parse configuration snapshot JSON: invalid document"))?;
+        snapshot_from_document(source, document)
+    }
+
     pub fn new(
         source: PluginConfigurationAuthoritySource,
         revision: u64,
@@ -331,9 +349,7 @@ impl FilePluginConfigurationSnapshotSource {
             u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_SNAPSHOT_BYTES,
             "configuration snapshot exceeds {MAX_SNAPSHOT_BYTES} bytes"
         );
-        let document: FileSnapshotDocument =
-            serde_json::from_slice(&bytes).context("parse configuration snapshot JSON")?;
-        snapshot_from_document(self.source.clone(), document)
+        VersionedPluginConfigurationSnapshot::from_host_authorized_json(self.source.clone(), &bytes)
     }
 }
 
@@ -498,10 +514,11 @@ impl HttpsPluginConfigurationSnapshotSource {
             u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_SNAPSHOT_BYTES,
             "configuration snapshot response exceeds {MAX_SNAPSHOT_BYTES} bytes"
         );
-        let document: FileSnapshotDocument = serde_json::from_slice(&bytes)
-            .context("parse configuration snapshot HTTPS response")?;
         Ok(PluginConfigurationSnapshotPoll::Updated {
-            snapshot: snapshot_from_document(self.source.clone(), document)?,
+            snapshot: VersionedPluginConfigurationSnapshot::from_host_authorized_json(
+                self.source.clone(),
+                &bytes,
+            )?,
             cursor,
         })
     }
@@ -1063,6 +1080,85 @@ mod tests {
 
     fn source_identity() -> PluginConfigurationAuthoritySource {
         PluginConfigurationAuthoritySource::new("file_snapshot", "development").unwrap()
+    }
+
+    #[test]
+    fn source_result_uses_host_identity_and_shared_snapshot_bounds() {
+        let source = PluginConfigurationAuthoritySource::new(
+            "bootstrap_plugin",
+            "example.configuration@1.0.0",
+        )
+        .unwrap();
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "schema": SNAPSHOT_SCHEMA,
+            "revision": 7,
+            "configurations": [{
+                "plugin_id": "example.agent",
+                "instance_key": "default",
+                "toml": "greeting = \"hello\"\n"
+            }]
+        }))
+        .unwrap();
+        let snapshot =
+            VersionedPluginConfigurationSnapshot::from_host_authorized_json(source.clone(), &bytes)
+                .unwrap();
+        assert_eq!(snapshot.source(), &source);
+        assert_eq!(snapshot.revision(), 7);
+        let root = fixture_root();
+        let authority = LocalPluginRootAuthority::new(root.path());
+        let wrong_source = authorization();
+        assert!(
+            propose_versioned_plugin_configuration_snapshot(
+                &authority,
+                &wrong_source,
+                None,
+                &snapshot,
+            )
+            .is_err()
+        );
+        let allowed =
+            PluginConfigurationSnapshotAuthorization::new(
+                source.clone(),
+                [PluginConfigurationSnapshotObjectScope::new(
+                    "example.agent",
+                    "default",
+                    ["greeting"],
+                )
+                .unwrap()],
+            )
+            .unwrap();
+        assert!(
+            propose_versioned_plugin_configuration_snapshot(&authority, &allowed, None, &snapshot)
+                .is_ok()
+        );
+
+        let self_named = serde_json::to_vec(&serde_json::json!({
+            "schema": SNAPSHOT_SCHEMA,
+            "source": { "kind": "file_snapshot", "reference": "development" },
+            "revision": 7,
+            "configurations": [{
+                "plugin_id": "example.agent",
+                "instance_key": "default",
+                "toml": "greeting = \"hello\"\n"
+            }]
+        }))
+        .unwrap();
+        assert!(
+            VersionedPluginConfigurationSnapshot::from_host_authorized_json(
+                source.clone(),
+                &self_named,
+            )
+            .is_err()
+        );
+        assert!(
+            VersionedPluginConfigurationSnapshot::from_host_authorized_json(
+                source,
+                &vec![b' '; usize::try_from(MAX_SNAPSHOT_BYTES).unwrap() + 1],
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("exceeds")
+        );
     }
 
     fn authorization() -> PluginConfigurationSnapshotAuthorization {
