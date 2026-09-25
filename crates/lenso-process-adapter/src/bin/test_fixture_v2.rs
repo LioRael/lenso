@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use lenso_process_protocol::authoring::{
     ConstructParams, InitializeParams, InvocationOutcome, InvokeParams, StopParams,
@@ -13,6 +19,7 @@ struct SyncPlugin {
     routes: Mutex<BTreeMap<String, String>>,
     lifecycle_calls: Mutex<bool>,
     exit_after_construct_ms: Mutex<Option<u64>>,
+    linger_after_stopped: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
@@ -49,6 +56,18 @@ impl ProcessPluginV2 for SyncPlugin {
             .config
             .get("exit_after_construct_ms")
             .and_then(Value::as_u64);
+        self.linger_after_stopped.store(
+            params
+                .config
+                .get("linger_after_stopped")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            Ordering::Release,
+        );
+        if let Some(path) = params.config.get("pid_file").and_then(Value::as_str) {
+            std::fs::write(path, std::process::id().to_string())
+                .map_err(|error| format!("write fixture PID: {error}"))?;
+        }
         Ok(())
     }
 
@@ -175,5 +194,15 @@ fn runtime_failure(detail: String) -> InvocationOutcome {
 }
 
 fn main() {
-    lenso_process_sdk::serve_v2(SyncPlugin::default()).expect("serve Process V2 Plugin fixture");
+    let linger_after_stopped = Arc::new(AtomicBool::new(false));
+    let plugin = SyncPlugin {
+        linger_after_stopped: linger_after_stopped.clone(),
+        ..SyncPlugin::default()
+    };
+    lenso_process_sdk::serve_v2(plugin).expect("serve Process V2 Plugin fixture");
+    if linger_after_stopped.load(Ordering::Acquire) {
+        loop {
+            std::thread::park();
+        }
+    }
 }

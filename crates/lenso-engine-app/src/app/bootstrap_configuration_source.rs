@@ -20,7 +20,8 @@ use lenso_kernel::{
     PreparedNativePlugin, RuntimeFailure, ShutdownOutcome,
 };
 use lenso_plugin_bundle::{
-    ImplementationPolicy, read_bundle_manifest, resolve_implementation, verify_bundle_directory,
+    BundleVerificationLimits, ImplementationPolicy, read_verified_bundle_with_limits,
+    resolve_implementation,
 };
 use lenso_process_adapter::{
     EXECUTION_CLASS as PROCESS_CLASS, ProcessAdapter, ProcessLimits, RUNTIME_PROFILE_V2,
@@ -60,16 +61,15 @@ pub(super) fn fetch(
         fs::symlink_metadata(selected.bundle)?.file_type().is_dir(),
         "bootstrap source bundle must be a real directory"
     );
-    let verified = verify_bundle_directory(selected.bundle)
-        .map_err(|error| anyhow::anyhow!("verify bootstrap source bundle: {error}"))?;
+    let (verified, manifest) =
+        read_verified_bundle_with_limits(selected.bundle, &BundleVerificationLimits::default())
+            .map_err(|error| anyhow::anyhow!("verify bootstrap source bundle: {error}"))?;
     ensure!(
         verified.plugin_id == selected.plugin_id
             && verified.release_version == selected.release_version
             && verified.manifest_digest == selected.manifest_digest,
         "bootstrap source bundle differs from Host policy"
     );
-    let manifest = read_bundle_manifest(selected.bundle)
-        .map_err(|error| anyhow::anyhow!("read bootstrap source manifest: {error}"))?;
     let implementation = resolve_implementation(
         &manifest,
         &ImplementationPolicy {

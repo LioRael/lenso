@@ -8,6 +8,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
+    time::{Duration, Instant},
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -791,13 +792,7 @@ impl PluginLifecycle for ProcessLifecycleV2 {
                 .validate_for(&params)
                 .map_err(|error| protocol(generation.execution_class, error))?;
             generation.imports.deactivate();
-            if let Some(mut child) = generation.child.lock().expect("Process V2 child").take() {
-                child
-                    .wait()
-                    .map_err(|error| RuntimeFailure::PluginFailure {
-                        detail: format!("failed to reap Process V2 Plugin: {error}"),
-                    })?;
-            }
+            reap_after_stopped(&generation, context.remaining_budget()).await?;
             generation.stopped.store(true, Ordering::Release);
             if result.hook == StopHookOutcome::Failed {
                 return Err(RuntimeFailure::PluginFailure {
@@ -1329,6 +1324,57 @@ fn arm_termination(
 fn terminate_child(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
+}
+
+async fn reap_after_stopped(
+    generation: &ProcessGenerationV2,
+    remaining_budget: Option<Duration>,
+) -> Result<(), RuntimeFailure> {
+    const MAX_EXIT_GRACE: Duration = Duration::from_secs(3);
+    const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+    let grace = remaining_budget
+        .unwrap_or(MAX_EXIT_GRACE)
+        .min(MAX_EXIT_GRACE);
+    let child_handle = generation.child.clone();
+    let (sender, receiver) = futures::channel::oneshot::channel();
+    thread::Builder::new()
+        .name("lenso-process-v2-reap".to_owned())
+        .spawn(move || {
+            let Some(mut child) = child_handle.lock().expect("Process V2 child").take() else {
+                let _ = sender.send(Err(unavailable()));
+                return;
+            };
+            let deadline = Instant::now() + grace;
+            let result = loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => break Ok(()),
+                    Ok(None) if Instant::now() < deadline => {
+                        thread::sleep(POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now())));
+                    }
+                    Ok(None) => {
+                        terminate_child(&mut child);
+                        break Err(RuntimeFailure::PluginFailure {
+                            detail: "Process V2 Plugin acknowledged Stopped but did not exit before the shutdown deadline".to_owned(),
+                        });
+                    }
+                    Err(error) => {
+                        terminate_child(&mut child);
+                        break Err(RuntimeFailure::PluginFailure {
+                            detail: format!("failed to inspect Process V2 Plugin exit: {error}"),
+                        });
+                    }
+                }
+            };
+            let _ = sender.send(result);
+        })
+        .map_err(|error| {
+            generation.abort();
+            internal(error)
+        })?;
+    receiver.await.map_err(|_| RuntimeFailure::Internal {
+        detail: "Process V2 reaper exited without reporting its result".to_owned(),
+    })?
 }
 
 fn protocol(execution_class: &'static str, error: impl std::fmt::Display) -> RuntimeFailure {

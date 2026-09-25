@@ -1054,6 +1054,21 @@ mod tests {
                 .contains("from-plugin")
         );
 
+        let bundle_manifest = bundle.join(lenso_plugin_bundle::MANIFEST_FILE);
+        let original_manifest = fs::read(&bundle_manifest).unwrap();
+        fs::write(
+            &bundle_manifest,
+            [original_manifest.as_slice(), b" "].concat(),
+        )
+        .unwrap();
+        assert!(sync(root.path(), &policy).is_err());
+        fs::write(&bundle_manifest, original_manifest).unwrap();
+        assert!(
+            fs::read_to_string(&instance)
+                .unwrap()
+                .contains("from-plugin")
+        );
+
         document["source"]["artifact_digest"] =
             "sha256:0000000000000000000000000000000000000000000000000000000000000000".into();
         fs::write(&policy, serde_json::to_vec(&document).unwrap()).unwrap();

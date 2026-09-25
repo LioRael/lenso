@@ -375,6 +375,44 @@ fn process_v2_lifecycle_scopes_can_call_declared_dependencies() {
 }
 
 #[test]
+fn process_v2_stopped_ack_without_exit_is_killed_and_reaped() {
+    let source = Arc::new(Mutex::new(BTreeMap::new()));
+    let destination = Arc::new(Mutex::new(BTreeMap::new()));
+    let source_calls = Arc::new(AtomicUsize::new(0));
+    let destination_calls = Arc::new(AtomicUsize::new(0));
+    let pid_dir = tempfile::tempdir().unwrap();
+    let pid_file = pid_dir.path().join("source.pid");
+    let (driver, app) = start_process_app_with_configuration(
+        &source,
+        &destination,
+        &source_calls,
+        &destination_calls,
+        ProcessLimits::default(),
+        false,
+        &json!({"linger_after_stopped": true, "pid_file": pid_file}),
+        false,
+    );
+
+    let started = Instant::now();
+    let outcome = driver.run(app.shutdown(Duration::from_millis(200)));
+    assert!(
+        matches!(
+            outcome,
+            lenso_kernel::ShutdownOutcome::RuntimeFailure {
+                error: RuntimeFailure::PluginFailure { ref detail }
+            } if detail.contains("acknowledged Stopped but did not exit")
+        ),
+        "unexpected shutdown outcome: {outcome:?}"
+    );
+    assert!(started.elapsed() < Duration::from_secs(2));
+    #[cfg(target_os = "linux")]
+    {
+        let pid = fs::read_to_string(&pid_file).unwrap();
+        assert!(!std::path::Path::new("/proc").join(pid).exists());
+    }
+}
+
+#[test]
 fn reusable_authoring_engine_runs_a_language_owned_execution_class() {
     let source = Arc::new(Mutex::new(BTreeMap::from([(
         "guide".to_owned(),
