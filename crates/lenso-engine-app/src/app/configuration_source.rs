@@ -1056,12 +1056,21 @@ mod tests {
 
         let bundle_manifest = bundle.join(lenso_plugin_bundle::MANIFEST_FILE);
         let original_manifest = fs::read(&bundle_manifest).unwrap();
+        let mut changed_manifest: Value = serde_json::from_slice(&original_manifest).unwrap();
+        let alternate_target =
+            if lenso_app_authoring::native_host_target() == "x86_64-unknown-linux-gnu" {
+                "aarch64-unknown-linux-gnu"
+            } else {
+                "x86_64-unknown-linux-gnu"
+            };
+        changed_manifest["artifact"]["target"] = alternate_target.into();
         fs::write(
             &bundle_manifest,
-            [original_manifest.as_slice(), b" "].concat(),
+            serde_json::to_vec(&changed_manifest).unwrap(),
         )
         .unwrap();
-        assert!(sync(root.path(), &policy).is_err());
+        let error = sync(root.path(), &policy).unwrap_err();
+        assert!(format!("{error:#}").contains("bootstrap source bundle differs from Host policy"));
         fs::write(&bundle_manifest, original_manifest).unwrap();
         assert!(
             fs::read_to_string(&instance)
