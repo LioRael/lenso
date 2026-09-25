@@ -270,6 +270,38 @@ macro_rules! guest_request_plugin {
             provides: {
                 capability_id: $capability_id:literal,
                 descriptor_version: $descriptor_version:literal,
+                descriptor_digest: $descriptor_digest:literal,
+                requests: [$first_request:literal $(, $request:literal)* $(,)?],
+            }
+            $($implementation:tt)*
+        }
+    ) => {
+        const __LENSO_PLUGIN_DESCRIPTOR: &str = $crate::__request_plugin_descriptor!(
+            $capability_id,
+            $descriptor_version,
+            digest: $descriptor_digest,
+            $first_request $(, $request)*
+        );
+
+        #[cfg(target_arch = "wasm32")]
+        #[used]
+        #[unsafe(link_section = "lenso.plugin-descriptor.v1")]
+        static __LENSO_PLUGIN_DESCRIPTOR_SECTION: [u8; __LENSO_PLUGIN_DESCRIPTOR.len()] =
+            $crate::__descriptor_bytes(__LENSO_PLUGIN_DESCRIPTOR);
+
+        impl $guest_trait for $plugin {
+            fn describe() -> ::std::string::String {
+                __LENSO_PLUGIN_DESCRIPTOR.to_owned()
+            }
+
+            $($implementation)*
+        }
+    };
+    (
+        impl $guest_trait:ident for $plugin:ty {
+            provides: {
+                capability_id: $capability_id:literal,
+                descriptor_version: $descriptor_version:literal,
                 requests: [$first_request:literal $(, $request:literal)* $(,)?],
             }
             $($implementation:tt)*
@@ -323,10 +355,10 @@ macro_rules! __request_plugin_descriptor {
         concat!(
             r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":""#,
             $capability_id,
-            r#"","descriptor_version":""#,
-            $descriptor_version,
             r#"","descriptor_digest":""#,
             $descriptor_digest,
+            r#"","descriptor_version":""#,
+            $descriptor_version,
             r#"","request_operations":[""#,
             $first_request,
             "\"",
@@ -998,9 +1030,12 @@ mod tests {
             "execute"
         );
 
-        assert!(PACKAGING.contains(
-            r#""descriptor_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa""#
-        ));
+        assert_eq!(
+            PACKAGING,
+            r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"example.request@1","descriptor_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","descriptor_version":"1.0.0","request_operations":["inspect","execute"]}]}"#
+        );
+        let canonical: serde_json::Value = serde_json::from_str(PACKAGING).unwrap();
+        assert_eq!(PACKAGING, canonical.to_string());
     }
 
     #[derive(Clone, Debug)]

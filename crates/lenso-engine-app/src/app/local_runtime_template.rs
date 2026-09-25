@@ -206,7 +206,7 @@ fn portable_web_proof() -> anyhow::Result<serde_json::Value> {
             "descriptor_digest": endpoint::DESCRIPTOR_DIGEST,
             "request_operations": [endpoint::DESCRIBE_OPERATION, endpoint::HANDLE_OPERATION],
         },
-        "execution_classes": ["lenso.process@1"],
+        "execution_classes": ["lenso.process@1", "lenso.wasm-component@1"],
     }))
 }
 
@@ -245,7 +245,12 @@ fn validate_portable_web_proof(actual: serde_json::Value) -> anyhow::Result<lens
 
 #[cfg(all(test, not(generated_native_host)))]
 mod portable_web_tests {
-    use super::{portable_web_proof, validate_portable_web_proof};
+    use super::{portable_web_proof, validate, validate_portable_web_proof};
+    use lenso_app_plan::{
+        AppComposition, CapabilityEndpointPlan, ExecutionClassId, PluginInstancePlan,
+        ResolvedAppPlan,
+    };
+    use std::collections::BTreeMap;
 
     #[test]
     fn rejects_missing_ingress_catalog_and_codec_drift() {
@@ -259,6 +264,53 @@ mod portable_web_tests {
         let mut drifted = proof;
         drifted["endpoint_codec"]["descriptor_digest"] = serde_json::json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
         assert!(validate_portable_web_proof(drifted).is_err());
+    }
+
+    #[test]
+    fn precompiled_host_admits_exact_wasm_endpoint_contract() {
+        let proof = portable_web_proof().unwrap();
+        assert_eq!(
+            proof["execution_classes"],
+            serde_json::json!(["lenso.process@1", "lenso.wasm-component@1"]),
+        );
+
+        let endpoint = PluginInstancePlan::new("endpoint", "local.portable-http")
+            .with_entrypoint("plugin")
+            .with_execution_class(ExecutionClassId::new("lenso.wasm-component@1"))
+            .with_capability(CapabilityEndpointPlan::new(
+                lenso_capability_http_endpoint::CAPABILITY_ID,
+                lenso_capability_http_endpoint::DESCRIPTOR_VERSION,
+                [
+                    lenso_capability_http_endpoint::DESCRIBE_OPERATION,
+                    lenso_capability_http_endpoint::HANDLE_OPERATION,
+                ],
+            ));
+        let plan = AppComposition::new(vec![endpoint], vec![]).resolve().unwrap();
+        validate(&plan, &BTreeMap::new()).unwrap();
+
+        let v2 = ResolvedAppPlan::new(
+            vec![plan.plugin_instances()[0]
+                .clone()
+                .with_authoring(2, "lenso.wasm-component@1")],
+            vec![],
+        );
+        assert!(validate(&v2, &BTreeMap::new()).is_err());
+        let exact = BTreeMap::from([(
+            "local.portable-http".to_owned(),
+            serde_json::json!({"capabilities": [{
+                "capability_id": lenso_capability_http_endpoint::CAPABILITY_ID,
+                "descriptor_digest": lenso_capability_http_endpoint::DESCRIPTOR_DIGEST,
+            }]}),
+        )]);
+        validate(&v2, &exact).unwrap();
+        let wrong = BTreeMap::from([(
+            "local.portable-http".to_owned(),
+            serde_json::json!({"capabilities": [{
+                "capability_id": lenso_capability_http_endpoint::CAPABILITY_ID,
+                "descriptor_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            }]}),
+        )]);
+        assert!(validate(&v2, &wrong).is_err());
     }
 }
 
@@ -551,7 +603,8 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     #[cfg(not(generated_native_host))]
     let wasm = wasm
         .with_codec(super::terminal::command::CommandJsonCodec)
-        .with_codec(super::terminal::provider::CommandProviderJsonCodec);
+        .with_codec(super::terminal::provider::CommandProviderJsonCodec)
+        .with_codec(lenso_capability_http_endpoint::EndpointJsonCodec);
     // LENSO_REGISTER_CODECS
     let evidence = serde_json::from_slice(&fs::read(root.join("runtime-codecs.json"))?)?;
     #[cfg(any(not(generated_native_host), generated_bun_adapter))]
@@ -715,8 +768,11 @@ pub fn validate(
             if capability.capability_id() != lenso_capability_http_endpoint::CAPABILITY_ID {
                 continue;
             }
-            if instance.execution_class().as_str() != "lenso.process@1" {
-                bail!("precompiled portable Web Host currently admits HTTP Endpoint only from a trusted Process Plugin");
+            if !matches!(
+                instance.execution_class().as_str(),
+                "lenso.process@1" | "lenso.wasm-component@1"
+            ) {
+                bail!("precompiled portable Web Host admits HTTP Endpoint only from Process or Wasm Component Plugins");
             }
             let operations = capability.request_operations().into_iter().collect::<std::collections::BTreeSet<_>>();
             if capability.descriptor_version() != lenso_capability_http_endpoint::DESCRIPTOR_VERSION

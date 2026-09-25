@@ -14,6 +14,7 @@ impl Guest for GuestComponent {
     provides: {
         capability_id: "lenso.http.endpoint@1",
         descriptor_version: "1.1.0",
+        descriptor_digest: "sha256:701deedf705cb1a3b2f35fcae72f20ae85d46c6da6a008405a519018bbcdd3fe",
         requests: ["describe", "handle"],
     }
     fn invoke(
