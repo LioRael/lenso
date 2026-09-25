@@ -8,6 +8,16 @@ use lenso_plugin_bundle::{
 };
 
 #[test]
+fn bundled_wrangler_config_uses_a_date_supported_by_pinned_workerd() {
+    let config: Value =
+        serde_json::from_str(include_str!("../../../../assets/workers-wrangler.jsonc")).unwrap();
+    assert_eq!(
+        config["compatibility_date"], "2026-07-08",
+        "workerd 1.20260701.1 (Wrangler 4.107.0) rejects later compatibility dates"
+    );
+}
+
+#[test]
 fn pinned_runtime_rejects_a_different_module() {
     let temp = tempfile::tempdir().unwrap();
     let package = temp.path().join("package");
@@ -438,6 +448,9 @@ fn verified_knowledge_settings_bundle_builds_a_bounded_local_workers_app() {
         receipt["host_bridge"],
         "local-loopback-knowledge-settings.v1"
     );
+    let wrangler_config: Value =
+        serde_json::from_slice(&fs::read(output.join("wrangler.jsonc")).unwrap()).unwrap();
+    assert_eq!(wrangler_config["compatibility_date"], "2026-07-08");
     let plan: Value = serde_json::from_str(
         fs::read_to_string(output.join("plan.mjs"))
             .unwrap()

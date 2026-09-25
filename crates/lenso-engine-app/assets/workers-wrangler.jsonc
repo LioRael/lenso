@@ -1,7 +1,7 @@
 {
   "name": "lenso-local-app-workers",
   "main": "worker.mjs",
-  "compatibility_date": "2026-09-25",
+  "compatibility_date": "2026-07-08",
   "workers_dev": false,
   "preview_urls": false,
   "dev": {
