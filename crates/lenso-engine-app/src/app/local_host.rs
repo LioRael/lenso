@@ -614,6 +614,20 @@ pub(super) fn generate(
             ""
         },
     );
+    source = source.replace(
+        "// LENSO_WEB_ROUTE_FACTS",
+        if web {
+            r#"
+            let local_web_routes = ingress.route_manifest().and_then(|manifest| {
+                capture_web_routes(manifest.routes().iter().map(|route| {
+                    (route.method.as_str(), route.path.as_str(), route.route_id.as_str())
+                }))
+            });
+"#
+        } else {
+            ""
+        },
+    );
     if let Some((git, rev)) = &git_lenso_source.source {
         pin_host_framework_versions(&mut dependencies, &host_framework_dependencies, git, rev);
     }

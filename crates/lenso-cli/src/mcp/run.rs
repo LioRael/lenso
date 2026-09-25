@@ -37,6 +37,7 @@ pub(super) struct RunStatus {
 struct RunEntry {
     status: RunStatus,
     stop: Arc<AtomicBool>,
+    web_routes_receipt: PathBuf,
 }
 
 #[derive(Debug, Default)]
@@ -117,6 +118,7 @@ impl RunController {
         );
         let receipt_dir = tempfile::tempdir()?;
         let ready_file = receipt_dir.path().join("host-ready");
+        let web_routes_receipt = ready_file.with_extension("web-routes.json");
         let mut command = Command::new(executable);
         command
             .args(["app", "start", "--from"])
@@ -124,6 +126,7 @@ impl RunController {
             .arg("--ready-file")
             .arg(&ready_file)
             .current_dir(root)
+            .env("LENSO_MCP_WEB_ROUTES", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
@@ -150,6 +153,7 @@ impl RunController {
             RunEntry {
                 status: status.clone(),
                 stop: stop.clone(),
+                web_routes_receipt,
             },
         );
         state.active = Some(request_id.to_owned());
@@ -184,6 +188,18 @@ impl RunController {
             .as_ref()
             .and_then(|id| state.entries.get(id))
             .map(|entry| entry.status.state)
+    }
+
+    pub(super) fn active_web_routes_receipt(&self) -> Option<(String, PathBuf)> {
+        let state = self.state.lock().expect("MCP run state lock");
+        let entry = state.active.as_ref().and_then(|id| state.entries.get(id))?;
+        if entry.status.state != "running" || entry.stop.load(Ordering::SeqCst) {
+            return None;
+        }
+        Some((
+            entry.status.request_id.clone(),
+            entry.web_routes_receipt.clone(),
+        ))
     }
 
     pub(super) fn stop(&self, request_id: &str) -> anyhow::Result<RunStatus> {

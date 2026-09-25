@@ -73,7 +73,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(facts["kind"], "lenso.app-facts");
-    assert_eq!(facts["schema_version"], 4);
+    assert_eq!(facts["schema_version"], 5);
     assert_eq!(facts["status"], "invalid");
     assert_eq!(facts["runtime"]["status"], "not_observed");
     for (field, total_field) in [
@@ -112,7 +112,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         let page: serde_json::Value =
             serde_json::from_str(by_id[&id]["result"]["content"][0]["text"].as_str().unwrap())
                 .unwrap();
-        assert_eq!(page["schema_version"], 4);
+        assert_eq!(page["schema_version"], 5);
         assert_eq!(page["section"], section);
         assert_eq!(page["total"], 0);
         assert!(page["items"].as_array().unwrap().is_empty());
@@ -1208,7 +1208,7 @@ fn stdio_authorized_build_reports_the_same_app_check() {
         let page: serde_json::Value =
             serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap())
                 .unwrap();
-        assert_eq!(page["schema_version"], 4);
+        assert_eq!(page["schema_version"], 5);
         assert_eq!(page["section"], section);
         assert_eq!(page["total"], expected_items.len());
         assert_eq!(
@@ -1645,6 +1645,219 @@ fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
         assert!(Instant::now() < deadline, "real Host did not stop");
         std::thread::sleep(Duration::from_millis(25));
     }
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn stdio_observes_ready_web_routes_only_during_the_supervised_process_app_run() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .arg("--no-install")
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr)
+    );
+
+    let mut child = Command::new(cli)
+        .args(["mcp", "--root"])
+        .arg(&root)
+        .arg("--allow-run")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+    );
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"})
+    )
+    .unwrap();
+    let tool = |stdin: &mut std::process::ChildStdin,
+                stdout: &mut BufReader<std::process::ChildStdout>,
+                id: u64,
+                name: &str,
+                arguments: serde_json::Value| {
+        mcp_tool_json(&mcp_roundtrip(
+            stdin,
+            stdout,
+            &serde_json::json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":arguments}}),
+        ))
+    };
+
+    let before = tool(
+        &mut stdin,
+        &mut stdout,
+        2,
+        "project_facts",
+        serde_json::json!({"scope":"built_distribution"}),
+    );
+    assert_eq!(before["runtime"]["status"], "not_observed");
+    assert!(before.get("observed_web_routes").is_none(), "{before}");
+
+    let request_id = "real-process-notes";
+    let started = tool(
+        &mut stdin,
+        &mut stdout,
+        3,
+        "project_run",
+        serde_json::json!({"request_id":request_id,"timeout_seconds":120}),
+    );
+    assert_eq!(started["state"], "starting", "{started}");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let status = tool(
+            &mut stdin,
+            &mut stdout,
+            4,
+            "project_run_status",
+            serde_json::json!({"request_id":request_id}),
+        );
+        if status["state"] == "running" {
+            break;
+        }
+        assert_eq!(status["state"], "starting", "{status}");
+        assert!(
+            Instant::now() < deadline,
+            "process App did not become ready"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    let running = tool(
+        &mut stdin,
+        &mut stdout,
+        5,
+        "project_facts",
+        serde_json::json!({}),
+    );
+    assert_eq!(running["schema_version"], 5);
+    assert_eq!(running["runtime"]["status"], "running");
+    assert_eq!(
+        running["root"],
+        root.join("dist").canonicalize().unwrap().to_str().unwrap()
+    );
+    let observed = &running["observed_web_routes"];
+    assert_eq!(observed["capture"], "ready_gate", "{running}");
+    assert_eq!(observed["run_request_id"], request_id);
+    assert_eq!(
+        observed["plugin_root_revision"],
+        running["plugin_root_revision"]
+    );
+    assert_eq!(observed["total_routes"], 2);
+    assert!(observed.get("routes").is_none(), "{observed}");
+    let digest = observed["distribution_lock_sha256"].as_str().unwrap();
+    assert!(
+        digest.starts_with("sha256:")
+            && digest.len() == 71
+            && digest[7..].bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "{digest}"
+    );
+    let receipt = observed["source_location"]["path"].as_str().unwrap();
+    assert!(
+        fs::symlink_metadata(receipt).unwrap().file_type().is_file(),
+        "route source must be the live run receipt: {receipt}"
+    );
+
+    let routes = tool(
+        &mut stdin,
+        &mut stdout,
+        6,
+        "project_facts",
+        serde_json::json!({"scope":"built_distribution","section":"observed_web_routes","limit":20}),
+    );
+    assert_eq!(routes["section"], "observed_web_routes");
+    assert_eq!(routes["total"], 2);
+    assert_eq!(
+        routes["items"],
+        serde_json::json!([
+            {"method":"GET","path":"/notes/{id}","route_id":"notes.read"},
+            {"method":"POST","path":"/notes","route_id":"notes.create"},
+        ])
+    );
+
+    let source = tool(
+        &mut stdin,
+        &mut stdout,
+        7,
+        "project_facts",
+        serde_json::json!({"scope":"root"}),
+    );
+    assert_eq!(source["runtime"]["status"], "not_observed");
+    assert!(source.get("observed_web_routes").is_none(), "{source}");
+
+    let stopping = tool(
+        &mut stdin,
+        &mut stdout,
+        8,
+        "project_run_stop",
+        serde_json::json!({"request_id":request_id}),
+    );
+    assert_eq!(stopping["state"], "stopping", "{stopping}");
+    let after_stop_request = tool(
+        &mut stdin,
+        &mut stdout,
+        9,
+        "project_facts",
+        serde_json::json!({"scope":"built_distribution"}),
+    );
+    assert!(
+        after_stop_request.get("observed_web_routes").is_none(),
+        "{after_stop_request}"
+    );
+    let stop_deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let status = tool(
+            &mut stdin,
+            &mut stdout,
+            10,
+            "project_run_status",
+            serde_json::json!({"request_id":request_id}),
+        );
+        if status["state"] == "stopped" {
+            break;
+        }
+        assert_eq!(status["state"], "stopping", "{status}");
+        assert!(Instant::now() < stop_deadline, "process App did not stop");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let after_stopped = tool(
+        &mut stdin,
+        &mut stdout,
+        11,
+        "project_facts",
+        serde_json::json!({"scope":"built_distribution"}),
+    );
+    assert!(
+        after_stopped.get("observed_web_routes").is_none(),
+        "{after_stopped}"
+    );
     drop(stdin);
     assert!(child.wait().unwrap().success());
 }

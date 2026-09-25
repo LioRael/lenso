@@ -8,7 +8,7 @@ use lenso_app_plan::authoring::HostCatalog;
 use lenso_kernel::{ExecutionAdapterCatalog, Kernel, ShutdownOutcome};
 use lenso_native_adapter::NativePluginRegistry;
 use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, time::Duration};
 
@@ -168,6 +168,71 @@ struct FileProof {
 struct DistributionLock {
     schema: String,
     files: Vec<FileProof>,
+}
+
+#[derive(Serialize)]
+struct WebRouteFact {
+    method: String,
+    path: String,
+    route_id: String,
+}
+
+fn capture_web_routes<'a>(
+    routes: impl Iterator<Item = (&'a str, &'a str, &'a str)>,
+) -> Option<Vec<WebRouteFact>> {
+    let mut captured = Vec::new();
+    let mut source_bytes = 0usize;
+    for (method, path, route_id) in routes {
+        if captured.len() == 256 {
+            return None;
+        }
+        let route_bytes = method.len().checked_add(path.len())?.checked_add(route_id.len())?;
+        if route_bytes > 4096 {
+            return None;
+        }
+        source_bytes = source_bytes
+            .checked_add(route_bytes)?;
+        if source_bytes > 128 * 1024 {
+            return None;
+        }
+        captured.push(WebRouteFact {
+            method: method.to_owned(),
+            path: path.to_owned(),
+            route_id: route_id.to_owned(),
+        });
+    }
+    Some(captured)
+}
+
+fn publish_web_route_receipt(
+    ready_file: &std::path::Path,
+    plugin_root_revision: &str,
+    distribution_lock_sha256: &str,
+    routes: Option<Vec<WebRouteFact>>,
+) -> anyhow::Result<()> {
+    let Some(routes) = routes else {
+        return Ok(());
+    };
+    let receipt = serde_json::json!({
+        "schema": "lenso.live-web-routes.v1",
+        "capture": "ready_gate",
+        "plugin_root_revision": plugin_root_revision,
+        "distribution_lock_sha256": distribution_lock_sha256,
+        "routes": routes,
+    });
+    let bytes = serde_json::to_vec(&receipt)?;
+    if bytes.len() > 128 * 1024 {
+        return Ok(());
+    }
+    let path = ready_file.with_extension("web-routes.json");
+    let parent = path
+        .parent()
+        .context("Web route receipt needs a parent directory")?;
+    let mut stage = tempfile::NamedTempFile::new_in(parent)?;
+    std::io::Write::write_all(&mut stage, &bytes)?;
+    stage.as_file().sync_all()?;
+    stage.persist(path)?;
+    Ok(())
 }
 
 #[cfg(generated_native_host)]
@@ -389,8 +454,15 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         web_address_file.is_none() || (!check && ready_file.is_some()),
         "--web-address-file requires --ready-file without --check"
     );
-    let lock: DistributionLock =
-        serde_json::from_slice(&fs::read(root.join(".lenso/distribution.lock.json"))?)?;
+    let distribution_lock_bytes = fs::read(root.join(".lenso/distribution.lock.json"))?;
+    let distribution_lock_sha256 = format!(
+        "sha256:{}",
+        Sha256::digest(&distribution_lock_bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    let lock: DistributionLock = serde_json::from_slice(&distribution_lock_bytes)?;
     if lock.schema != "lenso.local-host-distribution.v1" || lock.files.len() > 2048 {
         bail!("unsupported local Host distribution lock");
     }
@@ -690,9 +762,18 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             let local_web_url: Option<String> = None;
             #[cfg(not(generated_native_host))]
             let local_web_url = ingress.local_address().map(|address| format!("http://{address}/"));
+            #[cfg(generated_native_host)]
+            let local_web_routes: Option<Vec<WebRouteFact>> = None;
+            #[cfg(not(generated_native_host))]
+            let local_web_routes = ingress.route_manifest().and_then(|manifest| {
+                capture_web_routes(manifest.routes().iter().map(|route| {
+                    (route.method.as_str(), route.path.as_str(), route.route_id.as_str())
+                }))
+            });
             #[cfg(not(generated_native_host))]
             if let Some(address) = &local_web_url { eprintln!("Listening on {address}"); }
             // LENSO_WEB_READY
+            // LENSO_WEB_ROUTE_FACTS
             if let Some(path) = web_address_file {
                 let address = local_web_url.context("frontend dev requires a ready Web Ingress")?;
                 let stage = path.with_extension("stage");
@@ -700,6 +781,16 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 fs::rename(stage, path)?;
             }
             if let Some(path) = ready_file {
+                if std::env::var("LENSO_MCP_WEB_ROUTES").ok().as_deref() == Some("1") {
+                    if let Err(error) = publish_web_route_receipt(
+                        &path,
+                        &resolution.plugin_root_revision,
+                        &distribution_lock_sha256,
+                        local_web_routes,
+                    ) {
+                        eprintln!("Web route observation unavailable: {error}");
+                    }
+                }
                 let stage = path.with_extension("stage");
                 fs::write(&stage, b"lenso.local-host-ready.v1\n")?;
                 fs::rename(stage, path)?;

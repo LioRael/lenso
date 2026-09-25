@@ -16,6 +16,9 @@ use super::configuration_source;
 use crate::plugins::project_root;
 
 mod provenance;
+mod ready_web_routes;
+
+pub use ready_web_routes::inspect_ready_web_routes;
 
 #[derive(Args, Clone, Debug)]
 pub struct FactsArgs {
@@ -47,7 +50,28 @@ pub struct ProjectFacts {
     pub discovered_sources: Vec<DiscoveredSourceFacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build_provenance: Option<BuildProvenanceFacts>,
+    /// Routes actually resolved by Web Ingress at a supervised Host's Ready Gate.
+    /// This is a run-scoped snapshot, not a promise about later in-process restarts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_web_routes: Option<ObservedWebRoutesFacts>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ObservedWebRoutesFacts {
+    pub capture: &'static str,
+    pub run_request_id: String,
+    pub source_location: SourceLocation,
+    pub plugin_root_revision: String,
+    pub distribution_lock_sha256: String,
+    pub routes: Vec<ObservedWebRouteFacts>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ObservedWebRouteFacts {
+    pub method: String,
+    pub path: String,
+    pub route_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -264,7 +288,7 @@ pub fn inspect_project_facts_with_host_build(
     }
 
     let mut report = ProjectFacts {
-        schema_version: 4,
+        schema_version: 5,
         kind: "lenso.app-facts",
         status: if diagnostics.is_empty() {
             "resolved"
@@ -286,6 +310,7 @@ pub fn inspect_project_facts_with_host_build(
         bindings: Vec::new(),
         discovered_sources: Vec::new(),
         build_provenance: None,
+        observed_web_routes: None,
         diagnostics,
     };
 

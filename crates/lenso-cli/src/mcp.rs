@@ -145,6 +145,7 @@ enum ProjectFactsSection {
     DiscoveredSources,
     BuildSources,
     GeneratedArtifacts,
+    ObservedWebRoutes,
     Diagnostics,
 }
 
@@ -834,6 +835,25 @@ impl AppTools {
             facts.runtime.status = state;
             facts.runtime.detail = "This MCP process observed its fixed built Host run; use project_run_status for its exact request and terminal outcome.";
         }
+        if matches!(scope, ProjectInspectionScope::BuiltDistribution)
+            && facts.status == "resolved"
+            && let Some(revision) = facts.plugin_root_revision.as_deref()
+            && let Some((run_id, receipt_path)) = self.runs.active_web_routes_receipt()
+            && let Ok(Some(routes)) = lenso_engine_app::app::facts::inspect_ready_web_routes(
+                &observed_root,
+                &receipt_path,
+                revision,
+                &run_id,
+            )
+            && self
+                .runs
+                .active_web_routes_receipt()
+                .as_ref()
+                .map(|(id, _)| id)
+                == Some(&run_id)
+        {
+            facts.observed_web_routes = Some(routes);
+        }
         let json = project_facts_json(&facts, &request)?;
         Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
@@ -971,6 +991,16 @@ fn project_facts_json(
                     "total_generated_artifacts": provenance.generated_artifacts.len(),
                 });
             }
+            if let Some(observation) = &facts.observed_web_routes {
+                value["observed_web_routes"] = serde_json::json!({
+                    "capture": observation.capture,
+                    "run_request_id": observation.run_request_id,
+                    "source_location": observation.source_location,
+                    "plugin_root_revision": observation.plugin_root_revision,
+                    "distribution_lock_sha256": observation.distribution_lock_sha256,
+                    "total_routes": observation.routes.len(),
+                });
+            }
             value
         }
         section => {
@@ -1052,6 +1082,23 @@ fn project_facts_json(
                             .collect::<Vec<_>>(),
                     ),
                 ),
+                ProjectFactsSection::ObservedWebRoutes => (
+                    "observed_web_routes",
+                    facts
+                        .observed_web_routes
+                        .as_ref()
+                        .map_or(0, |observation| observation.routes.len()),
+                    serde_json::to_value(
+                        facts
+                            .observed_web_routes
+                            .as_ref()
+                            .into_iter()
+                            .flat_map(|observation| observation.routes.iter())
+                            .skip(request.offset)
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
                 ProjectFactsSection::Diagnostics => (
                     "diagnostics",
                     facts.diagnostics.len(),
@@ -1069,7 +1116,7 @@ fn project_facts_json(
             let items =
                 items.map_err(|_| McpError::internal_error("serialize App facts page", None))?;
             let next = request.offset.saturating_add(limit);
-            serde_json::json!({
+            let mut page = serde_json::json!({
                 "schema_version": facts.schema_version,
                 "kind": "lenso.app-facts-page",
                 "status": facts.status,
@@ -1084,7 +1131,17 @@ fn project_facts_json(
                 "offset": request.offset,
                 "next_offset": if next < total { Some(next) } else { None },
                 "items": items,
-            })
+            });
+            if let Some(observation) = &facts.observed_web_routes {
+                page["observed_web_routes"] = serde_json::json!({
+                    "capture": observation.capture,
+                    "run_request_id": observation.run_request_id,
+                    "source_location": observation.source_location,
+                    "plugin_root_revision": observation.plugin_root_revision,
+                    "distribution_lock_sha256": observation.distribution_lock_sha256,
+                });
+            }
+            page
         }
     };
     let json = serde_json::to_string(&value)
@@ -1107,7 +1164,8 @@ impl ServerHandler for AppTools {}
 mod tests {
     use lenso_engine_app::app::facts::{
         BindingFacts, BuildProvenanceFacts, DiscoveredSourceFacts, GeneratedArtifactFacts,
-        PluginFacts, ProjectFacts, RuntimeFacts, SourceLocation,
+        ObservedWebRouteFacts, ObservedWebRoutesFacts, PluginFacts, ProjectFacts, RuntimeFacts,
+        SourceLocation,
     };
 
     use super::{MAX_MCP_TEXT_BYTES, ProjectFactsQuery, project_facts_json};
@@ -1115,7 +1173,7 @@ mod tests {
     #[test]
     fn default_facts_summarize_large_build_provenance_and_pages_keep_exact_items() {
         let facts = ProjectFacts {
-            schema_version: 4,
+            schema_version: 5,
             kind: "lenso.app-facts",
             status: "resolved",
             root: "/tmp/project".into(),
@@ -1144,6 +1202,7 @@ mod tests {
                     })
                     .collect(),
             }),
+            observed_web_routes: None,
             diagnostics: Vec::new(),
         };
         assert!(serde_json::to_string(&facts).unwrap().len() > MAX_MCP_TEXT_BYTES);
@@ -1173,6 +1232,7 @@ mod tests {
         assert_eq!(page["total"], 64);
         assert_eq!(page["offset"], 63);
         assert!(page["next_offset"].is_null());
+        assert!(page.get("observed_web_routes").is_none());
         assert_eq!(
             page["items"][0]["path"],
             facts.build_provenance.as_ref().unwrap().generated_artifacts[63].path
@@ -1183,7 +1243,7 @@ mod tests {
     fn default_facts_remain_bounded_with_large_pageable_collections() {
         let deep_path = format!("/tmp/{}", "nested/".repeat(50));
         let facts = ProjectFacts {
-            schema_version: 4,
+            schema_version: 5,
             kind: "lenso.app-facts",
             status: "resolved",
             root: "/tmp/project".into(),
@@ -1227,6 +1287,22 @@ mod tests {
                 })
                 .collect(),
             build_provenance: None,
+            observed_web_routes: Some(ObservedWebRoutesFacts {
+                capture: "ready_gate",
+                run_request_id: "run-1".into(),
+                source_location: SourceLocation {
+                    path: "/tmp/receipt.web-routes.json".into(),
+                },
+                plugin_root_revision: "revision-1".into(),
+                distribution_lock_sha256: format!("sha256:{}", "a".repeat(64)),
+                routes: (0..256)
+                    .map(|index| ObservedWebRouteFacts {
+                        method: "GET".into(),
+                        path: format!("/route-{index}/{}", "x".repeat(2000)),
+                        route_id: format!("route.{index}"),
+                    })
+                    .collect(),
+            }),
             diagnostics: Vec::new(),
         };
         assert!(serde_json::to_string(&facts).unwrap().len() > MAX_MCP_TEXT_BYTES);
@@ -1234,9 +1310,11 @@ mod tests {
         let default_json = project_facts_json(&facts, &ProjectFactsQuery::default()).unwrap();
         assert!(default_json.len() < MAX_MCP_TEXT_BYTES);
         let summary: serde_json::Value = serde_json::from_str(&default_json).unwrap();
-        assert_eq!(summary["schema_version"], 4);
+        assert_eq!(summary["schema_version"], 5);
         assert_eq!(summary["status"], "resolved");
         assert_eq!(summary["plugin_root_revision"], "revision-1");
+        assert_eq!(summary["observed_web_routes"]["total_routes"], 256);
+        assert!(summary["observed_web_routes"].get("routes").is_none());
         for (field, total_field) in [
             ("plugins", "total_plugins"),
             ("bindings", "total_bindings"),
@@ -1254,6 +1332,16 @@ mod tests {
             assert_eq!(page["items"].as_array().unwrap().len(), 1);
             assert!(page["next_offset"].is_null());
         }
+        let page_query: ProjectFactsQuery = serde_json::from_value(serde_json::json!({
+            "section": "observed_web_routes", "offset": 240, "limit": 20
+        }))
+        .unwrap();
+        let page_json = project_facts_json(&facts, &page_query).unwrap();
+        assert!(page_json.len() < MAX_MCP_TEXT_BYTES);
+        let page: serde_json::Value = serde_json::from_str(&page_json).unwrap();
+        assert_eq!(page["total"], 256);
+        assert_eq!(page["items"].as_array().unwrap().len(), 16);
+        assert_eq!(page["observed_web_routes"]["run_request_id"], "run-1");
     }
 }
 
