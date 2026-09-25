@@ -11,7 +11,7 @@ repository.workspace = true
 lenso-engine = { path = "../lenso-engine", version = "0.2.0" }
 lenso-app-plan = { version = "=0.4.6", path = "../lenso-app-plan" }
 lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }
-lenso-native-adapter = { version = "=0.3.17", path = "../lenso-native-adapter" }
+lenso-native-adapter = { version = "=0.3.18", path = "../lenso-native-adapter" }
 lenso-runner = { version = "=0.2.19", path = "../lenso-runner" }
 lenso-plugin-authoring = { version = "0.2.0", path = "../lenso-plugin-authoring" }
 lenso-contract-runtime = { version = "0.2.0", path = "../lenso-contract-runtime" }
