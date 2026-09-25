@@ -66,6 +66,21 @@ pub struct LinkedCatalogArgs {
     /// Host target to check; defaults to this machine's Native target.
     #[arg(long)]
     target: Option<String>,
+    /// Restrict results to candidates with no known hard rejection for this App.
+    #[arg(long, requires = "root")]
+    recommendations: bool,
+    /// Source App root used only for read-only recommendation facts.
+    #[arg(long, requires = "recommendations")]
+    root: Option<PathBuf>,
+    /// Exclude candidates unless signed metadata proves they request no permissions.
+    #[arg(long, requires = "recommendations")]
+    require_no_permissions: bool,
+    /// Exclude candidates unless signed metadata proves no external service is required.
+    #[arg(long, requires = "recommendations")]
+    require_no_external_services: bool,
+    /// Exclude candidates unless signed metadata proves no external fee is required.
+    #[arg(long, requires = "recommendations")]
+    require_no_fees: bool,
     /// Emit a stable JSON report.
     #[arg(long)]
     json: bool,
@@ -135,6 +150,51 @@ pub fn linked_catalog(args: LinkedCatalogArgs) -> anyhow::Result<()> {
     let target = args
         .target
         .unwrap_or_else(|| lenso_app_authoring::native_host_target().to_owned());
+    if args.recommendations {
+        let report = linked_catalog::recommend(
+            args.root
+                .as_deref()
+                .context("--root is required for recommendations")?,
+            &args.linked_snapshot,
+            &args.trust,
+            args.query.as_deref().unwrap_or_default(),
+            &target,
+            linked_catalog::RecommendationRestrictions {
+                require_no_permissions: args.require_no_permissions,
+                require_no_external_services: args.require_no_external_services,
+                require_no_fees: args.require_no_fees,
+            },
+        )?;
+        if args.json {
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        } else {
+            if report.releases.is_empty() {
+                println!("No signed linked Cargo candidates passed known hard filters.");
+            }
+            for release in &report.releases {
+                println!(
+                    "{}@{}\tneeds verification ({})\t{}",
+                    release.plugin_id,
+                    release.version,
+                    release.unverified.join(", "),
+                    release
+                        .summary
+                        .chars()
+                        .flat_map(char::escape_default)
+                        .collect::<String>()
+                );
+            }
+            for release in &report.excluded {
+                println!(
+                    "{}@{}\texcluded: {}",
+                    release.plugin_id,
+                    release.version,
+                    release.rejection_reasons.join(", ")
+                );
+            }
+        }
+        return Ok(());
+    }
     let report = linked_catalog::inspect(
         &args.linked_snapshot,
         &args.trust,

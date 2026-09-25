@@ -1061,6 +1061,61 @@ fn assert_signed_catalog_search(
             .iter()
             .any(|item| item == "host_build_and_runtime")
     );
+    let before = fs::read(root.join("lenso.toml")).ok();
+    assert!(!root.join("vendor").exists());
+    let recommended = linked_recommendations(cli, root, snapshot_path, trust_path, None);
+    assert_eq!(recommended["kind"], "lenso.linked-cargo-recommendations");
+    assert_eq!(recommended["releases"][0]["plugin_id"], "example.web");
+    assert_eq!(recommended["excluded"].as_array().unwrap().len(), 0);
+    assert!(
+        recommended["releases"][0]["unverified"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "permissions_and_external_services")
+    );
+    assert!(
+        recommended["releases"][0]["unverified"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "fees_and_cloud_prerequisites")
+    );
+    assert_eq!(fs::read(root.join("lenso.toml")).ok(), before);
+    assert!(!root.join("vendor").exists());
+    let incompatible = linked_recommendations(
+        cli,
+        root,
+        snapshot_path,
+        trust_path,
+        Some("unsupported-target"),
+    );
+    assert!(incompatible["releases"].as_array().unwrap().is_empty());
+    assert_eq!(
+        incompatible["excluded"][0]["rejection_reasons"][0],
+        "host_target_mismatch"
+    );
+    let strict = linked_recommendations_with_constraints(
+        cli,
+        root,
+        snapshot_path,
+        trust_path,
+        None,
+        &[
+            "--require-no-permissions",
+            "--require-no-external-services",
+            "--require-no-fees",
+        ],
+    );
+    assert!(strict["releases"].as_array().unwrap().is_empty());
+    assert_eq!(
+        strict["excluded"][0]["rejection_reasons"],
+        serde_json::json!([
+            "permission_requirements_unverified",
+            "external_service_requirements_unverified",
+            "fee_requirements_unverified"
+        ])
+    );
     let mut mcp = Command::new(cli)
         .args(["mcp", "--root"])
         .arg(root)
@@ -1078,6 +1133,9 @@ fn assert_signed_catalog_search(
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"linked_catalog","arguments":{"query":"web"}}}"#,
         r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"linked_catalog","arguments":{"query":"web","offset":1,"limit":1}}}"#,
+        r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"linked_catalog","arguments":{"query":"web","recommendations_only":true}}}"#,
+        r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"linked_catalog","arguments":{"query":"web","recommendations_only":true,"constraints":["no_permissions","no_external_services","no_fees"]}}}"#,
+        r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"linked_catalog","arguments":{"query":"web","recommendations_only":true,"constraints":["no_fees"],"offset":1,"limit":1}}}"#,
     ].join("\n");
     mcp.stdin
         .take()
@@ -1109,6 +1167,31 @@ fn assert_signed_catalog_search(
         serde_json::from_str(next_page["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(next_report["total_releases"], 1);
     assert!(next_report["releases"].as_array().unwrap().is_empty());
+    let recommended_mcp: serde_json::Value = serde_json::from_str(
+        response_for(4)["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(recommended_mcp["kind"], recommended["kind"]);
+    assert_eq!(recommended_mcp["releases"], recommended["releases"]);
+    assert_eq!(recommended_mcp["excluded"], recommended["excluded"]);
+    let strict_mcp: serde_json::Value = serde_json::from_str(
+        response_for(5)["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(strict_mcp["releases"], strict["releases"]);
+    assert_eq!(strict_mcp["excluded"], strict["excluded"]);
+    let beyond_excluded: serde_json::Value = serde_json::from_str(
+        response_for(6)["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(beyond_excluded["total_excluded"], 1);
+    assert!(beyond_excluded["excluded"].as_array().unwrap().is_empty());
     let wrong_target = Command::new(cli)
         .args(["app", "linked-catalog", "--linked-snapshot"])
         .arg(snapshot_path)
@@ -1125,6 +1208,46 @@ fn assert_signed_catalog_search(
         "host_target_mismatch"
     );
     assert_tampered_catalog_rejected(cli, snapshot_path, trust_path);
+}
+
+fn linked_recommendations(
+    cli: &str,
+    root: &std::path::Path,
+    snapshot: &std::path::Path,
+    trust: &std::path::Path,
+    target: Option<&str>,
+) -> serde_json::Value {
+    linked_recommendations_with_constraints(cli, root, snapshot, trust, target, &[])
+}
+
+fn linked_recommendations_with_constraints(
+    cli: &str,
+    root: &std::path::Path,
+    snapshot: &std::path::Path,
+    trust: &std::path::Path,
+    target: Option<&str>,
+    constraints: &[&str],
+) -> serde_json::Value {
+    let mut command = Command::new(cli);
+    command
+        .args(["app", "linked-catalog", "web", "--linked-snapshot"])
+        .arg(snapshot)
+        .arg("--trust")
+        .arg(trust)
+        .arg("--root")
+        .arg(root)
+        .args(["--recommendations", "--json"])
+        .args(constraints);
+    if let Some(target) = target {
+        command.args(["--target", target]);
+    }
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
 }
 
 fn assert_tampered_catalog_rejected(
@@ -1475,6 +1598,12 @@ fn linked_catalog_adds_exact_source_once_and_discovers_it() {
         &archive,
     );
     adopt_exact_twice(cli, &root, &snapshot_path, &trust_path, &archive);
+    let already_adopted = linked_recommendations(cli, &root, &snapshot_path, &trust_path, None);
+    assert!(already_adopted["releases"].as_array().unwrap().is_empty());
+    assert_eq!(
+        already_adopted["excluded"][0]["rejection_reasons"][0],
+        "already_adopted"
+    );
     assert_exact_source_discovered(cli, &root);
     assert_re_adoption_preserves_disabled(cli, &root, &snapshot_path, &trust_path, &archive);
     modified_linked_source_cannot_build(cli, &root);

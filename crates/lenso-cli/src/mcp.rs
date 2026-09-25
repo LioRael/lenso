@@ -92,9 +92,23 @@ struct LinkedCatalogQuery {
     #[serde(default)]
     target: Option<String>,
     #[serde(default)]
+    recommendations_only: bool,
+    #[serde(default)]
+    constraints: Vec<RecommendationConstraint>,
+    #[serde(default)]
     offset: usize,
     #[serde(default)]
     limit: Option<usize>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, JsonSchema)]
+enum RecommendationConstraint {
+    #[serde(rename = "no_permissions")]
+    Permissions,
+    #[serde(rename = "no_external_services")]
+    ExternalServices,
+    #[serde(rename = "no_fees")]
+    Fees,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -627,12 +641,18 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Search an explicitly configured signed linked Cargo snapshot; results are candidates, not verified installable releases"
+        description = "Search an explicitly configured signed linked Cargo snapshot. recommendations_only filters known target and App conflicts; unknown permissions, dependencies, services and fees remain unverified, or are excluded under explicit strict constraints. No result grants installation"
     )]
     fn linked_catalog(
         &self,
         Parameters(request): Parameters<LinkedCatalogQuery>,
     ) -> Result<CallToolResult, McpError> {
+        if !request.recommendations_only && !request.constraints.is_empty() {
+            return Err(McpError::invalid_params(
+                "strict recommendation constraints require recommendations_only=true",
+                None,
+            ));
+        }
         let snapshot = self.linked_snapshot.as_ref().ok_or_else(|| {
             McpError::invalid_request("MCP linked Cargo catalog was not configured", None)
         })?;
@@ -643,22 +663,39 @@ impl AppTools {
             .target
             .as_deref()
             .unwrap_or(lenso_app_authoring::native_host_target());
-        let mut report = lenso_engine_app::app::inspect_linked_cargo_catalog(
-            snapshot,
-            trust,
-            &request.query,
-            target,
-        )
+        let mut report = if request.recommendations_only {
+            lenso_engine_app::app::inspect_linked_cargo_recommendations(
+                &self.root,
+                snapshot,
+                trust,
+                &request.query,
+                target,
+                lenso_engine_app::app::RecommendationRestrictions {
+                    require_no_permissions: request
+                        .constraints
+                        .contains(&RecommendationConstraint::Permissions),
+                    require_no_external_services: request
+                        .constraints
+                        .contains(&RecommendationConstraint::ExternalServices),
+                    require_no_fees: request
+                        .constraints
+                        .contains(&RecommendationConstraint::Fees),
+                },
+            )
+        } else {
+            lenso_engine_app::app::inspect_linked_cargo_catalog(
+                snapshot,
+                trust,
+                &request.query,
+                target,
+            )
+        }
         .map_err(|_| {
             McpError::internal_error(
                 "Signed linked Cargo catalog is unavailable or invalid",
                 None,
             )
         })?;
-        let releases = report["releases"]
-            .as_array_mut()
-            .ok_or_else(|| McpError::internal_error("invalid linked Cargo catalog report", None))?;
-        let total = releases.len();
         let limit = request.limit.unwrap_or(20);
         if limit == 0 || limit > 20 {
             return Err(McpError::invalid_params(
@@ -666,20 +703,7 @@ impl AppTools {
                 None,
             ));
         }
-        let page = releases
-            .iter()
-            .skip(request.offset)
-            .take(limit)
-            .cloned()
-            .collect::<Vec<_>>();
-        let next = request.offset.saturating_add(page.len());
-        *releases = page;
-        report["total_releases"] = total.into();
-        report["next_offset"] = if next < total {
-            next.into()
-        } else {
-            serde_json::Value::Null
-        };
+        page_linked_catalog_report(&mut report, request.offset, limit)?;
         let json = serde_json::to_string(&report)
             .map_err(|_| McpError::internal_error("serialize linked Cargo catalog", None))?;
         if json.len() > MAX_MCP_TEXT_BYTES {
@@ -843,6 +867,41 @@ impl AppTools {
         }
         Ok(distribution)
     }
+}
+
+fn page_linked_catalog_report(
+    report: &mut serde_json::Value,
+    offset: usize,
+    limit: usize,
+) -> Result<(), McpError> {
+    for (field, total_field, next_field) in [
+        ("releases", "total_releases", "next_offset"),
+        ("excluded", "total_excluded", "next_excluded_offset"),
+    ] {
+        if field == "excluded" && report.get(field).is_none() {
+            continue;
+        }
+        let entries = report
+            .get_mut(field)
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(|| McpError::internal_error("invalid linked Cargo catalog report", None))?;
+        let total = entries.len();
+        let page = entries
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .cloned()
+            .collect::<Vec<_>>();
+        let next = offset.saturating_add(page.len());
+        *entries = page;
+        report[total_field] = total.into();
+        report[next_field] = if next < total {
+            next.into()
+        } else {
+            serde_json::Value::Null
+        };
+    }
+    Ok(())
 }
 
 fn is_distribution_root(root: &std::path::Path) -> bool {

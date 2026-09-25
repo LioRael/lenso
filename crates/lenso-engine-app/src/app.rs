@@ -22,6 +22,7 @@ mod explain;
 pub mod facts;
 pub use configuration_source::Status as ConfigurationStatus;
 pub use configuration_source::sync_external_configuration;
+pub use convention_authoring::linked_catalog::RecommendationRestrictions;
 pub use facts::{ProjectFacts, inspect_project_facts};
 mod local_dev;
 pub use local_dev::DevArgs;
@@ -133,6 +134,28 @@ pub fn inspect_linked_cargo_catalog(
             trust.as_ref(),
             query,
             target,
+        )?,
+    )?)
+}
+
+/// Project-aware read-only projection of signed linked-Cargo candidate facts.
+/// Unknown permission, infrastructure, and fee metadata never become grants.
+pub fn inspect_linked_cargo_recommendations(
+    root: impl AsRef<Path>,
+    snapshot: impl AsRef<Path>,
+    trust: impl AsRef<Path>,
+    query: &str,
+    target: &str,
+    restrictions: RecommendationRestrictions,
+) -> anyhow::Result<serde_json::Value> {
+    Ok(serde_json::to_value(
+        convention_authoring::linked_catalog::recommend(
+            root.as_ref(),
+            snapshot.as_ref(),
+            trust.as_ref(),
+            query,
+            target,
+            restrictions,
         )?,
     )?)
 }

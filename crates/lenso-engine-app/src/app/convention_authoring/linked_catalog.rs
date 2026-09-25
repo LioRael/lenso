@@ -165,6 +165,30 @@ pub struct LinkedCatalogReport {
     pub releases: Vec<LinkedCatalogCandidate>,
 }
 
+/// A hard-negative filter over signed catalog and App facts. Surviving entries
+/// are still candidates: no archive, permission, or runtime grant is implied.
+#[derive(Debug, Serialize)]
+pub struct LinkedRecommendationReport {
+    pub schema_version: u32,
+    pub kind: &'static str,
+    pub catalog_id: String,
+    pub revision: u64,
+    pub requested_target: String,
+    pub project_target: String,
+    pub restrictions: RecommendationRestrictions,
+    pub releases: Vec<LinkedCatalogCandidate>,
+    pub excluded: Vec<LinkedCatalogCandidate>,
+}
+
+/// Strict user constraints. This catalog carries no signed permission, service,
+/// or fee declarations, so an unknown value is rejected under each constraint.
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+pub struct RecommendationRestrictions {
+    pub require_no_permissions: bool,
+    pub require_no_external_services: bool,
+    pub require_no_fees: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LinkedCatalogCandidate {
     pub plugin_id: String,
@@ -374,6 +398,129 @@ pub fn inspect(
         requested_target: target.to_owned(),
         releases,
     })
+}
+
+pub fn recommend(
+    root: &Path,
+    snapshot_path: &Path,
+    trust_path: &Path,
+    query: &str,
+    target: &str,
+    restrictions: RecommendationRestrictions,
+) -> anyhow::Result<LinkedRecommendationReport> {
+    ensure!(
+        query.len() <= 256,
+        "linked Cargo recommendation query exceeds 256 bytes"
+    );
+    ensure!(
+        target.len() <= 128,
+        "linked Cargo recommendation target exceeds 128 bytes"
+    );
+    let root = fs::canonicalize(root).context("resolve recommendation App root")?;
+    ensure!(root.is_dir(), "recommendation App root is not a directory");
+    let facts = crate::app::facts::inspect_project_facts(&root)?;
+    let report = inspect(snapshot_path, trust_path, query, target)?;
+    let mut releases = Vec::new();
+    let mut excluded = Vec::new();
+    for mut release in report.releases {
+        if facts.host_target != "unknown" && facts.host_target != target {
+            release
+                .rejection_reasons
+                .push("project_host_target_mismatch");
+        }
+        if facts.status == "resolved"
+            && facts.plugins.iter().any(|plugin| {
+                plugin.plugin_id == release.plugin_id && plugin.release_version == release.version
+            })
+        {
+            release.rejection_reasons.push("already_adopted");
+        }
+        if let Some(reason) = local_linked_source_state(&root, &release)?
+            && !release.rejection_reasons.contains(&reason)
+        {
+            release.rejection_reasons.push(reason);
+        }
+        if restrictions.require_no_permissions {
+            release
+                .rejection_reasons
+                .push("permission_requirements_unverified");
+        }
+        if restrictions.require_no_external_services {
+            release
+                .rejection_reasons
+                .push("external_service_requirements_unverified");
+        }
+        if restrictions.require_no_fees {
+            release
+                .rejection_reasons
+                .push("fee_requirements_unverified");
+        }
+        if release.rejection_reasons.is_empty() {
+            release
+                .unverified
+                .extend(["required_capabilities", "fees_and_cloud_prerequisites"]);
+            if facts.status != "resolved" {
+                release.unverified.push("project_selection");
+            }
+            releases.push(release);
+        } else {
+            release.adoption = "rejected";
+            excluded.push(release);
+        }
+    }
+    Ok(LinkedRecommendationReport {
+        schema_version: 1,
+        kind: "lenso.linked-cargo-recommendations",
+        catalog_id: report.catalog_id,
+        revision: report.revision,
+        requested_target: report.requested_target,
+        project_target: facts.host_target,
+        restrictions,
+        releases,
+        excluded,
+    })
+}
+
+fn local_linked_source_state(
+    root: &Path,
+    release: &LinkedCatalogCandidate,
+) -> anyhow::Result<Option<&'static str>> {
+    let mut source = root.to_path_buf();
+    for segment in [
+        "vendor",
+        "lenso",
+        release.plugin_id.as_str(),
+        release.version.as_str(),
+    ] {
+        source.push(segment);
+        let metadata = match fs::symlink_metadata(&source) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        };
+        ensure!(
+            metadata.is_dir(),
+            "linked source path is not a real directory"
+        );
+    }
+    let lock_path = source.join(SOURCE_LOCK);
+    let metadata = match fs::symlink_metadata(&lock_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Some("local_source_conflict"));
+        }
+        Err(error) => return Err(error.into()),
+    };
+    ensure!(metadata.is_file(), "linked source lock is not a real file");
+    let lock = read_source_lock(&lock_path)?;
+    if lock.plugin_id == release.plugin_id
+        && lock.version == release.version
+        && lock.crate_digest == release.crate_digest
+    {
+        Ok(Some("already_adopted"))
+    } else {
+        Ok(Some("local_source_conflict"))
+    }
 }
 
 fn read_verified(
