@@ -361,21 +361,27 @@ For a source App in local development, `lenso app dev --root APP
 --configuration-policy /absolute/policy.json --configuration-poll-seconds 10`
 reconciles the configured file or HTTPS source on each bounded poll. An accepted
 revision is desired configuration, not an activation (and it may leave the Root
-bytes unchanged): the development supervisor
-checks and starts a complete candidate Host, waits for its actual Ready receipt,
-then stops the prior Host and records the exact activated Root revision. Invalid
-snapshots, transport outages, failed checks, and failed startup retain the old
-Host and its activation receipt. The default interval is 10 seconds (allowed
-range 1–3600); Ctrl-C stops the supervised Host. Source rebuilds use the same
-Ready Gate. A fixed listener that cannot coexist with the old Host may prevent
-candidate readiness; this development loop does not promise zero-downtime
-switching or a production configuration subscription.
+bytes unchanged). For an accepted replacement, the development supervisor
+stops the prior Host before checking and starting a candidate, waits for its
+actual Ready receipt, then records the exact activated Root revision. Failed
+readiness can therefore leave no running preview. Invalid snapshots and
+transport outages retain the old Host only while its accepted source proof is
+still fresh and its Host policy is unchanged; expiry or policy change stops it.
+The last-activated revision is a historical receipt, not a liveness
+claim. The default interval is 10 seconds (allowed range 1–3600); Ctrl-C stops
+the supervised Host. Source rebuilds use the same Ready Gate. A fixed listener
+that cannot coexist with the old Host may prevent candidate readiness; this
+development loop does not promise zero-downtime switching or a production
+configuration subscription.
 
-This first source adapter is deliberately single-source and upsert-only: a
-missing object does not delete prior local configuration, and a Root intent is
-not shared across independently versioned sources. Multi-source ownership,
-explicit removal, push subscriptions, and active-generation state are separate
-lifecycle work rather than implied by this API.
+This source adapter admits one source identity at a time. When a later snapshot
+omits a previously source-owned field or object, reconciliation restores the
+displaced App-owned value or removes a field that was absent before source
+ownership; unrelated App-owned fields remain untouched. A Root intent is not
+shared across independently versioned sources, and changing source identity
+fails closed rather than comparing their revisions. Multi-source ownership,
+source-identity migration, push subscriptions, and full active-generation state
+are separate lifecycle work rather than implied by this API.
 
 ## Limits and trust
 
