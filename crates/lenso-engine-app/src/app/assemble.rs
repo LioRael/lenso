@@ -41,6 +41,9 @@ pub struct AssembleArgs {
     /// Also compile an executable Host with native-linked Plugins and typed codecs.
     #[arg(long)]
     pub(super) executable: bool,
+    /// Trust exact adopted linked Cargo build-time code for this unsandboxed build.
+    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    pub(super) trust_linked_build: Vec<String>,
 }
 
 pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
@@ -124,6 +127,13 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     if let Some(host) = &precompiled {
         host.admit(&candidates)?;
     }
+    super::convention_authoring::linked_catalog::require_linked_build_trust(
+        &root,
+        &candidates,
+        &convention_plan.compilations,
+        precompiled.is_some(),
+        &args.trust_linked_build,
+    )?;
     let source_contracts = candidates
         .iter()
         .filter(|c| precompiled.is_none() || !super::local_host::is_native(c))
@@ -728,6 +738,7 @@ mod tests {
             out: destination.clone(),
             json: false,
             executable: false,
+            trust_linked_build: Vec::new(),
         })
         .unwrap_err();
 

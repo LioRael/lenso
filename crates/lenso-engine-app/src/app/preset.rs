@@ -7,6 +7,7 @@ pub struct AppProject {
     pub root: PathBuf,
     pub output: PathBuf,
     pub runtime_executable: PathBuf,
+    pub trust_linked_build: Vec<String>,
 }
 impl Plugin for AppProject {
     fn identity(&self) -> &str {
@@ -81,6 +82,7 @@ impl Plugin for AppProject {
             out: self.output.clone(),
             json: false,
             executable: true,
+            trust_linked_build: self.trust_linked_build.clone(),
         })?;
         Ok(BTreeMap::from([(
             "distribution".into(),

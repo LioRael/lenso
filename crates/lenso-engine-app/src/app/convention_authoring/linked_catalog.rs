@@ -1149,6 +1149,129 @@ pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::R
     Ok(())
 }
 
+pub(crate) fn require_linked_build_trust(
+    root: &Path,
+    candidates: &[Candidate],
+    compilations: &[lenso_app_authoring::discovery::conventions::Compilation],
+    precompiled_native: bool,
+    trusted: &[String],
+) -> anyhow::Result<()> {
+    let vendor_root = fs::canonicalize(root)?.join("vendor/lenso");
+    let mut declared = std::collections::BTreeSet::new();
+    for value in trusted {
+        let Some((identity, digest)) = value.split_once('=') else {
+            bail!(
+                "--trust-linked-build requires PLUGIN_ID@VERSION=sha256:<64 lowercase hex digits>"
+            );
+        };
+        let valid_digest = digest.strip_prefix("sha256:").is_some_and(|hex| {
+            hex.len() == 64
+                && hex
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        });
+        ensure!(
+            identity
+                .split_once('@')
+                .is_some_and(|(id, version)| !id.is_empty() && !version.is_empty())
+                && valid_digest,
+            "--trust-linked-build requires PLUGIN_ID@VERSION=sha256:<64 lowercase hex digits>"
+        );
+        ensure!(
+            declared.insert(value.as_str()),
+            "duplicate --trust-linked-build declaration: {value}"
+        );
+    }
+
+    let mut executed_sources = std::collections::BTreeSet::new();
+    for candidate in candidates {
+        if candidate.format != "bundle"
+            && (!super::super::local_host::is_native(candidate) || !precompiled_native)
+        {
+            executed_sources.insert(candidate.project.clone());
+        }
+    }
+    for compilation in compilations {
+        executed_sources.insert(compilation.owner_project.clone());
+        executed_sources.insert(compilation.compiler_project.clone());
+        let program = Path::new(&compilation.compiler.program);
+        if program.is_absolute() || program.components().count() > 1 {
+            let path = if program.is_absolute() {
+                program.to_path_buf()
+            } else {
+                compilation.compiler_project.join(program)
+            };
+            executed_sources.insert(fs::canonicalize(&path).with_context(|| {
+                format!("resolve selected convention compiler {}", path.display())
+            })?);
+        }
+    }
+
+    let mut required = std::collections::BTreeSet::new();
+    for source in executed_sources {
+        let Some(declaration) = linked_build_declaration(&vendor_root, &source)? else {
+            continue;
+        };
+        ensure!(
+            declared.contains(declaration.as_str()),
+            "linked Cargo build-time code is not trusted: {declaration}; review the exact .crate and pass --trust-linked-build '{declaration}' only for an operator-approved unsandboxed build"
+        );
+        required.insert(declaration);
+    }
+    for value in declared {
+        ensure!(
+            required.contains(value),
+            "--trust-linked-build does not match a selected linked Cargo source that needs compilation: {value}"
+        );
+    }
+    Ok(())
+}
+
+fn linked_build_declaration(vendor_root: &Path, source: &Path) -> anyhow::Result<Option<String>> {
+    let Ok(relative) = source.strip_prefix(vendor_root) else {
+        return Ok(None);
+    };
+    let mut components = relative.components();
+    let Some(Component::Normal(plugin_id)) = components.next() else {
+        bail!(
+            "adopted linked Cargo source lacks a Plugin ID: {}",
+            source.display()
+        );
+    };
+    let plugin_id = plugin_id
+        .to_str()
+        .context("adopted Plugin ID must be UTF-8")?;
+    if plugin_id == "portable" {
+        return Ok(None);
+    }
+    let Some(Component::Normal(version)) = components.next() else {
+        bail!(
+            "adopted linked Cargo source lacks a version: {}",
+            source.display()
+        );
+    };
+    let version = version
+        .to_str()
+        .context("adopted Plugin version must be UTF-8")?;
+    let adopted = vendor_root.join(plugin_id).join(version);
+    let lock = read_source_lock(&adopted.join(SOURCE_LOCK))?;
+    ensure!(
+        plugin_id == lock.plugin_id && version == lock.version,
+        "linked Cargo source identity changed before build: {}",
+        adopted.display()
+    );
+    ensure!(
+        source_digest(&adopted)? == lock.source_digest,
+        "linked Cargo source changed before build: {}",
+        adopted.display()
+    );
+    verify_archive_cargo_lock(&adopted, &lock)?;
+    Ok(Some(format!(
+        "{}@{}={}",
+        lock.plugin_id, lock.version, lock.crate_digest
+    )))
+}
+
 fn verify_selected_portable_paths(root: &Path, candidates: &[Candidate]) -> anyhow::Result<()> {
     let root = fs::canonicalize(root)?;
     let config = root.join("lenso.toml");
@@ -1713,6 +1836,109 @@ mod tests {
                 .unwrap()
                 .contains("vendor/lenso/example.web/0.4.5")
         );
+    }
+
+    fn native_candidate(plugin_id: &str, version: &str, project: PathBuf) -> Candidate {
+        Candidate {
+            surface_owner: None,
+            composite: None,
+            plugin_id: plugin_id.into(),
+            release_version: version.into(),
+            metadata: project.join("Cargo.toml"),
+            format: "cargo".into(),
+            role: lenso_app_authoring::discovery::SourceRole::Shared,
+            implementations: vec![lenso_app_authoring::discovery::Implementation {
+                id: "native".into(),
+                runtime: "native-linked".into(),
+                project: project.clone(),
+            }],
+            project,
+            published_resources: Vec::new(),
+            evidence: "test".into(),
+        }
+    }
+
+    #[test]
+    fn adopted_linked_cargo_build_trust_denies_missing_declaration() {
+        let app = adopted_source();
+        let source = fs::canonicalize(app.path().join("vendor/lenso/example.web/0.4.5")).unwrap();
+        let candidate = native_candidate("example.web", "0.4.5", source);
+        let error =
+            require_linked_build_trust(app.path(), &[candidate], &[], false, &[]).unwrap_err();
+        assert!(format!("{error:#}").contains("linked Cargo build-time code is not trusted"));
+    }
+
+    #[test]
+    fn adopted_linked_cargo_build_trust_accepts_exact_archive_digest_only() {
+        let app = adopted_source();
+        let source = fs::canonicalize(app.path().join("vendor/lenso/example.web/0.4.5")).unwrap();
+        let candidate = native_candidate("example.web", "0.4.5", source);
+        let exact = format!("example.web@0.4.5=sha256:{}", "a".repeat(64));
+        require_linked_build_trust(
+            app.path(),
+            std::slice::from_ref(&candidate),
+            &[],
+            false,
+            &[exact],
+        )
+        .unwrap();
+        let wrong = format!("example.web@0.4.5=sha256:{}", "b".repeat(64));
+        let error =
+            require_linked_build_trust(app.path(), &[candidate], &[], false, &[wrong]).unwrap_err();
+        assert!(format!("{error:#}").contains("linked Cargo build-time code is not trusted"));
+    }
+
+    #[test]
+    fn adopted_linked_cargo_build_trust_skips_first_party_native_source() {
+        let app = adopted_source();
+        let local = app.path().join("app/local.web");
+        fs::create_dir_all(&local).unwrap();
+        let candidate = native_candidate("local.web", "0.1.0", local);
+        require_linked_build_trust(app.path(), &[candidate], &[], false, &[]).unwrap();
+    }
+
+    #[test]
+    fn adopted_linked_cargo_build_trust_requires_nonnative_source_with_precompiled_host() {
+        let app = adopted_source();
+        let source = fs::canonicalize(app.path().join("vendor/lenso/example.web/0.4.5")).unwrap();
+        let mut candidate = native_candidate("example.web", "0.4.5", source);
+        candidate.implementations.clear();
+        let error =
+            require_linked_build_trust(app.path(), &[candidate], &[], true, &[]).unwrap_err();
+        assert!(format!("{error:#}").contains("linked Cargo build-time code is not trusted"));
+    }
+
+    #[test]
+    fn adopted_linked_cargo_build_trust_exempts_precompiled_native_source() {
+        let app = adopted_source();
+        let source = fs::canonicalize(app.path().join("vendor/lenso/example.web/0.4.5")).unwrap();
+        let candidate = native_candidate("example.web", "0.4.5", source);
+        require_linked_build_trust(app.path(), &[candidate], &[], true, &[]).unwrap();
+    }
+
+    #[test]
+    fn adopted_linked_cargo_build_trust_requires_convention_compiler() {
+        let app = adopted_source();
+        let source = fs::canonicalize(app.path().join("vendor/lenso/example.web/0.4.5")).unwrap();
+        let compilation = lenso_app_authoring::discovery::conventions::Compilation {
+            owner: "local.web".into(),
+            version: "0.1.0".into(),
+            role: lenso_app_authoring::discovery::SourceRole::AppOwned,
+            owner_project: app.path().join("app/local.web"),
+            entry: app.path().join("app/local.web/page.tsx"),
+            plugin_id: "local.web.surface".into(),
+            convention: "example.convention".into(),
+            compiler_project: source,
+            compiler: lenso_app_authoring::discovery::conventions::Compiler {
+                program: "cargo".into(),
+                args: Vec::new(),
+                timeout_seconds: None,
+                output_limit_bytes: None,
+            },
+        };
+        let error =
+            require_linked_build_trust(app.path(), &[], &[compilation], true, &[]).unwrap_err();
+        assert!(format!("{error:#}").contains("linked Cargo build-time code is not trusted"));
     }
 
     #[test]

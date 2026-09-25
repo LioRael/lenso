@@ -24,9 +24,15 @@ pub struct BuildArgs {
     /// Jco 1.35.0 executable for a Workers Component build.
     #[arg(long, requires = "target")]
     jco: Option<PathBuf>,
+    /// Trust exact adopted linked Cargo build-time code for this unsandboxed build.
+    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    trust_linked_build: Vec<String>,
 }
 pub fn build(args: BuildArgs) -> anyhow::Result<()> {
     if args.target.as_deref() == Some("workers") && args.source.is_none() {
+        if !args.trust_linked_build.is_empty() {
+            bail!("--trust-linked-build is only for a native source App build");
+        }
         let root = crate::plugins::project_root(args.root)?;
         return workers::build(workers::BuildArgs {
             out: args.out.unwrap_or_else(|| root.join("dist-workers")),
@@ -41,6 +47,9 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
         bail!("--workers-runtime and --jco are only for `app build --target workers`");
     }
     if let Some(source) = args.source {
+        if !args.trust_linked_build.is_empty() {
+            bail!("--trust-linked-build is only for a native source App build");
+        }
         return super::build::build(&super::build::HostBuildArgs {
             source,
             target: args.target.context("TS Host target")?,
@@ -60,6 +69,7 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
             root,
             output: out,
             runtime_executable: std::env::current_exe()?,
+            trust_linked_build: args.trust_linked_build,
         },
     ))?;
     let plan = engine.plan(lenso_engine::Snapshot::default())?;
@@ -580,6 +590,7 @@ pub fn build_local(
             root,
             output,
             runtime_executable,
+            trust_linked_build: Vec::new(),
         },
     ))?;
     let plan = engine.plan(lenso_engine::Snapshot::default())?;

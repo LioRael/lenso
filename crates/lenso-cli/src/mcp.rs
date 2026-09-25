@@ -47,6 +47,13 @@ pub(crate) struct McpArgs {
     /// Explicitly permit signed HTTPS documentation fetches by MCP tools.
     #[arg(long, requires_all = ["linked_snapshot", "trust"])]
     allow_document_fetch: bool,
+    /// Operator-approved exact linked Cargo build inputs for --allow-build.
+    #[arg(
+        long,
+        requires = "allow_build",
+        value_name = "PLUGIN_ID@VERSION=sha256:DIGEST"
+    )]
+    trust_linked_build: Vec<String>,
     #[command(flatten)]
     permissions: McpMutationAccess,
 }
@@ -75,6 +82,7 @@ struct AppTools {
     portable_trust: Option<PathBuf>,
     portable_archive: Option<PathBuf>,
     allow_document_fetch: bool,
+    trust_linked_build: Vec<String>,
     permissions: McpMutationAccess,
     builds: Arc<build::BuildController>,
     runs: Arc<run::RunController>,
@@ -556,6 +564,7 @@ impl AppTools {
                 &self.root,
                 &request.request_id,
                 request.timeout_seconds.unwrap_or(300),
+                &self.trust_linked_build,
             )
             .map_err(|error| McpError::invalid_params(error.to_string(), None))?;
         build_result(&status)
@@ -1408,6 +1417,7 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         portable_trust,
         portable_archive,
         allow_document_fetch: args.allow_document_fetch,
+        trust_linked_build: args.trust_linked_build,
         permissions: args.permissions,
         builds: Arc::new(build::BuildController::default()),
         runs: Arc::new(run::RunController::default()),

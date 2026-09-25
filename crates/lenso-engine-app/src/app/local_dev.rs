@@ -31,6 +31,9 @@ pub struct DevArgs {
     /// Poll interval for the configured source, including HTTPS revalidation.
     #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=3600))]
     configuration_poll_seconds: u64,
+    /// Trust exact adopted linked Cargo build-time code for each unsandboxed rebuild.
+    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    trust_linked_build: Vec<String>,
     /// Arguments for installed terminal support, rerun after each successful rebuild.
     #[arg(last = true)]
     args: Vec<String>,
@@ -91,6 +94,9 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
             .arg(&root)
             .arg("--out")
             .arg(&output);
+        for declaration in &args.trust_linked_build {
+            build.arg("--trust-linked-build").arg(declaration);
+        }
         let mut child = build.spawn().context("start local App build")?;
         let status = loop {
             let deadline = active.as_ref().map(TimedProof::deadline);
@@ -2305,6 +2311,7 @@ mod tests {
             root: Some(root.path().to_path_buf()),
             configuration_policy: None,
             configuration_poll_seconds: 10,
+            trust_linked_build: Vec::new(),
             args: Vec::new(),
         })
         .await

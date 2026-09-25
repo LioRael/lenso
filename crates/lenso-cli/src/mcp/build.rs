@@ -60,9 +60,16 @@ impl BuildController {
         root: &Path,
         request_id: &str,
         timeout_seconds: u64,
+        trust_linked_build: &[String],
     ) -> anyhow::Result<BuildStatus> {
         let executable = std::env::current_exe().context("locate local Lenso CLI")?;
-        self.start_with_executable(root, request_id, timeout_seconds, &executable)
+        self.start_with_executable(
+            root,
+            request_id,
+            timeout_seconds,
+            trust_linked_build,
+            &executable,
+        )
     }
 
     fn start_with_executable(
@@ -70,6 +77,7 @@ impl BuildController {
         root: &Path,
         request_id: &str,
         timeout_seconds: u64,
+        trust_linked_build: &[String],
         executable: &Path,
     ) -> anyhow::Result<BuildStatus> {
         ensure!(
@@ -123,9 +131,17 @@ impl BuildController {
         drop(state);
         let state = self.state.clone();
         let root = root.to_path_buf();
+        let trust_linked_build = trust_linked_build.to_vec();
         let id = request_id.to_owned();
         std::thread::spawn(move || {
-            let result = run_build(&executable, &root, &output, &cancelled, budget);
+            let result = run_build(
+                &executable,
+                &root,
+                &output,
+                &trust_linked_build,
+                &cancelled,
+                budget,
+            );
             let mut state = state.lock().expect("MCP build state lock");
             if let Some(entry) = state.entries.get_mut(&id) {
                 match result {
@@ -191,6 +207,7 @@ fn run_build(
     executable: &Path,
     root: &Path,
     output: &Path,
+    trust_linked_build: &[String],
     cancelled: &AtomicBool,
     budget: ProcessBudget,
 ) -> anyhow::Result<serde_json::Value> {
@@ -201,6 +218,9 @@ fn run_build(
         .arg("--out")
         .arg(output)
         .current_dir(root);
+    for declaration in trust_linked_build {
+        command.arg("--trust-linked-build").arg(declaration);
+    }
     let process_result = execute_cancellable_command_with_budget(
         command,
         &serde_json::json!({}),
@@ -238,19 +258,19 @@ mod tests {
         fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
         let controller = BuildController::default();
         let first = controller
-            .start_with_executable(temp.path(), "build-1", 10, &script)
+            .start_with_executable(temp.path(), "build-1", 10, &[], &script)
             .unwrap();
         assert_eq!(first.state, "running");
         assert_eq!(
             controller
-                .start_with_executable(temp.path(), "build-1", 10, &script)
+                .start_with_executable(temp.path(), "build-1", 10, &[], &script)
                 .unwrap()
                 .state,
             "running"
         );
         assert!(
             controller
-                .start_with_executable(temp.path(), "build-2", 10, &script)
+                .start_with_executable(temp.path(), "build-2", 10, &[], &script)
                 .is_err()
         );
         assert_eq!(controller.cancel("build-1").unwrap().state, "cancelling");
@@ -270,7 +290,7 @@ mod tests {
         assert!(!temp.path().join("dist").exists());
 
         controller
-            .start_with_executable(temp.path(), "timeout", 1, &script)
+            .start_with_executable(temp.path(), "timeout", 1, &[], &script)
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {

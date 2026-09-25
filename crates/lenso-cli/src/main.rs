@@ -325,6 +325,49 @@ mod tests {
     }
 
     #[test]
+    fn linked_build_trust_is_an_explicit_build_or_mcp_startup_argument() {
+        let declaration = format!("example.web@1.0.0=sha256:{}", "a".repeat(64));
+        for command in [
+            vec!["lenso", "app", "build", "--trust-linked-build"],
+            vec![
+                "lenso",
+                "app",
+                "assemble",
+                "--out",
+                "dist",
+                "--trust-linked-build",
+            ],
+            vec!["lenso", "app", "dev", "--trust-linked-build"],
+            vec!["lenso", "dev", "--trust-linked-build"],
+        ] {
+            assert!(Cli::try_parse_from(command.into_iter().chain([declaration.as_str()])).is_ok());
+        }
+        assert!(
+            Cli::try_parse_from([
+                "lenso",
+                "mcp",
+                "--root",
+                "app",
+                "--allow-build",
+                "--trust-linked-build",
+                declaration.as_str(),
+            ])
+            .is_ok()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "lenso",
+                "mcp",
+                "--root",
+                "app",
+                "--trust-linked-build",
+                declaration.as_str(),
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
     fn retired_roots_fail_before_host_delegation() {
         for command in ["module", "check", "verify"] {
             let error = reject_retired_invocation(&[command.to_owned()]).unwrap_err();
