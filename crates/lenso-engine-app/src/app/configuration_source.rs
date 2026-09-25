@@ -16,6 +16,7 @@ use lenso_app_authoring::{
     PluginConfigurationSnapshotReconciliation, propose_versioned_plugin_configuration_snapshot,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 const POLICY_SCHEMA: &str = "lenso.configuration-source-policy.v1";
@@ -135,6 +136,15 @@ enum Source {
     Https {
         url: String,
         admitted_origins: Vec<String>,
+    },
+    /// An exact operator-admitted Process V2 Plugin, started before App resolution.
+    Plugin {
+        bundle: PathBuf,
+        plugin_id: String,
+        release_version: String,
+        manifest_digest: String,
+        artifact_digest: String,
+        configuration: Value,
     },
 }
 
@@ -561,12 +571,19 @@ where
     let source_kind = match policy.source {
         Source::File { .. } => "file_snapshot",
         Source::Https { .. } => "https_poll",
+        Source::Plugin { .. } => "bootstrap_plugin",
     };
     let identity = PluginConfigurationAuthoritySource::new(source_kind, &policy.source_reference)?;
     let scopes = policy
         .objects
         .into_iter()
         .map(|scope| {
+            if let Source::Plugin { plugin_id, .. } = &policy.source {
+                ensure!(
+                    scope.plugin_id != *plugin_id,
+                    "bootstrap source Plugin cannot change its own App configuration"
+                );
+            }
             PluginConfigurationSnapshotObjectScope::new(
                 scope.plugin_id,
                 scope.instance_key,
@@ -628,6 +645,27 @@ where
                 }
             }
         }
+        Source::Plugin {
+            bundle,
+            plugin_id,
+            release_version,
+            manifest_digest,
+            artifact_digest,
+            configuration,
+        } => (
+            super::bootstrap_configuration_source::fetch(
+                super::bootstrap_configuration_source::BootstrapSourceSelection {
+                    bundle: &bundle,
+                    plugin_id: &plugin_id,
+                    release_version: &release_version,
+                    manifest_digest: &manifest_digest,
+                    artifact_digest: &artifact_digest,
+                    configuration: &configuration,
+                },
+                identity.clone(),
+            )?,
+            None,
+        ),
     };
     let prior_desired = if pending {
         previous
@@ -958,6 +996,83 @@ mod tests {
             "revision": revision,
             "configurations": [{"plugin_id": "example.agent", "instance_key": "default", "toml": toml}]
         })).unwrap()).unwrap();
+    }
+
+    /// Run with `LENSO_BOOTSTRAP_FILE_SOURCE_BINARY` pointing at the matching
+    /// fixture built for this Host target. The test packages those exact bytes
+    /// and invokes the real Process Adapter; it never compiles a child itself.
+    #[test]
+    #[ignore = "requires a prebuilt Process V2 fixture executable"]
+    fn process_bootstrap_source_reconciles_and_rejects_changed_pins_and_scopes() {
+        use lenso_plugin_bundle::{SourceProcessPluginBuild, build_source_process_plugin_bundle};
+
+        let executable = PathBuf::from(
+            std::env::var("LENSO_BOOTSTRAP_FILE_SOURCE_BINARY")
+                .expect("fixture executable path is required"),
+        );
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/bootstrap-file-source/Cargo.toml");
+        let (root, source, policy) = fixture();
+        snapshot(&source, 1, "greeting = 'from-plugin'\n");
+        let descriptor = root.path().join("bootstrap-descriptor.json");
+        let output = std::process::Command::new(&executable)
+            .arg("--lenso-describe")
+            .output()
+            .expect("describe fixture Process Plugin");
+        assert!(output.status.success());
+        fs::write(&descriptor, output.stdout).unwrap();
+        let bundle = root.path().join("bootstrap.lenso-plugin");
+        let verified = build_source_process_plugin_bundle(&SourceProcessPluginBuild {
+            package_manifest: manifest,
+            executable,
+            runtime_descriptor: descriptor,
+            authoring_version: 2,
+            runtime_profile: lenso_process_adapter::RUNTIME_PROFILE_V2.to_owned(),
+            target: lenso_app_authoring::native_host_target().to_owned(),
+            output: bundle.clone(),
+        })
+        .unwrap();
+        let artifact_digest = verified.artifact_digests[0].clone();
+        let mut document: Value = serde_json::from_slice(&fs::read(&policy).unwrap()).unwrap();
+        document["source"] = serde_json::json!({
+            "type": "plugin",
+            "bundle": bundle,
+            "plugin_id": verified.plugin_id,
+            "release_version": verified.release_version,
+            "manifest_digest": verified.manifest_digest,
+            "artifact_digest": artifact_digest,
+            "configuration": {"path": source}
+        });
+        fs::write(&policy, serde_json::to_vec(&document).unwrap()).unwrap();
+        sync(root.path(), &policy).unwrap();
+        let instance = root
+            .path()
+            .join("intent/plugins/example.agent/default.toml");
+        assert!(
+            fs::read_to_string(&instance)
+                .unwrap()
+                .contains("from-plugin")
+        );
+
+        document["source"]["artifact_digest"] =
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000".into();
+        fs::write(&policy, serde_json::to_vec(&document).unwrap()).unwrap();
+        assert!(sync(root.path(), &policy).is_err());
+        assert!(
+            fs::read_to_string(&instance)
+                .unwrap()
+                .contains("from-plugin")
+        );
+
+        document["source"]["artifact_digest"] = artifact_digest.into();
+        document["objects"][0]["fields"] = serde_json::json!(["owner"]);
+        fs::write(&policy, serde_json::to_vec(&document).unwrap()).unwrap();
+        assert!(sync(root.path(), &policy).is_err());
+        assert!(
+            fs::read_to_string(&instance)
+                .unwrap()
+                .contains("from-plugin")
+        );
     }
 
     #[test]

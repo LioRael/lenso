@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::plugins::{load_resolved_app, project_root};
 
 mod assemble;
+mod bootstrap_configuration_source;
 mod build;
 mod configuration_source;
 mod contracts;

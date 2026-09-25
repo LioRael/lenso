@@ -344,6 +344,14 @@ with public-DNS enforcement, redirects and environment proxies disabled,
 bounded identity responses, and optional ETag/HTTP 304 revalidation. Its cursor
 binds the ETag to the exact endpoint and Host source identity; it cannot be
 reused for another source.
+An operator-pinned Process V2 Bundle may also provide the generated
+`lenso.configuration.source@1` Request Capability. The Host verifies exact
+Bundle/Artifact digests from its protected bootstrap policy, starts a separate
+two-Instance Kernel Plan before the business App Plan, invokes `fetch`, and
+closes that source generation. Its response contains only revision and values;
+the Host binds identity and field authorization afterward. This first Process
+path is a trusted native implementation with a 1 MiB wire-frame ceiling, not
+an OS sandbox, subscription claim, or marketplace signature claim.
 `propose_versioned_plugin_configuration_snapshot` routes every authorized entry
 through the existing typed Plugin Root proposal, Host admission, and revision
 checks without mutating the Root.

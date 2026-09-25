@@ -1,0 +1,15 @@
+{
+  "id": "lenso.configuration.source@1",
+  "version": "1.0.0",
+  "portable": true,
+  "cross_lane_transfer": false,
+  "operations": [
+    {
+      "name": "fetch",
+      "interaction": "request",
+      "request_schema": "schemas/fetch-request.schema.json",
+      "response_schema": "schemas/fetch-response.schema.json",
+      "domain_error_schema": "schemas/fetch-error.schema.json"
+    }
+  ]
+}

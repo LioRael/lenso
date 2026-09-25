@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FetchResponse",
+  "type": "object",
+  "required": ["revision", "configurations"],
+  "properties": {
+    "revision": {"type": "string", "format": "uint64"},
+    "configurations": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "required": ["plugin_id", "instance_key", "toml"],
+        "properties": {
+          "plugin_id": {"type": "string", "minLength": 1, "maxLength": 256},
+          "instance_key": {"type": "string", "minLength": 1, "maxLength": 256},
+          "toml": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

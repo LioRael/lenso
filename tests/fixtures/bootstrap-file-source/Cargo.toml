@@ -1,0 +1,25 @@
+[package]
+name = "lenso-bootstrap-file-source-fixture"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[package.metadata.lenso]
+plugin-id = "lenso.test.bootstrap-file-source"
+root-slot = "configuration-source"
+
+[package.metadata.lenso-cli]
+runtime = "process"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+lenso-capability-configuration-source = { path = "../../../crates/lenso-capability-configuration-source", version = "0.1.0" }
+lenso-engine-authoring = { path = "../../../crates/lenso-engine-authoring", version = "0.2.2" }
+lenso-plugin-sdk = { path = "../../../crates/lenso-plugin-sdk", version = "0.4.5" }
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

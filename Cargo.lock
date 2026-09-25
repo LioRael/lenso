@@ -1997,6 +1997,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-bootstrap-file-source-fixture"
+version = "0.1.0"
+dependencies = [
+ "lenso-capability-configuration-source",
+ "lenso-engine-authoring",
+ "lenso-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lenso-browser-driver"
 version = "0.1.9"
 dependencies = [
@@ -2053,6 +2064,22 @@ dependencies = [
  "lenso-kernel",
  "lenso-plugin-authoring",
  "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-capability-configuration-source"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen",
+ "lenso-contract-runtime",
+ "lenso-guest-sdk",
+ "lenso-kernel",
+ "lenso-plugin-authoring",
+ "lenso-plugin-sdk",
+ "lenso-runtime-codec",
  "serde",
  "serde_json",
 ]
@@ -2243,6 +2270,7 @@ dependencies = [
  "jsonschema",
  "lenso-app-plan",
  "lenso-bun-adapter",
+ "lenso-capability-configuration-source",
  "lenso-capability-http-endpoint",
  "lenso-contract-authoring",
  "lenso-contract-codegen",

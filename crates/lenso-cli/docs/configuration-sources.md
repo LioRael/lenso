@@ -105,6 +105,47 @@ snapshot on recovery. The cursor is private Host state, not App configuration.
 Changing the Host-owned policy (including field scopes or admitted origins)
 invalidates that cursor and requires a complete snapshot to be reauthorized.
 
+A Host can instead admit one exact pre-App Process V2 Configuration Source
+Plugin. The operator supplies a verified **directory** Bundle and pins both its
+manifest and executable digest in the same protected policy:
+
+```json
+{
+  "schema": "lenso.configuration-source-policy.v1",
+  "source_reference": "production-settings",
+  "source": {
+    "type": "plugin",
+    "bundle": "/opt/my-app/bootstrap/config-source.lenso-plugin",
+    "plugin_id": "company.config-source",
+    "release_version": "1.0.0",
+    "manifest_digest": "sha256:<exact-manifest-digest>",
+    "artifact_digest": "sha256:<exact-process-artifact-digest>",
+    "configuration": {"path": "/etc/my-app/configuration-snapshot.json"}
+  },
+  "objects": [
+    {"plugin_id": "company.agent", "instance_key": "default", "fields": ["model"]}
+  ]
+}
+```
+
+The path and configuration are examples, not values supplied by the Plugin.
+The Host verifies the Bundle and exact pins before starting its selected
+Process V2 Artifact. It constructs a separate, short-lived two-Instance Plan
+(`lenso.configuration.source@1` provider plus Host client), invokes `fetch`,
+closes that generation, then binds the returned revision and values to the
+Host-issued source identity. The response has no source identity, trust root,
+scope, or approval fields. The ordinary typed Plugin Root proposal still
+validates the result against `objects` and Host ceilings before publication;
+the source Plugin cannot change its own App configuration. This bootstrap
+Plan does not depend on the business App Plan, which is resolved afterward.
+It is a trusted native Process Plugin, **not an OS sandbox** or a claim that
+arbitrary third-party code is safe. The Process V2 wire currently limits the
+complete response frame to 1 MiB, tighter than the File/HTTPS source limit.
+This path fetches a complete snapshot on each poll; ETag/304 and push
+subscriptions are supported only where explicitly described above, not by
+the Plugin contract. The Host policy itself is the trust root for the exact
+release; the digest pins are not marketplace signature verification.
+
 For a local preview, `lenso app dev --configuration-policy POLICY` applies the
 same freshness boundary to both the Host and its configured frontend dev
 process. It shortens a longer requested source poll interval to at most half
