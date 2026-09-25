@@ -42,6 +42,8 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"project_portable_adopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"project_portable_unadopt","arguments":{"plugin_id":"example.web","version":"0.4.5","request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"wrong-root","root":"/wrong-project"}}}"#,
+        r#"{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"build_sources","limit":1}}}"#,
+        r#"{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"generated_artifacts","limit":1}}}"#,
     ].join("\n");
     child
         .stdin
@@ -61,17 +63,17 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 18, "{frames}");
+    assert_eq!(responses.len(), 20, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 18);
+    assert_eq!(by_id.len(), 20);
     assert_tools(by_id[&2]);
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(facts["kind"], "lenso.app-facts");
-    assert_eq!(facts["schema_version"], 3);
+    assert_eq!(facts["schema_version"], 4);
     assert_eq!(facts["status"], "invalid");
     assert_eq!(facts["runtime"]["status"], "not_observed");
     let first_page: serde_json::Value =
@@ -98,6 +100,15 @@ fn stdio_exposes_bounded_read_only_app_facts() {
             .unwrap()
             .contains("unknown field `root`")
     );
+    for (id, section) in [(19, "build_sources"), (20, "generated_artifacts")] {
+        let page: serde_json::Value =
+            serde_json::from_str(by_id[&id]["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(page["schema_version"], 4);
+        assert_eq!(page["section"], section);
+        assert_eq!(page["total"], 0);
+        assert!(page["items"].as_array().unwrap().is_empty());
+    }
     assert!(!root.path().join("dist").exists());
 }
 
@@ -1145,6 +1156,36 @@ fn stdio_authorized_build_reports_the_same_app_check() {
     .unwrap();
     assert_eq!(actual_facts, expected_facts);
     assert_eq!(actual_facts["root"], final_status["output"]);
+    let provenance = &actual_facts["build_provenance"];
+    for (id, section, items) in [
+        (8, "build_sources", &provenance["build_sources"]),
+        (9, "generated_artifacts", &provenance["generated_artifacts"]),
+    ] {
+        let expected_items = items.as_array().map(Vec::as_slice).unwrap_or_default();
+        let response = call(
+            &mut stdin,
+            &mut stdout,
+            serde_json::json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"project_facts","arguments":{"scope":"built_distribution","section":section,"limit":1}}}),
+        );
+        assert!(response["error"].is_null(), "{response}");
+        let page: serde_json::Value =
+            serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(page["schema_version"], 4);
+        assert_eq!(page["section"], section);
+        assert_eq!(page["total"], expected_items.len());
+        assert_eq!(
+            page["items"].as_array().unwrap().len(),
+            expected_items.len().min(1)
+        );
+        if let Some(first) = expected_items.first() {
+            assert_eq!(page["items"][0], *first);
+        }
+        assert_eq!(
+            page["build_provenance_source"],
+            provenance["source_location"]
+        );
+    }
 
     let source_configuration = root.join("plugins/local.starter/default.toml");
     let generated_configuration = root.join("dist/intent/plugins/local.starter/default.toml");

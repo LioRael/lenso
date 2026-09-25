@@ -143,6 +143,8 @@ enum ProjectFactsSection {
     Plugins,
     Bindings,
     DiscoveredSources,
+    BuildSources,
+    GeneratedArtifacts,
     Diagnostics,
 }
 
@@ -997,6 +999,40 @@ fn project_facts_json(
                             .collect::<Vec<_>>(),
                     ),
                 ),
+                ProjectFactsSection::BuildSources => (
+                    "build_sources",
+                    facts
+                        .build_provenance
+                        .as_ref()
+                        .map_or(0, |provenance| provenance.build_sources.len()),
+                    serde_json::to_value(
+                        facts
+                            .build_provenance
+                            .as_ref()
+                            .into_iter()
+                            .flat_map(|provenance| provenance.build_sources.iter())
+                            .skip(request.offset)
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
+                ProjectFactsSection::GeneratedArtifacts => (
+                    "generated_artifacts",
+                    facts
+                        .build_provenance
+                        .as_ref()
+                        .map_or(0, |provenance| provenance.generated_artifacts.len()),
+                    serde_json::to_value(
+                        facts
+                            .build_provenance
+                            .as_ref()
+                            .into_iter()
+                            .flat_map(|provenance| provenance.generated_artifacts.iter())
+                            .skip(request.offset)
+                            .take(limit)
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
                 ProjectFactsSection::Diagnostics => (
                     "diagnostics",
                     facts.diagnostics.len(),
@@ -1024,6 +1060,7 @@ fn project_facts_json(
                 "plugin_root_revision": facts.plugin_root_revision,
                 "runtime": facts.runtime,
                 "configuration": facts.configuration,
+                "build_provenance_source": facts.build_provenance.as_ref().map(|provenance| &provenance.source_location),
                 "total": total,
                 "offset": request.offset,
                 "next_offset": if next < total { Some(next) } else { None },

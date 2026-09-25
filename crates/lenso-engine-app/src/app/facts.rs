@@ -15,6 +15,8 @@ use serde::Serialize;
 use super::configuration_source;
 use crate::plugins::project_root;
 
+mod provenance;
+
 #[derive(Args, Clone, Debug)]
 pub struct FactsArgs {
     /// App project root. Defaults to the current directory.
@@ -43,7 +45,37 @@ pub struct ProjectFacts {
     pub plugins: Vec<PluginFacts>,
     pub bindings: Vec<BindingFacts>,
     pub discovered_sources: Vec<DiscoveredSourceFacts>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_provenance: Option<BuildProvenanceFacts>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuildProvenanceFacts {
+    pub source_location: SourceLocation,
+    pub build_sources: Vec<BuildSourceFacts>,
+    pub generated_artifacts: Vec<GeneratedArtifactFacts>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuildSourceFacts {
+    pub plugin_id: String,
+    pub release_version: String,
+    pub status: &'static str,
+    pub role: String,
+    pub source_digest: String,
+    pub matches_adopted_coordinates: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub surface_owner: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GeneratedArtifactFacts {
+    pub path: String,
+    pub owner: &'static str,
+    pub role: String,
+    pub sha256: String,
+    pub size: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -232,7 +264,7 @@ pub fn inspect_project_facts_with_host_build(
     }
 
     let mut report = ProjectFacts {
-        schema_version: 3,
+        schema_version: 4,
         kind: "lenso.app-facts",
         status: if diagnostics.is_empty() {
             "resolved"
@@ -253,6 +285,7 @@ pub fn inspect_project_facts_with_host_build(
         plugins: Vec::new(),
         bindings: Vec::new(),
         discovered_sources: Vec::new(),
+        build_provenance: None,
         diagnostics,
     };
 
@@ -289,6 +322,23 @@ pub fn inspect_project_facts_with_host_build(
                 status: "candidate_only",
             })
             .collect();
+    }
+    if distribution {
+        match provenance::inspect(&root, &report.host_target, &report.plugins) {
+            Ok(build_provenance) => report.build_provenance = build_provenance,
+            Err(_) => {
+                report.status = "invalid";
+                report.diagnostics.push(Diagnostic {
+                    code: "LENSO_BUILD_PROVENANCE_UNVERIFIED",
+                    severity: "error",
+                    message: "The built source or generated Host provenance could not be verified.",
+                    source: Some(SourceLocation {
+                        path: root.join("local-sources.json"),
+                    }),
+                    help: "Run `lenso app check --root DIST` and rebuild the distribution if its locked files changed.",
+                });
+            }
+        }
     }
     Ok(report)
 }
@@ -817,6 +867,38 @@ root-slot = "agent"
         assert_eq!(
             invalid.diagnostics[0].code,
             "LENSO_CONFIGURATION_STATUS_FAILED"
+        );
+    }
+
+    #[test]
+    fn built_distribution_reports_invalid_locked_provenance_without_exposing_contents() {
+        let temporary = app_root();
+        let intent = temporary.path().join("intent");
+        fs::create_dir_all(intent.join(".lenso")).unwrap();
+        fs::copy(
+            temporary.path().join(".lenso/host-catalog.json"),
+            intent.join(".lenso/host-catalog.json"),
+        )
+        .unwrap();
+        fs::write(
+            temporary.path().join("local-sources.json"),
+            "SECRET_MARKER malformed source",
+        )
+        .unwrap();
+
+        let report = inspect_project_facts(temporary.path()).unwrap();
+        assert_eq!(report.status, "invalid");
+        assert!(report.build_provenance.is_none());
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "LENSO_BUILD_PROVENANCE_UNVERIFIED")
+        );
+        assert!(
+            !serde_json::to_string(&report)
+                .unwrap()
+                .contains("SECRET_MARKER")
         );
     }
 }
