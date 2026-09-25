@@ -111,11 +111,12 @@ process. It shortens a longer requested source poll interval to at most half
 the stale limit (and logs the adjustment), so a healthy source is revalidated
 before the deadline. On expiry or detected policy revocation it force-stops
 both process groups without a graceful-shutdown allowance and removes the
-published dev backend URL. An accepted
-replacement stops the old preview before running the candidate's readiness
-check, because that check can itself start the Kernel; expect a downtime
-window, including if the candidate fails. Ordinary source read failures do
-not stop a still-fresh preview.
+published dev backend URL. An accepted replacement first checks the candidate's
+locked distribution, resolved Root, and artifacts without starting Plugin
+lifecycles. Failure at this static preparation stage leaves a still-valid old
+preview running. Dynamic readiness can itself start the Kernel, so the old
+preview stops before that check; expect a downtime window if dynamic readiness
+fails. Ordinary source read failures do not stop a still-fresh preview.
 
 The accepted desired revision is persisted in the built App's private
 `intent/.lenso/configuration-source-state.json` before publication. A repeated or stale

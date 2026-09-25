@@ -1,7 +1,8 @@
 //! Local development rebuilds complete App generations. Without external
 //! configuration, a failed candidate leaves the current preview running.
-//! Policy-supervised replacement stops the old preview before candidate
-//! readiness because even `--check` can activate Kernel side effects.
+//! Policy-supervised replacement prepares the locked candidate before stopping
+//! the old preview. Dynamic readiness still runs after that stop because even
+//! `--check` can activate Kernel side effects.
 use anyhow::{Context, bail};
 use clap::Args;
 use notify::{RecursiveMode, Watcher};
@@ -170,7 +171,8 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                             proof.accepted.max_stale_seconds,
                         ).await;
                         activate_supervised_candidate(
-                            &root, &output, policy, &args.args, frontend_config.as_ref(),
+                            &root, &output, current_output.as_deref(), policy,
+                            &args.args, frontend_config.as_ref(),
                             proof, &mut host, &mut frontend_process,
                             &mut active_backend_url, &mut active,
                         ).await?
@@ -335,7 +337,8 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                                     (status.pending_activation || host.is_none() ||
                                      current_output.as_deref() != Some(target.as_path())) => {
                                     match activate_supervised_candidate(
-                                        &root, &target, policy, &args.args,
+                                        &root, &target, current_output.as_deref(), policy,
+                                        &args.args,
                                         frontend_config.as_ref(), proof, &mut host,
                                         &mut frontend_process, &mut active_backend_url,
                                         &mut active,
@@ -511,6 +514,7 @@ async fn run_until<T>(
 async fn activate_supervised_candidate(
     root: &Path,
     output: &Path,
+    active_output: Option<&Path>,
     policy: &Path,
     args: &[String],
     config: Option<&frontend::FrontendConfig>,
@@ -530,9 +534,51 @@ async fn activate_supervised_candidate(
         eprintln!("Configuration source proof changed or expired; candidate not activated");
         return Ok(Some(false));
     }
+    let preparation_deadline = active.as_ref().map_or(proof.deadline(), |previous| {
+        previous.deadline().min(proof.deadline())
+    });
+    let preparation = static_prepare_until(
+        output,
+        Some(preparation_deadline),
+        LivePreviewGuard {
+            root,
+            active_output,
+            policy,
+            host,
+            frontend: frontend_process,
+            active_backend_url,
+            active,
+        },
+    )
+    .await;
+    if retire_active_on_policy_change(
+        root,
+        active_output,
+        policy,
+        host,
+        frontend_process,
+        active_backend_url,
+    )
+    .await?
+    {
+        *active = None;
+    }
+    expire_active_if_needed(root, active, host, frontend_process, active_backend_url).await?;
+    if let Err(error) = preparation {
+        eprintln!(
+            "Configuration candidate failed static preparation; candidate not activated: {error:#}"
+        );
+        return Ok(Some(false));
+    }
+    if !proof_still_usable(output, policy, &proof) {
+        eprintln!(
+            "Configuration source proof changed or expired during preparation; candidate not activated"
+        );
+        return Ok(Some(false));
+    }
     if host.is_some() || frontend_process.is_some() {
         eprintln!(
-            "Stopping the old preview before checking a replacement; configuration switching has a downtime window"
+            "Stopping the old preview after static preparation; dynamic readiness may still cause a downtime window"
         );
         stop_active_now(host, frontend_process).await?;
         *active_backend_url = None;
@@ -1554,53 +1600,125 @@ async fn preflight(output: &Path) -> anyhow::Result<()> {
 }
 
 async fn preflight_until(output: &Path, source_deadline: Option<Instant>) -> anyhow::Result<()> {
+    host_check_until(output, source_deadline, "--check", "readiness", None).await
+}
+
+struct LivePreviewGuard<'a> {
+    root: &'a Path,
+    active_output: Option<&'a Path>,
+    policy: &'a Path,
+    host: &'a mut Option<Child>,
+    frontend: &'a mut Option<frontend::FrontendProcess>,
+    active_backend_url: &'a mut Option<String>,
+    active: &'a mut Option<TimedProof>,
+}
+
+impl LivePreviewGuard<'_> {
+    async fn still_valid(&mut self) -> anyhow::Result<bool> {
+        if retire_active_on_policy_change(
+            self.root,
+            self.active_output,
+            self.policy,
+            self.host,
+            self.frontend,
+            self.active_backend_url,
+        )
+        .await?
+        {
+            *self.active = None;
+            return Ok(false);
+        }
+        if expire_active_if_needed(
+            self.root,
+            self.active,
+            self.host,
+            self.frontend,
+            self.active_backend_url,
+        )
+        .await?
+        {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+}
+
+async fn static_prepare_until(
+    output: &Path,
+    source_deadline: Option<Instant>,
+    guard: LivePreviewGuard<'_>,
+) -> anyhow::Result<()> {
+    host_check_until(
+        output,
+        source_deadline,
+        "--prepare",
+        "static preparation",
+        Some(guard),
+    )
+    .await
+}
+
+async fn host_check_until(
+    output: &Path,
+    source_deadline: Option<Instant>,
+    mode: &str,
+    phase: &str,
+    mut guard: Option<LivePreviewGuard<'_>>,
+) -> anyhow::Result<()> {
     let mut candidate = command(output.join(".lenso/host"));
     candidate
         .args(super::local_host::host_arguments(output)?)
-        .arg("--check");
+        .arg(mode);
     let mut candidate = candidate
         .spawn()
-        .context("start App candidate readiness check")?;
+        .with_context(|| format!("start App candidate {phase} check"))?;
     let readiness_deadline = Instant::now() + Duration::from_secs(60);
+    let mut next_policy_check = Instant::now();
     #[cfg(unix)]
     let group_id = candidate.id().context("candidate process ID")?;
-    #[cfg(unix)]
-    tokio::select! {
-        biased;
-        () = sleep_until_optional(source_deadline) => {
+    loop {
+        let now = Instant::now();
+        if source_deadline.is_some_and(|deadline| now >= deadline) {
             kill_process_group_now(&mut candidate).await?;
-            bail!("configuration source proof expired during candidate readiness")
+            bail!("configuration source proof expired during candidate {phase}")
         }
-        () = tokio::time::sleep_until(readiness_deadline) => {
+        if now >= readiness_deadline {
             kill_process_group_now(&mut candidate).await?;
-            bail!("App candidate did not become ready within 60 seconds")
+            bail!("App candidate {phase} did not complete within 60 seconds")
         }
-        result = wait_for_exit_unreaped(group_id) => {
-            result.context("wait for App candidate readiness")?;
+        if now >= next_policy_check
+            && let Some(guard) = &mut guard
+        {
+            match guard.still_valid().await {
+                Ok(true) => {}
+                Ok(false) => {
+                    kill_process_group_now(&mut candidate).await?;
+                    bail!("active preview invalidated during static preparation")
+                }
+                Err(error) => {
+                    kill_process_group_now(&mut candidate).await?;
+                    return Err(error).context("check active preview during static preparation");
+                }
+            }
+            next_policy_check = Instant::now() + Duration::from_millis(250);
+        }
+        #[cfg(unix)]
+        if exited_unreaped(group_id)? {
             signal_process_group_now(&mut candidate)?;
             let status = candidate.wait().await?;
-            if status.success() { Ok(()) }
-            else {
-                bail!("App candidate readiness check failed: {status}")
+            if status.success() {
+                return Ok(());
             }
+            bail!("App candidate {phase} check failed: {status}")
         }
-    }
-    #[cfg(not(unix))]
-    tokio::select! {
-        biased;
-        () = sleep_until_optional(source_deadline) => {
-            kill_process_group_now(&mut candidate).await?;
-            bail!("configuration source proof expired during candidate readiness")
+        #[cfg(not(unix))]
+        if let Some(status) = candidate.try_wait()? {
+            if status.success() {
+                return Ok(());
+            }
+            bail!("App candidate {phase} check failed: {status}")
         }
-        () = tokio::time::sleep_until(readiness_deadline) => {
-            kill_process_group_now(&mut candidate).await?;
-            bail!("App candidate did not become ready within 60 seconds")
-        }
-        status = candidate.wait() => {
-            let status = status.context("wait for App candidate readiness")?;
-            if status.success() { Ok(()) }
-            else { bail!("App candidate readiness check failed: {status}") }
-        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
     }
 }
 
@@ -2033,11 +2151,24 @@ mod tests {
 
         let host = output.join(".lenso/host");
         let source = if ready {
-            "#!/bin/sh\nif [ \"$1\" = --check ]; then exit 0; fi\ntest \"$1\" = --ready-file || exit 24\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\ntrap 'exit 0' TERM\nwhile :; do sleep 1; done\n"
+            "#!/bin/sh\nif [ \"$1\" = --check ] || [ \"$1\" = --prepare ]; then exit 0; fi\ntest \"$1\" = --ready-file || exit 24\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\ntrap 'exit 0' TERM\nwhile :; do sleep 1; done\n"
         } else {
             "#!/bin/sh\nexit 23\n"
         };
         fs::write(&host, source).unwrap();
+        fs::set_permissions(host, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn mock_host_dynamic_failure(output: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let host = output.join(".lenso/host");
+        fs::write(
+            &host,
+            "#!/bin/sh\ntest \"$1\" = --prepare && exit 0\nexit 23\n",
+        )
+        .unwrap();
         fs::set_permissions(host, fs::Permissions::from_mode(0o755)).unwrap();
     }
 
@@ -2233,7 +2364,8 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn supervised_configuration_stops_old_before_preflight_and_records_only_ready_host() {
+    async fn supervised_configuration_preserves_old_on_static_failure_and_records_only_ready_host()
+    {
         use lenso_app_plan::authoring::{
             HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
         };
@@ -2294,6 +2426,7 @@ mod tests {
             activate_supervised_candidate(
                 output.path(),
                 output.path(),
+                None,
                 &policy,
                 &[],
                 None,
@@ -2331,6 +2464,43 @@ mod tests {
             !activate_supervised_candidate(
                 output.path(),
                 output.path(),
+                Some(output.path()),
+                &policy,
+                &[],
+                None,
+                TimedProof {
+                    accepted,
+                    received_at: Instant::now()
+                },
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+                &mut active,
+            )
+            .await
+            .unwrap()
+            .unwrap()
+        );
+        assert_eq!(host.as_ref().unwrap().id(), first);
+        assert!(active.as_ref().unwrap().is_fresh());
+        use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
+        assert_eq!(
+            kill(Pid::from_raw(i32::try_from(first.unwrap()).unwrap()), None),
+            Ok(())
+        );
+        let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
+        assert_eq!(status.desired_revision, Some(2));
+        assert_eq!(status.last_activated_revision, Some(1));
+        assert!(status.pending_activation);
+
+        mock_host_dynamic_failure(output.path());
+        let accepted =
+            super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
+        assert!(
+            !activate_supervised_candidate(
+                output.path(),
+                output.path(),
+                Some(output.path()),
                 &policy,
                 &[],
                 None,
@@ -2349,13 +2519,11 @@ mod tests {
         );
         assert!(host.is_none());
         assert!(active.is_none());
-        use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
         assert_eq!(
             kill(Pid::from_raw(i32::try_from(first.unwrap()).unwrap()), None),
             Err(Errno::ESRCH)
         );
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
-        assert_eq!(status.desired_revision, Some(2));
         assert_eq!(status.last_activated_revision, Some(1));
         assert!(status.pending_activation);
 
@@ -2366,6 +2534,7 @@ mod tests {
             activate_supervised_candidate(
                 output.path(),
                 output.path(),
+                Some(output.path()),
                 &policy,
                 &[],
                 None,

@@ -400,6 +400,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         .context("Host location")?;
     let mut intent = root.join("intent");
     let mut check = false;
+    let mut prepare = false;
     let mut ready_file = None;
     let mut web_address_file = None;
     let mut defer_activation = false;
@@ -421,6 +422,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 ));
             }
             "--check" => check = true,
+            "--prepare" => prepare = true,
             "--defer-activation" => defer_activation = true,
             "--ready-file" => {
                 index += 1;
@@ -445,6 +447,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     anyhow::ensure!(
         !check || ready_file.is_none(),
         "--ready-file cannot be combined with --check"
+    );
+    anyhow::ensure!(
+        !prepare || (!check && !defer_activation && ready_file.is_none() && web_address_file.is_none()),
+        "--prepare cannot be combined with Host startup or readiness options"
     );
     anyhow::ensure!(
         !defer_activation || (!check && ready_file.is_some()),
@@ -549,7 +555,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     // Release the configuration lock before Plugin startup and the long-lived
     // serving loop; the supervisor fences its later receipt against the exact
     // resolved Root revision after the Ready Gate.
-    if check || defer_activation {
+    if check || defer_activation || prepare {
         activation = None;
     }
     let inventory: Vec<Artifact> = serde_json::from_slice(&fs::read(root.join("bundles.json"))?)?;
@@ -625,6 +631,11 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("{e:?}"))?,
             )
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    }
+    // Static preparation verifies the locked distribution and resolved Root
+    // without constructing Plugin factories or starting Kernel lifecycles.
+    if prepare {
+        return Ok(());
     }
     // LENSO_BUSINESS_SNAPSHOT_DECL
     #[cfg(generated_native_host)]
