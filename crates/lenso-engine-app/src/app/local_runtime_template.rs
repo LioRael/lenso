@@ -604,7 +604,8 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let wasm = wasm
         .with_codec(super::terminal::command::CommandJsonCodec)
         .with_codec(super::terminal::provider::CommandProviderJsonCodec)
-        .with_codec(lenso_capability_http_endpoint::EndpointJsonCodec);
+        .with_codec(lenso_capability_http_endpoint::EndpointJsonCodec)
+        .require_v2_descriptor_digest_for(lenso_capability_http_endpoint::CAPABILITY_ID);
     // LENSO_REGISTER_CODECS
     let evidence = serde_json::from_slice(&fs::read(root.join("runtime-codecs.json"))?)?;
     #[cfg(any(not(generated_native_host), generated_bun_adapter))]

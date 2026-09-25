@@ -47,7 +47,7 @@ test("routes a Plan-admitted Endpoint with complete typed request and binary res
   assert.deepEqual(calls[0].credential, { scheme: "bearer", value: "token" });
   assert.deepEqual(calls[0].path_parameters, []);
   assert.deepEqual(calls[0].headers, [{ name: "x-test", value: "alpha" }]);
-  assert.equal(calls[0].request_id, response.headers.get("x-lenso-request-id"));
+  assert.equal(calls[0].request_id, response.headers.get("x-request-id"));
   assert.equal(calls[0].body, "AP+ADQo=");
 
   const parameterResponse = await fetch(new Request("http://127.0.0.1/items/42"));

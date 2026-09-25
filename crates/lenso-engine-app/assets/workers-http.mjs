@@ -7,16 +7,16 @@ const encoder = new TextEncoder();
 const OWNED_REQUEST_HEADERS = new Set([
   "authorization", "cookie", "connection", "te", "trailer", "transfer-encoding",
   "upgrade", "keep-alive", "proxy-connection", "content-length", "host",
-  "x-lenso-request-id",
+  "x-request-id",
 ]);
 const OWNED_RESPONSE_HEADERS = new Set([
   "connection", "te", "trailer", "transfer-encoding", "upgrade", "keep-alive",
-  "proxy-connection", "content-length", "set-cookie", "x-content-type-options", "x-lenso-request-id",
+  "proxy-connection", "content-length", "set-cookie", "x-content-type-options", "x-request-id",
 ]);
 
 function failure(status, code, requestId) {
   const headers = new Headers({ "cache-control": "no-store", "x-content-type-options": "nosniff" });
-  if (requestId) headers.set("x-lenso-request-id", requestId);
+  if (requestId) headers.set("x-request-id", requestId);
   return Response.json({ error: code }, { status, headers });
 }
 
@@ -177,7 +177,7 @@ function endpointResponse(result, requestId) {
     headers.append(header.name, header.value);
   }
   headers.set("x-content-type-options", "nosniff");
-  headers.set("x-lenso-request-id", requestId);
+  headers.set("x-request-id", requestId);
   return new Response([204, 205, 304].includes(result.status) ? null : body,
     { status: result.status, headers });
 }

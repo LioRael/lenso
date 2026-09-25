@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 
-const base = new URL(process.env.LENSO_WORKERS_APP_URL ?? "http://127.0.0.1:63739");
+const base = new URL(process.env.LENSO_HTTP_APP_URL ?? process.env.LENSO_WORKERS_APP_URL ?? "http://127.0.0.1:63739");
+const environment = process.env.LENSO_HTTP_APP_ENVIRONMENT ?? "local-workerd";
+const corpus = process.env.LENSO_HTTP_CORPUS ?? "full";
+if (!["local-workerd", "native"].includes(environment) ||
+    !["full", "shared"].includes(corpus) || (environment === "native" && corpus !== "shared")) {
+  throw new Error("select local-workerd/full or either environment/shared HTTP corpus");
+}
 if (base.protocol !== "http:" || base.hostname !== "127.0.0.1" || !base.port ||
     base.pathname !== "/" || base.search || base.hash || base.username || base.password) {
-  throw new Error("LENSO_WORKERS_APP_URL must be an exact loopback HTTP origin");
+  throw new Error("HTTP App URL must be an exact loopback HTTP origin");
 }
 
 const cases = [
@@ -21,7 +27,9 @@ const cases = [
 ];
 
 const results = [];
-for (const [name, method, path, body, status, expectedBody, headers = {}] of cases) {
+const sharedNames = new Set(["method", "binary", "evidence", "method_not_allowed", "not_found", "domain_error", "runtime_failure"]);
+for (const [name, method, path, body, status, expectedBody, headers = {}] of
+  cases.filter(([name]) => corpus === "full" || sharedNames.has(name))) {
   try {
     const response = await fetch(new URL(path, base), {
       method,
@@ -32,12 +40,12 @@ for (const [name, method, path, body, status, expectedBody, headers = {}] of cas
     const failures = [];
     if (response.status !== status) failures.push(`status ${response.status} != ${status}`);
     if (!actualBody.equals(expectedBody)) failures.push(`body ${actualBody.toString("utf8")} differs`);
-    if (!response.headers.get("x-lenso-request-id")) failures.push("request ID missing");
+    if (!response.headers.get("x-request-id")) failures.push("request ID missing");
     results.push({ name, passed: failures.length === 0, ...(failures.length ? { failures } : {}) });
   } catch (error) {
     results.push({ name, passed: false, error: String(error) });
   }
 }
 const passed = results.every((result) => result.passed);
-process.stdout.write(`${JSON.stringify({ passed, scope: "verified V4 Bundle App build running in local workerd", results }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ passed, scope: `verified V4 Bundle App build in ${environment}, ${corpus} HTTP corpus`, results }, null, 2)}\n`);
 if (!passed) process.exitCode = 1;
