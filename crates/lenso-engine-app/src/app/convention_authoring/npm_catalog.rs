@@ -209,11 +209,11 @@ fn unpack_archive(bytes: &[u8], stage: &Path) -> anyhow::Result<()> {
         );
         let destination = stage.join(relative);
         if kind.is_dir() {
-            fs::create_dir_all(&destination)?;
+            create_archive_directory(stage, &destination)?;
             continue;
         }
         ensure!(kind.is_file(), "npm archive has a non-file entry");
-        fs::create_dir_all(destination.parent().context("npm file parent")?)?;
+        create_archive_directory(stage, destination.parent().context("npm file parent")?)?;
         let mut output = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -241,6 +241,29 @@ fn unpack_archive(bytes: &[u8], stage: &Path) -> anyhow::Result<()> {
             && padding.iter().all(|byte| *byte == 0),
         "npm archive has nonzero or excessive tar data after end marker"
     );
+    Ok(())
+}
+
+fn create_archive_directory(stage: &Path, destination: &Path) -> anyhow::Result<()> {
+    let mut current = stage.to_path_buf();
+    for component in destination.strip_prefix(stage)?.components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => ensure!(
+                metadata.file_type().is_dir(),
+                "npm archive directory conflicts with a non-directory"
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&current)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(&current, fs::Permissions::from_mode(0o755))?;
+        }
+    }
     Ok(())
 }
 
@@ -993,10 +1016,12 @@ pub(crate) fn isolated_build_source(
 
 pub(crate) fn is_adopted_source(source: &Path) -> anyhow::Result<bool> {
     let source = fs::canonicalize(source)?;
-    let under_vendor = source
-        .parent()
-        .and_then(Path::parent)
-        .is_some_and(|parent| parent.ends_with("vendor/lenso/npm"));
+    let under_vendor = source.ancestors().any(|ancestor| {
+        ancestor
+            .parent()
+            .and_then(Path::parent)
+            .is_some_and(|parent| parent.ends_with("vendor/lenso/npm"))
+    });
     let lock_present = match fs::symlink_metadata(source.join(SOURCE_LOCK)) {
         Ok(_) => true,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
@@ -1167,6 +1192,57 @@ mod tests {
                 .unwrap();
         }
         archive.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_nested_directory_modes_are_independent_of_umask_and_tar_headers() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let gzip = GzEncoder::new(Vec::new(), Compression::default());
+        let mut archive = tar::Builder::new(gzip);
+        let mut directory = tar::Header::new_gnu();
+        directory.set_size(0);
+        directory.set_mode(0o700);
+        directory.set_entry_type(tar::EntryType::Directory);
+        directory.set_cksum();
+        archive
+            .append_data(&mut directory, "package/nested/explicit/", Cursor::new([]))
+            .unwrap();
+        for path in [
+            "package/nested/explicit/file.ts",
+            "package/nested/implicit/file.ts",
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(1);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive
+                .append_data(&mut header, path, Cursor::new(b"x"))
+                .unwrap();
+        }
+        let bytes = archive.into_inner().unwrap().finish().unwrap();
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        for path in ["nested", "nested/explicit", "nested/implicit"] {
+            let directory = second.path().join(path);
+            fs::create_dir_all(&directory).unwrap();
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        unpack_archive(&bytes, first.path()).unwrap();
+        unpack_archive(&bytes, second.path()).unwrap();
+        for stage in [first.path(), second.path()] {
+            for path in ["nested", "nested/explicit", "nested/implicit"] {
+                assert_eq!(
+                    file_mode(&fs::symlink_metadata(stage.join(path)).unwrap()),
+                    0o755
+                );
+            }
+        }
+        assert_eq!(
+            source_digest(first.path()).unwrap(),
+            source_digest(second.path()).unwrap()
+        );
     }
 
     #[test]
@@ -1394,6 +1470,12 @@ mod tests {
         pinned.dependency_digest = dependency_digest(&source).unwrap();
         fs::write(source.join("node_modules/local.js"), b"export default 2;").unwrap();
         assert!(verify_source_contents(&source, &pinned).is_err());
+
+        let nested = source.join("subdir");
+        fs::create_dir(&nested).unwrap();
+        fs::copy(source.join("package.json"), nested.join("package.json")).unwrap();
+        assert!(is_adopted_source(&nested).unwrap());
+        assert!(isolated_build_source(&nested).is_err());
     }
 
     #[test]
