@@ -150,7 +150,13 @@ pub(super) fn inspect(
 
     let Some(source_entry) = source_entry else {
         ensure!(!source_present, "unlocked local source provenance");
-        return Ok(None);
+        return Ok(
+            (!generated_artifacts.is_empty()).then_some(BuildProvenanceFacts {
+                source_location: SourceLocation { path: lock_path },
+                build_sources: Vec::new(),
+                generated_artifacts,
+            }),
+        );
     };
     ensure!(source_present, "locked source provenance is missing");
     let source_bytes = verified_file(root, source_entry, MAX_SOURCE_BYTES)
@@ -422,11 +428,17 @@ mod tests {
         )
         .unwrap();
 
-        assert!(
-            inspect(root.path(), "aarch64-apple-darwin", &[])
-                .unwrap()
-                .is_none()
+        let facts = inspect(root.path(), "aarch64-apple-darwin", &[])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            facts.source_location.path,
+            root.path().join(".lenso/distribution.lock.json")
         );
+        assert!(facts.build_sources.is_empty());
+        assert_eq!(facts.generated_artifacts.len(), 1);
+        assert_eq!(facts.generated_artifacts[0].path, generated_path);
+        assert_eq!(facts.generated_artifacts[0].owner, "lenso_host_build");
 
         fs::write(
             root.path().join(generated_path),
