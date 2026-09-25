@@ -94,13 +94,14 @@ Capability through the existing resolver authority in ADR 0034.
 
 ### Record qualification per exact composition
 
-Qualification evidence is recorded in
-[the canonical qualification ledger](../qualification/README.md). A
-qualification names the exact Execution Environment, Infrastructure
-Implementation set, source revision, evidence, and known limitations. Design,
-implementation, release, and qualification are independent evidence facets:
-a released artifact does not elevate a local result to target or production
-qualification.
+Qualification evidence names the exact Execution Environment, Infrastructure
+Implementation set, source revision, evidence, and known limitations. The
+[historical local qualification ledger](https://github.com/LioRael/lenso/blob/c81b5c6edc7c237dbbeb92878183baa784c47c4f/docs/qualification/README.md)
+is retained in Git history, not maintained in this source tree. Current target
+claims must cite an exact, current owner-maintained qualification record or
+state that the combination is unassessed. Design, implementation, release, and
+qualification are independent evidence facets: a released artifact does not
+elevate a local result to target or production qualification.
 
 No document, renderer, or release note may emit a bare claim that a Capability
 is supported. It must either link to the matching qualified combination or

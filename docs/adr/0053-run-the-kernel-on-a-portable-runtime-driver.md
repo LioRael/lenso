@@ -47,5 +47,5 @@ deterministic test Driver. CI must compile the same engine for both Wasm targets
 browser and WASIp2 smoke tests must exercise a local task and monotonic timer,
 and native typed dispatch must retain its no-serialization path.
 
-Primary-source constraints and remaining host-profile questions are recorded in
-[`../research/lenso-vnext-wasm-kernel-portability.md`](../research/lenso-vnext-wasm-kernel-portability.md).
+Primary-source constraints and then-open host-profile questions are recorded in
+the [historical WebAssembly portability review](https://github.com/LioRael/lenso/blob/fcee52e12721397fc2a9077692488f832ba37dc1/docs/research/lenso-vnext-wasm-kernel-portability.md).

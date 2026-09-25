@@ -115,18 +115,17 @@ debug tooling over the prototype's lower raw overhead.
 The shared request corpus is
 [`spec/fixtures/bun/request-conformance.json`](../../spec/fixtures/bun/request-conformance.json).
 The cross-runtime harness is
-[`crates/lenso-bun-adapter/tests/bun_cross_runtime.rs`](../../crates/lenso-bun-adapter/tests/bun_cross_runtime.rs),
-and the reproducible wire benchmark is
+[`crates/lenso-bun-adapter/tests/bun_cross_runtime.rs`](../../crates/lenso-bun-adapter/tests/bun_cross_runtime.rs).
 The JavaScript benchmark lives at `LioRael/lenso-js:fixtures/bun/wire-benchmark.ts`.
-The checked-in local measurement snapshot is
-[`docs/evidence/bun-wire-benchmark.json`](../evidence/bun-wire-benchmark.json).
+The [historical local measurement snapshot](https://github.com/LioRael/lenso/blob/67d21499548d07e92c2f6529d7c8345e58c067d9/docs/evidence/bun-wire-benchmark.json)
+is retained in Git history, not the active source tree.
 
 Run a fresh comparison with:
 
 ```sh
 LENSO_BUN_BENCHMARK_REQUESTS=50 \
   bun run "$LENSO_JS_ROOT/fixtures/bun/wire-benchmark.ts" -- \
-  --output docs/evidence/bun-wire-benchmark.json
+  --output /tmp/lenso-bun-wire-benchmark.json
 ```
 
 The benchmark records startup, p50/p95/p99 latency, sequential throughput,

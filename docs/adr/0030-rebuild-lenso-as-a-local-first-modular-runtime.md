@@ -14,7 +14,7 @@ Lenso vNext will be a local-first, language-independent modular application runt
 - The portable Kernel engine must compile for native Rust, `wasm32-unknown-unknown`, and `wasm32-wasip2`. Host facilities and available Execution Adapters vary by Runner and do not become Kernel assumptions.
 - Console-enabled, Agent Harness, game-server, and similar presets are authoring recipes that materialize ordinary App Composition entries. They do not create Kernel modes or persistent runtime overlays.
 - This decision defines the vNext target; it does not claim that the current implementation or glossary already conforms.
-- The motivation and constraints for possible distributed execution are retained in [`../architecture/future-directions/distributed-module-runtime.md`](../architecture/future-directions/distributed-module-runtime.md).
+- The motivation and constraints for possible distributed execution are retained in the [distributed Plugin runtime direction](../architecture/future-directions/distributed-plugin-runtime.md).
 
 ## Supersession
 
