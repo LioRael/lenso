@@ -805,7 +805,7 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Inspect App facts without secret values; omitted scope observes an active MCP run's built distribution, while explicit scope=root inspects the source root; default build provenance contains counts, and section=build_sources or generated_artifacts returns paginated entries"
+        description = "Inspect App facts without secret values; omitted scope observes an active MCP run's built distribution, while explicit scope=root inspects the source root; default response summarizes pageable collections, and section selects their paginated entries"
     )]
     fn project_facts(
         &self,
@@ -953,6 +953,17 @@ fn project_facts_json(
             }
             let mut value = serde_json::to_value(facts)
                 .map_err(|_| McpError::internal_error("serialize App facts", None))?;
+            let object = value
+                .as_object_mut()
+                .ok_or_else(|| McpError::internal_error("serialize App facts", None))?;
+            for (field, total) in [
+                ("plugins", facts.plugins.len()),
+                ("bindings", facts.bindings.len()),
+                ("discovered_sources", facts.discovered_sources.len()),
+            ] {
+                object.remove(field);
+                object.insert(format!("total_{field}"), total.into());
+            }
             if let Some(provenance) = &facts.build_provenance {
                 value["build_provenance"] = serde_json::json!({
                     "source_location": provenance.source_location,
@@ -1095,7 +1106,8 @@ impl ServerHandler for AppTools {}
 #[cfg(test)]
 mod tests {
     use lenso_engine_app::app::facts::{
-        BuildProvenanceFacts, GeneratedArtifactFacts, ProjectFacts, RuntimeFacts, SourceLocation,
+        BindingFacts, BuildProvenanceFacts, DiscoveredSourceFacts, GeneratedArtifactFacts,
+        PluginFacts, ProjectFacts, RuntimeFacts, SourceLocation,
     };
 
     use super::{MAX_MCP_TEXT_BYTES, ProjectFactsQuery, project_facts_json};
@@ -1165,6 +1177,83 @@ mod tests {
             page["items"][0]["path"],
             facts.build_provenance.as_ref().unwrap().generated_artifacts[63].path
         );
+    }
+
+    #[test]
+    fn default_facts_remain_bounded_with_large_pageable_collections() {
+        let deep_path = format!("/tmp/{}", "nested/".repeat(50));
+        let facts = ProjectFacts {
+            schema_version: 4,
+            kind: "lenso.app-facts",
+            status: "resolved",
+            root: "/tmp/project".into(),
+            host_target: "aarch64-apple-darwin".into(),
+            plugin_root_revision: Some("revision-1".into()),
+            runtime: RuntimeFacts {
+                status: "not_observed",
+                detail: "No running Host was observed.",
+            },
+            configuration: None,
+            plugins: (0..256)
+                .map(|index| PluginFacts {
+                    plugin_id: format!("example.plugin-{index}"),
+                    release_version: "1.0.0".into(),
+                    release_source: "host_catalog",
+                    source_location: SourceLocation {
+                        path: format!("{deep_path}plugin-{index}/source.rs").into(),
+                    },
+                    instances: Vec::new(),
+                })
+                .collect(),
+            bindings: (0..256)
+                .map(|index| BindingFacts {
+                    consumer_instance: format!("example.plugin-{index}/default"),
+                    requirement_id: "example.capability".into(),
+                    capability_id: "example.capability".into(),
+                    descriptor_version: "1.0.0".into(),
+                    provider_instance: "example.provider/default".into(),
+                })
+                .collect(),
+            discovered_sources: (0..256)
+                .map(|index| DiscoveredSourceFacts {
+                    plugin_id: format!("example.plugin-{index}"),
+                    release_version: "1.0.0".into(),
+                    role: lenso_app_authoring::discovery::SourceRole::AppOwned,
+                    format: "rust".into(),
+                    project: format!("{deep_path}plugin-{index}").into(),
+                    metadata: format!("{deep_path}plugin-{index}/plugin.toml").into(),
+                    matches_adopted_coordinates: true,
+                    status: "candidate_only",
+                })
+                .collect(),
+            build_provenance: None,
+            diagnostics: Vec::new(),
+        };
+        assert!(serde_json::to_string(&facts).unwrap().len() > MAX_MCP_TEXT_BYTES);
+
+        let default_json = project_facts_json(&facts, &ProjectFactsQuery::default()).unwrap();
+        assert!(default_json.len() < MAX_MCP_TEXT_BYTES);
+        let summary: serde_json::Value = serde_json::from_str(&default_json).unwrap();
+        assert_eq!(summary["schema_version"], 4);
+        assert_eq!(summary["status"], "resolved");
+        assert_eq!(summary["plugin_root_revision"], "revision-1");
+        for (field, total_field) in [
+            ("plugins", "total_plugins"),
+            ("bindings", "total_bindings"),
+            ("discovered_sources", "total_discovered_sources"),
+        ] {
+            assert!(summary.get(field).is_none());
+            assert_eq!(summary[total_field], 256);
+            let page_query: ProjectFactsQuery = serde_json::from_value(serde_json::json!({
+                "section": field, "offset": 255, "limit": 1
+            }))
+            .unwrap();
+            let page: serde_json::Value =
+                serde_json::from_str(&project_facts_json(&facts, &page_query).unwrap()).unwrap();
+            assert_eq!(page["total"], 256);
+            assert_eq!(page["items"].as_array().unwrap().len(), 1);
+            assert!(page["next_offset"].is_null());
+        }
     }
 }
 

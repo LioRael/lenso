@@ -76,6 +76,14 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(facts["schema_version"], 4);
     assert_eq!(facts["status"], "invalid");
     assert_eq!(facts["runtime"]["status"], "not_observed");
+    for (field, total_field) in [
+        ("plugins", "total_plugins"),
+        ("bindings", "total_bindings"),
+        ("discovered_sources", "total_discovered_sources"),
+    ] {
+        assert!(facts.get(field).is_none());
+        assert_eq!(facts[total_field], 0);
+    }
     let first_page: serde_json::Value =
         serde_json::from_str(by_id[&7]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(first_page["kind"], "lenso.app-facts-page");
@@ -1156,6 +1164,15 @@ fn stdio_authorized_build_reports_the_same_app_check() {
     .unwrap();
     let expected_provenance = &expected_facts["build_provenance"];
     let mut expected_summary = expected_facts.clone();
+    for (field, total_field) in [
+        ("plugins", "total_plugins"),
+        ("bindings", "total_bindings"),
+        ("discovered_sources", "total_discovered_sources"),
+    ] {
+        let total = expected_facts[field].as_array().unwrap().len();
+        expected_summary.as_object_mut().unwrap().remove(field);
+        expected_summary[total_field] = total.into();
+    }
     expected_summary["build_provenance"] = serde_json::json!({
         "source_location": expected_provenance["source_location"],
         "total_build_sources": expected_provenance["build_sources"].as_array().unwrap().len(),
@@ -1172,6 +1189,13 @@ fn stdio_authorized_build_reports_the_same_app_check() {
             9,
             "generated_artifacts",
             &expected_provenance["generated_artifacts"],
+        ),
+        (19, "plugins", &expected_facts["plugins"]),
+        (20, "bindings", &expected_facts["bindings"]),
+        (
+            21,
+            "discovered_sources",
+            &expected_facts["discovered_sources"],
         ),
     ] {
         let expected_items = items.as_array().map(Vec::as_slice).unwrap_or_default();
