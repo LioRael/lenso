@@ -1,0 +1,22 @@
+crates/lenso-plugin-bundle/src/lib.rs
+  s_7d146975368699::t_daaddfc893626d 185,235,986-996
+  s_7d146975368699::t_3250046539044d 997-999
+crates/lenso-engine-app/src/app/bootstrap_configuration_source.rs
+  s_7d146975368699::t_daaddfc893626d 23,64-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62e7f7f103ef532b866183f8a03aa43f763bed22",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
