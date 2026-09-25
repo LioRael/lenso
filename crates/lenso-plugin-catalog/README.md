@@ -45,5 +45,17 @@ admission; signature verification alone does not perform those steps.
 product-specific Host integration and must not be advertised as generically
 adoptable.
 
+`release_content` is a separately signed v2 channel for optional editable
+templates and development extensions under the same exact Plugin ID and version.
+It does not add fields to either v1 signed payload, so existing v1 signatures
+and readers remain unchanged. Each v2 entry binds the immutable identity of an
+exact listed Portable or linked Cargo base release. Content references carry an
+HTTPS URL, SHA-256 digest and byte size for a bounded `.tar.gz` source tree.
+The URL is only a reference: verification never fetches, copies, selects or
+executes it. A consumer must verify both signed snapshots, their independent
+checkpoints, the selected base identity and the received archive bytes before
+copying. Content identity is immutable across revisions; publication of a new
+version is required to change it.
+
 This new package is prepared for local review. It has not been published; registry
 release requires the repository's Trusted Publisher workflow and explicit approval.

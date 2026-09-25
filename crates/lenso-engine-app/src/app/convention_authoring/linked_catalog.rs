@@ -21,6 +21,8 @@ use super::AddArgs;
 
 mod adoption;
 mod checkpoint;
+pub(super) mod content;
+mod content_checkpoint;
 mod replacement;
 
 #[derive(Deserialize)]

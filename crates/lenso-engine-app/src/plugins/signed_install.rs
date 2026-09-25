@@ -17,7 +17,7 @@ use lenso_app_authoring::{
 use lenso_plugin_catalog::{Artifact, Release, verify};
 use serde::{Deserialize, Serialize};
 
-mod checkpoint;
+pub(crate) mod checkpoint;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

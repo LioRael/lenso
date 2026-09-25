@@ -99,7 +99,7 @@ fn read_in_dir(dir: &fs::File, name: &str, catalog_id: &str) -> anyhow::Result<O
 }
 
 #[cfg(unix)]
-pub(super) fn read(
+pub(crate) fn read(
     _root: &Path,
     root_lock: &fs::File,
     catalog_id: &str,
@@ -111,7 +111,7 @@ pub(super) fn read(
 }
 
 #[cfg(unix)]
-pub(super) fn persist(
+pub(crate) fn persist(
     _root: &Path,
     root_lock: &fs::File,
     checkpoint: &Checkpoint,
@@ -164,7 +164,7 @@ pub(super) fn persist(
 }
 
 #[cfg(not(unix))]
-pub(super) fn read(
+pub(crate) fn read(
     _root: &Path,
     _root_lock: &fs::File,
     _catalog_id: &str,
@@ -173,7 +173,7 @@ pub(super) fn read(
 }
 
 #[cfg(not(unix))]
-pub(super) fn persist(
+pub(crate) fn persist(
     _root: &Path,
     _root_lock: &fs::File,
     _checkpoint: &Checkpoint,

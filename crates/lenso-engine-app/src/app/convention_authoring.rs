@@ -42,6 +42,21 @@ pub struct AddArgs {
     /// Replace the selected linked Cargo Plugin version using signed new-release inputs.
     #[arg(long)]
     replace: bool,
+    /// Separately signed v2 source-content snapshot for this exact Plugin release.
+    #[arg(long)]
+    content_snapshot: Option<PathBuf>,
+    /// Exact content ID within the signed v2 release.
+    #[arg(long)]
+    content_id: Option<String>,
+    /// Local downloaded `.tar.gz` content archive matching the signed digest.
+    #[arg(long)]
+    content_archive: Option<PathBuf>,
+    /// New App-relative directory that will own an editable copy of the content.
+    #[arg(long)]
+    content_destination: Option<PathBuf>,
+    /// Verify the signed input and show its file plan without writing to the App.
+    #[arg(long)]
+    content_preview: bool,
 }
 #[derive(Clone, Debug, Args)]
 pub struct UnadoptArgs {
@@ -286,6 +301,14 @@ fn tsconfig(root: &Path, source: &str) -> anyhow::Result<()> {
 
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(crate::plugins::project_root(args.root.clone())?)?;
+    if args.content_snapshot.is_some()
+        || args.content_id.is_some()
+        || args.content_archive.is_some()
+        || args.content_destination.is_some()
+        || args.content_preview
+    {
+        return linked_catalog::content::add(&root, &args);
+    }
     if args.portable_snapshot.is_some() || args.archive.is_some() || args.origin.is_some() {
         if args.linked_snapshot.is_some() || args.crate_archive.is_some() || args.bundle.is_some() {
             bail!(
@@ -557,6 +580,11 @@ pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyho
         archive: None,
         origin: None,
         replace: false,
+        content_snapshot: None,
+        content_id: None,
+        content_archive: None,
+        content_destination: None,
+        content_preview: false,
     })
 }
 pub fn create_plugin(

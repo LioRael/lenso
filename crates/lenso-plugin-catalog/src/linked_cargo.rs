@@ -99,7 +99,7 @@ impl LinkedCargoRelease {
     }
 
     /// Availability may change; package identity and build input may not.
-    fn immutable_identity(&self) -> Result<String> {
+    pub fn immutable_identity(&self) -> Result<String> {
         Ok(digest(&serde_json::to_vec(&(
             &self.plugin_id,
             &self.version,

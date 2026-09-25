@@ -149,6 +149,52 @@ and dependency choices remain App-owned. Both commands use the same signed
 release and archive verification, but source adoption and built-root mutation
 are different permissions and artifacts.
 
+## Exact signed editable content
+
+An optional `lenso.marketplace.release-content.v2` snapshot can attach a
+template or development extension to the same exact Plugin ID and version as
+a signed Portable or linked Cargo release. It is a separate signature and
+checkpoint; the v1 release bytes and adoption behavior do not change. Use
+`--linked-snapshot` for a linked-only base, or `--portable-snapshot` for a
+Portable base. The content archive is a local, downloaded `.tar.gz`; this
+command does not fetch its signed URL.
+This content-copy path currently requires Unix filesystem primitives.
+
+```sh
+lenso app add example.web@1.2.3 --root ./my-app \
+  --linked-snapshot ./linked.json --trust ./catalog-trust.json \
+  --content-snapshot ./content.json --content-id react-template \
+  --content-archive ./react-template.tar.gz \
+  --content-destination frontend/from-example --content-preview
+
+# After reviewing the exact file plan, repeat without --content-preview.
+lenso app add example.web@1.2.3 --root ./my-app \
+  --linked-snapshot ./linked.json --trust ./catalog-trust.json \
+  --content-snapshot ./content.json --content-id react-template \
+  --content-archive ./react-template.tar.gz \
+  --content-destination frontend/from-example
+```
+
+Preview verifies both current signed snapshots, the immutable base identity,
+and the complete archive before showing the file list. It writes nothing to
+the App. Copying advances the two independent local checkpoints and publishes
+only a new App-relative directory with `.lenso-release-content.json`
+provenance. Existing destinations, symlinks, path traversal, duplicate archive
+entries and non-file archive entries are rejected. Copied files belong to the
+App owner; a later exact adoption never overwrites edits or replaces the
+directory. Updating them is a reviewed source change, not an automatic
+Marketplace update.
+
+A `development_extension` copy remains inert. The destination cannot be in
+auto-discovered or generated App paths. Its archive must contain one source
+Plugin with the exact signed ID/version and explicit convention declarations.
+After reviewing that source, run
+`lenso app add ./my-app/extensions/example-web --root ./my-app --no-install`
+as a separate, explicit selection. Only that
+selection permits ordinary App discovery and a later build to invoke the
+extension's compiler; the signed content copy itself grants no execution
+permission. The local source remains editable and is not a sandbox.
+
 ## Build, inspect, and run
 
 ```sh
