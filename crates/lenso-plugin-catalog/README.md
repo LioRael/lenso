@@ -33,8 +33,11 @@ Cargo/npm packages, target filters, and digest-bound Markdown documentation
 without changing the v1 `Snapshot` or `Release` API. Its distinct signature
 context and checkpoint prevent replay as a base catalog. Details remain data;
 the Host still owns compatibility, permission, trust and installation admission.
-Release details still require their exact Portable base; they cannot represent
-an npm-only release.
+Release details require an exact Portable or linked Cargo base. Linked Cargo
+details retain its exact crate coordinates and cannot claim a Portable artifact;
+an additional npm distribution can share that logical Release. A standalone
+npm-only release still uses the separate package channel. The v1 details schema
+still requires every distribution version to equal the logical Release version.
 
 `package` is a separate signed package-only base channel. Its snapshot can
 publish an npm Plugin release without a fictitious Portable artifact, binding

@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
     Artifact, Availability, Distribution, DistributionKind, Documentation, Release, ReleaseDetails,
-    ReleaseDetailsSnapshot, Snapshot, Trust, digest, sign, sign_release_details, verify,
-    verify_release_details,
+    ReleaseDetailsSnapshot, Snapshot, Trust, digest,
+    linked_cargo::{self, LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot},
+    sign, sign_release_details, verify, verify_release_details,
 };
 
 fn artifact() -> Artifact {
@@ -85,6 +86,133 @@ fn base() -> Snapshot {
             availability: Availability::Listed,
         }],
     )
+}
+
+fn linked_release() -> LinkedCargoRelease {
+    LinkedCargoRelease {
+        plugin_id: "example.notes".into(),
+        version: "1.2.3".into(),
+        publisher_id: "example".into(),
+        title: "Notes".into(),
+        summary: "Notes".into(),
+        source_url: "https://example.test/source".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        package: "example-notes-plugin".into(),
+        registry_url: "https://crates.io".into(),
+        crate_digest: digest(b"crate-package"),
+        integration: LinkedCargoIntegration::LinkedPlugin,
+        targets: vec!["aarch64-apple-darwin".into()],
+        availability: Availability::Listed,
+        documentation: vec![],
+    }
+}
+
+fn linked_details() -> ReleaseDetailsSnapshot {
+    let linked = linked_release();
+    let mut snapshot = details();
+    let release = &mut snapshot.releases[0];
+    release.base_release_identity = linked.immutable_identity().unwrap();
+    release.distributions.remove(0);
+    release.distributions.push(Distribution {
+        id: "bun".into(),
+        kind: DistributionKind::NpmPackage,
+        package: "@example/notes-plugin".into(),
+        version: linked.version.clone(),
+        integrity: Some(digest(b"npm-package")),
+        registry_url: Some("https://registry.npmjs.org".into()),
+        artifact: None,
+        targets: vec!["linux-arm64".into()],
+    });
+    snapshot
+}
+
+#[test]
+fn signed_details_metadata_joins_linked_cargo_and_npm_without_portable_base() {
+    let signing = SigningKey::from_bytes(&[16; 32]);
+    let trust = Trust {
+        catalog_id: "catalog".into(),
+        keys: BTreeMap::from([("key".into(), signing.verifying_key())]),
+    };
+    let linked = LinkedCargoSnapshot::new("catalog".into(), 1, 100, 200, vec![linked_release()]);
+    let linked = linked_cargo::verify(
+        &linked_cargo::sign(&linked, "key", &signing).unwrap(),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+    let details = verify_release_details(
+        &sign_release_details(&linked_details(), "key", &signing).unwrap(),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+
+    let selected = linked
+        .select_details(&details, "example.notes", "1.2.3", 150)
+        .unwrap();
+    assert_eq!(selected.distributions.len(), 2);
+    assert_eq!(
+        selected.distributions[0].kind,
+        DistributionKind::CargoPackage
+    );
+    assert_eq!(selected.distributions[1].kind, DistributionKind::NpmPackage);
+    assert!(
+        linked
+            .select_details(&details, "example.notes", "1.2.3", 201)
+            .is_err()
+    );
+
+    let portable = verify(&sign(&base(), "key", &signing).unwrap(), &trust, None, 150).unwrap();
+    assert!(
+        portable
+            .select_details(&details, "example.notes", "1.2.3", 150)
+            .is_err()
+    );
+}
+
+#[test]
+fn linked_details_reject_unbound_or_missing_cargo_coordinates() {
+    let linked = linked_release();
+    let matching = linked_details().releases.remove(0);
+    assert!(matching.validate_against_linked(&linked).is_ok());
+
+    for field in 0..5 {
+        let mut changed = matching.clone();
+        let cargo = &mut changed.distributions[0];
+        match field {
+            0 => cargo.package = "another-plugin".into(),
+            1 => cargo.version = "1.2.4".into(),
+            2 => cargo.registry_url = Some("https://other.example.test".into()),
+            3 => cargo.integrity = Some(digest(b"different-crate")),
+            4 => cargo.targets = vec!["x86_64-unknown-linux-gnu".into()],
+            _ => unreachable!(),
+        }
+        assert!(
+            changed.validate_against_linked(&linked).is_err(),
+            "field {field}"
+        );
+    }
+
+    let mut changed = matching.clone();
+    changed.base_release_identity = digest(b"different-linked-base");
+    assert!(changed.validate_against_linked(&linked).is_err());
+
+    let mut changed = matching.clone();
+    changed.distributions.remove(0);
+    assert!(changed.validate_against_linked(&linked).is_err());
+
+    let mut changed = matching;
+    changed
+        .distributions
+        .push(details().releases[0].distributions[0].clone());
+    assert!(changed.validate_against_linked(&linked).is_err());
+
+    let mut changed = linked_details();
+    changed.releases[0].distributions[1].version = "9.9.9".into();
+    assert!(sign_release_details(&changed, "key", &SigningKey::from_bytes(&[17; 32])).is_err());
 }
 
 #[test]

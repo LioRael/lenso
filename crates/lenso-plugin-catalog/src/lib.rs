@@ -572,6 +572,41 @@ impl ReleaseDetails {
         );
         Ok(())
     }
+
+    /// Join details to an exact linked Cargo base without claiming a Portable artifact.
+    pub fn validate_against_linked(
+        &self,
+        release: &linked_cargo::LinkedCargoRelease,
+    ) -> Result<()> {
+        self.validate()?;
+        release.validate()?;
+        ensure!(
+            self.plugin_id == release.plugin_id && self.version == release.version,
+            "release details identity does not match the linked Cargo release"
+        );
+        ensure!(
+            self.base_release_identity == release.immutable_identity()?,
+            "release details do not match the immutable linked Cargo release"
+        );
+        ensure!(
+            self.distributions
+                .iter()
+                .all(|distribution| distribution.kind != DistributionKind::PortableBundle),
+            "linked Cargo details cannot claim a Portable artifact"
+        );
+        ensure!(
+            self.distributions.iter().any(|distribution| {
+                distribution.kind == DistributionKind::CargoPackage
+                    && distribution.package == release.package
+                    && distribution.version == release.version
+                    && distribution.registry_url.as_deref() == Some(release.registry_url.as_str())
+                    && distribution.integrity.as_deref() == Some(release.crate_digest.as_str())
+                    && distribution.targets == release.targets
+            }),
+            "release details do not retain the base linked Cargo package"
+        );
+        Ok(())
+    }
 }
 
 impl Distribution {

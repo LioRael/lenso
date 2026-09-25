@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Availability, Documentation, Envelope, MAX_ENVELOPE_BYTES, MAX_RELEASES, MAX_VALIDITY_SECONDS,
-    Trust, bounded_text, digest, https_url, valid_digest,
+    ReleaseDetails, Trust, VerifiedReleaseDetails, bounded_text, digest, https_url, valid_digest,
 };
 
 const SCHEMA: &str = "lenso.marketplace.linked-cargo-snapshot.v1";
@@ -219,6 +219,25 @@ impl VerifiedLinkedCargoSnapshot {
             "linked Cargo release is not available for adoption"
         );
         Ok(release)
+    }
+
+    /// Join separately signed details only to this listed, current linked release.
+    pub fn select_details<'a>(
+        &self,
+        details: &'a VerifiedReleaseDetails,
+        plugin_id: &str,
+        version: &str,
+        now: u64,
+    ) -> Result<&'a ReleaseDetails> {
+        let release = self.select(plugin_id, version, now)?;
+        ensure!(
+            self.snapshot.catalog_id == details.snapshot().catalog_id,
+            "release details belong to another catalog"
+        );
+        details.ensure_current(now)?;
+        let selected = details.find(plugin_id, version)?;
+        selected.validate_against_linked(release)?;
+        Ok(selected)
     }
 }
 
