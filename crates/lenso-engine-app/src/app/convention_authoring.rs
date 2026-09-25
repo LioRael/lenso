@@ -28,10 +28,10 @@ pub struct AddArgs {
     /// Exact signed npm-only Plugin release snapshot.
     #[arg(long, conflicts_with_all = ["linked_snapshot", "portable_snapshot", "release_details"])]
     package_snapshot: Option<PathBuf>,
-    /// Signed release details for an exact Cargo distribution of a Portable release.
-    #[arg(long, requires = "portable_snapshot")]
+    /// Signed release details joined to an exact Portable or linked Cargo base.
+    #[arg(long)]
     release_details: Option<PathBuf>,
-    /// Distribution ID when release details contain multiple Cargo packages.
+    /// Distribution ID when the signed release has multiple target packages.
     #[arg(long)]
     distribution: Option<String>,
     /// Local public trust configuration for the signed catalog.
@@ -78,7 +78,7 @@ pub struct UnadoptArgs {
     /// Unselect a signed Portable source App Bundle, retaining its exact archive.
     #[arg(long)]
     portable: bool,
-    /// Unselect a signed npm-only Plugin source and move managed files to App trash.
+    /// Unselect a signed npm Plugin source and move managed files to App trash.
     #[arg(long, conflicts_with = "portable")]
     npm: bool,
     #[arg(long)]
@@ -335,6 +335,11 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
         return linked_catalog::content::add(&root, &args);
     }
     if args.release_details.is_some() {
+        if args.linked_snapshot.is_some() {
+            bail!(
+                "linked Cargo release details select npm with --tgz; select Cargo with --linked-snapshot and --crate without --release-details"
+            );
+        }
         return linked_catalog::add_from_release_details(&root, &args);
     }
     if args.portable_snapshot.is_some() || args.archive.is_some() || args.origin.is_some() {

@@ -11,7 +11,7 @@ use lenso_app_authoring::discovery::Candidate;
 use lenso_app_plan::authoring::{PluginContract, PluginDescriptor};
 use lenso_plugin_bundle::{BundleVerificationLimits, PluginManifest, PluginVariantInputV6};
 use lenso_plugin_catalog::{
-    Availability, DistributionKind, Trust,
+    Availability, Distribution, DistributionKind, Trust,
     linked_cargo::{self, LinkedCargoIntegration},
 };
 use serde::{Deserialize, Serialize};
@@ -756,6 +756,104 @@ pub(super) fn add_from_release_details(root: &Path, args: &AddArgs) -> anyhow::R
         None,
         app_lock,
     )
+}
+
+/// A Bun source may be selected from linked Cargo release details, but the
+/// Cargo and Bun implementations remain alternatives for one Plugin ID.
+pub(super) struct LinkedNpmSelection {
+    pub(super) distribution: Distribution,
+    pub(super) catalog_id: String,
+    pub(super) base_release_identity: String,
+    linked: linked_cargo::VerifiedLinkedCargoSnapshot,
+    previous_linked: Option<linked_cargo::LinkedCargoCheckpoint>,
+    details: lenso_plugin_catalog::VerifiedReleaseDetails,
+    previous_details: Option<lenso_plugin_catalog::ReleaseDetailsCheckpoint>,
+}
+
+impl LinkedNpmSelection {
+    pub(super) fn persist(&self, root: &Path, app_lock: &fs::File) -> anyhow::Result<()> {
+        checkpoint::persist(
+            root,
+            app_lock,
+            self.linked.checkpoint(),
+            self.previous_linked.as_ref(),
+        )?;
+        crate::plugins::signed_install::checkpoint::persist_details(
+            root,
+            app_lock,
+            self.details.checkpoint(),
+            self.previous_details.as_ref(),
+        )
+    }
+}
+
+pub(super) fn select_linked_npm_details(
+    root: &Path,
+    app_lock: &fs::File,
+    args: &AddArgs,
+    plugin_id: &str,
+    version: &str,
+) -> anyhow::Result<LinkedNpmSelection> {
+    let trust = read_trust(args.trust.as_deref().context("--trust required")?)?;
+    let previous_linked = checkpoint::read(root, app_lock, &trust.catalog_id)?;
+    let now = now()?;
+    let linked = linked_cargo::verify(
+        &read_envelope(
+            args.linked_snapshot
+                .as_deref()
+                .context("--linked-snapshot required")?,
+        )?,
+        &trust,
+        previous_linked.as_ref(),
+        now,
+    )?;
+    let previous_details = crate::plugins::signed_install::checkpoint::read_details(
+        root,
+        app_lock,
+        &trust.catalog_id,
+    )?;
+    let details = lenso_plugin_catalog::verify_release_details(
+        &read_envelope(
+            args.release_details
+                .as_deref()
+                .context("--release-details required")?,
+        )?,
+        &trust,
+        previous_details.as_ref(),
+        now,
+    )?;
+    let release = linked.select_details(&details, plugin_id, version, now)?;
+    let target = lenso_app_authoring::native_host_target();
+    let candidates = release
+        .distributions
+        .iter()
+        .filter(|distribution| {
+            distribution.kind == DistributionKind::NpmPackage
+                && args
+                    .distribution
+                    .as_ref()
+                    .is_none_or(|id| distribution.id == *id)
+                && (distribution.targets.is_empty()
+                    || distribution
+                        .targets
+                        .iter()
+                        .any(|candidate| candidate == "*" || candidate == target))
+        })
+        .collect::<Vec<_>>();
+    let [distribution] = candidates.as_slice() else {
+        bail!(
+            "select exactly one signed npm distribution for Host target {target}; use --distribution when needed"
+        );
+    };
+    Ok(LinkedNpmSelection {
+        distribution: (*distribution).clone(),
+        catalog_id: trust.catalog_id,
+        base_release_identity: release.base_release_identity.clone(),
+        linked,
+        previous_linked,
+        details,
+        previous_details,
+    })
 }
 
 fn adopt_archive(

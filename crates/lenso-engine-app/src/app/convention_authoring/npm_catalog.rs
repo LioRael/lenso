@@ -1,4 +1,4 @@
-//! Adopt an exact signed npm-only Plugin release as a Bun source candidate.
+//! Adopt an exact signed npm distribution as a Bun source candidate.
 //! Package installation never runs lifecycle scripts; building its Plugin code
 //! still needs an explicit operator trust declaration for the archive digest.
 
@@ -51,6 +51,15 @@ struct SourceLock {
     archive_digest: String,
     source_digest: String,
     dependency_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    linked_base: Option<LinkedBaseLock>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LinkedBaseLock {
+    catalog_id: String,
+    release_identity: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -399,7 +408,11 @@ fn dependency_digest(root: &Path) -> anyhow::Result<String> {
 fn build_digest(lock: &SourceLock) -> String {
     let mut hasher = Sha256::new();
     for value in [
-        "lenso/npm-build/v2",
+        if lock.linked_base.is_some() {
+            "lenso/npm-build/v3"
+        } else {
+            "lenso/npm-build/v2"
+        },
         &lock.plugin_id,
         &lock.release_version,
         &lock.package,
@@ -412,6 +425,12 @@ fn build_digest(lock: &SourceLock) -> String {
     ] {
         hasher.update((value.len() as u64).to_be_bytes());
         hasher.update(value.as_bytes());
+    }
+    if let Some(base) = &lock.linked_base {
+        for value in [&base.catalog_id, &base.release_identity] {
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value.as_bytes());
+        }
     }
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }
@@ -560,13 +579,17 @@ pub(in crate::app) fn preview(
 }
 
 pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
+    let package_only = args.package_snapshot.is_some()
+        && args.linked_snapshot.is_none()
+        && args.release_details.is_none();
+    let linked_details = args.package_snapshot.is_none()
+        && args.linked_snapshot.is_some()
+        && args.release_details.is_some();
     ensure!(
-        args.package_snapshot.is_some()
+        (package_only || linked_details)
             && args.tgz.is_some()
             && args.trust.is_some()
-            && args.linked_snapshot.is_none()
             && args.portable_snapshot.is_none()
-            && args.release_details.is_none()
             && args.crate_archive.is_none()
             && args.bundle.is_none()
             && args.archive.is_none()
@@ -576,22 +599,45 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
             && args.content_archive.is_none()
             && args.content_destination.is_none()
             && !args.content_preview,
-        "npm adoption needs --package-snapshot, --trust and --tgz only"
+        "npm adoption needs --trust and --tgz with either --package-snapshot or both --linked-snapshot and --release-details"
     );
     let (plugin_id, release_version) = args
         .source
         .split_once('@')
         .context("npm source must be exact PLUGIN_ID@RELEASE_VERSION")?;
     let app_lock = linked_catalog::adoption::lock_app(root)?;
-    let selected = select_package(
-        root,
-        args.package_snapshot.as_deref().unwrap(),
-        args.trust.as_deref().unwrap(),
-        plugin_id,
-        release_version,
-        args.distribution.as_deref(),
-    )?;
-    let distribution = &selected.distribution;
+    let selected_package = if package_only {
+        Some(select_package(
+            root,
+            args.package_snapshot.as_deref().unwrap(),
+            args.trust.as_deref().unwrap(),
+            plugin_id,
+            release_version,
+            args.distribution.as_deref(),
+        )?)
+    } else {
+        None
+    };
+    let selected_linked = if linked_details {
+        Some(linked_catalog::select_linked_npm_details(
+            root,
+            &app_lock,
+            args,
+            plugin_id,
+            release_version,
+        )?)
+    } else {
+        None
+    };
+    let distribution = selected_package
+        .as_ref()
+        .map(|selected| &selected.distribution)
+        .or_else(|| {
+            selected_linked
+                .as_ref()
+                .map(|selected| &selected.distribution)
+        })
+        .context("signed npm distribution is missing")?;
     let bytes = read_archive(args.tgz.as_deref().unwrap())?;
     let archive_digest = digest(&bytes);
     ensure!(
@@ -636,11 +682,16 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
             && candidate.format == "bun",
         "npm Plugin logical release identity differs from signed snapshot"
     );
-    persist_checkpoint(
-        root,
-        selected.verified.checkpoint(),
-        selected.previous.as_ref(),
-    )?;
+    if let Some(selected) = &selected_package {
+        persist_checkpoint(
+            root,
+            selected.verified.checkpoint(),
+            selected.previous.as_ref(),
+        )?;
+    }
+    if let Some(selected) = &selected_linked {
+        selected.persist(root, &app_lock)?;
+    }
     let expected_source_digest = source_digest(stage.path())?;
     if !args.no_install {
         let install_home = tempfile::tempdir_in(root)?;
@@ -682,6 +733,10 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         archive_digest,
         source_digest: expected_source_digest,
         dependency_digest: dependency_digest(stage.path())?,
+        linked_base: selected_linked.as_ref().map(|selected| LinkedBaseLock {
+            catalog_id: selected.catalog_id.clone(),
+            release_identity: selected.base_release_identity.clone(),
+        }),
     };
     fs::write(stage.path().join(SOURCE_ARCHIVE), &bytes)?;
     fs::write(
@@ -1254,7 +1309,12 @@ mod tests {
 
     use ed25519_dalek::SigningKey;
     use flate2::{Compression, write::GzEncoder};
-    use lenso_plugin_catalog::{Availability, Distribution, package::PackageRelease};
+    use lenso_plugin_catalog::{
+        Availability, Distribution, ReleaseDetails, ReleaseDetailsSnapshot,
+        linked_cargo::{self, LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot},
+        package::PackageRelease,
+        sign_release_details,
+    };
 
     use super::*;
 
@@ -1278,6 +1338,224 @@ mod tests {
                 .unwrap();
         }
         archive.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[test]
+    fn linked_release_details_select_exact_npm_alternative_without_cargo_or_portable() {
+        let app = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(app.path()).unwrap();
+        let archive = archive();
+        let mut tar = tar::Archive::new(GzDecoder::new(Cursor::new(&archive)));
+        let mut entries = Vec::new();
+        for entry in tar.entries().unwrap() {
+            let mut entry = entry.unwrap();
+            let path = entry.path().unwrap().to_path_buf();
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes).unwrap();
+            if path == Path::new("package/package.json") {
+                let mut manifest: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                manifest["version"] = "1.2.3".into();
+                bytes = serde_json::to_vec(&manifest).unwrap();
+            }
+            entries.push((path, bytes));
+        }
+        let mut repacked = tar::Builder::new(GzEncoder::new(Vec::new(), Compression::default()));
+        for (path, bytes) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            repacked
+                .append_data(&mut header, path, Cursor::new(bytes))
+                .unwrap();
+        }
+        let archive = repacked.into_inner().unwrap().finish().unwrap();
+        let tgz = root.join("plugin.tgz");
+        fs::write(&tgz, &archive).unwrap();
+
+        let key = SigningKey::from_bytes(&[47; 32]);
+        let trust = root.join("trust.json");
+        fs::write(
+            &trust,
+            serde_json::to_vec(&serde_json::json!({
+                "catalog_id": "linked-npm-test",
+                "key_id": "key",
+                "public_key_hex": hex::encode(key.verifying_key().to_bytes())
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let now = linked_catalog::now().unwrap();
+        let base = LinkedCargoRelease {
+            plugin_id: "example.notes".into(),
+            version: "1.2.3".into(),
+            publisher_id: "example".into(),
+            title: "Notes".into(),
+            summary: "Notes Plugin".into(),
+            source_url: "https://example.test/source".into(),
+            source_revision: "a".repeat(40),
+            license: "MIT".into(),
+            package: "example-notes-plugin".into(),
+            registry_url: "https://crates.io".into(),
+            crate_digest: digest(b"exact-crate"),
+            integration: LinkedCargoIntegration::LinkedPlugin,
+            targets: vec![lenso_app_authoring::native_host_target().into()],
+            availability: Availability::Listed,
+            documentation: vec![],
+        };
+        let linked = root.join("linked.json");
+        fs::write(
+            &linked,
+            linked_cargo::sign(
+                &LinkedCargoSnapshot::new(
+                    "linked-npm-test".into(),
+                    1,
+                    now - 5,
+                    now + 3600,
+                    vec![base.clone()],
+                ),
+                "key",
+                &key,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let details = root.join("details.json");
+        let release = ReleaseDetails {
+            plugin_id: base.plugin_id.clone(),
+            version: base.version.clone(),
+            base_release_identity: base.immutable_identity().unwrap(),
+            distributions: vec![
+                Distribution {
+                    id: "cargo".into(),
+                    kind: DistributionKind::CargoPackage,
+                    package: base.package.clone(),
+                    version: base.version.clone(),
+                    integrity: Some(base.crate_digest.clone()),
+                    registry_url: Some(base.registry_url.clone()),
+                    artifact: None,
+                    targets: base.targets.clone(),
+                },
+                Distribution {
+                    id: "bun".into(),
+                    kind: DistributionKind::NpmPackage,
+                    package: "@example/notes".into(),
+                    version: base.version.clone(),
+                    integrity: Some(digest(&archive)),
+                    registry_url: Some("https://registry.npmjs.org".into()),
+                    artifact: None,
+                    targets: vec![],
+                },
+            ],
+            documentation: vec![],
+        };
+        let details_snapshot = ReleaseDetailsSnapshot::new(
+            "linked-npm-test".into(),
+            1,
+            now - 5,
+            now + 3600,
+            vec![release.clone()],
+        );
+        let sign_details = |snapshot: &ReleaseDetailsSnapshot| {
+            fs::write(
+                &details,
+                sign_release_details(snapshot, "key", &key).unwrap(),
+            )
+            .unwrap();
+        };
+        let args = AddArgs {
+            source: "example.notes@1.2.3".into(),
+            root: Some(root.clone()),
+            no_install: true,
+            linked_snapshot: Some(linked),
+            portable_snapshot: None,
+            package_snapshot: None,
+            release_details: Some(details.clone()),
+            distribution: Some("bun".into()),
+            trust: Some(trust),
+            crate_archive: None,
+            tgz: Some(tgz.clone()),
+            bundle: None,
+            archive: None,
+            origin: None,
+            replace: false,
+            content_snapshot: None,
+            content_id: None,
+            content_archive: None,
+            content_destination: None,
+            content_preview: false,
+        };
+        let mut wrong_base = details_snapshot.clone();
+        wrong_base.releases[0].base_release_identity = digest(b"wrong-base");
+        sign_details(&wrong_base);
+        assert!(super::super::add(args.clone()).is_err());
+        assert!(!root.join("vendor/lenso/npm/example.notes").exists());
+
+        sign_details(&details_snapshot);
+        fs::write(&tgz, b"wrong archive").unwrap();
+        assert!(super::super::add(args.clone()).is_err());
+        assert!(!root.join("vendor/lenso/npm/example.notes").exists());
+        fs::write(&tgz, &archive).unwrap();
+        super::super::add(args.clone()).unwrap();
+        let source = root.join("vendor/lenso/npm/example.notes/1.2.3");
+        let lock = read_lock(&source).unwrap();
+        assert_eq!(
+            lock.linked_base.as_ref().unwrap().release_identity,
+            release.base_release_identity
+        );
+        let mut unrelated_admission = lock.clone();
+        unrelated_admission.linked_base = None;
+        assert_ne!(build_digest(&lock), build_digest(&unrelated_admission));
+        assert!(root.join(".lenso").is_dir());
+        let report = lenso_app_authoring::discovery::discover(&root).unwrap();
+        verify_sources(&root, &report.candidates).unwrap();
+        assert_eq!(report.candidates.len(), 1);
+        assert_eq!(report.candidates[0].format, "bun");
+        assert!(
+            build_declaration(&root.join("vendor/lenso/npm"), &source)
+                .unwrap()
+                .unwrap()
+                .starts_with("example.notes@1.2.3=sha256:")
+        );
+        let package_snapshot = root.join("package-only.json");
+        fs::write(
+            &package_snapshot,
+            package::sign(
+                &package::PackageSnapshot::new(
+                    "linked-npm-test".into(),
+                    1,
+                    now - 5,
+                    now + 3600,
+                    vec![PackageRelease {
+                        plugin_id: base.plugin_id.clone(),
+                        version: base.version.clone(),
+                        publisher_id: base.publisher_id.clone(),
+                        title: base.title.clone(),
+                        summary: base.summary.clone(),
+                        source_url: base.source_url.clone(),
+                        source_revision: base.source_revision.clone(),
+                        license: base.license.clone(),
+                        distributions: vec![release.distributions[1].clone()],
+                        availability: Availability::Listed,
+                        documentation: vec![],
+                    }],
+                ),
+                "key",
+                &key,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mut conflicting_channel = args.clone();
+        conflicting_channel.linked_snapshot = None;
+        conflicting_channel.release_details = None;
+        conflicting_channel.package_snapshot = Some(package_snapshot);
+        conflicting_channel.replace = true;
+        assert!(super::super::add(conflicting_channel).is_err());
+        assert_eq!(read_lock(&source).unwrap(), lock);
+        add(&root, &args).unwrap();
+        unadopt(&root, "example.notes@1.2.3").unwrap();
+        assert!(!source.exists());
     }
 
     #[cfg(unix)]
@@ -1531,6 +1809,7 @@ mod tests {
             archive_digest: digest(&bytes),
             source_digest: source_digest(&source).unwrap(),
             dependency_digest: "none".into(),
+            linked_base: None,
         };
         fs::write(source.join(SOURCE_ARCHIVE), &bytes).unwrap();
         fs::write(source.join(SOURCE_LOCK), serde_json::to_vec(&lock).unwrap()).unwrap();
@@ -1605,6 +1884,7 @@ mod tests {
             archive_digest: digest(&bytes),
             source_digest: source_digest(stage.path()).unwrap(),
             dependency_digest: "none".into(),
+            linked_base: None,
         };
         verify_manifest_identity(stage.path(), &lock).unwrap();
         let approved = build_digest(&lock);
