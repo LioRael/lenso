@@ -525,10 +525,22 @@ async fn activate_supervised_candidate(
     active: &mut Option<TimedProof>,
 ) -> anyhow::Result<Option<bool>> {
     if !proof_still_usable(output, policy, &proof) {
-        if host.is_some() || frontend_process.is_some() {
+        if retire_active_on_policy_change(
+            root,
+            active_output,
+            policy,
+            host,
+            frontend_process,
+            active_backend_url,
+        )
+        .await?
+        {
+            *active = None;
+        }
+        expire_active_if_needed(root, active, host, frontend_process, active_backend_url).await?;
+        if active.is_none() && (host.is_some() || frontend_process.is_some()) {
             stop_active_now(host, frontend_process).await?;
             *active_backend_url = None;
-            *active = None;
             restore_backend_url(root, None)?;
         }
         eprintln!("Configuration source proof changed or expired; candidate not activated");
@@ -2446,6 +2458,29 @@ mod tests {
         let first = host.as_ref().unwrap().id();
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
         assert_eq!(status.last_activated_revision, Some(1));
+
+        let mut rejected = active.as_ref().unwrap().clone();
+        rejected.accepted.revision = 0;
+        assert_eq!(
+            activate_supervised_candidate(
+                output.path(),
+                output.path(),
+                Some(output.path()),
+                &policy,
+                &[],
+                None,
+                rejected,
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+                &mut active,
+            )
+            .await
+            .unwrap(),
+            Some(false)
+        );
+        assert_eq!(host.as_ref().unwrap().id(), first);
+        assert!(active.as_ref().unwrap().is_fresh());
 
         write_snapshot(2, "greeting = 'second'\n");
         let accepted =
