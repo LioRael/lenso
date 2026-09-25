@@ -273,6 +273,9 @@ pub trait NativePluginFactory: std::fmt::Debug + 'static {
     ) -> Result<NativePluginInstance, RuntimeFailure>;
 }
 
+/// Host-owned initialization retained until a Native Plugin is constructed.
+pub type NativePluginHostBinding<P> = dyn Fn(&mut P) -> Result<(), RuntimeFailure>;
+
 /// Generated construction and endpoint projection for a struct-authored Plugin.
 ///
 /// Host bindings may initialize private implementation state after ordinary
@@ -289,13 +292,13 @@ pub trait NativePluginDefinition: Sized + 'static {
 
     fn instantiate_with(
         context: NativePluginFactoryContext<'_>,
-        initialize: &dyn Fn(&mut Self) -> Result<(), RuntimeFailure>,
+        initialize: &NativePluginHostBinding<Self>,
     ) -> Result<NativePluginInstance, RuntimeFailure>;
 
     /// Keeps a Host binding alive through asynchronous complete-object construction.
     fn instantiate_with_host_binding(
         context: NativePluginFactoryContext<'_>,
-        initialize: Rc<dyn Fn(&mut Self) -> Result<(), RuntimeFailure>>,
+        initialize: Rc<NativePluginHostBinding<Self>>,
     ) -> Result<NativePluginInstance, RuntimeFailure> {
         Self::instantiate_with(context, initialize.as_ref())
     }
