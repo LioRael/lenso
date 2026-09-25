@@ -18,7 +18,7 @@ use lenso_app_plan::{
 };
 use lenso_plugin_bundle::{
     ExecutionTargetCapabilities, ImplementationPolicy, PluginManifest, RuntimeAdmission,
-    read_bundle_manifest, verify_bundle_directory,
+    extract_plugin_descriptor, read_bundle_manifest, verify_bundle_directory,
 };
 use lenso_process_protocol::ExecutionTargetCapability as HostTargetCapability;
 use serde_json::{Value, json};
@@ -27,10 +27,10 @@ use sha2::{Digest as _, Sha256};
 use crate::archive::{archive_bundle, with_bundle_directory};
 
 const HOST_TARGET: &str = "workers";
-const RUNTIME_VERSION: &str = "0.1.3";
-// Exact module from lenso-js 9fda922caff0c789f80feea90848549acecefb4e.
+const RUNTIME_VERSION: &str = "0.1.4";
+// Exact module from lenso-js 3f83cde (not a floating package release).
 const RUNTIME_MODULE_SHA256: &str =
-    "4eee83894f9ba12bb1f63617d8aacfcba2d71c29351e9f6de440ac299dfa7fc8";
+    "b7f72c8dd0c14cd2a3e63a4ca2c04fddb08deadc76b7b0c238533dddb845576b";
 const JCO_VERSION: &str = "1.35.0";
 const MAX_WORKERS_MODULE_BYTES: u64 = 32 * 1024 * 1024;
 
@@ -52,6 +52,11 @@ struct SelectedBundle {
     descriptor: lenso_app_plan::authoring::PluginDescriptor,
     selection: crate::target_profile::ImplementationSelectionEvidence,
     target_capability_profile: lenso_plugin_bundle::ExecutionTargetCapabilityProfile,
+}
+
+struct DescriptorEvidence {
+    source_digest: String,
+    expected_digests: Option<BTreeMap<String, String>>,
 }
 
 pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
@@ -269,6 +274,10 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
     let (authority, resolved) =
         GeneratedHostBuild::lower_local("local.app", inputs)?.with_local_root(stage.path())?;
     let selected = admit_plan(&resolved, &selected)?;
+    let descriptor = source_descriptor_evidence(
+        &selected.component,
+        resolved.plan().plugin_instances()[0].authoring_version(),
+    )?;
     fs::write(
         stage.path().join(".lenso/host-build.json"),
         serde_json::to_vec_pretty(&authority)?,
@@ -284,6 +293,16 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
             "export default {};\n",
             String::from_utf8(plan_bytes.clone())?
         ),
+    )?;
+    let trusted_digests = descriptor
+        .expected_digests
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()?
+        .unwrap_or_else(|| "undefined".to_owned());
+    fs::write(
+        stage.path().join("descriptor-digests.mjs"),
+        format!("export default {trusted_digests};\n"),
     )?;
     fs::copy(
         &selected.component,
@@ -321,6 +340,8 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
         "implementation_id": selected.implementation_id,
         "variant_id": selected.variant_id,
         "component_digest": selected.artifact_digest,
+        "source_descriptor_digest": descriptor.source_digest,
+        "expected_descriptor_digests": descriptor.expected_digests,
         "plan_digest": digest_bytes(&plan_bytes),
         "workers_runtime": { "package": "@lenso/workers-runtime", "version": RUNTIME_VERSION, "module_digest": runtime_digest },
         "jco_version": JCO_VERSION,
@@ -355,6 +376,48 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
         destination.display()
     );
     Ok(())
+}
+
+fn source_descriptor_evidence(
+    component: &Path,
+    authoring_version: u32,
+) -> anyhow::Result<DescriptorEvidence> {
+    let source = extract_plugin_descriptor(&fs::read(component)?)
+        .context("extract verified Component source descriptor")?;
+    let mut expected_capability = json!({
+        "capability_id": lenso_capability_http_endpoint::CAPABILITY_ID,
+        "descriptor_version": lenso_capability_http_endpoint::DESCRIPTOR_VERSION,
+        "request_operations": ["describe", "handle"],
+    });
+    let expected_digests = match authoring_version {
+        1 => None,
+        2 => {
+            expected_capability["descriptor_digest"] =
+                json!(lenso_capability_http_endpoint::DESCRIPTOR_DIGEST);
+            Some(BTreeMap::from([(
+                lenso_capability_http_endpoint::CAPABILITY_ID.to_owned(),
+                lenso_capability_http_endpoint::DESCRIPTOR_DIGEST.to_owned(),
+            )]))
+        }
+        other => bail!("Workers App target rejects unsupported authoring version {other}"),
+    };
+    let expected = json!({
+        "abi": "lenso.json-request@1",
+        "capabilities": [expected_capability],
+    });
+    ensure!(
+        serde_json::from_slice::<Value>(&source)? == expected,
+        "Workers App target rejects Component source descriptor: authoring V{authoring_version} requires the exact HTTP Endpoint request ABI{}",
+        if authoring_version == 2 {
+            " and trusted Descriptor digest"
+        } else {
+            " without Descriptor digest"
+        },
+    );
+    Ok(DescriptorEvidence {
+        source_digest: digest_bytes(&source),
+        expected_digests,
+    })
 }
 
 fn admit_plan<'a>(
@@ -478,7 +541,7 @@ fn copy_pinned_runtime(package: &Path, stage: &Path) -> anyhow::Result<String> {
     let digest = digest_bytes(&bytes);
     ensure!(
         digest == format!("sha256:{RUNTIME_MODULE_SHA256}"),
-        "Workers runtime Component adapter differs from pinned lenso-js 9fda922 candidate: {digest}",
+        "Workers runtime Component adapter differs from pinned lenso-js 3f83cde candidate: {digest}",
     );
     fs::write(stage.join("component-requests.mjs"), bytes)?;
     Ok(digest)

@@ -5,6 +5,9 @@ Component Bundle. The `plan.mjs`, Component, Jco bindings, and pinned
 `@lenso/workers-runtime` module are self-contained. Their identities and
 digests are recorded in `workers-build.json`; the selected Bundle and Host
 authority are retained under `bundles/` and `.lenso/`.
+For authoring V2, the embedded source descriptor must carry the exact trusted
+HTTP Endpoint Descriptor digest, which is passed to the pinned runtime for a
+Guest startup check. V1 retains the legacy no-digest descriptor shape.
 
 Run locally with a compatible Wrangler installation:
 

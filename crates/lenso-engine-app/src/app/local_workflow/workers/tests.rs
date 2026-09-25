@@ -14,7 +14,7 @@ fn pinned_runtime_rejects_a_different_module() {
     let output = temp.path().join("output");
     fs::create_dir(&package).unwrap();
     fs::create_dir(&output).unwrap();
-    fs::write(package.join("package.json"), r#"{"name":"@lenso/workers-runtime","version":"0.1.3","exports":{"./component-requests":"./component-requests.mjs"}}"#).unwrap();
+    fs::write(package.join("package.json"), r#"{"name":"@lenso/workers-runtime","version":"0.1.4","exports":{"./component-requests":"./component-requests.mjs"}}"#).unwrap();
     fs::write(
         package.join("component-requests.mjs"),
         "export const unsafe = true;",
@@ -67,15 +67,27 @@ fn leb128(mut value: usize) -> Vec<u8> {
 }
 
 fn write_descriptor_component(path: &Path, contract: &PluginContract) {
+    write_descriptor_component_with_digest(path, contract, None);
+}
+
+fn write_descriptor_component_with_digest(
+    path: &Path,
+    contract: &PluginContract,
+    digest: Option<&str>,
+) {
     let capabilities = contract
         .provided_capabilities()
         .iter()
         .map(|capability| {
-            json!({
+            let mut entry = json!({
                 "capability_id": capability.capability_id(),
                 "descriptor_version": capability.descriptor_version(),
                 "request_operations": capability.operations(),
-            })
+            });
+            if let Some(digest) = digest {
+                entry["descriptor_digest"] = json!(digest);
+            }
+            entry
         })
         .collect::<Vec<_>>();
     let requirements = contract
@@ -105,6 +117,46 @@ fn write_descriptor_component(path: &Path, contract: &PluginContract) {
     component.extend(leb128(section.len()));
     component.extend(section);
     fs::write(path, component).unwrap();
+}
+
+#[test]
+fn source_descriptor_digest_is_trusted_and_authoring_version_specific() {
+    let root = tempfile::tempdir().unwrap();
+    let component = root.path().join("guest.component.wasm");
+    let contract = PluginContract::new("local.endpoint", "1.0.0", "web")
+        .with_authoring_version(2)
+        .with_capability(CapabilityEndpointPlan::new(
+            lenso_capability_http_endpoint::CAPABILITY_ID,
+            lenso_capability_http_endpoint::DESCRIPTOR_VERSION,
+            ["describe", "handle"],
+        ));
+    write_descriptor_component(&component, &contract);
+    let error = source_descriptor_evidence(&component, 2).err().unwrap();
+    assert!(error.to_string().contains("trusted Descriptor digest"));
+    write_descriptor_component_with_digest(
+        &component,
+        &contract,
+        Some(&format!("sha256:{}", "0".repeat(64))),
+    );
+    assert!(source_descriptor_evidence(&component, 2).is_err());
+    write_descriptor_component_with_digest(
+        &component,
+        &contract,
+        Some(lenso_capability_http_endpoint::DESCRIPTOR_DIGEST),
+    );
+    let evidence = source_descriptor_evidence(&component, 2).unwrap();
+    assert_eq!(
+        evidence.expected_digests.unwrap()[lenso_capability_http_endpoint::CAPABILITY_ID],
+        lenso_capability_http_endpoint::DESCRIPTOR_DIGEST
+    );
+    assert!(source_descriptor_evidence(&component, 1).is_err());
+    write_descriptor_component(&component, &contract);
+    assert!(
+        source_descriptor_evidence(&component, 1)
+            .unwrap()
+            .expected_digests
+            .is_none()
+    );
 }
 
 #[test]
@@ -290,10 +342,15 @@ fn verified_bundle_builds_a_self_contained_workers_app() {
     assert_eq!(receipt["target"], HOST_TARGET);
     assert_eq!(receipt["plugin_id"], "local.portable-http");
     assert_eq!(receipt["implementation_id"], "workers");
+    assert_eq!(
+        receipt["expected_descriptor_digests"][lenso_capability_http_endpoint::CAPABILITY_ID],
+        lenso_capability_http_endpoint::DESCRIPTOR_DIGEST
+    );
     for file in [
         "worker.mjs",
         "workers-http.mjs",
         "component-requests.mjs",
+        "descriptor-digests.mjs",
         "plan.mjs",
         "guest.component.wasm",
         "guest.core.wasm",

@@ -1,6 +1,7 @@
 import coreModule from "./guest.core.wasm";
 import { instantiate } from "./guest.js";
 import plan from "./plan.mjs";
+import descriptorDigests from "./descriptor-digests.mjs";
 import { createWorkersComponentRequestAdapter } from "./component-requests.mjs";
 import { createWorkersHttpHandler } from "./workers-http.mjs";
 
@@ -10,6 +11,7 @@ const component = createWorkersComponentRequestAdapter({
   instanceKey,
   coreModule,
   instantiate,
+  expectedDescriptorDigests: descriptorDigests,
 });
 
 export default { fetch: createWorkersHttpHandler(component) };
