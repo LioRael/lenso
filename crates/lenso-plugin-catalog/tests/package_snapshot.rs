@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
-    Availability, Distribution, DistributionKind, Trust, digest, linked_cargo,
+    Availability, Distribution, DistributionKind, Documentation, Trust, digest, linked_cargo,
     package::{PackageRelease, PackageSnapshot, sign, verify},
 };
 
@@ -170,4 +170,48 @@ fn package_revocation_preserves_history_but_prevents_selection() {
             .select_npm("example.notes", "1.2.3", "npm", 150)
             .is_err()
     );
+}
+
+#[test]
+fn package_document_history_does_not_conflate_separator_characters() {
+    let (key, trust) = signing();
+    let mut first = release();
+    first.documentation.push(Documentation {
+        id: "a@b".into(),
+        revision: "c".into(),
+        language: "en".into(),
+        topic: "quickstart".into(),
+        target: None,
+        url: "https://example.test/docs/one.md".into(),
+        digest: digest(b"one"),
+        size: 3,
+        media_type: "text/markdown".into(),
+    });
+    let first = verify(
+        &sign(&snapshot(1, first), "key", &key).unwrap(),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+    let mut second = release();
+    second.documentation.push(Documentation {
+        id: "a".into(),
+        revision: "b@c".into(),
+        language: "en".into(),
+        topic: "quickstart".into(),
+        target: None,
+        url: "https://example.test/docs/two.md".into(),
+        digest: digest(b"two"),
+        size: 3,
+        media_type: "text/markdown".into(),
+    });
+    let second = verify(
+        &sign(&snapshot(2, second), "key", &key).unwrap(),
+        &trust,
+        Some(first.checkpoint()),
+        150,
+    )
+    .unwrap();
+    assert_eq!(second.checkpoint().document_identities.len(), 2);
 }

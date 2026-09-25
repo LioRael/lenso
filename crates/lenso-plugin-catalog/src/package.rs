@@ -284,10 +284,14 @@ pub fn verify(
         }
         release_identities.insert(identity, immutable);
         for document in &release.documentation {
-            let identity = format!(
-                "{}@{}/{}@{}",
-                release.plugin_id, release.version, document.id, document.revision
-            );
+            // Documentation IDs and revisions may contain separators. A tuple
+            // key keeps their history unambiguous without restricting old IDs.
+            let identity = serde_json::to_string(&(
+                &release.plugin_id,
+                &release.version,
+                &document.id,
+                &document.revision,
+            ))?;
             let immutable = digest(&serde_json::to_vec(document)?);
             if let Some(old) = document_identities.get(&identity) {
                 ensure!(
