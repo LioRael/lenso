@@ -1783,6 +1783,7 @@ mod tests {
                 &archive_path,
                 "example.notes",
                 "1.2.3",
+                None,
             )
             .is_err()
         );
@@ -1796,6 +1797,7 @@ mod tests {
             &archive_path,
             "example.notes",
             "1.2.3",
+            None,
         )
         .unwrap();
         assert_eq!(inspected["archive_bytes"], "digest_verified");
