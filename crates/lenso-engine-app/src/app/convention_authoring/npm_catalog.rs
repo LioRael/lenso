@@ -531,13 +531,89 @@ pub(in crate::app) fn preview(
     tgz: &Path,
     plugin_id: &str,
     release_version: &str,
+    distribution_id: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
     lenso_app_authoring::identity::validate_plugin_id_v1(plugin_id)?;
     lenso_app_authoring::identity::validate_release_version(release_version)?;
-    let selected = select_package(root, snapshot, trust, plugin_id, release_version, None)?;
+    let selected = select_package(
+        root,
+        snapshot,
+        trust,
+        plugin_id,
+        release_version,
+        distribution_id,
+    )?;
+    preview_selected(
+        root,
+        tgz,
+        plugin_id,
+        release_version,
+        &selected.distribution,
+        PreviewCatalog {
+            id: &selected.verified.snapshot().catalog_id,
+            revision: selected.verified.snapshot().revision,
+            payload_digest: &selected.verified.checkpoint().payload_digest,
+            linked: None,
+        },
+    )
+}
+
+pub(in crate::app) fn preview_linked(
+    root: &Path,
+    linked_snapshot: &Path,
+    release_details: &Path,
+    trust: &Path,
+    tgz: &Path,
+    plugin_id: &str,
+    release_version: &str,
+    distribution_id: Option<&str>,
+) -> anyhow::Result<serde_json::Value> {
+    lenso_app_authoring::identity::validate_plugin_id_v1(plugin_id)?;
+    lenso_app_authoring::identity::validate_release_version(release_version)?;
+    let app_lock = linked_catalog::adoption::lock_app(root)?;
+    let selected = linked_catalog::select_linked_npm_details(
+        root,
+        &app_lock,
+        linked_snapshot,
+        release_details,
+        trust,
+        plugin_id,
+        release_version,
+        distribution_id,
+    )?;
+    preview_selected(
+        root,
+        tgz,
+        plugin_id,
+        release_version,
+        &selected.distribution,
+        PreviewCatalog {
+            id: &selected.catalog_id,
+            revision: selected.linked.snapshot().revision,
+            payload_digest: &selected.linked.checkpoint().payload_digest,
+            linked: Some(&selected),
+        },
+    )
+}
+
+struct PreviewCatalog<'a> {
+    id: &'a str,
+    revision: u64,
+    payload_digest: &'a str,
+    linked: Option<&'a linked_catalog::LinkedNpmSelection>,
+}
+
+fn preview_selected(
+    root: &Path,
+    tgz: &Path,
+    plugin_id: &str,
+    release_version: &str,
+    distribution: &Distribution,
+    catalog: PreviewCatalog<'_>,
+) -> anyhow::Result<serde_json::Value> {
     let archive_digest = digest(&read_archive(tgz)?);
     ensure!(
-        selected.distribution.integrity.as_deref() == Some(archive_digest.as_str()),
+        distribution.integrity.as_deref() == Some(archive_digest.as_str()),
         "npm archive digest does not match signed distribution"
     );
     super::preflight_source_adoption(root, plugin_id)?;
@@ -555,17 +631,17 @@ pub(in crate::app) fn preview(
         }
         Some(_) => "different_source_selected",
     };
-    Ok(serde_json::json!({
+    let mut preview = serde_json::json!({
         "schema_version": 1,
         "kind": "lenso.signed-npm-adoption-preview",
         "plugin_id": plugin_id,
         "version": release_version,
-        "catalog_id": selected.verified.snapshot().catalog_id,
-        "catalog_revision": selected.verified.snapshot().revision,
-        "catalog_payload_digest": selected.verified.checkpoint().payload_digest,
-        "distribution_id": selected.distribution.id,
-        "package": selected.distribution.package,
-        "package_version": selected.distribution.version,
+        "catalog_id": catalog.id,
+        "catalog_revision": catalog.revision,
+        "catalog_payload_digest": catalog.payload_digest,
+        "distribution_id": distribution.id,
+        "package": distribution.package,
+        "package_version": distribution.version,
         "archive_digest": archive_digest,
         "host_target": lenso_app_authoring::native_host_target(),
         "signed_metadata": "verified",
@@ -575,7 +651,15 @@ pub(in crate::app) fn preview(
         "app_selection": app_selection,
         "build_trust": "required_separately",
         "activation": "not_observed"
-    }))
+    });
+    if let Some(linked) = catalog.linked {
+        preview["base_kind"] = "linked_cargo".into();
+        preview["base_release_identity"] = linked.base_release_identity.clone().into();
+        preview["release_details_revision"] = linked.details.snapshot().revision.into();
+        preview["release_details_payload_digest"] =
+            linked.details.checkpoint().payload_digest.clone().into();
+    }
+    Ok(preview)
 }
 
 pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
@@ -622,9 +706,12 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         Some(linked_catalog::select_linked_npm_details(
             root,
             &app_lock,
-            args,
+            args.linked_snapshot.as_deref().unwrap(),
+            args.release_details.as_deref().unwrap(),
+            args.trust.as_deref().unwrap(),
             plugin_id,
             release_version,
+            args.distribution.as_deref(),
         )?)
     } else {
         None

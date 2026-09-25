@@ -179,6 +179,7 @@ pub fn inspect_signed_npm_adoption(
     tgz: impl AsRef<Path>,
     plugin_id: &str,
     version: &str,
+    distribution_id: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
     convention_authoring::npm_catalog::preview(
         root.as_ref(),
@@ -187,6 +188,31 @@ pub fn inspect_signed_npm_adoption(
         tgz.as_ref(),
         plugin_id,
         version,
+        distribution_id,
+    )
+}
+
+/// Preview an npm distribution only after joining exact signed linked Cargo
+/// and release-details snapshots. It never installs or selects the Plugin.
+pub fn inspect_signed_linked_npm_adoption(
+    root: impl AsRef<Path>,
+    linked_snapshot: impl AsRef<Path>,
+    release_details: impl AsRef<Path>,
+    trust: impl AsRef<Path>,
+    tgz: impl AsRef<Path>,
+    plugin_id: &str,
+    version: &str,
+    distribution_id: Option<&str>,
+) -> anyhow::Result<serde_json::Value> {
+    convention_authoring::npm_catalog::preview_linked(
+        root.as_ref(),
+        linked_snapshot.as_ref(),
+        release_details.as_ref(),
+        trust.as_ref(),
+        tgz.as_ref(),
+        plugin_id,
+        version,
+        distribution_id,
     )
 }
 

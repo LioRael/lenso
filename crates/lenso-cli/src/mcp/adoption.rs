@@ -30,6 +30,7 @@ pub(super) enum Distribution {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SignedInputs<'a> {
     pub(super) snapshot: &'a Path,
+    pub(super) release_details: Option<&'a Path>,
     pub(super) trust: &'a Path,
     pub(super) archive: &'a Path,
 }
@@ -38,6 +39,7 @@ pub(super) struct SignedInputs<'a> {
 pub(super) struct FrozenSignedInputs {
     pub(super) storage: Arc<tempfile::TempDir>,
     pub(super) snapshot: PathBuf,
+    pub(super) release_details: Option<PathBuf>,
     pub(super) trust: PathBuf,
     pub(super) archive: PathBuf,
 }
@@ -48,6 +50,7 @@ struct Record {
     action: Action,
     plugin_id: String,
     version: String,
+    distribution_id: Option<String>,
     result: serde_json::Value,
 }
 
@@ -65,16 +68,30 @@ impl AdoptionController {
         plugin_id: &str,
         version: &str,
         request_id: &str,
+        distribution_id: Option<&str>,
         inputs: Option<SignedInputs<'_>>,
     ) -> anyhow::Result<serde_json::Value> {
         validate_request(plugin_id, version, request_id)?;
+        ensure!(
+            distribution == Distribution::Npm || distribution_id.is_none(),
+            "distribution_id is only valid for npm adoption"
+        );
+        if let Some(distribution_id) = distribution_id {
+            ensure!(
+                !distribution_id.trim().is_empty()
+                    && distribution_id.len() <= 128
+                    && !distribution_id.chars().any(char::is_control),
+                "distribution_id must be an exact bounded identity"
+            );
+        }
         let mut records = self.records.lock().expect("MCP adoption state lock");
         if let Some(record) = records.get(request_id) {
             ensure!(
                 record.distribution == distribution
                     && record.action == action
                     && record.plugin_id == plugin_id
-                    && record.version == version,
+                    && record.version == version
+                    && record.distribution_id.as_deref() == distribution_id,
                 "request_id was already used for another signed adoption operation"
             );
             return Ok(record.result.clone());
@@ -85,7 +102,10 @@ impl AdoptionController {
         );
         ensure_source_root(root)?;
         if let Some(inputs) = inputs {
-            for path in [inputs.snapshot, inputs.trust, inputs.archive] {
+            for path in [inputs.snapshot, inputs.trust, inputs.archive]
+                .into_iter()
+                .chain(inputs.release_details)
+            {
                 ensure!(
                     fs::symlink_metadata(path)?.file_type().is_file(),
                     "signed adoption input is no longer a regular file"
@@ -122,14 +142,24 @@ impl AdoptionController {
                             .arg(inputs.archive);
                     }
                     Distribution::Npm => {
+                        if let Some(details) = inputs.release_details {
+                            command
+                                .arg("--linked-snapshot")
+                                .arg(inputs.snapshot)
+                                .arg("--release-details")
+                                .arg(details);
+                        } else {
+                            command.arg("--package-snapshot").arg(inputs.snapshot);
+                        }
                         command
-                            .arg("--package-snapshot")
-                            .arg(inputs.snapshot)
                             .arg("--trust")
                             .arg(inputs.trust)
                             .arg("--tgz")
-                            .arg(inputs.archive)
-                            .arg("--no-install");
+                            .arg(inputs.archive);
+                        if let Some(distribution_id) = distribution_id {
+                            command.arg(format!("--distribution={distribution_id}"));
+                        }
+                        command.arg("--no-install");
                     }
                 }
             }
@@ -164,6 +194,7 @@ impl AdoptionController {
             "request_id": request_id,
             "plugin_id": plugin_id,
             "version": version,
+            "distribution_id": distribution_id,
             "state": state,
             "application": "build_required",
             "activation": "not_observed",
@@ -183,6 +214,7 @@ impl AdoptionController {
                 action,
                 plugin_id: plugin_id.to_owned(),
                 version: version.to_owned(),
+                distribution_id: distribution_id.map(str::to_owned),
                 result: result.clone(),
             },
         );
@@ -245,14 +277,30 @@ fn classify_outcome(
             "LENSO_ADOPTION_VERSION_NOT_LISTED",
         ),
         (
+            "exact linked Cargo release is not in this catalog",
+            "LENSO_ADOPTION_VERSION_NOT_LISTED",
+        ),
+        (
             "package release is not available for adoption",
             "LENSO_ADOPTION_RELEASE_UNAVAILABLE",
+        ),
+        (
+            "linked Cargo release is not available for adoption",
+            "LENSO_ADOPTION_RELEASE_UNAVAILABLE",
+        ),
+        (
+            "release details do not match the immutable linked Cargo release",
+            "LENSO_ADOPTION_BASE_IDENTITY_MISMATCH",
         ),
         (
             "select exactly one signed npm distribution for Host target",
             "LENSO_ADOPTION_TARGET_OR_DISTRIBUTION_MISMATCH",
         ),
         ("App already selects", "LENSO_ADOPTION_SOURCE_CONFLICT"),
+        (
+            "existing npm source differs from the signed archive",
+            "LENSO_ADOPTION_SOURCE_CONFLICT",
+        ),
     ];
     let rejections: &[(&str, &str)] = match distribution {
         Distribution::LinkedCargo => &linked_rejection,
@@ -310,9 +358,23 @@ pub(super) fn freeze_inputs(
     Ok(FrozenSignedInputs {
         storage,
         snapshot: snapshot_path,
+        release_details: None,
         trust: trust_path,
         archive: archive_path,
     })
+}
+
+pub(super) fn freeze_linked_npm_inputs(
+    linked_snapshot: &Path,
+    release_details: &Path,
+    trust: &Path,
+    archive: &Path,
+) -> anyhow::Result<FrozenSignedInputs> {
+    let mut frozen = freeze_inputs(linked_snapshot, trust, archive, Distribution::Npm)?;
+    let details = frozen.storage.path().join("release-details.json");
+    freeze_file(release_details, &details, 4 * 1024 * 1024)?;
+    frozen.release_details = Some(details);
+    Ok(frozen)
 }
 
 #[cfg(unix)]

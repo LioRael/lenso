@@ -860,6 +860,273 @@ fn stdio_previews_adopts_and_unadopts_only_the_fixed_signed_npm_archive() {
     assert!(child.wait().unwrap().success());
 }
 
+#[test]
+fn stdio_selects_linked_release_details_npm_without_portable_base() {
+    use ed25519_dalek::SigningKey;
+    use lenso_plugin_catalog::{
+        Availability, Distribution, DistributionKind, ReleaseDetails, ReleaseDetailsSnapshot,
+        digest,
+        linked_cargo::{self, LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot},
+        sign_release_details,
+    };
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let mut tar = tar::Builder::new(flate2::write::GzEncoder::new(
+        Vec::new(),
+        flate2::Compression::default(),
+    ));
+    for (path, bytes) in [
+        ("package/package.json", br#"{"name":"@example/notes","version":"1.2.3","lenso":{"pluginId":"example.notes","releaseVersion":"1.2.3","runtime":"bun","rootSlot":"tools","source":"index.ts"}}"#.as_slice()),
+        ("package/bun.lock", b"{}".as_slice()),
+        ("package/index.ts", b"export default {};".as_slice()),
+    ] {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, path, bytes).unwrap();
+    }
+    let archive_bytes = tar.into_inner().unwrap().finish().unwrap();
+    let tgz = temp.path().join("plugin.tgz");
+    fs::write(&tgz, &archive_bytes).unwrap();
+    let key = SigningKey::from_bytes(&[79; 32]);
+    let trust = temp.path().join("trust.json");
+    fs::write(
+        &trust,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id": "linked-npm-mcp-test", "key_id": "test-key",
+            "public_key_hex": hex::encode(key.verifying_key().as_bytes())
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let base = LinkedCargoRelease {
+        plugin_id: "example.notes".into(),
+        version: "1.2.3".into(),
+        publisher_id: "example".into(),
+        title: "Notes".into(),
+        summary: "Signed local fixture".into(),
+        source_url: "https://example.test/source".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        package: "example-notes-plugin".into(),
+        registry_url: "https://crates.io".into(),
+        crate_digest: digest(b"exact-crate"),
+        integration: LinkedCargoIntegration::LinkedPlugin,
+        targets: vec![lenso_engine_authoring::native_host_target().into()],
+        availability: Availability::Listed,
+        documentation: vec![],
+    };
+    let linked = temp.path().join("linked.json");
+    fs::write(
+        &linked,
+        linked_cargo::sign(
+            &LinkedCargoSnapshot::new(
+                "linked-npm-mcp-test".into(),
+                1,
+                now - 5,
+                now + 3600,
+                vec![base.clone()],
+            ),
+            "test-key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let details = temp.path().join("details.json");
+    fs::write(
+        &details,
+        sign_release_details(
+            &ReleaseDetailsSnapshot::new(
+                "linked-npm-mcp-test".into(),
+                1,
+                now - 5,
+                now + 3600,
+                vec![ReleaseDetails {
+                    plugin_id: base.plugin_id.clone(),
+                    version: base.version.clone(),
+                    base_release_identity: base.immutable_identity().unwrap(),
+                    distributions: vec![
+                        Distribution {
+                            id: "cargo".into(),
+                            kind: DistributionKind::CargoPackage,
+                            package: base.package.clone(),
+                            version: base.version.clone(),
+                            integrity: Some(base.crate_digest.clone()),
+                            registry_url: Some(base.registry_url.clone()),
+                            artifact: None,
+                            targets: base.targets.clone(),
+                        },
+                        Distribution {
+                            id: "bun".into(),
+                            kind: DistributionKind::NpmPackage,
+                            package: "@example/notes".into(),
+                            version: base.version.clone(),
+                            integrity: Some(digest(&archive_bytes)),
+                            registry_url: Some("https://registry.npmjs.org".into()),
+                            artifact: None,
+                            targets: vec![],
+                        },
+                        Distribution {
+                            id: "bun-other".into(),
+                            kind: DistributionKind::NpmPackage,
+                            package: "@example/notes".into(),
+                            version: base.version.clone(),
+                            integrity: Some(digest(&archive_bytes)),
+                            registry_url: Some("https://registry.npmjs.org".into()),
+                            artifact: None,
+                            targets: vec![],
+                        },
+                    ],
+                    documentation: vec![],
+                }],
+            ),
+            "test-key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    let mut child = Command::new(cli)
+        .args(["mcp", "--root"])
+        .arg(&root)
+        .arg("--linked-snapshot")
+        .arg(&linked)
+        .arg("--release-details")
+        .arg(&details)
+        .arg("--trust")
+        .arg(&trust)
+        .arg("--package-tgz")
+        .arg(&tgz)
+        .arg("--allow-changes")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":1, "method":"initialize", "params":{
+                "protocolVersion":"2025-11-25", "capabilities":{},
+                "clientInfo":{"name":"test", "version":"1"}
+            }
+        }),
+    );
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0", "method":"notifications/initialized"})
+    )
+    .unwrap();
+    let ambiguous = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":25, "method":"tools/call", "params":{
+                "name":"project_npm_preview", "arguments":{
+                    "plugin_id":"example.notes", "version":"1.2.3"
+                }
+            }
+        }),
+    );
+    assert!(ambiguous["error"].is_object(), "{ambiguous}");
+    let preview = mcp_tool_json(&mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{
+                "name":"project_npm_preview", "arguments":{
+                    "plugin_id":"example.notes", "version":"1.2.3",
+                    "distribution_id":"bun"
+                }
+            }
+        }),
+    ));
+    assert_eq!(preview["base_kind"], "linked_cargo");
+    assert_eq!(preview["distribution_id"], "bun");
+    assert_eq!(preview["archive_bytes"], "digest_verified");
+    assert_eq!(preview["app_selection"], "not_selected");
+    fs::write(&linked, b"changed after MCP startup").unwrap();
+    fs::write(&details, b"changed after MCP startup").unwrap();
+    fs::write(&trust, b"changed after MCP startup").unwrap();
+    fs::write(&tgz, b"changed after MCP startup").unwrap();
+    let adopt_request = serde_json::json!({
+        "jsonrpc":"2.0", "id":3, "method":"tools/call", "params":{
+            "name":"project_npm_adopt", "arguments":{
+                "plugin_id":"example.notes", "version":"1.2.3", "request_id":"linked-adopt-1",
+                "distribution_id":"bun"
+            }
+        }
+    });
+    let adopted = mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt_request));
+    assert_eq!(adopted["state"], "selected", "{adopted}");
+    assert_eq!(adopted["distribution_id"], "bun");
+    assert_eq!(
+        mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt_request)),
+        adopted
+    );
+    let reused = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":5, "method":"tools/call", "params":{
+                "name":"project_npm_adopt", "arguments":{
+                    "plugin_id":"example.notes", "version":"1.2.3",
+                    "request_id":"linked-adopt-1", "distribution_id":"bun-other"
+                }
+            }
+        }),
+    );
+    assert!(reused["error"].is_object(), "{reused}");
+    let source = root.join("vendor/lenso/npm/example.notes/1.2.3");
+    assert_eq!(
+        fs::read(source.join(".lenso-npm-archive.tgz")).unwrap(),
+        archive_bytes
+    );
+    let lock: serde_json::Value =
+        serde_json::from_slice(&fs::read(source.join(".lenso-npm-source.json")).unwrap()).unwrap();
+    assert_eq!(lock["linked_base"]["catalog_id"], "linked-npm-mcp-test");
+    let removed = mcp_tool_json(&mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":4, "method":"tools/call", "params":{
+                "name":"project_npm_unadopt", "arguments":{
+                    "plugin_id":"example.notes", "version":"1.2.3", "request_id":"linked-remove-1"
+                }
+            }
+        }),
+    ));
+    assert_eq!(removed["state"], "unadopted", "{removed}");
+    assert!(!source.exists());
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
 fn mcp_tool_json(response: &serde_json::Value) -> serde_json::Value {
     assert!(response["error"].is_null(), "{response}");
     serde_json::from_str(response["result"]["content"][0]["text"].as_str().unwrap()).unwrap()

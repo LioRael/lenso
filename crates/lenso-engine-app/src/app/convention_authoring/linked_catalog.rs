@@ -764,9 +764,9 @@ pub(super) struct LinkedNpmSelection {
     pub(super) distribution: Distribution,
     pub(super) catalog_id: String,
     pub(super) base_release_identity: String,
-    linked: linked_cargo::VerifiedLinkedCargoSnapshot,
+    pub(super) linked: linked_cargo::VerifiedLinkedCargoSnapshot,
     previous_linked: Option<linked_cargo::LinkedCargoCheckpoint>,
-    details: lenso_plugin_catalog::VerifiedReleaseDetails,
+    pub(super) details: lenso_plugin_catalog::VerifiedReleaseDetails,
     previous_details: Option<lenso_plugin_catalog::ReleaseDetailsCheckpoint>,
 }
 
@@ -790,19 +790,18 @@ impl LinkedNpmSelection {
 pub(super) fn select_linked_npm_details(
     root: &Path,
     app_lock: &fs::File,
-    args: &AddArgs,
+    linked_snapshot: &Path,
+    details_snapshot: &Path,
+    trust_path: &Path,
     plugin_id: &str,
     version: &str,
+    distribution_id: Option<&str>,
 ) -> anyhow::Result<LinkedNpmSelection> {
-    let trust = read_trust(args.trust.as_deref().context("--trust required")?)?;
+    let trust = read_trust(trust_path)?;
     let previous_linked = checkpoint::read(root, app_lock, &trust.catalog_id)?;
     let now = now()?;
     let linked = linked_cargo::verify(
-        &read_envelope(
-            args.linked_snapshot
-                .as_deref()
-                .context("--linked-snapshot required")?,
-        )?,
+        &read_envelope(linked_snapshot)?,
         &trust,
         previous_linked.as_ref(),
         now,
@@ -813,11 +812,7 @@ pub(super) fn select_linked_npm_details(
         &trust.catalog_id,
     )?;
     let details = lenso_plugin_catalog::verify_release_details(
-        &read_envelope(
-            args.release_details
-                .as_deref()
-                .context("--release-details required")?,
-        )?,
+        &read_envelope(details_snapshot)?,
         &trust,
         previous_details.as_ref(),
         now,
@@ -829,10 +824,7 @@ pub(super) fn select_linked_npm_details(
         .iter()
         .filter(|distribution| {
             distribution.kind == DistributionKind::NpmPackage
-                && args
-                    .distribution
-                    .as_ref()
-                    .is_none_or(|id| distribution.id == *id)
+                && distribution_id.is_none_or(|id| distribution.id == id)
                 && (distribution.targets.is_empty()
                     || distribution
                         .targets
