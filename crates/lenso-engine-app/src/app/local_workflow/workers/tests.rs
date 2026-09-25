@@ -25,6 +25,28 @@ fn pinned_runtime_rejects_a_different_module() {
     assert!(!output.join("component-requests.mjs").exists());
 }
 
+#[test]
+fn pinned_knowledge_settings_runtime_rejects_a_different_module() {
+    let temp = tempfile::tempdir().unwrap();
+    let package = temp.path().join("package");
+    let output = temp.path().join("output");
+    fs::create_dir(&package).unwrap();
+    fs::create_dir(&output).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{"name":"@lenso/workers-runtime","version":"0.1.5","exports":{"./component-requests":"./component-requests.mjs","./knowledge-settings-local":"./knowledge-settings-local.mjs"}}"#,
+    )
+    .unwrap();
+    for (name, _) in KNOWLEDGE_SETTINGS_RUNTIME_FILES {
+        fs::write(package.join(name), "export const unsafe = true;").unwrap();
+    }
+    let error = copy_pinned_knowledge_settings_runtime(&package, &output).unwrap_err();
+    assert!(error.to_string().contains("differs from pinned"));
+    for (name, _) in KNOWLEDGE_SETTINGS_RUNTIME_FILES {
+        assert!(!output.join(name).exists());
+    }
+}
+
 fn test_bundle(
     output: PathBuf,
     artifact: &Path,
@@ -365,6 +387,88 @@ fn verified_bundle_builds_a_self_contained_workers_app() {
         format!("sha256:{RUNTIME_MODULE_SHA256}")
     );
     if std::env::var_os("LENSO_A8_KEEP_OUTPUT").as_deref() == Some(std::ffi::OsStr::new("1")) {
+        eprintln!("retained exact Workers App: {}", root.path().display());
+        let _ = root.keep();
+    }
+}
+
+/// Run with the exact verified KB Component and task-local Jco 1.35.0.
+/// This proves local build input closure, not PostgreSQL or workerd behavior.
+#[test]
+#[ignore = "requires a built knowledge-settings Component, local JS runtime and Jco 1.35.0"]
+fn verified_knowledge_settings_bundle_builds_a_bounded_local_workers_app() {
+    let component = PathBuf::from(std::env::var_os("LENSO_KB_COMPONENT").expect("Component path"));
+    let workers_runtime =
+        PathBuf::from(std::env::var_os("LENSO_KB_RUNTIME").expect("JS package path"));
+    let jco = PathBuf::from(std::env::var_os("LENSO_KB_JCO").expect("Jco path"));
+    let root = tempfile::tempdir().unwrap();
+    let app = root.path().join("app");
+    fs::create_dir(&app).unwrap();
+    let contract = PluginContract::new(KNOWLEDGE_SETTINGS_PLUGIN_ID, "0.1.0", "web")
+        .with_authoring_version(2)
+        .with_capability(CapabilityEndpointPlan::new(
+            lenso_capability_http_endpoint::CAPABILITY_ID,
+            lenso_capability_http_endpoint::DESCRIPTOR_VERSION,
+            ["describe", "handle"],
+        ));
+    test_bundle(
+        app.join("knowledge-settings"),
+        &component,
+        contract,
+        HOST_TARGET,
+        vec![
+            ExecutionTargetCapability::Request,
+            ExecutionTargetCapability::WasmComponent,
+            ExecutionTargetCapability::Workers,
+        ],
+    );
+    let output = root.path().join("dist-workers");
+    build(BuildArgs {
+        root: root.path().to_path_buf(),
+        out: output.clone(),
+        workers_runtime,
+        jco,
+    })
+    .unwrap();
+    let receipt: Value =
+        serde_json::from_slice(&fs::read(output.join("workers-build.json")).unwrap()).unwrap();
+    assert_eq!(receipt["plugin_id"], KNOWLEDGE_SETTINGS_PLUGIN_ID);
+    assert_eq!(receipt["private_world"], KNOWLEDGE_SETTINGS_WORLD);
+    assert_eq!(
+        receipt["host_bridge"],
+        "local-loopback-knowledge-settings.v1"
+    );
+    let plan: Value = serde_json::from_str(
+        fs::read_to_string(output.join("plan.mjs"))
+            .unwrap()
+            .trim_start_matches("export default ")
+            .trim_end_matches(";\n"),
+    )
+    .unwrap();
+    assert_eq!(
+        plan["plugin_instances"][0]["instance_key"],
+        KNOWLEDGE_SETTINGS_PLAN_KEY
+    );
+    assert_eq!(
+        plan["plugin_instances"][0]["package_revision"],
+        receipt["component_digest"]
+    );
+    for file in [
+        "worker.mjs",
+        "component-admission.mjs",
+        "component-requests.mjs",
+        "knowledge-settings-local.mjs",
+        "knowledge-settings-artifact.mjs",
+        "plan.mjs",
+        "guest.component.wasm",
+        "guest.core.wasm",
+        "guest.js",
+        "wrangler.jsonc",
+    ] {
+        assert!(output.join(file).is_file(), "missing {file}");
+    }
+    assert!(!output.join("workers-http.mjs").exists());
+    if std::env::var_os("LENSO_KB_KEEP_OUTPUT").as_deref() == Some(std::ffi::OsStr::new("1")) {
         eprintln!("retained exact Workers App: {}", root.path().display());
         let _ = root.keep();
     }
