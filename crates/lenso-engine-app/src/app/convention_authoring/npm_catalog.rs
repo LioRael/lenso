@@ -25,6 +25,7 @@ const MAX_UNPACKED_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_FILES: usize = 4096;
 const MAX_CHECKPOINT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_TAR_PADDING_BYTES: u64 = 1024 * 1024;
+const MAX_TAR_BYTES: u64 = MAX_UNPACKED_BYTES + (MAX_FILES as u64) * 1024 + MAX_TAR_PADDING_BYTES;
 
 #[cfg(unix)]
 fn file_mode(metadata: &fs::Metadata) -> u32 {
@@ -147,7 +148,21 @@ fn read_archive(path: &Path) -> anyhow::Result<Vec<u8>> {
 }
 
 fn unpack_archive(bytes: &[u8], stage: &Path) -> anyhow::Result<()> {
-    let mut archive = tar::Archive::new(GzDecoder::new(Cursor::new(bytes)));
+    let mut decoder = GzDecoder::new(Cursor::new(bytes));
+    let mut tar_bytes = Vec::new();
+    decoder
+        .by_ref()
+        .take(MAX_TAR_BYTES + 1)
+        .read_to_end(&mut tar_bytes)?;
+    ensure!(
+        u64::try_from(tar_bytes.len())? <= MAX_TAR_BYTES,
+        "npm archive exceeds total decompressed tar size limit"
+    );
+    ensure!(
+        decoder.into_inner().position() == bytes.len() as u64,
+        "npm archive has trailing compressed data"
+    );
+    let mut archive = tar::Archive::new(tar_bytes.as_slice());
     let mut files = 0;
     let mut total = 0_u64;
     let mut seen = BTreeSet::new();
@@ -220,20 +235,11 @@ fn unpack_archive(bytes: &[u8], stage: &Path) -> anyhow::Result<()> {
         }
     }
     ensure!(files > 0, "npm archive is empty");
-    let mut decoder = archive.into_inner();
-    let mut padding = Vec::new();
-    decoder
-        .by_ref()
-        .take(MAX_TAR_PADDING_BYTES + 1)
-        .read_to_end(&mut padding)?;
+    let padding = archive.into_inner();
     ensure!(
         u64::try_from(padding.len())? <= MAX_TAR_PADDING_BYTES
             && padding.iter().all(|byte| *byte == 0),
         "npm archive has nonzero or excessive tar data after end marker"
-    );
-    ensure!(
-        decoder.into_inner().position() == bytes.len() as u64,
-        "npm archive has trailing compressed data"
     );
     Ok(())
 }
