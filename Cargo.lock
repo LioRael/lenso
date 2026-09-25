@@ -2277,6 +2277,7 @@ dependencies = [
  "ureq",
  "url",
  "uuid",
+ "wasmparser 0.252.0",
  "zip",
 ]
 

@@ -1239,6 +1239,41 @@ fn generated_distribution(path: &Path) -> anyhow::Result<bool> {
     if !metadata.is_dir() {
         return Ok(false);
     }
+    if let Some(receipt_bytes) = distribution_marker(&path.join("workers-build.json"), 1024 * 1024)?
+    {
+        let Some(authority_bytes) =
+            distribution_marker(&control.join("host-build.json"), 64 * 1024 * 1024)?
+        else {
+            return Ok(false);
+        };
+        let Ok(receipt) = serde_json::from_slice::<Value>(&receipt_bytes) else {
+            return Ok(false);
+        };
+        let Ok(authority) = serde_json::from_slice::<
+            lenso_app_authoring::host_authoring::GeneratedHostBuild,
+        >(&authority_bytes) else {
+            return Ok(false);
+        };
+        if receipt["schema"] != "lenso.workers-app-build.v1"
+            || receipt["target"] != "workers"
+            || !authority.validate().is_ok()
+        {
+            return Ok(false);
+        }
+        let Some(component_digest) = receipt["component_digest"].as_str() else {
+            return Ok(false);
+        };
+        let component = path.join("guest.component.wasm");
+        if fs::symlink_metadata(&component)
+            .is_ok_and(|metadata| metadata.is_file() && metadata.len() <= 256 * 1024 * 1024)
+            && digest(&component)? == component_digest
+            && path.join("worker.mjs").is_file()
+            && path.join("wrangler.jsonc").is_file()
+        {
+            return Ok(true);
+        }
+        return Ok(false);
+    }
     let lock_path = control.join("distribution.lock.json");
     let authority_path = control.join("host-build.json");
     let Some(lock_bytes) = distribution_marker(&lock_path, 8 * 1024 * 1024)? else {

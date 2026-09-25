@@ -2,28 +2,55 @@ use anyhow::{Context, bail};
 use clap::{Args, ValueEnum};
 use std::{fs, path::PathBuf, process::Command};
 
+mod workers;
+
 #[derive(Clone, Debug, Args)]
 pub struct BuildArgs {
     /// Existing static TypeScript Host source. Omit for the local App convention.
     #[arg(long, requires_all = ["target", "out"], conflicts_with = "root")]
     source: Option<PathBuf>,
-    /// Exact target for an explicit TypeScript Host build.
-    #[arg(long, requires = "source")]
+    /// `workers` for a local workerd App, or an exact explicit TypeScript Host target.
+    #[arg(long)]
     target: Option<String>,
     /// Local App source root. Defaults to the current directory.
     #[arg(long)]
     root: Option<PathBuf>,
-    /// New output directory. Defaults to dist for a local App.
+    /// New output directory. Defaults to dist (Native) or dist-workers (Workers).
     #[arg(long)]
     out: Option<PathBuf>,
+    /// Exact @lenso/workers-runtime package directory for a Workers build.
+    #[arg(long, requires = "target")]
+    workers_runtime: Option<PathBuf>,
+    /// Jco 1.35.0 executable for a Workers Component build.
+    #[arg(long, requires = "target")]
+    jco: Option<PathBuf>,
 }
 pub fn build(args: BuildArgs) -> anyhow::Result<()> {
+    if args.target.as_deref() == Some("workers") && args.source.is_none() {
+        let root = crate::plugins::project_root(args.root)?;
+        return workers::build(workers::BuildArgs {
+            out: args.out.unwrap_or_else(|| root.join("dist-workers")),
+            root,
+            workers_runtime: args
+                .workers_runtime
+                .context("Workers build needs --workers-runtime pointing to an exact @lenso/workers-runtime package")?,
+            jco: args.jco.context("Workers build needs --jco pointing to Jco 1.35.0")?,
+        });
+    }
+    if args.workers_runtime.is_some() || args.jco.is_some() {
+        bail!("--workers-runtime and --jco are only for `app build --target workers`");
+    }
     if let Some(source) = args.source {
         return super::build::build(&super::build::HostBuildArgs {
             source,
             target: args.target.context("TS Host target")?,
             out: args.out.context("TS Host output")?,
         });
+    }
+    if let Some(target) = args.target {
+        bail!(
+            "unsupported local App build target `{target}`; supported targets are native (omit --target) and workers"
+        );
     }
     let root = crate::plugins::project_root(args.root)?;
     let out = args.out.unwrap_or_else(|| root.join("dist"));
