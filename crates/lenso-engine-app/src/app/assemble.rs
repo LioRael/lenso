@@ -41,8 +41,12 @@ pub struct AssembleArgs {
     /// Also compile an executable Host with native-linked Plugins and typed codecs.
     #[arg(long)]
     pub(super) executable: bool,
-    /// Trust exact adopted linked Cargo build-time code for this unsandboxed build.
-    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    /// Trust exact adopted linked Cargo or npm build-time code for this unsandboxed build.
+    #[arg(
+        long,
+        visible_alias = "trust-adopted-build",
+        value_name = "PLUGIN_ID@VERSION=sha256:DIGEST"
+    )]
     pub(super) trust_linked_build: Vec<String>,
 }
 

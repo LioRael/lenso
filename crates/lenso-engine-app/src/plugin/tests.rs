@@ -46,6 +46,7 @@ fn bun_descriptor_lowers_named_dependencies_into_the_plugin_contract() {
         version: "1.0.0".to_owned(),
         metadata: BunPackageMetadata {
             source: None,
+            release_version: None,
             plugin_id: "company.notes".to_owned(),
             root_slot: "notes".to_owned(),
             runtime: "bun".to_owned(),

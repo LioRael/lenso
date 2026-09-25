@@ -24,8 +24,12 @@ pub struct BuildArgs {
     /// Jco 1.35.0 executable for a Workers Component build.
     #[arg(long, requires = "target")]
     jco: Option<PathBuf>,
-    /// Trust exact adopted linked Cargo build-time code for this unsandboxed build.
-    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    /// Trust exact adopted linked Cargo or npm build-time code for this unsandboxed build.
+    #[arg(
+        long,
+        visible_alias = "trust-adopted-build",
+        value_name = "PLUGIN_ID@VERSION=sha256:DIGEST"
+    )]
     trust_linked_build: Vec<String>,
 }
 pub fn build(args: BuildArgs) -> anyhow::Result<()> {

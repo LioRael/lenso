@@ -8,6 +8,7 @@ use std::{
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
 pub(crate) mod linked_catalog;
+mod npm_catalog;
 mod openapi;
 
 #[derive(Clone, Debug, Args)]
@@ -24,11 +25,14 @@ pub struct AddArgs {
     /// Exact signed Portable snapshot for a source App Bundle adoption.
     #[arg(long, conflicts_with = "linked_snapshot")]
     portable_snapshot: Option<PathBuf>,
+    /// Exact signed npm-only Plugin release snapshot.
+    #[arg(long, conflicts_with_all = ["linked_snapshot", "portable_snapshot", "release_details"])]
+    package_snapshot: Option<PathBuf>,
     /// Signed release details for an exact Cargo distribution of a Portable release.
     #[arg(long, requires = "portable_snapshot")]
     release_details: Option<PathBuf>,
     /// Distribution ID when release details contain multiple Cargo packages.
-    #[arg(long, requires = "release_details")]
+    #[arg(long)]
     distribution: Option<String>,
     /// Local public trust configuration for the signed catalog.
     #[arg(long)]
@@ -36,6 +40,9 @@ pub struct AddArgs {
     /// Exact registry .crate archive; it must match the signed digest.
     #[arg(long = "crate", conflicts_with = "bundle")]
     crate_archive: Option<PathBuf>,
+    /// Exact npm .tgz archive matching the signed package distribution.
+    #[arg(long)]
+    tgz: Option<PathBuf>,
     /// Verified V6 Bundle carrying the signed .crate as a Host build input.
     #[arg(long, conflicts_with = "crate_archive")]
     bundle: Option<PathBuf>,
@@ -45,7 +52,7 @@ pub struct AddArgs {
     /// Independently allowed HTTPS origin for the signed Portable archive.
     #[arg(long, conflicts_with = "archive")]
     origin: Option<String>,
-    /// Replace the selected linked Cargo Plugin version using signed new-release inputs.
+    /// Replace the selected signed linked Cargo or npm Plugin version.
     #[arg(long)]
     replace: bool,
     /// Separately signed v2 source-content snapshot for this exact Plugin release.
@@ -71,6 +78,9 @@ pub struct UnadoptArgs {
     /// Unselect a signed Portable source App Bundle, retaining its exact archive.
     #[arg(long)]
     portable: bool,
+    /// Unselect a signed npm-only Plugin source and move managed files to App trash.
+    #[arg(long, conflicts_with = "portable")]
+    npm: bool,
     #[arg(long)]
     root: Option<PathBuf>,
 }
@@ -307,6 +317,12 @@ fn tsconfig(root: &Path, source: &str) -> anyhow::Result<()> {
 
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(crate::plugins::project_root(args.root.clone())?)?;
+    if args.package_snapshot.is_some() || args.tgz.is_some() {
+        return npm_catalog::add(&root, &args);
+    }
+    if args.distribution.is_some() && args.release_details.is_none() {
+        bail!("--distribution requires --release-details or --package-snapshot");
+    }
     if args.content_snapshot.is_some()
         || args.content_id.is_some()
         || args.content_archive.is_some()
@@ -496,6 +512,9 @@ pub fn unadopt(args: UnadoptArgs) -> anyhow::Result<()> {
     if args.portable {
         return crate::plugins::signed_install::unadopt_source(&root, &args.source);
     }
+    if args.npm {
+        return npm_catalog::unadopt(&root, &args.source);
+    }
     linked_catalog::unadopt(&root, &args.source)
 }
 
@@ -586,10 +605,12 @@ pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyho
         no_install: !install_dependencies,
         linked_snapshot: None,
         portable_snapshot: None,
+        package_snapshot: None,
         release_details: None,
         distribution: None,
         trust: None,
         crate_archive: None,
+        tgz: None,
         bundle: None,
         archive: None,
         origin: None,

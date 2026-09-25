@@ -441,7 +441,7 @@ pub(super) fn remove_workspace_exclude(
 /// Serialize linked-Cargo mutations for one App without creating a lock file
 /// on POSIX. External editors and other App commands do not participate, so
 /// their bytes are still checked before each publication step.
-pub(super) fn lock_app(root: &Path) -> anyhow::Result<fs::File> {
+pub(crate) fn lock_app(root: &Path) -> anyhow::Result<fs::File> {
     #[cfg(unix)]
     let file = fs::File::open(root)?;
     #[cfg(windows)]
@@ -485,7 +485,7 @@ fn lock_regular_file(root: &Path) -> anyhow::Result<fs::File> {
     Ok(file)
 }
 
-pub(super) fn read_optional_regular(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
+pub(crate) fn read_optional_regular(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() => Ok(Some(fs::read(path)?)),
         Ok(_) => bail!("refusing non-regular App config: {}", path.display()),

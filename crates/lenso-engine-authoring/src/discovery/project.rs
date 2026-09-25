@@ -131,7 +131,16 @@ pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candi
         let version = if format == "cargo" {
             cargo_version(root, &value)?
         } else {
-            string(&value, "version")?.to_owned()
+            metadata
+                .get("releaseVersion")
+                .map(|value| {
+                    value
+                        .as_str()
+                        .context("lenso.releaseVersion must be a string")
+                })
+                .transpose()?
+                .unwrap_or(string(&value, "version")?)
+                .to_owned()
         };
         validate_release_version(&version)?;
         let implementations = if format == "cargo" {

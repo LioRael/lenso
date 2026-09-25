@@ -254,6 +254,8 @@ struct BunPackageDocument {
 struct BunPackageMetadata {
     #[serde(default)]
     source: Option<String>,
+    #[serde(default)]
+    release_version: Option<String>,
     plugin_id: String,
     root_slot: String,
     runtime: String,
@@ -481,8 +483,13 @@ fn read_bun_package(root: &Path) -> anyhow::Result<Option<BunPackage>> {
         bail!("Bun Plugin rootSlot must not be empty");
     }
     validate_release_version(&document.version)?;
+    let release_version = metadata
+        .release_version
+        .as_deref()
+        .unwrap_or(&document.version);
+    validate_release_version(release_version)?;
     Ok(Some(BunPackage {
-        version: document.version,
+        version: release_version.to_owned(),
         metadata,
     }))
 }

@@ -19,7 +19,7 @@ use sha2::{Digest as _, Sha256};
 
 use super::AddArgs;
 
-mod adoption;
+pub(crate) mod adoption;
 mod checkpoint;
 pub(super) mod content;
 mod content_checkpoint;
@@ -533,7 +533,7 @@ fn read_verified(
     linked_cargo::verify(&read_envelope(snapshot_path)?, &trust, None, now()?)
 }
 
-fn read_trust(trust_path: &Path) -> anyhow::Result<Trust> {
+pub(super) fn read_trust(trust_path: &Path) -> anyhow::Result<Trust> {
     let mut trust_bytes = Vec::new();
     fs::File::open(trust_path)?
         .take(4097)
@@ -552,7 +552,7 @@ fn read_trust(trust_path: &Path) -> anyhow::Result<Trust> {
     })
 }
 
-fn read_envelope(snapshot_path: &Path) -> anyhow::Result<Vec<u8>> {
+pub(super) fn read_envelope(snapshot_path: &Path) -> anyhow::Result<Vec<u8>> {
     let mut envelope = Vec::new();
     fs::File::open(snapshot_path)?
         .take(lenso_plugin_catalog::MAX_ENVELOPE_BYTES as u64 + 1)
@@ -564,7 +564,7 @@ fn read_envelope(snapshot_path: &Path) -> anyhow::Result<Vec<u8>> {
     Ok(envelope)
 }
 
-fn now() -> anyhow::Result<u64> {
+pub(super) fn now() -> anyhow::Result<u64> {
     Ok(std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_secs())
@@ -1122,12 +1122,16 @@ pub(crate) fn verify_native_descriptor(
 pub(crate) fn verify_sources(root: &Path, candidates: &[Candidate]) -> anyhow::Result<()> {
     let vendor_root = fs::canonicalize(root)?.join("vendor/lenso");
     verify_selected_portable_paths(root, candidates)?;
+    super::npm_catalog::verify_sources(root, candidates)?;
     for candidate in candidates {
         if !candidate.project.starts_with(&vendor_root) {
             continue;
         }
         if candidate.project.starts_with(vendor_root.join("portable")) {
             crate::plugins::signed_install::verify_source_candidate(root, candidate)?;
+            continue;
+        }
+        if candidate.project.starts_with(vendor_root.join("npm")) {
             continue;
         }
         let lock_path = candidate.project.join(SOURCE_LOCK);
@@ -1212,16 +1216,22 @@ pub(crate) fn require_linked_build_trust(
         let Some(declaration) = linked_build_declaration(&vendor_root, &source)? else {
             continue;
         };
-        ensure!(
-            declared.contains(declaration.as_str()),
-            "linked Cargo build-time code is not trusted: {declaration}; review the exact .crate and pass --trust-linked-build '{declaration}' only for an operator-approved unsandboxed build"
-        );
+        if !declared.contains(declaration.as_str()) {
+            if source.starts_with(vendor_root.join("npm")) {
+                bail!(
+                    "adopted npm build-time code is not trusted: {declaration}; review the exact archive and installed dependencies, then pass --trust-adopted-build '{declaration}' only for an operator-approved unsandboxed build"
+                );
+            }
+            bail!(
+                "linked Cargo build-time code is not trusted: {declaration}; review the exact .crate and pass --trust-linked-build '{declaration}' only for an operator-approved unsandboxed build"
+            );
+        }
         required.insert(declaration);
     }
     for value in declared {
         ensure!(
             required.contains(value),
-            "--trust-linked-build does not match a selected linked Cargo source that needs compilation: {value}"
+            "--trust-linked-build does not match a selected adopted source that needs compilation: {value}"
         );
     }
     Ok(())
@@ -1243,6 +1253,9 @@ fn linked_build_declaration(vendor_root: &Path, source: &Path) -> anyhow::Result
         .context("adopted Plugin ID must be UTF-8")?;
     if plugin_id == "portable" {
         return Ok(None);
+    }
+    if plugin_id == "npm" {
+        return super::npm_catalog::build_declaration(&vendor_root.join("npm"), source);
     }
     let Some(Component::Normal(version)) = components.next() else {
         bail!(
@@ -1584,7 +1597,7 @@ fn unadopt_with(
     clippy::too_many_arguments,
     reason = "restores one attempted linked Cargo unadopt"
 )]
-fn rollback_unadopt(
+pub(super) fn rollback_unadopt(
     root: &Path,
     trash: &Path,
     source_path: &Path,
