@@ -266,6 +266,7 @@ fn clean_room_web_plugin_check_validates_linked_native_source() {
     check(PluginCheckArgs {
         repo_root: Some(project),
         json: true,
+        trust_adopted_build: vec![],
     })
     .unwrap();
 }
@@ -601,6 +602,7 @@ implementations = [
         output: Some(output.clone()),
         linked_crate: None,
         json: true,
+        trust_adopted_build: vec![],
     })
     .unwrap();
     let manifest = with_bundle_directory(&output, |directory| {
@@ -700,6 +702,7 @@ async fn clean_room_plugin_runs_new_check_dev_and_pack() {
     check(PluginCheckArgs {
         repo_root: Some(project.clone()),
         json: true,
+        trust_adopted_build: vec![],
     })
     .unwrap();
     dev::run(PluginDevArgs {
@@ -711,6 +714,7 @@ async fn clean_room_plugin_runs_new_check_dev_and_pack() {
         json: true,
         watch: false,
         implementation: DevImplementationArg::Auto,
+        trust_adopted_build: vec![],
     })
     .await
     .unwrap();
@@ -720,6 +724,7 @@ async fn clean_room_plugin_runs_new_check_dev_and_pack() {
         output: Some(output.clone()),
         linked_crate: None,
         json: true,
+        trust_adopted_build: vec![],
     })
     .unwrap();
     with_bundle_directory(&output, |directory| {
@@ -734,6 +739,7 @@ async fn clean_room_plugin_runs_new_check_dev_and_pack() {
             output: Some(output),
             linked_crate: None,
             json: false,
+            trust_adopted_build: vec![],
         })
         .is_err()
     );
@@ -763,6 +769,7 @@ async fn clean_room_multi_plugin_auto_dev_runs_the_process_build() {
         json: true,
         watch: false,
         implementation: DevImplementationArg::Auto,
+        trust_adopted_build: vec![],
     })
     .await
     .unwrap();
@@ -786,6 +793,7 @@ async fn clean_room_process_plugin_runs_new_check_dev_and_pack() {
     check(PluginCheckArgs {
         repo_root: Some(project.clone()),
         json: true,
+        trust_adopted_build: vec![],
     })
     .unwrap();
     dev::run(PluginDevArgs {
@@ -797,6 +805,7 @@ async fn clean_room_process_plugin_runs_new_check_dev_and_pack() {
         json: true,
         watch: false,
         implementation: DevImplementationArg::Auto,
+        trust_adopted_build: vec![],
     })
     .await
     .unwrap();
@@ -806,6 +815,7 @@ async fn clean_room_process_plugin_runs_new_check_dev_and_pack() {
         output: Some(output.clone()),
         linked_crate: None,
         json: true,
+        trust_adopted_build: vec![],
     })
     .unwrap();
     with_bundle_directory(&output, |directory| {
@@ -868,6 +878,7 @@ async fn clean_room_bun_tool_dev_does_not_nest_tokio_runtimes() {
         json: true,
         watch: false,
         implementation: DevImplementationArg::Bun,
+        trust_adopted_build: vec![],
     })
     .await
     .unwrap();

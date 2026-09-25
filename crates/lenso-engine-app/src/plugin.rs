@@ -113,6 +113,9 @@ pub struct PluginCheckArgs {
     /// Emit a stable JSON report.
     #[arg(long)]
     json: bool,
+    /// Trust the exact adopted npm source and installed dependencies for this build.
+    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    trust_adopted_build: Vec<String>,
 }
 
 #[derive(Args, Clone, Debug)]
@@ -138,6 +141,9 @@ pub struct PluginDevArgs {
     /// Implementation to build and invoke. Auto chooses the fastest declared local implementation.
     #[arg(long, value_enum, default_value_t = DevImplementationArg::Auto)]
     implementation: DevImplementationArg,
+    /// Trust the exact adopted npm source and installed dependencies for each rebuild.
+    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    trust_adopted_build: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -165,6 +171,9 @@ pub struct PluginPackArgs {
     /// Emit a stable JSON result.
     #[arg(long)]
     json: bool,
+    /// Trust the exact adopted npm source and installed dependencies for this build.
+    #[arg(long, value_name = "PLUGIN_ID@VERSION=sha256:DIGEST")]
+    trust_adopted_build: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -368,7 +377,12 @@ fn check(args: PluginCheckArgs) -> anyhow::Result<()> {
     }
     let temporary = tempfile::tempdir().context("create Plugin check directory")?;
     let output = temporary.path().join("checked.lenso-plugin");
-    let verified = materialize(&root, &output, BuildProfile::Development)?;
+    let verified = materialize_with_adopted_trust(
+        &root,
+        &output,
+        BuildProfile::Development,
+        &args.trust_adopted_build,
+    )?;
     if args.json {
         println!(
             "{}",
@@ -413,19 +427,20 @@ fn pack(args: PluginPackArgs) -> anyhow::Result<()> {
                 package.metadata.lenso.plugin_id, package.version
             ))
         });
-        return pack_to(&root, &output, args.json);
+        return pack_to(&root, &output, args.json, &args.trust_adopted_build);
     };
     let output = args.output.unwrap_or_else(|| {
         root.join("dist")
             .join(format!("{plugin_id}-{version}.lenso-plugin"))
     });
-    pack_to(&root, &output, args.json)
+    pack_to(&root, &output, args.json, &args.trust_adopted_build)
 }
 
-fn pack_to(root: &Path, output: &Path, json: bool) -> anyhow::Result<()> {
+fn pack_to(root: &Path, output: &Path, json: bool, trusted: &[String]) -> anyhow::Result<()> {
     let staging = tempfile::tempdir().context("stage packed Plugin Bundle")?;
     let directory = staging.path().join("bundle");
-    let verified = materialize(root, &directory, BuildProfile::Release)?;
+    let verified =
+        materialize_with_adopted_trust(root, &directory, BuildProfile::Release, trusted)?;
     archive_bundle(&directory, output)?;
     let reopened = with_bundle_directory(output, |directory| {
         verify_bundle_directory(directory)
@@ -501,16 +516,16 @@ fn materialize_bun(
     profile: BuildProfile,
     trusted: Option<&[String]>,
 ) -> anyhow::Result<(VerifiedBundle, PluginDescriptor)> {
-    let isolated = if root.join(".lenso-npm-source.json").try_exists()? {
+    let isolated = if crate::app::convention_authoring::npm_catalog::is_adopted_source(root)? {
         Some(crate::app::convention_authoring::npm_catalog::isolated_build_source(root)?)
     } else {
         None
     };
     let (root, package, build_home) = if let Some((temporary, source, declaration)) = &isolated {
-        if let Some(trusted) = trusted {
-            if !trusted.iter().any(|value| value == declaration) {
-                bail!("adopted npm build source changed after trust approval: {declaration}");
-            }
+        if !trusted.is_some_and(|values| values.iter().any(|value| value == declaration)) {
+            bail!(
+                "adopted npm build code is not trusted: {declaration}; pass --trust-adopted-build '{declaration}' after reviewing the exact archive and installed dependencies"
+            );
         }
         (
             source.as_path(),

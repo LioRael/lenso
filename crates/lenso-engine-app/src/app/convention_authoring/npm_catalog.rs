@@ -258,12 +258,9 @@ fn source_digest(root: &Path) -> anyhow::Result<String> {
         }
         let metadata = fs::symlink_metadata(&path)?;
         if metadata.file_type().is_dir() {
+            paths.push((path.clone(), b'd'));
             for entry in fs::read_dir(&path)? {
                 pending.push(entry?.path());
-                ensure!(
-                    pending.len() + paths.len() <= MAX_FILES,
-                    "npm source has too many files"
-                );
             }
         } else if metadata.file_type().is_file() {
             if path == root.join(SOURCE_LOCK) || path == root.join(SOURCE_ARCHIVE) {
@@ -273,19 +270,28 @@ fn source_digest(root: &Path) -> anyhow::Result<String> {
                 .checked_add(metadata.len())
                 .context("npm source size overflow")?;
             ensure!(total <= MAX_UNPACKED_BYTES, "npm source exceeds size limit");
-            paths.push(path);
+            paths.push((path, b'f'));
         } else {
             bail!("npm source contains a symlink or special file");
         }
+        ensure!(
+            pending.len() + paths.len() <= MAX_FILES + 1,
+            "npm source has too many entries"
+        );
     }
-    paths.sort();
+    paths.sort_by(|left, right| left.0.cmp(&right.0));
     let mut hasher = Sha256::new();
-    for path in paths {
+    for (path, kind) in paths {
         let relative = path
             .strip_prefix(root)?
             .to_str()
             .context("npm source path UTF-8")?;
-        let bytes = fs::read(&path)?;
+        let bytes = if kind == b'f' {
+            fs::read(&path)?
+        } else {
+            Vec::new()
+        };
+        hasher.update([kind]);
         hasher.update(file_mode(&fs::symlink_metadata(&path)?).to_be_bytes());
         hasher.update((relative.len() as u64).to_be_bytes());
         hasher.update(relative.as_bytes());
@@ -312,12 +318,9 @@ fn dependency_digest(root: &Path) -> anyhow::Result<String> {
     while let Some(path) = pending.pop() {
         let metadata = fs::symlink_metadata(&path)?;
         if metadata.file_type().is_dir() {
+            paths.push((path.clone(), b'd'));
             for entry in fs::read_dir(&path)? {
                 pending.push(entry?.path());
-                ensure!(
-                    pending.len() + paths.len() <= 100_000,
-                    "npm dependencies have too many entries"
-                );
             }
         } else if metadata.file_type().is_file() {
             total = total
@@ -337,6 +340,10 @@ fn dependency_digest(root: &Path) -> anyhow::Result<String> {
         } else {
             bail!("npm dependencies contain a special file");
         }
+        ensure!(
+            pending.len() + paths.len() <= 100_000,
+            "npm dependencies have too many entries"
+        );
     }
     paths.sort_by(|left, right| left.0.cmp(&right.0));
     let mut hasher = Sha256::new();
@@ -345,17 +352,17 @@ fn dependency_digest(root: &Path) -> anyhow::Result<String> {
             .strip_prefix(&dependencies)?
             .to_str()
             .context("npm dependency path UTF-8")?;
-        let bytes = if kind == b'f' {
-            fs::read(&path)?
-        } else {
-            fs::read_link(&path)?
+        let bytes = match kind {
+            b'f' => fs::read(&path)?,
+            b'l' => fs::read_link(&path)?
                 .to_str()
                 .context("npm dependency link UTF-8")?
                 .as_bytes()
-                .to_vec()
+                .to_vec(),
+            _ => Vec::new(),
         };
         hasher.update([kind]);
-        if kind == b'f' {
+        if kind != b'l' {
             hasher.update(file_mode(&fs::symlink_metadata(&path)?).to_be_bytes());
         }
         hasher.update((relative.len() as u64).to_be_bytes());
@@ -790,6 +797,7 @@ fn verify_archived_source(path: &Path, lock: &SourceLock) -> anyhow::Result<()> 
     );
     let unpacked = tempfile::tempdir()?;
     unpack_archive(&archive, unpacked.path())?;
+    fs::set_permissions(unpacked.path(), fs::symlink_metadata(path)?.permissions())?;
     ensure!(
         source_digest(unpacked.path())? == lock.source_digest,
         "adopted npm source no longer corresponds to its exact signed archive"
@@ -900,6 +908,7 @@ fn copy_build_tree(source: &Path, destination: &Path, dependencies: &Path) -> an
                 dependencies,
             )?;
         }
+        fs::set_permissions(destination, metadata.permissions())?;
     } else if metadata.file_type().is_file() {
         fs::copy(source, destination)?;
     } else if metadata.file_type().is_symlink() {
@@ -980,6 +989,20 @@ pub(crate) fn isolated_build_source(
         build_digest(&build_lock)
     );
     Ok((temporary, isolated, declaration))
+}
+
+pub(crate) fn is_adopted_source(source: &Path) -> anyhow::Result<bool> {
+    let source = fs::canonicalize(source)?;
+    let under_vendor = source
+        .parent()
+        .and_then(Path::parent)
+        .is_some_and(|parent| parent.ends_with("vendor/lenso/npm"));
+    let lock_present = match fs::symlink_metadata(source.join(SOURCE_LOCK)) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error.into()),
+    };
+    Ok(under_vendor || lock_present)
 }
 
 pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
@@ -1347,6 +1370,25 @@ mod tests {
         );
         assert_eq!(approved, after_install);
         assert!(!isolated.join("node_modules/poison.js").exists());
+        let direct = crate::plugin::materialize(
+            &source,
+            &app.path().join("unchecked.lenso-plugin"),
+            crate::plugin::BuildProfile::Development,
+        )
+        .err()
+        .unwrap();
+        assert!(direct.to_string().contains("not trusted"));
+
+        fs::remove_file(source.join(SOURCE_LOCK)).unwrap();
+        assert!(is_adopted_source(&source).unwrap());
+        assert!(
+            crate::plugin::materialize(
+                &source,
+                &app.path().join("missing-lock.lenso-plugin"),
+                crate::plugin::BuildProfile::Development,
+            )
+            .is_err()
+        );
 
         let mut pinned = lock.clone();
         pinned.dependency_digest = dependency_digest(&source).unwrap();
@@ -1383,5 +1425,44 @@ mod tests {
         let mut changed = lock.clone();
         changed.registry_url = "https://other.example".into();
         assert_ne!(build_digest(&changed), approved);
+    }
+
+    #[test]
+    fn empty_directories_and_directory_modes_change_source_and_dependency_digests() {
+        let root = tempfile::tempdir().unwrap();
+        let before_source = source_digest(root.path()).unwrap();
+        let source_dir = root.path().join("empty");
+        fs::create_dir(&source_dir).unwrap();
+        let with_source_dir = source_digest(root.path()).unwrap();
+        assert_ne!(before_source, with_source_dir);
+
+        let dependencies = root.path().join("node_modules");
+        fs::create_dir(&dependencies).unwrap();
+        let before_dependency = dependency_digest(root.path()).unwrap();
+        let dependency_dir = dependencies.join("empty");
+        fs::create_dir(&dependency_dir).unwrap();
+        let with_dependency_dir = dependency_digest(root.path()).unwrap();
+        assert_ne!(before_dependency, with_dependency_dir);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            let changed_mode = |path: &Path| {
+                let current = file_mode(&fs::symlink_metadata(path).unwrap());
+                if current == 0o700 { 0o755 } else { 0o700 }
+            };
+            fs::set_permissions(
+                &source_dir,
+                fs::Permissions::from_mode(changed_mode(&source_dir)),
+            )
+            .unwrap();
+            fs::set_permissions(
+                &dependency_dir,
+                fs::Permissions::from_mode(changed_mode(&dependency_dir)),
+            )
+            .unwrap();
+            assert_ne!(source_digest(root.path()).unwrap(), with_source_dir);
+            assert_ne!(dependency_digest(root.path()).unwrap(), with_dependency_dir);
+        }
     }
 }
