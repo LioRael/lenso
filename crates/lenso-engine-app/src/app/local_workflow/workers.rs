@@ -46,7 +46,7 @@ const KNOWLEDGE_SETTINGS_RUNTIME_FILES: [(&str, &str); 3] = [
     ),
     (
         "knowledge-settings-local.mjs",
-        "210a4f259eae846725995292b69ad731c5a7a5f7478761568c6137efc43aaa92",
+        "dfbbf31eea1db4c1cc17496316b0d9529fe45661abcd2dda80dcd00077a3711e",
     ),
 ];
 const JCO_VERSION: &str = "1.35.0";
