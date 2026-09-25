@@ -192,13 +192,14 @@ export function createWorkersHttpHandler(component) {
   return async function fetch(request) {
     const requestId = crypto.randomUUID();
     const url = new URL(request.url);
+    const method = request.method.toUpperCase();
     if (url.pathname.includes("%")) return failure(400, "unsupported_path_encoding", requestId);
     if (request.method === "CONNECT" || request.headers.has("upgrade") || request.headers.has("cookie"))
       return failure(400, "unsupported_transport", requestId);
     const pathMatches = routes.map((route) => ({ route, parameters: matchPath(route, url.pathname) }))
       .filter((match) => match.parameters !== null);
     if (!pathMatches.length) return failure(404, "not_found", requestId);
-    const match = pathMatches.find(({ route }) => route.method === request.method);
+    const match = pathMatches.find(({ route }) => route.method === method);
     if (!match) {
       const response = failure(405, "method_not_allowed", requestId);
       response.headers.set("allow", [...new Set(pathMatches.map(({ route }) => route.method))].sort().join(", "));
@@ -224,7 +225,7 @@ export function createWorkersHttpHandler(component) {
     const payload = {
       route_id: match.route.routeId,
       request_id: requestId,
-      method: request.method,
+      method,
       path: url.pathname,
       path_parameters: match.parameters,
       headers,

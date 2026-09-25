@@ -9,6 +9,7 @@ const routes = [
   { route_id: "failure", method: "GET", path: "/failure" },
   { route_id: "failure-payload", method: "GET", path: "/failure-payload" },
   { route_id: "reject-other", method: "GET", path: "/reject-other" },
+  { route_id: "custom", method: "FOO", path: "/custom" },
 ];
 
 class ComponentError extends Error {
@@ -68,6 +69,9 @@ test("routes a Plan-admitted Endpoint with complete typed request and binary res
   const parameterResponse = await fetch(new Request("http://127.0.0.1/items/42"));
   assert.equal(parameterResponse.status, 200);
   assert.deepEqual(calls[1].path_parameters, [{ name: "id", value: "42" }]);
+  const customResponse = await fetch(new Request("http://127.0.0.1/custom", { method: "FoO" }));
+  assert.equal(customResponse.status, 200);
+  assert.equal(calls[2].method, "FOO");
 });
 
 test("rejects unsupported transport, ambiguous credential and oversize body", async () => {
