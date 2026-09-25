@@ -36,7 +36,7 @@ command-fds.workspace = true
 nix = { version = "0.31", features = ["signal"] }
 
 [dev-dependencies]
-lenso-native-adapter = { version = "=0.3.16", path = "../lenso-native-adapter" }
+lenso-native-adapter = { version = "=0.3.17", path = "../lenso-native-adapter" }
 lenso-plugin-bundle = { version = "=0.6.1", path = "../lenso-plugin-bundle" }
 lenso-process-adapter = { version = "=0.3.13", path = "../lenso-process-adapter" }
 tempfile = "3"
