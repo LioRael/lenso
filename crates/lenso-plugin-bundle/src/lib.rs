@@ -1719,7 +1719,7 @@ fn verify_cargo_build_input(
             || relative
                 .split('/')
                 .any(|part| matches!(part, "" | "." | ".."))
-            || matches!(relative, ".lenso-linked-source.json" | "Cargo.lock")
+            || relative == ".lenso-linked-source.json"
             || relative.starts_with("target/")
             || !paths.insert(path.to_owned())
         {
@@ -3792,6 +3792,37 @@ root-slot = "tools"
             )
             .unwrap();
         archive.into_inner().unwrap().finish().unwrap()
+    }
+
+    #[test]
+    fn v6_accepts_standard_cargo_lock_in_exact_build_input() {
+        let package = "example-linked";
+        let version = "1.0.0";
+        let manifest = b"[package]\nname = 'example-linked'\nversion = '1.0.0'\n[package.metadata.lenso]\nplugin-id = 'example.dual'\n";
+        let lock = b"version = 4\n";
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut archive = tar::Builder::new(encoder);
+        for (name, bytes) in [
+            ("Cargo.toml", manifest.as_slice()),
+            ("Cargo.lock", lock.as_slice()),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive
+                .append_data(&mut header, format!("{package}-{version}/{name}"), bytes)
+                .unwrap();
+        }
+        let bytes = archive.into_inner().unwrap().finish().unwrap();
+        let input = PluginCargoBuildInputV6 {
+            path: "example-linked-1.0.0.crate".into(),
+            digest: sha256_digest(&bytes),
+            size: bytes.len() as u64,
+            package: package.into(),
+            version: version.into(),
+        };
+        verify_cargo_build_input(&bytes, &input, "example.dual").unwrap();
     }
 
     #[test]
