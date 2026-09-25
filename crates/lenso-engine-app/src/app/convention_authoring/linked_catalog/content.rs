@@ -19,7 +19,35 @@ use super::{AddArgs, adoption, checkpoint, content_checkpoint, now, read_envelop
 const MAX_FILES: usize = 512;
 const MAX_UNPACKED_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_FILE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_TAR_STREAM_BYTES: u64 = MAX_UNPACKED_BYTES + 2 * 1024 * 1024;
 const ATTRIBUTION: &str = ".lenso-release-content.json";
+
+struct BoundedReader<R> {
+    inner: R,
+    remaining: u64,
+}
+
+impl<R: std::io::Read> std::io::Read for BoundedReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        if buffer.is_empty() {
+            return Ok(0);
+        }
+        if self.remaining == 0 {
+            let mut probe = [0];
+            return if self.inner.read(&mut probe)? == 0 {
+                Ok(0)
+            } else {
+                Err(std::io::Error::other(
+                    "content archive exceeds decompressed stream limit",
+                ))
+            };
+        }
+        let length = buffer.len().min(self.remaining as usize);
+        let read = self.inner.read(&mut buffer[..length])?;
+        self.remaining -= read as u64;
+        Ok(read)
+    }
+}
 
 #[derive(Serialize)]
 struct Preview<'a> {
@@ -303,10 +331,21 @@ fn read_archive(path: &Path, content: &Content) -> anyhow::Result<Vec<u8>> {
 }
 
 fn unpack(bytes: &[u8], stage: &Path) -> anyhow::Result<Vec<String>> {
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+    let decoder = flate2::read::MultiGzDecoder::new(bytes);
+    let reader = BoundedReader {
+        inner: decoder,
+        remaining: MAX_TAR_STREAM_BYTES,
+    };
+    let mut archive = tar::Archive::new(reader);
     let mut files = Vec::new();
     let mut total = 0u64;
-    for entry in archive.entries().context("invalid content archive")? {
+    // Raw iteration exposes GNU/PAX metadata entries before tar can allocate
+    // their unbounded payloads; this format deliberately accepts files only.
+    for entry in archive
+        .entries()
+        .context("invalid content archive")?
+        .raw(true)
+    {
         let mut entry = entry.context("invalid content archive entry")?;
         ensure!(
             entry.header().entry_type().is_file(),
@@ -351,6 +390,9 @@ fn unpack(bytes: &[u8], stage: &Path) -> anyhow::Result<Vec<String>> {
         file.flush()?;
         files.push(raw);
     }
+    // tar stops at its end marker. Drain the decoder so trailing inflated data
+    // and concatenated gzip members still count against the same limit.
+    std::io::copy(&mut archive.into_inner(), &mut std::io::sink())?;
     ensure!(!files.is_empty(), "content archive has no files");
     files.sort();
     Ok(files)
@@ -412,9 +454,9 @@ fn verify_extension_source(root: &Path, plugin_id: &str, version: &str) -> anyho
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::{fs, io::Read as _, path::Path};
 
-    use super::{read_archive, unpack, validate_destination};
+    use super::{MAX_TAR_STREAM_BYTES, read_archive, unpack, validate_destination};
     use lenso_plugin_catalog::{
         digest,
         release_content::{Content, ContentKind},
@@ -507,5 +549,52 @@ mod tests {
         let traversal = builder.into_inner().unwrap().finish().unwrap();
         assert!(unpack(&traversal, root.path()).is_err());
         assert!(!root.path().parent().unwrap().join("escape").exists());
+    }
+
+    #[test]
+    fn content_archive_rejects_compressed_oversized_extension_metadata() {
+        for kind in [tar::EntryType::GNULongName, tar::EntryType::XHeader] {
+            let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+            let mut builder = tar::Builder::new(encoder);
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(kind);
+            header.set_size(MAX_TAR_STREAM_BYTES + 1);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(
+                    &mut header,
+                    "extension-metadata",
+                    std::io::repeat(0).take(MAX_TAR_STREAM_BYTES + 1),
+                )
+                .unwrap();
+            let compressed = builder.into_inner().unwrap().finish().unwrap();
+            assert!(compressed.len() < 1024 * 1024);
+            let root = tempfile::tempdir().unwrap();
+            assert!(unpack(&compressed, root.path()).is_err());
+        }
+    }
+
+    #[test]
+    fn content_archive_counts_trailing_inflated_data() {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        let mut header = tar::Header::new_gnu();
+        header.set_size(1);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "README.md", b"x".as_slice())
+            .unwrap();
+        let mut encoder = builder.into_inner().unwrap();
+        std::io::copy(
+            &mut std::io::repeat(0).take(MAX_TAR_STREAM_BYTES),
+            &mut encoder,
+        )
+        .unwrap();
+        let compressed = encoder.finish().unwrap();
+        assert!(compressed.len() < 1024 * 1024);
+        let root = tempfile::tempdir().unwrap();
+        assert!(unpack(&compressed, root.path()).is_err());
     }
 }
