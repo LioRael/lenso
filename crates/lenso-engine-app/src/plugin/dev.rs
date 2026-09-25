@@ -622,7 +622,7 @@ async fn dev_bun(root: &Path, package: &BunPackage, args: &PluginDevArgs) -> any
     let temporary = tempfile::tempdir().context("create Bun Plugin dev directory")?;
     let output = temporary.path().join("dev.lenso-plugin");
     let (verified, descriptor) =
-        materialize_bun(root, &output, package, BuildProfile::Development)?;
+        materialize_bun(root, &output, package, BuildProfile::Development, None)?;
     if !descriptor.required_capabilities.is_empty() {
         bail!("Bun Plugin development invocation requires an App to bind declared dependencies");
     }

@@ -369,7 +369,13 @@ fn dependency_digest(root: &Path) -> anyhow::Result<String> {
 fn build_digest(lock: &SourceLock) -> String {
     let mut hasher = Sha256::new();
     for value in [
-        "lenso/npm-build/v1",
+        "lenso/npm-build/v2",
+        &lock.plugin_id,
+        &lock.release_version,
+        &lock.package,
+        &lock.package_version,
+        &lock.distribution_id,
+        &lock.registry_url,
         &lock.archive_digest,
         &lock.source_digest,
         &lock.dependency_digest,
@@ -390,6 +396,25 @@ fn read_lock(root: &Path) -> anyhow::Result<SourceLock> {
     let lock: SourceLock = serde_json::from_slice(&fs::read(path)?)?;
     ensure!(lock.schema_version == 1, "unsupported npm source lock");
     Ok(lock)
+}
+
+fn verify_manifest_identity(root: &Path, lock: &SourceLock) -> anyhow::Result<()> {
+    let path = root.join("package.json");
+    let metadata = fs::symlink_metadata(&path)?;
+    ensure!(
+        metadata.file_type().is_file() && metadata.len() <= 1024 * 1024,
+        "adopted npm package.json must be a bounded regular file"
+    );
+    let manifest: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+    ensure!(
+        manifest["name"].as_str() == Some(lock.package.as_str())
+            && manifest["version"].as_str() == Some(lock.package_version.as_str())
+            && manifest["lenso"]["pluginId"].as_str() == Some(lock.plugin_id.as_str())
+            && manifest["lenso"]["releaseVersion"].as_str() == Some(lock.release_version.as_str())
+            && manifest["lenso"]["runtime"].as_str() == Some("bun"),
+        "adopted npm manifest differs from its signed source lock"
+    );
+    Ok(())
 }
 
 fn native_target_matches(targets: &[String]) -> bool {
@@ -556,17 +581,28 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         args.replace,
         app_lock,
     )?;
-    println!(
-        "Adopted {}@{} from npm {}@{} at {}; approve build code with --trust-adopted-build '{}@{}={}'",
-        plugin_id,
-        release_version,
-        lock.package,
-        lock.package_version,
-        destination.display(),
-        plugin_id,
-        release_version,
-        build_digest(&lock)
-    );
+    if args.no_install {
+        println!(
+            "Adopted {}@{} from npm {}@{} at {} without dependencies; run `bun install --ignore-scripts --frozen-lockfile --backend=copyfile --linker=hoisted` there before approving the build digest",
+            plugin_id,
+            release_version,
+            lock.package,
+            lock.package_version,
+            destination.display()
+        );
+    } else {
+        println!(
+            "Adopted {}@{} from npm {}@{} at {}; approve build code with --trust-adopted-build '{}@{}={}'",
+            plugin_id,
+            release_version,
+            lock.package,
+            lock.package_version,
+            destination.display(),
+            plugin_id,
+            release_version,
+            build_digest(&lock)
+        );
+    }
     Ok(())
 }
 
@@ -724,14 +760,26 @@ fn verify_source(path: &Path, candidate: &Candidate) -> anyhow::Result<SourceLoc
     ensure!(
         lock.plugin_id == candidate.plugin_id
             && lock.release_version == candidate.release_version
-            && candidate.format == "bun"
-            && source_digest(path)? == lock.source_digest
-            && dependency_digest(path)? == lock.dependency_digest,
+            && candidate.format == "bun",
+        "adopted npm source identity changed: {}",
+        path.display()
+    );
+    verify_source_contents(path, &lock)?;
+    Ok(lock)
+}
+
+fn verify_source_contents(path: &Path, lock: &SourceLock) -> anyhow::Result<String> {
+    let installed_dependencies = dependency_digest(path)?;
+    ensure!(
+        source_digest(path)? == lock.source_digest
+            && (lock.dependency_digest == "none"
+                || installed_dependencies == lock.dependency_digest),
         "adopted npm source changed after adoption: {}",
         path.display()
     );
+    verify_manifest_identity(path, lock)?;
     verify_archived_source(path, &lock)?;
-    Ok(lock)
+    Ok(installed_dependencies)
 }
 
 fn verify_archived_source(path: &Path, lock: &SourceLock) -> anyhow::Result<()> {
@@ -821,10 +869,7 @@ pub(super) fn build_declaration(npm_root: &Path, source: &Path) -> anyhow::Resul
     let source = npm_root.join(plugin_id).join(version);
     let lock = read_lock(&source)?;
     ensure!(
-        source_digest(&source)? == lock.source_digest
-            && dependency_digest(&source)? == lock.dependency_digest
-            && source.file_name().and_then(|part| part.to_str())
-                == Some(lock.release_version.as_str())
+        source.file_name().and_then(|part| part.to_str()) == Some(lock.release_version.as_str())
             && source
                 .parent()
                 .and_then(Path::file_name)
@@ -832,13 +877,109 @@ pub(super) fn build_declaration(npm_root: &Path, source: &Path) -> anyhow::Resul
                 == Some(lock.plugin_id.as_str()),
         "adopted npm source changed before build"
     );
-    verify_archived_source(&source, &lock)?;
+    let installed_dependencies = verify_source_contents(&source, &lock)?;
+    let mut build_lock = lock;
+    build_lock.dependency_digest = installed_dependencies;
     Ok(Some(format!(
         "{}@{}={}",
-        lock.plugin_id,
-        lock.release_version,
-        build_digest(&lock)
+        build_lock.plugin_id,
+        build_lock.release_version,
+        build_digest(&build_lock)
     )))
+}
+
+fn copy_build_tree(source: &Path, destination: &Path, dependencies: &Path) -> anyhow::Result<()> {
+    let metadata = fs::symlink_metadata(source)?;
+    if metadata.file_type().is_dir() {
+        fs::create_dir(destination)?;
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            copy_build_tree(
+                &entry.path(),
+                &destination.join(entry.file_name()),
+                dependencies,
+            )?;
+        }
+    } else if metadata.file_type().is_file() {
+        fs::copy(source, destination)?;
+    } else if metadata.file_type().is_symlink() {
+        ensure!(
+            source.starts_with(dependencies),
+            "adopted npm source has a symlink outside node_modules"
+        );
+        let target = fs::read_link(source)?;
+        ensure!(
+            !target.is_absolute(),
+            "adopted npm dependency symlink must be relative for isolated builds"
+        );
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, destination)?;
+        #[cfg(windows)]
+        if fs::metadata(source)?.is_dir() {
+            std::os::windows::fs::symlink_dir(&target, destination)?;
+        } else {
+            std::os::windows::fs::symlink_file(&target, destination)?;
+        }
+        #[cfg(not(any(unix, windows)))]
+        bail!("adopted npm dependency symlinks are unsupported on this Host");
+    } else {
+        bail!("adopted npm source contains a special file");
+    }
+    Ok(())
+}
+
+pub(crate) fn isolated_build_source(
+    source: &Path,
+) -> anyhow::Result<(tempfile::TempDir, PathBuf, String)> {
+    let source = fs::canonicalize(source)?;
+    let lock = read_lock(&source)?;
+    let app_root = source
+        .ancestors()
+        .nth(5)
+        .context("adopted npm source is outside its App")?;
+    ensure!(
+        source
+            == app_root
+                .join("vendor/lenso/npm")
+                .join(&lock.plugin_id)
+                .join(&lock.release_version),
+        "adopted npm source path differs from its logical identity"
+    );
+    let installed_dependencies = verify_source_contents(&source, &lock)?;
+    ensure!(
+        installed_dependencies != "none",
+        "adopted npm build requires local installed dependencies"
+    );
+    let temporary = tempfile::Builder::new()
+        .prefix("lenso-npm-build-")
+        .tempdir()?;
+    let temporary_root = fs::canonicalize(temporary.path())?;
+    let isolated = temporary_root.join("source");
+    ensure!(
+        !temporary_root.starts_with(app_root),
+        "adopted npm build staging must be outside the App"
+    );
+    for ancestor in temporary_root.ancestors() {
+        match fs::symlink_metadata(ancestor.join("node_modules")) {
+            Ok(_) => bail!("adopted npm build staging has ancestor dependencies"),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    copy_build_tree(&source, &isolated, &source.join("node_modules"))?;
+    ensure!(
+        verify_source_contents(&isolated, &lock)? == installed_dependencies,
+        "adopted npm dependencies changed while staging the build"
+    );
+    let mut build_lock = lock;
+    build_lock.dependency_digest = installed_dependencies;
+    let declaration = format!(
+        "{}@{}={}",
+        build_lock.plugin_id,
+        build_lock.release_version,
+        build_digest(&build_lock)
+    );
+    Ok((temporary, isolated, declaration))
 }
 
 pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
@@ -1160,5 +1301,87 @@ mod tests {
         }
         let bytes = archive.into_inner().unwrap().finish().unwrap();
         assert!(unpack_archive(&bytes, stage.path()).is_err());
+    }
+
+    #[test]
+    fn adopted_build_requires_local_dependencies_and_copies_outside_app() {
+        let app = tempfile::tempdir().unwrap();
+        let source = app.path().join("vendor/lenso/npm/example.notes/1.2.3");
+        fs::create_dir_all(&source).unwrap();
+        let bytes = archive();
+        unpack_archive(&bytes, &source).unwrap();
+        let lock = SourceLock {
+            schema_version: 1,
+            plugin_id: "example.notes".into(),
+            release_version: "1.2.3".into(),
+            package: "@example/notes".into(),
+            package_version: "4.5.6".into(),
+            distribution_id: "npm".into(),
+            registry_url: "https://registry.npmjs.org".into(),
+            archive_digest: digest(&bytes),
+            source_digest: source_digest(&source).unwrap(),
+            dependency_digest: "none".into(),
+        };
+        fs::write(source.join(SOURCE_ARCHIVE), &bytes).unwrap();
+        fs::write(source.join(SOURCE_LOCK), serde_json::to_vec(&lock).unwrap()).unwrap();
+        let npm_root = app.path().join("vendor/lenso/npm");
+        let before_install = build_declaration(&npm_root, &source).unwrap().unwrap();
+        assert!(
+            isolated_build_source(&source)
+                .unwrap_err()
+                .to_string()
+                .contains("local installed dependencies")
+        );
+
+        fs::create_dir(source.join("node_modules")).unwrap();
+        fs::write(source.join("node_modules/local.js"), b"export default 1;").unwrap();
+        let after_install = build_declaration(&npm_root, &source).unwrap().unwrap();
+        assert_ne!(after_install, before_install);
+        fs::create_dir(app.path().join("node_modules")).unwrap();
+        fs::write(app.path().join("node_modules/poison.js"), b"poison").unwrap();
+        let (_temporary, isolated, approved) = isolated_build_source(&source).unwrap();
+        assert!(!isolated.starts_with(app.path()));
+        assert_eq!(
+            dependency_digest(&isolated).unwrap(),
+            dependency_digest(&source).unwrap()
+        );
+        assert_eq!(approved, after_install);
+        assert!(!isolated.join("node_modules/poison.js").exists());
+
+        let mut pinned = lock.clone();
+        pinned.dependency_digest = dependency_digest(&source).unwrap();
+        fs::write(source.join("node_modules/local.js"), b"export default 2;").unwrap();
+        assert!(verify_source_contents(&source, &pinned).is_err());
+    }
+
+    #[test]
+    fn signed_package_provenance_changes_build_trust_and_must_match_manifest() {
+        let stage = tempfile::tempdir().unwrap();
+        let bytes = archive();
+        unpack_archive(&bytes, stage.path()).unwrap();
+        let lock = SourceLock {
+            schema_version: 1,
+            plugin_id: "example.notes".into(),
+            release_version: "1.2.3".into(),
+            package: "@example/notes".into(),
+            package_version: "4.5.6".into(),
+            distribution_id: "npm".into(),
+            registry_url: "https://registry.npmjs.org".into(),
+            archive_digest: digest(&bytes),
+            source_digest: source_digest(stage.path()).unwrap(),
+            dependency_digest: "none".into(),
+        };
+        verify_manifest_identity(stage.path(), &lock).unwrap();
+        let approved = build_digest(&lock);
+        let mut changed = lock.clone();
+        changed.package = "@example/imposter".into();
+        assert_ne!(build_digest(&changed), approved);
+        assert!(verify_manifest_identity(stage.path(), &changed).is_err());
+        let mut changed = lock.clone();
+        changed.distribution_id = "other".into();
+        assert_ne!(build_digest(&changed), approved);
+        let mut changed = lock.clone();
+        changed.registry_url = "https://other.example".into();
+        assert_ne!(build_digest(&changed), approved);
     }
 }

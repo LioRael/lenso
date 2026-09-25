@@ -8,7 +8,7 @@ use std::{
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
 pub(crate) mod linked_catalog;
-mod npm_catalog;
+pub(crate) mod npm_catalog;
 mod openapi;
 
 #[derive(Clone, Debug, Args)]

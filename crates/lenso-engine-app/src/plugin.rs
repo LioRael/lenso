@@ -499,7 +499,27 @@ fn materialize_bun(
     output: &Path,
     package: &BunPackage,
     profile: BuildProfile,
+    trusted: Option<&[String]>,
 ) -> anyhow::Result<(VerifiedBundle, PluginDescriptor)> {
+    let isolated = if root.join(".lenso-npm-source.json").try_exists()? {
+        Some(crate::app::convention_authoring::npm_catalog::isolated_build_source(root)?)
+    } else {
+        None
+    };
+    let (root, package, build_home) = if let Some((temporary, source, declaration)) = &isolated {
+        if let Some(trusted) = trusted {
+            if !trusted.iter().any(|value| value == declaration) {
+                bail!("adopted npm build source changed after trust approval: {declaration}");
+            }
+        }
+        (
+            source.as_path(),
+            read_bun_package(source)?.context("isolated adopted npm source has no Bun Plugin")?,
+            Some(temporary.path()),
+        )
+    } else {
+        (root, package.clone(), None)
+    };
     let source = package
         .metadata
         .source
@@ -520,7 +540,7 @@ fn materialize_bun(
     if !source_path.starts_with(fs::canonicalize(root)?) || !source_path.is_file() {
         bail!("Bun Plugin source must be a file inside its package");
     }
-    run_bun(root, &["run", "check"], "typecheck Bun Plugin")?;
+    run_bun_with_home(root, &["run", "check"], "typecheck Bun Plugin", build_home)?;
     let staging = tempfile::tempdir().context("stage Bun Plugin implementation")?;
     let artifact = staging.path().join("plugin.js");
     let report_path = staging.path().join("build-report.json");
@@ -533,7 +553,7 @@ fn materialize_bun(
         BuildProfile::Development => "development",
         BuildProfile::Release => "release",
     };
-    run_bun(
+    run_bun_with_home(
         root,
         &[
             "run",
@@ -544,6 +564,7 @@ fn materialize_bun(
             profile_text,
         ],
         "compile Bun Plugin declarations",
+        build_home,
     )?;
     let report_metadata =
         fs::symlink_metadata(&report_path).context("inspect Bun Plugin build report")?;
@@ -604,7 +625,7 @@ fn materialize_bun(
     let mut encoded = format!("// lenso-runtime-descriptor.v1:{declaration}\n").into_bytes();
     encoded.extend(body);
     fs::write(&artifact, encoded)?;
-    let contract = contract_from_bun_descriptor(package, &descriptor)?;
+    let contract = contract_from_bun_descriptor(&package, &descriptor)?;
     let verified = build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
         contract,
         implementations: vec![SourcePluginImplementation {
@@ -682,8 +703,27 @@ pub fn materialize(
     output: &Path,
     profile: BuildProfile,
 ) -> anyhow::Result<VerifiedBundle> {
+    materialize_with_trust(root, output, profile, None)
+}
+
+pub(crate) fn materialize_with_adopted_trust(
+    root: &Path,
+    output: &Path,
+    profile: BuildProfile,
+    trusted: &[String],
+) -> anyhow::Result<VerifiedBundle> {
+    materialize_with_trust(root, output, profile, Some(trusted))
+}
+
+fn materialize_with_trust(
+    root: &Path,
+    output: &Path,
+    profile: BuildProfile,
+    trusted: Option<&[String]>,
+) -> anyhow::Result<VerifiedBundle> {
     if let Some(package) = read_bun_package(root)? {
-        return materialize_bun(root, output, &package, profile).map(|(verified, _)| verified);
+        return materialize_bun(root, output, &package, profile, trusted)
+            .map(|(verified, _)| verified);
     }
     let package = read_package(&root.join("Cargo.toml"))?;
     synchronize_plugin_lock(root, &package)?;
@@ -1038,6 +1078,7 @@ fn materialize_declared_implementation(
                 &implementation_bundle,
                 &implementation_package,
                 profile,
+                None,
             )?;
             let PluginManifest::V4(manifest) = read_bundle_manifest(&implementation_bundle)? else {
                 bail!("Bun implementation did not produce Bundle 4");
@@ -1307,16 +1348,39 @@ fn run_cargo(root: &Path, args: &[&str], action: &str) -> anyhow::Result<()> {
 }
 
 fn run_bun(root: &Path, args: &[&str], action: &str) -> anyhow::Result<()> {
-    let bun = env::var_os("BUN_BIN").unwrap_or_else(|| "bun".into());
-    let status = crate::app::build_command(bun)
-        .args(args)
-        .current_dir(root)
+    run_bun_with_home(root, args, action, None)
+}
+
+fn run_bun_with_home(
+    root: &Path,
+    args: &[&str],
+    action: &str,
+    isolated_home: Option<&Path>,
+) -> anyhow::Result<()> {
+    let status = bun_build_command(root, args, isolated_home)
         .status()
         .with_context(|| action.to_owned())?;
     if !status.success() {
         bail!("{action} failed with {status}");
     }
     Ok(())
+}
+
+fn bun_build_command(
+    root: &Path,
+    args: &[&str],
+    isolated_home: Option<&Path>,
+) -> std::process::Command {
+    let bun = env::var_os("BUN_BIN").unwrap_or_else(|| "bun".into());
+    let mut command = crate::app::build_command(bun);
+    if let Some(home) = isolated_home {
+        command
+            .arg("--no-install")
+            .env("HOME", home)
+            .env("BUN_INSTALL_CACHE_DIR", home.join("bun-cache"));
+    }
+    command.args(args).current_dir(root);
+    command
 }
 
 fn print_verified(

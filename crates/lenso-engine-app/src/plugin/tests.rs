@@ -6,6 +6,22 @@ use super::*;
 use std::process::Command;
 
 #[test]
+fn adopted_bun_build_disables_runtime_auto_install() {
+    let root = Path::new("/isolated/source");
+    let home = Path::new("/isolated");
+    let command = bun_build_command(root, &["run", "check"], Some(home));
+    let args = command
+        .get_args()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(args, ["--no-install", "run", "check"]);
+    assert_eq!(command.get_current_dir(), Some(root));
+    assert!(command.get_envs().any(|(name, value)| {
+        name == std::ffi::OsStr::new("HOME") && value == Some(home.as_os_str())
+    }));
+}
+
+#[test]
 fn portable_web_plugin_is_not_checked_as_linked_native() {
     let root = tempfile::tempdir().unwrap();
     let manifest = web_plugin_scaffold("company.web")

@@ -284,10 +284,11 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         } else {
             let build = tempfile::tempdir().context("stage local Plugin build")?;
             let bundle = build.path().join("bundle");
-            crate::plugin::materialize(
+            crate::plugin::materialize_with_adopted_trust(
                 &candidate.project,
                 &bundle,
                 crate::plugin::BuildProfile::Release,
+                &args.trust_linked_build,
             )
             .with_context(|| format!("build local Plugin {}", candidate.plugin_id))?;
             archive_bundle(&bundle, &archive)?;
