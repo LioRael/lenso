@@ -97,10 +97,11 @@ and versions remain stable, and packaged-consumer validation remains a separate
 release gate.
 
 The repository boundary follows language and product ownership rather than
-runtime mechanics. Bun/Node SDKs, Bun fixtures, Web client integration, and the
-`@lenso/contract-runtime` and `@lenso/process-protocol` sources and tests live
-in `lenso-js`. Existing published npm versions retain their original
-`lenso-protocols` provenance; moving sources does not republish them.
+runtime mechanics. Bun/Node SDKs, Bun fixtures, and Web client integration live
+in `lenso-js`. The `@lenso/contract-runtime` and `@lenso/process-protocol`
+sources and tests still live in `lenso-protocols`; their move into the JavaScript
+workspace is pending. Existing published npm versions retain their original
+`lenso-protocols` provenance.
 
 The Site, Lenso UI, Marketplace backend, and downstream products remain
 independent. Optional product Plugins such as Auth stay with their product

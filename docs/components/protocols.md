@@ -3,11 +3,12 @@
 This Rust workspace owns runtime-neutral protocol tooling and portable
 conformance fixtures under `crates/` and `spec/`. Its protocol crates do not
 define Kernel, host-runtime, product-Capability, or Plugin behavior. The
-`@lenso/contract-runtime` and `@lenso/process-protocol` sources and tests now
-live in [`lenso-js`](https://github.com/LioRael/lenso-js) under
-[ADR 0077](../adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md).
-Previously published npm versions retain their original `lenso-protocols`
-provenance; source migration does not republish them.
+`@lenso/contract-runtime` and `@lenso/process-protocol` sources and tests still
+live in [`lenso-protocols`](https://github.com/LioRael/lenso-protocols). Their
+move to `lenso-js` under
+[ADR 0077](../adr/0077-consolidate-the-rust-main-chain-by-language-and-product.md)
+is pending. Previously published npm versions retain their original
+`lenso-protocols` provenance.
 
 ## Packages
 
@@ -74,7 +75,7 @@ cargo check --locked --workspace --all-targets
 cargo test --locked --workspace
 ```
 
-The Rust checks above run here. Run the npm runtime source-package gates and
-packaged-consumer checks in `lenso-js`; its mirrored conformance vectors must
-match this workspace's canonical `spec/` files. A new npm publication requires
-a separately authorized version and provenance check.
+The Rust checks above run here. The npm runtime source-package gates and
+packaged-consumer checks still run in `lenso-protocols`; their conformance
+vectors must match this workspace's canonical `spec/` files. A new npm
+publication requires a separately authorized version and provenance check.
