@@ -44,6 +44,9 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"project_build","arguments":{"request_id":"wrong-root","root":"/wrong-project"}}}"#,
         r#"{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"build_sources","limit":1}}}"#,
         r#"{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"project_facts","arguments":{"section":"generated_artifacts","limit":1}}}"#,
+        r#"{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"project_npm_preview","arguments":{"plugin_id":"example.notes","version":"1.2.3"}}}"#,
+        r#"{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"project_npm_adopt","arguments":{"plugin_id":"example.notes","version":"1.2.3","request_id":"without-owner-authorization"}}}"#,
+        r#"{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"project_npm_unadopt","arguments":{"plugin_id":"example.notes","version":"1.2.3","request_id":"without-owner-authorization"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -63,12 +66,12 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 20, "{frames}");
+    assert_eq!(responses.len(), 23, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 20);
+    assert_eq!(by_id.len(), 23);
     assert_tools(by_id[&2]);
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -98,7 +101,7 @@ fn stdio_exposes_bounded_read_only_app_facts() {
     assert_eq!(second_page["offset"], 1);
     assert_eq!(second_page["items"].as_array().unwrap().len(), 1);
     assert_ne!(first_page["items"][0], second_page["items"][0]);
-    for id in [4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17] {
+    for id in [4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 21, 22, 23] {
         assert!(by_id[&id]["error"].is_object(), "response {id}");
     }
     assert_eq!(by_id[&18]["result"]["isError"], true);
@@ -142,6 +145,9 @@ fn assert_tools(list: &serde_json::Value) {
             "project_facts",
             "project_linked_adopt",
             "project_linked_unadopt",
+            "project_npm_adopt",
+            "project_npm_preview",
+            "project_npm_unadopt",
             "project_portable_adopt",
             "project_portable_unadopt",
             "project_run",
@@ -660,6 +666,198 @@ fn mcp_test_crate() -> Vec<u8> {
             .unwrap();
     }
     builder.into_inner().unwrap().finish().unwrap()
+}
+
+#[test]
+fn stdio_previews_adopts_and_unadopts_only_the_fixed_signed_npm_archive() {
+    use ed25519_dalek::SigningKey;
+    use lenso_plugin_catalog::{
+        Availability, Distribution, DistributionKind, digest,
+        package::{self, PackageRelease, PackageSnapshot},
+    };
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let gzip = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    let mut tar = tar::Builder::new(gzip);
+    for (path, bytes) in [
+        ("package/package.json", br#"{"name":"@example/notes","version":"4.5.6","lenso":{"pluginId":"example.notes","releaseVersion":"1.2.3","runtime":"bun","rootSlot":"tools","source":"index.ts"}}"#.as_slice()),
+        ("package/bun.lock", b"{}".as_slice()),
+        ("package/index.ts", b"export default {};".as_slice()),
+    ] {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(bytes.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        tar.append_data(&mut header, path, bytes).unwrap();
+    }
+    let archive_bytes = tar.into_inner().unwrap().finish().unwrap();
+    let archive = temp.path().join("plugin.tgz");
+    fs::write(&archive, &archive_bytes).unwrap();
+    let key = SigningKey::from_bytes(&[75; 32]);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let snapshot = temp.path().join("package-snapshot.json");
+    fs::write(
+        &snapshot,
+        package::sign(
+            &PackageSnapshot::new(
+                "npm-mcp-test".into(),
+                1,
+                now - 1,
+                now + 3600,
+                vec![PackageRelease {
+                    plugin_id: "example.notes".into(),
+                    version: "1.2.3".into(),
+                    publisher_id: "example".into(),
+                    title: "Notes".into(),
+                    summary: "Signed local fixture".into(),
+                    source_url: "https://example.test/source".into(),
+                    source_revision: "a".repeat(40),
+                    license: "MIT".into(),
+                    distributions: vec![Distribution {
+                        id: "npm".into(),
+                        kind: DistributionKind::NpmPackage,
+                        package: "@example/notes".into(),
+                        version: "4.5.6".into(),
+                        integrity: Some(digest(&archive_bytes)),
+                        registry_url: Some("https://registry.npmjs.org".into()),
+                        artifact: None,
+                        targets: vec![],
+                    }],
+                    availability: Availability::Listed,
+                    documentation: vec![],
+                }],
+            ),
+            "test-key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let trust = temp.path().join("trust.json");
+    fs::write(
+        &trust,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id": "npm-mcp-test", "key_id": "test-key",
+            "public_key_hex": hex::encode(key.verifying_key().as_bytes())
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let mut child = Command::new(cli)
+        .args(["mcp", "--root"])
+        .arg(&root)
+        .arg("--package-snapshot")
+        .arg(&snapshot)
+        .arg("--package-trust")
+        .arg(&trust)
+        .arg("--package-tgz")
+        .arg(&archive)
+        .arg("--allow-changes")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":1, "method":"initialize", "params":{
+                "protocolVersion":"2025-11-25", "capabilities":{},
+                "clientInfo":{"name":"test", "version":"1"}
+            }
+        }),
+    );
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({"jsonrpc":"2.0", "method":"notifications/initialized"})
+    )
+    .unwrap();
+    let preview = mcp_tool_json(&mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{
+                "name":"project_npm_preview", "arguments":{"plugin_id":"example.notes", "version":"1.2.3"}
+            }
+        }),
+    ));
+    assert_eq!(preview["archive_bytes"], "digest_verified");
+    assert_eq!(preview["dependencies"], "not_installed");
+    assert!(!root.join("vendor/lenso/npm/example.notes/1.2.3").exists());
+    fs::write(&archive, b"modified after bridge startup").unwrap();
+    let adopt = |request_id: &str| {
+        serde_json::json!({
+            "jsonrpc":"2.0", "id":3, "method":"tools/call", "params":{
+                "name":"project_npm_adopt", "arguments":{
+                    "plugin_id":"example.notes", "version":"1.2.3", "request_id":request_id
+                }
+            }
+        })
+    };
+    let selected = mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt("adopt-1")));
+    assert_eq!(selected["state"], "selected", "{selected}");
+    assert_eq!(selected["kind"], "lenso.mcp-npm-adoption");
+    assert_eq!(selected["application"], "build_required");
+    assert_eq!(
+        selected["next_step"],
+        "install_dependencies_then_approve_exact_build_digest_and_build_check"
+    );
+    let source = root.join("vendor/lenso/npm/example.notes/1.2.3");
+    assert_eq!(
+        fs::read(source.join(".lenso-npm-archive.tgz")).unwrap(),
+        archive_bytes
+    );
+    assert_eq!(
+        mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &adopt("adopt-1"))),
+        selected
+    );
+    let injected = mcp_roundtrip(
+        &mut stdin,
+        &mut stdout,
+        &serde_json::json!({
+            "jsonrpc":"2.0", "id":4, "method":"tools/call", "params":{
+                "name":"project_npm_adopt", "arguments":{
+                    "plugin_id":"example.notes", "version":"1.2.3", "request_id":"path",
+                    "tgz":"/tmp/other.tgz"
+                }
+            }
+        }),
+    );
+    assert_eq!(injected["result"]["isError"], true);
+    let unadopt = serde_json::json!({
+        "jsonrpc":"2.0", "id":5, "method":"tools/call", "params":{
+            "name":"project_npm_unadopt", "arguments":{
+                "plugin_id":"example.notes", "version":"1.2.3", "request_id":"unadopt-1"
+            }
+        }
+    });
+    let removed = mcp_tool_json(&mcp_roundtrip(&mut stdin, &mut stdout, &unadopt));
+    assert_eq!(removed["state"], "unadopted", "{removed}");
+    assert!(!source.exists());
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
 }
 
 fn mcp_tool_json(response: &serde_json::Value) -> serde_json::Value {

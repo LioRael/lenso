@@ -44,6 +44,15 @@ pub(crate) struct McpArgs {
     /// Exact local Portable archive for signed source App adoption; fixed for this MCP process.
     #[arg(long, requires_all = ["portable_snapshot", "portable_trust"])]
     portable_archive: Option<PathBuf>,
+    /// Exact signed npm-only release snapshot for a project-scoped preview or adoption.
+    #[arg(long, requires = "package_trust")]
+    package_snapshot: Option<PathBuf>,
+    /// Public trust configuration for --package-snapshot.
+    #[arg(long, requires = "package_snapshot")]
+    package_trust: Option<PathBuf>,
+    /// Exact local npm .tgz archive; fixed for this MCP process.
+    #[arg(long, requires_all = ["package_snapshot", "package_trust"])]
+    package_tgz: Option<PathBuf>,
     /// Explicitly permit signed HTTPS documentation fetches by MCP tools.
     #[arg(long, requires_all = ["linked_snapshot", "trust"])]
     allow_document_fetch: bool,
@@ -51,6 +60,7 @@ pub(crate) struct McpArgs {
     #[arg(
         long,
         requires = "allow_build",
+        visible_alias = "trust-adopted-build",
         value_name = "PLUGIN_ID@VERSION=sha256:DIGEST"
     )]
     trust_linked_build: Vec<String>,
@@ -81,6 +91,9 @@ struct AppTools {
     portable_snapshot: Option<PathBuf>,
     portable_trust: Option<PathBuf>,
     portable_archive: Option<PathBuf>,
+    package_snapshot: Option<PathBuf>,
+    package_trust: Option<PathBuf>,
+    package_tgz: Option<PathBuf>,
     allow_document_fetch: bool,
     trust_linked_build: Vec<String>,
     permissions: McpMutationAccess,
@@ -90,6 +103,7 @@ struct AppTools {
     adoptions: Arc<adoption::AdoptionController>,
     _fixed_linked_inputs: Option<Arc<tempfile::TempDir>>,
     _fixed_portable_inputs: Option<Arc<tempfile::TempDir>>,
+    _fixed_package_inputs: Option<Arc<tempfile::TempDir>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -248,10 +262,124 @@ struct ProjectSignedAdoptionQuery {
     request_id: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ProjectPackagePreviewQuery {
+    plugin_id: String,
+    version: String,
+}
+
 const MAX_MCP_TEXT_BYTES: usize = 128 * 1024;
 
 #[tool_router]
 impl AppTools {
+    #[tool(
+        description = "Preview one exact signed npm-only Plugin release and fixed local .tgz for the source App. Verifies signed metadata and archive digest only; does not install, select, build, or activate"
+    )]
+    fn project_npm_preview(
+        &self,
+        Parameters(request): Parameters<ProjectPackagePreviewQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        let snapshot = self.package_snapshot.as_deref().ok_or_else(|| {
+            McpError::invalid_request("MCP signed npm package snapshot was not configured", None)
+        })?;
+        let trust = self.package_trust.as_deref().ok_or_else(|| {
+            McpError::invalid_request("MCP npm package trust was not configured", None)
+        })?;
+        let tgz = self.package_tgz.as_deref().ok_or_else(|| {
+            McpError::invalid_request("MCP npm package .tgz was not configured", None)
+        })?;
+        let preview = lenso_engine_app::app::inspect_signed_npm_adoption(
+            &self.root,
+            snapshot,
+            trust,
+            tgz,
+            &request.plugin_id,
+            &request.version,
+        )
+        .map_err(|_| {
+            McpError::invalid_request(
+                "signed npm release or fixed archive is unavailable or invalid for this App",
+                None,
+            )
+        })?;
+        adoption_result(&preview)
+    }
+
+    #[tool(
+        description = "Select one exact signed npm-only .tgz for the fixed source App without installing dependencies; requires --allow-changes and startup --package-snapshot, --package-trust, and --package-tgz. Build code needs separate exact trust"
+    )]
+    fn project_npm_adopt(
+        &self,
+        Parameters(request): Parameters<ProjectSignedAdoptionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_changes {
+            return Err(McpError::invalid_request(
+                "MCP source App changes were not explicitly enabled",
+                None,
+            ));
+        }
+        let inputs = adoption::SignedInputs {
+            snapshot: self.package_snapshot.as_deref().ok_or_else(|| {
+                McpError::invalid_request(
+                    "MCP signed npm package snapshot was not configured",
+                    None,
+                )
+            })?,
+            trust: self.package_trust.as_deref().ok_or_else(|| {
+                McpError::invalid_request("MCP npm package trust was not configured", None)
+            })?,
+            archive: self.package_tgz.as_deref().ok_or_else(|| {
+                McpError::invalid_request("MCP npm package .tgz was not configured", None)
+            })?,
+        };
+        let result = self
+            .adoptions
+            .apply(
+                &self.root,
+                adoption::Distribution::Npm,
+                adoption::Action::Adopt,
+                &request.plugin_id,
+                &request.version,
+                &request.request_id,
+                Some(inputs),
+            )
+            .map_err(|error| {
+                McpError::invalid_request(adoption::public_request_error(&error), None)
+            })?;
+        adoption_result(&result)
+    }
+
+    #[tool(
+        description = "Unselect one exact previously adopted npm-only Plugin source from the fixed source App; requires --allow-changes. Managed files move to App trash; a separate rebuild/check is required"
+    )]
+    fn project_npm_unadopt(
+        &self,
+        Parameters(request): Parameters<ProjectSignedAdoptionQuery>,
+    ) -> Result<CallToolResult, McpError> {
+        if !self.permissions.allow_changes {
+            return Err(McpError::invalid_request(
+                "MCP source App changes were not explicitly enabled",
+                None,
+            ));
+        }
+        let result = self
+            .adoptions
+            .apply(
+                &self.root,
+                adoption::Distribution::Npm,
+                adoption::Action::Unadopt,
+                &request.plugin_id,
+                &request.version,
+                &request.request_id,
+                None,
+            )
+            .map_err(|error| {
+                McpError::invalid_request(adoption::public_request_error(&error), None)
+            })?;
+        adoption_result(&result)
+    }
+
     #[tool(
         description = "Select one exact signed linked Cargo .crate for the fixed source App; requires --allow-changes and startup --linked-snapshot, --trust, and --linked-crate. A separate build/check is required"
     )]
@@ -964,7 +1092,7 @@ fn run_result(status: &run::RunStatus) -> Result<CallToolResult, McpError> {
 
 fn adoption_result(result: &serde_json::Value) -> Result<CallToolResult, McpError> {
     let json = serde_json::to_string(result)
-        .map_err(|_| McpError::internal_error("serialize linked Cargo adoption", None))?;
+        .map_err(|_| McpError::internal_error("serialize signed adoption", None))?;
     Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
 }
 
@@ -1407,6 +1535,27 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         } else {
             (args.portable_snapshot, args.portable_trust, None, None)
         };
+    let (package_snapshot, package_trust, package_tgz, fixed_package_inputs) =
+        if let Some(archive) = args.package_tgz {
+            let snapshot = args
+                .package_snapshot
+                .as_ref()
+                .context("--package-snapshot required")?;
+            let trust = args
+                .package_trust
+                .as_ref()
+                .context("--package-trust required")?;
+            let frozen =
+                adoption::freeze_inputs(snapshot, trust, &archive, adoption::Distribution::Npm)?;
+            (
+                Some(frozen.snapshot),
+                Some(frozen.trust),
+                Some(frozen.archive),
+                Some(frozen.storage),
+            )
+        } else {
+            (args.package_snapshot, args.package_trust, None, None)
+        };
     let service = AppTools {
         root,
         host_build: args.host_build,
@@ -1416,6 +1565,9 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         portable_snapshot,
         portable_trust,
         portable_archive,
+        package_snapshot,
+        package_trust,
+        package_tgz,
         allow_document_fetch: args.allow_document_fetch,
         trust_linked_build: args.trust_linked_build,
         permissions: args.permissions,
@@ -1425,6 +1577,7 @@ pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
         adoptions: Arc::new(adoption::AdoptionController::default()),
         _fixed_linked_inputs: fixed_linked_inputs,
         _fixed_portable_inputs: fixed_portable_inputs,
+        _fixed_package_inputs: fixed_package_inputs,
     }
     .serve(stdio())
     .await?;

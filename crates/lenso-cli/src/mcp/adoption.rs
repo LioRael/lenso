@@ -24,6 +24,7 @@ pub(super) enum Action {
 pub(super) enum Distribution {
     LinkedCargo,
     Portable,
+    Npm,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -120,12 +121,24 @@ impl AdoptionController {
                             .arg("--archive")
                             .arg(inputs.archive);
                     }
+                    Distribution::Npm => {
+                        command
+                            .arg("--package-snapshot")
+                            .arg(inputs.snapshot)
+                            .arg("--trust")
+                            .arg(inputs.trust)
+                            .arg("--tgz")
+                            .arg(inputs.archive)
+                            .arg("--no-install");
+                    }
                 }
             }
             Action::Unadopt => {
                 command.args(["unadopt", &source, "--root"]).arg(root);
                 if distribution == Distribution::Portable {
                     command.arg("--portable");
+                } else if distribution == Distribution::Npm {
+                    command.arg("--npm");
                 }
             }
         }
@@ -146,6 +159,7 @@ impl AdoptionController {
             "kind": match distribution {
                 Distribution::LinkedCargo => "lenso.mcp-linked-cargo-adoption",
                 Distribution::Portable => "lenso.mcp-portable-adoption",
+                Distribution::Npm => "lenso.mcp-npm-adoption",
             },
             "request_id": request_id,
             "plugin_id": plugin_id,
@@ -154,7 +168,13 @@ impl AdoptionController {
             "application": "build_required",
             "activation": "not_observed",
             "diagnostic_code": diagnostic_code,
-            "next_step": if outcome.is_ok() { "build_and_check" } else { "inspect_source_and_signed_inputs_before_retry" },
+            "next_step": if outcome.is_err() {
+                "inspect_source_and_signed_inputs_before_retry"
+            } else if distribution == Distribution::Npm && action == Action::Adopt {
+                "install_dependencies_then_approve_exact_build_digest_and_build_check"
+            } else {
+                "build_and_check"
+            },
         });
         records.insert(
             request_id.to_owned(),
@@ -215,9 +235,29 @@ fn classify_outcome(
         ),
         ("already supplied by", "LENSO_ADOPTION_SOURCE_CONFLICT"),
     ];
+    let npm_rejection = [
+        (
+            "npm archive digest does not match signed distribution",
+            "LENSO_ADOPTION_NPM_DIGEST_MISMATCH",
+        ),
+        (
+            "exact npm Plugin release is not in signed snapshot",
+            "LENSO_ADOPTION_VERSION_NOT_LISTED",
+        ),
+        (
+            "package release is not available for adoption",
+            "LENSO_ADOPTION_RELEASE_UNAVAILABLE",
+        ),
+        (
+            "select exactly one signed npm distribution for Host target",
+            "LENSO_ADOPTION_TARGET_OR_DISTRIBUTION_MISMATCH",
+        ),
+        ("App already selects", "LENSO_ADOPTION_SOURCE_CONFLICT"),
+    ];
     let rejections: &[(&str, &str)] = match distribution {
         Distribution::LinkedCargo => &linked_rejection,
         Distribution::Portable => &portable_rejection,
+        Distribution::Npm => &npm_rejection,
     };
     for &(needle, code) in rejections {
         if message.contains(needle) {
@@ -245,6 +285,7 @@ pub(super) fn freeze_inputs(
             .prefix(match distribution {
                 Distribution::LinkedCargo => "lenso-mcp-linked-",
                 Distribution::Portable => "lenso-mcp-portable-",
+                Distribution::Npm => "lenso-mcp-npm-",
             })
             .tempdir()?,
     );
@@ -253,6 +294,7 @@ pub(super) fn freeze_inputs(
     let archive_path = storage.path().join(match distribution {
         Distribution::LinkedCargo => "plugin.crate",
         Distribution::Portable => "plugin.lenso-plugin",
+        Distribution::Npm => "plugin.tgz",
     });
     freeze_file(snapshot, &snapshot_path, 4 * 1024 * 1024)?;
     freeze_file(trust, &trust_path, 64 * 1024)?;
@@ -262,6 +304,7 @@ pub(super) fn freeze_inputs(
         match distribution {
             Distribution::LinkedCargo => 32 * 1024 * 1024,
             Distribution::Portable => 128 * 1024 * 1024,
+            Distribution::Npm => 32 * 1024 * 1024,
         },
     )?;
     Ok(FrozenSignedInputs {

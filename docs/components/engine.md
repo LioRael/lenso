@@ -104,6 +104,16 @@ status, and cancellation tools. `--allow-run` enables start, status, and stop
 for a built App, with readiness reported from that run. These operations use
 client request IDs; none publishes a release or deploys an App.
 
+For an npm-only Plugin release, start the bridge with exact
+`--package-snapshot`, `--package-trust`, and `--package-tgz` files. The
+`project_npm_preview` tool verifies the signed release and archive digest for
+the fixed App without changing it. `project_npm_adopt` and
+`project_npm_unadopt` additionally require `--allow-changes` and use the same
+source App adoption path as the CLI. Adoption deliberately uses `--no-install`:
+it does not contact a registry or run package scripts. Dependencies, exact
+build-code trust (the MCP `--trust-adopted-build` startup grant), build, check,
+and runtime activation remain separate steps.
+
 ```rust,ignore
 lenso_engine_app::app::create_empty(project.clone())?;
 lenso_engine_app::app::adopt(project.clone(), "@lenso/cli".into(), true)?;

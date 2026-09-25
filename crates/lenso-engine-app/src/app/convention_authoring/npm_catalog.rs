@@ -12,7 +12,7 @@ use std::{
 use anyhow::{Context as _, bail, ensure};
 use flate2::bufread::GzDecoder;
 use lenso_app_authoring::discovery::Candidate;
-use lenso_plugin_catalog::{DistributionKind, digest, package};
+use lenso_plugin_catalog::{Distribution, DistributionKind, digest, package};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
@@ -452,6 +452,113 @@ fn native_target_matches(targets: &[String]) -> bool {
     targets.is_empty() || targets.iter().any(|item| item == "*" || item == target)
 }
 
+struct SelectedPackage {
+    verified: package::VerifiedPackageSnapshot,
+    previous: Option<package::PackageCheckpoint>,
+    distribution: Distribution,
+}
+
+fn select_package(
+    root: &Path,
+    snapshot: &Path,
+    trust_path: &Path,
+    plugin_id: &str,
+    release_version: &str,
+    distribution_id: Option<&str>,
+) -> anyhow::Result<SelectedPackage> {
+    let trust = linked_catalog::read_trust(trust_path)?;
+    let previous = read_checkpoint(root, &trust.catalog_id)?;
+    let now = linked_catalog::now()?;
+    let verified = package::verify(
+        &linked_catalog::read_envelope(snapshot)?,
+        &trust,
+        previous.as_ref(),
+        now,
+    )?;
+    let release = verified
+        .snapshot()
+        .releases
+        .iter()
+        .find(|release| release.plugin_id == plugin_id && release.version == release_version)
+        .context("exact npm Plugin release is not in signed snapshot")?;
+    let selected = release
+        .distributions
+        .iter()
+        .filter(|distribution| {
+            distribution.kind == DistributionKind::NpmPackage
+                && distribution_id.is_none_or(|id| distribution.id == id)
+                && native_target_matches(&distribution.targets)
+        })
+        .collect::<Vec<_>>();
+    let [distribution] = selected.as_slice() else {
+        bail!(
+            "select exactly one signed npm distribution for Host target {}; use --distribution when needed",
+            lenso_app_authoring::native_host_target()
+        );
+    };
+    verified.select_npm(plugin_id, release_version, &distribution.id, now)?;
+    let distribution = (*distribution).clone();
+    Ok(SelectedPackage {
+        verified,
+        previous,
+        distribution,
+    })
+}
+
+pub(in crate::app) fn preview(
+    root: &Path,
+    snapshot: &Path,
+    trust: &Path,
+    tgz: &Path,
+    plugin_id: &str,
+    release_version: &str,
+) -> anyhow::Result<serde_json::Value> {
+    lenso_app_authoring::identity::validate_plugin_id_v1(plugin_id)?;
+    lenso_app_authoring::identity::validate_release_version(release_version)?;
+    let selected = select_package(root, snapshot, trust, plugin_id, release_version, None)?;
+    let archive_digest = digest(&read_archive(tgz)?);
+    ensure!(
+        selected.distribution.integrity.as_deref() == Some(archive_digest.as_str()),
+        "npm archive digest does not match signed distribution"
+    );
+    super::preflight_source_adoption(root, plugin_id)?;
+    let expected_source = root
+        .join("vendor/lenso/npm")
+        .join(plugin_id)
+        .join(release_version);
+    let app_selection = match selected_source(root, plugin_id)? {
+        None => "not_selected",
+        Some(candidate)
+            if candidate.project == expected_source
+                && candidate.release_version == release_version =>
+        {
+            "exact_version_selected"
+        }
+        Some(_) => "different_source_selected",
+    };
+    Ok(serde_json::json!({
+        "schema_version": 1,
+        "kind": "lenso.signed-npm-adoption-preview",
+        "plugin_id": plugin_id,
+        "version": release_version,
+        "catalog_id": selected.verified.snapshot().catalog_id,
+        "catalog_revision": selected.verified.snapshot().revision,
+        "catalog_payload_digest": selected.verified.checkpoint().payload_digest,
+        "distribution_id": selected.distribution.id,
+        "package": selected.distribution.package,
+        "package_version": selected.distribution.version,
+        "archive_digest": archive_digest,
+        "host_target": lenso_app_authoring::native_host_target(),
+        "signed_metadata": "verified",
+        "archive_bytes": "digest_verified",
+        "source_manifest": "not_verified",
+        "dependencies": "not_installed",
+        "app_selection": app_selection,
+        "build_trust": "required_separately",
+        "activation": "not_observed"
+    }))
+}
+
 pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     ensure!(
         args.package_snapshot.is_some()
@@ -476,40 +583,15 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         .split_once('@')
         .context("npm source must be exact PLUGIN_ID@RELEASE_VERSION")?;
     let app_lock = linked_catalog::adoption::lock_app(root)?;
-    let trust = linked_catalog::read_trust(args.trust.as_deref().unwrap())?;
-    let previous = read_checkpoint(root, &trust.catalog_id)?;
-    let now = linked_catalog::now()?;
-    let verified = package::verify(
-        &linked_catalog::read_envelope(args.package_snapshot.as_deref().unwrap())?,
-        &trust,
-        previous.as_ref(),
-        now,
+    let selected = select_package(
+        root,
+        args.package_snapshot.as_deref().unwrap(),
+        args.trust.as_deref().unwrap(),
+        plugin_id,
+        release_version,
+        args.distribution.as_deref(),
     )?;
-    let release = verified
-        .snapshot()
-        .releases
-        .iter()
-        .find(|release| release.plugin_id == plugin_id && release.version == release_version)
-        .context("exact npm Plugin release is not in signed snapshot")?;
-    let selected = release
-        .distributions
-        .iter()
-        .filter(|distribution| {
-            distribution.kind == DistributionKind::NpmPackage
-                && args
-                    .distribution
-                    .as_ref()
-                    .is_none_or(|id| distribution.id == *id)
-                && native_target_matches(&distribution.targets)
-        })
-        .collect::<Vec<_>>();
-    let [distribution] = selected.as_slice() else {
-        bail!(
-            "select exactly one signed npm distribution for Host target {}; use --distribution when needed",
-            lenso_app_authoring::native_host_target()
-        );
-    };
-    verified.select_npm(plugin_id, release_version, &distribution.id, now)?;
+    let distribution = &selected.distribution;
     let bytes = read_archive(args.tgz.as_deref().unwrap())?;
     let archive_digest = digest(&bytes);
     ensure!(
@@ -554,7 +636,11 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
             && candidate.format == "bun",
         "npm Plugin logical release identity differs from signed snapshot"
     );
-    persist_checkpoint(root, verified.checkpoint(), previous.as_ref())?;
+    persist_checkpoint(
+        root,
+        selected.verified.checkpoint(),
+        selected.previous.as_ref(),
+    )?;
     let expected_source_digest = source_digest(stage.path())?;
     if !args.no_install {
         let install_home = tempfile::tempdir_in(root)?;
@@ -1324,9 +1410,34 @@ mod tests {
         let mut tampered = archive.clone();
         tampered[0] ^= 1;
         fs::write(&archive_path, tampered).unwrap();
+        assert!(
+            preview(
+                &root,
+                args.package_snapshot.as_deref().unwrap(),
+                args.trust.as_deref().unwrap(),
+                &archive_path,
+                "example.notes",
+                "1.2.3",
+            )
+            .is_err()
+        );
         assert!(add(&root, &args).is_err());
         assert!(!app.path().join("vendor/lenso/npm/example.notes").exists());
         fs::write(&archive_path, &archive).unwrap();
+        let inspected = preview(
+            &root,
+            args.package_snapshot.as_deref().unwrap(),
+            args.trust.as_deref().unwrap(),
+            &archive_path,
+            "example.notes",
+            "1.2.3",
+        )
+        .unwrap();
+        assert_eq!(inspected["archive_bytes"], "digest_verified");
+        assert_eq!(inspected["dependencies"], "not_installed");
+        assert_eq!(inspected["app_selection"], "not_selected");
+        assert_eq!(inspected["activation"], "not_observed");
+        assert!(!app.path().join("vendor/lenso/npm/example.notes").exists());
         add(&root, &args).unwrap();
         add(&root, &args).unwrap();
         let report = lenso_app_authoring::discovery::discover(&root).unwrap();

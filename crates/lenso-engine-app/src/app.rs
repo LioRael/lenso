@@ -168,6 +168,27 @@ pub fn inspect_signed_portable_catalog(
     signed_catalog::inspect(request)
 }
 
+/// Preview one exact signed npm-only release and local archive for a source
+/// App. This shares the CLI adoption verifier, but does not install dependencies,
+/// select the Plugin, approve build-time code, or claim runtime readiness.
+pub fn inspect_signed_npm_adoption(
+    root: impl AsRef<Path>,
+    snapshot: impl AsRef<Path>,
+    trust: impl AsRef<Path>,
+    tgz: impl AsRef<Path>,
+    plugin_id: &str,
+    version: &str,
+) -> anyhow::Result<serde_json::Value> {
+    convention_authoring::npm_catalog::preview(
+        root.as_ref(),
+        snapshot.as_ref(),
+        trust.as_ref(),
+        tgz.as_ref(),
+        plugin_id,
+        version,
+    )
+}
+
 pub use convention_authoring::linked_catalog::DocumentRequest as LinkedDocumentRequest;
 
 /// Return one UTF-8 chunk only after verifying exact signed documentation bytes.
