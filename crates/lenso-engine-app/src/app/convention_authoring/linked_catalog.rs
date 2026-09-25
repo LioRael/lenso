@@ -11,7 +11,7 @@ use lenso_app_authoring::discovery::Candidate;
 use lenso_app_plan::authoring::{PluginContract, PluginDescriptor};
 use lenso_plugin_bundle::{BundleVerificationLimits, PluginManifest, PluginVariantInputV6};
 use lenso_plugin_catalog::{
-    Availability, Trust,
+    Availability, DistributionKind, Trust,
     linked_cargo::{self, LinkedCargoIntegration},
 };
 use serde::{Deserialize, Serialize};
@@ -627,6 +627,148 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         lenso_plugin_catalog::digest(&archive) == release.crate_digest,
         "crate archive digest does not match signed catalog"
     );
+    adopt_archive(
+        root,
+        args,
+        plugin_id,
+        version,
+        &release.package,
+        &release.crate_digest,
+        &archive,
+        v6_lock,
+        app_lock,
+    )
+}
+
+pub(super) fn add_from_release_details(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
+    ensure!(
+        args.linked_snapshot.is_none()
+            && args.bundle.is_none()
+            && args.archive.is_none()
+            && args.origin.is_none()
+            && args.crate_archive.is_some(),
+        "release details Cargo adoption requires --portable-snapshot, --release-details, --trust and --crate only"
+    );
+    let (plugin_id, version) = args
+        .source
+        .split_once('@')
+        .context("release details Cargo source must be an exact PLUGIN_ID@VERSION")?;
+    let app_lock = adoption::lock_app(root)?;
+    let trust =
+        crate::app::read_signed_portable_trust(args.trust.as_deref().context("--trust required")?)?;
+    let portable_previous =
+        crate::plugins::signed_install::checkpoint::read(root, &app_lock, &trust.catalog_id)?;
+    let now = now()?;
+    let portable = lenso_plugin_catalog::verify(
+        &crate::app::read_signed_portable_snapshot(
+            args.portable_snapshot
+                .as_deref()
+                .context("--portable-snapshot required")?,
+        )?,
+        &trust,
+        portable_previous.as_ref(),
+        now,
+    )?;
+    crate::plugins::signed_install::checkpoint::persist(
+        root,
+        &app_lock,
+        portable.checkpoint(),
+        portable_previous.as_ref(),
+    )?;
+    let base = portable.select(plugin_id, version, now)?;
+    let details_previous = crate::plugins::signed_install::checkpoint::read_details(
+        root,
+        &app_lock,
+        &trust.catalog_id,
+    )?;
+    let details = lenso_plugin_catalog::verify_release_details(
+        &crate::app::read_signed_portable_snapshot(
+            args.release_details
+                .as_deref()
+                .context("--release-details required")?,
+        )?,
+        &trust,
+        details_previous.as_ref(),
+        now,
+    )?;
+    crate::plugins::signed_install::checkpoint::persist_details(
+        root,
+        &app_lock,
+        details.checkpoint(),
+        details_previous.as_ref(),
+    )?;
+    let release = details
+        .snapshot()
+        .releases
+        .iter()
+        .find(|candidate| candidate.plugin_id == plugin_id && candidate.version == version)
+        .context("exact release details are not in this catalog")?;
+    release.validate_against(base)?;
+    let target = lenso_app_authoring::native_host_target();
+    let candidates: Vec<_> = release
+        .distributions
+        .iter()
+        .filter(|distribution| {
+            distribution.kind == DistributionKind::CargoPackage
+                && args
+                    .distribution
+                    .as_ref()
+                    .is_none_or(|id| distribution.id == *id)
+                && distribution
+                    .targets
+                    .iter()
+                    .any(|candidate| candidate == target)
+        })
+        .collect();
+    let [distribution] = candidates.as_slice() else {
+        bail!(
+            "select exactly one signed Cargo distribution for Host target {target}; use --distribution when needed"
+        );
+    };
+    ensure!(
+        distribution.registry_url.as_deref() == Some("https://crates.io"),
+        "Cargo distribution registry is unsupported; use an authorized custom Host"
+    );
+    let crate_digest = distribution
+        .integrity
+        .as_deref()
+        .context("Cargo distribution is missing its signed crate digest")?;
+    let mut archive = Vec::new();
+    fs::File::open(args.crate_archive.as_ref().context("--crate required")?)?
+        .take(MAX_CRATE_BYTES + 1)
+        .read_to_end(&mut archive)?;
+    ensure!(
+        !archive.is_empty() && u64::try_from(archive.len())? <= MAX_CRATE_BYTES,
+        "crate archive exceeds size limit"
+    );
+    ensure!(
+        lenso_plugin_catalog::digest(&archive) == crate_digest,
+        "crate archive digest does not match signed release details"
+    );
+    adopt_archive(
+        root,
+        args,
+        plugin_id,
+        version,
+        &distribution.package,
+        crate_digest,
+        &archive,
+        None,
+        app_lock,
+    )
+}
+
+fn adopt_archive(
+    root: &Path,
+    args: &AddArgs,
+    plugin_id: &str,
+    version: &str,
+    package: &str,
+    crate_digest: &str,
+    archive: &[u8],
+    v6_lock: Option<V6BuildInputLock>,
+    app_lock: fs::File,
+) -> anyhow::Result<()> {
     super::preflight_source_adoption(root, plugin_id)?;
     let parent = root.join("vendor/lenso").join(plugin_id);
     super::writable_path(root, Path::new("vendor/lenso"))?;
@@ -640,14 +782,14 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     let stage = tempfile::Builder::new()
         .prefix(".linked-cargo-")
         .tempdir_in(root)?;
-    unpack(&archive, stage.path(), release)?;
+    unpack_archive(archive, stage.path(), package, version, plugin_id)?;
     let report = lenso_app_authoring::discovery::discover(stage.path())?;
     let [candidate] = report.candidates.as_slice() else {
         bail!("linked Cargo archive must contain one Plugin source package");
     };
     ensure!(
-        candidate.plugin_id == release.plugin_id
-            && candidate.release_version == release.version
+        candidate.plugin_id == plugin_id
+            && candidate.release_version == version
             && candidate.format == "cargo"
             && candidate
                 .implementations
@@ -686,9 +828,9 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     };
     let lock = SourceLock {
         schema_version: 1,
-        plugin_id: release.plugin_id.clone(),
-        version: release.version.clone(),
-        crate_digest: release.crate_digest.clone(),
+        plugin_id: plugin_id.to_owned(),
+        version: version.to_owned(),
+        crate_digest: crate_digest.to_owned(),
         source_digest: source_digest(stage.path())?,
         archive_cargo_lock_digest: archive_cargo_lock_digest(stage.path())?,
         workspace_exclude_owned: prepared.workspace_exclude_owned(),
@@ -1369,20 +1511,6 @@ fn rollback_unadopt(
     }
     ensure!(failures.is_empty(), "{}", failures.join("; "));
     Ok(())
-}
-
-fn unpack(
-    bytes: &[u8],
-    stage: &Path,
-    release: &linked_cargo::LinkedCargoRelease,
-) -> anyhow::Result<()> {
-    unpack_archive(
-        bytes,
-        stage,
-        &release.package,
-        &release.version,
-        &release.plugin_id,
-    )
 }
 
 /// Extracts one exact Cargo source archive into an empty authoring directory.

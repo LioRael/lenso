@@ -24,6 +24,12 @@ pub struct AddArgs {
     /// Exact signed Portable snapshot for a source App Bundle adoption.
     #[arg(long, conflicts_with = "linked_snapshot")]
     portable_snapshot: Option<PathBuf>,
+    /// Signed release details for an exact Cargo distribution of a Portable release.
+    #[arg(long, requires = "portable_snapshot")]
+    release_details: Option<PathBuf>,
+    /// Distribution ID when release details contain multiple Cargo packages.
+    #[arg(long, requires = "release_details")]
+    distribution: Option<String>,
     /// Local public trust configuration for the signed catalog.
     #[arg(long)]
     trust: Option<PathBuf>,
@@ -307,7 +313,13 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
         || args.content_destination.is_some()
         || args.content_preview
     {
+        if args.release_details.is_some() {
+            bail!("--release-details cannot be combined with source-content adoption");
+        }
         return linked_catalog::content::add(&root, &args);
+    }
+    if args.release_details.is_some() {
+        return linked_catalog::add_from_release_details(&root, &args);
     }
     if args.portable_snapshot.is_some() || args.archive.is_some() || args.origin.is_some() {
         if args.linked_snapshot.is_some() || args.crate_archive.is_some() || args.bundle.is_some() {
@@ -574,6 +586,8 @@ pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyho
         no_install: !install_dependencies,
         linked_snapshot: None,
         portable_snapshot: None,
+        release_details: None,
+        distribution: None,
         trust: None,
         crate_archive: None,
         bundle: None,

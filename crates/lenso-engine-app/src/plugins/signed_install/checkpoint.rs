@@ -3,11 +3,12 @@ use std::{fs, io::Read as _, path::Path};
 #[cfg(not(unix))]
 use anyhow::bail;
 use anyhow::{Context as _, ensure};
-use lenso_plugin_catalog::Checkpoint;
+use lenso_plugin_catalog::{Checkpoint, ReleaseDetailsCheckpoint};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 const MAX_CHECKPOINT_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_DETAILS_CHECKPOINT_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -21,6 +22,20 @@ fn file_name(catalog_id: &str) -> String {
         "portable-{}.json",
         hex::encode(Sha256::digest(catalog_id.as_bytes()))
     )
+}
+
+fn details_file_name(catalog_id: &str) -> String {
+    format!(
+        "release-details-{}.json",
+        hex::encode(Sha256::digest(catalog_id.as_bytes()))
+    )
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct StoredDetailsCheckpoint {
+    schema_version: u32,
+    checkpoint: ReleaseDetailsCheckpoint,
 }
 
 fn decode(bytes: &[u8], catalog_id: &str) -> anyhow::Result<Checkpoint> {
@@ -99,6 +114,116 @@ fn read_in_dir(dir: &fs::File, name: &str, catalog_id: &str) -> anyhow::Result<O
 }
 
 #[cfg(unix)]
+fn read_details_in_dir(
+    dir: &fs::File,
+    name: &str,
+    catalog_id: &str,
+) -> anyhow::Result<Option<ReleaseDetailsCheckpoint>> {
+    use rustix::{
+        fs::{Mode, OFlags, openat},
+        io::Errno,
+    };
+    use std::os::unix::fs::MetadataExt as _;
+
+    let descriptor = match openat(
+        dir,
+        name,
+        OFlags::RDONLY | OFlags::NONBLOCK | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(descriptor) => descriptor,
+        Err(Errno::NOENT) => return Ok(None),
+        Err(error) => return Err(error).context("open non-symlink release details checkpoint"),
+    };
+    let mut file = fs::File::from(descriptor);
+    let metadata = file.metadata()?;
+    ensure!(
+        metadata.is_file() && metadata.nlink() == 1,
+        "release details checkpoint must be a single-link regular file"
+    );
+    let mut bytes = Vec::new();
+    file.by_ref()
+        .take(MAX_DETAILS_CHECKPOINT_BYTES + 1)
+        .read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() as u64 <= MAX_DETAILS_CHECKPOINT_BYTES,
+        "release details checkpoint exceeds size limit"
+    );
+    let stored: StoredDetailsCheckpoint = serde_json::from_slice(&bytes)
+        .context("release details checkpoint is invalid; refusing to forget accepted history")?;
+    ensure!(
+        stored.schema_version == 1 && stored.checkpoint.catalog_id == catalog_id,
+        "release details checkpoint schema or catalog differs; refusing to forget accepted history"
+    );
+    Ok(Some(stored.checkpoint))
+}
+
+#[cfg(unix)]
+pub(crate) fn read_details(
+    _root: &Path,
+    root_lock: &fs::File,
+    catalog_id: &str,
+) -> anyhow::Result<Option<ReleaseDetailsCheckpoint>> {
+    let Some(dir) = state_dir(root_lock, false)? else {
+        return Ok(None);
+    };
+    read_details_in_dir(&dir, &details_file_name(catalog_id), catalog_id)
+}
+
+#[cfg(unix)]
+pub(crate) fn persist_details(
+    _root: &Path,
+    root_lock: &fs::File,
+    checkpoint: &ReleaseDetailsCheckpoint,
+    previous: Option<&ReleaseDetailsCheckpoint>,
+) -> anyhow::Result<()> {
+    use rustix::fs::{AtFlags, Mode, OFlags, openat, renameat, unlinkat};
+    use std::io::Write as _;
+
+    let dir = state_dir(root_lock, true)?
+        .context("App signed release details checkpoint directory is missing")?;
+    let name = details_file_name(&checkpoint.catalog_id);
+    ensure!(
+        read_details_in_dir(&dir, &name, &checkpoint.catalog_id)?.as_ref() == previous,
+        "release details checkpoint changed during verification"
+    );
+    if previous == Some(checkpoint) {
+        return Ok(());
+    }
+    let bytes = serde_json::to_vec(&StoredDetailsCheckpoint {
+        schema_version: 1,
+        checkpoint: checkpoint.clone(),
+    })?;
+    ensure!(
+        bytes.len() as u64 <= MAX_DETAILS_CHECKPOINT_BYTES,
+        "release details checkpoint exceeds size limit"
+    );
+    let temporary = format!(".{name}.{}.tmp", uuid::Uuid::now_v7());
+    let descriptor = openat(
+        &dir,
+        temporary.as_str(),
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::RUSR | Mode::WUSR,
+    )?;
+    let mut file = fs::File::from(descriptor);
+    let result = (|| {
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        ensure!(
+            read_details_in_dir(&dir, &name, &checkpoint.catalog_id)?.as_ref() == previous,
+            "release details checkpoint changed during publication"
+        );
+        renameat(&dir, temporary.as_str(), &dir, name.as_str())?;
+        dir.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = unlinkat(&dir, temporary.as_str(), AtFlags::empty());
+    }
+    result
+}
+
+#[cfg(unix)]
 pub(crate) fn read(
     _root: &Path,
     root_lock: &fs::File,
@@ -161,6 +286,25 @@ pub(crate) fn persist(
         let _ = unlinkat(&dir, temporary.as_str(), AtFlags::empty());
     }
     result
+}
+
+#[cfg(not(unix))]
+pub(crate) fn read_details(
+    _root: &Path,
+    _root_lock: &fs::File,
+    _catalog_id: &str,
+) -> anyhow::Result<Option<ReleaseDetailsCheckpoint>> {
+    bail!("durable signed release details checkpoints are unsupported on this platform")
+}
+
+#[cfg(not(unix))]
+pub(crate) fn persist_details(
+    _root: &Path,
+    _root_lock: &fs::File,
+    _checkpoint: &ReleaseDetailsCheckpoint,
+    _previous: Option<&ReleaseDetailsCheckpoint>,
+) -> anyhow::Result<()> {
+    bail!("durable signed release details checkpoints are unsupported on this platform")
 }
 
 #[cfg(not(unix))]

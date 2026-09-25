@@ -135,6 +135,18 @@ entries require a product Host adapter. This local flow does not fetch or prove
 crates.io provenance, sandbox Cargo build scripts, or guarantee that the current
 published dependency cohort can compile the generated Host. Review source and
 build under an isolated account/container when the source is not trusted.
+When the same listed release has both Portable and Cargo distributions, use
+`lenso app add PLUGIN_ID@VERSION --portable-snapshot portable.json
+--release-details release-details.json --trust trust.json --crate package.crate
+--root my-app`. The two snapshots must verify under the same catalog trust;
+the details must bind the exact immutable Portable release and retain its
+artifact. The Cargo distribution must name the current Host target, crates.io,
+and the exact package/version and `.crate` digest. If more than one Cargo
+distribution matches, select its signed ID with `--distribution ID`. This
+selects linked source only; it does not install the Portable artifact. The
+Portable and release-details channels keep separate durable rollback
+checkpoints. This path does not establish registry provenance beyond the
+signed digest and the locally supplied `.crate` bytes.
 The generated `plugins/<plugin-id>/default.toml` only selects the Instance;
 Contracts with required configuration or Capability providers need explicit
 App-owned, non-secret configuration in that file before `app build` can succeed.
