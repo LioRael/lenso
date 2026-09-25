@@ -2862,7 +2862,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-web-host"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "bytes",
  "futures",
@@ -2905,7 +2905,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-web-ingress-plugin"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "axum",
  "base64 0.22.1",

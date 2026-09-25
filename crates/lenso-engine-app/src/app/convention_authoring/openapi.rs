@@ -57,7 +57,7 @@ plugin-id = "lenso.openapi"
 root-slot = "http-endpoints"
 
 [dependencies]
-lenso = "=0.5.26"
+lenso = "=0.5.27"
 lenso-openapi-plugin = "=0.2.4"
 
 [workspace]
@@ -162,7 +162,7 @@ mod tests {
                 .contains("support/lenso-openapi")
         );
         let manifest = fs::read_to_string(candidate.project.join("Cargo.toml")).unwrap();
-        assert!(manifest.contains("lenso = \"=0.5.26\""));
+        assert!(manifest.contains("lenso = \"=0.5.27\""));
         assert!(manifest.contains("lenso-openapi-plugin = \"=0.2.4\""));
         assert!(!manifest.contains("git ="));
         assert!(!manifest.contains("[patch.crates-io]"));
