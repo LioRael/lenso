@@ -33,6 +33,17 @@ Cargo/npm packages, target filters, and digest-bound Markdown documentation
 without changing the v1 `Snapshot` or `Release` API. Its distinct signature
 context and checkpoint prevent replay as a base catalog. Details remain data;
 the Host still owns compatibility, permission, trust and installation admission.
+Release details still require their exact Portable base; they cannot represent
+an npm-only release.
+
+`package` is a separate signed package-only base channel. Its snapshot can
+publish an npm Plugin release without a fictitious Portable artifact, binding
+the logical Plugin identity to exact npm package names, versions, registry
+references, and SHA-256 archive digests. It uses a distinct signature context
+and checkpoint; old Portable, release-details, and linked Cargo payloads are
+unchanged. Verification selects metadata only. Market publication must enforce
+identity uniqueness across channels, and an App client must separately verify
+archive bytes and use its package manager's lock with lifecycle scripts disabled.
 
 `linked_cargo` is a separate signed source-only channel. It describes an exact
 Cargo crate archive checksum, target list and integration kind for a Host-linked Plugin, with

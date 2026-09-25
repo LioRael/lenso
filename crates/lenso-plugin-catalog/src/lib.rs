@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub mod identity;
 pub mod linked_cargo;
+pub mod package;
 pub mod release_content;
 
 #[cfg(feature = "bundle-verification")]
