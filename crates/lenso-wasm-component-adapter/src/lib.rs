@@ -19,13 +19,14 @@ use lenso_kernel::{
     RuntimeFailure,
 };
 use lenso_runtime_codec::{
-    ArtifactCatalog, JSON_HOST_IMPORTS_ABI_V2, JsonCapabilityCodec, JsonHostImports,
-    JsonInvocationOutcome, JsonRequestTransport, JsonStreamFrame, JsonStreamItem,
-    JsonStreamOpenFuture, JsonStreamSessionTransport, JsonStreamTransport, codecs_for_instance,
-    codecs_for_requirements, json_host_invocation_envelope, json_request_endpoints,
-    json_runtime_failure, json_stream_endpoints, prepare_request_app,
-    validate_json_plugin_descriptor,
+    ArtifactCatalog, JSON_HOST_IMPORTS_ABI_V2, JsonCapabilityCodec, JsonCapabilityDescriptor,
+    JsonHostImports, JsonInvocationOutcome, JsonPluginDescriptor, JsonRequestTransport,
+    JsonRequiredCapabilityDescriptor, JsonStreamFrame, JsonStreamItem, JsonStreamOpenFuture,
+    JsonStreamSessionTransport, JsonStreamTransport, codecs_for_instance, codecs_for_requirements,
+    json_host_invocation_envelope, json_request_endpoints, json_runtime_failure,
+    json_stream_endpoints, prepare_request_app, validate_json_plugin_descriptor,
 };
+use serde::Deserialize;
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store};
 
@@ -139,6 +140,7 @@ pub struct WasmComponentAdapter {
     instance_limits: BTreeMap<String, WasmComponentLimits>,
     duplicate_instance_limits: BTreeSet<String>,
     exact_instance_limits_required: bool,
+    require_v2_descriptor_digests: BTreeSet<String>,
 }
 
 impl WasmComponentAdapter {
@@ -152,6 +154,7 @@ impl WasmComponentAdapter {
             instance_limits: BTreeMap::new(),
             duplicate_instance_limits: BTreeSet::new(),
             exact_instance_limits_required: false,
+            require_v2_descriptor_digests: BTreeSet::new(),
         }
     }
 
@@ -210,6 +213,14 @@ impl WasmComponentAdapter {
     #[must_use]
     pub fn require_exact_instance_limits(mut self) -> Self {
         self.exact_instance_limits_required = true;
+        self
+    }
+
+    /// Requires one V2 Guest Capability to declare the exact registered codec digest.
+    #[must_use]
+    pub fn require_v2_descriptor_digest_for(mut self, capability_id: impl Into<String>) -> Self {
+        self.require_v2_descriptor_digests
+            .insert(capability_id.into());
         self
     }
 
@@ -272,11 +283,22 @@ impl WasmComponentAdapter {
             return plugin_failure("Wasm Component exceeds max_component_bytes");
         }
         let codecs = codecs_for_instance(instance, &self.codecs)?;
+        let codec_digests = codecs
+            .iter()
+            .map(|codec| {
+                (
+                    codec.capability_id().to_owned(),
+                    codec.descriptor_digest().to_owned(),
+                )
+            })
+            .collect();
         let import_codecs = codecs_for_requirements(instance, &self.codecs)?;
         let generation = Rc::new(WasmGeneration::start(
             bytes,
             instance.clone(),
             import_codecs,
+            codec_digests,
+            self.require_v2_descriptor_digests.clone(),
             limits,
         )?);
         let endpoints = json_request_endpoints(generation.clone(), codecs.clone());
@@ -488,6 +510,8 @@ impl WasmGeneration {
         bytes: Vec<u8>,
         instance: PluginInstancePlan,
         import_codecs: Vec<Rc<dyn JsonCapabilityCodec>>,
+        codec_digests: BTreeMap<String, String>,
+        require_v2_descriptor_digests: BTreeSet<String>,
         limits: WasmComponentLimits,
     ) -> Result<Self, RuntimeFailure> {
         let mut config = Config::new();
@@ -518,6 +542,8 @@ impl WasmGeneration {
                     component: &component,
                     linker: &linker,
                     instance: &instance,
+                    codec_digests: &codec_digests,
+                    require_v2_descriptor_digests: &require_v2_descriptor_digests,
                     limits: &limits,
                 };
                 let result = run_worker(inputs, &receiver, &worker_failed, &ready_tx);
@@ -1168,7 +1194,102 @@ struct WasmWorkerInputs<'a> {
     component: &'a Component,
     linker: &'a Linker<HostState>,
     instance: &'a PluginInstancePlan,
+    codec_digests: &'a BTreeMap<String, String>,
+    require_v2_descriptor_digests: &'a BTreeSet<String>,
     limits: &'a WasmComponentLimits,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WasmGuestDescriptor {
+    abi: String,
+    capabilities: Vec<WasmGuestCapability>,
+    #[serde(default)]
+    required_capabilities: Vec<JsonRequiredCapabilityDescriptor>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WasmGuestCapability {
+    capability_id: String,
+    descriptor_version: String,
+    #[serde(default, deserialize_with = "deserialize_present_digest")]
+    descriptor_digest: Option<String>,
+    request_operations: Vec<String>,
+    #[serde(default)]
+    stream_operations: Vec<String>,
+}
+
+fn deserialize_present_digest<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(Some)
+}
+
+fn validate_wasm_plugin_descriptor(
+    instance: &PluginInstancePlan,
+    encoded: &str,
+    codec_digests: &BTreeMap<String, String>,
+    require_v2_descriptor_digests: &BTreeSet<String>,
+) -> Result<(), RuntimeFailure> {
+    let guest: WasmGuestDescriptor =
+        serde_json::from_str(encoded).map_err(|_| RuntimeFailure::ProtocolViolation {
+            capability: "lenso.json-request@1",
+        })?;
+    let canonical = JsonPluginDescriptor {
+        abi: guest.abi,
+        capabilities: guest
+            .capabilities
+            .iter()
+            .map(|capability| JsonCapabilityDescriptor {
+                capability_id: capability.capability_id.clone(),
+                descriptor_version: capability.descriptor_version.clone(),
+                request_operations: capability.request_operations.clone(),
+                stream_operations: capability.stream_operations.clone(),
+            })
+            .collect(),
+        required_capabilities: guest.required_capabilities,
+    };
+    let normalized =
+        serde_json::to_string(&canonical).map_err(|_| RuntimeFailure::ProtocolViolation {
+            capability: "lenso.json-request@1",
+        })?;
+    validate_json_plugin_descriptor(instance, &normalized)?;
+    for capability in guest.capabilities {
+        match capability.descriptor_digest {
+            Some(digest)
+                if canonical_sha256_digest(&digest)
+                    && codec_digests
+                        .get(&capability.capability_id)
+                        .is_some_and(|registered| registered == &digest) => {}
+            Some(_) => {
+                return invalid(format!(
+                    "Wasm Guest Descriptor digest differs from registered codec for Capability `{}`",
+                    capability.capability_id
+                ));
+            }
+            None if instance.authoring_version() == 2
+                && require_v2_descriptor_digests.contains(&capability.capability_id) =>
+            {
+                return invalid(format!(
+                    "Wasm Guest Descriptor digest is missing for V2 Capability `{}`",
+                    capability.capability_id
+                ));
+            }
+            None => {}
+        }
+    }
+    Ok(())
+}
+
+fn canonical_sha256_digest(digest: &str) -> bool {
+    digest.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    })
 }
 
 enum WasmBindings {
@@ -1189,6 +1310,8 @@ fn run_worker(
         component,
         linker,
         instance,
+        codec_digests,
+        require_v2_descriptor_digests,
         limits,
     } = inputs;
     let store_limits = GuestLinearMemoryBudget::new(
@@ -1249,8 +1372,13 @@ fn run_worker(
     if descriptor.len() > limits.max_result_bytes {
         return Err("Wasm Component descriptor exceeds max_result_bytes".to_owned());
     }
-    validate_json_plugin_descriptor(instance, &descriptor)
-        .map_err(|error| bounded(format!("Wasm Component descriptor mismatch: {error:?}")))?;
+    validate_wasm_plugin_descriptor(
+        instance,
+        &descriptor,
+        codec_digests,
+        require_v2_descriptor_digests,
+    )
+    .map_err(|error| bounded(format!("Wasm Component descriptor mismatch: {error:?}")))?;
     if startup_turn.is_expired() {
         let _ = deadline_tx.send(DeadlineCommand::Shutdown);
         let _ = deadline_worker.join();
@@ -1591,7 +1719,122 @@ fn bounded(mut detail: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::bounded;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use lenso_app_plan::{CapabilityEndpointPlan, ExecutionClassId, PluginInstancePlan};
+    use lenso_kernel::RuntimeFailure;
+
+    use super::{EXECUTION_CLASS, bounded, validate_wasm_plugin_descriptor};
+
+    const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn v2_instance() -> PluginInstancePlan {
+        PluginInstancePlan::new("plugin", "test.component")
+            .with_entrypoint("plugin")
+            .with_execution_class(ExecutionClassId::new(EXECUTION_CLASS))
+            .with_authoring(2, EXECUTION_CLASS)
+            .with_capability(CapabilityEndpointPlan::new(
+                "test.echo@1",
+                "1.0.0",
+                ["echo"],
+            ))
+    }
+
+    fn codec_digests() -> BTreeMap<String, String> {
+        BTreeMap::from([("test.echo@1".to_owned(), DIGEST.to_owned())])
+    }
+
+    fn required_digests() -> BTreeSet<String> {
+        BTreeSet::from(["test.echo@1".to_owned()])
+    }
+
+    #[test]
+    fn v2_guest_descriptor_accepts_only_the_registered_codec_digest() {
+        let encoded = format!(
+            r#"{{"abi":"lenso.json-request@1","capabilities":[{{"capability_id":"test.echo@1","descriptor_version":"1.0.0","descriptor_digest":"{DIGEST}","request_operations":["echo"]}}]}}"#
+        );
+        assert!(
+            validate_wasm_plugin_descriptor(
+                &v2_instance(),
+                &encoded,
+                &codec_digests(),
+                &required_digests()
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn v2_guest_descriptor_rejects_wrong_or_missing_required_digest() {
+        let wrong = r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","descriptor_digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","request_operations":["echo"]}]}"#;
+        let missing = r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","request_operations":["echo"]}]}"#;
+        let null = r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","descriptor_digest":null,"request_operations":["echo"]}]}"#;
+
+        for encoded in [wrong, missing, null] {
+            assert!(
+                validate_wasm_plugin_descriptor(
+                    &v2_instance(),
+                    encoded,
+                    &codec_digests(),
+                    &required_digests()
+                )
+                .is_err(),
+                "unexpectedly accepted {encoded}"
+            );
+        }
+        assert!(
+            validate_wasm_plugin_descriptor(
+                &v2_instance().with_authoring(1, EXECUTION_CLASS),
+                missing,
+                &codec_digests(),
+                &required_digests()
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn wasm_guest_descriptor_rejects_unknown_and_duplicate_fields() {
+        let invalid = [
+            r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","request_operations":["echo"],"unknown":1}]}"#,
+            r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","request_operations":["echo"]}],"unknown":1}"#,
+            r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","descriptor_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","descriptor_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","request_operations":["echo"]}]}"#,
+            r#"{"abi":"lenso.json-request@1","abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","request_operations":["echo"]}]}"#,
+        ];
+
+        for encoded in invalid {
+            assert!(matches!(
+                validate_wasm_plugin_descriptor(
+                    &v2_instance(),
+                    encoded,
+                    &codec_digests(),
+                    &required_digests()
+                ),
+                Err(RuntimeFailure::ProtocolViolation { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn wasm_guest_descriptor_preserves_abi_and_operation_admission() {
+        let invalid = [
+            r#"{"abi":"lenso.json-interactions@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","request_operations":["echo"]}]}"#,
+            r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.echo@1","descriptor_version":"1.0.0","request_operations":["other"]}]}"#,
+            r#"{"abi":"lenso.json-request@1","capabilities":[{"capability_id":"test.other@1","descriptor_version":"1.0.0","request_operations":["echo"]}]}"#,
+        ];
+
+        for encoded in invalid {
+            assert!(
+                validate_wasm_plugin_descriptor(
+                    &v2_instance(),
+                    encoded,
+                    &codec_digests(),
+                    &required_digests()
+                )
+                .is_err()
+            );
+        }
+    }
 
     #[test]
     fn bounded_failure_preserves_utf8() {

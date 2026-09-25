@@ -2815,6 +2815,7 @@ dependencies = [
  "lenso-plugin-bundle",
  "lenso-runtime-codec",
  "lenso-runtime-conformance",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",

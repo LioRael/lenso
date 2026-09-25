@@ -833,7 +833,7 @@ fn dependency_free_authoring_v2_uses_the_same_wasm_request_profile() {
     let artifact = ArtifactHandle::open(file.path(), &digest, component.len() as u64).unwrap();
     let adapter = WasmComponentAdapter::new(
         ArtifactCatalog::new()
-            .with_artifact("plugin", artifact)
+            .with_artifact("plugin", artifact.clone())
             .unwrap(),
     )
     .with_codec(EchoCodec);
@@ -851,6 +851,19 @@ fn dependency_free_authoring_v2_uses_the_same_wasm_request_profile() {
         context,
     ));
     assert!(matches!(response, Ok(Ok(_))));
+    let digest_required = WasmComponentAdapter::new(
+        ArtifactCatalog::new()
+            .with_artifact("plugin", artifact)
+            .unwrap(),
+    )
+    .with_codec(EchoCodec)
+    .require_v2_descriptor_digest_for("test.echo@1");
+    assert!(digest_required.recreate(&modern, "plugin").is_err());
+    let legacy = ResolvedAppPlan::new(
+        vec![instance.clone().with_authoring(1, EXECUTION_CLASS)],
+        Vec::new(),
+    );
+    assert!(digest_required.recreate(&legacy, "plugin").is_ok());
     let dependent = instance.with_requirement(
         CapabilityRequirementPlan::one("test.store@1", "1.0.0").with_requirement_id("store"),
     );
