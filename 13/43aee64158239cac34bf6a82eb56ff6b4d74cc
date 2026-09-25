@@ -1,0 +1,32 @@
+crates/lenso-engine-app/src/app/bootstrap_configuration_source.rs
+  s_7d146975368699::t_cce1ca8052889a 23-24,64-65
+  s_7d146975368699::t_9b8fca0f9da195 66
+crates/lenso-process-adapter/src/v2.rs
+  s_7d146975368699::t_cce1ca8052889a 11,795,1329-1336,1338-1341,1346-1368,1373-1375
+  s_7d146975368699::t_9a409d16530366 1337,1342-1345,1369-1372
+  s_7d146975368699::t_8c1d303f171350 1376-1379
+crates/lenso-engine-app/src/app/configuration_source.rs
+  s_7d146975368699::t_525c66154788a6 1057-1067,1071
+  s_7d146975368699::t_fca658cb1b1ff4 1068-1070
+crates/lenso-process-adapter/src/bin/test_fixture_v2.rs
+  s_7d146975368699::t_525c66154788a6 1-7,22,59-70,197-207
+crates/lenso-process-adapter/tests/process_v2_host.rs
+  s_7d146975368699::t_525c66154788a6 378-414
+  s_7d146975368699::t_5a7502d2693684 377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1343aee64158239cac34bf6a82eb56ff6b4d74cc",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
