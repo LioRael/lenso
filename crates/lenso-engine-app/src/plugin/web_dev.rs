@@ -388,7 +388,7 @@ fn registry_framework_version(name: &str) -> Option<&'static str> {
         "lenso" => "0.5.26",
         "lenso-app-plan" => "0.4.6",
         "lenso-kernel" => "0.3.11",
-        "lenso-native-adapter" => "0.3.16",
+        "lenso-native-adapter" => "0.3.17",
         "lenso-runner" => "0.2.19",
         "lenso-contract-runtime" => "0.2.0",
         "lenso-capability-http-endpoint" => "0.3.4",
@@ -425,7 +425,7 @@ fn host_manifest(
         FrameworkSource::Registry => (
             "\"=0.4.6\"".to_owned(),
             "\"=0.3.11\"".to_owned(),
-            "\"=0.3.16\"".to_owned(),
+            "\"=0.3.17\"".to_owned(),
             "\"=0.2.3\"".to_owned(),
             String::new(),
         ),
@@ -452,7 +452,7 @@ fn host_manifest(
             (
                 dependency("0.4.6"),
                 dependency("0.3.11"),
-                dependency("0.3.16"),
+                dependency("0.3.17"),
                 dependency("0.2.3"),
                 patches,
             )
@@ -572,6 +572,7 @@ mod tests {
             ("lenso-web-host", "=0.2.3"),
             ("lenso-app-plan", "=0.4.6"),
             ("lenso-kernel", "=0.3.11"),
+            ("lenso-native-adapter", "=0.3.17"),
         ] {
             assert_eq!(parsed["dependencies"][name].as_str(), Some(version));
         }

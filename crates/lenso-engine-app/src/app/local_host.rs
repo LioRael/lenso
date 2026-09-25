@@ -133,7 +133,7 @@ pub(super) fn generate(
         ("tempfile", "3"),
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.11"),
-        ("lenso-native-adapter", "=0.3.16"),
+        ("lenso-native-adapter", "=0.3.17"),
         ("lenso-runner", "=0.2.19"),
     ] {
         dependencies.insert(name.into(), json!(version));
@@ -345,7 +345,7 @@ pub(super) fn generate(
         "0.4" => [
             ("lenso-bun-adapter", "=0.1.15"),
             ("lenso-process-adapter", "=0.3.13"),
-            ("lenso-wasm-component-adapter", "=0.2.16"),
+            ("lenso-wasm-component-adapter", "=0.2.17"),
             ("lenso-runtime-codec", "=0.4.3"),
         ],
         other => bail!("unsupported typed Codec cohort {other}; use a custom Host"),
