@@ -215,3 +215,38 @@ fn package_document_history_does_not_conflate_separator_characters() {
     .unwrap();
     assert_eq!(second.checkpoint().document_identities.len(), 2);
 }
+
+#[test]
+fn valid_long_document_identity_can_be_signed_and_verified() {
+    let (key, trust) = signing();
+    let mut candidate = release();
+    candidate.plugin_id = [
+        "a".repeat(63),
+        "a".repeat(63),
+        "a".repeat(63),
+        "a".repeat(61),
+    ]
+    .join(".");
+    candidate.version = format!("1.0.0+{}", "a".repeat(122));
+    candidate.documentation.push(Documentation {
+        id: "\"".repeat(128),
+        revision: "\"".repeat(128),
+        language: "en".into(),
+        topic: "quickstart".into(),
+        target: None,
+        url: "https://example.test/docs/long.md".into(),
+        digest: digest(b"docs"),
+        size: 4,
+        media_type: "text/markdown".into(),
+    });
+    let signed = sign(&snapshot(1, candidate), "key", &key).unwrap();
+    let verified = verify(&signed, &trust, None, 150).unwrap();
+    let identity = verified
+        .checkpoint()
+        .document_identities
+        .keys()
+        .next()
+        .unwrap();
+    assert!(identity.len() > 640);
+    assert!(identity.len() <= 1024);
+}

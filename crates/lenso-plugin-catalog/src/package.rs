@@ -20,6 +20,8 @@ const SCHEMA: &str = "lenso.marketplace.package-snapshot.v1";
 const SIGNATURE_CONTEXT: &[u8] = b"lenso.marketplace.package-snapshot.v1\0";
 const MAX_HISTORY: usize = 16_384;
 const MAX_HISTORY_BYTES: usize = 8 * 1024 * 1024;
+// Four bounded fields plus JSON tuple punctuation and possible string escapes.
+const MAX_DOCUMENT_HISTORY_IDENTITY_BYTES: usize = 1024;
 
 /// One Plugin release with exact npm distributions but no Portable artifact.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -347,7 +349,7 @@ fn validate_checkpoint(checkpoint: &PackageCheckpoint) -> Result<()> {
         .chain(checkpoint.document_identities.iter())
     {
         ensure!(
-            identity.len() <= 640,
+            identity.len() <= MAX_DOCUMENT_HISTORY_IDENTITY_BYTES,
             "package history identity exceeds limit"
         );
         valid_digest(digest)?;
