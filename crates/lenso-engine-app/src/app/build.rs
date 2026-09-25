@@ -369,6 +369,7 @@ fn materialize(declaration: Declaration, args: &HostBuildArgs) -> anyhow::Result
         serde_json::to_vec_pretty(&inventory)?,
     )?;
     let proposed = build.propose(&lenso_app_plan::authoring::PluginRootSnapshot::default())?;
+    super::target_closure::admit(&proposed, &inventory)?;
     if !proposed.dependency_choices().is_empty() {
         fs::create_dir(stage.path().join("plugins"))?;
         fs::write(stage.path().join(".lenso/plugin-root-authoring.lock"), [])?;

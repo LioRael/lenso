@@ -39,6 +39,7 @@ mod prepare;
 mod preset;
 pub use preset::AppProject;
 mod signed_catalog;
+mod target_closure;
 pub use signed_catalog::{PortableCatalogPage, PortableCatalogQuery};
 pub(crate) use signed_catalog::{
     read_snapshot as read_signed_portable_snapshot, read_trust as read_signed_portable_trust,
@@ -99,6 +100,7 @@ pub fn inspect_app_explanation(root: impl AsRef<Path>) -> anyhow::Result<serde_j
 /// Validate one built App with the same resolver as `lenso app check`.
 pub fn inspect_app_check(root: impl AsRef<Path>) -> anyhow::Result<AppCheckReport> {
     let resolved = load_resolved_app(root.as_ref())?;
+    target_closure::check_generated_host(root.as_ref(), &resolved)?;
     Ok(AppCheckReport {
         schema_version: 1,
         kind: "lenso.app-check",

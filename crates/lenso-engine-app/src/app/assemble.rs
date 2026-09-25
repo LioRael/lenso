@@ -443,6 +443,7 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     }
     let resolved = lenso_app_authoring::load_resolved_app(stage.path())
         .context("resolve local Host with Plugin Root intent")?;
+    super::target_closure::admit(&resolved, &inventory)?;
     for (path, digest) in &convention_inputs {
         if *digest != super::local_host::input_digest(path)? {
             bail!("convention source changed during build; retry");

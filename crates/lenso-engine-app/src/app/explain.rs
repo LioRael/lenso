@@ -77,6 +77,7 @@ pub(super) fn report(root: &Path) -> anyhow::Result<Value> {
             .with_context(|| format!("read Host bundle inventory {}", inventory_path.display()))?,
     )
     .context("invalid Host bundle inventory")?;
+    super::target_closure::admit(state.resolved(), &inventory)?;
     let mut bundles = inventory
         .into_iter()
         .map(|value| {

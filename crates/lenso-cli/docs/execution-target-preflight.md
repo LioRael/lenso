@@ -58,6 +58,15 @@ latter as a `missing_target_capabilities` rejection with a `workers`
 requirement. It never upgrades a local Bun Host into a Workers target merely
 because the alternate artifact exists.
 
+Generated Hosts also check the resolved dependency closure. A consumer's
+Bundle cannot know the Operation kinds of a Capability it requires until the
+provider is bound. Build, check, and explain compare each selected provider's
+complete Operation table with the consumer's admitted target profile. A
+Request-only Bun or Process consumer bound to a Native-linked Stream or Event
+provider is rejected with the exact Instance dependency path and missing
+interaction; it is not rerouted to another provider or runtime. A requirement
+names the whole Capability Descriptor, not a subset of its Operations.
+
 The capability vocabulary and profile validation remain owned by
 `lenso-process-protocol`; Runtime/Adapter packages generate the concrete
 profiles. Application Capabilities remain Plan-bound. A private Driver resource
