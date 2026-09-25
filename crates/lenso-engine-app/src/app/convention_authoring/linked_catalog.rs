@@ -1992,10 +1992,16 @@ mod tests {
         let archive = builder.into_inner().unwrap().finish().unwrap();
         let stage = tempfile::tempdir().unwrap();
         assert!(
-            unpack(&archive, stage.path(), &release)
-                .unwrap_err()
-                .to_string()
-                .contains("invalid path")
+            unpack_archive(
+                &archive,
+                stage.path(),
+                &release.package,
+                &release.version,
+                &release.plugin_id,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("invalid path")
         );
         assert!(!stage.path().join("escape.rs").exists());
     }
@@ -2057,7 +2063,14 @@ mod tests {
         }
         let archive = builder.into_inner().unwrap().finish().unwrap();
         let stage = tempfile::tempdir().unwrap();
-        unpack(&archive, stage.path(), &release).unwrap();
+        unpack_archive(
+            &archive,
+            stage.path(),
+            &release.package,
+            &release.version,
+            &release.plugin_id,
+        )
+        .unwrap();
         assert_eq!(
             fs::read(stage.path().join("Cargo.lock")).unwrap(),
             b"# published lock\n"
