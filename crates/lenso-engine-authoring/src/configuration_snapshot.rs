@@ -199,7 +199,7 @@ impl VersionedPluginConfigurationSnapshot {
     /// identity or grant themselves writable fields. Pass the result through
     /// `propose_versioned_plugin_configuration_snapshot` with Host-issued
     /// authorization before publishing any Plugin Root change.
-    pub fn from_host_authorized_json(
+    pub fn from_host_bound_json(
         source: PluginConfigurationAuthoritySource,
         bytes: &[u8],
     ) -> anyhow::Result<Self> {
@@ -349,7 +349,7 @@ impl FilePluginConfigurationSnapshotSource {
             u64::try_from(bytes.len()).unwrap_or(u64::MAX) <= MAX_SNAPSHOT_BYTES,
             "configuration snapshot exceeds {MAX_SNAPSHOT_BYTES} bytes"
         );
-        VersionedPluginConfigurationSnapshot::from_host_authorized_json(self.source.clone(), &bytes)
+        VersionedPluginConfigurationSnapshot::from_host_bound_json(self.source.clone(), &bytes)
     }
 }
 
@@ -515,7 +515,7 @@ impl HttpsPluginConfigurationSnapshotSource {
             "configuration snapshot response exceeds {MAX_SNAPSHOT_BYTES} bytes"
         );
         Ok(PluginConfigurationSnapshotPoll::Updated {
-            snapshot: VersionedPluginConfigurationSnapshot::from_host_authorized_json(
+            snapshot: VersionedPluginConfigurationSnapshot::from_host_bound_json(
                 self.source.clone(),
                 &bytes,
             )?,
@@ -1100,7 +1100,7 @@ mod tests {
         }))
         .unwrap();
         let snapshot =
-            VersionedPluginConfigurationSnapshot::from_host_authorized_json(source.clone(), &bytes)
+            VersionedPluginConfigurationSnapshot::from_host_bound_json(source.clone(), &bytes)
                 .unwrap();
         assert_eq!(snapshot.source(), &source);
         assert_eq!(snapshot.revision(), 7);
@@ -1144,14 +1144,14 @@ mod tests {
         }))
         .unwrap();
         assert!(
-            VersionedPluginConfigurationSnapshot::from_host_authorized_json(
+            VersionedPluginConfigurationSnapshot::from_host_bound_json(
                 source.clone(),
                 &self_named,
             )
             .is_err()
         );
         assert!(
-            VersionedPluginConfigurationSnapshot::from_host_authorized_json(
+            VersionedPluginConfigurationSnapshot::from_host_bound_json(
                 source,
                 &vec![b' '; usize::try_from(MAX_SNAPSHOT_BYTES).unwrap() + 1],
             )
