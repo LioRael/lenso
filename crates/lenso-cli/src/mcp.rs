@@ -805,7 +805,7 @@ impl AppTools {
     }
 
     #[tool(
-        description = "Inspect App facts without secret values; omitted scope observes an active MCP run's built distribution, while explicit scope=root inspects the source root; use section and pagination for large projects"
+        description = "Inspect App facts without secret values; omitted scope observes an active MCP run's built distribution, while explicit scope=root inspects the source root; default build provenance contains counts, and section=build_sources or generated_artifacts returns paginated entries"
     )]
     fn project_facts(
         &self,
@@ -951,8 +951,16 @@ fn project_facts_json(
                     None,
                 ));
             }
-            serde_json::to_value(facts)
-                .map_err(|_| McpError::internal_error("serialize App facts", None))?
+            let mut value = serde_json::to_value(facts)
+                .map_err(|_| McpError::internal_error("serialize App facts", None))?;
+            if let Some(provenance) = &facts.build_provenance {
+                value["build_provenance"] = serde_json::json!({
+                    "source_location": provenance.source_location,
+                    "total_build_sources": provenance.build_sources.len(),
+                    "total_generated_artifacts": provenance.generated_artifacts.len(),
+                });
+            }
+            value
         }
         section => {
             let limit = request.limit.unwrap_or(20);
@@ -1083,6 +1091,82 @@ fn project_facts_json(
 #[allow(clippy::unused_async_trait_impl)]
 #[tool_handler]
 impl ServerHandler for AppTools {}
+
+#[cfg(test)]
+mod tests {
+    use lenso_engine_app::app::facts::{
+        BuildProvenanceFacts, GeneratedArtifactFacts, ProjectFacts, RuntimeFacts, SourceLocation,
+    };
+
+    use super::{MAX_MCP_TEXT_BYTES, ProjectFactsQuery, project_facts_json};
+
+    #[test]
+    fn default_facts_summarize_large_build_provenance_and_pages_keep_exact_items() {
+        let facts = ProjectFacts {
+            schema_version: 4,
+            kind: "lenso.app-facts",
+            status: "resolved",
+            root: "/tmp/project".into(),
+            host_target: "aarch64-apple-darwin".into(),
+            plugin_root_revision: None,
+            runtime: RuntimeFacts {
+                status: "not_observed",
+                detail: "No running Host was observed.",
+            },
+            configuration: None,
+            plugins: Vec::new(),
+            bindings: Vec::new(),
+            discovered_sources: Vec::new(),
+            build_provenance: Some(BuildProvenanceFacts {
+                source_location: SourceLocation {
+                    path: "/tmp/project/local-sources.json".into(),
+                },
+                build_sources: Vec::new(),
+                generated_artifacts: (0..64)
+                    .map(|index| GeneratedArtifactFacts {
+                        path: format!(".lenso/generated-host/{index}-{}", "x".repeat(2500)),
+                        owner: "lenso_host_build",
+                        role: "build_provenance".into(),
+                        sha256: format!("sha256:{}", "a".repeat(64)),
+                        size: 1,
+                    })
+                    .collect(),
+            }),
+            diagnostics: Vec::new(),
+        };
+        assert!(serde_json::to_string(&facts).unwrap().len() > MAX_MCP_TEXT_BYTES);
+
+        let default_json = project_facts_json(&facts, &ProjectFactsQuery::default()).unwrap();
+        assert!(default_json.len() < MAX_MCP_TEXT_BYTES);
+        let summary: serde_json::Value = serde_json::from_str(&default_json).unwrap();
+        assert_eq!(summary["build_provenance"]["total_build_sources"], 0);
+        assert_eq!(summary["build_provenance"]["total_generated_artifacts"], 64);
+        assert_eq!(
+            summary["build_provenance"]["source_location"]["path"],
+            "/tmp/project/local-sources.json"
+        );
+        assert!(summary["build_provenance"].get("build_sources").is_none());
+        assert!(
+            summary["build_provenance"]
+                .get("generated_artifacts")
+                .is_none()
+        );
+
+        let page_query: ProjectFactsQuery = serde_json::from_value(serde_json::json!({
+            "section": "generated_artifacts", "offset": 63, "limit": 1
+        }))
+        .unwrap();
+        let page: serde_json::Value =
+            serde_json::from_str(&project_facts_json(&facts, &page_query).unwrap()).unwrap();
+        assert_eq!(page["total"], 64);
+        assert_eq!(page["offset"], 63);
+        assert!(page["next_offset"].is_null());
+        assert_eq!(
+            page["items"][0]["path"],
+            facts.build_provenance.as_ref().unwrap().generated_artifacts[63].path
+        );
+    }
+}
 
 pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
     let root = std::fs::canonicalize(&args.root).context("resolve MCP App root")?;

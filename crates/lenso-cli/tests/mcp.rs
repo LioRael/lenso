@@ -1154,12 +1154,25 @@ fn stdio_authorized_build_reports_the_same_app_check() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(actual_facts, expected_facts);
+    let expected_provenance = &expected_facts["build_provenance"];
+    let mut expected_summary = expected_facts.clone();
+    expected_summary["build_provenance"] = serde_json::json!({
+        "source_location": expected_provenance["source_location"],
+        "total_build_sources": expected_provenance["build_sources"].as_array().unwrap().len(),
+        "total_generated_artifacts": expected_provenance["generated_artifacts"].as_array().unwrap().len(),
+    });
+    assert_eq!(actual_facts, expected_summary);
     assert_eq!(actual_facts["root"], final_status["output"]);
     let provenance = &actual_facts["build_provenance"];
+    assert!(provenance.get("build_sources").is_none());
+    assert!(provenance.get("generated_artifacts").is_none());
     for (id, section, items) in [
-        (8, "build_sources", &provenance["build_sources"]),
-        (9, "generated_artifacts", &provenance["generated_artifacts"]),
+        (8, "build_sources", &expected_provenance["build_sources"]),
+        (
+            9,
+            "generated_artifacts",
+            &expected_provenance["generated_artifacts"],
+        ),
     ] {
         let expected_items = items.as_array().map(Vec::as_slice).unwrap_or_default();
         let response = call(
