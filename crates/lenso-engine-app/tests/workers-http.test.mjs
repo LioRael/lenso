@@ -7,7 +7,16 @@ const routes = [
   { route_id: "bytes", method: "POST", path: "/bytes" },
   { route_id: "reject", method: "GET", path: "/reject" },
   { route_id: "failure", method: "GET", path: "/failure" },
+  { route_id: "failure-payload", method: "GET", path: "/failure-payload" },
+  { route_id: "reject-other", method: "GET", path: "/reject-other" },
 ];
+
+class ComponentError extends Error {
+  constructor(payload) {
+    super(payload);
+    Object.defineProperty(this, "payload", { value: payload });
+  }
+}
 
 function handler(calls = []) {
   return createWorkersHttpHandler({
@@ -16,8 +25,14 @@ function handler(calls = []) {
       if (operation === "describe") return JSON.stringify({ routes });
       const request = JSON.parse(requestJson);
       calls.push(request);
-      if (request.route_id === "reject") throw { payload: '"rejected"' };
+      if (request.route_id === "reject") throw new ComponentError('"rejected"');
+      if (request.route_id === "reject-other") throw new ComponentError('"unauthorized"');
       if (request.route_id === "failure") throw new Error("guest failure");
+      if (request.route_id === "failure-payload") {
+        const error = new Error("runtime failure");
+        error.payload = '"rejected"';
+        throw error;
+      }
       return JSON.stringify({
         status: 200,
         headers: [{ name: "content-type", value: "application/octet-stream" }],
@@ -72,9 +87,13 @@ test("keeps route, domain, runtime and malformed response failures separate", as
   const fetch = handler();
   assert.equal((await fetch(new Request("http://127.0.0.1/absent"))).status, 404);
   assert.equal((await fetch(new Request("http://127.0.0.1/items/%2F"))).status, 400);
-  assert.equal((await fetch(new Request("http://127.0.0.1/items/42", { method: "POST" }))).status, 405);
+  const methodNotAllowed = await fetch(new Request("http://127.0.0.1/items/42", { method: "POST" }));
+  assert.equal(methodNotAllowed.status, 405);
+  assert.equal(methodNotAllowed.headers.get("allow"), "GET");
   assert.equal((await fetch(new Request("http://127.0.0.1/reject"))).status, 502);
+  assert.equal((await fetch(new Request("http://127.0.0.1/reject-other"))).status, 502);
   assert.equal((await fetch(new Request("http://127.0.0.1/failure"))).status, 503);
+  assert.equal((await fetch(new Request("http://127.0.0.1/failure-payload"))).status, 503);
   const malformed = createWorkersHttpHandler({
     invoke(_capability, operation) {
       return operation === "describe"

@@ -20,6 +20,11 @@ function failure(status, code, requestId) {
   return Response.json({ error: code }, { status, headers });
 }
 
+function isComponentDomainError(error) {
+  return error instanceof Error && error.constructor?.name === "ComponentError" &&
+    Object.hasOwn(error, "payload") && typeof error.payload === "string";
+}
+
 function routeSegments(path) {
   if (typeof path !== "string" || !path.startsWith("/") || path.includes("?") ||
       path.includes("#") || path.includes("%") || path.includes("//")) {
@@ -194,7 +199,11 @@ export function createWorkersHttpHandler(component) {
       .filter((match) => match.parameters !== null);
     if (!pathMatches.length) return failure(404, "not_found", requestId);
     const match = pathMatches.find(({ route }) => route.method === request.method);
-    if (!match) return failure(405, "method_not_allowed", requestId);
+    if (!match) {
+      const response = failure(405, "method_not_allowed", requestId);
+      response.headers.set("allow", [...new Set(pathMatches.map(({ route }) => route.method))].sort().join(", "));
+      return response;
+    }
     let credential;
     let headers;
     try {
@@ -227,7 +236,7 @@ export function createWorkersHttpHandler(component) {
     try {
       result = JSON.parse(component.invoke(CAPABILITY, "handle", JSON.stringify(payload)));
     } catch (error) {
-      return error?.payload === '"rejected"'
+      return isComponentDomainError(error)
         ? failure(502, "endpoint_rejected", requestId)
         : failure(503, "endpoint_unavailable", requestId);
     }

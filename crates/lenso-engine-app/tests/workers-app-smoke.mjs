@@ -41,6 +41,8 @@ for (const [name, method, path, body, status, expectedBody, headers = {}] of
     if (response.status !== status) failures.push(`status ${response.status} != ${status}`);
     if (!actualBody.equals(expectedBody)) failures.push(`body ${actualBody.toString("utf8")} differs`);
     if (!response.headers.get("x-request-id")) failures.push("request ID missing");
+    if (name === "method_not_allowed" && response.headers.get("allow") !== "GET")
+      failures.push(`allow ${response.headers.get("allow")} != GET`);
     results.push({ name, passed: failures.length === 0, ...(failures.length ? { failures } : {}) });
   } catch (error) {
     results.push({ name, passed: false, error: String(error) });
