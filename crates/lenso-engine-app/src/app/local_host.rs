@@ -68,6 +68,22 @@ fn write_generated_host_file(path: &Path, contents: &[u8]) -> anyhow::Result<()>
         .with_context(|| format!("write generated Host file {}", path.display()))
 }
 
+fn copy_generated_host_provenance(
+    generated: &Path,
+    provenance: &Path,
+    business_snapshot: bool,
+) -> anyhow::Result<()> {
+    fs::create_dir_all(provenance.join("src"))?;
+    let mut files = vec!["Cargo.toml", "Cargo.lock", "src/main.rs", "build.rs"];
+    if business_snapshot {
+        files.push("src/local_business_snapshot.rs");
+    }
+    for file in files {
+        fs::copy(generated.join(file), provenance.join(file))?;
+    }
+    Ok(())
+}
+
 fn contract_dependency_alias(
     capability: &str,
     index: usize,
@@ -520,6 +536,7 @@ pub(super) fn generate(
             "use lenso_runtime_codec as native_resources;"
         },
     );
+    let business_snapshot_generated = knowledge_snapshot_crate.is_some();
     if let Some(alias) = knowledge_snapshot_crate {
         let module = include_str!("local_business_snapshot_template.rs")
             .replace("__KNOWLEDGE_PLUGIN_CRATE__", &alias);
@@ -669,14 +686,11 @@ pub(super) fn generate(
     let catalog: HostCatalog = serde_json::from_slice(&output.stdout)?;
     fs::copy(binary, stage.join(".lenso/host"))?;
     let provenance = stage.join(".lenso/generated-host");
-    fs::create_dir_all(provenance.join("src"))?;
+    copy_generated_host_provenance(&generated, &provenance, business_snapshot_generated)?;
     fs::write(
         provenance.join("local-inputs.json"),
         serde_json::to_vec_pretty(&local_inputs)?,
     )?;
-    for file in ["Cargo.toml", "Cargo.lock", "src/main.rs", "build.rs"] {
-        fs::copy(generated.join(file), provenance.join(file))?;
-    }
 
     let descriptors = catalog
         .plugins()
@@ -1097,6 +1111,40 @@ pub(super) fn digest(path: &Path) -> anyhow::Result<String> {
     ))
 }
 
+fn distribution_file_paths(stage: &Path, runtime_artifacts: &[Value]) -> Vec<String> {
+    let mut files = vec![
+        ".lenso/host",
+        ".lenso/host-mode",
+        ".lenso/host-build.json",
+        "runtime/lenso-resolver",
+        "bundles.json",
+        "runtime-codecs.json",
+        "local-sources.json",
+        ".lenso/precompiled-host.json",
+        ".lenso/generated-host/Cargo.lock",
+        ".lenso/generated-host/Cargo.toml",
+        ".lenso/generated-host/src/main.rs",
+        ".lenso/generated-host/src/local_business_snapshot.rs",
+        ".lenso/generated-host/build.rs",
+        ".lenso/generated-host/local-inputs.json",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
+    if stage.join("runtime/bun").exists() {
+        files.push("runtime/bun".into());
+    }
+    files.extend(
+        runtime_artifacts
+            .iter()
+            .filter_map(|artifact| artifact["path"].as_str().map(str::to_owned)),
+    );
+    files
+        .into_iter()
+        .filter(|path| stage.join(path).is_file())
+        .collect()
+}
+
 pub(super) fn finalize(stage: &Path, runtime_artifacts: Vec<Value>) -> anyhow::Result<()> {
     fs::create_dir_all(stage.join("runtime"))?;
     // Keep Host and Resolver on separate inodes: an in-place Resolver overwrite
@@ -1138,35 +1186,8 @@ pub(super) fn finalize(stage: &Path, runtime_artifacts: Vec<Value>) -> anyhow::R
             &mut 0,
         )?;
     }
-    let mut files = vec![
-        ".lenso/host",
-        ".lenso/host-mode",
-        ".lenso/host-build.json",
-        "runtime/lenso-resolver",
-        "bundles.json",
-        "runtime-codecs.json",
-        "local-sources.json",
-        ".lenso/precompiled-host.json",
-        ".lenso/generated-host/Cargo.lock",
-        ".lenso/generated-host/Cargo.toml",
-        ".lenso/generated-host/src/main.rs",
-        ".lenso/generated-host/build.rs",
-        ".lenso/generated-host/local-inputs.json",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect::<Vec<_>>();
-    if stage.join("runtime/bun").exists() {
-        files.push("runtime/bun".into());
-    }
-    files.extend(
-        runtime_artifacts
-            .iter()
-            .filter_map(|a| a["path"].as_str().map(str::to_owned)),
-    );
-    let mut proofs = files
+    let mut proofs = distribution_file_paths(stage, &runtime_artifacts)
         .into_iter()
-        .filter(|path| stage.join(path).is_file())
         .map(|path| {
             let role = match path.as_str() {
                 ".lenso/host" => "host_runtime",
@@ -1517,11 +1538,11 @@ mod tests {
 
     use super::{
         AdapterSet, GitLensoSources, collect_git_lenso_source, collect_local_lenso_patch,
-        contract_dependency_alias, dependency, dependency_lock_digests, input_digest,
-        local_framework_crates_dir, local_framework_dependency, merge_lenso_patches,
-        pin_host_framework_versions, selects_knowledge_snapshot_binding,
-        verify_dependency_lock_digests, verify_git_lenso_lock, web_ingress_dependency,
-        write_generated_host_file,
+        contract_dependency_alias, copy_generated_host_provenance, dependency,
+        dependency_lock_digests, distribution_file_paths, input_digest, local_framework_crates_dir,
+        local_framework_dependency, merge_lenso_patches, pin_host_framework_versions,
+        selects_knowledge_snapshot_binding, verify_dependency_lock_digests, verify_git_lenso_lock,
+        web_ingress_dependency, write_generated_host_file,
     };
 
     #[test]
@@ -1541,6 +1562,52 @@ mod tests {
         assert!(
             selects_knowledge_snapshot_binding("lenso.reference.knowledge-base", &unsupported)
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn snapshot_host_provenance_is_locked_and_rebuildable_without_source_cache() {
+        let stage = tempfile::tempdir().unwrap();
+        let generated = tempfile::tempdir().unwrap();
+        std::fs::create_dir(generated.path().join("src")).unwrap();
+        std::fs::write(
+            generated.path().join("Cargo.toml"),
+            "[package]\nname = \"recorded-host\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            generated.path().join("Cargo.lock"),
+            "version = 4\n\n[[package]]\nname = \"recorded-host\"\nversion = \"0.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(generated.path().join("build.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(
+            generated.path().join("src/main.rs"),
+            "mod local_business_snapshot; fn main() { assert_eq!(local_business_snapshot::value(), 7); }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            generated.path().join("src/local_business_snapshot.rs"),
+            "pub fn value() -> u8 { 7 }\n",
+        )
+        .unwrap();
+        let provenance = stage.path().join(".lenso/generated-host");
+        copy_generated_host_provenance(generated.path(), &provenance, true).unwrap();
+        assert!(
+            distribution_file_paths(stage.path(), &[])
+                .contains(&".lenso/generated-host/src/local_business_snapshot.rs".to_owned())
+        );
+        std::fs::remove_dir_all(generated.path()).unwrap();
+        let output = std::process::Command::new("cargo")
+            .args(["build", "--locked", "--offline", "--manifest-path"])
+            .arg(provenance.join("Cargo.toml"))
+            .env("CARGO_TARGET_DIR", stage.path().join("target"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "recorded Host source did not rebuild: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 

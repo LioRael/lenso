@@ -11,7 +11,7 @@ use std::{
 };
 
 use anyhow::{Context as _, bail, ensure};
-use lenso_app_plan::ResolvedAppPlan;
+use lenso_app_plan::{ResolvedAppPlan, authoring::PluginInstanceId};
 use lenso_engine_authoring::{
     BusinessSnapshotAuthority, BusinessSnapshotAuthorization, BusinessSnapshotObjectId,
     BusinessSnapshotSourceId, FileBusinessSnapshotSource, HttpsBusinessSnapshotSource,
@@ -56,6 +56,11 @@ enum SourcePolicy {
 enum Source {
     File(FileBusinessSnapshotSource),
     Https(HttpsBusinessSnapshotSource),
+    #[cfg(test)]
+    Slow {
+        polls: Arc<std::sync::atomic::AtomicUsize>,
+        completed: Arc<AtomicBool>,
+    },
 }
 
 impl Source {
@@ -71,6 +76,12 @@ impl Source {
             Self::Https(source) => {
                 let cursor = authority.cursor()?;
                 authority.accept_poll(source.poll(cursor.as_ref())?, previous)?;
+            }
+            #[cfg(test)]
+            Self::Slow { polls, completed } => {
+                polls.fetch_add(1, Ordering::AcqRel);
+                std::thread::sleep(Duration::from_millis(200));
+                completed.store(true, Ordering::Release);
             }
         }
         Ok(())
@@ -120,10 +131,8 @@ impl Poller {
     pub fn spawn(self) -> PollerGuard {
         let available = Arc::clone(&self.available);
         let task = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(self.interval);
-            interval.tick().await;
             loop {
-                interval.tick().await;
+                tokio::time::sleep(self.interval).await;
                 let was_available = self.available.load(Ordering::Acquire);
                 let result = self.recheck().await;
                 if was_available && result.is_err() {
@@ -154,17 +163,7 @@ pub fn bind(
     plan: &ResolvedAppPlan,
     policy_path: &Path,
 ) -> anyhow::Result<(NativePluginRegistry, Poller)> {
-    let selected = plan
-        .plugin_instances()
-        .iter()
-        .filter(|instance| instance.package_id() == PLUGIN_ID)
-        .collect::<Vec<_>>();
-    ensure!(
-        selected.len() == 1
-            && selected[0].instance_key() == INSTANCE_KEY
-            && selected[0].execution_class().as_str() == "lenso.native-rust@1",
-        "attachment policy requires the exact selected linked KnowledgeBase default Instance"
-    );
+    selected_knowledge_base(plan)?;
     let policy = read_policy(policy_path)?;
     let expected = authorize_policy(&policy)?;
     let source = match policy.source {
@@ -191,6 +190,8 @@ pub fn bind(
     let binding = match &source {
         Source::File(source) => source.binding(),
         Source::Https(source) => source.binding(),
+        #[cfg(test)]
+        Source::Slow { .. } => unreachable!("test source is not selectable by Host policy"),
     };
     let authorization = BusinessSnapshotAuthorization::new(
         expected,
@@ -199,17 +200,11 @@ pub fn bind(
         ["max_attachment_bytes"],
         Duration::from_millis(policy.max_stale_millis),
     )?;
-    let authority = Arc::new(BusinessSnapshotAuthority::<AttachmentPolicy>::new(
+    let (view, poller) = preload(
+        source,
         authorization,
-    ));
-    source
-        .update(&authority)
-        .context("initial authorized attachment policy source is unavailable")?;
-    let available = Arc::new(AtomicBool::new(true));
-    let view: Rc<dyn AttachmentPolicySource> = Rc::new(AttachmentPolicyView {
-        authority: Arc::clone(&authority),
-        available: Arc::clone(&available),
-    });
+        Duration::from_millis(policy.poll_interval_millis),
+    )?;
     let registry = registry
         .with_factory_override(ConfiguredPluginFactory::<KnowledgeBase, _>::new(
             move |plugin| {
@@ -218,13 +213,48 @@ pub fn bind(
             },
         ))
         .map_err(|error| anyhow::anyhow!("attachment policy Host binding failed: {error:?}"))?;
+    Ok((registry, poller))
+}
+
+fn selected_knowledge_base(plan: &ResolvedAppPlan) -> anyhow::Result<()> {
+    let key = PluginInstanceId::new(PLUGIN_ID, INSTANCE_KEY).plan_key();
+    let selected = plan
+        .plugin_instances()
+        .iter()
+        .filter(|instance| instance.package_id() == PLUGIN_ID)
+        .collect::<Vec<_>>();
+    ensure!(
+        selected.len() == 1
+            && selected[0].instance_key() == key
+            && selected[0].execution_class().as_str() == "lenso.native-rust@1",
+        "attachment policy requires the exact selected linked KnowledgeBase default Instance"
+    );
+    Ok(())
+}
+
+fn preload(
+    source: Source,
+    authorization: BusinessSnapshotAuthorization<AttachmentPolicy>,
+    interval: Duration,
+) -> anyhow::Result<(Rc<dyn AttachmentPolicySource>, Poller)> {
+    let authority = Arc::new(BusinessSnapshotAuthority::<AttachmentPolicy>::new(
+        authorization,
+    ));
+    source
+        .update(&authority)
+        .context("initial authorized attachment policy source is unavailable")?;
+    let available = Arc::new(AtomicBool::new(false));
+    let view: Rc<dyn AttachmentPolicySource> = Rc::new(AttachmentPolicyView {
+        authority: Arc::clone(&authority),
+        available: Arc::clone(&available),
+    });
     Ok((
-        registry,
+        view,
         Poller {
             source: Arc::new(source),
             authority,
             available,
-            interval: Duration::from_millis(policy.poll_interval_millis),
+            interval,
         },
     ))
 }
@@ -276,6 +306,8 @@ fn read_policy(path: &Path) -> anyhow::Result<Policy> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lenso_app_plan::authoring::{PluginDescriptor, PluginRootSnapshot};
+    use lenso_engine_authoring::host_authoring::{GeneratedHostBuild, HostPluginInput};
     use serde_json::{Value, json};
 
     fn policy(object: BusinessSnapshotObjectId) -> Policy {
@@ -312,6 +344,112 @@ mod tests {
         let mut wrong_schema = policy(object(INSTANCE_KEY, OBJECT_KEY));
         wrong_schema.schema = "lenso.host-business-snapshot-policy.v2".into();
         assert!(authorize_policy(&wrong_schema).is_err());
+    }
+
+    #[test]
+    fn selected_instance_matches_real_resolver_plan_key() {
+        let build = GeneratedHostBuild::lower(
+            "local.app",
+            vec![HostPluginInput {
+                descriptor: PluginDescriptor::new(PLUGIN_ID, "0.1.0", "web"),
+                instance: INSTANCE_KEY.into(),
+                configuration: json!({}),
+                source: "test".into(),
+            }],
+            vec![],
+        )
+        .unwrap();
+        let resolved = build.resolve(&PluginRootSnapshot::default()).unwrap();
+        assert_eq!(
+            resolved.plan().plugin_instances()[0].instance_key(),
+            "lenso.reference.knowledge-base/default"
+        );
+        assert!(selected_knowledge_base(resolved.plan()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn slow_poll_does_not_trigger_catch_up_burst() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = FileBusinessSnapshotSource::new(
+            directory.path().join("unused.json"),
+            BusinessSnapshotSourceId::new("file", "test-policy").unwrap(),
+        );
+        let authority = Arc::new(BusinessSnapshotAuthority::new(
+            BusinessSnapshotAuthorization::new(
+                object(INSTANCE_KEY, OBJECT_KEY),
+                file.binding(),
+                attachment_policy_schema(),
+                ["max_attachment_bytes"],
+                Duration::from_secs(10),
+            )
+            .unwrap(),
+        ));
+        let polls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let completed = Arc::new(AtomicBool::new(false));
+        let guard = Poller {
+            source: Arc::new(Source::Slow {
+                polls: Arc::clone(&polls),
+                completed: Arc::clone(&completed),
+            }),
+            authority,
+            available: Arc::new(AtomicBool::new(false)),
+            interval: Duration::from_millis(50),
+        }
+        .spawn();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !completed.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert_eq!(polls.load(Ordering::Acquire), 1);
+        drop(guard);
+    }
+
+    #[tokio::test]
+    async fn warm_source_stays_unavailable_through_slow_start_and_loss() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("attachment-policy.json");
+        fs::write(
+            &path,
+            document(1, object(INSTANCE_KEY, OBJECT_KEY), 128).to_string(),
+        )
+        .unwrap();
+        let source = FileBusinessSnapshotSource::new(
+            &path,
+            BusinessSnapshotSourceId::new("file", "test-policy").unwrap(),
+        );
+        let authorization = BusinessSnapshotAuthorization::new(
+            object(INSTANCE_KEY, OBJECT_KEY),
+            source.binding(),
+            attachment_policy_schema(),
+            ["max_attachment_bytes"],
+            Duration::from_secs(10),
+        )
+        .unwrap();
+        let (view, poller) = preload(
+            Source::File(source),
+            authorization,
+            Duration::from_millis(100),
+        )
+        .unwrap();
+
+        // Kernel startup may take time while its listener is already accepting calls.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert!(view.capture().is_err());
+        fs::remove_file(&path).unwrap();
+        assert!(poller.recheck().await.is_err());
+        assert!(view.capture().is_err());
+
+        fs::write(
+            &path,
+            document(2, object(INSTANCE_KEY, OBJECT_KEY), 64).to_string(),
+        )
+        .unwrap();
+        poller.recheck().await.unwrap();
+        assert_eq!(view.capture().unwrap().value.max_attachment_bytes, 64);
     }
 
     #[tokio::test]
