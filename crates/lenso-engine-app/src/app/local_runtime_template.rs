@@ -339,12 +339,21 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let mut web_address_file = None;
     let mut defer_activation = false;
     let mut command_args = None;
+    #[cfg(generated_native_host)]
+    let mut business_snapshot_policy = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
             "--root" => {
                 index += 1;
                 intent = PathBuf::from(args.get(index).context("--root needs a directory")?);
+            }
+            #[cfg(generated_native_host)]
+            "--business-snapshot-policy" => {
+                index += 1;
+                business_snapshot_policy = Some(PathBuf::from(
+                    args.get(index).context("--business-snapshot-policy needs a file")?,
+                ));
             }
             "--check" => check = true,
             "--defer-activation" => defer_activation = true,
@@ -545,6 +554,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             )
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     }
+    // LENSO_BUSINESS_SNAPSHOT_DECL
     #[cfg(generated_native_host)]
     let native = {
         let mut resources = native_resources::InstanceResourceCatalog::new();
@@ -563,9 +573,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                     .map_err(|e| anyhow::anyhow!("{e:?}"))?;
             }
         }
-        NativePluginRegistry::new()
+        let registry = NativePluginRegistry::new()
             .with_linked_factories()
-            .with_resources(resources)
+            .with_resources(resources);
+        // LENSO_BUSINESS_SNAPSHOT_BIND
     };
     #[cfg(not(generated_native_host))]
     let ingress = lenso_web_ingress_plugin::WebIngressFactory::new();
@@ -666,6 +677,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         tokio::task::LocalSet::new().run_until(async move {
             let app = Kernel::start(resolution.plan, lenso_runner::TokioDriver::new(), catalog)
                 .await.map_err(|e| anyhow::anyhow!("Host startup failed: {e:?}"))?;
+            // LENSO_BUSINESS_SNAPSHOT_READY
             if !check
                 && !defer_activation
                 && let Some(activation) = activation

@@ -139,6 +139,7 @@ pub(super) fn generate(
     let mut seen_packages = BTreeSet::new();
     let mut codec_cohorts = BTreeSet::new();
     let mut web_contract = None;
+    let mut knowledge_snapshot_crate = None;
     let mut watch_roots = BTreeSet::new();
     for (index, candidate) in candidates.iter().enumerate() {
         // A portable Cargo Guest can depend on a rust-runtime projection for
@@ -209,6 +210,11 @@ pub(super) fn generate(
             let alias = format!("local_plugin_{index}");
             dependencies.insert(alias.clone(), dependency(package)?);
             linked.push_str(&format!("{alias}::link_plugin();\n"));
+            if selects_knowledge_snapshot_binding(&candidate.plugin_id, package)? {
+                if knowledge_snapshot_crate.replace(alias).is_some() {
+                    bail!("Host has competing KnowledgeBase attachment policy bindings");
+                }
+            }
         }
         // Only normal reachable dependencies are eligible: test/build helper
         // contracts must not introduce runtime identities or competing versions.
@@ -358,6 +364,18 @@ pub(super) fn generate(
         );
         host_framework_dependencies.insert("native-resources".into());
     }
+    if knowledge_snapshot_crate.is_some() {
+        let dependency = if let Some(crates) = &local_crates {
+            let (dependency, path) =
+                local_framework_dependency(crates, "lenso-engine-authoring", "=0.2.2")?;
+            watch_roots.insert(path);
+            dependency
+        } else {
+            json!("=0.2.2")
+        };
+        dependencies.insert("lenso-engine-authoring".into(), dependency);
+        host_framework_dependencies.insert("lenso-engine-authoring".into());
+    }
     let web_ingress = web_contract
         .as_ref()
         .map(web_ingress_dependency)
@@ -502,6 +520,54 @@ pub(super) fn generate(
             "use lenso_runtime_codec as native_resources;"
         },
     );
+    if let Some(alias) = knowledge_snapshot_crate {
+        let module = include_str!("local_business_snapshot_template.rs")
+            .replace("__KNOWLEDGE_PLUGIN_CRATE__", &alias);
+        write_generated_host_file(
+            &generated.join("src/local_business_snapshot.rs"),
+            module.as_bytes(),
+        )?;
+        source.push_str("\nmod local_business_snapshot;\n");
+        source = source
+            .replace(
+                "// LENSO_BUSINESS_SNAPSHOT_DECL",
+                "#[cfg(generated_native_host)] let mut business_snapshot_poller = None;",
+            )
+            .replace(
+                "// LENSO_BUSINESS_SNAPSHOT_BIND",
+                r#"
+        if let Some(path) = business_snapshot_policy.as_deref() {
+            let (bound, poller) = local_business_snapshot::bind(registry, &resolution.plan, path)?;
+            business_snapshot_poller = Some(poller);
+            bound
+        } else {
+            registry
+        }
+"#,
+            )
+            .replace(
+                "// LENSO_BUSINESS_SNAPSHOT_READY",
+                r#"
+            let _business_snapshot_guard = if let Some(poller) = business_snapshot_poller {
+                if let Err(error) = poller.recheck().await {
+                    let outcome = app.shutdown(Duration::from_secs(10)).await;
+                    bail!("attachment policy source failed before readiness: {error}; shutdown: {outcome:?}");
+                }
+                Some(poller.spawn())
+            } else {
+                None
+            };
+"#,
+            );
+    } else {
+        source = source
+            .replace("// LENSO_BUSINESS_SNAPSHOT_DECL", "")
+            .replace(
+                "// LENSO_BUSINESS_SNAPSHOT_BIND",
+                "if business_snapshot_policy.is_some() { bail!(\"this Host has no selected KnowledgeBase attachment policy binding\"); } registry",
+            )
+            .replace("// LENSO_BUSINESS_SNAPSHOT_READY", "");
+    }
     source = source.replace("// LENSO_DESCRIBE_WEB", if web { r#"
         let mut releases = catalog.plugins().to_vec();
         if releases.iter().any(|r| r.descriptor().provided_capabilities().iter().any(|c| c.capability_id() == local_web_contract::CAPABILITY_ID)) {
@@ -639,6 +705,19 @@ pub(super) fn generate(
         );
     }
     Ok(descriptors)
+}
+
+fn selects_knowledge_snapshot_binding(plugin_id: &str, package: &Value) -> anyhow::Result<bool> {
+    if plugin_id != "lenso.reference.knowledge-base" {
+        return Ok(false);
+    }
+    match package.pointer("/metadata/lenso/host-bindings") {
+        Some(value) if value == &json!(["attachment-policy@1"]) => Ok(true),
+        Some(_) => bail!(
+            "KnowledgeBase declares unsupported Host private bindings; expected attachment-policy@1"
+        ),
+        None => Ok(false),
+    }
 }
 
 pub(super) fn is_native(candidate: &Candidate) -> bool {
@@ -1440,9 +1519,30 @@ mod tests {
         AdapterSet, GitLensoSources, collect_git_lenso_source, collect_local_lenso_patch,
         contract_dependency_alias, dependency, dependency_lock_digests, input_digest,
         local_framework_crates_dir, local_framework_dependency, merge_lenso_patches,
-        pin_host_framework_versions, verify_dependency_lock_digests, verify_git_lenso_lock,
-        web_ingress_dependency, write_generated_host_file,
+        pin_host_framework_versions, selects_knowledge_snapshot_binding,
+        verify_dependency_lock_digests, verify_git_lenso_lock, web_ingress_dependency,
+        write_generated_host_file,
     };
+
+    #[test]
+    fn knowledge_snapshot_binding_requires_explicit_source_opt_in() {
+        let ordinary = json!({"metadata":{"lenso":{"plugin-id":"lenso.reference.knowledge-base"}}});
+        assert!(
+            !selects_knowledge_snapshot_binding("lenso.reference.knowledge-base", &ordinary)
+                .unwrap()
+        );
+        let selected = json!({"metadata":{"lenso":{"host-bindings":["attachment-policy@1"]}}});
+        assert!(
+            selects_knowledge_snapshot_binding("lenso.reference.knowledge-base", &selected)
+                .unwrap()
+        );
+        assert!(!selects_knowledge_snapshot_binding("unrelated.plugin", &selected).unwrap());
+        let unsupported = json!({"metadata":{"lenso":{"host-bindings":["attachment-policy@2"]}}});
+        assert!(
+            selects_knowledge_snapshot_binding("lenso.reference.knowledge-base", &unsupported)
+                .is_err()
+        );
+    }
 
     #[test]
     fn generated_host_reuses_web_contract_alias_for_endpoint_codec() {

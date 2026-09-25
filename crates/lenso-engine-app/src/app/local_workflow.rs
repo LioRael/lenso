@@ -424,6 +424,9 @@ pub struct StartArgs {
     /// Continuously supervised Host policy; incompatible with --check or terminal arguments.
     #[arg(long, conflicts_with = "root")]
     configuration_policy: Option<PathBuf>,
+    /// Host-owned authority for one selected business snapshot object.
+    #[arg(long, conflicts_with_all = ["configuration_policy", "args"])]
+    business_snapshot_policy: Option<PathBuf>,
     /// Start, validate readiness and shut down immediately.
     #[arg(long, conflicts_with = "configuration_policy")]
     check: bool,
@@ -439,6 +442,7 @@ pub(super) fn start_built_local_app(from: PathBuf, args: Vec<String>) -> anyhow:
         from,
         root: None,
         configuration_policy: None,
+        business_snapshot_policy: None,
         check: false,
         ready_file: None,
         args,
@@ -467,6 +471,9 @@ pub fn start(args: StartArgs) -> anyhow::Result<()> {
     command.args(super::local_host::host_arguments(&args.from)?);
     if let Some(root) = args.root {
         command.arg("--root").arg(root);
+    }
+    if let Some(policy) = args.business_snapshot_policy {
+        command.arg("--business-snapshot-policy").arg(policy);
     }
     if args.check {
         command.arg("--check");
@@ -600,6 +607,7 @@ pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Resu
         from,
         root: None,
         configuration_policy: None,
+        business_snapshot_policy: None,
         check: false,
         ready_file: None,
         args: arguments,
@@ -610,7 +618,43 @@ pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Resu
 mod tests {
     use std::fs;
 
+    use clap::Parser;
+
     use super::{AppLanguage, CreateArgs, StartArgs, create, prepare_web_starter, start_command};
+
+    #[derive(Parser)]
+    struct ParsedStart {
+        #[command(flatten)]
+        args: StartArgs,
+    }
+
+    #[test]
+    fn snapshot_policy_supports_check_but_not_configuration_policy() {
+        let parsed = ParsedStart::try_parse_from([
+            "start",
+            "--from",
+            "dist",
+            "--business-snapshot-policy",
+            "/absolute/host-policy.json",
+            "--check",
+        ])
+        .unwrap();
+        assert!(parsed.args.check);
+        assert_eq!(
+            parsed.args.business_snapshot_policy.as_deref(),
+            Some(std::path::Path::new("/absolute/host-policy.json"))
+        );
+        assert!(
+            ParsedStart::try_parse_from([
+                "start",
+                "--business-snapshot-policy",
+                "/absolute/host-policy.json",
+                "--configuration-policy",
+                "/absolute/configuration-policy.json",
+            ])
+            .is_err()
+        );
+    }
 
     #[tokio::test]
     async fn policy_start_rejects_one_shot_modes_before_sync() {
@@ -618,6 +662,7 @@ mod tests {
             from: "missing-distribution".into(),
             root: None,
             configuration_policy: Some("missing-policy".into()),
+            business_snapshot_policy: None,
             check: false,
             ready_file: None,
             args: Vec::new(),
