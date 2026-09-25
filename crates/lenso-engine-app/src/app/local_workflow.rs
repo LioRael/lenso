@@ -31,11 +31,19 @@ pub struct BuildArgs {
         value_name = "PLUGIN_ID@VERSION=sha256:DIGEST"
     )]
     trust_linked_build: Vec<String>,
+    /// Host policy for one exact portable Plugin: PLUGIN_ID=process|wasm.
+    #[arg(
+        long = "portable-implementation",
+        value_name = "PLUGIN_ID=process|wasm"
+    )]
+    portable_implementations: Vec<String>,
 }
 pub fn build(args: BuildArgs) -> anyhow::Result<()> {
     if args.target.as_deref() == Some("workers") && args.source.is_none() {
-        if !args.trust_linked_build.is_empty() {
-            bail!("--trust-linked-build is only for a native source App build");
+        if !args.trust_linked_build.is_empty() || !args.portable_implementations.is_empty() {
+            bail!(
+                "--trust-linked-build and --portable-implementation are only for a native source App build"
+            );
         }
         let root = crate::plugins::project_root(args.root)?;
         return workers::build(workers::BuildArgs {
@@ -51,8 +59,10 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
         bail!("--workers-runtime and --jco are only for `app build --target workers`");
     }
     if let Some(source) = args.source {
-        if !args.trust_linked_build.is_empty() {
-            bail!("--trust-linked-build is only for a native source App build");
+        if !args.trust_linked_build.is_empty() || !args.portable_implementations.is_empty() {
+            bail!(
+                "--trust-linked-build and --portable-implementation are only for a native source App build"
+            );
         }
         return super::build::build(&super::build::HostBuildArgs {
             source,
@@ -74,6 +84,7 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
             output: out,
             runtime_executable: std::env::current_exe()?,
             trust_linked_build: args.trust_linked_build,
+            portable_implementations: args.portable_implementations,
         },
     ))?;
     let plan = engine.plan(lenso_engine::Snapshot::default())?;
@@ -595,6 +606,7 @@ pub fn build_local(
             output,
             runtime_executable,
             trust_linked_build: Vec::new(),
+            portable_implementations: Vec::new(),
         },
     ))?;
     let plan = engine.plan(lenso_engine::Snapshot::default())?;

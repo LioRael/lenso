@@ -55,6 +55,10 @@ struct BundleInventory {
     plugin_id: String,
     release_version: String,
     manifest_digest: String,
+    #[serde(default)]
+    archive_digest: Option<String>,
+    #[serde(default)]
+    host_portable_implementation: Option<String>,
     execution_class: String,
     runtime_profile: String,
     target: String,
@@ -363,6 +367,27 @@ fn validate_bundle(
     )?;
     let bundle_path = regular_file(&build_root.join(&bundle.path), false)
         .with_context(|| format!("validate Plugin bundle {}", bundle.path))?;
+    if let Some(expected) = &bundle.archive_digest
+        && super::local_host::digest(&bundle_path)? != *expected
+    {
+        bail!(
+            "bundle archive digest differs from inventory `{}`",
+            bundle.path
+        );
+    }
+    if let Some(selected) = &bundle.host_portable_implementation {
+        let expected_class = match selected.as_str() {
+            "process" => lenso_process_adapter::EXECUTION_CLASS,
+            "wasm" => lenso_wasm_component_adapter::EXECUTION_CLASS,
+            _ => bail!("invalid Host portable implementation selection `{selected}`"),
+        };
+        if bundle.execution_class != expected_class {
+            bail!(
+                "Host portable implementation selection differs from inventory `{}`",
+                bundle.path
+            );
+        }
+    }
     with_bundle_directory(&bundle_path, |directory| {
         let verified = verify_bundle_directory(directory)?;
         if verified.plugin_id != bundle.plugin_id

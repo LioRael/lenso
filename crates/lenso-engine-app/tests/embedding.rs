@@ -14,6 +14,7 @@ fn app_planning_never_probes_the_host_and_rejects_changed_inputs() {
             output: output.clone(),
             runtime_executable: temp.path().join("not-an-executable"),
             trust_linked_build: Vec::new(),
+            portable_implementations: Vec::new(),
         })
         .unwrap();
     let plan = engine.plan(Snapshot::default()).unwrap();
@@ -39,6 +40,7 @@ fn app_execution_rejects_a_changed_existing_lock_before_host_build() {
             output: output.clone(),
             runtime_executable: temp.path().join("not-an-executable"),
             trust_linked_build: Vec::new(),
+            portable_implementations: Vec::new(),
         })
         .unwrap();
     let plan = engine.plan(Snapshot::default()).unwrap();

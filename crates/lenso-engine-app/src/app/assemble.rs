@@ -11,6 +11,7 @@ use lenso_plugin_bundle::{ImplementationPolicy, read_bundle_manifest, verify_bun
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -48,9 +49,55 @@ pub struct AssembleArgs {
         value_name = "PLUGIN_ID@VERSION=sha256:DIGEST"
     )]
     pub(super) trust_linked_build: Vec<String>,
+    /// Host-owned, exact portable execution choice; never App Plugin Root intent.
+    #[arg(
+        long = "portable-implementation",
+        value_name = "PLUGIN_ID=process|wasm"
+    )]
+    pub(super) portable_implementations: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PortableImplementation {
+    Process,
+    Wasm,
+}
+
+impl PortableImplementation {
+    fn execution_class(self) -> &'static str {
+        match self {
+            Self::Process => lenso_process_adapter::EXECUTION_CLASS,
+            Self::Wasm => lenso_wasm_component_adapter::EXECUTION_CLASS,
+        }
+    }
+}
+
+fn parse_portable_implementations(
+    values: &[String],
+) -> anyhow::Result<BTreeMap<String, PortableImplementation>> {
+    let mut selections = BTreeMap::new();
+    for value in values {
+        let (plugin_id, implementation) = value
+            .split_once('=')
+            .context("--portable-implementation needs PLUGIN_ID=process|wasm")?;
+        lenso_app_authoring::identity::validate_plugin_id_v1(plugin_id)?;
+        let implementation = match implementation {
+            "process" => PortableImplementation::Process,
+            "wasm" => PortableImplementation::Wasm,
+            _ => bail!("--portable-implementation for {plugin_id} must be process or wasm"),
+        };
+        if selections
+            .insert(plugin_id.to_owned(), implementation)
+            .is_some()
+        {
+            bail!("duplicate --portable-implementation for {plugin_id}");
+        }
+    }
+    Ok(selections)
 }
 
 pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
+    let portable_implementations = parse_portable_implementations(&args.portable_implementations)?;
     let root = fs::canonicalize(crate::plugins::project_root(args.root)?)?;
     let report = discover(&root)?;
     super::convention_authoring::linked_catalog::verify_sources(&root, &report.candidates)?;
@@ -158,6 +205,25 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     super::contracts::synchronize(&root, &compiled_conventions.candidates)?;
     let generated_resources = compiled_conventions.resources;
     candidates.extend(compiled_conventions.candidates);
+    let selectable = candidates
+        .iter()
+        .filter(|candidate| {
+            !super::local_host::is_native(candidate)
+                && (candidate.role != SourceRole::Shared
+                    || candidate.surface_owner.is_some()
+                    || stage
+                        .path()
+                        .join("plugins")
+                        .join(&candidate.plugin_id)
+                        .exists())
+        })
+        .map(|candidate| candidate.plugin_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for plugin_id in portable_implementations.keys() {
+        if !selectable.contains(plugin_id.as_str()) {
+            bail!("--portable-implementation names no selected portable Plugin: {plugin_id}");
+        }
+    }
     if precompiled.is_some() && !candidates.iter().any(super::local_host::is_native) {
         bail!(
             "development_host is not used for a portable-only App; remove it or select a matching native Plugin"
@@ -294,14 +360,19 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             archive_bundle(&bundle, &archive)?;
         }
         let (verified, selected) = with_bundle_directory(&archive, |directory| {
+            let policy = local_implementation_policy(
+                executable,
+                portable_implementations.get(&candidate.plugin_id).copied(),
+            )?;
             Ok((
                 verify_bundle_directory(directory)?,
                 crate::target_profile::select_implementation(
                     &read_bundle_manifest(directory)?,
-                    &local_implementation_policy(executable)?,
+                    &policy,
                 )?,
             ))
-        })?;
+        })
+        .with_context(|| format!("select Host implementation for {}", candidate.plugin_id))?;
         if let Some(adapters) = generated_adapters {
             let execution_class = selected
                 .implementation
@@ -351,8 +422,13 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         inventory.push(json!({
             "path": archive_path, "plugin_id": verified.plugin_id,
             "release_version": verified.release_version, "manifest_digest": verified.manifest_digest,
+            "archive_digest": super::local_host::digest(&archive)?,
             "execution_class": descriptor.execution_class().as_str(), "runtime_profile": descriptor.runtime_profile(),
             "target": lenso_app_authoring::native_host_target(), "implementation_id": selected.implementation.implementation_id,
+            "host_portable_implementation": portable_implementations.get(&candidate.plugin_id).map(|choice| match choice {
+                PortableImplementation::Process => "process",
+                PortableImplementation::Wasm => "wasm",
+            }),
             "artifact_path": selected.implementation.artifact.path, "artifact_digest": selected.implementation.artifact.digest,
             "artifact_size": selected.implementation.artifact.size, "artifact_media_type": selected.implementation.artifact.media_type,
             "artifact_target": selected.implementation.artifact.target,
@@ -652,7 +728,10 @@ fn publish_resource_files(
     Ok(())
 }
 
-fn local_implementation_policy(executable: bool) -> anyhow::Result<ImplementationPolicy> {
+fn local_implementation_policy(
+    executable: bool,
+    selected: Option<PortableImplementation>,
+) -> anyhow::Result<ImplementationPolicy> {
     let wasm = crate::target_profile::request_wasm_component_admission(
         lenso_app_plan::ExecutionClassId::new(lenso_wasm_component_adapter::EXECUTION_CLASS),
         lenso_wasm_component_adapter::RUNTIME_PROFILE,
@@ -669,7 +748,7 @@ fn local_implementation_policy(executable: bool) -> anyhow::Result<Implementatio
     } else {
         wasm
     };
-    Ok(ImplementationPolicy {
+    let mut policy = ImplementationPolicy {
         host_target: lenso_app_authoring::native_host_target().to_owned(),
         // The local Host wires Request endpoints for these portable Adapter
         // paths. Do not advertise Stream/Event until its complete ingress and
@@ -686,7 +765,13 @@ fn local_implementation_policy(executable: bool) -> anyhow::Result<Implementatio
             wasm,
             crate::target_profile::bun_admission()?,
         ],
-    })
+    };
+    if let Some(selected) = selected {
+        policy
+            .runtimes
+            .retain(|admission| admission.execution_class.as_str() == selected.execution_class());
+    }
+    Ok(policy)
 }
 
 pub(super) fn copy_root(
@@ -732,6 +817,111 @@ mod tests {
         discovery::conventions::GeneratedResourceContribution,
         discovery::{Candidate, PublishedResource, SourceRole},
     };
+    use lenso_app_plan::authoring::{PluginContract, PluginImplementation};
+    use lenso_plugin_bundle::{
+        PluginArtifactV2, PluginImplementationV3, PluginManifest, PluginManifestV3,
+    };
+
+    #[test]
+    fn explicit_portable_host_choice_selects_exact_v3_implementation_without_fallback() {
+        let plugin_id = "example.dual";
+        let process = PluginImplementationV3 {
+            id: "process".into(),
+            host_targets: vec!["*".into()],
+            artifact: PluginArtifactV2 {
+                path: "implementations/process/plugin".into(),
+                digest: format!("sha256:{}", "1".repeat(64)),
+                size: 1,
+                media_type: "application/vnd.lenso.process".into(),
+                target: lenso_app_authoring::native_host_target().into(),
+            },
+            runtime: PluginImplementation::new(
+                plugin_id,
+                format!("sha256:{}", "1".repeat(64)),
+                "plugin",
+                lenso_app_plan::ExecutionClassId::new(lenso_process_adapter::EXECUTION_CLASS),
+            )
+            .with_runtime_profile(lenso_process_adapter::RUNTIME_PROFILE_V2),
+        };
+        let wasm = PluginImplementationV3 {
+            id: "wasm".into(),
+            host_targets: vec!["*".into()],
+            artifact: PluginArtifactV2 {
+                path: "implementations/wasm/plugin.wasm".into(),
+                digest: format!("sha256:{}", "2".repeat(64)),
+                size: 1,
+                media_type: "application/wasm".into(),
+                target: "wasm32-unknown-unknown".into(),
+            },
+            runtime: PluginImplementation::new(
+                plugin_id,
+                format!("sha256:{}", "2".repeat(64)),
+                "plugin.wasm",
+                lenso_app_plan::ExecutionClassId::new(
+                    lenso_wasm_component_adapter::EXECUTION_CLASS,
+                ),
+            )
+            .with_runtime_profile(lenso_wasm_component_adapter::RUNTIME_PROFILE),
+        };
+        let contract = PluginContract::new(plugin_id, "1.0.0", "tools").with_authoring_version(2);
+        let both = PluginManifest::V3(PluginManifestV3 {
+            schema_version: 3,
+            contract: contract.clone(),
+            implementations: vec![process.clone(), wasm],
+        });
+        for (choice, expected) in [
+            (PortableImplementation::Process, "process"),
+            (PortableImplementation::Wasm, "wasm"),
+        ] {
+            let selected = crate::target_profile::select_implementation(
+                &both,
+                &local_implementation_policy(true, Some(choice)).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(selected.implementation.implementation_id, expected);
+            assert_eq!(
+                selected.evidence.selected.execution_class.as_str(),
+                choice.execution_class()
+            );
+        }
+        let process_only = PluginManifest::V3(PluginManifestV3 {
+            schema_version: 3,
+            contract,
+            implementations: vec![process],
+        });
+        assert!(
+            crate::target_profile::select_implementation(
+                &process_only,
+                &local_implementation_policy(true, Some(PortableImplementation::Wasm)).unwrap(),
+            )
+            .is_err(),
+            "a missing selected class must not fall back to Process"
+        );
+    }
+
+    #[test]
+    fn portable_host_choice_rejects_duplicate_or_unbounded_inputs() {
+        let parse = |values: &[&str]| {
+            parse_portable_implementations(
+                &values
+                    .iter()
+                    .map(|value| (*value).to_owned())
+                    .collect::<Vec<_>>(),
+            )
+        };
+        assert_eq!(
+            parse(&["example.dual=wasm"]).unwrap()["example.dual"],
+            PortableImplementation::Wasm
+        );
+        for values in [
+            vec!["example.dual=wasm", "example.dual=process"],
+            vec!["example.dual=other"],
+            vec!["example.dual"],
+            vec!["../escape=wasm"],
+        ] {
+            assert!(parse(&values).is_err(), "accepted {values:?}");
+        }
+    }
 
     #[test]
     fn in_app_host_output_cannot_claim_reserved_lenso_directory() {
@@ -744,6 +934,7 @@ mod tests {
             json: false,
             executable: false,
             trust_linked_build: Vec::new(),
+            portable_implementations: Vec::new(),
         })
         .unwrap_err();
 
@@ -757,7 +948,7 @@ mod tests {
     #[test]
     fn wasm_memory_admission_is_owned_only_by_an_executable_local_host() {
         let wasm_class = lenso_wasm_component_adapter::EXECUTION_CLASS;
-        let authoring = local_implementation_policy(false).unwrap();
+        let authoring = local_implementation_policy(false, None).unwrap();
         let authoring_wasm = authoring
             .runtimes
             .iter()
@@ -765,7 +956,7 @@ mod tests {
             .unwrap();
         assert_eq!(authoring_wasm.enforced_wasm_memory_ceiling_bytes, None);
 
-        let executable = local_implementation_policy(true).unwrap();
+        let executable = local_implementation_policy(true, None).unwrap();
         let executable_wasm = executable
             .runtimes
             .iter()
@@ -832,7 +1023,7 @@ mod tests {
         });
         let selected = crate::target_profile::select_implementation(
             &manifest,
-            &local_implementation_policy(true).unwrap(),
+            &local_implementation_policy(true, None).unwrap(),
         )
         .unwrap();
         assert_eq!(
@@ -850,7 +1041,7 @@ mod tests {
         assert!(
             crate::target_profile::select_implementation(
                 &manifest,
-                &local_implementation_policy(false).unwrap(),
+                &local_implementation_policy(false, None).unwrap(),
             )
             .is_err()
         );

@@ -35,6 +35,13 @@ pub struct ExplainArgs {
 #[derive(Debug, Deserialize)]
 struct BundleSelectionRecord {
     plugin_id: String,
+    release_version: String,
+    manifest_digest: String,
+    artifact_digest: String,
+    #[serde(default)]
+    archive_digest: Option<String>,
+    #[serde(default)]
+    host_portable_implementation: Option<String>,
     target_capability_profile: ExecutionTargetCapabilityProfile,
     selection: ImplementationSelectionEvidence,
 }
@@ -119,6 +126,11 @@ pub(super) fn report(root: &Path) -> anyhow::Result<Value> {
             );
             Ok(json!({
                 "plugin_id": bundle.plugin_id,
+                "release_version": bundle.release_version,
+                "manifest_digest": bundle.manifest_digest,
+                "archive_digest": bundle.archive_digest,
+                "artifact_digest": bundle.artifact_digest,
+                "host_portable_implementation": bundle.host_portable_implementation,
                 "selected": bundle.selection.selected,
                 "target_capability_profile": bundle.target_capability_profile,
                 "rejected": bundle.selection.rejected,

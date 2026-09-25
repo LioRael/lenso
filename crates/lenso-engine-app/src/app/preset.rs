@@ -8,6 +8,7 @@ pub struct AppProject {
     pub output: PathBuf,
     pub runtime_executable: PathBuf,
     pub trust_linked_build: Vec<String>,
+    pub portable_implementations: Vec<String>,
 }
 impl Plugin for AppProject {
     fn identity(&self) -> &str {
@@ -45,7 +46,7 @@ impl Plugin for AppProject {
             id: "app/build".into(),
             inputs: vec![],
             after: vec![],
-            options: serde_json::json!({"root":root,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks}),
+            options: serde_json::json!({"root":root,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks,"portable_implementations":self.portable_implementations}),
         }])
     }
     fn process(&self, context: &ContextView<'_>) -> anyhow::Result<BTreeMap<String, Resource>> {
@@ -83,6 +84,7 @@ impl Plugin for AppProject {
             json: false,
             executable: true,
             trust_linked_build: self.trust_linked_build.clone(),
+            portable_implementations: self.portable_implementations.clone(),
         })?;
         Ok(BTreeMap::from([(
             "distribution".into(),
