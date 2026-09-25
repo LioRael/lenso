@@ -50,11 +50,11 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: LioRael/lenso-js
-          ref: e886b7b4eafae4b679cd95fb9c6381c8b4756581
+          ref: b2b3122f0061a649de29d1fa6d7c2fb30076f3a7
           path: lenso-js
           persist-credentials: false
       - name: Verify JavaScript fixture revision
-        run: test "$(git -C lenso-js rev-parse HEAD)" = e886b7b4eafae4b679cd95fb9c6381c8b4756581
+        run: test "$(git -C lenso-js rev-parse HEAD)" = b2b3122f0061a649de29d1fa6d7c2fb30076f3a7
       - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
           toolchain: 1.94.0
