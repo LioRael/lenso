@@ -392,6 +392,17 @@ that cannot coexist with the old Host may prevent candidate readiness; this
 development loop does not promise zero-downtime switching or a production
 configuration subscription.
 
+For a built distribution, `lenso app start --from DIST
+--configuration-policy /absolute/policy.json` continuously checks source
+freshness and Host policy. A revision that resolves to the same Plugin Root
+keeps the current Host; a Root change hard-stops it before another version can
+activate. The supervisor cannot prove that independently grouped child
+processes have stopped, so it leaves
+`DIST/.lenso/supervised-start.uncertain` and refuses another supervised start.
+An operator must verify that the Host and all descendants for that
+distribution have exited before removing that fence and starting again. This
+path does not automatically replace a running production Host.
+
 This source adapter admits one source identity at a time. When a later snapshot
 omits a previously source-owned field or object, reconciliation restores the
 displaced App-owned value or removes a field that was absent before source
