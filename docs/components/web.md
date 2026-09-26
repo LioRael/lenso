@@ -677,13 +677,15 @@ to each: method/path matching, non-UTF-8 request and response bytes, 404/405,
 domain rejection, and runtime failure. This is local Native Host plus Wasmtime
 evidence. It does not qualify workerd or deployed Workers, outbound HTTP,
 streaming, WebSocket, authentication, or production resource ceilings.
-The Component is executed by the Native Wasmtime Adapter. The consolidated
-workspace currently has a Workers Driver and event Ingress, but no packaged
-Workers Event Host that admits this Component through a Workers-compatible
-Execution Adapter. In particular, a Wasm Component is not automatically a
-Workers-loadable core Wasm module. The exact missing seam is Host-owned
-Component admission, invocation, and failure mapping inside a real Workers
-event; local workerd and deployed Workers require separate HTTP corpus receipts.
+The Component above runs through the Native Wasmtime Adapter. The workspace
+also has a bounded `lenso app build --target workers` path for one verified
+V4/V6 Workers Component variant. It packages a locked Plan, Jco bindings, the
+pinned `@lenso/workers-runtime` HTTP event adapter, and a `workers-build.json`
+build receipt. See `crates/lenso-engine-app/assets/workers-app-README.md` for
+the request-only local-workerd limits. A build receipt or Node handler test is
+not a real workerd run: the exact output needs its own HTTP corpus. Neither
+this Native test nor a local workerd pass qualifies deployed Workers, streams,
+WebSockets, outbound HTTP, cancellation, or production resource ceilings.
 
 The dispatch-only release workflow publishes an explicitly authorized package
 set from a landed `main` SHA through configured crates.io Trusted Publishers
