@@ -1,13 +1,24 @@
+use std::{error::Error, fmt};
+
 use serde_json::Value;
 
 mod schema;
 #[cfg(test)]
 mod tests;
 
+/// A rejected effective Plugin configuration, without configuration values.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ConfigurationError {
+pub struct ConfigurationError {
     pub(super) detail: String,
 }
+
+impl fmt::Display for ConfigurationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.detail)
+    }
+}
+
+impl Error for ConfigurationError {}
 
 const SUPPORTED_SCHEMA_KEYWORDS: &[&str] = &[
     "additionalProperties",

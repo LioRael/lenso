@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, error::Error, fmt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::configuration::resolve_configuration_layers;
+use super::configuration::{ConfigurationError, resolve_configuration_layers};
 use crate::{
     AppComposition, CapabilityBinding, CapabilityCardinality, CapabilityEndpointPlan,
     CapabilityRequirementPlan, ExecutionClassId, ExecutionLaneId, ExecutionLanePlan,
@@ -274,6 +274,27 @@ impl PluginDescriptor {
 
     pub const fn configuration_defaults(&self) -> &Value {
         &self.configuration_defaults
+    }
+
+    /// Merges package defaults with ordered Host/App overlays and returns the
+    /// canonical, schema-checked Plan configuration. Special-purpose Host
+    /// generations must use the same admission path as Plugin Root resolution.
+    pub fn resolve_configuration_json(
+        &self,
+        overlays: &[&Value],
+        instance_key: &str,
+    ) -> Result<String, ConfigurationError> {
+        let value = resolve_configuration_layers(
+            &self.configuration_defaults,
+            overlays,
+            self.configuration_schema.as_ref(),
+            instance_key,
+        )?;
+        serde_json::to_string(&canonicalize_configuration(value)).map_err(|error| {
+            ConfigurationError {
+                detail: format!("$: serialize effective configuration: {error}"),
+            }
+        })
     }
 
     pub fn provided_capabilities(&self) -> &[CapabilityEndpointPlan] {
@@ -1100,19 +1121,10 @@ fn materialize_app(
             .into_iter()
             .chain(candidate.root_configuration)
             .collect::<Vec<_>>();
-        let configuration = resolve_configuration_layers(
-            candidate.descriptor.configuration_defaults(),
-            &overlays,
-            candidate.descriptor.configuration_schema(),
-            &plan_key,
-        )
-        .map_err(|error| map_configuration_error(&candidate.id, error))?;
-        let configuration = serde_json::to_string(&canonicalize_configuration(configuration))
-            .map_err(|error| PluginRootResolutionError::InvalidConfiguration {
-                instance: candidate.id.clone(),
-                detail: error.to_string(),
-            })?;
         let descriptor = candidate.descriptor;
+        let configuration = descriptor
+            .resolve_configuration_json(&overlays, &plan_key)
+            .map_err(|error| map_configuration_error(&candidate.id, error))?;
         let mut instance = PluginInstancePlan::new(&plan_key, descriptor.runtime_package_id())
             .with_authoring(descriptor.authoring_version(), descriptor.runtime_profile())
             .with_entrypoint(descriptor.entrypoint())

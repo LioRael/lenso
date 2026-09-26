@@ -9,7 +9,7 @@ use lenso_app_authoring::{
 };
 use lenso_app_plan::{
     CapabilityBinding, CapabilityRequirementPlan, ExecutionClassId, PluginInstancePlan,
-    ResolvedAppPlan,
+    ResolvedAppPlan, authoring::PluginDescriptor,
 };
 use lenso_capability_configuration_source::host::{
     CAPABILITY_ID, DESCRIPTOR_VERSION, FETCH_OPERATION, FetchRequest, FetchResponse,
@@ -108,6 +108,7 @@ pub(super) fn fetch(
             && capability.event_operations().is_empty(),
         "bootstrap source Plugin does not provide the exact Configuration Source Capability"
     );
+    let configuration = source_configuration(descriptor, selected.configuration)?;
 
     let artifact = ArtifactHandle::open(
         selected.bundle.join(&implementation.artifact.path),
@@ -124,7 +125,7 @@ pub(super) fn fetch(
                 .with_package_revision(selected.artifact_digest)
                 .with_authoring(descriptor.authoring_version(), descriptor.runtime_profile())
                 .with_entrypoint(descriptor.entrypoint())
-                .with_configuration(serde_json::to_string(selected.configuration)?)
+                .with_configuration(configuration)
                 .with_execution_class(ExecutionClassId::new(PROCESS_CLASS))
                 .with_required_target_capabilities(
                     descriptor.required_target_capabilities().iter().copied(),
@@ -173,6 +174,16 @@ pub(super) fn fetch(
         "bootstrap source snapshot exceeds 1 MiB"
     );
     VersionedPluginConfigurationSnapshot::from_host_bound_json(identity, &bytes)
+}
+
+fn source_configuration(descriptor: &PluginDescriptor, overlay: &Value) -> anyhow::Result<String> {
+    ensure!(
+        overlay.is_object(),
+        "bootstrap source configuration must be an object"
+    );
+    descriptor
+        .resolve_configuration_json(&[overlay], SOURCE_INSTANCE)
+        .context("bootstrap source configuration does not match its package schema")
 }
 
 fn invoke(plan: ResolvedAppPlan, artifacts: ArtifactCatalog) -> anyhow::Result<FetchResponse> {
@@ -255,5 +266,59 @@ impl ExecutionAdapter for BootstrapClientAdapter {
                 PreparedNativePlugin::new(Vec::new(), NoopPluginLifecycle),
             )]),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lenso_app_plan::authoring::PluginDescriptor;
+    use serde_json::{Value, json};
+
+    use super::source_configuration;
+
+    fn descriptor() -> PluginDescriptor {
+        PluginDescriptor::new("example.configuration-source", "1.0.0", "source")
+            .with_configuration_defaults(json!({"path": "/default"}))
+            .with_configuration_schema(json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "token": {"x-lenso-sensitive": true}
+                },
+                "required": ["path"],
+                "additionalProperties": false
+            }))
+    }
+
+    #[test]
+    fn bootstrap_configuration_merges_defaults_and_rejects_unknown_fields() {
+        let selected = source_configuration(&descriptor(), &json!({})).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&selected).unwrap(),
+            json!({"path": "/default"})
+        );
+
+        let error = source_configuration(&descriptor(), &json!({"unexpected": true})).unwrap_err();
+        assert!(format!("{error:#}").contains("$.unexpected"));
+        assert!(source_configuration(&descriptor(), &json!("not an object")).is_err());
+    }
+
+    #[test]
+    fn bootstrap_configuration_accepts_only_secret_references() {
+        let valid = source_configuration(
+            &descriptor(),
+            &json!({"token": {"secret_ref": "operator/source-token"}}),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&valid).unwrap(),
+            json!({"path": "/default", "token": {"secret_ref": "operator/source-token"}})
+        );
+
+        let error =
+            source_configuration(&descriptor(), &json!({"token": "plaintext-secret"})).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("$.token: sensitive value must be a secret_ref"));
+        assert!(!message.contains("plaintext-secret"));
     }
 }

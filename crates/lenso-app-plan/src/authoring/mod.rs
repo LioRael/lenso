@@ -5,4 +5,5 @@ mod configuration;
 mod plugin_root;
 
 pub use change_proposal::*;
+pub use configuration::ConfigurationError;
 pub use plugin_root::*;
