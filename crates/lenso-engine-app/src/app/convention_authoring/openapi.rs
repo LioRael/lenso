@@ -48,7 +48,7 @@ pub(super) fn add(root: &Path, no_install: bool) -> anyhow::Result<()> {
         "Cargo.toml",
         r#"[package]
 name = "app-openapi-link"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 publish = false
 
@@ -58,7 +58,7 @@ root-slot = "http-endpoints"
 
 [dependencies]
 lenso = "=0.5.27"
-lenso-openapi-plugin = "=0.2.4"
+lenso-openapi-plugin = "=0.2.5"
 
 [workspace]
 "#,
@@ -163,7 +163,7 @@ mod tests {
         );
         let manifest = fs::read_to_string(candidate.project.join("Cargo.toml")).unwrap();
         assert!(manifest.contains("lenso = \"=0.5.27\""));
-        assert!(manifest.contains("lenso-openapi-plugin = \"=0.2.4\""));
+        assert!(manifest.contains("lenso-openapi-plugin = \"=0.2.5\""));
         assert!(!manifest.contains("git ="));
         assert!(!manifest.contains("[patch.crates-io]"));
         assert!(
