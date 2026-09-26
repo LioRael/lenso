@@ -361,9 +361,14 @@ async fn launch(
         );
     }
     let from_owned = from.to_path_buf();
-    let root_revision = proof.plugin_root_revision.clone();
+    let policy_owned = policy.to_path_buf();
+    let activation_proof = proof.clone();
     let receipt = tokio::task::spawn_blocking(move || {
-        configuration_source::record_distribution_activation(&from_owned, &root_revision)
+        configuration_source::record_distribution_activation(
+            &from_owned,
+            &policy_owned,
+            &activation_proof,
+        )
     });
     let recorded = tokio::time::timeout_at(deadline, receipt).await;
     if !matches!(&recorded, Ok(Ok(Ok(())))) {

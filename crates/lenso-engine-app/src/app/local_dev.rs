@@ -18,6 +18,8 @@ use tokio::{
     time::Instant,
 };
 
+use super::configuration_source::AcceptedSourceProof;
+
 mod frontend;
 
 #[derive(Clone, Debug, Args)]
@@ -45,7 +47,7 @@ pub struct DevArgs {
 
 #[derive(Clone, Debug)]
 struct TimedProof {
-    accepted: super::configuration_source::AcceptedSourceProof,
+    accepted: AcceptedSourceProof,
     received_at: Instant,
 }
 
@@ -628,10 +630,20 @@ async fn activate_supervised_candidate(
             true,
             config,
             Some(proof.deadline()),
+            Some((policy, &proof.accepted)),
         )
         .await?
     } else {
-        activate_candidate_until(output, args, host, true, false, Some(proof.deadline())).await?
+        activate_candidate_until(
+            output,
+            args,
+            host,
+            true,
+            false,
+            Some(proof.deadline()),
+            Some((policy, &proof.accepted)),
+        )
+        .await?
     };
     if activation == Some(true) {
         if !proof_still_usable(output, policy, &proof) {
@@ -674,6 +686,24 @@ async fn update_poll_interval(
     *current = next;
 }
 
+fn verify_activation_source(
+    output: &Path,
+    supervised_configuration: bool,
+    source: Option<(&Path, &AcceptedSourceProof)>,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        supervised_configuration == source.is_some(),
+        "supervised candidate needs its exact accepted source proof"
+    );
+    if let Some((policy, proof)) = source {
+        anyhow::ensure!(
+            super::configuration_source::proof_matches_current(output, policy, proof)?,
+            "configuration candidate no longer matches its accepted source proof"
+        );
+    }
+    Ok(())
+}
+
 async fn activate_candidate_with_frontend(
     root: &Path,
     output: &Path,
@@ -694,6 +724,7 @@ async fn activate_candidate_with_frontend(
         supervised_configuration,
         config,
         None,
+        None,
     )
     .await
 }
@@ -708,20 +739,14 @@ async fn activate_candidate_with_frontend_until(
     supervised_configuration: bool,
     config: &frontend::FrontendConfig,
     source_deadline: Option<Instant>,
+    source: Option<(&Path, &AcceptedSourceProof)>,
 ) -> anyhow::Result<Option<bool>> {
-    let revision = if supervised_configuration {
-        match super::configuration_source::desired_root_revision(output) {
-            Ok(revision) => revision,
-            Err(error) => {
-                eprintln!(
-                    "Configuration candidate changed before startup; candidate not activated: {error:#}"
-                );
-                return Ok(Some(false));
-            }
-        }
-    } else {
-        None
-    };
+    if let Err(error) = verify_activation_source(output, supervised_configuration, source) {
+        eprintln!(
+            "Configuration candidate changed before startup; candidate not activated: {error:#}"
+        );
+        return Ok(Some(false));
+    }
     let mut candidate = match launch_ready_until(
         output,
         args,
@@ -966,9 +991,9 @@ async fn activate_candidate_with_frontend_until(
         eprintln!("Configuration source proof expired before frontend activation");
         return Ok(Some(false));
     }
-    if let Some(revision) = revision
+    if let Some((policy, proof)) = source
         && let Err(error) =
-            super::configuration_source::record_distribution_activation(output, &revision)
+            super::configuration_source::record_distribution_activation(output, policy, proof)
     {
         eprintln!("Configuration activation receipt failed; stopping the candidate: {error:#}");
         expire_frontend_candidate_now(
@@ -1433,6 +1458,7 @@ async fn activate_candidate(
         supervised_configuration,
         frontend_enabled,
         None,
+        None,
     )
     .await
 }
@@ -1444,20 +1470,14 @@ async fn activate_candidate_until(
     supervised_configuration: bool,
     frontend_enabled: bool,
     source_deadline: Option<Instant>,
+    source: Option<(&Path, &AcceptedSourceProof)>,
 ) -> anyhow::Result<Option<bool>> {
-    let revision = if supervised_configuration {
-        match super::configuration_source::desired_root_revision(output) {
-            Ok(revision) => revision,
-            Err(error) => {
-                eprintln!(
-                    "Configuration candidate no longer matches its published Root; candidate not activated: {error:#}"
-                );
-                return Ok(Some(false));
-            }
-        }
-    } else {
-        None
-    };
+    if let Err(error) = verify_activation_source(output, supervised_configuration, source) {
+        eprintln!(
+            "Configuration candidate changed before startup; candidate not activated: {error:#}"
+        );
+        return Ok(Some(false));
+    }
     let mut candidate = match launch_ready_until(
         output,
         args,
@@ -1499,9 +1519,9 @@ async fn activate_candidate_until(
         eprintln!("App candidate exited before activation; candidate not activated");
         return Ok(Some(false));
     }
-    if let Some(revision) = revision
+    if let Some((policy, proof)) = source
         && let Err(error) =
-            super::configuration_source::record_distribution_activation(output, &revision)
+            super::configuration_source::record_distribution_activation(output, policy, proof)
     {
         eprintln!("Configuration activation receipt failed; stopping the candidate: {error:#}");
         kill_process_group_now(&mut candidate).await?;
