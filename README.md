@@ -39,18 +39,22 @@ Plugin can run unchanged in every environment.
 
 ## Try one Plugin
 
-Install the CLI and exercise a typed Plugin through a real Execution Adapter:
+From this repository's source checkout, build the candidate CLI and exercise a
+typed Plugin through a real Execution Adapter. The npm CLI is not yet a
+supported installation path for this candidate: its release still needs the
+platform-specific native executables.
 
 ```sh
-npm install -g @lenso/cli
+cargo build --locked -p lenso-cli --bin lenso
+LENSO_CLI="$(pwd)/target/debug/lenso"
 
-lenso plugin new example.echo
+"$LENSO_CLI" plugin new example.echo
 cd example.echo
-lenso plugin check
-lenso plugin dev \
+"$LENSO_CLI" plugin check
+"$LENSO_CLI" plugin dev \
   --operation execute \
   --request-json '{"name":"example.echo","arguments_json":"{\"text\":\"hello\"}"}'
-lenso plugin pack
+"$LENSO_CLI" plugin pack
 ```
 
 The generated Rust project produces portable Wasm and trusted Process
