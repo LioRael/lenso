@@ -15,7 +15,9 @@ futures = { version = "0.3" }
 shell-words = { version = "1.1" }
 clap = { version = "4", features = ["derive", "string"] }
 lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.6" }
+lenso-agent-tool-cli-plugin = { path = "../lenso-agent-tool-cli-plugin", version = "=0.1.0" }
 lenso-bun-adapter = { path = "../lenso-bun-adapter", version = "=0.1.15" }
+lenso-capability-agent-tool-provider = "=0.2.2"
 lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "=0.3.4" }
 lenso-capability-configuration-source = { path = "../lenso-capability-configuration-source", version = "0.1.0" }
 lenso-contract-authoring-next = { package = "lenso-contract-authoring", path = "../lenso-contract-authoring", version = "0.1.1" }

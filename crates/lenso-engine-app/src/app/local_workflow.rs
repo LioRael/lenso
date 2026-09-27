@@ -474,6 +474,21 @@ pub(super) fn start_built_local_app(from: PathBuf, args: Vec<String>) -> anyhow:
     })
 }
 
+pub(super) fn start_built_local_tool_app(from: PathBuf, args: Vec<String>) -> anyhow::Result<()> {
+    start_with_host_command(
+        StartArgs {
+            from,
+            root: None,
+            configuration_policy: None,
+            business_snapshot_policy: None,
+            check: false,
+            ready_file: None,
+            args,
+        },
+        true,
+    )
+}
+
 pub(super) async fn start_command(args: StartArgs) -> anyhow::Result<()> {
     if let Some(policy) = args.configuration_policy.as_ref() {
         // A one-shot Host would bypass policy revocation and the freshness
@@ -489,6 +504,10 @@ pub(super) async fn start_command(args: StartArgs) -> anyhow::Result<()> {
 }
 
 pub fn start(args: StartArgs) -> anyhow::Result<()> {
+    start_with_host_command(args, false)
+}
+
+fn start_with_host_command(args: StartArgs, agent_tool_cli: bool) -> anyhow::Result<()> {
     super::configuration_source::require_or_sync(&args.from, args.configuration_policy.as_deref())?;
     let executable = fs::canonicalize(args.from.join(".lenso/host"))
         .context("locate built local Host; run lenso app build first")?;
@@ -505,6 +524,9 @@ pub fn start(args: StartArgs) -> anyhow::Result<()> {
     }
     if let Some(path) = args.ready_file {
         command.arg("--ready-file").arg(path);
+    }
+    if agent_tool_cli {
+        command.arg("--agent-tool-cli");
     }
     if !args.args.is_empty() {
         command.arg("--").args(&args.args);

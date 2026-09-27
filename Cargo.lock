@@ -91,7 +91,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -102,7 +102,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1009,7 +1009,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1964,11 +1964,21 @@ dependencies = [
  "lenso-native-adapter",
  "lenso-plugin-authoring",
  "lenso-plugin-control-plane",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "lenso-test",
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "lenso-agent-tool-cli-plugin"
+version = "0.1.0"
+dependencies = [
+ "lenso",
+ "lenso-app-plan",
+ "lenso-capability-agent-tool-provider",
+ "serde_json",
 ]
 
 [[package]]
@@ -2039,7 +2049,7 @@ dependencies = [
  "lenso-process-adapter",
  "lenso-process-protocol",
  "lenso-process-sdk",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "nix 0.31.3",
  "reqwest 0.13.5",
  "serde",
@@ -2052,6 +2062,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-capability-agent-tool-provider"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6b93721b2dab9676defd5a3a39eb5f99ab7122cca7a779db4106104044db550"
+dependencies = [
+ "futures",
+ "lenso-contract-authoring",
+ "lenso-contract-codegen 0.8.2",
+ "lenso-contract-runtime",
+ "lenso-guest-sdk 0.4.1",
+ "lenso-kernel",
+ "lenso-plugin-authoring",
+ "lenso-runtime-codec 0.3.4",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lenso-capability-auth"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2059,7 +2088,7 @@ checksum = "f9324c6abadbd68088c7cdd269b2335ccf7fe561788f25ec675f133fad3724de"
 dependencies = [
  "futures",
  "lenso-contract-authoring",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
@@ -2073,13 +2102,13 @@ name = "lenso-capability-configuration-source"
 version = "0.1.0"
 dependencies = [
  "futures",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
- "lenso-guest-sdk",
+ "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
  "lenso-plugin-authoring",
  "lenso-plugin-sdk",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "serde",
  "serde_json",
 ]
@@ -2089,12 +2118,12 @@ name = "lenso-capability-http-client"
 version = "0.3.2"
 dependencies = [
  "futures",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
- "lenso-guest-sdk",
+ "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
  "lenso-plugin-authoring",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "serde",
  "serde_json",
 ]
@@ -2108,12 +2137,12 @@ dependencies = [
  "lenso",
  "lenso-capability-http-endpoint-macros",
  "lenso-contract-authoring",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
- "lenso-guest-sdk",
+ "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
  "lenso-plugin-authoring",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "schemars",
  "serde",
  "serde_json",
@@ -2135,7 +2164,7 @@ name = "lenso-capability-http-stream-endpoint"
 version = "0.1.2"
 dependencies = [
  "futures",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
@@ -2148,7 +2177,7 @@ name = "lenso-capability-websocket-endpoint"
 version = "0.1.2"
 dependencies = [
  "futures",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
@@ -2206,6 +2235,19 @@ dependencies = [
 
 [[package]]
 name = "lenso-contract-codegen"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26628f3f1f07d3c77bd40cdf75220c027941979370585ce575bffcdd403eee2d"
+dependencies = [
+ "lenso-contract-authoring",
+ "regex",
+ "semver",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "lenso-contract-codegen"
 version = "0.9.0"
 dependencies = [
  "lenso-contract-authoring",
@@ -2235,7 +2277,7 @@ dependencies = [
  "hex",
  "lenso-app-plan",
  "lenso-kernel",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "libloading 0.9.0",
  "serde",
  "serde_json",
@@ -2268,17 +2310,19 @@ dependencies = [
  "glob",
  "hex",
  "jsonschema",
+ "lenso-agent-tool-cli-plugin",
  "lenso-app-plan",
  "lenso-bun-adapter",
+ "lenso-capability-agent-tool-provider",
  "lenso-capability-configuration-source",
  "lenso-capability-http-endpoint",
  "lenso-contract-authoring",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
  "lenso-engine",
  "lenso-engine-authoring",
  "lenso-engine-runtime",
- "lenso-guest-sdk",
+ "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
  "lenso-native-adapter",
  "lenso-plugin-authoring",
@@ -2287,7 +2331,7 @@ dependencies = [
  "lenso-process-adapter",
  "lenso-process-protocol",
  "lenso-runner",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "lenso-wasm-component-adapter",
  "lenso-web-ingress-plugin",
  "nix 0.30.1",
@@ -2365,15 +2409,15 @@ dependencies = [
  "anyhow",
  "futures",
  "lenso-app-plan",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
  "lenso-engine",
- "lenso-guest-sdk",
+ "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
  "lenso-native-adapter",
  "lenso-plugin-authoring",
  "lenso-runner",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "serde",
  "serde_json",
  "tokio",
@@ -2395,10 +2439,20 @@ name = "lenso-event-contract-fixture"
 version = "0.1.0"
 dependencies = [
  "futures",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-guest-sdk"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f8306301d3f31a26160edea6f2a9932bd5b082ba39844b4cf617953b170dc7e"
+dependencies = [
  "serde",
  "serde_json",
 ]
@@ -2417,7 +2471,7 @@ version = "0.1.24"
 dependencies = [
  "lenso-app-plan",
  "lenso-plugin-control-plane",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2435,7 +2489,7 @@ dependencies = [
  "lenso-kernel",
  "lenso-plugin-control-plane",
  "lenso-process-adapter",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
@@ -2472,7 +2526,7 @@ dependencies = [
  "lenso-native-adapter",
  "lenso-native-adapter-macros",
  "lenso-runner",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "lenso-wasm-component-adapter",
  "reqwest 0.13.5",
  "serde",
@@ -2520,7 +2574,7 @@ dependencies = [
  "lenso-kernel",
  "lenso-native-adapter-macros",
  "lenso-plugin-authoring",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "serde",
  "serde_json",
 ]
@@ -2645,7 +2699,7 @@ dependencies = [
  "lenso-quickjs-adapter",
  "lenso-remote-adapter",
  "lenso-runner",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "lenso-wasm-component-adapter",
  "reqwest 0.13.5",
  "serde",
@@ -2659,7 +2713,7 @@ dependencies = [
 name = "lenso-plugin-sdk"
 version = "0.4.5"
 dependencies = [
- "lenso-guest-sdk",
+ "lenso-guest-sdk 0.5.1",
  "lenso-plugin-sdk-macros",
  "lenso-process-sdk",
  "serde",
@@ -2680,7 +2734,7 @@ name = "lenso-portable-contract-fixture"
 version = "0.1.0"
 dependencies = [
  "futures",
- "lenso-contract-codegen",
+ "lenso-contract-codegen 0.9.0",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
@@ -2709,7 +2763,7 @@ dependencies = [
  "lenso-native-adapter",
  "lenso-process-protocol",
  "lenso-process-sdk",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2744,7 +2798,7 @@ dependencies = [
  "hex",
  "lenso-app-plan",
  "lenso-kernel",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "lenso-runtime-conformance",
  "rquickjs",
  "serde_json",
@@ -2760,7 +2814,7 @@ dependencies = [
  "hex",
  "lenso-app-plan",
  "lenso-kernel",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "reqwest 0.13.5",
  "serde",
  "serde_json",
@@ -2786,6 +2840,22 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "lenso-runtime-codec"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da30e3b6b672c1add5ef5bb28e5c08ec506813dddc846082a57e75b7902fafb8"
+dependencies = [
+ "futures",
+ "hex",
+ "lenso-app-plan",
+ "lenso-kernel",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
 ]
 
 [[package]]
@@ -2841,7 +2911,7 @@ dependencies = [
  "lenso-app-plan",
  "lenso-kernel",
  "lenso-plugin-bundle",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "lenso-runtime-conformance",
  "serde",
  "serde_json",
@@ -2956,7 +3026,7 @@ dependencies = [
  "lenso-native-adapter",
  "lenso-portable-http-endpoint-fixture",
  "lenso-runner",
- "lenso-runtime-codec",
+ "lenso-runtime-codec 0.4.3",
  "lenso-wasm-component-adapter",
  "lenso-web-duplex-fixture",
  "lenso-web-http-parity-fixture",
@@ -3280,7 +3350,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3716,7 +3786,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4140,7 +4210,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4220,7 +4290,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs 1.0.9",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4548,7 +4618,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4702,7 +4772,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5646,7 +5716,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

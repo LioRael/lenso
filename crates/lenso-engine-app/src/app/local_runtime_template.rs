@@ -276,6 +276,60 @@ fn portable_web_proof() -> anyhow::Result<serde_json::Value> {
 }
 
 #[cfg(not(generated_native_host))]
+fn portable_tool_cli_proof() -> anyhow::Result<serde_json::Value> {
+    use lenso_capability_agent_tool_provider as tools;
+    lenso_agent_tool_cli_plugin::link();
+    let descriptor = lenso_agent_tool_cli_plugin::descriptor();
+    let registry = NativePluginRegistry::new().with_linked_factories();
+    let factories = registry
+        .factories()
+        .filter(|factory| factory.package_id() == descriptor.plugin_id())
+        .collect::<Vec<_>>();
+    if factories.len() != 1
+        || factories[0].package_version() != descriptor.release_version()
+        || factories[0].factory_identity()
+            != format!("{}@{}", descriptor.plugin_id(), descriptor.release_version())
+    {
+        bail!("precompiled Host has no exact Agent Tool CLI caller factory");
+    }
+    Ok(serde_json::json!({
+        "schema": "lenso.portable-tool-cli-host.v1",
+        "target": lenso_app_authoring::native_host_target(),
+        "caller": "lenso.agent.tool-cli/default",
+        "descriptor": descriptor,
+        "tool_provider_codec": {
+            "capability_id": tools::CAPABILITY_ID,
+            "descriptor_version": tools::DESCRIPTOR_VERSION,
+            "descriptor_digest": tools::DESCRIPTOR_DIGEST,
+            "request_operations": [tools::CATALOG_OPERATION, tools::EXECUTE_OPERATION],
+        },
+        "execution_classes": ["lenso.process@1", "lenso.wasm-component@1"],
+    }))
+}
+
+#[cfg(not(generated_native_host))]
+pub(super) fn probe_portable_tool_cli(
+    executable: &std::path::Path,
+) -> anyhow::Result<lenso_app_plan::authoring::PluginDescriptor> {
+    let output = super::build_command(executable)
+        .args(["app", "__run-local", "--", "--probe-portable-tool-cli"])
+        .output()
+        .with_context(|| format!("probe precompiled Tool CLI Host {}", executable.display()))?;
+    if !output.status.success() {
+        bail!(
+            "precompiled Host has no compatible Agent Tool CLI caller and codec: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let actual: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .context("decode precompiled Agent Tool CLI Host probe")?;
+    if actual != portable_tool_cli_proof()? {
+        bail!("precompiled Agent Tool CLI caller, codec, target, or Adapter identity mismatch");
+    }
+    serde_json::from_value(actual["descriptor"].clone()).context("decode Agent Tool CLI Descriptor")
+}
+
+#[cfg(not(generated_native_host))]
 pub(super) fn probe_portable_web(executable: &std::path::Path) -> anyhow::Result<lenso_app_plan::authoring::PluginDescriptor> {
     let output = super::build_command(executable)
         .args(["app", "__run-local", "--", "--probe-portable-web"])
@@ -310,7 +364,7 @@ fn validate_portable_web_proof(actual: serde_json::Value) -> anyhow::Result<lens
 
 #[cfg(all(test, not(generated_native_host)))]
 mod portable_web_tests {
-    use super::{portable_web_proof, validate, validate_portable_web_proof};
+    use super::{portable_tool_cli_proof, portable_web_proof, validate, validate_portable_web_proof, validate_tool_cli_transport};
     use lenso_app_plan::{
         AppComposition, CapabilityEndpointPlan, ExecutionClassId, PluginInstancePlan,
         ResolvedAppPlan,
@@ -377,12 +431,55 @@ mod portable_web_tests {
         )]);
         assert!(validate(&v2, &wrong).is_err());
     }
+
+    #[test]
+    fn tool_cli_probe_has_exact_host_caller_and_typed_contract() {
+        let proof = portable_tool_cli_proof().unwrap();
+        assert_eq!(proof["caller"], "lenso.agent.tool-cli/default");
+        assert_eq!(proof["descriptor"]["plugin_id"], "lenso.agent.tool-cli");
+        assert_eq!(proof["descriptor"]["provided_capabilities"], serde_json::json!([]));
+        assert_eq!(
+            proof["descriptor"]["required_capabilities"][0]["capability_id"],
+            lenso_capability_agent_tool_provider::CAPABILITY_ID,
+        );
+        assert_eq!(
+            proof["tool_provider_codec"]["descriptor_digest"],
+            lenso_capability_agent_tool_provider::DESCRIPTOR_DIGEST,
+        );
+    }
+
+    #[test]
+    fn terminal_tools_name_does_not_select_private_tool_transport() {
+        let terminal_args = ["tools".to_owned(), "catalog".to_owned()];
+        assert!(!validate_tool_cli_transport(false, false, false, Some(&terminal_args)).unwrap());
+        let tool_args = ["catalog".to_owned(), "example.tools/default".to_owned()];
+        assert!(validate_tool_cli_transport(true, false, false, Some(&tool_args)).unwrap());
+        assert!(validate_tool_cli_transport(true, false, false, None).is_err());
+    }
+}
+
+fn validate_tool_cli_transport(
+    requested: bool,
+    check: bool,
+    prepare: bool,
+    command_args: Option<&[String]>,
+) -> anyhow::Result<bool> {
+    anyhow::ensure!(
+        !requested || (!check && !prepare && command_args.is_some()),
+        "Agent Tool CLI requires one command and cannot be combined with Host checks"
+    );
+    Ok(requested)
 }
 
 pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     #[cfg(not(generated_native_host))]
     if args == ["--probe-portable-web"] {
         println!("{}", portable_web_proof()?);
+        return Ok(());
+    }
+    #[cfg(not(generated_native_host))]
+    if args == ["--probe-portable-tool-cli"] {
+        println!("{}", portable_tool_cli_proof()?);
         return Ok(());
     }
     #[cfg(generated_native_host)]
@@ -405,6 +502,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let mut web_address_file = None;
     let mut defer_activation = false;
     let mut command_args = None;
+    let mut agent_tool_cli = false;
     #[cfg(generated_native_host)]
     let mut business_snapshot_policy = None;
     let mut index = 0;
@@ -423,6 +521,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             }
             "--check" => check = true,
             "--prepare" => prepare = true,
+            "--agent-tool-cli" => agent_tool_cli = true,
             "--defer-activation" => defer_activation = true,
             "--ready-file" => {
                 index += 1;
@@ -460,6 +559,16 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         web_address_file.is_none() || (!check && ready_file.is_some()),
         "--web-address-file requires --ready-file without --check"
     );
+    let agent_tool_cli = validate_tool_cli_transport(
+        agent_tool_cli,
+        check,
+        prepare,
+        command_args.as_deref(),
+    )?;
+    #[cfg(generated_native_host)]
+    if agent_tool_cli {
+        bail!("Agent Tool CLI is unavailable in this generated native Host profile");
+    }
     let distribution_lock_bytes = fs::read(root.join(".lenso/distribution.lock.json"))?;
     let distribution_lock_sha256 = format!(
         "sha256:{}",
@@ -525,6 +634,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let resolution: Resolution = serde_json::from_slice(&output.stdout)?;
     if resolution.schema != "lenso.runtime-app-resolution.v1" {
         bail!("unsupported resolver schema");
+    }
+    #[cfg(not(generated_native_host))]
+    if agent_tool_cli {
+        super::tool_cli::preflight(&resolution.plan, command_args.as_deref().unwrap())?;
     }
     #[cfg(generated_native_host)]
     for instance in resolution.plan.plugin_instances() {
@@ -664,7 +777,12 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     #[cfg(not(generated_native_host))]
     let ingress = lenso_web_ingress_plugin::WebIngressFactory::new();
     #[cfg(not(generated_native_host))]
-    let native = NativePluginRegistry::new().with_factory(ingress.clone());
+    let native = {
+        lenso_agent_tool_cli_plugin::link();
+        NativePluginRegistry::new()
+            .with_factory(ingress.clone())
+            .with_linked_factories()
+    };
     // LENSO_RUNTIME_WEB
     let _ = &artifacts;
     #[cfg(any(not(generated_native_host), generated_bun_adapter))]
@@ -684,21 +802,25 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         super::terminal::command::CAPABILITY_ID,
         super::terminal::provider::CAPABILITY_ID,
         lenso_capability_http_endpoint::CAPABILITY_ID,
+        lenso_capability_agent_tool_provider::CAPABILITY_ID,
     ]);
     #[cfg(not(generated_native_host))]
     let bun = bun
         .with_authoring_codec(super::terminal::command::CommandJsonCodec)
-        .with_authoring_codec(super::terminal::provider::CommandProviderJsonCodec);
+        .with_authoring_codec(super::terminal::provider::CommandProviderJsonCodec)
+        .with_authoring_codec(super::tool_cli::ToolProviderCodec);
     #[cfg(not(generated_native_host))]
     let process = process
         .with_codec(super::terminal::command::CommandJsonCodec)
         .with_codec(super::terminal::provider::CommandProviderJsonCodec)
-        .with_codec(lenso_capability_http_endpoint::EndpointJsonCodec);
+        .with_codec(lenso_capability_http_endpoint::EndpointJsonCodec)
+        .with_codec(super::tool_cli::ToolProviderCodec);
     #[cfg(not(generated_native_host))]
     let wasm = wasm
         .with_codec(super::terminal::command::CommandJsonCodec)
         .with_codec(super::terminal::provider::CommandProviderJsonCodec)
         .with_codec(lenso_capability_http_endpoint::EndpointJsonCodec)
+        .with_codec(super::tool_cli::ToolProviderCodec)
         .require_v2_descriptor_digest_for(lenso_capability_http_endpoint::CAPABILITY_ID);
     // LENSO_REGISTER_CODECS
     let evidence = serde_json::from_slice(&fs::read(root.join("runtime-codecs.json"))?)?;
@@ -809,7 +931,13 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             eprintln!("Local App ready");
             let mut command_result: anyhow::Result<()> = Ok(());
             #[cfg(not(generated_native_host))]
-            if let Some(args) = &command_args { command_result = super::terminal::run(&app, args).await; }
+            if let Some(args) = &command_args {
+                command_result = if agent_tool_cli {
+                    super::tool_cli::run(&app, args).await
+                } else {
+                    super::terminal::run(&app, args).await
+                };
+            }
             // LENSO_TERMINAL_RUN
             if !check && command_args.is_none() {
                 #[cfg(unix)]
@@ -880,6 +1008,32 @@ pub fn validate(
 ) -> anyhow::Result<()> {
     for instance in plan.plugin_instances() {
         for capability in instance.provided_capabilities() {
+            if capability.capability_id() == lenso_capability_agent_tool_provider::CAPABILITY_ID {
+                let operations = capability.request_operations().into_iter().collect::<std::collections::BTreeSet<_>>();
+                if !matches!(instance.execution_class().as_str(), "lenso.process@1" | "lenso.wasm-component@1")
+                    || capability.descriptor_version() != lenso_capability_agent_tool_provider::DESCRIPTOR_VERSION
+                    || operations != std::collections::BTreeSet::from([
+                        lenso_capability_agent_tool_provider::CATALOG_OPERATION,
+                        lenso_capability_agent_tool_provider::EXECUTE_OPERATION,
+                    ])
+                    || !capability.stream_operations().is_empty()
+                    || !capability.event_operations().is_empty()
+                {
+                    bail!("portable Agent Tool Provider does not match the precompiled Host contract");
+                }
+                let declared_digest = evidence
+                    .get(instance.package_id())
+                    .and_then(|descriptor| descriptor["capabilities"].as_array())
+                    .and_then(|capabilities| capabilities.iter().find(|provided| {
+                        provided["capability_id"] == lenso_capability_agent_tool_provider::CAPABILITY_ID
+                    }))
+                    .and_then(|provided| provided["descriptor_digest"].as_str());
+                if instance.authoring_version() == 2
+                    && declared_digest != Some(lenso_capability_agent_tool_provider::DESCRIPTOR_DIGEST)
+                {
+                    bail!("portable Agent Tool Provider Descriptor digest differs from the precompiled Host codec");
+                }
+            }
             if capability.capability_id() != lenso_capability_http_endpoint::CAPABILITY_ID {
                 continue;
             }
@@ -920,6 +1074,7 @@ pub fn validate(
             super::terminal::command::CAPABILITY_ID,
             super::terminal::provider::CAPABILITY_ID,
             lenso_capability_http_endpoint::CAPABILITY_ID,
+            lenso_capability_agent_tool_provider::CAPABILITY_ID,
         ]),
         evidence,
     )

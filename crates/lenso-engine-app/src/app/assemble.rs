@@ -481,7 +481,30 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
             },
         );
     }
-    let openapi_bindings = if inputs
+    let portable_tools = inputs.iter().any(|input| {
+        matches!(
+            input.descriptor.execution_class().as_str(),
+            "lenso.process@1" | "lenso.wasm-component@1"
+        ) && input
+            .descriptor
+            .provided_capabilities()
+            .iter()
+            .any(|capability| capability.capability_id() == "lenso.agent.tool-provider@2")
+    });
+    if portable_tools && native.is_empty() {
+        let executable = super::preset::runtime_executable()?;
+        let tool_cli = super::portable_runtime::probe_portable_tool_cli(&executable)?;
+        inputs.insert(
+            0,
+            LocalPluginInput {
+                descriptor: tool_cli,
+                manifest_digest: super::local_host::digest(&executable)?,
+                app_owned: true,
+                source: "lenso.portable-tool-cli-host.v1 precompiled CLI ingress".into(),
+            },
+        );
+    }
+    let mut host_bindings = if inputs
         .iter()
         .any(|input| input.descriptor.plugin_id() == "lenso.openapi")
     {
@@ -493,8 +516,15 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     } else {
         Vec::new()
     };
+    if portable_tools && native.is_empty() {
+        host_bindings.push(LocalManySlotBinding {
+            consumer_plugin_id: "lenso.agent.tool-cli",
+            capability_id: "lenso.agent.tool-provider@2",
+            provider_slot: "tool-providers",
+        });
+    }
     let (authority, proposed) = GeneratedHostBuild::lower_local(&args.id, inputs)?
-        .with_local_root_bindings(stage.path(), &openapi_bindings)?;
+        .with_local_root_bindings(stage.path(), &host_bindings)?;
     if !proposed.dependency_choices().is_empty() {
         fs::create_dir_all(stage.path().join("plugins"))?;
         let legacy = stage.path().join("plugins/dependencies.json");

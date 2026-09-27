@@ -42,6 +42,7 @@ mod preset;
 pub use preset::AppProject;
 mod signed_catalog;
 mod target_closure;
+mod tool_cli;
 pub use signed_catalog::{PortableCatalogPage, PortableCatalogQuery};
 pub(crate) use signed_catalog::{
     read_snapshot as read_signed_portable_snapshot, read_trust as read_signed_portable_trust,
@@ -274,6 +275,11 @@ pub enum AppCommand {
     Create(local_workflow::CreateArgs),
     /// Start an already built local App without package managers or network resolution.
     Start(local_workflow::StartArgs),
+    /// Invoke only Host-bound Agent Tool providers in a built local App.
+    Tools {
+        #[command(subcommand)]
+        command: ToolCommand,
+    },
     /// Build and restart the local App when sources or Plugin Root intent change.
     Dev(local_dev::DevArgs),
     #[command(name = "__run-local", hide = true)]
@@ -305,6 +311,40 @@ pub enum AppCommand {
     Facts(facts::FactsArgs),
     /// Build local Plugin sources into a validated Host authoring directory.
     Assemble(assemble::AssembleArgs),
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum ToolCommand {
+    /// List tools from one exact Provider Instance bound to the Host CLI.
+    Catalog(ToolCatalogArgs),
+    /// Execute one tool through that same exact Host-approved binding.
+    Execute(ToolExecuteArgs),
+}
+
+#[derive(Clone, Debug, Args)]
+pub struct ToolCatalogArgs {
+    /// Built local App directory.
+    #[arg(long, default_value = "dist")]
+    from: PathBuf,
+    /// Exact App-local Provider Instance (plugin-id/instance-key).
+    #[arg(long)]
+    provider: String,
+}
+
+#[derive(Clone, Debug, Args)]
+pub struct ToolExecuteArgs {
+    /// Built local App directory.
+    #[arg(long, default_value = "dist")]
+    from: PathBuf,
+    /// Exact App-local Provider Instance (plugin-id/instance-key).
+    #[arg(long)]
+    provider: String,
+    /// Tool name from the provider's catalog.
+    #[arg(long)]
+    name: String,
+    /// One portable JSON value passed as tool arguments.
+    #[arg(long)]
+    arguments_json: String,
 }
 
 #[derive(Args, Clone, Debug)]
@@ -361,6 +401,21 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
         AppCommand::Build(args) => local_workflow::build(args),
         AppCommand::Create(args) => local_workflow::create(args),
         AppCommand::Start(args) => local_workflow::start_command(args).await,
+        AppCommand::Tools { command } => match command {
+            ToolCommand::Catalog(args) => local_workflow::start_built_local_tool_app(
+                args.from,
+                vec!["catalog".into(), args.provider],
+            ),
+            ToolCommand::Execute(args) => local_workflow::start_built_local_tool_app(
+                args.from,
+                vec![
+                    "execute".into(),
+                    args.provider,
+                    args.name,
+                    args.arguments_json,
+                ],
+            ),
+        },
         AppCommand::Dev(args) => local_dev::dev(args).await,
         AppCommand::Runtime { args } => std::thread::spawn(move || portable_runtime::run(args))
             .join()
