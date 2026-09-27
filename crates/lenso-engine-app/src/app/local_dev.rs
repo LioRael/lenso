@@ -1,8 +1,8 @@
 //! Local development rebuilds complete App generations. Without external
 //! configuration, a failed candidate leaves the current preview running.
-//! Policy-supervised replacement prepares the locked candidate before stopping
-//! the old preview. Dynamic readiness still runs after that stop because even
-//! `--check` can activate Kernel side effects.
+//! Policy-supervised replacement may prepare a locked candidate while the old
+//! preview runs. Dynamic readiness can activate Kernel side effects, so one
+//! supervisor session makes at most one dynamic activation attempt.
 use anyhow::{Context, bail};
 use clap::Args;
 use notify::{RecursiveMode, Watcher};
@@ -85,6 +85,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
     let mut revision = 0;
     let mut current_output: Option<PathBuf> = None;
     let mut active: Option<TimedProof> = None;
+    let mut supervised_dynamic_start_available = true;
     let configured_poll = Duration::from_secs(args.configuration_poll_seconds);
     let mut effective_poll = configured_poll;
     let mut poll = tokio::time::interval(configured_poll);
@@ -187,6 +188,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                             &args.args, frontend_config.as_ref(),
                             proof, &mut host, &mut frontend_process,
                             &mut active_backend_url, &mut active,
+                            &mut supervised_dynamic_start_available,
                         ).await?
                     }
                     Err(error) => {
@@ -353,7 +355,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                                         &args.args,
                                         frontend_config.as_ref(), proof, &mut host,
                                         &mut frontend_process, &mut active_backend_url,
-                                        &mut active,
+                                        &mut active, &mut supervised_dynamic_start_available,
                                     ).await? {
                                         Some(true) => select_output(&mut current_output, &target),
                                         Some(false) => {},
@@ -409,7 +411,9 @@ async fn expire_active_if_needed(
     if !active.as_ref().is_some_and(|proof| !proof.is_fresh()) {
         return Ok(false);
     }
-    eprintln!("Configuration source freshness expired; stopping the running preview");
+    eprintln!(
+        "Configuration source freshness expired; stopping the running preview until an operator verifies retirement and restarts"
+    );
     stop_active_now(host, frontend).await?;
     *active_backend_url = None;
     restore_backend_url(root, None)?;
@@ -535,6 +539,7 @@ async fn activate_supervised_candidate(
     frontend_process: &mut Option<frontend::FrontendProcess>,
     active_backend_url: &mut Option<String>,
     active: &mut Option<TimedProof>,
+    dynamic_start_available: &mut bool,
 ) -> anyhow::Result<Option<bool>> {
     if !proof_still_usable(output, policy, &proof) {
         if retire_active_on_policy_change(
@@ -601,14 +606,21 @@ async fn activate_supervised_candidate(
         return Ok(Some(false));
     }
     if host.is_some() || frontend_process.is_some() {
+        *dynamic_start_available = false;
         eprintln!(
-            "Stopping the old preview after static preparation; dynamic readiness may still cause a downtime window"
+            "Configuration candidate is statically prepared, but live replacement is blocked; the old preview remains only while its source proof is valid. Stop and restart after verifying all previous Host descendants have stopped"
         );
-        stop_active_now(host, frontend_process).await?;
-        *active_backend_url = None;
-        *active = None;
-        restore_backend_url(root, None)?;
+        return Ok(Some(false));
     }
+    if !*dynamic_start_available {
+        eprintln!(
+            "Configuration candidate is statically prepared, but this session cannot safely retry dynamic activation; preview remains unavailable until an operator verifies previous Host descendants have stopped and restarts"
+        );
+        return Ok(Some(false));
+    }
+    // --check starts the Kernel and can have side effects. A failed check or
+    // launch cannot be retried safely by this supervisor session.
+    *dynamic_start_available = false;
     if let Err(error) = preflight_until(output, Some(proof.deadline())).await {
         eprintln!("Configuration candidate failed readiness; candidate not activated: {error:#}");
         return Ok(Some(false));
@@ -1421,7 +1433,7 @@ async fn retire_active_on_policy_change(
     };
     if changed {
         eprintln!(
-            "Host configuration policy changed; stopping the running generation until a new candidate is ready"
+            "Host configuration policy changed; stopping the running generation until an operator verifies retirement and restarts"
         );
         stop_active_now(host, frontend).await?;
         *active_backend_url = None;
@@ -2202,13 +2214,16 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn mock_host_dynamic_failure(output: &Path) {
+    fn mock_host_dynamic_failure(output: &Path, marker: &Path) {
         use std::os::unix::fs::PermissionsExt;
 
         let host = output.join(".lenso/host");
         fs::write(
             &host,
-            "#!/bin/sh\ntest \"$1\" = --prepare && exit 0\nexit 23\n",
+            format!(
+                "#!/bin/sh\ntest \"$1\" = --prepare && exit 0\nprintf 'dynamic-started\\n' > \"{}\"\nexit 23\n",
+                marker.display()
+            ),
         )
         .unwrap();
         fs::set_permissions(host, fs::Permissions::from_mode(0o755)).unwrap();
@@ -2407,8 +2422,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn supervised_configuration_preserves_old_on_static_failure_and_records_only_ready_host()
-    {
+    async fn supervised_configuration_keeps_old_until_expiry_and_requires_restart() {
         use lenso_app_plan::authoring::{
             HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
         };
@@ -2465,6 +2479,7 @@ mod tests {
         let mut frontend_process = None;
         let mut active_backend_url = None;
         let mut active = None;
+        let mut dynamic_start_available = true;
         assert!(
             activate_supervised_candidate(
                 output.path(),
@@ -2481,11 +2496,13 @@ mod tests {
                 &mut frontend_process,
                 &mut active_backend_url,
                 &mut active,
+                &mut dynamic_start_available,
             )
             .await
             .unwrap()
             .unwrap()
         );
+        assert!(!dynamic_start_available);
         let first = host.as_ref().unwrap().id();
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
         assert_eq!(status.last_activated_revision, Some(1));
@@ -2505,6 +2522,7 @@ mod tests {
                 &mut frontend_process,
                 &mut active_backend_url,
                 &mut active,
+                &mut dynamic_start_available,
             )
             .await
             .unwrap(),
@@ -2542,6 +2560,7 @@ mod tests {
                 &mut frontend_process,
                 &mut active_backend_url,
                 &mut active,
+                &mut dynamic_start_available,
             )
             .await
             .unwrap()
@@ -2559,7 +2578,8 @@ mod tests {
         assert_eq!(status.last_activated_revision, Some(1));
         assert!(status.pending_activation);
 
-        mock_host_dynamic_failure(output.path());
+        let dynamic_marker = output.path().join("dynamic-started");
+        mock_host_dynamic_failure(output.path(), &dynamic_marker);
         let accepted =
             super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
         assert!(
@@ -2578,9 +2598,31 @@ mod tests {
                 &mut frontend_process,
                 &mut active_backend_url,
                 &mut active,
+                &mut dynamic_start_available,
             )
             .await
             .unwrap()
+            .unwrap()
+        );
+        assert_eq!(host.as_ref().unwrap().id(), first);
+        assert!(active.as_ref().unwrap().is_fresh());
+        assert!(!dynamic_marker.exists());
+        let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
+        assert_eq!(status.last_activated_revision, Some(1));
+        assert!(status.pending_activation);
+
+        let active_proof = active.as_mut().unwrap();
+        active_proof.received_at =
+            Instant::now() - Duration::from_secs(active_proof.accepted.max_stale_seconds + 1);
+        assert!(
+            expire_active_if_needed(
+                output.path(),
+                &mut active,
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+            )
+            .await
             .unwrap()
         );
         assert!(host.is_none());
@@ -2589,13 +2631,43 @@ mod tests {
             kill(Pid::from_raw(i32::try_from(first.unwrap()).unwrap()), None),
             Err(Errno::ESRCH)
         );
-        let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
-        assert_eq!(status.last_activated_revision, Some(1));
-        assert!(status.pending_activation);
 
-        mock_host(output.path(), true);
         let accepted =
             super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
+        let pending_proof = TimedProof {
+            accepted,
+            received_at: Instant::now(),
+        };
+        assert_eq!(
+            activate_supervised_candidate(
+                output.path(),
+                output.path(),
+                Some(output.path()),
+                &policy,
+                &[],
+                None,
+                pending_proof.clone(),
+                &mut host,
+                &mut frontend_process,
+                &mut active_backend_url,
+                &mut active,
+                &mut dynamic_start_available,
+            )
+            .await
+            .unwrap(),
+            Some(false)
+        );
+        assert!(host.is_none());
+        assert!(active.is_none());
+        assert!(!dynamic_marker.exists());
+        assert!(
+            super::super::configuration_source::inspect_status(output.path())
+                .unwrap()
+                .pending_activation
+        );
+
+        mock_host(output.path(), true);
+        let mut next_session_dynamic_start_available = true;
         assert!(
             activate_supervised_candidate(
                 output.path(),
@@ -2604,19 +2676,18 @@ mod tests {
                 &policy,
                 &[],
                 None,
-                TimedProof {
-                    accepted,
-                    received_at: Instant::now()
-                },
+                pending_proof,
                 &mut host,
                 &mut frontend_process,
                 &mut active_backend_url,
                 &mut active,
+                &mut next_session_dynamic_start_available,
             )
             .await
             .unwrap()
             .unwrap()
         );
+        assert!(!next_session_dynamic_start_available);
         assert_ne!(host.as_ref().unwrap().id(), first);
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
         assert_eq!(status.last_activated_revision, Some(2));

@@ -157,9 +157,18 @@ both process groups without a graceful-shutdown allowance and removes the
 published dev backend URL. An accepted replacement first checks the candidate's
 locked distribution, resolved Root, and artifacts without starting Plugin
 lifecycles. Failure at this static preparation stage leaves a still-valid old
-preview running. Dynamic readiness can itself start the Kernel, so the old
-preview stops before that check; expect a downtime window if dynamic readiness
-fails. Ordinary source read failures do not stop a still-fresh preview.
+preview running. Dynamic readiness can itself start the Kernel, so the same
+`app dev` session will not automatically run `--check` or start a replacement
+after any dynamic activation attempt. A statically prepared update stays
+pending while the old preview and its source proof remain valid. If that proof
+expires or the Host policy changes, the old preview is stopped and this session
+stays unavailable rather than automatically starting a replacement. Stop the
+session, verify that the previous Host and all descendants have stopped, then
+explicitly restart `app dev` to attempt the pending revision. A failed initial
+dynamic check also requires that restart; static-preparation failures can be
+retried without it. Ordinary source read failures do not stop a still-fresh
+preview. This is a fail-closed local preview rule, not OS containment or an
+atomic rollback of Plugin side effects.
 
 The accepted desired revision is persisted in the built App's private
 `intent/.lenso/configuration-source-state.json` before publication. A repeated or stale
