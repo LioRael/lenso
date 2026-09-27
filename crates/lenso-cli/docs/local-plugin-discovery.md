@@ -47,7 +47,7 @@ lenso app add example.web@0.4.5 --root ./my-app \
   --linked-snapshot ./linked-cargo.json --trust ./catalog-trust.json \
   --crate ./example-web-plugin-0.4.5.crate
 lenso app build --root ./my-app --out ./dist-web
-lenso app check --root ./dist-web/intent --json
+lenso app check --root ./dist-web --json
 lenso app show --root ./dist-web/intent --json
 ```
 
@@ -107,10 +107,26 @@ lenso app add example.tools@0.1.0 --root ./my-app \
   --portable-snapshot ./portable.json --trust ./catalog-trust.json \
   --archive ./example-tools-0.1.0.lenso-plugin
 lenso app build --root ./my-app --out ./dist-tools
-lenso app check --root ./dist-tools/intent --json
+lenso app check --root ./dist-tools --json
 lenso app show --root ./dist-tools/intent --json
 lenso app start --from ./dist-tools --check
 ```
+
+If that release provides `lenso.agent.tool-provider@2`, a portable-only Host
+binds its exact Instance to the local Tool CLI. After checking the binding with
+`app show`, a user can call it explicitly. The execution example assumes the
+catalog lists an `uppercase` tool accepting `text`:
+
+```sh
+lenso app tools catalog --from ./dist-tools --provider example.tools/default
+lenso app tools execute --from ./dist-tools --provider example.tools/default \
+  --name uppercase --arguments-json '{"text":"Lenso plugin"}'
+```
+
+This path does not expose the provider to a model or MCP client. A mixed
+generated-native Host currently rejects `app tools`; it does not silently
+execute an unbound provider. Do not put secrets in `--arguments-json`: command
+arguments can be visible to other local processes.
 
 `--origin HTTPS_ORIGIN` may replace `--archive`; it explicitly permits only
 that HTTPS origin for the signed artifact URL. A listing or URL alone never
@@ -141,7 +157,7 @@ lenso plugins signed-install example.tools --version 0.1.0 \
   --snapshot ./portable.json --trust ./catalog-trust.json \
   --archive ./example-tools-0.1.0.lenso-plugin --root ./dist-tools/intent
 lenso plugins configure example.tools default --root ./dist-tools/intent
-lenso app check --root ./dist-tools/intent --json
+lenso app check --root ./dist-tools --json
 ```
 
 Built-root installation does not silently create an Instance; configuration

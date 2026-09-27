@@ -76,8 +76,10 @@ Do not treat exit status zero or the absence of the former Host process group
 as proof that all descendants are gone.
 
 `lenso app config-sync --root dist --policy /etc/my-app/policy.json` performs
-only source reconciliation, without starting the Host. Inspect the runtime App with
-`app check/show --root dist/intent`; the generated Host reads this same Root.
+only source reconciliation, without starting the Host. Check the distribution
+with `lenso app check --root dist` and inspect its selected Plugin Instances
+with `lenso app show --root dist/intent`; the generated Host reads `dist/intent`
+as its Plugin Root.
 
 `max_stale_seconds` is a Host-policy limit, currently defaulting to 300 seconds
 when omitted and accepting explicit values from 1 through 86400. A successful
