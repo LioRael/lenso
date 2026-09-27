@@ -91,6 +91,16 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
     let mut poll = tokio::time::interval(configured_poll);
     poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     poll.tick().await;
+    // Register once, then keep the subscription alive while source sync or
+    // Host preparation runs outside the main select loops.
+    let interrupt = tokio::signal::ctrl_c();
+    tokio::pin!(interrupt);
+    if let std::task::Poll::Ready(signal) =
+        std::future::poll_fn(|cx| std::task::Poll::Ready(interrupt.as_mut().poll(cx))).await
+    {
+        signal?;
+        return Ok(());
+    }
     let result: anyhow::Result<()> = async {
         loop {
         revision += 1;
@@ -117,7 +127,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                     ).await?;
                 }
                 status = child.wait() => break status?,
-                signal = tokio::signal::ctrl_c() => {
+                signal = &mut interrupt => {
                     signal?;
                     stop(&mut child, true).await?;
                     stop_active(&mut host, &mut frontend_process).await?;
@@ -235,7 +245,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                         &mut active_backend_url,
                     ).await?;
                 }
-                signal = tokio::signal::ctrl_c() => {
+                signal = &mut interrupt => {
                     signal?;
                     stop_active(&mut host, &mut frontend_process).await?;
                     return Ok(());
