@@ -97,6 +97,16 @@ candidate is already reachable from the remote tip, keep its SHA unchanged.
 Use normal pushes only. Publication, tags, and deployment are separate
 authorized operations.
 
+## Publication owner cutover
+
+Before enabling this repository's `release-plz.yml` publish mode, inventory and
+disable every legacy workflow that can publish the same crates, then read back
+each workflow's inactive state. Migrate each affected crate's Trusted Publisher
+to `LioRael/lenso` and `release-plz.yml`, and verify that ownership. Only then
+may an administrator set the repository variable
+`LENSO_RELEASE_OWNER_CUTOVER=complete`. Its absence blocks publication; a
+successful dry run does not authorize the cutover.
+
 ## Scope and commits
 
 Do not restore v0.3.x Service, Provider, System Plane, Console, Story, Auth,

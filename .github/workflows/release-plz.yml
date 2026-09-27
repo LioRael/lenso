@@ -98,6 +98,14 @@ jobs:
       RELEASE_SHA: ${{ inputs.source_sha }}
       GITHUB_TOKEN: ${{ github.token }}
     steps:
+      - name: Verify publication owner cutover
+        env:
+          LENSO_RELEASE_OWNER_CUTOVER: ${{ vars.LENSO_RELEASE_OWNER_CUTOVER }}
+        run: |
+          if [[ "$LENSO_RELEASE_OWNER_CUTOVER" != complete ]]; then
+            echo "::error::Publication owner cutover is incomplete; disable and read back legacy publishers, migrate Trusted Publishers, then set LENSO_RELEASE_OWNER_CUTOVER=complete."
+            exit 1
+          fi
       - name: Checkout requested source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
