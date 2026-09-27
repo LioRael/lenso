@@ -292,10 +292,10 @@ fn exact_signed_portable_archive_is_adopted_and_checked() {
         String::from_utf8_lossy(&built.stdout),
         String::from_utf8_lossy(&built.stderr)
     );
-    let built_root = distribution.join("intent");
+    let built_intent = distribution.join("intent");
     let built_check = Command::new(env!("CARGO_BIN_EXE_lenso"))
         .args(["app", "check", "--root"])
-        .arg(&built_root)
+        .arg(&distribution)
         .output()
         .unwrap();
     assert!(
@@ -305,7 +305,7 @@ fn exact_signed_portable_archive_is_adopted_and_checked() {
     );
     let built_show = Command::new(env!("CARGO_BIN_EXE_lenso"))
         .args(["app", "show", "--root"])
-        .arg(&built_root)
+        .arg(&built_intent)
         .arg("--json")
         .output()
         .unwrap();
