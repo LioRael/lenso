@@ -664,8 +664,8 @@ runtime = "wasm"
 crate-type = ["cdylib"]
 
 [dependencies]
-lenso = {{ package = "lenso-plugin-sdk", version = "0.4.1" }}
-lenso-agent-tool-sdk = "0.3.0"
+lenso = {{ package = "lenso-plugin-sdk", version = "0.4.6" }}
+lenso-agent-tool-sdk = "0.3.2"
 schemars = "1"
 serde = {{ version = "1", features = ["derive"] }}
 

@@ -2711,7 +2711,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-plugin-sdk"
-version = "0.4.5"
+version = "0.4.6"
 dependencies = [
  "lenso-guest-sdk 0.5.1",
  "lenso-plugin-sdk-macros",

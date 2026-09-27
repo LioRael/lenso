@@ -18,7 +18,7 @@ futures.workspace = true
 lenso-contract-runtime = { path = "../lenso-contract-runtime", version = "0.2.0" }
 lenso-guest-sdk = { path = "../lenso-guest-sdk", version = "0.5.0" }
 lenso-kernel = { path = "../lenso-kernel", version = "=0.3.11" }
-lenso-plugin-sdk = { path = "../lenso-plugin-sdk", version = "0.4.5" }
+lenso-plugin-sdk = { path = "../lenso-plugin-sdk", version = "0.4.6" }
 lenso-plugin-authoring = { path = "../lenso-plugin-authoring", version = "=0.2.0" }
 lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.3" }
 serde.workspace = true

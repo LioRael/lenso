@@ -9,7 +9,7 @@ Plugin projects normally depend on it through the `lenso` facade name:
 
 ```toml
 [dependencies]
-lenso = { package = "lenso-plugin-sdk", version = "0.4.3" }
+lenso = { package = "lenso-plugin-sdk", version = "0.4.6" }
 ```
 
 ## Migrating from 0.1

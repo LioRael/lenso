@@ -461,7 +461,7 @@ fn process_plugin_scaffold_uses_the_sdk_owned_lowering() {
     let entrypoint = files.get(Path::new("src/main.rs")).unwrap();
 
     assert!(manifest.contains("runtime = \"process\""));
-    assert!(manifest.contains("package = \"lenso-plugin-sdk\", version = \"0.4.1\""));
+    assert!(manifest.contains("package = \"lenso-plugin-sdk\", version = \"0.4.6\""));
     assert!(!manifest.contains("lenso-runtime-rust\""));
     assert!(manifest.contains("lenso-agent-tool-sdk"));
     assert!(!manifest.contains("github.com/LioRael/lenso-agent"));
