@@ -1,0 +1,27 @@
+crates/lenso-wasm-component-adapter/src/lib.rs
+  s_7d146975368699::t_abd9c39ea11f7c 711-724
+  s_7d146975368699::t_a0670e265533a1 11,16,452,468,474,479-495,668-669,738-741,1672
+crates/lenso-wasm-component-adapter/tests/wasm_host.rs
+  s_7d146975368699::t_22b87870ca62a7 758-763
+docs/architecture/plugin-execution-classes.md
+  s_7d146975368699::t_22b87870ca62a7 140-141
+  s_7d146975368699::t_aa020fe6120ce3 145
+  s_7d146975368699::t_32ebe7184b0263 144
+  s_7d146975368699::t_5b5cbe38927afa 142-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9a9b9c0e465cc56d5c558860024d4692894641b",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
