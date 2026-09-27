@@ -672,25 +672,7 @@ impl WasmGeneration {
             select! {
                 result = response => {
                     abandonment.disarm();
-                    if turn.is_expired() {
-                        self.failed.store(true, Ordering::Release);
-                        return Err(RuntimeFailure::DeadlineExceeded {
-                            request_id: context.request_id(),
-                        });
-                    }
-                    return match result {
-                        Ok(Ok(outcome)) => Ok(outcome),
-                        Ok(Err(detail)) => {
-                            self.failed.store(true, Ordering::Release);
-                            Err(RuntimeFailure::PluginFailure { detail: bounded(detail) })
-                        }
-                        Err(_) => {
-                            self.failed.store(true, Ordering::Release);
-                            Err(RuntimeFailure::PluginFailure {
-                                detail: "Wasm Component worker stopped".to_owned(),
-                            })
-                        }
-                    };
+                    return self.finish_guest_call(result, &turn, context.request_id());
                 }
                 command = import_receiver.next() => {
                     let Some(command) = command else {
@@ -739,6 +721,33 @@ impl WasmGeneration {
                     self.failed.store(true, Ordering::Release);
                     return Err(RuntimeFailure::DeadlineExceeded { request_id: context.request_id() });
                 }
+            }
+        }
+    }
+
+    fn finish_guest_call(
+        &self,
+        result: Result<Result<JsonInvocationOutcome, String>, futures::channel::oneshot::Canceled>,
+        turn: &TurnDeadline,
+        request_id: u64,
+    ) -> Result<JsonInvocationOutcome, RuntimeFailure> {
+        if turn.is_expired() {
+            self.failed.store(true, Ordering::Release);
+            return Err(RuntimeFailure::DeadlineExceeded { request_id });
+        }
+        match result {
+            Ok(Ok(outcome)) => Ok(outcome),
+            Ok(Err(detail)) => {
+                self.failed.store(true, Ordering::Release);
+                Err(RuntimeFailure::PluginFailure {
+                    detail: bounded(detail),
+                })
+            }
+            Err(_) => {
+                self.failed.store(true, Ordering::Release);
+                Err(RuntimeFailure::PluginFailure {
+                    detail: "Wasm Component worker stopped".to_owned(),
+                })
             }
         }
     }
