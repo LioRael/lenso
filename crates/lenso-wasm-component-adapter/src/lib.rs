@@ -8,11 +8,12 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
+    task::Poll,
     thread,
     time::{Duration, Instant},
 };
 
-use futures::{FutureExt, StreamExt, channel::mpsc as futures_mpsc, select};
+use futures::{FutureExt, StreamExt, channel::mpsc as futures_mpsc, select, task::AtomicWaker};
 use lenso_app_plan::{ExecutionClassId, PluginInstancePlan, ResolvedAppPlan};
 use lenso_kernel::{
     ExecutionAdapter, InvocationContext, PluginLifecycle, PreparedNativeApp, PreparedNativePlugin,
@@ -448,6 +449,7 @@ struct TurnDeadline {
     at: Instant,
     request_id: u64,
     expired: Arc<AtomicBool>,
+    waker: Arc<AtomicWaker>,
 }
 
 impl TurnDeadline {
@@ -463,14 +465,32 @@ impl TurnDeadline {
             at,
             request_id,
             expired,
+            waker: Arc::new(AtomicWaker::new()),
         })
     }
 
     fn is_expired(&self) -> bool {
         if Instant::now() >= self.at {
-            self.expired.store(true, Ordering::Release);
+            self.expire();
         }
         self.expired.load(Ordering::Acquire)
+    }
+
+    fn expire(&self) {
+        self.expired.store(true, Ordering::Release);
+        self.waker.wake();
+    }
+
+    async fn wait(&self) {
+        futures::future::poll_fn(|context| {
+            self.waker.register(context.waker());
+            if self.is_expired() {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        })
+        .await;
     }
 
     fn host_failure(&self) -> String {
@@ -645,6 +665,8 @@ impl WasmGeneration {
         let mut response = response.fuse();
         let mut import_receiver = import_receiver.fuse();
         let mut cancelled = cancellation.cancelled().fuse();
+        let deadline = turn.wait().fuse();
+        futures::pin_mut!(deadline);
         let mut imported = 0_usize;
         loop {
             select! {
@@ -686,7 +708,20 @@ impl WasmGeneration {
                         }))
                         .expect("host import Runtime Failure is JSON")
                     } else {
-                        self.dispatch_host_import(command.call, context.clone()).await
+                        let dispatch = self.dispatch_host_import(command.call, context.clone()).fuse();
+                        futures::pin_mut!(dispatch);
+                        select! {
+                            encoded = dispatch => encoded,
+                            () = deadline => {
+                                self.failed.store(true, Ordering::Release);
+                                return Err(RuntimeFailure::DeadlineExceeded { request_id: context.request_id() });
+                            }
+                            () = cancelled => {
+                                self.failed.store(true, Ordering::Release);
+                                self.engine.increment_epoch();
+                                return Err(RuntimeFailure::Cancelled { request_id: context.request_id() });
+                            }
+                        }
                     };
                     let encoded = if command.turn.is_expired() {
                         command.turn.host_failure()
@@ -699,6 +734,10 @@ impl WasmGeneration {
                     self.failed.store(true, Ordering::Release);
                     self.engine.increment_epoch();
                     return Err(RuntimeFailure::Cancelled { request_id: context.request_id() });
+                }
+                () = deadline => {
+                    self.failed.store(true, Ordering::Release);
+                    return Err(RuntimeFailure::DeadlineExceeded { request_id: context.request_id() });
                 }
             }
         }
@@ -1630,7 +1669,7 @@ fn run_deadline_worker(engine: &Engine, commands: &mpsc::Receiver<DeadlineComman
                 match commands.recv_timeout(turn.at.saturating_duration_since(Instant::now())) {
                     Ok(command) => command,
                     Err(mpsc::RecvTimeoutError::Timeout) => {
-                        turn.expired.store(true, Ordering::Release);
+                        turn.expire();
                         engine.increment_epoch();
                         active = None;
                         continue;

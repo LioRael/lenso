@@ -755,11 +755,12 @@ fn real_component_rejects_late_guest_effects_after_host_import_deadline() {
             matches!(failure, RuntimeFailure::DeadlineExceeded { .. }),
             "asynchronous={asynchronous}, failure={failure:?}"
         );
-        assert!(
-            started.elapsed() >= Duration::from_millis(200),
-            "asynchronous={asynchronous}"
-        );
-        assert_eq!(completed.load(Ordering::Relaxed), 1);
+        if asynchronous {
+            assert_eq!(completed.load(Ordering::Relaxed), 0);
+        } else {
+            assert!(started.elapsed() >= Duration::from_millis(200));
+            assert_eq!(completed.load(Ordering::Relaxed), 1);
+        }
         assert_eq!(publications.load(Ordering::Relaxed), 0);
     }
 }

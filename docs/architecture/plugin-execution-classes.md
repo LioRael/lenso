@@ -137,11 +137,12 @@ a release demanding a lower ceiling is rejected rather than silently assigned
 a weaker limit. The current turn timer measures one absolute wall-clock
 interval, including Host imports. When it expires, the Adapter rejects the
 Guest result and denies later Host imports from that turn, so Guest code
-cannot publish a new event after a slow import returns. A Host callback that
-began before expiry may already have committed effects; the Adapter cannot
-roll them back. A synchronous blocking callback can also delay error delivery
-until it returns. This is **not** complete V6 `TurnDeadline` enforcement, and
-that demand remains fail-closed even if its requested duration exceeds the
+cannot publish a new event after a slow import returns. The caller can receive
+a deadline result while an asynchronous Host callback is still pending. A Host
+callback that began before expiry may already have committed effects; the
+Adapter cannot roll them back. A synchronous blocking callback can still delay
+error delivery until it returns. This is **not** complete V6 `TurnDeadline`
+enforcement, and that demand remains fail-closed even if its duration exceeds the
 Adapter's ordinary timer default.
 
 Selection is not runtime fallback. If the selected implementation fails its
