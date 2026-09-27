@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "Host-owned CLI ingress for explicitly bound Agent Tool providers"
+publish = true
 
 [package.metadata.lenso]
 plugin-id = "lenso.agent.tool-cli"
