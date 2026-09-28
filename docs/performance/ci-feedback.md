@@ -65,6 +65,48 @@ their own stderr: no visible Cargo completion is **not** proof that a phase did
 no compilation. Use cold CI phase measurements before attributing residual
 time to waits or proposing another cache change.
 
+## Distribution hashing hotspot
+
+Profiling the actual Process Host's `--prepare` path identified SHA-256,
+not a compiler or a sleeping poll loop: all 799 samples on its active worker
+were inside `Sha256::digest` / compression. The complete local distribution
+contained two 216,619,064-byte debug CLI binaries (Host and resolver), plus
+the guest. Repeated full-byte integrity checks amplified unoptimized hashing
+cost across preparation, checking, activation, and supervision.
+
+The workspace selectively sets `sha2` to optimization level 3 in the dev
+profile, which the test profile inherits. Other dependencies, workspace
+crates, release settings, and runtime verification behavior are unchanged.
+The effective compiler flags retain `debug-assertions=on`.
+
+On the same macOS machine with configured Cargo/mbx and no concurrent builds:
+
+| Real workload | Before | After |
+| --- | ---: | ---: |
+| Complete distribution `--prepare`, three samples | 2.745 / 2.598 / 2.581s | 0.347 / 0.288 / 0.280s |
+| Configuration-source test pair, warm compiler cache | 82.49s | 44.60s |
+| Process initial activation | 10.83s | 1.44s |
+| Process pending revision 2 | 2.86s | 1.22s |
+| Process source outage | 2.38s | 0.625s |
+
+The preparation median improved approximately 9x, and the focused pair took
+approximately 46% less time. A baseline/fix repeat confirmed the preparation
+result (baseline 2.553 / 2.474 / 2.677s; optimized 0.353 / 0.289 / 0.284s).
+The dependent rebuild took 37.54s; a subsequent no-op took 0.71s, both excluded
+from test-harness times.
+
+The isolated preparation comparison used the same resolver, guest, and
+configuration bytes. Only the Host executable and its matching lock entry
+changed; the optimized Host grew by 79,840 bytes (0.037%), so reduced hashing
+volume does not explain the gain. Both versions rejected an identical one-byte
+resolver mutation with its length and modification time preserved, reporting
+`runtime file changed: runtime/lenso-resolver`. No verification cache, weaker
+metadata-only check, reduced timeout, or ignored test was introduced.
+
+These local results establish the hotspot and the selective optimization's
+effect, not an end-to-end Linux CI speedup. Candidate CI must confirm the
+remaining compile cost, phase durations, and full native/Wasm gate.
+
 ## Focused reproduction
 
 ```sh
