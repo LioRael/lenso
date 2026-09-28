@@ -2102,7 +2102,7 @@ name = "lenso-capability-configuration-source"
 version = "0.1.0"
 dependencies = [
  "futures",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
@@ -2118,7 +2118,7 @@ name = "lenso-capability-http-client"
 version = "0.3.2"
 dependencies = [
  "futures",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
@@ -2137,7 +2137,7 @@ dependencies = [
  "lenso",
  "lenso-capability-http-endpoint-macros",
  "lenso-contract-authoring",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
@@ -2164,7 +2164,7 @@ name = "lenso-capability-http-stream-endpoint"
 version = "0.1.2"
 dependencies = [
  "futures",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
@@ -2177,7 +2177,7 @@ name = "lenso-capability-websocket-endpoint"
 version = "0.1.2"
 dependencies = [
  "futures",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
@@ -2249,6 +2249,19 @@ dependencies = [
 [[package]]
 name = "lenso-contract-codegen"
 version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7722d17cb261dfd8f75b6e417973c9a8580e2310e7a7bf0c3126b09d7b7e5035"
+dependencies = [
+ "lenso-contract-authoring",
+ "regex",
+ "semver",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "lenso-contract-codegen"
+version = "0.9.1"
 dependencies = [
  "lenso-contract-authoring",
  "regex",
@@ -2317,7 +2330,7 @@ dependencies = [
  "lenso-capability-configuration-source",
  "lenso-capability-http-endpoint",
  "lenso-contract-authoring",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-engine",
  "lenso-engine-authoring",
@@ -2409,7 +2422,7 @@ dependencies = [
  "anyhow",
  "futures",
  "lenso-app-plan",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-engine",
  "lenso-guest-sdk 0.5.1",
@@ -2439,7 +2452,7 @@ name = "lenso-event-contract-fixture"
 version = "0.1.0"
 dependencies = [
  "futures",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
@@ -2734,7 +2747,7 @@ name = "lenso-portable-contract-fixture"
 version = "0.1.0"
 dependencies = [
  "futures",
- "lenso-contract-codegen 0.9.0",
+ "lenso-contract-codegen 0.9.1",
  "lenso-contract-runtime",
  "lenso-kernel",
  "lenso-plugin-authoring",
