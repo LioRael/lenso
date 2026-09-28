@@ -22,23 +22,34 @@ jobs:
           toolchain: 1.94.0
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown,wasm32-wasip2
-      - uses: Swatinem/rust-cache@v2
-      - name: Test release cohort packaging
-        run: bash .github/scripts/test-release-cohort-preflight.sh
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Seed via workflow_dispatch on main; sibling candidates cannot share caches.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Test release cohort packaging
+        run: bash .github/scripts/test-release-cohort-preflight.sh
       - name: Lint the workspace
-        run: cargo clippy --locked --workspace --all-targets -- -D warnings
-      - name: Check the workspace
-        run: cargo check --locked --workspace --all-targets
+        run: cargo clippy --locked --workspace --all-targets --timings -- -D warnings
+      - name: Compile workspace tests
+        run: cargo test --locked --workspace --no-run --timings
       - name: Test the workspace
         run: cargo test --locked --workspace
       - name: Compile portable core and Workers HTTP Host for WebAssembly
         run: |
-          cargo check --locked -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-unknown-unknown
-          cargo check --locked -p lenso-workers-http-parity-host --target wasm32-unknown-unknown
-          cargo check --locked -p lenso-http-egress-plugin --no-default-features --features workers --target wasm32-unknown-unknown
-          cargo check --locked -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2
+          cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-unknown-unknown
+          cargo check --locked --timings -p lenso-workers-http-parity-host --target wasm32-unknown-unknown
+          cargo check --locked --timings -p lenso-http-egress-plugin --no-default-features --features workers --target wasm32-unknown-unknown
+          cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2
+      - name: Upload Cargo timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-timings-${{ github.job }}-${{ github.run_attempt }}
+          path: target/cargo-timings/*.html
+          if-no-files-found: ignore
+          retention-days: 7
 
   bun-conformance:
     runs-on: ubuntu-24.04
@@ -66,6 +77,7 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: lenso
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build JavaScript fixtures
         working-directory: lenso-js
         run: |
