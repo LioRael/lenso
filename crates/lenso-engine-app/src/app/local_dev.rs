@@ -2,7 +2,7 @@
 //! configuration, a failed candidate leaves the current preview running.
 //! Policy-supervised replacement may prepare a locked candidate while the old
 //! preview runs. Dynamic readiness can activate Kernel side effects, so one
-//! supervisor session makes at most one dynamic activation attempt.
+//! replacement starts only after the previous managed Host positively retires.
 use anyhow::{Context, bail};
 use clap::Args;
 use notify::{RecursiveMode, Watcher};
@@ -21,6 +21,8 @@ use tokio::{
 use super::configuration_source::AcceptedSourceProof;
 
 mod frontend;
+mod managed_host;
+use managed_host::{Host, Retirement};
 
 #[derive(Clone, Debug, Args)]
 pub struct DevArgs {
@@ -73,13 +75,14 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         .transpose()?;
     fs::create_dir_all(root.join(".lenso"))?;
     let _dev_lock = lock_dev(&root)?;
+    Retirement::check_session(&root)?;
     let generations = tempfile::Builder::new()
         .prefix("dev-")
         .tempdir_in(root.join(".lenso"))?;
     let frontend_config = frontend::FrontendConfig::load(&root)?;
     let frontend_enabled = frontend_config.is_some();
     let (mut watcher, mut events) = watch(&root)?;
-    let mut host: Option<Child> = None;
+    let mut host: Option<Host> = None;
     let mut frontend_process: Option<frontend::FrontendProcess> = None;
     let mut active_backend_url: Option<String> = None;
     let mut revision = 0;
@@ -159,7 +162,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                                     &mut poll, &mut effective_poll, configured_poll,
                                     proof.accepted.max_stale_seconds,
                                 ).await;
-                                refresh_active_if_matching(&mut active, &proof);
+                                refresh_active_if_matching(&mut active, &mut host, &proof);
                             }
                             Err(error) => eprintln!(
                                 "Configuration source unavailable during rebuild: {error:#}"
@@ -326,10 +329,10 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                         process.try_wait()?.is_some()
                     } else { false };
                     if host_exit {
-                            #[cfg(unix)]
-                            if let Some(process) = &mut host { signal_process_group_now(process)?; }
-                            let status = host.as_mut().context("exited Host")?.wait().await?;
-                            eprintln!("Local Host exited ({status}); edit the source to restart.");
+                            let process = host.as_mut().context("exited Host")?;
+                            if let Some(proof) = &active { process.renew(proof.deadline()); }
+                            process.retire().await?;
+                            eprintln!("Local Host retired; edit the source to restart.");
                             host = None;
                             if let Some(frontend) = &mut frontend_process { frontend::stop(frontend).await?; }
                             frontend_process = None;
@@ -389,7 +392,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                                 proof.accepted.max_stale_seconds,
                             ).await;
                             if current_output.as_deref() == Some(target.as_path()) {
-                                refresh_active_if_matching(&mut active, &proof);
+                                refresh_active_if_matching(&mut active, &mut host, &proof);
                             }
                             match super::configuration_source::inspect_status(&target) {
                                 Ok(status) if !status.pending_publication &&
@@ -440,7 +443,7 @@ fn absolute_configuration_policy(path: PathBuf) -> anyhow::Result<PathBuf> {
 
 async fn finish_dev(
     result: anyhow::Result<()>,
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend: &mut Option<frontend::FrontendProcess>,
 ) -> anyhow::Result<()> {
     let shutdown = stop_active(host, frontend).await;
@@ -456,7 +459,7 @@ async fn finish_dev(
 async fn expire_active_if_needed(
     root: &Path,
     active: &mut Option<TimedProof>,
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend: &mut Option<frontend::FrontendProcess>,
     active_backend_url: &mut Option<String>,
 ) -> anyhow::Result<bool> {
@@ -473,13 +476,22 @@ async fn expire_active_if_needed(
     Ok(true)
 }
 
-fn refresh_active_if_matching(active: &mut Option<TimedProof>, proof: &TimedProof) {
+fn refresh_active_if_matching(
+    active: &mut Option<TimedProof>,
+    host: &mut Option<Host>,
+    proof: &TimedProof,
+) {
     if proof.is_fresh()
-        && active
-            .as_ref()
-            .is_some_and(|current| current.accepted == proof.accepted)
+        && active.as_ref().is_some_and(|current| {
+            current.accepted.source == proof.accepted.source
+                && current.accepted.policy_digest == proof.accepted.policy_digest
+                && current.accepted.plugin_root_revision == proof.accepted.plugin_root_revision
+        })
     {
         *active = Some(proof.clone());
+        if let Some(host) = host {
+            host.renew(proof.deadline());
+        }
     }
 }
 
@@ -515,7 +527,7 @@ async fn run_source_sync_with_deadline<F>(
     policy_check: Option<(Option<&Path>, &Path)>,
     sync: F,
     active: &mut Option<TimedProof>,
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend: &mut Option<frontend::FrontendProcess>,
     active_backend_url: &mut Option<String>,
 ) -> anyhow::Result<TimedProof>
@@ -621,6 +633,19 @@ async fn activate_supervised_candidate(
         eprintln!("Configuration source proof changed or expired; candidate not activated");
         return Ok(Some(false));
     }
+    if active_output == Some(output)
+        && host.is_some()
+        && active.as_ref().is_some_and(|previous| {
+            previous.accepted.source == proof.accepted.source
+                && previous.accepted.policy_digest == proof.accepted.policy_digest
+                && previous.accepted.plugin_root_revision == proof.accepted.plugin_root_revision
+        })
+    {
+        // This renews authority for the already-running Root; it is not a
+        // new activation. Keep the original activation receipt, as app start does.
+        refresh_active_if_matching(active, host, &proof);
+        return Ok(Some(true));
+    }
     let preparation_deadline = active.as_ref().map_or(proof.deadline(), |previous| {
         previous.deadline().min(proof.deadline())
     });
@@ -663,73 +688,102 @@ async fn activate_supervised_candidate(
         );
         return Ok(Some(false));
     }
-    if host.is_some() || frontend_process.is_some() {
+    if let Some(config) = config {
+        if host.is_some() || frontend_process.is_some() || !*dynamic_start_available {
+            eprintln!(
+                "Frontend dev has no managed-retirement acknowledgement; automatic replacement remains unsupported. Verify retirement before manually removing the persistent dev fence and restarting."
+            );
+            return Ok(Some(false));
+        }
+        Retirement::fence_session(root)?;
+        eprintln!(
+            "Frontend dev retirement cannot be confirmed automatically; this session's persistent recovery fence will remain after shutdown."
+        );
         *dynamic_start_available = false;
-        eprintln!(
-            "Configuration candidate is statically prepared, but live replacement is blocked; the old preview remains only while its source proof is valid. Stop and restart after verifying all previous Host descendants have stopped"
-        );
-        return Ok(Some(false));
-    }
-    if !*dynamic_start_available {
-        eprintln!(
-            "Configuration candidate is statically prepared, but this session cannot safely retry dynamic activation; preview remains unavailable until an operator verifies previous Host descendants have stopped and restarts"
-        );
-        return Ok(Some(false));
-    }
-    // --check starts the Kernel and can have side effects. A failed check or
-    // launch cannot be retried safely by this supervisor session.
-    *dynamic_start_available = false;
-    if let Err(error) = preflight_until(output, Some(proof.deadline())).await {
-        eprintln!("Configuration candidate failed readiness; candidate not activated: {error:#}");
-        return Ok(Some(false));
-    }
-    if !proof_still_usable(output, policy, &proof) {
-        eprintln!(
-            "Configuration source proof changed or expired during readiness; candidate not activated"
-        );
-        return Ok(Some(false));
-    }
-    let activation = if let Some(config) = config {
-        activate_candidate_with_frontend_until(
+        let activation = activate_candidate_with_frontend_until(
             output,
             args,
             FrontendPreview {
                 root,
-                host: &mut *host,
-                frontend_process: &mut *frontend_process,
-                active_backend_url: &mut *active_backend_url,
+                host,
+                frontend_process,
+                active_backend_url,
                 config,
             },
             true,
             Some(proof.deadline()),
             Some((policy, &proof.accepted)),
         )
-        .await?
-    } else {
-        activate_candidate_until(
-            output,
-            args,
-            host,
-            true,
-            false,
-            Some(proof.deadline()),
-            Some((policy, &proof.accepted)),
-        )
-        .await?
-    };
-    if activation == Some(true) {
-        if !proof_still_usable(output, policy, &proof) {
-            eprintln!(
-                "Configuration source proof changed or expired before selecting the new preview"
-            );
-            stop_active_now(host, frontend_process).await?;
-            *active_backend_url = None;
-            restore_backend_url(root, None)?;
-            return Ok(Some(false));
+        .await?;
+        if activation == Some(true) {
+            if !proof_still_usable(output, policy, &proof) {
+                stop_active_now(host, frontend_process).await?;
+                *active_backend_url = None;
+                restore_backend_url(root, None)?;
+                return Ok(Some(false));
+            }
+            *active = Some(proof);
         }
-        *active = Some(proof);
+        return Ok(activation);
     }
-    Ok(activation)
+    // Static preparation does not start a Kernel. Actual Ready is the only
+    // dynamic startup; retire the old generation before that startup begins.
+    if let Some(previous) = host {
+        if let Some(previous_proof) = active.as_ref() {
+            previous.renew(previous_proof.deadline());
+        }
+        previous.retire().await?;
+    }
+    *host = None;
+    *active = None;
+    *active_backend_url = None;
+    restore_backend_url(root, None)?;
+    Retirement::check_session(root)?;
+    if !proof_still_usable(output, policy, &proof) {
+        eprintln!(
+            "Configuration source proof changed or expired during retirement; candidate not activated"
+        );
+        return Ok(Some(false));
+    }
+    let eligible =
+        cfg!(unix) && matches!(proof.accepted.source.kind(), "file_snapshot" | "https_poll");
+    *dynamic_start_available = false;
+    let retirement = Retirement::new(root, eligible, proof.deadline())?;
+    let mut candidate = match launch_configured_until(
+        output,
+        args,
+        true,
+        false,
+        Some(proof.deadline()),
+        Some(retirement),
+    )
+    .await
+    {
+        Ok(Some(candidate)) => candidate,
+        Ok(None) => return Ok(None),
+        Err(error) => {
+            return Err(error)
+                .context("supervised dev candidate startup failed; session remains fenced");
+        }
+    };
+    if !proof_still_usable(output, policy, &proof) {
+        kill_process_group_now(&mut candidate).await?;
+        bail!("configuration source changed or expired during readiness; session remains fenced");
+    }
+    if let Err(error) =
+        super::configuration_source::record_distribution_activation(output, policy, &proof.accepted)
+    {
+        kill_process_group_now(&mut candidate).await?;
+        return Err(error).context("record dev activation; session remains fenced");
+    }
+    if !proof_still_usable(output, policy, &proof) {
+        kill_process_group_now(&mut candidate).await?;
+        bail!("configuration source changed or expired after readiness; session remains fenced");
+    }
+    *host = Some(candidate);
+    *active = Some(proof);
+    *dynamic_start_available = eligible;
+    Ok(Some(true))
 }
 
 fn effective_poll_interval(configured: Duration, max_stale_seconds: u64) -> Duration {
@@ -778,7 +832,7 @@ fn verify_activation_source(
 
 struct FrontendPreview<'a> {
     root: &'a Path,
-    host: &'a mut Option<Child>,
+    host: &'a mut Option<Host>,
     frontend_process: &'a mut Option<frontend::FrontendProcess>,
     active_backend_url: &'a mut Option<String>,
     config: &'a frontend::FrontendConfig,
@@ -1134,7 +1188,7 @@ async fn rollback_frontend_candidate(
     previous_url: Option<&str>,
     candidate: &mut Child,
     staged_frontend: &mut Option<frontend::FrontendProcess>,
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend_process: &mut Option<frontend::FrontendProcess>,
 ) -> anyhow::Result<()> {
     // A failed directory sync may still have published the new URL. Always
@@ -1172,7 +1226,7 @@ async fn expire_frontend_candidate_now(
     root: &Path,
     candidate: &mut Child,
     staged_frontend: &mut Option<frontend::FrontendProcess>,
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend_process: &mut Option<frontend::FrontendProcess>,
     active_backend_url: &mut Option<String>,
 ) -> anyhow::Result<()> {
@@ -1254,7 +1308,7 @@ fn backend_url(output: &Path) -> anyhow::Result<String> {
 }
 
 async fn stop_active(
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend: &mut Option<frontend::FrontendProcess>,
 ) -> anyhow::Result<()> {
     let frontend_stopped = if let Some(process) = frontend {
@@ -1265,7 +1319,7 @@ async fn stop_active(
         Ok(())
     };
     let host_stopped = if let Some(process) = host {
-        let result = stop(process, false).await;
+        let result = process.retire().await;
         *host = None;
         result
     } else {
@@ -1278,7 +1332,7 @@ async fn stop_active(
 
 /// Revoke a running preview without its normal graceful-shutdown allowance.
 async fn stop_active_now(
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend: &mut Option<frontend::FrontendProcess>,
 ) -> anyhow::Result<()> {
     let host_signal = if let Some(process) = host.as_mut() {
@@ -1473,7 +1527,7 @@ async fn retire_active_on_policy_change(
     root: &Path,
     active_output: Option<&Path>,
     policy: &Path,
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     frontend: &mut Option<frontend::FrontendProcess>,
     active_backend_url: &mut Option<String>,
 ) -> anyhow::Result<bool> {
@@ -1522,7 +1576,7 @@ fn select_output(current_output: &mut Option<PathBuf>, output: &Path) {
 async fn activate_candidate(
     output: &Path,
     args: &[String],
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     supervised_configuration: bool,
     frontend_enabled: bool,
 ) -> anyhow::Result<Option<bool>> {
@@ -1541,7 +1595,7 @@ async fn activate_candidate(
 async fn activate_candidate_until(
     output: &Path,
     args: &[String],
-    host: &mut Option<Child>,
+    host: &mut Option<Host>,
     supervised_configuration: bool,
     frontend_enabled: bool,
     source_deadline: Option<Instant>,
@@ -1617,7 +1671,7 @@ async fn launch_ready(
     args: &[String],
     defer_activation: bool,
     frontend_enabled: bool,
-) -> anyhow::Result<Option<Child>> {
+) -> anyhow::Result<Option<Host>> {
     launch_ready_until(output, args, defer_activation, frontend_enabled, None).await
 }
 
@@ -1627,7 +1681,26 @@ async fn launch_ready_until(
     defer_activation: bool,
     frontend_enabled: bool,
     source_deadline: Option<Instant>,
-) -> anyhow::Result<Option<Child>> {
+) -> anyhow::Result<Option<Host>> {
+    launch_configured_until(
+        output,
+        args,
+        defer_activation,
+        frontend_enabled,
+        source_deadline,
+        None,
+    )
+    .await
+}
+
+async fn launch_configured_until(
+    output: &Path,
+    args: &[String],
+    defer_activation: bool,
+    frontend_enabled: bool,
+    source_deadline: Option<Instant>,
+    mut retirement: Option<Retirement>,
+) -> anyhow::Result<Option<Host>> {
     // A fresh path is essential when restarting a Host from one distribution:
     // an old readiness file must never certify a new process.
     let marker = tempfile::NamedTempFile::new_in(output.join(".lenso"))?.into_temp_path();
@@ -1652,7 +1725,19 @@ async fn launch_ready_until(
     if !args.is_empty() {
         candidate.arg("--").args(args);
     }
-    let mut candidate = candidate.spawn().context("start generated local Host")?;
+    if let Some(retirement) = &mut retirement {
+        retirement.configure(&mut candidate)?;
+    }
+    let child = match candidate.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            if let Some(retirement) = &mut retirement {
+                retirement.clear_unstarted()?;
+            }
+            return Err(error).context("start generated local Host");
+        }
+    };
+    let mut candidate = Host::new(child, retirement);
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     loop {
         if source_deadline.is_some_and(|source_deadline| Instant::now() >= source_deadline) {
@@ -1724,7 +1809,7 @@ struct LivePreviewGuard<'a> {
     root: &'a Path,
     active_output: Option<&'a Path>,
     policy: &'a Path,
-    host: &'a mut Option<Child>,
+    host: &'a mut Option<Host>,
     frontend: &'a mut Option<frontend::FrontendProcess>,
     active_backend_url: &'a mut Option<String>,
     active: &'a mut Option<TimedProof>,
@@ -2081,7 +2166,7 @@ mod tests {
             accepted: accepted_proof(10),
             received_at: Instant::now(),
         });
-        let mut host = Some(process);
+        let mut host = Some(process.into());
         let mut frontend = None;
         let mut active_backend_url = Some("http://127.0.0.1:3001/".into());
         let policy = root.path().join("policy.json");
@@ -2165,7 +2250,7 @@ mod tests {
         let mut command = command(PathBuf::from("/bin/sh"));
         command.arg(&script).arg(&child_pid);
         let process = command.spawn().unwrap();
-        let mut host = Some(process);
+        let mut host = Some(process.into());
         let deadline = Instant::now() + Duration::from_secs(2);
         while !child_pid.is_file() {
             assert!(Instant::now() < deadline);
@@ -2268,7 +2353,7 @@ mod tests {
 
         let host = output.join(".lenso/host");
         let source = if ready {
-            "#!/bin/sh\nif [ \"$1\" = --check ] || [ \"$1\" = --prepare ]; then exit 0; fi\ntest \"$1\" = --ready-file || exit 24\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\ntrap 'exit 0' TERM\nwhile :; do sleep 1; done\n"
+            "#!/bin/sh\ntest \"$1\" = --prepare && exit 0\ntest \"$1\" = --ready-file || exit 24\ntrap 'printf %s \"$LENSO_MANAGED_SHUTDOWN_TOKEN\" > \"$LENSO_MANAGED_SHUTDOWN_RECEIPT\"; exit 0' TERM\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\nwhile :; do sleep 0.05; done\n"
         } else {
             "#!/bin/sh\nexit 23\n"
         };
@@ -2290,6 +2375,72 @@ mod tests {
         )
         .unwrap();
         fs::set_permissions(host, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn managed_dev_requires_receipt_and_successful_exit_to_clear_root_fence() {
+        use std::os::unix::fs::PermissionsExt as _;
+        for cleanup in [
+            "exit 0",
+            "printf wrong > \"$LENSO_MANAGED_SHUTDOWN_RECEIPT\"; exit 0",
+            "printf %s \"$LENSO_MANAGED_SHUTDOWN_TOKEN\" > \"$LENSO_MANAGED_SHUTDOWN_RECEIPT\"; exit 23",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            fs::create_dir(root.path().join(".lenso")).unwrap();
+            let distribution = tempfile::tempdir().unwrap();
+            fs::create_dir(distribution.path().join(".lenso")).unwrap();
+            fs::write(distribution.path().join(".lenso/host-mode"), "native").unwrap();
+            let executable = distribution.path().join(".lenso/host");
+            fs::write(&executable, format!(
+                "#!/bin/sh\ntrap '{cleanup}' TERM\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\nwhile :; do sleep 0.05; done\n"
+            )).unwrap();
+            fs::set_permissions(executable, fs::Permissions::from_mode(0o755)).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let retirement = Retirement::new(root.path(), true, deadline).unwrap();
+            let mut host = launch_configured_until(
+                distribution.path(),
+                &[],
+                true,
+                false,
+                Some(deadline),
+                Some(retirement),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert!(host.retire().await.is_err());
+            drop(host);
+            drop(distribution);
+            // Deleting temporary distributions must not grant another session.
+            assert!(Retirement::check_session(root.path()).is_err());
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn failed_dynamic_dev_start_remains_fenced() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join(".lenso")).unwrap();
+        fs::write(root.path().join(".lenso/host-mode"), "native").unwrap();
+        let marker = root.path().join("dynamic-started");
+        mock_host_dynamic_failure(root.path(), &marker);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let retirement = Retirement::new(root.path(), true, deadline).unwrap();
+        assert!(
+            launch_configured_until(
+                root.path(),
+                &[],
+                true,
+                false,
+                Some(deadline),
+                Some(retirement),
+            )
+            .await
+            .is_err()
+        );
+        assert!(marker.exists());
+        assert!(Retirement::check_session(root.path()).is_err());
     }
 
     #[cfg(unix)]
@@ -2487,7 +2638,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn supervised_configuration_keeps_old_until_expiry_and_requires_restart() {
+    async fn supervised_configuration_retires_before_update_and_allows_clean_retry() {
         use lenso_app_plan::authoring::{
             HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot, PluginDescriptor,
         };
@@ -2569,7 +2720,7 @@ mod tests {
             .unwrap()
             .unwrap()
         );
-        assert!(!dynamic_start_available);
+        assert!(dynamic_start_available);
         let first = host.as_ref().unwrap().id();
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
         assert_eq!(status.last_activated_revision, Some(1));
@@ -2649,12 +2800,20 @@ mod tests {
         assert_eq!(status.last_activated_revision, Some(1));
         assert!(status.pending_activation);
 
-        let dynamic_marker = output.path().join("dynamic-started");
-        mock_host_dynamic_failure(output.path(), &dynamic_marker);
+        mock_host(output.path(), true);
+        let executable = output.path().join(".lenso/host");
+        let script = fs::read_to_string(&executable).unwrap().replace(
+            "test \"$1\" = --ready-file",
+            &format!(
+                "if kill -0 {} 2>/dev/null; then exit 47; fi\ntest \"$1\" = --ready-file",
+                first.unwrap()
+            ),
+        );
+        fs::write(executable, script).unwrap();
         let accepted =
             super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
         assert!(
-            !activate_supervised_candidate(
+            activate_supervised_candidate(
                 output.path(),
                 &[],
                 None,
@@ -2677,38 +2836,16 @@ mod tests {
             .unwrap()
             .unwrap()
         );
-        assert_eq!(host.as_ref().unwrap().id(), first);
-        assert!(active.as_ref().unwrap().is_fresh());
-        assert!(!dynamic_marker.exists());
-        let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
-        assert_eq!(status.last_activated_revision, Some(1));
-        assert!(status.pending_activation);
-
-        let active_proof = active.as_mut().unwrap();
-        active_proof.received_at =
-            Instant::now() - Duration::from_secs(active_proof.accepted.max_stale_seconds + 1);
-        assert!(
-            expire_active_if_needed(
-                output.path(),
-                &mut active,
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
-            )
-            .await
-            .unwrap()
-        );
-        assert!(host.is_none());
-        assert!(active.is_none());
+        assert_ne!(host.as_ref().unwrap().id(), first);
         assert_eq!(
             kill(Pid::from_raw(i32::try_from(first.unwrap()).unwrap()), None),
             Err(Errno::ESRCH)
         );
-
-        let accepted =
-            super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
-        let pending_proof = TimedProof {
-            accepted,
+        let second = host.as_ref().unwrap().id();
+        write_snapshot(3, "greeting = 'second'\n");
+        let same_root = TimedProof {
+            accepted: super::super::configuration_source::sync_with_proof(output.path(), &policy)
+                .unwrap(),
             received_at: Instant::now(),
         };
         assert_eq!(
@@ -2716,7 +2853,7 @@ mod tests {
                 output.path(),
                 &[],
                 None,
-                pending_proof.clone(),
+                same_root,
                 LivePreviewGuard {
                     root: output.path(),
                     active_output: Some(output.path()),
@@ -2730,17 +2867,24 @@ mod tests {
             )
             .await
             .unwrap(),
-            Some(false)
+            Some(true)
         );
-        assert!(host.is_none());
-        assert!(active.is_none());
-        assert!(!dynamic_marker.exists());
-        assert!(
-            super::super::configuration_source::inspect_status(output.path())
-                .unwrap()
-                .pending_activation
-        );
+        assert_eq!(host.as_ref().unwrap().id(), second);
+        let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
+        assert_eq!(status.desired_revision, Some(3));
+        assert_eq!(status.last_activated_revision, Some(2));
+        assert!(status.desired_matches_last_activated_root_and_policy);
+        assert!(status.pending_activation);
+        stop_active(&mut host, &mut frontend_process).await.unwrap();
+        active = None;
+        Retirement::check_session(output.path()).unwrap();
 
+        let accepted =
+            super::super::configuration_source::sync_with_proof(output.path(), &policy).unwrap();
+        let pending_proof = TimedProof {
+            accepted,
+            received_at: Instant::now(),
+        };
         mock_host(output.path(), true);
         let mut next_session_dynamic_start_available = true;
         assert!(
@@ -2764,19 +2908,19 @@ mod tests {
             .unwrap()
             .unwrap()
         );
-        assert!(!next_session_dynamic_start_available);
+        assert!(next_session_dynamic_start_available);
         assert_ne!(host.as_ref().unwrap().id(), first);
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
-        assert_eq!(status.last_activated_revision, Some(2));
+        assert_eq!(status.last_activated_revision, Some(3));
         assert!(!status.pending_activation);
 
-        write_snapshot(3, "unauthorized = 'value'\n");
+        write_snapshot(4, "unauthorized = 'value'\n");
         assert!(super::super::configuration_source::sync(output.path(), &policy).is_err());
         fs::remove_file(&source).unwrap();
         assert!(super::super::configuration_source::sync(output.path(), &policy).is_err());
         let status = super::super::configuration_source::inspect_status(output.path()).unwrap();
-        assert_eq!(status.desired_revision, Some(2));
-        assert_eq!(status.last_activated_revision, Some(2));
+        assert_eq!(status.desired_revision, Some(3));
+        assert_eq!(status.last_activated_revision, Some(3));
         assert!(host.as_mut().unwrap().try_wait().unwrap().is_none());
 
         assert!(
@@ -2792,7 +2936,7 @@ mod tests {
             .unwrap()
         );
         assert!(host.as_mut().unwrap().try_wait().unwrap().is_none());
-        write_snapshot(2, "greeting = 'second'\n");
+        write_snapshot(3, "greeting = 'second'\n");
         fs::write(
             &policy,
             serde_json::to_vec(&serde_json::json!({
@@ -2818,6 +2962,7 @@ mod tests {
             .unwrap()
         );
         assert!(host.is_none());
+        assert!(Retirement::check_session(output.path()).is_err());
     }
 
     #[test]
