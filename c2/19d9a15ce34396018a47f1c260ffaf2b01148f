@@ -1,0 +1,19 @@
+crates/lenso-engine-app/src/app/convention_authoring/openapi.rs
+  s_7d146975368699::t_6b9438dc0c6564 51,61,166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c219d9a15ce34396018a47f1c260ffaf2b01148f",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

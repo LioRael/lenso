@@ -1,0 +1,65 @@
+crates/lenso-engine-app/src/app/bootstrap_configuration_source.rs
+  s_7d146975368699::t_6fbf6a560f595a 36-38,172-173,190
+  s_7d146975368699::t_ce6197b7beb976 1-8,13-35,39-54,59-76,83-171,174-186,197-259
+  s_7d146975368699::t_bab0c56e8fce05 9-12,55-58,77-82,187-189,191-196
+crates/lenso-capability-configuration-source/Cargo.toml
+  s_7d146975368699::t_2f9f8b2f22c5d4 21
+  s_7d146975368699::t_a999beea27a854 22
+  s_7d146975368699::t_942463628135ad 1-16,18-20,23-31
+  s_7d146975368699::t_75596d7ec4f0fc 17
+tests/fixtures/bootstrap-file-source/config.schema.json
+  s_7d146975368699::t_412f327f6fc5dd 1-9
+crates/lenso-capability-configuration-source/src/lib.rs
+  s_7d146975368699::t_942463628135ad 1-16
+  s_7d146975368699::t_bab0c56e8fce05 17-19
+crates/lenso-cli/docs/configuration-sources.md
+  s_7d146975368699::t_d25bafc5d9d372 108-148
+crates/lenso-capability-configuration-source/capability.json
+  s_7d146975368699::t_942463628135ad 1-15
+crates/lenso-capability-configuration-source/schemas/fetch-error.schema.json
+  s_7d146975368699::t_942463628135ad 1-7
+crates/lenso-capability-configuration-source/build.rs
+  s_7d146975368699::t_942463628135ad 1-22
+crates/lenso-capability-configuration-source/schemas/fetch-response.schema.json
+  s_7d146975368699::t_942463628135ad 1-24
+tests/fixtures/bootstrap-file-source/Cargo.toml
+  s_7d146975368699::t_412f327f6fc5dd 1-25
+crates/lenso-engine-app/Cargo.toml
+  s_7d146975368699::t_a999beea27a854 20
+crates/lenso-capability-configuration-source/schemas/fetch-request.schema.json
+  s_7d146975368699::t_942463628135ad 1-7
+tests/fixtures/bootstrap-file-source/src/lib.rs
+  s_7d146975368699::t_412f327f6fc5dd 1-61
+crates/lenso-engine-app/src/app/configuration_source.rs
+  s_7d146975368699::t_b2eb6e8a1b5fd1 1001-1064,1066
+  s_7d146975368699::t_cdd80b6b8e810b 19,140-148,574,581-586,648-668
+  s_7d146975368699::t_94860fa18119a4 1065,1067-1077
+tests/fixtures/bootstrap-file-source/src/main.rs
+  s_7d146975368699::t_412f327f6fc5dd 1
+docs/components/engine.md
+  s_7d146975368699::t_d25bafc5d9d372 347-354
+Cargo.lock
+  s_7d146975368699::t_519e95d0744505 1999-2009,2071-2086,2273
+crates/lenso-capability-configuration-source/src/generated.rs
+  s_7d146975368699::t_ad38127bb71d75 1-520
+crates/lenso-capability-configuration-source/src/generated_plugin.rs
+  s_7d146975368699::t_706f8c33ef4b29 1-181
+crates/lenso-engine-app/src/app.rs
+  s_7d146975368699::t_eeda2cb2b4c907 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6eaf39f6f50cc5c61d9fafe800f989f8f1c45af0",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+crates/lenso-engine-authoring/src/configuration_snapshot.rs
+  s_7d146975368699::t_d9e545290bd85c 197-210,212-214,518-521,1162
+  s_7d146975368699::t_717b4f7bd05e27 211,1085-1101,1105-1106,1134-1161
+  s_7d146975368699::t_9f38d273db7d1a 352,1102-1104,1119-1127,1129,1131-1132
+  s_7d146975368699::t_7140efb55b036f 1107-1118,1128,1130,1133
+  s_7d146975368699::t_2d893d2a76a2a2 1163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a8812c0069c169b42ed142d7ca2974aff7e7be4e",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
