@@ -27,6 +27,8 @@ jobs:
   release_gate:
     name: Verify landed release source
     runs-on: ubuntu-24.04
+    outputs:
+      release_set: ${{ steps.verify.outputs.release_set }}
     permissions:
       actions: read
       contents: read
@@ -46,6 +48,7 @@ jobs:
         with:
           toolchain: 1.94.0
       - name: Verify source, package set, and exact CI evidence
+        id: verify
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash .github/scripts/release-gate.sh
@@ -62,7 +65,7 @@ jobs:
       cancel-in-progress: false
     env:
       RELEASE_SHA: ${{ inputs.source_sha }}
-      EXPECTED_RELEASE_SET: ${{ inputs.release_set }}
+      EXPECTED_RELEASE_SET: ${{ needs.release_gate.outputs.release_set }}
     steps:
       - name: Checkout requested source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -78,6 +81,11 @@ jobs:
           toolchain: 1.94.0
       - name: Package and compile exact cohort artifacts
         run: bash .github/scripts/release-cohort-preflight.sh
+      - name: Verify exact stage configuration
+        env:
+          APPROVED_RELEASE_SET: ${{ needs.release_gate.outputs.release_set }}
+          STAGE_CONFIG_PATH: ${{ runner.temp }}/release-plz-stage.toml
+        run: bash .github/scripts/release-stage-config.sh
 
   release:
     name: Release-plz release
@@ -88,6 +96,7 @@ jobs:
           needs.release_plan.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: write
       pull-requests: read
       id-token: write
@@ -96,6 +105,8 @@ jobs:
       cancel-in-progress: false
     env:
       RELEASE_SHA: ${{ inputs.source_sha }}
+      RELEASE_SET: ${{ needs.release_gate.outputs.release_set }}
+      RELEASE_MODE: publish
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Verify publication owner cutover
@@ -114,19 +125,33 @@ jobs:
           persist-credentials: false
       - name: Verify checkout identity
         run: test "$(git rev-parse HEAD)" = "${RELEASE_SHA,,}"
-      - name: Prepare release-plz branch identity
-        run: |
-          git fetch origin main --no-tags
-          git switch --force-create main "${RELEASE_SHA,,}"
-          git branch --set-upstream-to=origin/main main
-          test "$(git rev-parse HEAD)" = "${RELEASE_SHA,,}"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # 1.94.0
         with:
           toolchain: 1.94.0
+      - name: Recheck source, registry, dependencies, and exact CI before publication
+        run: bash .github/scripts/release-gate.sh
+      - name: Prepare release-plz branch identity
+        run: |
+          git fetch origin main --no-tags
+          test "$(git rev-parse refs/remotes/origin/main)" = "${RELEASE_SHA,,}"
+          git switch --force-create main "${RELEASE_SHA,,}"
+          git branch --set-upstream-to=origin/main main
+          test "$(git rev-parse HEAD)" = "${RELEASE_SHA,,}"
+      - name: Generate exact stage configuration
+        env:
+          APPROVED_RELEASE_SET: ${{ needs.release_gate.outputs.release_set }}
+          STAGE_CONFIG_PATH: ${{ runner.temp }}/release-plz-stage.toml
+        run: bash .github/scripts/release-stage-config.sh
       - name: Publish approved release set
+        id: release_stage
         uses: release-plz/action@2eb1d8bcb770b4c48ccfaad919734b38b51958c9 # v0.5.131
         with:
           command: release
-          config: .github/release-plz.toml
+          config: ${{ runner.temp }}/release-plz-stage.toml
           version: 0.3.160
+      - name: Audit published package set
+        env:
+          EXPECTED_RELEASE_SET: ${{ needs.release_gate.outputs.release_set }}
+          ACTUAL_RELEASES: ${{ steps.release_stage.outputs.releases }}
+        run: bash .github/scripts/verify-release-stage-output.sh

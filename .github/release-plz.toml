@@ -1,6 +1,7 @@
 [workspace]
 # Publishing is entered only through the dispatch-only workflow after a landed
 # SHA, exact CI evidence, and an explicit release set have passed its gate.
+release = false
 release_always = true
 changelog_update = false
 git_tag_name = "{{ package }}-v{{ version }}"

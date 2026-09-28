@@ -166,11 +166,29 @@ authorized operations.
 
 Before enabling this repository's `release-plz.yml` publish mode, inventory and
 disable every legacy workflow that can publish the same crates, then read back
-each workflow's inactive state. Migrate each affected crate's Trusted Publisher
-to `LioRael/lenso` and `release-plz.yml`, and verify that ownership. Only then
-may an administrator set the repository variable
+each workflow's inactive state. For every crate name already registered at
+cutover time (38 of 41 in the 2026-09-28 audit), migrate its Trusted Publisher
+to `LioRael/lenso` and `release-plz.yml`, then verify the owner configuration.
+Only after that legacy-owner cutover may an administrator set
 `LENSO_RELEASE_OWNER_CUTOVER=complete`. Its absence blocks publication; a
 successful dry run does not authorize the cutover.
+
+At the 2026-09-28 audit, three names were not yet registered on crates.io:
+`lenso-capability-configuration-source`, `lenso-test`, and
+`lenso-agent-tool-cli-plugin`. An unregistered name cannot have a Trusted
+Publisher before its first publication. Their owners must separately authorize
+and perform a first publication from the exact landed SHA after its
+dependencies are visible on crates.io and its package preflight passes. The
+OIDC release gate rejects an unregistered name even when the cutover variable
+is `complete`. Configure and verify each new name's Trusted Publisher after
+its first publication, before any later OIDC release. Neither the cutover
+variable nor a staged dry run authorizes a package publication by itself.
+The read-only workflow mode validates the exact stage and packaged artifacts
+without invoking release-plz:
+version 0.3.160 reports `releases=[]` in CLI dry-run mode even when packages
+are pending, and its per-crate Cargo dry-run cannot prove a multi-crate stage
+whose dependencies have not yet reached the registry. The operator must review
+the approved set and preflight receipt before separately authorizing publish.
 
 ## Scope and commits
 

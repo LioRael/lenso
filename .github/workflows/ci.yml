@@ -41,6 +41,8 @@ jobs:
             wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-
       - name: Test release cohort packaging
         run: bash .github/scripts/test-release-cohort-preflight.sh
+      - name: Test staged release gate and package selection
+        run: bash .github/scripts/test-release-scripts.sh
       - name: Lint the workspace
         run: cargo clippy --locked --workspace --all-targets --timings -- -D warnings
       - name: Compile workspace tests

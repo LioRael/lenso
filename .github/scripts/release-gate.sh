@@ -39,6 +39,8 @@ source_sha="${RELEASE_SHA,,}"
 
 release_set="$(release_set_canonical "$RELEASE_SET")" ||
   fail "release_set is not a valid package_name/version JSON array"
+[[ "$release_set" != '[]' ]] ||
+  fail "release_set must contain at least one package"
 
 git fetch origin main --no-tags >/dev/null
 main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')" ||
@@ -58,6 +60,9 @@ git cat-file -e "$main_sha^{commit}" ||
   fail "remote main SHA is not a commit available to the checkout"
 git merge-base --is-ancestor "$source_sha" "$main_sha" ||
   fail "source_sha is not reachable from the current origin/main"
+if [[ "$RELEASE_MODE" == publish && "$source_sha" != "$main_sha" ]]; then
+  fail "publish source_sha must equal the current origin/main SHA"
+fi
 
 metadata="$(cargo metadata --locked --no-deps --format-version 1)" ||
   fail "cargo metadata failed for source_sha"
@@ -101,8 +106,43 @@ while IFS=$'\t' read -r package version manifest; do
   esac
 done < <(jq -r '.packages[] | [.name, .version, .manifest_path] | @tsv' <<<"$metadata")
 registry_release_set="$(jq -c 'sort_by(.package_name)' <<<"$registry_release_set")"
-[[ "$registry_release_set" == "$release_set" ]] ||
-  fail "release_set does not match the read-only crates.io plan: expected ${release_set}, registry plan ${registry_release_set}"
+unavailable_selected="$(jq -c --argjson missing "$registry_release_set" '
+  [.[] | select(. as $candidate | any($missing[];
+    .package_name == $candidate.package_name and .version == $candidate.version) | not)]
+' <<<"$release_set")" || fail "could not compare release_set with crates.io"
+[[ "$unavailable_selected" == '[]' ]] ||
+  fail "release_set contains packages not missing from the read-only crates.io plan: ${unavailable_selected}"
+
+missing_dependency_edges="$(jq -r --argjson selected "$release_set" --argjson missing "$registry_release_set" '
+  [ .packages[]
+    | select(.name as $name | any($selected[]; .package_name == $name))
+    | .name as $owner
+    | .dependencies[]?
+    | select(.source == null and (.path // "") != "")
+    | .name as $dependency
+    | select(any($missing[]; .package_name == $dependency))
+    | select(any($selected[]; .package_name == $dependency) | not)
+    | "\($owner) -> \($dependency)"
+  ] | unique | join(", ")
+' <<<"$metadata")" || fail "could not inspect workspace release dependencies"
+[[ -z "$missing_dependency_edges" ]] ||
+  fail "release_set omits unpublished workspace dependencies: ${missing_dependency_edges}"
+
+if [[ "$RELEASE_MODE" == publish ]]; then
+  while IFS=$'\t' read -r package version; do
+    name_status="$(
+      curl --silent --show-error --location --retry 2 \
+        --user-agent 'Lenso-release-gate/1.0 (https://github.com/LioRael/lenso)' \
+        --output /dev/null --write-out '%{http_code}' \
+        "https://crates.io/api/v1/crates/${package}"
+    )" || fail "could not query crates.io crate identity for $package"
+    case "$name_status" in
+      200) ;;
+      404) fail "$package has not been first-published; bootstrap it with its owner before OIDC release" ;;
+      *) fail "unexpected crates.io response ${name_status} for crate identity $package" ;;
+    esac
+  done < <(jq -r '.[] | [.package_name, .version] | @tsv' <<<"$release_set")
+fi
 
 workflow_id="$(gh api \
   "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml" --jq '.id')" ||
@@ -194,6 +234,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     printf -- '- Remote `main`: `%s`\n' "$main_sha"
     printf -- '- CI: [%s](%s), attempt `%s`, job `quality` successful\n' \
       "$ci_run_id" "$ci_run_url" "$ci_run_attempt"
-    printf -- '- Registry release plan: `%s`\n' "$registry_release_set"
+    printf -- '- Approved stage: `%s`\n' "$release_set"
+    printf -- '- Registry missing set: `%s`\n' "$registry_release_set"
   } >>"$GITHUB_STEP_SUMMARY"
 fi
