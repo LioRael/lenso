@@ -1,0 +1,44 @@
+crates/lenso-plugin-catalog/tests/fixtures/d16/package-snapshot.envelope.json
+  s_7d146975368699::t_48536914a1dfc6 1
+crates/lenso-plugin-catalog/tests/fixtures/d16/README.md
+  s_7d146975368699::t_77864c2b54cc3f 1-13,18-24
+  s_7d146975368699::t_ef6d7703f2e092 14-17,25-29
+crates/lenso-plugin-catalog/tests/fixtures/d16/package-content.envelope.json
+  s_7d146975368699::t_ccf37b91d14ba3 1
+crates/lenso-plugin-catalog/README.md
+  s_7d146975368699::t_da102433d4fc34 69-72
+crates/lenso-plugin-catalog/tests/fixtures/d16/getting-started.md
+  s_7d146975368699::t_13e661c17a37c3 1
+crates/lenso-plugin-catalog/tests/fixtures/d16/content-only.envelope.json
+  s_7d146975368699::t_e4aa29c53805a5 1
+crates/lenso-plugin-catalog/tests/release_content.rs
+  s_7d146975368699::t_c549666b847ec0 398-401,413-418,441-444,465-467
+  s_7d146975368699::t_b17f4559f54bec 6,10-12,77-95,445-448,464,468-470
+  s_7d146975368699::t_6c87f13b2ee075 386-393,419-440,449-457,459-462,471-472
+  s_7d146975368699::t_c20cf880c70fdf 458,463
+  s_7d146975368699::t_d42e11e48a19f7 228-233
+  s_7d146975368699::t_6be26f96669b6e 215-227,234-238
+  s_7d146975368699::t_ae5be7fbca9f42 394-397,402-412
+crates/lenso-cli/docs/local-plugin-discovery.md
+  s_7d146975368699::t_da102433d4fc34 177-178
+crates/lenso-cli/tests/release_content_adoption.rs
+  s_7d146975368699::t_90812da3d821cd 9-10,13-15,92,233-251,277,450
+crates/lenso-plugin-catalog/src/release_content.rs
+  s_7d146975368699::t_a3fea2d775b31a 14-15,54-104,148-149,171-181,187,189-223,232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "634afb0a03f9c0b34d9aba040338696849339146",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
