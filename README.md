@@ -103,7 +103,7 @@ release gate.
 The repository boundary follows language and product ownership rather than
 runtime mechanics. Bun/Node SDKs, Bun fixtures, Web client integration, and the
 `@lenso/contract-runtime` and `@lenso/process-protocol` sources and tests are
-in the `lenso-js` migration candidate. This source move has not published a new
+in `lenso-js`. This source move has not published a new
 npm version. Already published versions retain their original `lenso-protocols`
 provenance and cannot be replaced with packages built from the new checkout.
 
