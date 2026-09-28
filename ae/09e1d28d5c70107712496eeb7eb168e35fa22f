@@ -1,0 +1,21 @@
+crates/lenso-cli/tests/mcp.rs
+  s_7d146975368699::t_b125c282daa3a5 2086,2096,2098-2099
+  s_7d146975368699::t_257a719955dd8d 2089,2097,2139
+  s_7d146975368699::t_33f9c7b4deece5 2146-2149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae09e1d28d5c70107712496eeb7eb168e35fa22f",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
