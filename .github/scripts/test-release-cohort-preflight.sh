@@ -139,4 +139,13 @@ for unexpected_lock in "$lock_bad_version" "$lock_bad_checksum" "$lock_bad_edge"
     exit 1
   fi
 done
+
+source <(sed -n '/^published_transitive_workspace_dependencies() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
+workspace_metadata='{"packages":[{"name":"fnv","version":"1.0.7"},{"name":"equivalent","version":"1.0.2"}]}'
+published_metadata='{"packages":[{"name":"fnv","version":"1.0.7","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.2","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.2","source":"git+https://example.invalid/equivalent"},{"name":"unrelated","version":"1.0.0","source":"registry+https://github.com/rust-lang/crates.io-index"}]}'
+transitive_workspace_dependencies="$(published_transitive_workspace_dependencies "$workspace_metadata" "$published_metadata" | sort)"
+if [[ "$transitive_workspace_dependencies" != $'equivalent\t1.0.2\nfnv\t1.0.7' ]]; then
+  printf 'transitive workspace dependency selection was not exact:\n%s\n' "$transitive_workspace_dependencies" >&2
+  exit 1
+fi
 printf '%s\n' 'two-package cohort with published runtime and private dev dependencies passed'

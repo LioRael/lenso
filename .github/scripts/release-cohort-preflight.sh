@@ -154,6 +154,18 @@ prefetch_dependencies() {
   ' <<<"$metadata"
 }
 
+published_transitive_workspace_dependencies() {
+  local workspace_metadata="$1"
+  local published_metadata="$2"
+  jq -r --slurpfile workspace <(printf '%s\n' "$workspace_metadata") '
+    .packages[]
+    | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
+    | .name as $name | .version as $version
+    | select(any($workspace[0].packages[]; .name == $name and .version == $version))
+    | [$name, $version] | @tsv
+  ' <<<"$published_metadata"
+}
+
 package_index() {
   local package="$1"
   local index
@@ -208,6 +220,31 @@ if (( ${#registry_dependencies[@]} > 0 )); then
     fail "could not fetch exact published out-of-cohort workspace dependencies"
   prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
     fail "could not inspect fetched registry dependencies"
+
+  # A published direct dependency can refer to another crate in this workspace
+  # using only its registry identity. Stage that exact published source too, so
+  # the scratch lock does not gain a second identity for the same local crate.
+  while IFS=$'\t' read -r dependency version; do
+    [[ -n "$dependency" ]] || continue
+    package_index "$dependency" >/dev/null && continue
+    contains "$dependency" "${registry_dependencies[@]-}" && continue
+    dependency_record="$(jq -ce --arg dependency "$dependency" --arg version "$version" '
+        [.packages[] | select(.name == $dependency and .version == $version)]
+        | if length == 1 then .[0] else error("published transitive dependency must match one workspace package") end
+      ' <<<"$metadata")" || fail "could not locate transitive workspace dependency: $dependency@$version"
+    dependency_manifest="$(jq -r '.manifest_path' <<<"$dependency_record")"
+    grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$dependency_manifest" ||
+      fail "transitive workspace dependency is not publish=true: $dependency@$version"
+    dependency_dir="$(cd -- "$(dirname -- "$dependency_manifest")" && pwd -P)"
+    case "$dependency_dir" in
+      "$source_root"/*) ;;
+      *) fail "transitive workspace dependency is outside the exact release snapshot: $dependency@$version" ;;
+    esac
+    registry_dependencies+=("$dependency")
+    registry_versions+=("$version")
+    registry_source_dirs+=("$dependency_dir")
+  done < <(published_transitive_workspace_dependencies "$metadata" "$prefetch_metadata")
+
   mkdir -p "$scratch/published-sources" "$scratch/retired-registry-sources"
   for index in "${!registry_dependencies[@]}"; do
     dependency="${registry_dependencies[$index]}"
