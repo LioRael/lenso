@@ -18,6 +18,18 @@ const SENSITIVE_FIXTURE: &str = "tests/fixtures/sensitive/capability.json";
 const TRANSFER_FIXTURE: &str = "tests/fixtures/transfer/capability.json";
 const WIT_FIXTURE: &str = "tests/fixtures/wit/capability.json";
 
+fn check_shared_snapshot(relative: &str, bundled: &[u8]) {
+    let shared = Path::new("../../spec/fixtures/portable-contract").join(relative);
+    if shared.is_file() {
+        assert_eq!(
+            fs::read(&shared).unwrap().as_slice(),
+            bundled,
+            "bundled fixture differs from {}",
+            shared.display()
+        );
+    }
+}
+
 #[test]
 fn request_descriptor_generates_exact_runtime_codec_projection() {
     let projection = generate_projection(Path::new(WIT_FIXTURE), ProjectionLanguage::RustRuntime)
@@ -967,10 +979,10 @@ fn descriptor_validation_keeps_capability_major_independent_from_semver() {
 
 #[test]
 fn shared_conformance_values_round_trip_without_precision_loss() {
-    let corpus: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../spec/fixtures/portable-contract/conformance.json"
-    ))
-    .expect("the shared conformance corpus should be valid JSON");
+    let bundled = include_str!("fixtures/portable-contract/conformance.json");
+    check_shared_snapshot("conformance.json", bundled.as_bytes());
+    let corpus: serde_json::Value =
+        serde_json::from_str(bundled).expect("the shared conformance corpus should be valid JSON");
 
     for value in corpus.as_array().expect("the corpus should be an array") {
         let round_tripped = round_trip_portable_json(&value["wire"])
@@ -1136,10 +1148,10 @@ fn schema_profile_rejects_cross_engine_regex_syntax() {
 
 #[test]
 fn rust_matches_the_shared_portable_pattern_safety_corpus() {
-    let vectors: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../spec/fixtures/portable-contract/portable-pattern-conformance.json"
-    ))
-    .expect("the shared portable pattern corpus should be valid JSON");
+    let bundled = include_str!("fixtures/portable-contract/portable-pattern-conformance.json");
+    check_shared_snapshot("portable-pattern-conformance.json", bundled.as_bytes());
+    let vectors: serde_json::Value = serde_json::from_str(bundled)
+        .expect("the shared portable pattern corpus should be valid JSON");
 
     for (index, vector) in vectors
         .as_array()
@@ -1438,10 +1450,15 @@ fn language_projections_write_and_check_independently() {
 
 #[test]
 fn checked_in_profile_artifacts_are_current() {
+    let shared = Path::new("../../spec/fixtures/portable-contract/generated");
+    if !shared.is_dir() {
+        eprintln!("skipping repository-owned profile snapshots outside the source workspace");
+        return;
+    }
     check_generated(
         Path::new(FIXTURE),
-        Path::new("../../spec/fixtures/portable-contract/generated/profile.rs"),
-        Path::new("../../spec/fixtures/portable-contract/generated/profile.ts"),
+        &shared.join("profile.rs"),
+        &shared.join("profile.ts"),
     )
     .expect("checked-in profile bindings should be generated from the fixture");
 }
