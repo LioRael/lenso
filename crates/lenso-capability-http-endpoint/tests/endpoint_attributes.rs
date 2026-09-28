@@ -178,6 +178,18 @@ fn handler_attributes_generate_description_and_dispatch() {
 }
 
 #[test]
+fn method_mismatch_is_rejected_before_middleware_or_handler() {
+    let endpoint = OrdersHttp::default();
+    let mut wrong_method = request("orders.create");
+    wrong_method.method = "GET".to_owned();
+    assert_eq!(
+        block_on(endpoint.handle(context(9), wrong_method)).unwrap(),
+        Err(lenso_capability_http_endpoint::HandleError::Rejected)
+    );
+    assert!(endpoint.handled.borrow().is_empty());
+}
+
+#[test]
 fn endpoint_declares_the_http_capability_for_its_plugin() {
     let descriptor: serde_json::Value = serde_json::from_str(PLUGIN_DESCRIPTOR_JSON).unwrap();
     assert_eq!(
@@ -299,7 +311,12 @@ fn request(route_id: &str) -> HandleRequest {
         body: Vec::new().into(),
         credential: None,
         headers: Vec::new(),
-        method: "GET".to_owned(),
+        method: if route_id == "orders.create" {
+            "POST"
+        } else {
+            "GET"
+        }
+        .to_owned(),
         path: "/orders/order-42".to_owned(),
         path_parameters: Vec::new(),
         query: None,

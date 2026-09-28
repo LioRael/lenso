@@ -6,7 +6,7 @@ the source-checkout workflow; see [CLI installation](../README.md#install) for
 the distinction between candidate builds and released packages.
 
 ```sh
-lenso app create my-app
+lenso new my-app
 cd my-app
 lenso app dev
 # In another terminal, or after stopping development:
@@ -20,12 +20,42 @@ App-owned Process notes Plugin. It provides `POST /notes` and `GET /notes/{id}`
 through the typed HTTP Endpoint Capability. Notes are in-memory development
 data and do not survive a restart. Process Plugins are trusted native
 executables, not sandboxed. Additional App-owned Plugin projects live in `app/`.
+
 `plugins/` retains instance configuration, disabled markers, and named dependency
 choices. `app create --web` selects the nested linked native Web scaffold with
 Plugin-owned HTML. `--runtime process`
 explicitly selects the nested Process starter; `bun`, `wasm`, `multi`, and `empty`
 are also available. `--no-install` leaves normal language dependency installation
 and the initial compile check to the developer.
+
+### Typed Process authoring from source
+
+The new typed Process API is a source candidate, not yet a registry installation
+path. Select the matching HTTP Endpoint SDK crate explicitly:
+
+```sh
+lenso new typed-notes \
+  --http-sdk-source /path/to/lenso/crates/lenso-capability-http-endpoint
+cd typed-notes
+cargo test
+lenso dev
+```
+
+The CLI checks the SDK package, version and `process` feature, writes its Cargo
+path dependency, and compiles the starter. `--no-install` only skips installation
+and compilation; it does not select a different template.
+
+In this starter's `src/lib.rs`, `#[endpoint(standalone)]` and each handler's
+`#[post]` or `#[get]` generate one route table and dispatch implementation.
+Handlers use `Json`, `Path`, typed responses, and `Problem`; they do not implement
+`ProcessPlugin` or construct wire Descriptors. `src/main.rs` selects
+`process::serve`, while `tests/notes.rs` exercises the same handlers through
+`EndpointTest`. JSON requests require a JSON content type; invalid input and
+business rejections use HTTP Problem responses.
+
+Ordinary `lenso new` retains the existing registry-resolvable Process starter.
+Switching that default to typed authoring requires a separately published SDK
+and a verified matching pin; source verification does not establish publication.
 
 Add **local discovery sources** only when needed:
 

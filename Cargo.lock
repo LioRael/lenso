@@ -2142,6 +2142,7 @@ dependencies = [
  "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
  "lenso-plugin-authoring",
+ "lenso-process-sdk",
  "lenso-runtime-codec 0.4.3",
  "schemars",
  "serde",

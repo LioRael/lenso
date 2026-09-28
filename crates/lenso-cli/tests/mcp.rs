@@ -1,4 +1,7 @@
 //! Exercise the public MCP transport, not only the underlying facts function.
+#[path = "support/process_notes_source.rs"]
+mod process_notes_source;
+
 use std::{
     fs,
     io::{BufRead as _, BufReader, Write as _},
@@ -2131,6 +2134,8 @@ fn stdio_observes_ready_web_routes_only_during_the_supervised_process_app_run() 
         .args(["app", "create"])
         .arg(&root)
         .arg("--no-install")
+        .arg("--http-sdk-source")
+        .arg(process_notes_source::endpoint_sdk_source())
         .output()
         .unwrap();
     assert!(

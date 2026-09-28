@@ -1,0 +1,20 @@
+[package]
+name = "local-starter"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.lenso]
+plugin-id = "local.starter"
+root-slot = "web"
+
+[package.metadata.lenso-cli]
+runtime = "process"
+
+[dependencies]
+lenso-process-sdk = "=0.2.0"
+lenso-capability-http-endpoint = "=0.3.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace]
