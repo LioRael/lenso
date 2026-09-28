@@ -74,6 +74,51 @@ fn write_openapi_snapshot(path: &Path, revision: u64, toml: &str) {
     .unwrap();
 }
 
+fn candidate_crate_patches(packages: &[&str]) -> String {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let mut patches = toml::map::Map::new();
+    for package in packages {
+        let path = crates.join(package).canonicalize().unwrap();
+        patches.insert(
+            (*package).to_owned(),
+            toml::Value::Table(toml::map::Map::from_iter([(
+                "path".to_owned(),
+                toml::Value::String(path.to_str().unwrap().to_owned()),
+            )])),
+        );
+    }
+    toml::to_string(&toml::Value::Table(toml::map::Map::from_iter([(
+        "patch".to_owned(),
+        toml::Value::Table(toml::map::Map::from_iter([(
+            "crates-io".to_owned(),
+            toml::Value::Table(patches),
+        )])),
+    )])))
+    .unwrap()
+}
+
+fn use_candidate_crates(root: &Path, packages: &[&str]) {
+    fs::create_dir_all(root.join(".cargo")).unwrap();
+    fs::write(
+        root.join(".cargo/config.toml"),
+        candidate_crate_patches(packages),
+    )
+    .unwrap();
+}
+
+fn recent_cargo_diagnostics(log: &str) -> Vec<&str> {
+    log.lines()
+        .rev()
+        .filter(|line| {
+            line.contains("Compiling ")
+                || line.contains("error:")
+                || line.contains("failed")
+                || line.contains("candidate versions")
+        })
+        .take(12)
+        .collect()
+}
+
 fn openapi_title(log: &Path) -> String {
     let output = fs::read_to_string(log).unwrap();
     let address: SocketAddr = output
@@ -104,22 +149,7 @@ fn openapi_title(log: &Path) -> String {
 }
 
 fn generations(source: &Path) -> Vec<PathBuf> {
-    let Some(dev) = fs::read_dir(source.join(".lenso"))
-        .ok()
-        .and_then(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .find(|path| {
-                    path.file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| name.starts_with("dev-"))
-                })
-        })
-    else {
-        return Vec::new();
-    };
-    fs::read_dir(dev)
+    let mut outputs = fs::read_dir(source.join(".lenso"))
         .ok()
         .into_iter()
         .flat_map(|entries| entries.filter_map(Result::ok))
@@ -127,9 +157,23 @@ fn generations(source: &Path) -> Vec<PathBuf> {
         .filter(|path| {
             path.file_name()
                 .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("dev-"))
+        })
+        .flat_map(|dev| {
+            fs::read_dir(dev)
+                .ok()
+                .into_iter()
+                .flat_map(|entries| entries.filter_map(Result::ok))
+        })
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
                 .is_some_and(|name| name.starts_with("generation-"))
         })
-        .collect()
+        .collect::<Vec<_>>();
+    outputs.sort();
+    outputs
 }
 
 fn generation(source: &Path) -> Option<PathBuf> {
@@ -196,6 +240,79 @@ fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> 
     }
 }
 
+fn await_pending_revision(
+    source: &Path,
+    dev: &mut Child,
+    revision: u64,
+    active_revision: u64,
+    log: &Path,
+    log_offset: usize,
+) -> PathBuf {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let bytes = fs::read(log).unwrap_or_default();
+        let blocked = bytes.len() > log_offset
+            && String::from_utf8_lossy(&bytes[log_offset..]).contains(
+                "live replacement is blocked; the old preview remains only while its source proof is valid",
+            );
+        for output in generations(source) {
+            let state_path = output.join("intent/.lenso/configuration-source-state.json");
+            if let Ok(bytes) = fs::read(&state_path)
+                && let Ok(state) = serde_json::from_slice::<serde_json::Value>(&bytes)
+                && state["desired"]["revision"] == revision
+                && state["last_activated"]["revision"] == active_revision
+                && blocked
+            {
+                assert!(dev.try_wait().unwrap().is_none());
+                let status = Command::new(env!("CARGO_BIN_EXE_lenso"))
+                    .args(["app", "config-status", "--root"])
+                    .arg(&output)
+                    .arg("--json")
+                    .output()
+                    .unwrap();
+                assert!(status.status.success());
+                let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+                assert_eq!(status["desired_revision"], revision);
+                assert_eq!(status["last_activated_revision"], active_revision);
+                assert_eq!(status["pending_activation"], true);
+                return output;
+            }
+        }
+        assert!(
+            dev.try_wait().unwrap().is_none(),
+            "App development Host exited: {}",
+            String::from_utf8_lossy(&bytes)
+        );
+        assert!(
+            Instant::now() < deadline,
+            "configuration revision {revision} was not left pending: {}",
+            String::from_utf8_lossy(&bytes)
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+fn start_dev(cli: &str, source: &Path, policy: &Path, log: &Path, cwd: Option<&Path>) -> DevGuard {
+    let mut command = Command::new(cli);
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+    DevGuard(
+        command
+            .args(["app", "dev", "--root"])
+            .arg(source)
+            .arg("--configuration-policy")
+            .arg(policy)
+            .args(["--configuration-poll-seconds", "1"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(
+                File::options().create(true).append(true).open(log).unwrap(),
+            ))
+            .spawn()
+            .unwrap(),
+    )
+}
+
 fn await_source_outage(dev: &mut Child, log: &Path, from: usize) {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -220,6 +337,10 @@ fn await_source_outage(dev: &mut Child, log: &Path, from: usize) {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the ordered outage, pending revision, and verified restart form one Process Host lifecycle"
+)]
 fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     let temporary = tempfile::tempdir().unwrap();
     let source = temporary.path().join("source");
@@ -235,6 +356,10 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
         "{}",
         String::from_utf8_lossy(&created.stderr)
     );
+    let guest_manifest = source.join("app/local.starter/Cargo.toml");
+    let mut manifest = fs::read_to_string(&guest_manifest).unwrap();
+    manifest.push_str(&candidate_crate_patches(&["lenso-plugin-sdk"]));
+    fs::write(&guest_manifest, manifest).unwrap();
     let snapshot = temporary.path().join("snapshot.json");
     let policy = temporary.path().join("policy.json");
     let log = temporary.path().join("dev.log");
@@ -249,23 +374,22 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
         .unwrap(),
     )
     .unwrap();
-    let mut dev = DevGuard(
-        Command::new(cli)
-            .args(["app", "dev", "--root"])
-            .arg(&source)
-            .arg("--configuration-policy")
-            .arg(&policy)
-            .args(["--configuration-poll-seconds", "1"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::from(File::create(&log).unwrap()))
-            .spawn()
-            .unwrap(),
-    );
+    let mut dev = start_dev(cli, &source, &policy, &log, None);
 
     let deadline = Instant::now() + Duration::from_secs(120);
     while !generation(&source).is_some_and(|path| path.join(".lenso/host").is_file()) {
         assert!(dev.0.try_wait().unwrap().is_none());
-        assert!(Instant::now() < deadline, "Host distribution was not built");
+        let output = fs::read_to_string(&log).unwrap_or_default();
+        assert!(
+            !output.contains("App rebuild failed; edit the source to retry."),
+            "App distribution build failed; recent Cargo diagnostics: {:?}",
+            recent_cargo_diagnostics(&output)
+        );
+        assert!(
+            Instant::now() < deadline,
+            "App distribution was not built; recent Cargo diagnostics: {:?}",
+            recent_cargo_diagnostics(&output)
+        );
         std::thread::sleep(Duration::from_millis(200));
     }
     // The first source read failed. The poll loop must recover without an App
@@ -281,22 +405,22 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     let output = await_revision(&source, &mut dev.0, 1, &log);
     assert_eq!(generation(&source).unwrap(), output);
 
+    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_snapshot(&snapshot, 2, "");
-    await_revision(&source, &mut dev.0, 2, &log);
+    await_pending_revision(&source, &mut dev.0, 2, 1, &log, log_offset);
 
     // Unlike the initial missing source, this outage happens after a real
-    // Host has activated. Poll failure must retain that Host and its receipt;
-    // restoring a later revision must use the same built distribution.
+    // Host has activated. Poll failure must retain that Host and its receipt,
+    // even while a later revision remains pending.
     let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     fs::remove_file(&snapshot).unwrap();
     await_source_outage(&mut dev.0, &log, log_offset);
-    assert_eq!(generation(&source).unwrap(), output);
     let state: serde_json::Value = serde_json::from_slice(
         &fs::read(output.join("intent/.lenso/configuration-source-state.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(state["desired"]["revision"], 2);
-    assert_eq!(state["last_activated"]["revision"], 2);
+    assert_eq!(state["last_activated"]["revision"], 1);
     let status = Command::new(cli)
         .args(["app", "config-status", "--root"])
         .arg(&output)
@@ -305,27 +429,39 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
         .unwrap();
     assert!(status.status.success());
     let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
-    assert_eq!(status["state"], "last_activated");
+    assert_eq!(status["state"], "pending_activation");
     assert_eq!(status["desired_revision"], 2);
-    assert_eq!(status["last_activated_revision"], 2);
-    assert_eq!(status["pending_activation"], false);
+    assert_eq!(status["last_activated_revision"], 1);
+    assert_eq!(status["pending_activation"], true);
     assert!(
         !fs::read_to_string(&log)
             .unwrap()
             .contains("Local Host exited")
     );
 
+    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_snapshot(&snapshot, 3, "");
-    assert_eq!(await_revision(&source, &mut dev.0, 3, &log), output);
+    await_pending_revision(&source, &mut dev.0, 3, 1, &log, log_offset);
+    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_snapshot(&snapshot, 4, "unauthorized = 'no'\n");
-    std::thread::sleep(Duration::from_secs(2));
+    await_source_outage(&mut dev.0, &log, log_offset);
     let state: serde_json::Value = serde_json::from_slice(
         &fs::read(output.join("intent/.lenso/configuration-source-state.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(state["desired"]["revision"], 3);
-    assert_eq!(state["last_activated"]["revision"], 3);
+    assert_eq!(state["last_activated"]["revision"], 1);
     assert!(dev.0.try_wait().unwrap().is_none());
+    assert!(
+        dev.stop(),
+        "App development supervisor did not stop cleanly"
+    );
+    assert!(!output.exists());
+
+    write_snapshot(&snapshot, 3, "");
+    let mut dev = start_dev(cli, &source, &policy, &log, None);
+    let resumed = await_revision(&source, &mut dev.0, 3, &log);
+    assert_ne!(resumed, output);
     assert!(
         dev.stop(),
         "App development supervisor did not stop cleanly"
@@ -333,13 +469,28 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
 }
 
 #[test]
-fn external_configuration_changes_the_running_apps_openapi_title_without_a_rebuild() {
+fn external_configuration_changes_openapi_title_after_supervised_restart() {
     let temporary = tempfile::tempdir().unwrap();
     let source = temporary.path().join("source");
     let cli = env!("CARGO_BIN_EXE_lenso");
+    use_candidate_crates(
+        temporary.path(),
+        &[
+            "lenso",
+            "lenso-openapi-plugin",
+            "lenso-app-plan",
+            "lenso-runner",
+            "lenso-capability-http-endpoint",
+            "lenso-web-host",
+            "lenso-test",
+            "lenso-kernel",
+        ],
+    );
     let created = Command::new(cli)
+        .current_dir(temporary.path())
         .args(["app", "create"])
         .arg(&source)
+        .args(["--web", "--no-install"])
         .output()
         .unwrap();
     assert!(
@@ -348,6 +499,7 @@ fn external_configuration_changes_the_running_apps_openapi_title_without_a_rebui
         String::from_utf8_lossy(&created.stderr)
     );
     let added = Command::new(cli)
+        .current_dir(temporary.path())
         .args(["app", "add", "@lenso/openapi", "--root"])
         .arg(&source)
         .output()
@@ -375,26 +527,25 @@ fn external_configuration_changes_the_running_apps_openapi_title_without_a_rebui
         .unwrap(),
     )
     .unwrap();
-    let mut dev = DevGuard(
-        Command::new(cli)
-            .args(["app", "dev", "--root"])
-            .arg(&source)
-            .arg("--configuration-policy")
-            .arg(&policy)
-            .args(["--configuration-poll-seconds", "1"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::from(File::create(&log).unwrap()))
-            .spawn()
-            .unwrap(),
-    );
+    let mut dev = start_dev(cli, &source, &policy, &log, Some(temporary.path()));
 
     let first = await_revision(&source, &mut dev.0, 1, &log);
     assert_eq!(openapi_title(&log), "First API");
 
+    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_openapi_snapshot(&snapshot, 2, "title = 'Second API'\n");
-    assert_eq!(await_revision(&source, &mut dev.0, 2, &log), first);
+    await_pending_revision(&source, &mut dev.0, 2, 1, &log, log_offset);
+    assert_eq!(openapi_title(&log), "First API");
+    assert!(
+        dev.stop(),
+        "App development supervisor did not stop cleanly"
+    );
+    assert!(!first.exists());
+    let mut dev = start_dev(cli, &source, &policy, &log, Some(temporary.path()));
+    let second = await_revision(&source, &mut dev.0, 2, &log);
+    assert_ne!(second, first);
     assert_eq!(openapi_title(&log), "Second API");
-    assert_eq!(generations(&source), vec![first.clone()]);
+    assert_eq!(generations(&source), vec![second.clone()]);
 
     let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_openapi_snapshot(&snapshot, 3, "title = 'Rejected API'\nversion = '2.0.0'\n");
@@ -404,7 +555,7 @@ fn external_configuration_changes_the_running_apps_openapi_title_without_a_rebui
     write_openapi_snapshot(&snapshot, 1, "title = 'Stale API'\n");
     await_source_outage(&mut dev.0, &log, log_offset);
     let active = await_revision(&source, &mut dev.0, 2, &log);
-    assert_eq!(active, first);
+    assert_eq!(active, second);
     assert_eq!(openapi_title(&log), "Second API");
     assert!(
         dev.stop(),
