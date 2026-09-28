@@ -1,0 +1,31 @@
+crates/lenso-cli/docs/local-plugin-discovery.md
+  s_7d146975368699::t_ed661902c4c6a2 359-364
+crates/lenso-engine-app/src/app/assemble.rs
+  s_7d146975368699::t_ebe99e1144be92 864-865,867-870
+  s_7d146975368699::t_4f053ef7125190 620,866
+  s_7d146975368699::t_007aa3e404da98 584,615-619,621-624
+  s_7d146975368699::t_878fd75dc9637f 625-626
+  s_7d146975368699::t_e9429486125c66 863
+crates/lenso-engine-app/src/app/facts/provenance.rs
+  s_7d146975368699::t_bf87d73fd1cd9e 401
+  s_7d146975368699::t_b95170128c02cc 59-60,172-180
+  s_7d146975368699::t_fb018b3d03bef0 169,326-329,332,400,402-408
+  s_7d146975368699::t_1fbe80ed7c533e 331,342-346
+  s_7d146975368699::t_d4e81cca746dda 409
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "035de9c221d874b7b1ce8ac07f41ff27607cfb72",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
