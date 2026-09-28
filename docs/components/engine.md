@@ -1,219 +1,97 @@
 # Lenso Engine
 
-An independently embeddable authoring layer over Lenso. The Engine plans work
-from immutable input snapshots and executes explicitly selected processors.
-File conventions, languages, and App composition belong to optional packages.
-The Lenso CLI is a consumer of these libraries.
+This page covers repository-level App and Host integration with the Engine. The
+[packaged Engine guide](../../crates/lenso-cli/docs/engine.md) is the
+authoritative reference for the Engine's processor protocol, workflows,
+embedding API, incremental sessions, explainability, and core limits. It is
+also included with the published `lenso-cli` crate.
 
 ## Packages
 
-| Package | Owner |
-| --- | --- |
-| `lenso-engine` | Inputs, processing plans, dependencies, session cache, local bootstrap locks, incremental sessions, resource publication |
-| `lenso-engine-runtime` | `lenso.engine.processor@1` contract, generated Rust/TypeScript projections, native SDK lowering through the existing Kernel/Adapter |
-| `lenso-engine-markdown` | Optional Markdown reading convention |
-| `lenso-engine-worker` | Precompiled, independently adoptable Markdown processor artifact |
-| `lenso-engine-host` | Standalone precompiled App runtime/resolver for library embeddings |
-| `lenso-engine-app` | Optional `AppProject` processor, App/Plugin scaffolding, compilation, contracts, Host assembly, distribution and development integration |
-| `lenso-engine-authoring` | App source discovery, composition, Host and Plugin Root authority |
-| `lenso-plugin-catalog` | Portable signed catalog protocol; retained package identity |
-
-The core and Markdown packages do not depend on App, Cargo, Bun, the CLI or its
-argument parser. App dependencies are absent when those packages are used alone.
-The CLI's `lenso_app_authoring` library remains a compatibility re-export.
+See the [Engine package ownership table](../../crates/lenso-cli/docs/engine.md#packages).
+The Rust Engine, App authoring, Runtime, SDK, and CLI crates now share this
+workspace while retaining their crate and dependency boundaries.
 
 ## Start without configuration
 
-With the updated precompiled CLI:
+The [Engine guide](../../crates/lenso-cli/docs/engine.md#start-without-configuration)
+shows the App-free Markdown workflow. App builds opt into the `AppProject`
+processor; the CLI consumes Engine's App discovery and assembly APIs.
 
-```sh
-lenso engine inspect --source ./content --markdown
-lenso engine run --source ./content --markdown
-lenso engine dev --source ./content --markdown --output ./dist
-```
+### App facts and MCP
 
-`inspect` returns a read-only plan. `run` returns one complete JSON generation.
-`dev` keeps a session alive and emits structured update/failure events. No App,
-Host project, Rust toolchain, Cargo or Bun is needed for this Markdown workflow.
-Unrelated files such as `plugin.rs` have no meaning unless support is selected.
-
-Existing App commands continue to work. `app build` and `app dev` select the
-optional `AppProject` processor. Its App-specific discovery and assembly live in
-this repository, not in the CLI. Lower-level App APIs remain public:
-
-```sh
-lenso app facts --root ./my-app --json
-```
-
-`app facts` is the read-only Agent/tooling projection. It reports exact adopted
-Plugin versions, resolved execution and Capability metadata, source locations,
-Plugin Root revision, discovered-but-not-adopted source candidates, and stable
-diagnostic codes. Schema version 5 includes each instance's exact Plugin
-Root configuration-source digest (including the absence of a Root override).
-That digest does not identify Host defaults or resolved configuration values.
+`lenso app facts --root ./my-app --json` is the read-only Agent/tooling
+projection. It reports exact adopted Plugin versions, resolved execution and
+Capability metadata, source locations, Plugin Root revision,
+discovered-but-not-adopted source candidates, and stable diagnostic codes.
+Schema version 5 includes each instance's exact Plugin Root
+configuration-source digest, including the absence of a Root override. That
+digest does not identify Host defaults or resolved configuration values.
 The Host target comes from persisted build or distribution evidence, not the
-machine running the inspection. Missing evidence reports `unknown`; conflicting
-target metadata reports `LENSO_HOST_TARGET_UNVERIFIED`.
-It deliberately reports runtime state as `not_observed` until
-a runtime control surface supplies evidence; build artifacts are not treated as
-proof that an App is running. Configuration values are not included.
+machine running the inspection. Missing evidence reports `unknown`;
+conflicting target metadata reports `LENSO_HOST_TARGET_UNVERIFIED`. Runtime
+state remains `not_observed` until a runtime control surface supplies evidence;
+build artifacts are not proof that an App is running. Configuration values are
+not included.
+
 For an external Plugin Root, pass its exact distribution authority as
-`--host-build DIST/.lenso/host-build.json` to `app facts`; this verifies and
+`--host-build DIST/.lenso/host-build.json` to `app facts`. This verifies and
 includes external configuration status without treating the last activation
-receipt as current process health. Host-default source locations then point
-to the actual `host-build.json`, not a nonexistent Host catalog.
+receipt as current process health. Host-default source locations then point to
+the actual `host-build.json` rather than a nonexistent Host catalog.
 
-The same projection is available to an MCP client over stdio:
-
-```sh
-lenso mcp --root ./my-app
-```
-
-The MCP server accepts the same optional `--host-build` when its fixed root is
-external to the distribution. Both paths use the same resolver-backed facts
-projection and omit configuration values.
-
-The server fixes one App root for its lifetime. Without permission flags,
-`project_facts`, `project_explain`, and `project_check` inspect it without
-changing files. `project_explain` requires a built Host root containing the
+`lenso mcp --root ./my-app` exposes the same resolver-backed facts projection
+over stdio. It accepts the same optional `--host-build` for an external fixed
+root and omits configuration values. Without permission flags,
+`project_facts`, `project_explain`, and `project_check` inspect that root
+without changing files. `project_explain` requires a built Host root with the
 persisted bundle inventory and returns the same `lenso.app-explain.v1`
 projection as `app explain --json`; `project_check` uses the same resolver as
-`app check --json`. The `--host-build` option for an external Plugin Root
-applies only to `project_facts`. Selection and configuration previews do not
-publish changes and require local Host authority. Inspection does not infer
-runtime readiness.
+`app check --json`. The `--host-build` option applies only to `project_facts`.
+Selection and configuration previews do not publish changes and require local
+Host authority. Inspection does not infer runtime readiness.
 
-An opt-in `lenso mcp --root APP --linked-snapshot SNAPSHOT --trust TRUST` also
-exposes `linked_catalog`. It reads the same signed source-only candidate
+An opt-in `lenso mcp --root APP --linked-snapshot SNAPSHOT --trust TRUST`
+also exposes `linked_catalog`. It reads the same signed source-only candidate
 projection as `app linked-catalog`, with a query, target, offset, page limit of
 20, and bounded output. It neither downloads a crate nor claims unverified
-permissions, dependency compatibility, or runtime readiness.
-Catalog and document inspection remain stateless. `app add` and opt-in MCP
-linked adoption store an App-local accepted-catalog checkpoint; neither
-inspection path discovers revocations without a newer signed snapshot.
-Add `--allow-document-fetch` only when the MCP client may contact signed
+permissions, dependency compatibility, or runtime readiness. Catalog and
+document inspection remain stateless. `app add` and opt-in MCP linked adoption
+store an App-local accepted-catalog checkpoint; neither inspection path
+discovers revocations without a newer signed snapshot. Add
+`--allow-document-fetch` only when the MCP client may contact signed
 third-party HTTPS documentation URLs. The `linked_document` tool verifies the
 exact release, document revision, size, and digest before returning a bounded
 Markdown chunk marked as untrusted data.
 
 `--allow-changes` enables reviewed Plugin Root proposal application and exact
-linked Cargo adoption or withdrawal. Adoption also requires a fixed
-`--linked-snapshot`, `--trust`, and `--linked-crate` at server startup, and a
-separate build and check before use. `--allow-build` enables bounded App build,
-status, and cancellation tools. `--allow-run` enables start, status, and stop
-for a built App, with readiness reported from that run. These operations use
-client request IDs; none publishes a release or deploys an App.
+linked Cargo adoption or withdrawal. Adoption also requires fixed
+`--linked-snapshot`, `--trust`, and `--linked-crate` inputs at server startup,
+plus a separate build and check before use. `--allow-build` enables bounded
+App build, status, and cancellation tools. `--allow-run` enables start,
+status, and stop for a built App, with readiness reported from that run. These
+operations use client request IDs; none publishes a release or deploys an App.
 
 For an npm-only Plugin release, start the bridge with exact
-`--package-snapshot`, `--package-trust`, and `--package-tgz` files. The
-`project_npm_preview` tool verifies the signed release and archive digest for
-the fixed App without changing it. `project_npm_adopt` and
+`--package-snapshot`, `--package-trust`, and `--package-tgz` files.
+`project_npm_preview` verifies the signed release and archive digest for the
+fixed App without changing it. `project_npm_adopt` and
 `project_npm_unadopt` additionally require `--allow-changes` and use the same
-source App adoption path as the CLI. Adoption deliberately uses `--no-install`:
-it does not contact a registry or run package scripts. Dependencies, exact
-build-code trust (the MCP `--trust-adopted-build` startup grant), build, check,
-and runtime activation remain separate steps.
-
-```rust,ignore
-lenso_engine_app::app::create_empty(project.clone())?;
-lenso_engine_app::app::adopt(project.clone(), "@lenso/cli".into(), true)?;
-lenso_engine_app::app::build_local(project, distribution, precompiled_engine_host)?;
-```
-
-An embedding tool can register `AppProject { root, output, runtime_executable }` in its own Engine
-through `RuntimeProcessor::new`, without invoking CLI argument parsing. The
-runtime executable is explicit: an IDE can supply `lenso-engine-host` instead of
-copying itself as a runtime. The selected host must pass a protocol/target probe.
-`crates/lenso-engine-app/examples/build_app.rs` demonstrates this boundary.
+source App adoption path as the CLI. Adoption deliberately uses
+`--no-install`: it does not contact a registry or run package scripts.
+Dependencies, exact build-code trust (the MCP
+`--trust-adopted-build` startup grant), build, check, and runtime activation
+remain separate steps.
 
 ## Local plugin sources and presets
 
-A workflow is optional and contains only composition decisions:
-
-```json
-{
-  "schema": "lenso.engine-workflow.v1",
-  "sources": ["content"],
-  "plugin_sources": ["tools"],
-  "plugins": ["example.reader.v1"],
-  "presets": []
-}
-```
-
-`plugin_sources` are local directories searched for `engine-plugin.json` files.
-They are not marketplaces. Discovery does not activate every available plugin.
-`plugins` explicitly selects identities; duplicate identities are rejected.
-Presets are other workflow JSON files, resolved relative to their own directory.
-Cycles and excessive nesting fail before processor execution.
-
-A local processor manifest:
-
-```json
-{
-  "schema": "lenso.engine-plugin.v1",
-  "identity": "example.reader.v1",
-  "entries": ["*.md", "**/*.md"],
-  "program": "bun",
-  "args": ["processor.ts"],
-  "artifacts": ["processor.ts"],
-  "after": []
-}
-```
-
-`after` contains explicit predecessor step IDs; `{path}` expands to the matched
-input path. Multiple processors may consume one input. Artifacts list the owned
-implementation files/directories; directory proofs include membership, so adding
-or deleting a file invalidates the lock. Declare the complete private dependency
-closure, or distribute a self-contained precompiled executable.
-
-```sh
-lenso engine lock --workflow engine.json
-lenso engine inspect --workflow engine.json
-lenso engine run --workflow engine.json --output dist
-lenso engine dev --workflow engine.json --output dist
-```
-
-When `engine.json` exists, `run` and `dev` use it if no source/workflow argument is
-supplied. `lock` hashes the existing selected executables, declared artifacts and
-preset/configuration files without running them. It never installs packages or
-compiles source. `run` verifies `engine.lock.json`; changed tools/configuration
-require an explicit re-lock. Source documents remain editable without re-locking.
-The lock records canonical local paths and is host-local; relocate the tools or
-workspace by regenerating it explicitly. It is not a registry lock or signature.
-
-Direct `--plugin ./tools/engine-plugin.json` adoption remains available for local
-experiments without a lock. Workflow-based execution uses the strict lock path.
+See the [Engine workflow and local processor guide](../../crates/lenso-cli/docs/engine.md#local-plugin-sources-and-presets).
+These processor manifests are Engine inputs, not App Plugin Root authority.
 
 ## Language-neutral processing
 
-Programs receive one JSON request on stdin and write one response on stdout.
-Diagnostics belong on stderr. The process is a trusted implementation tool owned
-by the processor Plugin; it is not a new Lenso Execution Class.
-
-```json
-{
-  "schema": "lenso.engine-process.v1",
-  "step": {"id":"example.reader.v1/hello.md","inputs":["hello.md"],"after":[],"options":null},
-  "files": {"hello.md":[72,105]},
-  "dependencies": {}
-}
-```
-
-```json
-{
-  "schema": "lenso.engine-processed.v1",
-  "outputs": {
-    "document": {"schema":"example.document.v1","value":{"text":"Hi"}},
-    "page": {"schema":"lenso.engine.file.v1","value":{"path":"hello.txt","bytes":[72,105]}}
-  }
-}
-```
-
-Rust, Bun, Python and other executables can implement this protocol. Read, parse,
-compile, transform and index are processor behavior, not a closed Engine action
-enumeration. Data schemas are consumer-owned; the core validates carriers and
-bounds, not every domain payload. Rust processors implement the public `Plugin`
-interface (`Send + Sync`) and can construct file carriers with `Resource::file`.
+See the [Engine process protocol](../../crates/lenso-cli/docs/engine.md#language-neutral-processing).
+It remains distinct from App Plugin execution and Capability binding.
 
 ## Published App resources
 
@@ -248,9 +126,9 @@ project. It copies them to `dist/resources/<plugin-id>/…` and writes
 `dist/resources.json`, including the owner, schema, relative output path,
 SHA-256 digest, and size. It rejects duplicate declarations, links, path
 traversal, invalid resource schemas, more than 64 files, and more than 16 MiB
-per Plugin. The
-resource schema is owned by the consumer: Engine copies and inventories bytes,
-but never activates a Plugin, runs a resource, or interprets its payload.
+per Plugin. The resource schema is owned by the consumer: Engine copies and
+inventories bytes, but never activates a Plugin, runs a resource, or interprets
+its payload.
 
 Consumers should verify both the generic inventory and any related Bundle
 identity before importing a resource. This supports optional conventions from
@@ -274,63 +152,24 @@ A selected convention compiler may contribute only immutable data. It writes
 The file is mutually exclusive with `Cargo.toml`, `package.json`, and a Plugin
 Bundle manifest in that output. The Engine validates the same regular-file,
 path, schema, count, and byte bounds as ordinary published resources, assigns
-the selected convention surface identity as the inventory owner, and copies the
-declared files to `dist/resources/<contribution-id>/…`. It does not install Bun
-or Cargo dependencies, build a Bundle, add a Plugin to the Host, or turn the
-contribution identity into runtime authority. This lets a convention publish a
-Profile, route manifest, schema, or other consumer-owned data without inventing
-an empty executable Plugin.
+the selected convention surface identity as the inventory owner, and copies
+the declared files to `dist/resources/<contribution-id>/…`. It does not
+install Bun or Cargo dependencies, build a Bundle, add a Plugin to the Host,
+or turn the contribution identity into runtime authority. This lets a
+convention publish a Profile, route manifest, schema, or other consumer-owned
+data without inventing an empty executable Plugin.
 
 ## Runtime and bootstrap boundary
 
-Official and third-party processor implementations use `RuntimeProcessor`, which
-lowers execution to the generated `lenso.engine.processor@1` request Capability.
-Each invocation resolves an exact consumer/provider binding, starts an existing
-Lenso Kernel/native Adapter generation, invokes its typed handle, and shuts down
-on success or error. The Engine work graph orders processing tasks; it does not
-replace Kernel bindings, plugin supervision or application business routing.
-
-The native SDK bridge owns two closed packages, `lenso.engine.consumer` and
-`lenso.engine.processor`, pinned to the SDK package version. The latter owns the
-selected implementation tool and exposes only the processing role. Business
-processors receive declared input bytes and predecessor resources; the host
-retains selection authority. Generated contract sources and projections live in
-`lenso-engine-runtime`, with an automated freshness test. The contract is portable;
-this host bridge currently uses the native Adapter. Existing App distributions
-retain their Bun/Process/Wasm admission paths.
-
-The App workflow itself is an optional processor and invokes convention
-processors through the same public seam. This is the DX self-hosting boundary:
-the compiled bootstrap host loads explicit manifests/precompiled artifacts before
-source conventions run. It never needs a `plugin.rs` convention to load the plugin
-that defines `plugin.rs`. The standalone worker example demonstrates adoption of
-an already-built official processor through the same local path as third parties.
-
-```sh
-# Toolchain-author workflow, not an end-user prerequisite:
-cargo build -p lenso-engine-worker
-# Put that precompiled binary on PATH, then from examples/documents:
-lenso engine lock
-lenso engine run --output dist
-```
+The [Engine Runtime and bootstrap guide](../../crates/lenso-cli/docs/engine.md#runtime-and-bootstrap-boundary)
+describes the selected processor's Capability, Kernel generation, and
+precompiled bootstrap. App composition and Host policy remain separate from
+that processing graph.
 
 ## Incremental results and resources
 
-`Session` preserves the last successful generation after a failed refresh.
-`replace_engine` replaces the admitted processor set and invalidates selection;
-deleted files or disabled plugins disappear from the next successful generation.
-`watch` is an embeddable, cancellable polling subscription emitting typed events.
-The CLI also reloads changed workflow locks. Caching is session-local, bounded,
-and opt-in for pure processors with fully declared inputs. Cache keys include
-implementation identity, options, input bytes and predecessor results. Compilers
-with filesystem side effects are not cached as if JSON results restored artifacts.
-
-`publication::publish` validates resource paths/conflicts, creates an immutable
-generation with content hashes, then atomically replaces `current.json`. It holds
-a publication lock and never exposes half-written output. Consumers can call
-`publication::verify` and read referenced files after source/plugin deletion.
-The CLI refuses to publish inside its input source directories. Old immutable
-generations are retained; deletion/retention is an explicit host policy.
+See the [Engine session and publication guide](../../crates/lenso-cli/docs/engine.md#incremental-results-and-resources).
+App resource inventories above have their own consuming Host boundary.
 
 ## Versioned external configuration snapshots
 
@@ -338,12 +177,13 @@ generations are retained; deletion/retention is an explicit host policy.
 snapshots without adding a second App graph. The Host supplies both the source
 identity and an object/top-level-field authorization; the document cannot
 authorize itself. `FilePluginConfigurationSnapshotSource` reads a bounded
-regular JSON file without following symlinks on Unix or reparse points on Windows.
-`HttpsPluginConfigurationSnapshotSource` polls one Host-admitted HTTPS origin
-with public-DNS enforcement, redirects and environment proxies disabled,
-bounded identity responses, and optional ETag/HTTP 304 revalidation. Its cursor
-binds the ETag to the exact endpoint and Host source identity; it cannot be
-reused for another source.
+regular JSON file without following symlinks on Unix or reparse points on
+Windows. `HttpsPluginConfigurationSnapshotSource` polls one Host-admitted
+HTTPS origin with public-DNS enforcement, redirects and environment proxies
+disabled, bounded identity responses, and optional ETag/HTTP 304 revalidation.
+Its cursor binds the ETag to the exact endpoint and Host source identity; it
+cannot be reused for another source.
+
 An operator-pinned Process V2 Bundle may also provide the generated
 `lenso.configuration.source@1` Request Capability. The Host verifies exact
 Bundle/Artifact digests from its protected bootstrap policy, starts a separate
@@ -352,100 +192,82 @@ closes that source generation. Its response contains only revision and values;
 the Host binds identity and field authorization afterward. This first Process
 path is a trusted native implementation with a 1 MiB wire-frame ceiling, not
 an OS sandbox, subscription claim, or marketplace signature claim.
-`propose_versioned_plugin_configuration_snapshot` routes every authorized entry
-through the existing typed Plugin Root proposal, Host admission, and revision
-checks without mutating the Root.
-Authorized field updates merge into the current instance source, preserving
-fields owned by other authorities.
+`propose_versioned_plugin_configuration_snapshot` routes every authorized
+entry through the existing typed Plugin Root proposal, Host admission, and
+revision checks without mutating the Root. Authorized field updates merge
+into the current instance source, preserving fields owned by other
+authorities.
 
-Persist the returned `PluginConfigurationSnapshotIntent` before publishing its
-paired proposal. The intent records both base and candidate Root revisions, so
-recovery can distinguish not-yet-published from crash-after-publication. Promote
-it to active Host state only after the resulting App Generation becomes active.
-An external revision whose merged values already match the Root is reported as
-`NoRootChange` and needs no Root publication.
-Older revisions, reused revision numbers with different content, changed
-sources, invalid Plugin values, and local Root drift fail closed. Package fields
-marked `x-lenso-sensitive`
-accept only `{ secret_ref = "..." }`; secret material remains with the Host's
-secret provider and is not echoed by rejection diagnostics. File publication,
-App Generation switching, and upstream source acknowledgement are separate
-operations rather than a cross-system atomic write.
-Transport failure returns no snapshot or acknowledgement and never mutates the
-Root. The Host retains the last accepted intent/active Generation and may retry
-the same source-bound cursor after connectivity returns.
+Persist the returned `PluginConfigurationSnapshotIntent` before publishing
+its paired proposal. The intent records both base and candidate Root
+revisions, so recovery can distinguish not-yet-published from
+crash-after-publication. Promote it to active Host state only after the
+resulting App Generation becomes active. An external revision whose merged
+values already match the Root is reported as `NoRootChange` and needs no Root
+publication. Older revisions, reused revision numbers with different
+content, changed sources, invalid Plugin values, and local Root drift fail
+closed. Package fields marked `x-lenso-sensitive` accept only
+`{ secret_ref = "..." }`; secret material remains with the Host's secret
+provider and is not echoed by rejection diagnostics. File publication, App
+Generation switching, and upstream source acknowledgement are separate
+operations rather than a cross-system atomic write. Transport failure returns
+no snapshot or acknowledgement and never mutates the Root. The Host retains
+the last accepted intent/active Generation and may retry the same
+source-bound cursor after connectivity returns.
 
 For a source App in local development, `lenso app dev --root APP
 --configuration-policy /absolute/policy.json --configuration-poll-seconds 10`
-reconciles the configured file or HTTPS source on each bounded poll. An accepted
-revision is desired configuration, not an activation (and it may leave the Root
-bytes unchanged). For an accepted replacement, the development supervisor
-stops the prior Host before checking and starting a candidate, waits for its
-actual Ready receipt, then records the exact activated Root revision. Failed
-readiness can therefore leave no running preview. Invalid snapshots and
-transport outages retain the old Host only while its accepted source proof is
-still fresh and its Host policy is unchanged; expiry or policy change stops it.
-The last-activated revision is a historical receipt, not a liveness
-claim. The default interval is 10 seconds (allowed range 1–3600); Ctrl-C stops
-the supervised Host. Source rebuilds use the same Ready Gate. A fixed listener
-that cannot coexist with the old Host may prevent candidate readiness; this
-development loop does not promise zero-downtime switching or a production
-configuration subscription.
+reconciles the configured file or HTTPS source on each bounded poll. An
+accepted revision is desired configuration, not an activation (and it may
+leave the Root bytes unchanged). For an accepted replacement, the
+development supervisor stops the prior Host before checking and starting a
+candidate, waits for its actual Ready receipt, then records the exact
+activated Root revision. Failed readiness can therefore leave no running
+preview. Invalid snapshots and transport outages retain the old Host only
+while its accepted source proof is still fresh and its Host policy is
+unchanged; expiry or policy change stops it. The last-activated revision is a
+historical receipt, not a liveness claim. The default interval is 10 seconds
+(allowed range 1–3600); Ctrl-C stops the supervised Host. Source rebuilds
+use the same Ready Gate. A fixed listener that cannot coexist with the old
+Host may prevent candidate readiness; this development loop does not promise
+zero-downtime switching or a production configuration subscription.
 
 For a built distribution, `lenso app start --from DIST
 --configuration-policy /absolute/policy.json` continuously checks source
 freshness and Host policy. A revision that resolves to the same Plugin Root
-keeps the current Host; a Root change hard-stops it before another version can
-activate. The supervisor cannot prove that independently grouped child
+keeps the current Host; a Root change hard-stops it before another version
+can activate. The supervisor cannot prove that independently grouped child
 processes have stopped, so it leaves
-`DIST/.lenso/supervised-start.uncertain` and refuses another supervised start.
-An operator must verify that the Host and all descendants for that
+`DIST/.lenso/supervised-start.uncertain` and refuses another supervised
+start. An operator must verify that the Host and all descendants for that
 distribution have exited before removing that fence and starting again. This
 path does not automatically replace a running production Host.
 
-This source adapter admits one source identity at a time. When a later snapshot
-omits a previously source-owned field or object, reconciliation restores the
-displaced App-owned value or removes a field that was absent before source
-ownership; unrelated App-owned fields remain untouched. A Root intent is not
-shared across independently versioned sources, and changing source identity
-fails closed rather than comparing their revisions. Multi-source ownership,
-source-identity migration, push subscriptions, and full active-generation state
-are separate lifecycle work rather than implied by this API.
+This source adapter admits one source identity at a time. When a later
+snapshot omits a previously source-owned field or object, reconciliation
+restores the displaced App-owned value or removes a field that was absent
+before source ownership; unrelated App-owned fields remain untouched. A
+Root intent is not shared across independently versioned sources, and
+changing source identity fails closed rather than comparing their revisions.
+Multi-source ownership, source-identity migration, push subscriptions, and
+full active-generation state are separate lifecycle work rather than implied
+by this API.
 
 ## Limits and trust
 
-- Native extensions and subprocess tools are trusted code, not OS sandboxes.
-- Input snapshots reject symlinks/special files and are bounded to 4096 entries,
-  32 directory levels and 16 MiB. Source roots are explicit; the core has no
-  language-specific `app/` or `node_modules` policy.
-- External tools have a default 60-second execution budget, 128-MiB request
-  ceiling and 1-MiB stdout/stderr ceilings. A selected App convention can declare
-  a compiler-specific `timeout_seconds` (1–300) and `output_limit_bytes`
-  (1–16 MiB) in its `compiler` metadata; omitted values retain those defaults.
-  Unix cancellation/timeout terminates the process group. Windows currently
-  terminates the direct child; descendant isolation requires a Windows Job Object
-  host. No Windows execution proof is claimed here.
-- Native processor cancellation is cooperative. App builds check cancellation
-  between artifacts and before atomic publication; an in-progress package-manager
-  command may finish before that checkpoint.
-- The core installs no signal handlers and never exits the embedding process.
-  CLI/App hosts own their signal policy. Each native SDK invocation owns its
-  runtime thread, permitting nested App-to-compiler invocations without nested
-  executor failures.
-- The low-level core can execute trusted processors directly. Applications
-  wanting Lenso lifecycle/admission use the runtime SDK, as the CLI does.
+The [Engine guide's limits](../../crates/lenso-cli/docs/engine.md#limits-and-trust)
+cover core inputs, convention compiler budgets, trusted processors,
+cancellation, and host signal policy.
 
 ## Development validation
 
-```sh
-cargo fmt --all -- --check
-cargo test --workspace --locked
-cargo clippy --workspace --all-targets --locked -- -D warnings
-```
+Use the [Engine guide's focused validation](../../crates/lenso-cli/docs/engine.md#development-validation)
+and the repository's candidate CI rules in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Repository layout
 
 Rust workspace members live under `crates/`. Each crate keeps its own tests,
-assets, contracts and focused examples alongside its implementation. Root
-`examples/` contains repository-level usage examples. Run Cargo commands from
-the repository root; all members share the root lockfile and target directory.
+assets, contracts, and focused examples alongside its implementation. Root
+`examples/` contains repository-level usage examples. Run Cargo commands
+from the repository root; all members share the root lockfile and target
+directory.

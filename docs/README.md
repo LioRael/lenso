@@ -11,8 +11,9 @@ documentation for the Rust workspace.
 - [`architecture/lenso-authoring.md`](architecture/lenso-authoring.md) explains
   authoring and Plan resolution.
 - [`adr/README.md`](adr/README.md) indexes current and superseded decisions.
-- [`components/`](components/) documents the Engine, Runtime, protocols, and Web
-  packages now built in this workspace.
+- [`components/engine.md`](components/engine.md) covers Engine integration
+  with Apps and Hosts. [`components/`](components/) also documents the Runtime,
+  protocols, and Web packages built in this workspace.
 - [`agents/skills.md`](agents/skills.md) documents the public skill pack.
 
 Current validation belongs in Cargo tests and CI. Release receipts, temporary
