@@ -15,6 +15,7 @@ test_dir="$(mktemp -d)"
 test_remote="$test_dir/origin.git"
 test_repo="$test_dir/repo"
 git init --bare "$test_remote" >/dev/null
+git -C "$test_remote" config receive.shallowUpdate true
 git -C "$ROOT" push "$test_remote" "$current_sha:refs/heads/main" >/dev/null
 git -C "$test_remote" symbolic-ref HEAD refs/heads/main
 git clone "$test_remote" "$test_repo" >/dev/null
