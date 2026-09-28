@@ -174,7 +174,8 @@ describe a `content_only` release with no executable or package base. It is a
 separate signature and checkpoint; the v1 release bytes and adoption behavior
 do not change. Use `--linked-snapshot`, `--portable-snapshot`, or
 `--package-snapshot` for the respective signed base. Omit a base snapshot only
-for a signed `content_only` release. The content archive is a local, downloaded
+for a signed `content_only` release with publisher, purpose, exact source
+revision, and versioned digest-bound Markdown metadata. The content archive is a local, downloaded
 `.tar.gz`; this command does not fetch its signed URL.
 This content-copy path currently requires Unix filesystem primitives.
 

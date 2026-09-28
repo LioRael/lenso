@@ -3,11 +3,13 @@ use std::collections::BTreeMap;
 use base64::Engine as _;
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
-    Artifact, Availability, Distribution, DistributionKind, Envelope, Release,
+    Artifact, Availability, Distribution, DistributionKind, Documentation, Envelope, Release,
     Snapshot as PortableSnapshot, Trust, digest,
     linked_cargo::{self, LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot},
     package::{self, PackageRelease, PackageSnapshot},
-    release_content::{self, BaseKind, Content, ContentKind, ReleaseContent, Snapshot},
+    release_content::{
+        self, BaseKind, Content, ContentKind, ContentOnlyMetadata, ReleaseContent, Snapshot,
+    },
 };
 
 fn trust() -> (SigningKey, Trust) {
@@ -72,6 +74,25 @@ fn content(base_kind: BaseKind, base_release_identity: String) -> Snapshot {
             version: "1.2.3".into(),
             base_kind,
             base_release_identity,
+            metadata: (base_kind == BaseKind::ContentOnly).then_some(ContentOnlyMetadata {
+                publisher_id: "example".into(),
+                title: "Web".into(),
+                summary: "Editable web source".into(),
+                source_url: "https://example.test/source".into(),
+                source_revision: "a".repeat(40),
+                license: "MIT".into(),
+                documentation: vec![Documentation {
+                    id: "start".into(),
+                    revision: "r1".into(),
+                    language: "en".into(),
+                    topic: "getting-started".into(),
+                    target: None,
+                    url: "https://example.test/start.md".into(),
+                    digest: digest(b"docs"),
+                    size: 4,
+                    media_type: "text/markdown".into(),
+                }],
+            }),
             content: vec![
                 Content {
                     id: "react-template".into(),
@@ -191,6 +212,30 @@ fn content_only_release_self_binds_exact_ordered_source_references() {
         changed.releases[0].content_only_identity().unwrap();
     let changed = release_content::sign(&changed, "key", &signing).unwrap();
     assert!(release_content::verify(&changed, &trust, Some(verified.checkpoint()), 150).is_err());
+
+    let mut changed = snapshot.clone();
+    changed.releases[0].metadata.as_mut().unwrap().title = "Changed title".into();
+    assert!(release_content::sign(&changed, "key", &signing).is_err());
+    changed.releases[0].base_release_identity =
+        changed.releases[0].content_only_identity().unwrap();
+    let changed = release_content::sign(&changed, "key", &signing).unwrap();
+    assert!(release_content::verify(&changed, &trust, Some(verified.checkpoint()), 150).is_err());
+
+    let mut missing = snapshot.clone();
+    missing.releases[0].metadata = None;
+    assert!(release_content::sign(&missing, "key", &signing).is_err());
+    let mut no_start = snapshot.clone();
+    no_start.releases[0]
+        .metadata
+        .as_mut()
+        .unwrap()
+        .documentation[0]
+        .topic = "reference".into();
+    assert!(release_content::sign(&no_start, "key", &signing).is_err());
+
+    let mut attached = content(BaseKind::Package, digest(b"base"));
+    attached.releases[0].metadata = snapshot.releases[0].metadata.clone();
+    assert!(release_content::sign(&attached, "key", &signing).is_err());
 }
 
 #[test]
@@ -337,4 +382,91 @@ fn accepts_marketplace_publisher_wire_without_resigning() {
     assert_eq!(release.version, "1.0.0");
     assert_eq!(release.base_kind, BaseKind::LinkedCargo);
     assert_eq!(release.content[0].id, "react-starter");
+}
+
+#[test]
+fn accepts_marketplace_package_and_content_only_cross_language_fixtures() {
+    let signing = SigningKey::from_bytes(&[7; 32]);
+    let trust = Trust {
+        catalog_id: "catalog".into(),
+        keys: BTreeMap::from([("key".into(), signing.verifying_key())]),
+    };
+    assert_eq!(
+        hex::encode(signing.verifying_key().to_bytes()),
+        "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+    );
+    let envelope: Envelope = serde_json::from_slice(include_bytes!(
+        "fixtures/d16/package-snapshot.envelope.json"
+    ))
+    .unwrap();
+    let payload = base64::engine::general_purpose::STANDARD
+        .decode(&envelope.payload_base64)
+        .unwrap();
+    let mut message = b"lenso.marketplace.package-snapshot.v1\0key\0".to_vec();
+    message.extend_from_slice(&payload);
+    let signature = ed25519_dalek::Signature::from_slice(
+        &base64::engine::general_purpose::STANDARD
+            .decode(&envelope.signature_base64)
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        signing
+            .verifying_key()
+            .verify_strict(&message, &signature)
+            .is_ok()
+    );
+    let base = package::verify(
+        include_bytes!("fixtures/d16/package-snapshot.envelope.json"),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+    let package_content = release_content::verify(
+        include_bytes!("fixtures/d16/package-content.envelope.json"),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+    let joined = package_content
+        .select_package(&base, "example.editor", "1.0.0", 150)
+        .unwrap();
+    assert_eq!(joined.base_kind, BaseKind::Package);
+    assert_eq!(
+        joined.base_release_identity,
+        "sha256:e4d3041c85808055ca7141472e4b04faade1663756819413e4d9f645999d1121"
+    );
+    let markdown = include_bytes!("fixtures/d16/getting-started.md");
+    let package_document = &base.snapshot().releases[0].documentation[0];
+    assert_eq!(package_document.size, markdown.len() as u64);
+    assert_eq!(package_document.digest, digest(markdown));
+    assert_eq!(
+        joined.select("starter").unwrap().kind,
+        ContentKind::EditableTemplate
+    );
+
+    let pure = release_content::verify(
+        include_bytes!("fixtures/d16/content-only.envelope.json"),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+    let pure = pure
+        .select_content_only("example.editor.source", "1.0.0", 150)
+        .unwrap();
+    assert_eq!(pure.base_kind, BaseKind::ContentOnly);
+    assert_eq!(
+        pure.base_release_identity,
+        "sha256:cf0b3c4772493e69571cce016a52fcabf545d030011ed442e59de490a5efb721"
+    );
+    let pure_document = &pure.metadata.as_ref().unwrap().documentation[0];
+    assert_eq!(pure_document.size, markdown.len() as u64);
+    assert_eq!(pure_document.digest, digest(markdown));
+    assert_eq!(
+        pure.select("dev-extension").unwrap().kind,
+        ContentKind::DevelopmentExtension
+    );
 }
