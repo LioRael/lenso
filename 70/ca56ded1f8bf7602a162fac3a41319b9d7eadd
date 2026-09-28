@@ -1,0 +1,25 @@
+CONTRIBUTING.md
+  s_7d146975368699::t_31e182aa642d79 88-91
+crates/lenso-cli/tests/configuration_source_dev.rs
+  s_7d146975368699::t_4b335ae7b30bdc 17-72,257,322,389,459,476
+crates/lenso-cli/tests/mcp.rs
+  s_7d146975368699::t_bf44e467f2e907 1401-1405,1409,1449,1460,1466,1597-1603
+docs/performance/ci-feedback.md
+  s_7d146975368699::t_8ca89ecbdf8498 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "70ca56ded1f8bf7602a162fac3a41319b9d7eadd",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
