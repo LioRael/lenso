@@ -1,0 +1,20 @@
+docs/components/engine.md
+  s_7d146975368699::t_0bac5cb012db97 371-384
+  s_7d146975368699::t_5554b3575e0f4a 364-370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "42fa5df2dcfcf2f7ee3edb412236285f06a955bd",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

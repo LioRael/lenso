@@ -1,0 +1,25 @@
+crates/lenso-engine-app/assets/workers-wrangler.jsonc
+  s_7d146975368699::t_dee0fb3bc5813a 4
+crates/lenso-engine-app/src/app/local_workflow/workers/tests.rs
+  s_7d146975368699::t_ed3c7d8dad6b09 11,451-453
+  s_7d146975368699::t_a7c4b3f921e301 12,15
+  s_7d146975368699::t_dee0fb3bc5813a 14,16-19
+  s_7d146975368699::t_13222faf7eabfc 13
+  s_7d146975368699::t_df3cdc084d6b69 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "466e3bb46d834d25f244c4015a2701b99f7426c4",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

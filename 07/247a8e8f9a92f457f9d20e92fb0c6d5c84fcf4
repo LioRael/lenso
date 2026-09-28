@@ -1,0 +1,19 @@
+crates/lenso-http-egress-plugin/tests/fixtures/portable-client-guest/Cargo.lock
+  s_7d146975368699::t_45ce8f8b407314 320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "07247a8e8f9a92f457f9d20e92fb0c6d5c84fcf4",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "unknown"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

@@ -1,0 +1,56 @@
+crates/lenso-engine-app/src/app/local_host.rs
+  s_7d146975368699::t_eb45e652c2bf72 617-625
+  s_7d146975368699::t_4f2fabece8f632 612-616
+crates/lenso-cli/src/mcp/run.rs
+  s_7d146975368699::t_106293cfb8017b 40,121,129,156,193-202
+  s_7d146975368699::t_a980e36232ac1e 203-204
+crates/lenso-cli/src/mcp.rs
+  s_7d146975368699::t_9f39c6eb186e55 842-852,1167-1168,1290-1305,1316-1317,1335-1344
+  s_7d146975368699::t_0c4ca1be17cd5a 148,838-841,853-856,994-1003,1085-1096,1137-1141
+  s_7d146975368699::t_425194682d4906 1119,1134-1136,1142-1144
+  s_7d146975368699::t_664795e1dbbaf0 1176,1205,1246,1313
+  s_7d146975368699::t_67b81e966c86c0 1235
+  s_7d146975368699::t_702629a9155148 1097-1099
+  s_752a005520f972::t_0e80ae4563cdb4 1100-1101
+crates/lenso-engine-app/src/app/facts/ready_web_routes.rs
+  s_7d146975368699::t_f02b021f03e9c2 1-70,72-136,138-178
+  s_7d146975368699::t_ccd622e3537798 71,137
+  s_7d146975368699::t_832c54e9673717 179-198
+crates/lenso-engine-app/src/app/local_runtime_template.rs
+  s_7d146975368699::t_9473f7800650c9 11,173-188,193,195-217,219-227,231-236
+  s_7d146975368699::t_0f93a305ff1014 189-192,194
+  s_7d146975368699::t_bc46b0424caa20 218,457-465,765-772,776,784,786-789,793
+  s_7d146975368699::t_1b0028aecba09d 228-230
+  s_7d146975368699::t_4df9610a98f4ce 785,790-792
+  s_7d146975368699::t_0d5212671e7b13 237
+crates/lenso-engine-app/src/app/facts.rs
+  s_7d146975368699::t_f0a686050590fe 19-21,53-56,60-76,291,313
+crates/lenso-cli/tests/mcp.rs
+  s_7d146975368699::t_18d9a0613d5998 1652-1745,1750-1864
+  s_7d146975368699::t_d4bbe4eb15dbc6 76,115,1211
+  s_7d146975368699::t_fb0fae733b3c26 1746-1749
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e4cfa88d233577e00f5be5a251c8eeee53c5227b",
+  "prompts": {},
+  "sessions": {
+    "s_752a005520f972": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0d814-9b3f-7652-a1bc-ce0be0959755",
+        "model": "unknown"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    },
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

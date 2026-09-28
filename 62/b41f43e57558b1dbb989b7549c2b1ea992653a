@@ -1,0 +1,21 @@
+.github/workflows/ci.yml
+  s_7d146975368699::t_6f1e03679030f5 25-26,28-30,34-36,41-52,80
+CONTRIBUTING.md
+  s_7d146975368699::t_43add32404b987 64-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62b41f43e57558b1dbb989b7549c2b1ea992653a",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
