@@ -10,12 +10,12 @@ else
   cargo_dir="$(dirname -- "$(command -v cargo)")"
 fi
 
-mkdir -p "$fixture/.github/scripts" "$fixture/crates/cohort-alpha/src" "$fixture/crates/cohort-beta/src" "$fixture/crates/itoa/src" "$fixture/crates/test-only-fixture/src" "$fixture/cargo-home"
+mkdir -p "$fixture/.github/scripts" "$fixture/crates/cohort-alpha/src" "$fixture/crates/cohort-beta/src" "$fixture/crates/fnv/src" "$fixture/crates/test-only-fixture/src" "$fixture/cargo-home"
 cp "$script_dir/release-cohort-preflight.sh" "$script_dir/release-set.sh" "$fixture/.github/scripts/"
 
 cat >"$fixture/Cargo.toml" <<'EOF'
 [workspace]
-members = ["crates/cohort-alpha", "crates/cohort-beta", "crates/itoa", "crates/test-only-fixture"]
+members = ["crates/cohort-alpha", "crates/cohort-beta", "crates/fnv", "crates/test-only-fixture"]
 resolver = "2"
 
 [patch.crates-io]
@@ -27,9 +27,12 @@ name = "cohort-alpha"
 version = "0.1.0"
 edition = "2024"
 publish = true
+
+[dependencies]
+fnv = { path = "../fnv", version = "=1.0.7" }
 EOF
 cat >"$fixture/crates/cohort-alpha/src/lib.rs" <<'EOF'
-pub fn answer() -> u8 { 42 }
+pub fn answer() -> u8 { std::mem::size_of::<fnv::FnvHasher>() as u8 }
 EOF
 cat >"$fixture/crates/cohort-beta/Cargo.toml" <<'EOF'
 [package]
@@ -40,7 +43,6 @@ publish = true
 
 [dependencies]
 cohort-alpha = "=0.1.0"
-itoa = { path = "../itoa", version = "=1.0.18" }
 
 [dev-dependencies]
 test-only-fixture = { path = "../test-only-fixture" }
@@ -48,14 +50,14 @@ EOF
 cat >"$fixture/crates/cohort-beta/src/lib.rs" <<'EOF'
 pub fn answer() -> u8 { cohort_alpha::answer() }
 EOF
-cat >"$fixture/crates/itoa/Cargo.toml" <<'EOF'
+cat >"$fixture/crates/fnv/Cargo.toml" <<'EOF'
 [package]
-name = "itoa"
-version = "1.0.18"
+name = "fnv"
+version = "1.0.7"
 edition = "2024"
 publish = true
 EOF
-cat >"$fixture/crates/itoa/src/lib.rs" <<'EOF'
+cat >"$fixture/crates/fnv/src/lib.rs" <<'EOF'
 pub fn placeholder() {}
 EOF
 cat >"$fixture/crates/test-only-fixture/Cargo.toml" <<'EOF'
@@ -86,7 +88,8 @@ output="$(
   exit 1
 }
 records="$(printf '%s\n' "$output" | sed -n 's/^Cohort artifact preflight completed: //p')"
-if ! grep -Fxq 'Fetching exact registry package itoa@1.0.18' <<<"$output"; then
+if ! grep -Fxq 'Fetching exact registry package fnv@1.0.7' <<<"$output" ||
+  ! grep -Fxq 'Staged exact registry source fnv@1.0.7' <<<"$output"; then
   printf 'cohort preflight did not fetch the exact out-of-cohort version:\n%s\n' "$output" >&2
   exit 1
 fi

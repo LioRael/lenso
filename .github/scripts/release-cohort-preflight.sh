@@ -157,6 +157,7 @@ package_index() {
 
 registry_dependencies=()
 registry_versions=()
+registry_source_dirs=()
 for package in "${packages[@]}"; do
   while IFS= read -r dependency; do
     [[ -z "$dependency" ]] && continue
@@ -170,8 +171,14 @@ for package in "${packages[@]}"; do
     dependency_manifest="$(jq -r '.manifest_path' <<<"$dependency_record")"
     grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$dependency_manifest" ||
       fail "out-of-cohort workspace dependency is not publish=true: $dependency"
+    dependency_dir="$(cd -- "$(dirname -- "$dependency_manifest")" && pwd -P)"
+    case "$dependency_dir" in
+      "$source_root"/*) ;;
+      *) fail "out-of-cohort workspace dependency is outside the exact release snapshot: $dependency" ;;
+    esac
     registry_dependencies+=("$dependency")
     registry_versions+=("$(jq -r '.version' <<<"$dependency_record")")
+    registry_source_dirs+=("$dependency_dir")
   done < <(prefetch_dependencies "$package")
 done
 
@@ -188,6 +195,27 @@ if (( ${#registry_dependencies[@]} > 0 )); then
   } >"$prefetch_root/Cargo.toml"
   cargo fetch --manifest-path "$prefetch_root/Cargo.toml" ||
     fail "could not fetch exact published out-of-cohort workspace dependencies"
+  prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
+    fail "could not inspect fetched registry dependencies"
+  mkdir -p "$scratch/published-sources" "$scratch/retired-registry-sources"
+  for index in "${!registry_dependencies[@]}"; do
+    dependency="${registry_dependencies[$index]}"
+    version="${registry_versions[$index]}"
+    registry_record="$(jq -ce --arg dependency "$dependency" --arg version "$version" '
+        [.packages[] | select(.name == $dependency and .version == $version and .source == "registry+https://github.com/rust-lang/crates.io-index")]
+        | if length == 1 then .[0] else error("exact crates.io package must occur once in prefetch metadata") end
+      ' <<<"$prefetch_metadata")" || fail "could not locate exact fetched registry source: $dependency@$version"
+    registry_manifest="$(jq -r '.manifest_path' <<<"$registry_record")"
+    [[ -f "$registry_manifest" ]] || fail "fetched registry source has no manifest: $dependency@$version"
+    published_dir="$scratch/published-sources/$dependency-$version"
+    cp -R -- "$(dirname -- "$registry_manifest")" "$published_dir" ||
+      fail "could not stage exact fetched registry source: $dependency@$version"
+    mv -- "${registry_source_dirs[$index]}" "$scratch/retired-registry-sources/$dependency-$version" ||
+      fail "could not retire workspace source for published dependency: $dependency@$version"
+    ln -s -- "$published_dir" "${registry_source_dirs[$index]}" ||
+      fail "could not overlay exact fetched registry source: $dependency@$version"
+    printf 'Staged exact registry source %s@%s\n' "$dependency" "$version"
+  done
 fi
 
 completed_packages=()
@@ -196,6 +224,12 @@ completed_dirs=()
 build_completed_patch_args() {
   patch_args=()
   local index
+  for index in "${!registry_dependencies[@]}"; do
+    patch_args+=(
+      --config
+      "patch.crates-io.${registry_dependencies[$index]}.path=\"${registry_source_dirs[$index]}\""
+    )
+  done
   for index in "${!completed_packages[@]}"; do
     patch_args+=(
       --config
