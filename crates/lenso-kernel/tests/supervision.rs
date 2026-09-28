@@ -120,6 +120,7 @@ struct RecordingResource {
     generation: u64,
     events: Rc<RefCell<Vec<Event>>>,
     fail_release: bool,
+    panic_release: bool,
 }
 
 impl ManagedResource for RecordingResource {
@@ -127,7 +128,9 @@ impl ManagedResource for RecordingResource {
         let generation = self.generation;
         let events = self.events.clone();
         let fail_release = self.fail_release;
+        let panic_release = self.panic_release;
         Box::pin(async move {
+            assert!(!panic_release, "configured resource release panic");
             if fail_release {
                 return Err(RuntimeFailure::Internal {
                     detail: "generation resource release failed".to_owned(),
@@ -144,6 +147,7 @@ struct RecordingLifecycle {
     generation: u64,
     events: Rc<RefCell<Vec<Event>>>,
     fail_release: bool,
+    cleanup_failure: Option<CleanupFailure>,
     panic_task: bool,
 }
 
@@ -152,6 +156,7 @@ impl PluginLifecycle for RecordingLifecycle {
         let generation = self.generation;
         let events = self.events.clone();
         let fail_release = self.fail_release;
+        let panic_release = self.cleanup_failure == Some(CleanupFailure::PanicRelease);
         Box::pin(async move {
             events.borrow_mut().push(Event::Prepare(generation));
             context
@@ -160,6 +165,7 @@ impl PluginLifecycle for RecordingLifecycle {
                     generation,
                     events: events.clone(),
                     fail_release,
+                    panic_release,
                 })
                 .map_err(|error| RuntimeFailure::Internal {
                     detail: format!("resource registration failed: {error:?}"),
@@ -196,6 +202,7 @@ impl PluginLifecycle for RecordingLifecycle {
         let reason = context.reason();
         let tasks = context.tasks().task_count();
         let resources = context.resources().resource_count();
+        let failure = self.cleanup_failure;
         Box::pin(async move {
             events.borrow_mut().push(Event::Deactivate {
                 generation,
@@ -203,6 +210,12 @@ impl PluginLifecycle for RecordingLifecycle {
                 tasks,
                 resources,
             });
+            assert_ne!(failure, Some(CleanupFailure::PanicDeactivate));
+            if failure == Some(CleanupFailure::Deactivate) {
+                return Err(RuntimeFailure::Internal {
+                    detail: "generation deactivate failed".to_owned(),
+                });
+            }
             Ok(())
         })
     }
@@ -213,6 +226,14 @@ async fn configured_managed_task_failure() {
     panic!("configured managed task failure");
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CleanupFailure {
+    Deactivate,
+    Release,
+    PanicDeactivate,
+    PanicRelease,
+}
+
 #[derive(Debug)]
 struct SupervisionAdapter {
     events: Rc<RefCell<Vec<Event>>>,
@@ -220,7 +241,7 @@ struct SupervisionAdapter {
     next_generation: Cell<u64>,
     recreate_failures: Cell<usize>,
     fail_initial_generation: bool,
-    fail_initial_release: bool,
+    initial_cleanup_failure: Option<CleanupFailure>,
     panic_initial_task: bool,
 }
 
@@ -237,13 +258,13 @@ impl SupervisionAdapter {
             next_generation: Cell::new(1),
             recreate_failures: Cell::new(recreate_failures),
             fail_initial_generation,
-            fail_initial_release: false,
+            initial_cleanup_failure: None,
             panic_initial_task: false,
         }
     }
 
     fn with_initial_release_failure(mut self) -> Self {
-        self.fail_initial_release = true;
+        self.initial_cleanup_failure = Some(CleanupFailure::Release);
         self
     }
 
@@ -265,6 +286,9 @@ impl SupervisionAdapter {
             generation,
             events: self.events.clone(),
             fail_release,
+            cleanup_failure: (generation == 1)
+                .then_some(self.initial_cleanup_failure)
+                .flatten(),
             panic_task: self.panic_initial_task && generation == 1,
         })
     }
@@ -287,7 +311,10 @@ impl NativeExecutionAdapter for SupervisionAdapter {
                 "provider".to_owned(),
                 PreparedNativePlugin::with_lifecycle(
                     vec![endpoint],
-                    self.lifecycle(1, self.fail_initial_release),
+                    self.lifecycle(
+                        1,
+                        self.initial_cleanup_failure == Some(CleanupFailure::Release),
+                    ),
                 ),
             ),
         ]);
@@ -484,6 +511,11 @@ fn stable_handle_is_unavailable_during_deterministic_restart_and_reuses_ready_ge
         .position(|event| *event == Event::Prepare(2))
         .expect("the replacement should prepare");
     assert!(deactivate < release && release < replacement_prepare);
+    drop(recorded);
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        lenso_kernel::ShutdownOutcome::Clean
+    );
 }
 
 #[test]
@@ -702,6 +734,149 @@ fn cleanup_failure_keeps_the_old_generation_unavailable_and_unpublished() {
     assert!(app.is_accepting());
     assert_eq!(app.plugin_generation("provider"), None);
     assert!(!events.borrow().contains(&Event::Prepare(2)));
+    assert!(app.terminal_failure().is_none());
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        lenso_kernel::ShutdownOutcome::RuntimeFailure {
+            error: RuntimeFailure::Internal {
+                detail: "generation resource release failed".to_owned(),
+            },
+        }
+    );
+}
+
+#[test]
+fn optional_deactivate_failure_survives_until_final_shutdown() {
+    let driver = DeterministicDriver::new();
+    let mut adapter = SupervisionAdapter::new(Rc::default(), Rc::new(Cell::new(0)), 0, false);
+    adapter.initial_cleanup_failure = Some(CleanupFailure::Deactivate);
+    let app = driver
+        .run(Kernel::start_native(
+            plan(
+                RestartPolicy::never(),
+                Some(CapabilityCardinality::Optional),
+                false,
+            ),
+            driver.clone(),
+            adapter,
+        ))
+        .expect("the App should start");
+    app.report_plugin_failure("provider")
+        .expect("schedule supervision");
+    drive_turn(&driver);
+    assert!(app.is_accepting());
+    assert!(app.terminal_failure().is_none());
+    assert_eq!(app.plugin_generation("provider"), None);
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        lenso_kernel::ShutdownOutcome::RuntimeFailure {
+            error: RuntimeFailure::Internal {
+                detail: "generation deactivate failed".to_owned(),
+            },
+        }
+    );
+}
+
+#[test]
+fn optional_deactivate_panic_cannot_report_clean_shutdown() {
+    assert_panicked_cleanup_is_not_clean(CleanupFailure::PanicDeactivate);
+}
+
+#[test]
+fn optional_resource_release_panic_cannot_report_clean_shutdown() {
+    assert_panicked_cleanup_is_not_clean(CleanupFailure::PanicRelease);
+}
+
+fn assert_panicked_cleanup_is_not_clean(failure: CleanupFailure) {
+    let driver = DeterministicDriver::new();
+    let mut adapter = SupervisionAdapter::new(Rc::default(), Rc::new(Cell::new(0)), 0, false);
+    adapter.initial_cleanup_failure = Some(failure);
+    let app = driver
+        .run(Kernel::start_native(
+            plan(
+                RestartPolicy::never(),
+                Some(CapabilityCardinality::Optional),
+                false,
+            ),
+            driver.clone(),
+            adapter,
+        ))
+        .expect("the App should start");
+    app.report_plugin_failure("provider")
+        .expect("schedule supervision");
+    drive_turn(&driver);
+    assert!(app.is_accepting());
+    assert!(app.terminal_failure().is_none());
+    assert_eq!(app.plugin_generation("provider"), None);
+    assert!(matches!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        lenso_kernel::ShutdownOutcome::RuntimeFailure { .. }
+    ));
+}
+
+#[derive(Clone)]
+struct CancellingDriver {
+    inner: DeterministicDriver,
+    cancel_next: Rc<Cell<bool>>,
+}
+
+impl RuntimeDriver for CancellingDriver {
+    fn now(&self) -> Duration {
+        self.inner.now()
+    }
+
+    fn sleep_until(&self, deadline: Duration) -> LocalBoxFuture<'static, ()> {
+        self.inner.sleep_until(deadline)
+    }
+
+    fn yield_now(&self) -> LocalBoxFuture<'static, ()> {
+        self.inner.yield_now()
+    }
+
+    fn spawn_local(
+        &self,
+        task: lenso_kernel::LocalTask,
+    ) -> Result<lenso_kernel::DriverTask, futures::task::SpawnError> {
+        let task = self.inner.spawn_local(task)?;
+        if self.cancel_next.replace(false) {
+            task.cancel();
+        }
+        Ok(task)
+    }
+
+    fn shutdown_requested(&self) -> bool {
+        self.inner.shutdown_requested()
+    }
+}
+
+#[test]
+fn cancelled_supervision_task_cannot_report_clean_shutdown() {
+    let driver = CancellingDriver {
+        inner: DeterministicDriver::new(),
+        cancel_next: Rc::new(Cell::new(false)),
+    };
+    let app = driver
+        .inner
+        .run(Kernel::start_native(
+            plan(
+                RestartPolicy::never(),
+                Some(CapabilityCardinality::Optional),
+                false,
+            ),
+            driver.clone(),
+            SupervisionAdapter::new(Rc::default(), Rc::new(Cell::new(0)), 0, false),
+        ))
+        .expect("the App should start");
+    driver.cancel_next.set(true);
+    app.report_plugin_failure("provider")
+        .expect("schedule supervision");
+    drive_turn(&driver.inner);
+    assert!(app.is_accepting());
+    assert!(app.terminal_failure().is_none());
+    assert!(matches!(
+        driver.inner.run(app.shutdown(Duration::from_secs(1))),
+        lenso_kernel::ShutdownOutcome::RuntimeFailure { .. }
+    ));
 }
 
 #[test]
@@ -733,6 +908,10 @@ fn noncritical_optional_provider_may_remain_unavailable_after_budget_exhaustion(
         Err(RuntimeFailure::Unavailable {
             capability: CAPABILITY_ID,
         })
+    );
+    assert_eq!(
+        driver.run(app.shutdown(Duration::from_secs(1))),
+        lenso_kernel::ShutdownOutcome::Clean
     );
 }
 

@@ -288,6 +288,7 @@ pub(super) struct NativeAppRuntime {
     pub(super) shutdown: ShutdownCoordinator,
     pub(super) shutdown_task: RefCell<Option<DriverTask>>,
     pub(super) terminal_failure: RefCell<Option<RuntimeFailure>>,
+    pub(super) cleanup_failure: RefCell<Option<RuntimeFailure>>,
 }
 
 impl std::fmt::Debug for NativeAppRuntime {
@@ -313,6 +314,14 @@ impl std::fmt::Debug for NativeAppRuntime {
 }
 
 impl NativeAppRuntime {
+    pub(super) fn record_cleanup_failure(&self, error: &RuntimeFailure) {
+        // Optional Plugin failure need not close admission, but retirement must
+        // retain cleanup evidence even after that generation has been removed.
+        self.cleanup_failure
+            .borrow_mut()
+            .get_or_insert_with(|| error.clone());
+    }
+
     pub(super) fn mark_plugin_endpoints_unavailable(&self, instance_key: &str) {
         for ((provider, _), endpoint) in &self.endpoint_states {
             if provider == instance_key {
