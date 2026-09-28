@@ -1,0 +1,32 @@
+CONTRIBUTING.md
+  h_9d56aba080c170 52-72
+Cargo.toml
+  h_9d56aba080c170 11-16
+crates/lenso-cli/README.md
+  h_9d56aba080c170 13-19,26-27
+crates/lenso-cli/docs/business-snapshot-binding.md
+  h_9d56aba080c170 1-65
+crates/lenso-cli/docs/execution-target-preflight.md
+  h_9d56aba080c170 86-100,114-119
+crates/lenso-cli/docs/local-plugin-discovery.md
+  h_9d56aba080c170 4-6,18-22,24-25,28,272-275,285-289
+crates/lenso-cli/tests/fixtures/local-host-binding/src/lib.rs
+  h_9d56aba080c170 1-75
+crates/lenso-cli/tests/local_host_bindings.rs
+  h_9d56aba080c170 1-210
+crates/lenso-engine-app/src/app/local_host.rs
+  h_9d56aba080c170 15-16,73,75,152,223,517,633,1474-1475,1479,1494-1495,1498,1502-1503,1505
+crates/lenso-engine-app/src/app/local_host/business_snapshot.rs
+  h_9d56aba080c170 1-23,25-27,31-54,56-65,67-72,80,83-94,98-118,120,123-144,147-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "84e44deeb5a61d982412a20787f97ec6f4be61c4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
