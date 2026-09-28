@@ -10,12 +10,12 @@ else
   cargo_dir="$(dirname -- "$(command -v cargo)")"
 fi
 
-mkdir -p "$fixture/.github/scripts" "$fixture/crates/cohort-alpha/src" "$fixture/crates/cohort-beta/src" "$fixture/crates/itoa/src" "$fixture/cargo-home"
+mkdir -p "$fixture/.github/scripts" "$fixture/crates/cohort-alpha/src" "$fixture/crates/cohort-beta/src" "$fixture/crates/itoa/src" "$fixture/crates/test-only-fixture/src" "$fixture/cargo-home"
 cp "$script_dir/release-cohort-preflight.sh" "$script_dir/release-set.sh" "$fixture/.github/scripts/"
 
 cat >"$fixture/Cargo.toml" <<'EOF'
 [workspace]
-members = ["crates/cohort-alpha", "crates/cohort-beta", "crates/itoa"]
+members = ["crates/cohort-alpha", "crates/cohort-beta", "crates/itoa", "crates/test-only-fixture"]
 resolver = "2"
 
 [patch.crates-io]
@@ -41,6 +41,9 @@ publish = true
 [dependencies]
 cohort-alpha = "=0.1.0"
 itoa = { path = "../itoa", version = "=1.0.18" }
+
+[dev-dependencies]
+test-only-fixture = { path = "../test-only-fixture" }
 EOF
 cat >"$fixture/crates/cohort-beta/src/lib.rs" <<'EOF'
 pub fn answer() -> u8 { cohort_alpha::answer() }
@@ -53,6 +56,16 @@ edition = "2024"
 publish = true
 EOF
 cat >"$fixture/crates/itoa/src/lib.rs" <<'EOF'
+pub fn placeholder() {}
+EOF
+cat >"$fixture/crates/test-only-fixture/Cargo.toml" <<'EOF'
+[package]
+name = "test-only-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false
+EOF
+cat >"$fixture/crates/test-only-fixture/src/lib.rs" <<'EOF'
 pub fn placeholder() {}
 EOF
 
@@ -85,4 +98,4 @@ if ! jq -e '
   printf 'cohort preflight returned an incomplete artifact receipt:\n%s\n' "$output" >&2
   exit 1
 fi
-printf '%s\n' 'two-package cohort with an already-published workspace dependency passed'
+printf '%s\n' 'two-package cohort with published runtime and private dev dependencies passed'

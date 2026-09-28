@@ -132,6 +132,17 @@ source_dependencies() {
   ' <<<"$metadata"
 }
 
+prefetch_dependencies() {
+  local package="$1"
+  jq -r --arg package "$package" '
+    [.packages[] | select(.name == $package)]
+    | if length == 1 then .[0] else error("release package must occur once in metadata") end
+    | .dependencies[]?
+    | select(.kind != "dev" and .source == null and (.path // "") != "")
+    | .name
+  ' <<<"$metadata"
+}
+
 package_index() {
   local package="$1"
   local index
@@ -161,7 +172,7 @@ for package in "${packages[@]}"; do
       fail "out-of-cohort workspace dependency is not publish=true: $dependency"
     registry_dependencies+=("$dependency")
     registry_versions+=("$(jq -r '.version' <<<"$dependency_record")")
-  done < <(source_dependencies "$package")
+  done < <(prefetch_dependencies "$package")
 done
 
 if (( ${#registry_dependencies[@]} > 0 )); then
