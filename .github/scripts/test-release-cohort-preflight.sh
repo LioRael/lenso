@@ -101,7 +101,8 @@ output="$(
 records="$(printf '%s\n' "$output" | sed -n 's/^Cohort artifact preflight completed: //p')"
 if ! grep -Fxq 'Fetching exact registry package fnv@1.0.7' <<<"$output" ||
   ! grep -Fxq 'Staged exact registry source fnv@1.0.7' <<<"$output" ||
-  ! grep -Fxq 'Fetching exact registry package equivalent@1.0.2' <<<"$output"; then
+  ! grep -Fxq 'Fetching exact registry package equivalent@1.0.2' <<<"$output" ||
+  ! grep -Fxq 'Normalized scratch lock only for omitted private dev fixture edges' <<<"$output"; then
   printf 'cohort preflight did not fetch the exact out-of-cohort version:\n%s\n' "$output" >&2
   exit 1
 fi
@@ -113,4 +114,29 @@ if ! jq -e '
   printf 'cohort preflight returned an incomplete artifact receipt:\n%s\n' "$output" >&2
   exit 1
 fi
+
+scratch="$fixture"
+source <(sed -n '/^verify_fixture_only_lock_change() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
+lock_before=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\ndependencies = [\n "cohort-alpha",\n "test-only-fixture",\n]'
+lock_allowed=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\ndependencies = [\n "cohort-alpha",\n]'
+lock_bad_version=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.1"\ndependencies = [\n "cohort-alpha",\n]'
+lock_bad_checksum=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\nchecksum = "unexpected"\ndependencies = [\n "cohort-alpha",\n]'
+lock_bad_edge=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\ndependencies = [\n]'
+allowed_edge=$'cohort-beta\ttest-only-fixture'
+printf '%s\n' "$lock_before" >"$fixture/before.lock"
+printf '%s\n' "$lock_allowed" >"$fixture/allowed.lock"
+printf '%s\n' "$allowed_edge" >"$fixture/allowed.tsv"
+if ! verify_fixture_only_lock_change \
+  "$fixture/before.lock" "$fixture/allowed.lock" "$fixture/allowed.tsv"; then
+  printf '%s\n' 'fixture-only lock normalization was rejected' >&2
+  exit 1
+fi
+for unexpected_lock in "$lock_bad_version" "$lock_bad_checksum" "$lock_bad_edge"; do
+  printf '%s\n' "$unexpected_lock" >"$fixture/bad.lock"
+  if verify_fixture_only_lock_change \
+    "$fixture/before.lock" "$fixture/bad.lock" "$fixture/allowed.tsv"; then
+    printf '%s\n' 'lock normalization accepted a non-fixture change' >&2
+    exit 1
+  fi
+done
 printf '%s\n' 'two-package cohort with published runtime and private dev dependencies passed'

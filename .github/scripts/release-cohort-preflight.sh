@@ -118,6 +118,17 @@ if (( ${#packages[@]} == 0 )); then
   exit 0
 fi
 
+private_fixture_edges="$(jq -r '
+    .packages as $workspace
+    | .packages[]
+    | .name as $owner
+    | .dependencies[]?
+    | select(.kind == "dev" and .source == null and (.path // "") != "" and .req == "*")
+    | .name as $fixture
+    | select(any($workspace[]; .name == $fixture and .publish == []))
+    | [$owner, $fixture] | @tsv
+  ' <<<"$metadata")" || fail "could not identify private path-only dev fixture edges"
+
 (cd "$source_root" && cargo fetch --locked) ||
   fail "could not fetch the locked non-cohort dependencies"
 
@@ -246,6 +257,68 @@ run_cargo_with_completed_patches() {
   fi
 }
 
+verify_fixture_only_lock_change() {
+  local before="$1"
+  local after="$2"
+  local allowed="$3"
+  local expected="$scratch/expected-normalized-Cargo.lock"
+  awk -F '\t' '
+    FNR == NR { removable[$1 SUBSEP $2] = 1; next }
+    /^\[\[package\]\]$/ { owner = ""; in_dependencies = 0 }
+    /^name = "/ && owner == "" {
+      owner = $0
+      sub(/^name = "/, "", owner)
+      sub(/"$/, "", owner)
+    }
+    /^dependencies = \[$/ { in_dependencies = 1 }
+    in_dependencies && /^ "[^"]+",$/ {
+      dependency = $0
+      sub(/^ "/, "", dependency)
+      sub(/",$/, "", dependency)
+      if (removable[owner SUBSEP dependency]) next
+    }
+    in_dependencies && /^\]$/ { in_dependencies = 0 }
+    { print }
+  ' "$allowed" "$before" >"$expected"
+  ! cmp -s "$before" "$after" && cmp -s "$expected" "$after"
+}
+
+validate_or_normalize_scratch_lock() {
+  local before="$scratch/before-normalization-Cargo.lock"
+  local allowed="$scratch/allowed-private-fixture-edges.tsv"
+  local index owner edge_owner fixture artifact_manifest
+
+  if (cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null) 2>"$scratch/locked-metadata.err"; then
+    return 0
+  fi
+
+  : >"$allowed"
+  for index in "${!completed_packages[@]}"; do
+    owner="${completed_packages[$index]}"
+    artifact_manifest="${completed_dirs[$index]}/Cargo.toml"
+    while IFS=$'\t' read -r edge_owner fixture; do
+      [[ "$edge_owner" == "$owner" && -n "$fixture" ]] || continue
+      grep -Fq "$fixture" "$artifact_manifest" && continue
+      printf '%s\t%s\n' "$owner" "$fixture" >>"$allowed"
+    done <<<"$private_fixture_edges"
+  done
+  if [[ ! -s "$allowed" ]]; then
+    sed -n '1,30p' "$scratch/locked-metadata.err" >&2
+    fail "locked metadata failed without an omitted private dev fixture"
+  fi
+
+  cp "$source_root/Cargo.lock" "$before"
+  (cd "$source_root" && run_cargo_with_completed_patches metadata --offline --format-version 1 >/dev/null) ||
+    fail "could not inspect scratch-only lock normalization"
+  if ! verify_fixture_only_lock_change "$before" "$source_root/Cargo.lock" "$allowed"; then
+    diff -u "$before" "$source_root/Cargo.lock" >&2 || true
+    fail "scratch lock drift exceeds omitted private path-only dev fixture edges"
+  fi
+  (cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null) ||
+    fail "locked metadata still fails after guarded scratch-only normalization"
+  printf 'Normalized scratch lock only for omitted private dev fixture edges\n'
+}
+
 while (( ${#completed_packages[@]} < ${#packages[@]} )); do
   made_progress=false
   for index in "${!packages[@]}"; do
@@ -263,9 +336,9 @@ while (( ${#completed_packages[@]} < ${#packages[@]} )); do
     (( ${#waiting_on[@]} == 0 )) || continue
 
     build_completed_patch_args
+    validate_or_normalize_scratch_lock
     (
       cd "$source_root"
-      run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null
       run_cargo_with_completed_patches package --locked --offline --no-verify \
         --target-dir "$package_target" -p "$package"
     ) || fail "could not package $package from the exact cohort source"
@@ -301,6 +374,9 @@ while (( ${#completed_packages[@]} < ${#packages[@]} )); do
   [[ "$made_progress" == true ]] ||
     fail "could not derive a topological order for the exact release cohort"
 done
+
+build_completed_patch_args
+validate_or_normalize_scratch_lock
 
 actual_release_set="$(jq -c '[.[] | {package_name, version}] | sort_by(.package_name)' <<<"$artifact_records")"
 [[ "$actual_release_set" == "$expected" ]] ||
