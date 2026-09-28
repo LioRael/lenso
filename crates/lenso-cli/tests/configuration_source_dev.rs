@@ -14,6 +14,62 @@ use std::{
 // CI machine instead of making their cold builds compete for the same budget.
 static APP_BUILD_TEST: Mutex<()> = Mutex::new(());
 
+struct Phase<'a> {
+    name: String,
+    start: Instant,
+    log: &'a Path,
+    offset: usize,
+}
+
+impl<'a> Phase<'a> {
+    fn new(name: impl Into<String>, log: &'a Path) -> Self {
+        Self {
+            name: name.into(),
+            start: Instant::now(),
+            log,
+            offset: fs::read(log).unwrap_or_default().len(),
+        }
+    }
+}
+
+impl Drop for Phase<'_> {
+    fn drop(&mut self) {
+        let bytes = fs::read(self.log).unwrap_or_default();
+        let log = String::from_utf8_lossy(bytes.get(self.offset..).unwrap_or_default());
+        let builds = log
+            .lines()
+            .filter(|line| line.contains("Finished "))
+            .filter_map(|line| line.split_once("target(s) in ").map(|(_, time)| time))
+            .filter(|time| {
+                time.len() <= 32
+                    && time
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || b". hms".contains(&byte))
+            })
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>();
+        let compiled = log
+            .lines()
+            .filter(|line| line.contains("Compiling "))
+            .count();
+        let lock_waits = log
+            .lines()
+            .filter(|line| line.contains("Blocking waiting"))
+            .count();
+        // Direct stderr survives libtest's successful-test capture. Keep source
+        // contents and paths out of CI output; only report build timing/counts.
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "[configuration_source_dev/{}] {}: {:.2?}; visible Cargo durations (newest first): \
+             {builds:?}; compilations: {compiled}; lock waits: {lock_waits}",
+            std::thread::current().name().unwrap_or("unknown"),
+            self.name,
+            self.start.elapsed()
+        );
+    }
+}
+
 struct DevGuard(Child);
 
 impl DevGuard {
@@ -198,6 +254,7 @@ fn generation(source: &Path) -> Option<PathBuf> {
 }
 
 fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> PathBuf {
+    let _phase = Phase::new(format!("activate revision {revision}"), log);
     let deadline = Instant::now() + Duration::from_secs(300);
     loop {
         for output in generations(source) {
@@ -262,6 +319,7 @@ fn await_pending_revision(
     log: &Path,
     log_offset: usize,
 ) -> PathBuf {
+    let _phase = Phase::new(format!("pending revision {revision}"), log);
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         let bytes = fs::read(log).unwrap_or_default();
@@ -328,6 +386,7 @@ fn start_dev(cli: &str, source: &Path, policy: &Path, log: &Path, cwd: Option<&P
 }
 
 fn await_source_outage(dev: &mut Child, log: &Path, from: usize) {
+    let _phase = Phase::new("source outage or rejection", log);
     // A pending candidate can already be inside --prepare when its source is
     // removed; that check has a 60-second bound before the next source poll.
     let deadline = Instant::now() + Duration::from_secs(75);
@@ -397,6 +456,7 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     .unwrap();
     let mut dev = start_dev(cli, &source, &policy, &log, None);
 
+    let build_phase = Phase::new("initial Process distribution build", &log);
     let deadline = Instant::now() + Duration::from_secs(300);
     while !generation(&source).is_some_and(|path| path.join(".lenso/host").is_file()) {
         assert!(dev.0.try_wait().unwrap().is_none());
@@ -413,6 +473,7 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
         );
         std::thread::sleep(Duration::from_millis(200));
     }
+    drop(build_phase);
     // The first source read failed. The poll loop must recover without an App
     // source edit or a second build, and must not invent an activation receipt.
     let output = generation(&source).unwrap();

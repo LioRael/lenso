@@ -1398,57 +1398,15 @@ fn stdio_browses_signed_portable_metadata_without_installation_claim() {
     }
 }
 
-#[test]
-fn stdio_explanation_matches_app_explain_json() {
-    let temp = tempfile::tempdir().unwrap();
-    let app = temp.path().join("source");
+fn assert_distribution_default_scope_matches_cli(
+    root: &std::path::Path,
+    expected_explanation: &serde_json::Value,
+    expected_check: &serde_json::Value,
+) {
     let cli = env!("CARGO_BIN_EXE_lenso");
-    let created = Command::new(cli)
-        .args(["app", "create"])
-        .arg(&app)
-        .args(["--runtime", "empty"])
-        .output()
-        .unwrap();
-    assert!(
-        created.status.success(),
-        "{}",
-        String::from_utf8_lossy(&created.stderr)
-    );
-    let built = Command::new(cli)
-        .args(["app", "build", "--root"])
-        .arg(&app)
-        .output()
-        .unwrap();
-    assert!(
-        built.status.success(),
-        "{}",
-        String::from_utf8_lossy(&built.stderr)
-    );
-    let root = app.join("dist");
-    let explained = Command::new(cli)
-        .args(["app", "explain", "--root"])
-        .arg(&root)
-        .arg("--json")
-        .output()
-        .unwrap();
-    assert!(
-        explained.status.success(),
-        "{}",
-        String::from_utf8_lossy(&explained.stderr)
-    );
-    let expected: serde_json::Value = serde_json::from_slice(&explained.stdout).unwrap();
-    let checked = Command::new(cli)
-        .args(["app", "check", "--root"])
-        .arg(&root)
-        .arg("--json")
-        .output()
-        .unwrap();
-    assert!(checked.status.success());
-    let expected_check: serde_json::Value = serde_json::from_slice(&checked.stdout).unwrap();
-
     let mut child = Command::new(cli)
         .args(["mcp", "--root"])
-        .arg(&root)
+        .arg(root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1488,7 +1446,7 @@ fn stdio_explanation_matches_app_explain_json() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(actual, expected);
+    assert_eq!(&actual, expected_explanation);
     let check_response = responses
         .iter()
         .find(|response| response["id"] == 3)
@@ -1499,13 +1457,13 @@ fn stdio_explanation_matches_app_explain_json() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(actual_check, expected_check);
+    assert_eq!(&actual_check, expected_check);
 }
 
 #[test]
 #[expect(
     clippy::too_many_lines,
-    reason = "authorized build and App check must be compared within the same generated distribution"
+    reason = "authorized build, App check, and explanation must be compared within the same generated distribution"
 )]
 fn stdio_authorized_build_reports_the_same_app_check() {
     let temp = tempfile::tempdir().unwrap();
@@ -1635,6 +1593,13 @@ fn stdio_authorized_build_reports_the_same_app_check() {
     )
     .unwrap();
     assert_eq!(actual_explanation, expected_explanation);
+
+    // Default scope needs a dist-rooted session, but not another real build.
+    assert_distribution_default_scope_matches_cli(
+        &root.join("dist"),
+        &expected_explanation,
+        &expected,
+    );
 
     let facts = Command::new(cli)
         .args(["app", "facts", "--json", "--root"])
