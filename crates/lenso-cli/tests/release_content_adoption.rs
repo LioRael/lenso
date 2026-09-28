@@ -25,6 +25,10 @@ fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "signed snapshots, exact archive adoption, and non-installation checks form one end-to-end scenario"
+)]
 fn portable_base_can_anchor_content_without_installing_its_runtime() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("app");
@@ -142,6 +146,10 @@ fn run(cli: &str, root: &std::path::Path, args: &[&str]) -> std::process::Output
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "preview, opt-in selection, and user-edit protections share one signed content lifecycle"
+)]
 fn exact_signed_content_previews_copies_and_preserves_user_edits() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("app");

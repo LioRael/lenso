@@ -914,15 +914,15 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 fs::rename(stage, path)?;
             }
             if let Some(path) = ready_file {
-                if std::env::var("LENSO_MCP_WEB_ROUTES").ok().as_deref() == Some("1") {
-                    if let Err(error) = publish_web_route_receipt(
+                if std::env::var("LENSO_MCP_WEB_ROUTES").ok().as_deref() == Some("1")
+                    && let Err(error) = publish_web_route_receipt(
                         &path,
                         &resolution.plugin_root_revision,
                         &distribution_lock_sha256,
                         local_web_routes,
-                    ) {
-                        eprintln!("Web route observation unavailable: {error}");
-                    }
+                    )
+                {
+                    eprintln!("Web route observation unavailable: {error}");
                 }
                 let stage = path.with_extension("stage");
                 fs::write(&stage, b"lenso.local-host-ready.v1\n")?;

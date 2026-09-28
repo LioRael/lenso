@@ -13,6 +13,10 @@ use lenso_plugin_catalog::{Artifact, Availability, Release, Snapshot, digest, si
 
 #[test]
 #[ignore = "requires LENSO_TEST_PLUGIN_ARCHIVE from a real CLI pack"]
+#[expect(
+    clippy::too_many_lines,
+    reason = "exact signed archive adoption, runtime checks, replacement, and rejection proofs share one portable release lifecycle"
+)]
 fn exact_signed_portable_archive_is_adopted_and_checked() {
     let archive_path = std::env::var("LENSO_TEST_PLUGIN_ARCHIVE").unwrap();
     let bytes = fs::read(&archive_path).unwrap();

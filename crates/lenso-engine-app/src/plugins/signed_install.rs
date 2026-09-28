@@ -292,7 +292,7 @@ fn publish_immutable_archive(
     archive: &VerifiedPluginArchive,
 ) -> anyhow::Result<()> {
     let directory = destination.parent().context("Portable archive parent")?;
-    let mut staged = tempfile::NamedTempFile::new_in(&directory)?;
+    let mut staged = tempfile::NamedTempFile::new_in(directory)?;
     std::io::copy(&mut archive.open_archive()?, &mut staged)?;
     staged.flush()?;
     staged.as_file().sync_all()?;
@@ -308,7 +308,7 @@ fn publish_immutable_archive(
         return Ok(());
     }
     staged
-        .persist_noclobber(&destination)
+        .persist_noclobber(destination)
         .map_err(|error| error.error)?;
     Ok(())
 }

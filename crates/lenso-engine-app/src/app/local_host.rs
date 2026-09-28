@@ -90,13 +90,13 @@ fn contract_dependency_alias(
     dependency: &Value,
     web_contract: Option<&Value>,
 ) -> anyhow::Result<String> {
-    if capability == "lenso.http.endpoint@1" {
-        if let Some(web_contract) = web_contract {
-            if web_contract != dependency {
-                bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
-            }
-            return Ok("local_web_contract".into());
+    if capability == "lenso.http.endpoint@1"
+        && let Some(web_contract) = web_contract
+    {
+        if web_contract != dependency {
+            bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
         }
+        return Ok("local_web_contract".into());
     }
     Ok(format!("local_contract_{index}"))
 }
@@ -226,10 +226,10 @@ pub(super) fn generate(
             let alias = format!("local_plugin_{index}");
             dependencies.insert(alias.clone(), dependency(package)?);
             linked.push_str(&format!("{alias}::link_plugin();\n"));
-            if selects_knowledge_snapshot_binding(&candidate.plugin_id, package)? {
-                if knowledge_snapshot_crate.replace(alias).is_some() {
-                    bail!("Host has competing KnowledgeBase attachment policy bindings");
-                }
+            if selects_knowledge_snapshot_binding(&candidate.plugin_id, package)?
+                && knowledge_snapshot_crate.replace(alias).is_some()
+            {
+                bail!("Host has competing KnowledgeBase attachment policy bindings");
             }
         }
         // Only normal reachable dependencies are eligible: test/build helper
@@ -507,10 +507,10 @@ pub(super) fn generate(
     }
     let web = web_contract.is_some();
     if let Some(contract) = web_contract {
-        if let Some(previous) = dependencies.insert("local_web_contract".into(), contract.clone()) {
-            if previous != contract {
-                bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
-            }
+        if let Some(previous) = dependencies.insert("local_web_contract".into(), contract.clone())
+            && previous != contract
+        {
+            bail!("Web Endpoint codec and Ingress use different Cargo contract identities");
         }
         // A Git-pinned Endpoint contract must bring the matching Ingress from
         // that exact Web source too. Otherwise Cargo may select a registry
@@ -1370,7 +1370,7 @@ fn generated_distribution(path: &Path) -> anyhow::Result<bool> {
         };
         if receipt["schema"] != "lenso.workers-app-build.v1"
             || receipt["target"] != "workers"
-            || !authority.validate().is_ok()
+            || authority.validate().is_err()
         {
             return Ok(false);
         }

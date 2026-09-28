@@ -268,7 +268,10 @@ fn saved_optional_absence_survives_a_temporarily_unavailable_provider() {
     );
     let root = PluginRootSnapshot::default().with_dependency_choices(vec![absence.clone()]);
     let resolved = resolve_plugin_root(&without_provider, &root).unwrap();
-    assert_eq!(resolved.dependency_choices(), &[absence.clone()]);
+    assert_eq!(
+        resolved.dependency_choices(),
+        std::slice::from_ref(&absence)
+    );
     assert!(resolved.plan().capability_bindings().is_empty());
 
     let mut bound_to_missing = absence.clone();

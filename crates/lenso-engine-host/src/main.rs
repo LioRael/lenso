@@ -13,7 +13,7 @@ enum Command {
     },
     App {
         #[command(subcommand)]
-        command: lenso_engine_app::app::AppCommand,
+        command: Box<lenso_engine_app::app::AppCommand>,
     },
 }
 #[tokio::main]
@@ -29,10 +29,12 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(unix)]
     if matches!(
         &command,
-        Command::App {
-            command: lenso_engine_app::app::AppCommand::Build(_)
-                | lenso_engine_app::app::AppCommand::Assemble(_)
-        }
+        Command::App { command }
+            if matches!(
+                command.as_ref(),
+                lenso_engine_app::app::AppCommand::Build(_)
+                    | lenso_engine_app::app::AppCommand::Assemble(_)
+            )
     ) {
         let mut interrupt =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
@@ -46,7 +48,7 @@ async fn main() -> anyhow::Result<()> {
     }
     match command {
         Command::Plugin { command } => lenso_engine_app::plugin::plugin(command).await,
-        Command::App { command } => lenso_engine_app::app::app(command).await,
+        Command::App { command } => lenso_engine_app::app::app(*command).await,
     }
 }
 

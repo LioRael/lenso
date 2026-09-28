@@ -143,9 +143,16 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                     }
                     if let Some(current) = current_output.as_deref() {
                         match sync_source_with_deadline(
-                            &root, current, policy, current_output.as_deref(),
-                            &mut active, &mut host,
-                            &mut frontend_process, &mut active_backend_url,
+                            current,
+                            LivePreviewGuard {
+                                root: &root,
+                                active_output: current_output.as_deref(),
+                                policy,
+                                host: &mut host,
+                                frontend: &mut frontend_process,
+                                active_backend_url: &mut active_backend_url,
+                                active: &mut active,
+                            },
                         ).await {
                             Ok(proof) => {
                                 update_poll_interval(
@@ -168,8 +175,8 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
             &root,
             &mut active, &mut host, &mut frontend_process, &mut active_backend_url,
         ).await?;
-        if let Some(policy) = &policy {
-            if retire_active_on_policy_change(
+        if let Some(policy) = &policy
+            && retire_active_on_policy_change(
                 &root,
                 current_output.as_deref(),
                 policy,
@@ -177,16 +184,23 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 &mut frontend_process,
                 &mut active_backend_url,
             )
-            .await? {
-                active = None;
-            }
+            .await?
+        {
+            active = None;
         }
         if built {
             let activation = if let Some(policy) = &policy {
                 match sync_source_with_deadline(
-                    &root, &output, policy, current_output.as_deref(),
-                    &mut active, &mut host,
-                    &mut frontend_process, &mut active_backend_url,
+                    &output,
+                    LivePreviewGuard {
+                        root: &root,
+                        active_output: current_output.as_deref(),
+                        policy,
+                        host: &mut host,
+                        frontend: &mut frontend_process,
+                        active_backend_url: &mut active_backend_url,
+                        active: &mut active,
+                    },
                 ).await {
                     Ok(proof) => {
                         update_poll_interval(
@@ -194,10 +208,16 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                             proof.accepted.max_stale_seconds,
                         ).await;
                         activate_supervised_candidate(
-                            &root, &output, current_output.as_deref(), policy,
-                            &args.args, frontend_config.as_ref(),
-                            proof, &mut host, &mut frontend_process,
-                            &mut active_backend_url, &mut active,
+                            &output, &args.args, frontend_config.as_ref(), proof,
+                            LivePreviewGuard {
+                                root: &root,
+                                active_output: current_output.as_deref(),
+                                policy,
+                                host: &mut host,
+                                frontend: &mut frontend_process,
+                                active_backend_url: &mut active_backend_url,
+                                active: &mut active,
+                            },
                             &mut supervised_dynamic_start_available,
                         ).await?
                     }
@@ -211,8 +231,16 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 Some(false)
             } else if let Some(config) = &frontend_config {
                 activate_candidate_with_frontend(
-                    &root, &output, &args.args, &mut host,
-                    &mut frontend_process, &mut active_backend_url, false, config,
+                    &output,
+                    &args.args,
+                    FrontendPreview {
+                        root: &root,
+                        host: &mut host,
+                        frontend_process: &mut frontend_process,
+                        active_backend_url: &mut active_backend_url,
+                        config,
+                    },
+                    false,
                 ).await?
             } else {
                 activate_candidate(&output, &args.args, &mut host, false, false).await?
@@ -344,9 +372,16 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                         active = None;
                     }
                     match sync_source_with_deadline(
-                        &root, &target, policy, current_output.as_deref(),
-                        &mut active, &mut host,
-                        &mut frontend_process, &mut active_backend_url,
+                        &target,
+                        LivePreviewGuard {
+                            root: &root,
+                            active_output: current_output.as_deref(),
+                            policy,
+                            host: &mut host,
+                            frontend: &mut frontend_process,
+                            active_backend_url: &mut active_backend_url,
+                            active: &mut active,
+                        },
                     ).await {
                         Ok(proof) => {
                             update_poll_interval(
@@ -361,11 +396,18 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                                     (status.pending_activation || host.is_none() ||
                                      current_output.as_deref() != Some(target.as_path())) => {
                                     match activate_supervised_candidate(
-                                        &root, &target, current_output.as_deref(), policy,
-                                        &args.args,
-                                        frontend_config.as_ref(), proof, &mut host,
-                                        &mut frontend_process, &mut active_backend_url,
-                                        &mut active, &mut supervised_dynamic_start_available,
+                                        &target, &args.args,
+                                        frontend_config.as_ref(), proof,
+                                        LivePreviewGuard {
+                                            root: &root,
+                                            active_output: current_output.as_deref(),
+                                            policy,
+                                            host: &mut host,
+                                            frontend: &mut frontend_process,
+                                            active_backend_url: &mut active_backend_url,
+                                            active: &mut active,
+                                        },
+                                        &mut supervised_dynamic_start_available,
                                     ).await? {
                                         Some(true) => select_output(&mut current_output, &target),
                                         Some(false) => {},
@@ -418,7 +460,7 @@ async fn expire_active_if_needed(
     frontend: &mut Option<frontend::FrontendProcess>,
     active_backend_url: &mut Option<String>,
 ) -> anyhow::Result<bool> {
-    if !active.as_ref().is_some_and(|proof| !proof.is_fresh()) {
+    if active.as_ref().is_none_or(TimedProof::is_fresh) {
         return Ok(false);
     }
     eprintln!(
@@ -442,15 +484,18 @@ fn refresh_active_if_matching(active: &mut Option<TimedProof>, proof: &TimedProo
 }
 
 async fn sync_source_with_deadline(
-    root: &Path,
     output: &Path,
-    policy: &Path,
-    active_output: Option<&Path>,
-    active: &mut Option<TimedProof>,
-    host: &mut Option<Child>,
-    frontend: &mut Option<frontend::FrontendProcess>,
-    active_backend_url: &mut Option<String>,
+    guard: LivePreviewGuard<'_>,
 ) -> anyhow::Result<TimedProof> {
+    let LivePreviewGuard {
+        root,
+        active_output,
+        policy,
+        host,
+        frontend,
+        active_backend_url,
+        active,
+    } = guard;
     let output = output.to_path_buf();
     let policy_path = policy.to_path_buf();
     run_source_sync_with_deadline(
@@ -538,19 +583,22 @@ async fn run_until<T>(
 }
 
 async fn activate_supervised_candidate(
-    root: &Path,
     output: &Path,
-    active_output: Option<&Path>,
-    policy: &Path,
     args: &[String],
     config: Option<&frontend::FrontendConfig>,
     proof: TimedProof,
-    host: &mut Option<Child>,
-    frontend_process: &mut Option<frontend::FrontendProcess>,
-    active_backend_url: &mut Option<String>,
-    active: &mut Option<TimedProof>,
+    guard: LivePreviewGuard<'_>,
     dynamic_start_available: &mut bool,
 ) -> anyhow::Result<Option<bool>> {
+    let LivePreviewGuard {
+        root,
+        active_output,
+        policy,
+        host,
+        frontend: frontend_process,
+        active_backend_url,
+        active,
+    } = guard;
     if !proof_still_usable(output, policy, &proof) {
         if retire_active_on_policy_change(
             root,
@@ -643,14 +691,16 @@ async fn activate_supervised_candidate(
     }
     let activation = if let Some(config) = config {
         activate_candidate_with_frontend_until(
-            root,
             output,
             args,
-            host,
-            frontend_process,
-            active_backend_url,
+            FrontendPreview {
+                root,
+                host: &mut *host,
+                frontend_process: &mut *frontend_process,
+                active_backend_url: &mut *active_backend_url,
+                config,
+            },
             true,
-            config,
             Some(proof.deadline()),
             Some((policy, &proof.accepted)),
         )
@@ -726,25 +776,25 @@ fn verify_activation_source(
     Ok(())
 }
 
+struct FrontendPreview<'a> {
+    root: &'a Path,
+    host: &'a mut Option<Child>,
+    frontend_process: &'a mut Option<frontend::FrontendProcess>,
+    active_backend_url: &'a mut Option<String>,
+    config: &'a frontend::FrontendConfig,
+}
+
 async fn activate_candidate_with_frontend(
-    root: &Path,
     output: &Path,
     args: &[String],
-    host: &mut Option<Child>,
-    frontend_process: &mut Option<frontend::FrontendProcess>,
-    active_backend_url: &mut Option<String>,
+    preview: FrontendPreview<'_>,
     supervised_configuration: bool,
-    config: &frontend::FrontendConfig,
 ) -> anyhow::Result<Option<bool>> {
     activate_candidate_with_frontend_until(
-        root,
         output,
         args,
-        host,
-        frontend_process,
-        active_backend_url,
+        preview,
         supervised_configuration,
-        config,
         None,
         None,
     )
@@ -752,17 +802,20 @@ async fn activate_candidate_with_frontend(
 }
 
 async fn activate_candidate_with_frontend_until(
-    root: &Path,
     output: &Path,
     args: &[String],
-    host: &mut Option<Child>,
-    frontend_process: &mut Option<frontend::FrontendProcess>,
-    active_backend_url: &mut Option<String>,
+    preview: FrontendPreview<'_>,
     supervised_configuration: bool,
-    config: &frontend::FrontendConfig,
     source_deadline: Option<Instant>,
     source: Option<(&Path, &AcceptedSourceProof)>,
 ) -> anyhow::Result<Option<bool>> {
+    let FrontendPreview {
+        root,
+        host,
+        frontend_process,
+        active_backend_url,
+        config,
+    } = preview;
     if let Err(error) = verify_activation_source(output, supervised_configuration, source) {
         eprintln!(
             "Configuration candidate changed before startup; candidate not activated: {error:#}"
@@ -2325,14 +2378,16 @@ mod tests {
         let mut active_backend_url = Some("http://127.0.0.1:3001/".to_owned());
         assert_eq!(
             activate_candidate_with_frontend(
-                root.path(),
                 &next,
                 &[],
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
+                FrontendPreview {
+                    root: root.path(),
+                    host: &mut host,
+                    frontend_process: &mut frontend_process,
+                    active_backend_url: &mut active_backend_url,
+                    config: &config,
+                },
                 false,
-                &config,
             )
             .await
             .unwrap(),
@@ -2493,19 +2548,21 @@ mod tests {
         assert!(
             activate_supervised_candidate(
                 output.path(),
-                output.path(),
-                None,
-                &policy,
                 &[],
                 None,
                 TimedProof {
                     accepted,
                     received_at: Instant::now()
                 },
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
-                &mut active,
+                LivePreviewGuard {
+                    root: output.path(),
+                    active_output: None,
+                    policy: &policy,
+                    host: &mut host,
+                    frontend: &mut frontend_process,
+                    active_backend_url: &mut active_backend_url,
+                    active: &mut active,
+                },
                 &mut dynamic_start_available,
             )
             .await
@@ -2522,16 +2579,18 @@ mod tests {
         assert_eq!(
             activate_supervised_candidate(
                 output.path(),
-                output.path(),
-                Some(output.path()),
-                &policy,
                 &[],
                 None,
                 rejected,
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
-                &mut active,
+                LivePreviewGuard {
+                    root: output.path(),
+                    active_output: Some(output.path()),
+                    policy: &policy,
+                    host: &mut host,
+                    frontend: &mut frontend_process,
+                    active_backend_url: &mut active_backend_url,
+                    active: &mut active,
+                },
                 &mut dynamic_start_available,
             )
             .await
@@ -2557,19 +2616,21 @@ mod tests {
         assert!(
             !activate_supervised_candidate(
                 output.path(),
-                output.path(),
-                Some(output.path()),
-                &policy,
                 &[],
                 None,
                 TimedProof {
                     accepted,
                     received_at: Instant::now()
                 },
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
-                &mut active,
+                LivePreviewGuard {
+                    root: output.path(),
+                    active_output: Some(output.path()),
+                    policy: &policy,
+                    host: &mut host,
+                    frontend: &mut frontend_process,
+                    active_backend_url: &mut active_backend_url,
+                    active: &mut active,
+                },
                 &mut dynamic_start_available,
             )
             .await
@@ -2595,19 +2656,21 @@ mod tests {
         assert!(
             !activate_supervised_candidate(
                 output.path(),
-                output.path(),
-                Some(output.path()),
-                &policy,
                 &[],
                 None,
                 TimedProof {
                     accepted,
                     received_at: Instant::now()
                 },
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
-                &mut active,
+                LivePreviewGuard {
+                    root: output.path(),
+                    active_output: Some(output.path()),
+                    policy: &policy,
+                    host: &mut host,
+                    frontend: &mut frontend_process,
+                    active_backend_url: &mut active_backend_url,
+                    active: &mut active,
+                },
                 &mut dynamic_start_available,
             )
             .await
@@ -2651,16 +2714,18 @@ mod tests {
         assert_eq!(
             activate_supervised_candidate(
                 output.path(),
-                output.path(),
-                Some(output.path()),
-                &policy,
                 &[],
                 None,
                 pending_proof.clone(),
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
-                &mut active,
+                LivePreviewGuard {
+                    root: output.path(),
+                    active_output: Some(output.path()),
+                    policy: &policy,
+                    host: &mut host,
+                    frontend: &mut frontend_process,
+                    active_backend_url: &mut active_backend_url,
+                    active: &mut active,
+                },
                 &mut dynamic_start_available,
             )
             .await
@@ -2681,16 +2746,18 @@ mod tests {
         assert!(
             activate_supervised_candidate(
                 output.path(),
-                output.path(),
-                Some(output.path()),
-                &policy,
                 &[],
                 None,
                 pending_proof,
-                &mut host,
-                &mut frontend_process,
-                &mut active_backend_url,
-                &mut active,
+                LivePreviewGuard {
+                    root: output.path(),
+                    active_output: Some(output.path()),
+                    policy: &policy,
+                    host: &mut host,
+                    frontend: &mut frontend_process,
+                    active_backend_url: &mut active_backend_url,
+                    active: &mut active,
+                },
                 &mut next_session_dynamic_start_available,
             )
             .await

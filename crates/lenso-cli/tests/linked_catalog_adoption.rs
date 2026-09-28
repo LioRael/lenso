@@ -560,6 +560,10 @@ fn adopt_next_exact_version(
     assert!(root.join("plugins/example.web/default.toml").exists());
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the exact-version replacement scenario checks each failure and recovery against one evolving App state"
+)]
 fn replace_next_exact_version(
     cli: &str,
     fixture_root: &std::path::Path,
@@ -835,6 +839,14 @@ fn prove_replaced_build_and_removal_when_requested(
         String::from_utf8_lossy(&started.stderr)
     );
 
+    prove_replaced_removal_after_custom_intent(cli, root, old);
+}
+
+fn prove_replaced_removal_after_custom_intent(
+    cli: &str,
+    root: &std::path::Path,
+    old: &std::path::Path,
+) {
     // Unadopt must not discard customized App-owned intent implicitly.
     let customized = Command::new(cli)
         .args(["app", "unadopt", "example.web@0.4.6", "--root"])
@@ -1116,6 +1128,27 @@ fn assert_signed_catalog_search(
             "fee_requirements_unverified"
         ])
     );
+    assert_mcp_linked_catalog_matches_cli(
+        cli,
+        root,
+        snapshot_path,
+        trust_path,
+        &candidates,
+        &recommended,
+        &strict,
+    );
+    assert_unsupported_target_and_tampered_catalog(cli, snapshot_path, trust_path);
+}
+
+fn assert_mcp_linked_catalog_matches_cli(
+    cli: &str,
+    root: &std::path::Path,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+    candidates: &serde_json::Value,
+    recommended: &serde_json::Value,
+    strict: &serde_json::Value,
+) {
     let mut mcp = Command::new(cli)
         .args(["mcp", "--root"])
         .arg(root)
@@ -1192,6 +1225,13 @@ fn assert_signed_catalog_search(
     .unwrap();
     assert_eq!(beyond_excluded["total_excluded"], 1);
     assert!(beyond_excluded["excluded"].as_array().unwrap().is_empty());
+}
+
+fn assert_unsupported_target_and_tampered_catalog(
+    cli: &str,
+    snapshot_path: &std::path::Path,
+    trust_path: &std::path::Path,
+) {
     let wrong_target = Command::new(cli)
         .args(["app", "linked-catalog", "--linked-snapshot"])
         .arg(snapshot_path)
@@ -1680,6 +1720,10 @@ fn linked_catalog_explicit_replacement_preserves_previous_generation() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "rollback, equivocation, forward progress, retry, and path rejection share one monotonic signed checkpoint sequence"
+)]
 fn linked_catalog_add_persists_monotonic_app_checkpoint() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("app");

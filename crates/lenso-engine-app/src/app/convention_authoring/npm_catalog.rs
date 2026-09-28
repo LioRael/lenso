@@ -558,25 +558,41 @@ pub(in crate::app) fn preview(
     )
 }
 
+pub(in crate::app) struct LinkedNpmPreview<'a> {
+    pub root: &'a Path,
+    pub linked_snapshot: &'a Path,
+    pub release_details: &'a Path,
+    pub trust: &'a Path,
+    pub tgz: &'a Path,
+    pub plugin_id: &'a str,
+    pub release_version: &'a str,
+    pub distribution_id: Option<&'a str>,
+}
+
 pub(in crate::app) fn preview_linked(
-    root: &Path,
-    linked_snapshot: &Path,
-    release_details: &Path,
-    trust: &Path,
-    tgz: &Path,
-    plugin_id: &str,
-    release_version: &str,
-    distribution_id: Option<&str>,
+    request: LinkedNpmPreview<'_>,
 ) -> anyhow::Result<serde_json::Value> {
+    let LinkedNpmPreview {
+        root,
+        linked_snapshot,
+        release_details,
+        trust,
+        tgz,
+        plugin_id,
+        release_version,
+        distribution_id,
+    } = request;
     lenso_app_authoring::identity::validate_plugin_id_v1(plugin_id)?;
     lenso_app_authoring::identity::validate_release_version(release_version)?;
     let app_lock = linked_catalog::adoption::lock_app(root)?;
     let selected = linked_catalog::select_linked_npm_details(
         root,
         &app_lock,
-        linked_snapshot,
-        release_details,
-        trust,
+        linked_catalog::LinkedNpmCatalogInputs {
+            linked_snapshot,
+            details_snapshot: release_details,
+            trust_path: trust,
+        },
         plugin_id,
         release_version,
         distribution_id,
@@ -706,9 +722,11 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         Some(linked_catalog::select_linked_npm_details(
             root,
             &app_lock,
-            args.linked_snapshot.as_deref().unwrap(),
-            args.release_details.as_deref().unwrap(),
-            args.trust.as_deref().unwrap(),
+            linked_catalog::LinkedNpmCatalogInputs {
+                linked_snapshot: args.linked_snapshot.as_deref().unwrap(),
+                details_snapshot: args.release_details.as_deref().unwrap(),
+                trust_path: args.trust.as_deref().unwrap(),
+            },
             plugin_id,
             release_version,
             args.distribution.as_deref(),
@@ -1036,7 +1054,7 @@ fn verify_source_contents(path: &Path, lock: &SourceLock) -> anyhow::Result<Stri
         path.display()
     );
     verify_manifest_identity(path, lock)?;
-    verify_archived_source(path, &lock)?;
+    verify_archived_source(path, lock)?;
     Ok(installed_dependencies)
 }
 

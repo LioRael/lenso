@@ -7,6 +7,10 @@ use std::{
 };
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one stdio session verifies bounded App facts, tool discovery, and read-only responses together"
+)]
 fn stdio_exposes_bounded_read_only_app_facts() {
     let root = tempfile::tempdir().unwrap();
     fs::write(
@@ -167,6 +171,10 @@ fn assert_tools(list: &serde_json::Value) {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "signed linked-crate adoption and unadoption share one fixed stdio session and App state"
+)]
 fn stdio_adopts_and_unadopts_only_the_fixed_signed_linked_crate() {
     use ed25519_dalek::SigningKey;
     use lenso_plugin_catalog::{
@@ -376,6 +384,10 @@ fn stdio_adopts_and_unadopts_only_the_fixed_signed_linked_crate() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "portable archive selection, rejection, and unadoption are checked in one signed stdio lifecycle"
+)]
 fn stdio_adopts_and_unadopts_only_the_fixed_signed_portable_archive() {
     use ed25519_dalek::SigningKey;
     use lenso_app_plan::{
@@ -669,6 +681,10 @@ fn mcp_test_crate() -> Vec<u8> {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "npm preview, adoption, and unadoption use one fixed signed archive and stdio lifecycle"
+)]
 fn stdio_previews_adopts_and_unadopts_only_the_fixed_signed_npm_archive() {
     use ed25519_dalek::SigningKey;
     use lenso_plugin_catalog::{
@@ -861,6 +877,10 @@ fn stdio_previews_adopts_and_unadopts_only_the_fixed_signed_npm_archive() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "linked release-details npm selection must prove the full signed path without a portable base"
+)]
 fn stdio_selects_linked_release_details_npm_without_portable_base() {
     use ed25519_dalek::SigningKey;
     use lenso_plugin_catalog::{
@@ -1133,6 +1153,10 @@ fn mcp_tool_json(response: &serde_json::Value) -> serde_json::Value {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "signed metadata browsing checks all read-only catalog views without implying installation"
+)]
 fn stdio_browses_signed_portable_metadata_without_installation_claim() {
     use ed25519_dalek::SigningKey;
     use lenso_plugin_catalog::{Artifact, Availability, Release, Snapshot, sign};
@@ -1479,6 +1503,10 @@ fn stdio_explanation_matches_app_explain_json() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "authorized build and App check must be compared within the same generated distribution"
+)]
 fn stdio_authorized_build_reports_the_same_app_check() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("app");
@@ -2005,6 +2033,10 @@ fn stdio_selection_preview_and_apply_disable_then_enable() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "real Host readiness and shutdown are one supervised stdio run lifecycle"
+)]
 fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("app");
@@ -2115,6 +2147,10 @@ fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "web route visibility before, during, and after app run requires one supervised process lifecycle"
+)]
 fn stdio_observes_ready_web_routes_only_during_the_supervised_process_app_run() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("app");

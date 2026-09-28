@@ -11,10 +11,18 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(
+    dead_code,
+    reason = "shared fixture source is compiled both as a library and an executable"
+)]
 struct Configuration {
     path: PathBuf,
 }
 
+#[allow(
+    dead_code,
+    reason = "shared fixture source is compiled both as a library and an executable"
+)]
 struct FileSource {
     path: PathBuf,
 }

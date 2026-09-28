@@ -44,7 +44,7 @@ pub const HANDLE_STREAM_OPERATION: &str = "handle_stream";
 pub use lenso_contract_runtime::{Bytes, UnknownDomainError};
 use lenso_contract_runtime::{decode_portable_json, encode_portable_json};
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescribeStreamRequest {
 
 }

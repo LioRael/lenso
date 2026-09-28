@@ -120,6 +120,85 @@ async fn request(
     Response::from_parts(parts, body.collect().await.unwrap().to_bytes())
 }
 
+async fn assert_authorization_behavior(address: std::net::SocketAddr, label: &str) {
+    let evidence = request(
+        address,
+        "GET",
+        "/evidence",
+        b"",
+        &[("x-test", "alpha"), ("authorization", "Bearer test-token")],
+    )
+    .await;
+    assert_eq!(evidence.status().as_u16(), 200, "{label} evidence");
+    assert_eq!(
+        evidence.body().as_ref(),
+        b"bearer:alpha",
+        "{label} evidence"
+    );
+    let ambiguous = request(
+        address,
+        "GET",
+        "/evidence",
+        b"",
+        &[
+            ("authorization", "Bearer first"),
+            ("authorization", "Bearer second"),
+        ],
+    )
+    .await;
+    assert_eq!(ambiguous.status().as_u16(), 400, "{label} ambiguous bearer");
+}
+
+async fn assert_native_and_wasm_http_cases(
+    native_address: std::net::SocketAddr,
+    wasm_address: std::net::SocketAddr,
+) {
+    let cases: [HttpCase<'_>; 6] = [
+        ("GET", "/method/42", b"", 200, b"GET /method/42"),
+        (
+            "POST",
+            "/bytes",
+            &[0, 255, 128, 13, 10, 1],
+            200,
+            &[0, 255, 128, 13, 10, 1],
+        ),
+        (
+            "POST",
+            "/method/42",
+            b"",
+            405,
+            br#"{"error":"method_not_allowed"}"#,
+        ),
+        ("GET", "/absent", b"", 404, br#"{"error":"not_found"}"#),
+        (
+            "GET",
+            "/reject",
+            b"",
+            502,
+            br#"{"error":"endpoint_rejected"}"#,
+        ),
+        (
+            "GET",
+            "/failure",
+            b"",
+            503,
+            br#"{"error":"endpoint_unavailable"}"#,
+        ),
+    ];
+    for (method, uri, body, status, expected_body) in cases {
+        let native = request(native_address, method, uri, body, &[]).await;
+        let wasm = request(wasm_address, method, uri, body, &[]).await;
+        assert_eq!(native.status().as_u16(), status, "native {method} {uri}");
+        assert_eq!(wasm.status().as_u16(), status, "wasm {method} {uri}");
+        assert_eq!(
+            native.body().as_ref(),
+            expected_body,
+            "native {method} {uri}"
+        );
+        assert_eq!(wasm.body().as_ref(), expected_body, "wasm {method} {uri}");
+    }
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn one_http_endpoint_runs_through_native_and_real_wasm_component() {
     LocalSet::new()
@@ -156,92 +235,14 @@ async fn one_http_endpoint_runs_through_native_and_real_wasm_component() {
                 ("native", native_ingress.local_address().unwrap()),
                 ("wasm", wasm_ingress.local_address().unwrap()),
             ] {
-                let evidence = request(
-                    address,
-                    "GET",
-                    "/evidence",
-                    b"",
-                    &[("x-test", "alpha"), ("authorization", "Bearer test-token")],
-                )
-                .await;
-                assert_eq!(evidence.status().as_u16(), 200, "{label} evidence");
-                assert_eq!(
-                    evidence.body().as_ref(),
-                    b"bearer:alpha",
-                    "{label} evidence"
-                );
-                let ambiguous = request(
-                    address,
-                    "GET",
-                    "/evidence",
-                    b"",
-                    &[
-                        ("authorization", "Bearer first"),
-                        ("authorization", "Bearer second"),
-                    ],
-                )
-                .await;
-                assert_eq!(ambiguous.status().as_u16(), 400, "{label} ambiguous bearer");
+                assert_authorization_behavior(address, label).await;
             }
 
-            let cases: [HttpCase<'_>; 6] = [
-                ("GET", "/method/42", b"", 200, b"GET /method/42"),
-                (
-                    "POST",
-                    "/bytes",
-                    &[0, 255, 128, 13, 10, 1],
-                    200,
-                    &[0, 255, 128, 13, 10, 1],
-                ),
-                (
-                    "POST",
-                    "/method/42",
-                    b"",
-                    405,
-                    br#"{"error":"method_not_allowed"}"#,
-                ),
-                ("GET", "/absent", b"", 404, br#"{"error":"not_found"}"#),
-                (
-                    "GET",
-                    "/reject",
-                    b"",
-                    502,
-                    br#"{"error":"endpoint_rejected"}"#,
-                ),
-                (
-                    "GET",
-                    "/failure",
-                    b"",
-                    503,
-                    br#"{"error":"endpoint_unavailable"}"#,
-                ),
-            ];
-            for (method, uri, body, status, expected_body) in cases {
-                let native = request(
-                    native_ingress.local_address().unwrap(),
-                    method,
-                    uri,
-                    body,
-                    &[],
-                )
-                .await;
-                let wasm = request(
-                    wasm_ingress.local_address().unwrap(),
-                    method,
-                    uri,
-                    body,
-                    &[],
-                )
-                .await;
-                assert_eq!(native.status().as_u16(), status, "native {method} {uri}");
-                assert_eq!(wasm.status().as_u16(), status, "wasm {method} {uri}");
-                assert_eq!(
-                    native.body().as_ref(),
-                    expected_body,
-                    "native {method} {uri}"
-                );
-                assert_eq!(wasm.body().as_ref(), expected_body, "wasm {method} {uri}");
-            }
+            assert_native_and_wasm_http_cases(
+                native_ingress.local_address().unwrap(),
+                wasm_ingress.local_address().unwrap(),
+            )
+            .await;
             assert_eq!(
                 native.shutdown(Duration::from_secs(2)).await,
                 ShutdownOutcome::Clean

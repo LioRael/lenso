@@ -72,6 +72,10 @@ fn add(
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "dual-distribution identity, native build, and rollback checks require one signed release progression"
+)]
 fn signed_dual_distribution_cargo_adopts_and_builds_exact_host() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("app");

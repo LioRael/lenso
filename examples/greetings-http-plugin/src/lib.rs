@@ -54,9 +54,13 @@ impl std::fmt::Debug for PinnedGreetingPolicy {
     }
 }
 
+/// The Host cannot supply an authorized policy for this request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GreetingPolicyUnavailable;
+
 /// The Host supplies this private binding only when it selects a dynamic source.
 pub trait GreetingPolicySource {
-    fn capture(&self) -> Result<PinnedGreetingPolicy, ()>;
+    fn capture(&self) -> Result<PinnedGreetingPolicy, GreetingPolicyUnavailable>;
 }
 
 #[lenso::plugin]
@@ -97,7 +101,7 @@ impl GreetingsHttp {
             .as_ref()
             .map(|source| source.capture())
             .transpose()
-            .map_err(|()| {
+            .map_err(|GreetingPolicyUnavailable| {
                 Problem::new(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "business_policy_unavailable",

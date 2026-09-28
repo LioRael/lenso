@@ -11,7 +11,7 @@ use rmcp::{
     transport::stdio,
 };
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 mod adoption;
 mod build;
@@ -379,13 +379,15 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
-                adoption::Distribution::Npm,
-                adoption::Action::Adopt,
-                &request.plugin_id,
-                &request.version,
-                &request.request_id,
-                request.distribution_id.as_deref(),
-                Some(inputs),
+                adoption::AdoptionRequest {
+                    distribution: adoption::Distribution::Npm,
+                    action: adoption::Action::Adopt,
+                    plugin_id: &request.plugin_id,
+                    version: &request.version,
+                    request_id: &request.request_id,
+                    distribution_id: request.distribution_id.as_deref(),
+                    inputs: Some(inputs),
+                },
             )
             .map_err(|error| {
                 McpError::invalid_request(adoption::public_request_error(&error), None)
@@ -410,13 +412,15 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
-                adoption::Distribution::Npm,
-                adoption::Action::Unadopt,
-                &request.plugin_id,
-                &request.version,
-                &request.request_id,
-                None,
-                None,
+                adoption::AdoptionRequest {
+                    distribution: adoption::Distribution::Npm,
+                    action: adoption::Action::Unadopt,
+                    plugin_id: &request.plugin_id,
+                    version: &request.version,
+                    request_id: &request.request_id,
+                    distribution_id: None,
+                    inputs: None,
+                },
             )
             .map_err(|error| {
                 McpError::invalid_request(adoption::public_request_error(&error), None)
@@ -456,13 +460,15 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
-                adoption::Distribution::LinkedCargo,
-                adoption::Action::Adopt,
-                &request.plugin_id,
-                &request.version,
-                &request.request_id,
-                None,
-                Some(inputs),
+                adoption::AdoptionRequest {
+                    distribution: adoption::Distribution::LinkedCargo,
+                    action: adoption::Action::Adopt,
+                    plugin_id: &request.plugin_id,
+                    version: &request.version,
+                    request_id: &request.request_id,
+                    distribution_id: None,
+                    inputs: Some(inputs),
+                },
             )
             .map_err(|error| {
                 McpError::invalid_request(adoption::public_request_error(&error), None)
@@ -487,13 +493,15 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
-                adoption::Distribution::LinkedCargo,
-                adoption::Action::Unadopt,
-                &request.plugin_id,
-                &request.version,
-                &request.request_id,
-                None,
-                None,
+                adoption::AdoptionRequest {
+                    distribution: adoption::Distribution::LinkedCargo,
+                    action: adoption::Action::Unadopt,
+                    plugin_id: &request.plugin_id,
+                    version: &request.version,
+                    request_id: &request.request_id,
+                    distribution_id: None,
+                    inputs: None,
+                },
             )
             .map_err(|error| {
                 McpError::invalid_request(adoption::public_request_error(&error), None)
@@ -530,13 +538,15 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
-                adoption::Distribution::Portable,
-                adoption::Action::Adopt,
-                &request.plugin_id,
-                &request.version,
-                &request.request_id,
-                None,
-                Some(inputs),
+                adoption::AdoptionRequest {
+                    distribution: adoption::Distribution::Portable,
+                    action: adoption::Action::Adopt,
+                    plugin_id: &request.plugin_id,
+                    version: &request.version,
+                    request_id: &request.request_id,
+                    distribution_id: None,
+                    inputs: Some(inputs),
+                },
             )
             .map_err(|error| {
                 McpError::invalid_request(adoption::public_request_error(&error), None)
@@ -561,13 +571,15 @@ impl AppTools {
             .adoptions
             .apply(
                 &self.root,
-                adoption::Distribution::Portable,
-                adoption::Action::Unadopt,
-                &request.plugin_id,
-                &request.version,
-                &request.request_id,
-                None,
-                None,
+                adoption::AdoptionRequest {
+                    distribution: adoption::Distribution::Portable,
+                    action: adoption::Action::Unadopt,
+                    plugin_id: &request.plugin_id,
+                    version: &request.version,
+                    request_id: &request.request_id,
+                    distribution_id: None,
+                    inputs: None,
+                },
             )
             .map_err(|error| {
                 McpError::invalid_request(adoption::public_request_error(&error), None)
@@ -1151,45 +1163,7 @@ fn project_facts_json(
     request: &ProjectFactsQuery,
 ) -> Result<String, McpError> {
     let value = match request.section {
-        ProjectFactsSection::All => {
-            if request.offset != 0 || request.limit.is_some() {
-                return Err(McpError::invalid_params(
-                    "choose a project facts section before paginating",
-                    None,
-                ));
-            }
-            let mut value = serde_json::to_value(facts)
-                .map_err(|_| McpError::internal_error("serialize App facts", None))?;
-            let object = value
-                .as_object_mut()
-                .ok_or_else(|| McpError::internal_error("serialize App facts", None))?;
-            for (field, total) in [
-                ("plugins", facts.plugins.len()),
-                ("bindings", facts.bindings.len()),
-                ("discovered_sources", facts.discovered_sources.len()),
-            ] {
-                object.remove(field);
-                object.insert(format!("total_{field}"), total.into());
-            }
-            if let Some(provenance) = &facts.build_provenance {
-                value["build_provenance"] = serde_json::json!({
-                    "source_location": provenance.source_location,
-                    "total_build_sources": provenance.build_sources.len(),
-                    "total_generated_artifacts": provenance.generated_artifacts.len(),
-                });
-            }
-            if let Some(observation) = &facts.observed_web_routes {
-                value["observed_web_routes"] = serde_json::json!({
-                    "capture": observation.capture,
-                    "run_request_id": observation.run_request_id,
-                    "source_location": observation.source_location,
-                    "plugin_root_revision": observation.plugin_root_revision,
-                    "distribution_lock_sha256": observation.distribution_lock_sha256,
-                    "total_routes": observation.routes.len(),
-                });
-            }
-            value
-        }
+        ProjectFactsSection::All => project_facts_summary(facts, request)?,
         section => {
             let limit = request.limit.unwrap_or(20);
             if limit == 0 || limit > 20 {
@@ -1198,110 +1172,7 @@ fn project_facts_json(
                     None,
                 ));
             }
-            let (name, total, items) = match section {
-                ProjectFactsSection::Plugins => (
-                    "plugins",
-                    facts.plugins.len(),
-                    serde_json::to_value(
-                        facts
-                            .plugins
-                            .iter()
-                            .skip(request.offset)
-                            .take(limit)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                ProjectFactsSection::Bindings => (
-                    "bindings",
-                    facts.bindings.len(),
-                    serde_json::to_value(
-                        facts
-                            .bindings
-                            .iter()
-                            .skip(request.offset)
-                            .take(limit)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                ProjectFactsSection::DiscoveredSources => (
-                    "discovered_sources",
-                    facts.discovered_sources.len(),
-                    serde_json::to_value(
-                        facts
-                            .discovered_sources
-                            .iter()
-                            .skip(request.offset)
-                            .take(limit)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                ProjectFactsSection::BuildSources => (
-                    "build_sources",
-                    facts
-                        .build_provenance
-                        .as_ref()
-                        .map_or(0, |provenance| provenance.build_sources.len()),
-                    serde_json::to_value(
-                        facts
-                            .build_provenance
-                            .as_ref()
-                            .into_iter()
-                            .flat_map(|provenance| provenance.build_sources.iter())
-                            .skip(request.offset)
-                            .take(limit)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                ProjectFactsSection::GeneratedArtifacts => (
-                    "generated_artifacts",
-                    facts
-                        .build_provenance
-                        .as_ref()
-                        .map_or(0, |provenance| provenance.generated_artifacts.len()),
-                    serde_json::to_value(
-                        facts
-                            .build_provenance
-                            .as_ref()
-                            .into_iter()
-                            .flat_map(|provenance| provenance.generated_artifacts.iter())
-                            .skip(request.offset)
-                            .take(limit)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                ProjectFactsSection::ObservedWebRoutes => (
-                    "observed_web_routes",
-                    facts
-                        .observed_web_routes
-                        .as_ref()
-                        .map_or(0, |observation| observation.routes.len()),
-                    serde_json::to_value(
-                        facts
-                            .observed_web_routes
-                            .as_ref()
-                            .into_iter()
-                            .flat_map(|observation| observation.routes.iter())
-                            .skip(request.offset)
-                            .take(limit)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                ProjectFactsSection::Diagnostics => (
-                    "diagnostics",
-                    facts.diagnostics.len(),
-                    serde_json::to_value(
-                        facts
-                            .diagnostics
-                            .iter()
-                            .skip(request.offset)
-                            .take(limit)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                ProjectFactsSection::All => unreachable!(),
-            };
-            let items =
-                items.map_err(|_| McpError::internal_error("serialize App facts page", None))?;
+            let (name, total, items) = project_facts_page_items(facts, request, section, limit)?;
             let next = request.offset.saturating_add(limit);
             let mut page = serde_json::json!({
                 "schema_version": facts.schema_version,
@@ -1342,12 +1213,153 @@ fn project_facts_json(
     Ok(json)
 }
 
+fn project_facts_summary(
+    facts: &lenso_engine_app::app::facts::ProjectFacts,
+    request: &ProjectFactsQuery,
+) -> Result<serde_json::Value, McpError> {
+    if request.offset != 0 || request.limit.is_some() {
+        return Err(McpError::invalid_params(
+            "choose a project facts section before paginating",
+            None,
+        ));
+    }
+    let mut value = serde_json::to_value(facts)
+        .map_err(|_| McpError::internal_error("serialize App facts", None))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| McpError::internal_error("serialize App facts", None))?;
+    for (field, total) in [
+        ("plugins", facts.plugins.len()),
+        ("bindings", facts.bindings.len()),
+        ("discovered_sources", facts.discovered_sources.len()),
+    ] {
+        object.remove(field);
+        object.insert(format!("total_{field}"), total.into());
+    }
+    if let Some(provenance) = &facts.build_provenance {
+        value["build_provenance"] = serde_json::json!({
+            "source_location": provenance.source_location,
+            "total_build_sources": provenance.build_sources.len(),
+            "total_generated_artifacts": provenance.generated_artifacts.len(),
+        });
+    }
+    if let Some(observation) = &facts.observed_web_routes {
+        value["observed_web_routes"] = serde_json::json!({
+            "capture": observation.capture,
+            "run_request_id": observation.run_request_id,
+            "source_location": observation.source_location,
+            "plugin_root_revision": observation.plugin_root_revision,
+            "distribution_lock_sha256": observation.distribution_lock_sha256,
+            "total_routes": observation.routes.len(),
+        });
+    }
+    Ok(value)
+}
+
+fn paged_facts<T: Serialize>(
+    items: &[T],
+    offset: usize,
+    limit: usize,
+) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::to_value(items.iter().skip(offset).take(limit).collect::<Vec<_>>())
+}
+
+fn project_facts_page_items(
+    facts: &lenso_engine_app::app::facts::ProjectFacts,
+    request: &ProjectFactsQuery,
+    section: ProjectFactsSection,
+    limit: usize,
+) -> Result<(&'static str, usize, serde_json::Value), McpError> {
+    let (name, total, items) = match section {
+        ProjectFactsSection::Plugins => (
+            "plugins",
+            facts.plugins.len(),
+            paged_facts(&facts.plugins, request.offset, limit),
+        ),
+        ProjectFactsSection::Bindings => (
+            "bindings",
+            facts.bindings.len(),
+            paged_facts(&facts.bindings, request.offset, limit),
+        ),
+        ProjectFactsSection::DiscoveredSources => (
+            "discovered_sources",
+            facts.discovered_sources.len(),
+            paged_facts(&facts.discovered_sources, request.offset, limit),
+        ),
+        ProjectFactsSection::BuildSources => (
+            "build_sources",
+            facts
+                .build_provenance
+                .as_ref()
+                .map_or(0, |provenance| provenance.build_sources.len()),
+            serde_json::to_value(
+                facts
+                    .build_provenance
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|provenance| provenance.build_sources.iter())
+                    .skip(request.offset)
+                    .take(limit)
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+        ProjectFactsSection::GeneratedArtifacts => (
+            "generated_artifacts",
+            facts
+                .build_provenance
+                .as_ref()
+                .map_or(0, |provenance| provenance.generated_artifacts.len()),
+            serde_json::to_value(
+                facts
+                    .build_provenance
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|provenance| provenance.generated_artifacts.iter())
+                    .skip(request.offset)
+                    .take(limit)
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+        ProjectFactsSection::ObservedWebRoutes => (
+            "observed_web_routes",
+            facts
+                .observed_web_routes
+                .as_ref()
+                .map_or(0, |observation| observation.routes.len()),
+            serde_json::to_value(
+                facts
+                    .observed_web_routes
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|observation| observation.routes.iter())
+                    .skip(request.offset)
+                    .take(limit)
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+        ProjectFactsSection::Diagnostics => (
+            "diagnostics",
+            facts.diagnostics.len(),
+            paged_facts(&facts.diagnostics, request.offset, limit),
+        ),
+        ProjectFactsSection::All => unreachable!(),
+    };
+    Ok((
+        name,
+        total,
+        items.map_err(|_| McpError::internal_error("serialize App facts page", None))?,
+    ))
+}
+
 // The SDK generates an async handler for the synchronous tool router.
-#[allow(clippy::unused_async_trait_impl)]
 #[tool_handler]
 impl ServerHandler for AppTools {}
 
 #[cfg(test)]
+#[expect(
+    clippy::items_after_test_module,
+    reason = "the MCP test module precedes the standalone stdio entry point in this file"
+)]
 mod tests {
     use lenso_engine_app::app::facts::{
         BindingFacts, BuildProvenanceFacts, DiscoveredSourceFacts, GeneratedArtifactFacts,
@@ -1532,6 +1544,10 @@ mod tests {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "freeze all fixed signed inputs before opening the single MCP stdio service"
+)]
 pub(crate) async fn serve(args: McpArgs) -> anyhow::Result<()> {
     anyhow::ensure!(
         !(args.package_snapshot.is_some() && args.release_details.is_some())

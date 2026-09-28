@@ -35,6 +35,17 @@ pub(super) struct SignedInputs<'a> {
     pub(super) archive: &'a Path,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) struct AdoptionRequest<'a> {
+    pub(super) distribution: Distribution,
+    pub(super) action: Action,
+    pub(super) plugin_id: &'a str,
+    pub(super) version: &'a str,
+    pub(super) request_id: &'a str,
+    pub(super) distribution_id: Option<&'a str>,
+    pub(super) inputs: Option<SignedInputs<'a>>,
+}
+
 #[derive(Debug)]
 pub(super) struct FrozenSignedInputs {
     pub(super) storage: Arc<tempfile::TempDir>,
@@ -63,14 +74,17 @@ impl AdoptionController {
     pub(super) fn apply(
         &self,
         root: &Path,
-        distribution: Distribution,
-        action: Action,
-        plugin_id: &str,
-        version: &str,
-        request_id: &str,
-        distribution_id: Option<&str>,
-        inputs: Option<SignedInputs<'_>>,
+        request: AdoptionRequest<'_>,
     ) -> anyhow::Result<serde_json::Value> {
+        let AdoptionRequest {
+            distribution,
+            action,
+            plugin_id,
+            version,
+            request_id,
+            distribution_id,
+            inputs,
+        } = request;
         validate_request(plugin_id, version, request_id)?;
         ensure!(
             distribution == Distribution::Npm || distribution_id.is_none(),
@@ -113,66 +127,7 @@ impl AdoptionController {
             }
         }
 
-        let executable = std::env::current_exe().context("locate local Lenso CLI")?;
-        let source = format!("{plugin_id}@{version}");
-        let mut command = lenso_engine_app::app::build_command(executable);
-        command.arg("app");
-        match action {
-            Action::Adopt => {
-                let inputs = inputs.context("signed adoption inputs are not configured")?;
-                command.args(["add", &source, "--root"]).arg(root);
-                match distribution {
-                    Distribution::LinkedCargo => {
-                        command
-                            .arg("--linked-snapshot")
-                            .arg(inputs.snapshot)
-                            .arg("--trust")
-                            .arg(inputs.trust)
-                            .arg("--crate")
-                            .arg(inputs.archive)
-                            .arg("--no-install");
-                    }
-                    Distribution::Portable => {
-                        command
-                            .arg("--portable-snapshot")
-                            .arg(inputs.snapshot)
-                            .arg("--trust")
-                            .arg(inputs.trust)
-                            .arg("--archive")
-                            .arg(inputs.archive);
-                    }
-                    Distribution::Npm => {
-                        if let Some(details) = inputs.release_details {
-                            command
-                                .arg("--linked-snapshot")
-                                .arg(inputs.snapshot)
-                                .arg("--release-details")
-                                .arg(details);
-                        } else {
-                            command.arg("--package-snapshot").arg(inputs.snapshot);
-                        }
-                        command
-                            .arg("--trust")
-                            .arg(inputs.trust)
-                            .arg("--tgz")
-                            .arg(inputs.archive);
-                        if let Some(distribution_id) = distribution_id {
-                            command.arg(format!("--distribution={distribution_id}"));
-                        }
-                        command.arg("--no-install");
-                    }
-                }
-            }
-            Action::Unadopt => {
-                command.args(["unadopt", &source, "--root"]).arg(root);
-                if distribution == Distribution::Portable {
-                    command.arg("--portable");
-                } else if distribution == Distribution::Npm {
-                    command.arg("--npm");
-                }
-            }
-        }
-        command.current_dir(root);
+        let command = command_for_adoption(root, request)?;
         let budget = ProcessBudget::new(Duration::from_secs(60), 64 * 1024)?;
         let outcome = execute_cancellable_command_with_budget(
             command,
@@ -220,6 +175,75 @@ impl AdoptionController {
         );
         Ok(result)
     }
+}
+
+fn command_for_adoption(
+    root: &Path,
+    request: AdoptionRequest<'_>,
+) -> anyhow::Result<std::process::Command> {
+    let executable = std::env::current_exe().context("locate local Lenso CLI")?;
+    let source = format!("{}@{}", request.plugin_id, request.version);
+    let mut command = lenso_engine_app::app::build_command(executable);
+    command.arg("app");
+    match request.action {
+        Action::Adopt => {
+            let inputs = request
+                .inputs
+                .context("signed adoption inputs are not configured")?;
+            command.args(["add", &source, "--root"]).arg(root);
+            match request.distribution {
+                Distribution::LinkedCargo => {
+                    command
+                        .arg("--linked-snapshot")
+                        .arg(inputs.snapshot)
+                        .arg("--trust")
+                        .arg(inputs.trust)
+                        .arg("--crate")
+                        .arg(inputs.archive)
+                        .arg("--no-install");
+                }
+                Distribution::Portable => {
+                    command
+                        .arg("--portable-snapshot")
+                        .arg(inputs.snapshot)
+                        .arg("--trust")
+                        .arg(inputs.trust)
+                        .arg("--archive")
+                        .arg(inputs.archive);
+                }
+                Distribution::Npm => {
+                    if let Some(details) = inputs.release_details {
+                        command
+                            .arg("--linked-snapshot")
+                            .arg(inputs.snapshot)
+                            .arg("--release-details")
+                            .arg(details);
+                    } else {
+                        command.arg("--package-snapshot").arg(inputs.snapshot);
+                    }
+                    command
+                        .arg("--trust")
+                        .arg(inputs.trust)
+                        .arg("--tgz")
+                        .arg(inputs.archive);
+                    if let Some(distribution_id) = request.distribution_id {
+                        command.arg(format!("--distribution={distribution_id}"));
+                    }
+                    command.arg("--no-install");
+                }
+            }
+        }
+        Action::Unadopt => {
+            command.args(["unadopt", &source, "--root"]).arg(root);
+            if request.distribution == Distribution::Portable {
+                command.arg("--portable");
+            } else if request.distribution == Distribution::Npm {
+                command.arg("--npm");
+            }
+        }
+    }
+    command.current_dir(root);
+    Ok(command)
 }
 
 fn classify_outcome(
@@ -350,9 +374,8 @@ pub(super) fn freeze_inputs(
         archive,
         &archive_path,
         match distribution {
-            Distribution::LinkedCargo => 32 * 1024 * 1024,
             Distribution::Portable => 128 * 1024 * 1024,
-            Distribution::Npm => 32 * 1024 * 1024,
+            Distribution::LinkedCargo | Distribution::Npm => 32 * 1024 * 1024,
         },
     )?;
     Ok(FrozenSignedInputs {

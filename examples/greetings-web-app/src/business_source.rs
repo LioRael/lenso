@@ -16,7 +16,8 @@ use lenso_engine_authoring::{
     FileBusinessSnapshotSource, HttpsBusinessSnapshotSource, VersionedBusinessSnapshot,
 };
 use lenso_web_greetings_plugin_example::{
-    GreetingPolicy, GreetingPolicySource, GreetingsHttp, PinnedGreetingPolicy,
+    GreetingPolicy, GreetingPolicySource, GreetingPolicyUnavailable, GreetingsHttp,
+    PinnedGreetingPolicy,
 };
 use lenso_web_host::{NativeWebHost, RunningNativeWebHost};
 use serde::Deserialize;
@@ -87,9 +88,11 @@ struct AuthorizedGreetingPolicy {
 }
 
 impl GreetingPolicySource for AuthorizedGreetingPolicy {
-    fn capture(&self) -> Result<PinnedGreetingPolicy, ()> {
-        let pinned: BusinessRequestSnapshot<GreetingPolicy> =
-            self.authority.capture_request().map_err(|_| ())?;
+    fn capture(&self) -> Result<PinnedGreetingPolicy, GreetingPolicyUnavailable> {
+        let pinned: BusinessRequestSnapshot<GreetingPolicy> = self
+            .authority
+            .capture_request()
+            .map_err(|_| GreetingPolicyUnavailable)?;
         Ok(PinnedGreetingPolicy {
             revision: pinned.revision(),
             value: pinned.value().clone(),
@@ -321,31 +324,26 @@ async fn supervise(
             }
             result = async { (&mut pending.as_mut().expect("poll exists").0).await }, if pending.is_some() => {
                 let (_, expected) = pending.take().expect("completed poll exists");
-                match result {
-                    Ok(Ok(observation)) => match source.accept_observation(observation, expected) {
-                        Ok(acceptance) => {
-                            last_failure = None;
-                            let revision = match source.authority.active_revision() {
-                                Ok(Some(revision)) => revision,
-                                _ => break Err(anyhow::anyhow!("active business revision is unavailable")),
-                            };
-                            if acceptance == BusinessSnapshotAcceptance::Activated {
-                                eprintln!("business_snapshot code=activated source_kind={} revision={revision}", source.source.kind());
-                            }
+                if let Ok(Ok(observation)) = result {
+                    if let Ok(acceptance) = source.accept_observation(observation, expected) {
+                        last_failure = None;
+                        let Ok(Some(revision)) = source.authority.active_revision() else {
+                            break Err(anyhow::anyhow!("active business revision is unavailable"));
+                        };
+                        if acceptance == BusinessSnapshotAcceptance::Activated {
+                            eprintln!("business_snapshot code=activated source_kind={} revision={revision}", source.source.kind());
                         }
-                        Err(_) => {
-                            if last_failure != Some("refresh_rejected") {
-                                eprintln!("business_snapshot code=refresh_rejected source_kind={}", source.source.kind());
-                            }
-                            last_failure = Some("refresh_rejected");
+                    } else {
+                        if last_failure != Some("refresh_rejected") {
+                            eprintln!("business_snapshot code=refresh_rejected source_kind={}", source.source.kind());
                         }
-                    },
-                    Ok(Err(_)) | Err(_) => {
-                        if last_failure != Some("source_unavailable") {
-                            eprintln!("business_snapshot code=source_unavailable source_kind={}", source.source.kind());
-                        }
-                        last_failure = Some("source_unavailable");
+                        last_failure = Some("refresh_rejected");
                     }
+                } else {
+                    if last_failure != Some("source_unavailable") {
+                        eprintln!("business_snapshot code=source_unavailable source_kind={}", source.source.kind());
+                    }
+                    last_failure = Some("source_unavailable");
                 }
             }
             _ = poll.tick(), if pending.is_none() => {
@@ -355,7 +353,7 @@ async fn supervise(
                 }
             }
             signal = tokio::signal::ctrl_c() => {
-                break signal.context("watch Host shutdown signal").map(|_| ());
+                break signal.context("watch Host shutdown signal");
             }
         }
     };
@@ -460,9 +458,8 @@ mod tests {
                     SocketAddr::from(([127, 0, 0, 1], 0)),
                     Some(ready),
                 ));
-                let address = match address.await {
-                    Ok(address) => address,
-                    Err(_) => panic!("Host failed before readiness: {:?}", host.await),
+                let Ok(address) = address.await else {
+                    panic!("Host failed before readiness: {:?}", host.await);
                 };
                 let first = wait_for_revision(address, 1).await;
                 assert_eq!(first["message"], "Hello, Ada!");
@@ -503,9 +500,8 @@ mod tests {
                     SocketAddr::from(([127, 0, 0, 1], 0)),
                     Some(ready),
                 ));
-                let address = match address.await {
-                    Ok(address) => address,
-                    Err(_) => panic!("Host failed before readiness: {:?}", host.await),
+                let Ok(address) = address.await else {
+                    panic!("Host failed before readiness: {:?}", host.await);
                 };
                 assert_eq!(
                     wait_for_revision(address, 1).await["message"],

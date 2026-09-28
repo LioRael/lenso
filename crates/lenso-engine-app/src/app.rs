@@ -195,6 +195,10 @@ pub fn inspect_signed_npm_adoption(
 
 /// Preview an npm distribution only after joining exact signed linked Cargo
 /// and release-details snapshots. It never installs or selects the Plugin.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "preserve the existing public preview API used by CLI and external callers"
+)]
 pub fn inspect_signed_linked_npm_adoption(
     root: impl AsRef<Path>,
     linked_snapshot: impl AsRef<Path>,
@@ -206,14 +210,16 @@ pub fn inspect_signed_linked_npm_adoption(
     distribution_id: Option<&str>,
 ) -> anyhow::Result<serde_json::Value> {
     convention_authoring::npm_catalog::preview_linked(
-        root.as_ref(),
-        linked_snapshot.as_ref(),
-        release_details.as_ref(),
-        trust.as_ref(),
-        tgz.as_ref(),
-        plugin_id,
-        version,
-        distribution_id,
+        convention_authoring::npm_catalog::LinkedNpmPreview {
+            root: root.as_ref(),
+            linked_snapshot: linked_snapshot.as_ref(),
+            release_details: release_details.as_ref(),
+            trust: trust.as_ref(),
+            tgz: tgz.as_ref(),
+            plugin_id,
+            release_version: version,
+            distribution_id,
+        },
     )
 }
 

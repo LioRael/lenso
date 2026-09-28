@@ -120,11 +120,11 @@ pub(super) async fn run(
         &mut crash_fence,
     )
     .await?;
-    if let Some(path) = &ready_file {
-        if let Err(error) = publish_ready(path) {
-            kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
-            return Err(error).context("publish supervised App readiness");
-        }
+    if let Some(path) = &ready_file
+        && let Err(error) = publish_ready(path)
+    {
+        kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
+        return Err(error).context("publish supervised App readiness");
     }
     if Instant::now() >= active.deadline() {
         kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;

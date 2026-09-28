@@ -632,10 +632,12 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         args,
         plugin_id,
         version,
-        &release.package,
-        &release.crate_digest,
-        &archive,
-        v6_lock,
+        VerifiedCrateArchive {
+            package: &release.package,
+            digest: &release.crate_digest,
+            bytes: &archive,
+            v6_lock,
+        },
         app_lock,
     )
 }
@@ -750,10 +752,12 @@ pub(super) fn add_from_release_details(root: &Path, args: &AddArgs) -> anyhow::R
         args,
         plugin_id,
         version,
-        &distribution.package,
-        crate_digest,
-        &archive,
-        None,
+        VerifiedCrateArchive {
+            package: &distribution.package,
+            digest: crate_digest,
+            bytes: &archive,
+            v6_lock: None,
+        },
         app_lock,
     )
 }
@@ -787,16 +791,25 @@ impl LinkedNpmSelection {
     }
 }
 
+pub(super) struct LinkedNpmCatalogInputs<'a> {
+    pub(super) linked_snapshot: &'a Path,
+    pub(super) details_snapshot: &'a Path,
+    pub(super) trust_path: &'a Path,
+}
+
 pub(super) fn select_linked_npm_details(
     root: &Path,
     app_lock: &fs::File,
-    linked_snapshot: &Path,
-    details_snapshot: &Path,
-    trust_path: &Path,
+    inputs: LinkedNpmCatalogInputs<'_>,
     plugin_id: &str,
     version: &str,
     distribution_id: Option<&str>,
 ) -> anyhow::Result<LinkedNpmSelection> {
+    let LinkedNpmCatalogInputs {
+        linked_snapshot,
+        details_snapshot,
+        trust_path,
+    } = inputs;
     let trust = read_trust(trust_path)?;
     let previous_linked = checkpoint::read(root, app_lock, &trust.catalog_id)?;
     let now = now()?;
@@ -848,15 +861,19 @@ pub(super) fn select_linked_npm_details(
     })
 }
 
+struct VerifiedCrateArchive<'a> {
+    package: &'a str,
+    digest: &'a str,
+    bytes: &'a [u8],
+    v6_lock: Option<V6BuildInputLock>,
+}
+
 fn adopt_archive(
     root: &Path,
     args: &AddArgs,
     plugin_id: &str,
     version: &str,
-    package: &str,
-    crate_digest: &str,
-    archive: &[u8],
-    v6_lock: Option<V6BuildInputLock>,
+    archive: VerifiedCrateArchive<'_>,
     app_lock: fs::File,
 ) -> anyhow::Result<()> {
     super::preflight_source_adoption(root, plugin_id)?;
@@ -872,7 +889,13 @@ fn adopt_archive(
     let stage = tempfile::Builder::new()
         .prefix(".linked-cargo-")
         .tempdir_in(root)?;
-    unpack_archive(archive, stage.path(), package, version, plugin_id)?;
+    unpack_archive(
+        archive.bytes,
+        stage.path(),
+        archive.package,
+        version,
+        plugin_id,
+    )?;
     let report = lenso_app_authoring::discovery::discover(stage.path())?;
     let [candidate] = report.candidates.as_slice() else {
         bail!("linked Cargo archive must contain one Plugin source package");
@@ -887,7 +910,7 @@ fn adopt_archive(
                 .any(|entry| entry.runtime == "native-linked"),
         "linked Cargo source does not match an adoptable native Plugin"
     );
-    if let Some(v6) = &v6_lock {
+    if let Some(v6) = &archive.v6_lock {
         let manifest: toml::Value =
             toml::from_str(&fs::read_to_string(stage.path().join("Cargo.toml"))?)?;
         let source_slot = manifest["package"]["metadata"]["lenso"]["root-slot"]
@@ -920,11 +943,11 @@ fn adopt_archive(
         schema_version: 1,
         plugin_id: plugin_id.to_owned(),
         version: version.to_owned(),
-        crate_digest: crate_digest.to_owned(),
+        crate_digest: archive.digest.to_owned(),
         source_digest: source_digest(stage.path())?,
         archive_cargo_lock_digest: archive_cargo_lock_digest(stage.path())?,
         workspace_exclude_owned: prepared.workspace_exclude_owned(),
-        v6: v6_lock,
+        v6: archive.v6_lock,
     };
     let lock_bytes = serde_json::to_vec_pretty(&lock)?;
     let lock_limit = if lock.v6.is_some() {
@@ -1502,9 +1525,9 @@ fn verify_archive_cargo_lock(root: &Path, lock: &SourceLock) -> anyhow::Result<(
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum UnadoptCheckpoint {
-    AfterSourceMove,
-    AfterIntentMove,
-    AfterConfigPublish,
+    SourceMoved,
+    IntentMoved,
+    ConfigPublished,
 }
 
 pub(super) fn unadopt(root: &Path, source: &str) -> anyhow::Result<()> {
@@ -1635,10 +1658,10 @@ fn unadopt_with(
     let result = (|| -> anyhow::Result<()> {
         super::super::build::publish_new_output(&source_path, &trash.join("source"))?;
         source_moved = true;
-        checkpoint(UnadoptCheckpoint::AfterSourceMove)?;
+        checkpoint(UnadoptCheckpoint::SourceMoved)?;
         super::super::build::publish_new_output(&intent_path, &trash.join("plugin-root"))?;
         intent_moved = true;
-        checkpoint(UnadoptCheckpoint::AfterIntentMove)?;
+        checkpoint(UnadoptCheckpoint::IntentMoved)?;
         ensure!(
             adoption::read_optional_regular(&cargo_path)? == cargo_before
                 && fs::read(&config_path)? == config_before,
@@ -1646,7 +1669,7 @@ fn unadopt_with(
         );
         staged.persist(&config_path)?;
         config_published = true;
-        checkpoint(UnadoptCheckpoint::AfterConfigPublish)?;
+        checkpoint(UnadoptCheckpoint::ConfigPublished)?;
         ensure!(
             adoption::read_optional_regular(&cargo_path)? == cargo_before,
             "Cargo.toml changed during linked Cargo unadopt; preserving concurrent edit"
@@ -1704,10 +1727,8 @@ pub(super) fn rollback_unadopt(
         (intent_moved, trash.join("plugin-root"), intent_path),
         (source_moved, trash.join("source"), source_path),
     ] {
-        if moved {
-            if let Err(error) = super::super::build::publish_new_output(&staged, original) {
-                failures.push(format!("restore {}: {error:#}", original.display()));
-            }
+        if moved && let Err(error) = super::super::build::publish_new_output(&staged, original) {
+            failures.push(format!("restore {}: {error:#}", original.display()));
         }
     }
     if config_published {
@@ -2217,9 +2238,9 @@ mod tests {
     #[test]
     fn unadopt_rolls_back_each_published_phase() {
         for interrupted in [
-            UnadoptCheckpoint::AfterSourceMove,
-            UnadoptCheckpoint::AfterIntentMove,
-            UnadoptCheckpoint::AfterConfigPublish,
+            UnadoptCheckpoint::SourceMoved,
+            UnadoptCheckpoint::IntentMoved,
+            UnadoptCheckpoint::ConfigPublished,
         ] {
             let root = adopted_source();
             let before = fs::read(root.path().join("lenso.toml")).unwrap();
@@ -2241,7 +2262,7 @@ mod tests {
         let root = adopted_source();
         let config = root.path().join("lenso.toml");
         let error = unadopt_with(root.path(), "example.web@0.4.5", |step| {
-            if step == UnadoptCheckpoint::AfterIntentMove {
+            if step == UnadoptCheckpoint::IntentMoved {
                 fs::remove_file(&config)?;
                 fs::create_dir(&config)?;
             }
@@ -2266,7 +2287,7 @@ mod tests {
         let root = adopted_source();
         let source = root.path().join("vendor/lenso/example.web/0.4.5");
         let error = unadopt_with(root.path(), "example.web@0.4.5", |step| {
-            if step == UnadoptCheckpoint::AfterIntentMove {
+            if step == UnadoptCheckpoint::IntentMoved {
                 fs::create_dir(&source)?;
                 bail!("injected interruption");
             }

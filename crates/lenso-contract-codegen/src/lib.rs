@@ -3461,7 +3461,9 @@ impl RustTypes {
                 )
             }),
         );
-        let derives = if debug_impl.is_some() {
+        let derives = if fields.is_empty() {
+            "Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize"
+        } else if debug_impl.is_some() {
             "Clone, PartialEq, serde::Serialize, serde::Deserialize"
         } else {
             "Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize"

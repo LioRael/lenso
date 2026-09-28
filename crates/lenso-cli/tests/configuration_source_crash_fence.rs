@@ -14,6 +14,10 @@ use lenso_app_plan::authoring::{
 use nix::{sys::signal::Signal, unistd::Pid};
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "supervisor readiness, SIGKILL, second-start fencing, and recovery evidence form one crash sequence"
+)]
 fn sigkill_of_supervisor_fences_a_second_cli_start() {
     let distribution = tempfile::tempdir().unwrap();
     let root = distribution.path();

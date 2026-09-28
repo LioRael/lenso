@@ -26,10 +26,10 @@ enum StagedIntent {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum CommitCheckpoint {
-    AfterSource,
-    AfterSourceLock,
-    AfterWorkspace,
-    AfterConfig,
+    SourcePublished,
+    SourceLockPublished,
+    WorkspaceUpdated,
+    ConfigPublished,
 }
 
 pub(super) struct PreparedLinkedAdoption {
@@ -200,7 +200,7 @@ impl PreparedLinkedAdoption {
             fs::create_dir_all(self.destination.parent().context("linked source parent")?)?;
             super::super::super::build::publish_new_output(source_stage, &self.destination)?;
         }
-        checkpoint(CommitCheckpoint::AfterSource)?;
+        checkpoint(CommitCheckpoint::SourcePublished)?;
 
         // A prior CLI wrote the same signed source with the canonical V5/V6
         // lock wire. Upgrade that generated lock before selecting the new
@@ -225,14 +225,14 @@ impl PreparedLinkedAdoption {
                 staged.persist(&destination_lock)?;
             }
         }
-        checkpoint(CommitCheckpoint::AfterSourceLock)?;
+        checkpoint(CommitCheckpoint::SourceLockPublished)?;
 
         self.ensure_config_is(&self.config_before)?;
         self.ensure_workspace_is(&self.workspace_before)?;
         if let Some(staged) = self.staged_workspace.take() {
             staged.persist(&self.workspace_manifest)?;
         }
-        checkpoint(CommitCheckpoint::AfterWorkspace)?;
+        checkpoint(CommitCheckpoint::WorkspaceUpdated)?;
 
         self.ensure_workspace_is(&self.workspace_after)?;
         if let Some(staged) = self.staged_config.take() {
@@ -242,7 +242,7 @@ impl PreparedLinkedAdoption {
                 staged.persist_noclobber(&self.config)?;
             }
         }
-        checkpoint(CommitCheckpoint::AfterConfig)?;
+        checkpoint(CommitCheckpoint::ConfigPublished)?;
 
         // A changed configuration must not acquire a fresh selection intent.
         self.ensure_config_is(&Some(self.config_after.clone()))?;
@@ -539,7 +539,7 @@ mod tests {
 
         let first = PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
         let error = first.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterSourceLock {
+            if step == CommitCheckpoint::SourceLockPublished {
                 bail!("injected interruption after canonical lock upgrade");
             }
             Ok(())
@@ -589,7 +589,7 @@ mod tests {
         assert!(first.workspace_exclude_owned());
         let stage = source_stage(root.path());
         let error = first.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterWorkspace {
+            if step == CommitCheckpoint::WorkspaceUpdated {
                 bail!("injected interruption");
             }
             Ok(())
@@ -623,7 +623,7 @@ mod tests {
         let stage = source_stage(root.path());
         let changed = b"# user's concurrent edit\n[workspace]\n";
         let error = prepared.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterSource {
+            if step == CommitCheckpoint::SourcePublished {
                 fs::write(&cargo, changed)?;
             }
             Ok(())
@@ -653,7 +653,7 @@ mod tests {
             PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
         let stage = source_stage(root.path());
         let error = prepared.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterWorkspace {
+            if step == CommitCheckpoint::WorkspaceUpdated {
                 let mut bytes = fs::read(&cargo)?;
                 bytes.extend_from_slice(b"\n# user edit after workspace publication\n");
                 fs::write(&cargo, bytes)?;
@@ -735,7 +735,7 @@ mod tests {
         let first = PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
         let stage = source_stage(root.path());
         let failure = first.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterConfig {
+            if step == CommitCheckpoint::ConfigPublished {
                 bail!("injected failure before intent publication");
             }
             Ok(())
@@ -774,7 +774,7 @@ mod tests {
         let stage = source_stage(root.path());
         let user_config = b"plugin_sources = []\n# concurrent user edit\n";
         let failure = prepared.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterSource {
+            if step == CommitCheckpoint::SourcePublished {
                 fs::write(root.path().join("lenso.toml"), user_config)?;
             }
             Ok(())
@@ -799,7 +799,7 @@ mod tests {
             PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
         let stage = source_stage(root.path());
         let failure = prepared.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterConfig {
+            if step == CommitCheckpoint::ConfigPublished {
                 fs::write(root.path().join("lenso.toml"), b"# changed after config\n")?;
             }
             Ok(())
@@ -832,7 +832,7 @@ mod tests {
             PreparedLinkedAdoption::new(root.path(), &destination, "example.web").unwrap();
         let stage = source_stage(root.path());
         let failure = prepared.commit_with(stage.path(), |step| {
-            if step == CommitCheckpoint::AfterConfig {
+            if step == CommitCheckpoint::ConfigPublished {
                 fs::rename(&intent, root.path().join("original-intent"))?;
                 std::os::unix::fs::symlink(outside.path(), &intent)?;
             }
