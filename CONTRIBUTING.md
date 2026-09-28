@@ -49,6 +49,27 @@ Publish that file somewhere durable and link it from the Issue.
 
 ## Validation
 
+### Local Cargo scope
+
+At the workspace root, unqualified `cargo build`, `cargo check`, and `cargo test`
+select Plan, Kernel, portable runtime conformance, and the embeddable Engine.
+This keeps the default loop free of concrete Hosts, CLI integration tests,
+examples, and cross-language fixtures. It is not a whole-framework check.
+
+For other components, select the package you changed:
+
+```sh
+cargo check --locked -p lenso-engine-app
+cargo test --locked -p lenso-engine-app --lib
+cargo build --locked -p lenso-cli --bin lenso
+```
+
+Use `--workspace` explicitly when you need all members. CI continues to select
+the full workspace and run its separate portable target checks; `default-members`
+does not narrow that gate.
+
+### Choose a check
+
 Choose the smallest check that exercises the changed behavior:
 
 - prose or documentation: check links, examples, and formatting;

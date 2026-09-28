@@ -83,8 +83,21 @@ by the applicable target and Environment-plus-Infrastructure cohort. Use
 candidate-retention explanation; its `lenso.engine-explain.v1` output is
 separate from this App admission report.
 
-The local convention `lenso app build` constructs a Native Host for the current
-machine and does not accept `--target`. The explicit
+The local convention `lenso app build` defaults to a Native Host for the current
+machine. With no `--source`, `app build --target workers --workers-runtime PATH
+--jco PATH` instead builds a restricted local-workerd distribution from verified
+V4/V6 Workers Component Bundles. It requires the exact pinned Workers runtime
+files and Jco 1.35.0, and defaults to `dist-workers`. This is not a generic
+source-to-Workers build or a deployment command. The generated distribution's
+README owns its profile-specific instructions and limits:
+
+- [Request-only HTTP Endpoint profile](../../lenso-engine-app/assets/workers-app-README.md).
+- [Local knowledge-settings slice](../../lenso-engine-app/assets/workers-knowledge-settings-README.md).
+
+These source-checkout capabilities do not establish package release availability;
+see [CLI installation](../README.md#install).
+
+The separate explicit
 `app build --source HOST.ts --target TARGET --out DIR` path creates Host
 authoring data, not an executable target distribution. That build path rejects
 `workers`, `cloudflare-workers`, and Wasm target names before output publication:
@@ -98,8 +111,9 @@ Host, Workers ingress, a Workers-compatible Component Adapter, or qualified
 Workers infrastructure.
 
 Consequently, `app explain` can report a rejected Workers-only candidate, but
-cannot prove the whole dependency/resource closure is Workers-compatible or
-that one business Endpoint has passed a real workerd/Workers HTTP corpus. Do
-not present static selection, a Native run, or a simulated target as Workers
-availability. The missing Workers Host and target-specific build/test path
-remain separate implementation and qualification work.
+cannot by itself prove a whole dependency/resource closure is Workers-compatible
+or that a business Endpoint has passed a real workerd/Workers HTTP corpus.
+Neither static selection, a Native run, nor a local Workers build receipt proves
+production Workers qualification. Qualification remains specific to the exact
+Environment-plus-Infrastructure combination; the limited local Workers profiles
+do not make arbitrary Apps Workers-compatible.

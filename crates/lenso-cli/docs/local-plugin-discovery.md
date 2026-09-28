@@ -1,9 +1,9 @@
 # Local App development
 
 The local Host template implements [plan #727](https://github.com/LioRael/lenso/issues/727)
-and [ADR 0075](https://github.com/LioRael/lenso/pull/730). These commands require a
-CLI build containing the local App workflow; older published CLI versions do not
-provide it.
+and [ADR 0075](https://github.com/LioRael/lenso/pull/730). This guide describes
+the source-checkout workflow; see [CLI installation](../README.md#install) for
+the distinction between candidate builds and released packages.
 
 ```sh
 lenso app create my-app
@@ -15,13 +15,17 @@ lenso app start --from dist
 ```
 
 No App configuration file, Host declaration, preset, or activation flag is required.
-By default, `app create` makes the root Cargo package an App-owned native Web Plugin
-with a Plugin-owned HTML page. Additional App-owned Plugin projects live in `app/`.
+By default, `app create` (also `--lang rust`) makes the root Cargo package an
+App-owned Process notes Plugin. It provides `POST /notes` and `GET /notes/{id}`
+through the typed HTTP Endpoint Capability. Notes are in-memory development
+data and do not survive a restart. Process Plugins are trusted native
+executables, not sandboxed. Additional App-owned Plugin projects live in `app/`.
 `plugins/` retains instance configuration, disabled markers, and named dependency
-choices. `app create --web` keeps the nested Web scaffold. `--runtime process`
+choices. `app create --web` selects the nested linked native Web scaffold with
+Plugin-owned HTML. `--runtime process`
 explicitly selects the nested Process starter; `bun`, `wasm`, `multi`, and `empty`
 are also available. `--no-install` leaves normal language dependency installation
-to the developer.
+and the initial compile check to the developer.
 
 Add **local discovery sources** only when needed:
 
@@ -265,6 +269,10 @@ a Host. Existing `app build --source host.ts --target TARGET --out PATH`, custom
 Hosts, and `app prepare` retain their own contracts. Dynamic terminal Plugin command
 names remain available because convenience commands live under `app`.
 
+Linked Plugins that need a private, request-pinned business policy can provide a
+[business snapshot binding](business-snapshot-binding.md). Its policy and source
+lifecycle belong to the Plugin, not the generated Host or the App's Plan.
+
 ## Development loop
 
 `app dev` watches App source, Root intent, optional local sources, and native Cargo
@@ -274,9 +282,11 @@ A successful build followed by a startup failure is reported; automatic rollback
 or zero-downtime switching is not claimed. Ctrl-C stops the active build/Host.
 Generated output and dependency/cache trees are excluded from watching.
 
-Web routes and assets belong to the Web Plugin. The starter embeds its own HTML;
-editing it triggers the ordinary rebuild/restart. Native instance resources are
-loaded from the Root snapshot. By default, no separate frontend process or
+Web routes and assets belong to the Plugin. Editing the default Process notes
+Guest rebuilds its Process artifact while reusing the precompiled Host; use the
+same CLI binary for build and start. The explicit `--web` starter embeds its own
+HTML; editing it triggers the ordinary rebuild/restart. Native instance resources
+are loaded from the Root snapshot. By default, no separate frontend process or
 implicit business route registry runs in the Host.
 
 ### Explicit React/Vite development process

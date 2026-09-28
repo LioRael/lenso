@@ -8,6 +8,12 @@ members = [
     "spec/fixtures/*/rust",
     "tests/fixtures/*",
 ]
+default-members = [
+    "crates/lenso-app-plan",
+    "crates/lenso-kernel",
+    "crates/lenso-runtime-conformance",
+    "crates/lenso-engine",
+]
 
 [workspace.package]
 edition = "2024"

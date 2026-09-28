@@ -10,13 +10,21 @@ for fork, Issue, durable patch, review, and candidate-first landing guidance.
 
 ## Install
 
+This README describes the current source checkout. For the candidate CLI, use
+the [source-build instructions in the root README](../../README.md#try-one-plugin).
+That section owns the candidate installation status.
+
+The registry commands below install released packages, not this checkout or
+proof that its candidate capabilities have been published:
+
 ```sh
 npm install -g @lenso/cli
 # or
 cargo install lenso-cli
 ```
 
-The Cargo and npm packages use independent version lines.
+The Cargo and npm packages use independent version lines. Check the selected
+release's documentation before using the source-checkout workflows below.
 
 ## Process documents without an App
 
