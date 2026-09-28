@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Context as _, bail, ensure};
 use lenso_plugin_catalog::{
+    package,
     release_content::{self, BaseKind, Content, ContentKind},
     verify as verify_portable,
 };
@@ -73,12 +74,23 @@ pub(crate) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
             && args.bundle.is_none()
             && args.archive.is_none()
             && args.origin.is_none()
+            && args.tgz.is_none()
+            && args.distribution.is_none()
+            && !args.no_install
             && !args.replace,
         "content selection cannot also install or replace a runtime Plugin"
     );
     ensure!(
-        args.linked_snapshot.is_some() != args.portable_snapshot.is_some(),
-        "content selection needs exactly one signed linked or portable base snapshot"
+        [
+            args.linked_snapshot.is_some(),
+            args.portable_snapshot.is_some(),
+            args.package_snapshot.is_some(),
+        ]
+        .into_iter()
+        .filter(|selected| *selected)
+        .count()
+            <= 1,
+        "content selection accepts at most one signed base snapshot"
     );
     let content_snapshot = args
         .content_snapshot
@@ -130,15 +142,11 @@ pub(crate) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
             selected.clone(),
             BaseCheckpoint::Linked(verified.checkpoint().clone(), previous),
         )
-    } else {
+    } else if let Some(snapshot_path) = args.portable_snapshot.as_deref() {
         let previous =
             crate::plugins::signed_install::checkpoint::read(root, &app_lock, &trust.catalog_id)?;
         let verified = verify_portable(
-            &crate::app::read_signed_portable_snapshot(
-                args.portable_snapshot
-                    .as_deref()
-                    .context("--portable-snapshot required")?,
-            )?,
+            &crate::app::read_signed_portable_snapshot(snapshot_path)?,
             &trust,
             previous.as_ref(),
             now,
@@ -147,6 +155,26 @@ pub(crate) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         (
             selected.clone(),
             BaseCheckpoint::Portable(verified.checkpoint().clone(), previous),
+        )
+    } else if let Some(snapshot_path) = args.package_snapshot.as_deref() {
+        let previous = super::super::npm_catalog::read_checkpoint(root, &trust.catalog_id)?;
+        let verified = package::verify(
+            &read_envelope(snapshot_path)?,
+            &trust,
+            previous.as_ref(),
+            now,
+        )?;
+        let selected = verified_content.select_package(&verified, plugin_id, version, now)?;
+        (
+            selected.clone(),
+            BaseCheckpoint::Package(verified.checkpoint().clone(), previous),
+        )
+    } else {
+        (
+            verified_content
+                .select_content_only(plugin_id, version, now)?
+                .clone(),
+            BaseCheckpoint::ContentOnly,
         )
     };
     let content = release.select(content_id)?;
@@ -239,6 +267,11 @@ enum BaseCheckpoint {
         lenso_plugin_catalog::Checkpoint,
         Option<lenso_plugin_catalog::Checkpoint>,
     ),
+    Package(
+        package::PackageCheckpoint,
+        Option<package::PackageCheckpoint>,
+    ),
+    ContentOnly,
 }
 
 impl BaseCheckpoint {
@@ -255,6 +288,10 @@ impl BaseCheckpoint {
                     previous.as_ref(),
                 )
             }
+            Self::Package(current, previous) => {
+                super::super::npm_catalog::persist_checkpoint(root, current, previous.as_ref())
+            }
+            Self::ContentOnly => Ok(()),
         }
     }
 }

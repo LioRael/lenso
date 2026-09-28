@@ -76,7 +76,7 @@ fn checkpoint_path(root: &Path, catalog_id: &str) -> PathBuf {
     ))
 }
 
-fn read_checkpoint(
+pub(super) fn read_checkpoint(
     root: &Path,
     catalog_id: &str,
 ) -> anyhow::Result<Option<package::PackageCheckpoint>> {
@@ -100,7 +100,7 @@ fn read_checkpoint(
     Ok(Some(stored.checkpoint))
 }
 
-fn persist_checkpoint(
+pub(super) fn persist_checkpoint(
     root: &Path,
     checkpoint: &package::PackageCheckpoint,
     previous: Option<&package::PackageCheckpoint>,

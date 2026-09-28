@@ -6,8 +6,10 @@ use std::{
 
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
-    Artifact, Availability, Release, Snapshot as PortableSnapshot, digest,
+    Artifact, Availability, Distribution, DistributionKind, Release, Snapshot as PortableSnapshot,
+    digest,
     linked_cargo::{self, LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot},
+    package::{self, PackageRelease, PackageSnapshot},
     release_content::{self, BaseKind, Content, ContentKind, ReleaseContent, Snapshot},
 };
 
@@ -143,6 +145,200 @@ fn run(cli: &str, root: &std::path::Path, args: &[&str]) -> std::process::Output
         .current_dir(root)
         .output()
         .unwrap()
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "two signed source-only content paths share one end-to-end copy scenario"
+)]
+fn pure_content_and_npm_only_release_copy_without_runtime_adoption() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("app");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&root)
+        .args(["--runtime", "empty"])
+        .output()
+        .unwrap();
+    assert!(created.status.success());
+    let key = SigningKey::from_bytes(&[49; 32]);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let trust_path = temp.path().join("trust.json");
+    fs::write(
+        &trust_path,
+        serde_json::to_vec(&serde_json::json!({
+            "catalog_id":"catalog", "key_id":"key",
+            "public_key_hex":hex::encode(key.verifying_key().to_bytes())
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let template = archive(&[("README.md", b"Editable, app-owned source.\n")]);
+    let template_path = temp.path().join("template.tar.gz");
+    fs::write(&template_path, &template).unwrap();
+    let extension = archive(&[
+        ("package.json", br#"{"name":"example-dev","version":"1.0.0","type":"module","lenso":{"pluginId":"example.template","runtime":"bun","rootSlot":"tools","source":"index.ts","conventions":[{"id":"example.template.compiler","entries":["page.tsx"],"compiler":{"program":"bun","args":["compiler.mjs"]}}]}}"#),
+        ("index.ts", b"export {};\n"),
+        ("compiler.mjs", b"export {};\n"),
+    ]);
+    let extension_path = temp.path().join("extension.tar.gz");
+    fs::write(&extension_path, &extension).unwrap();
+    let npm = PackageRelease {
+        plugin_id: "example.npm".into(),
+        version: "1.0.0".into(),
+        publisher_id: "example".into(),
+        title: "Npm".into(),
+        summary: "Npm plugin".into(),
+        source_url: "https://example.test/source".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        distributions: vec![Distribution {
+            id: "npm".into(),
+            kind: DistributionKind::NpmPackage,
+            package: "@example/npm".into(),
+            version: "1.0.0".into(),
+            integrity: Some(digest(b"npm tarball")),
+            registry_url: Some("https://registry.npmjs.org".into()),
+            artifact: None,
+            targets: Vec::new(),
+        }],
+        availability: Availability::Listed,
+        documentation: Vec::new(),
+    };
+    let package_path = temp.path().join("package.json");
+    fs::write(
+        &package_path,
+        package::sign(
+            &PackageSnapshot::new("catalog".into(), 1, now - 1, now + 3600, vec![npm.clone()]),
+            "key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut pure = ReleaseContent {
+        plugin_id: "example.template".into(),
+        version: "1.0.0".into(),
+        base_kind: BaseKind::ContentOnly,
+        base_release_identity: digest(b"placeholder"),
+        content: vec![Content {
+            id: "dev-extension".into(),
+            kind: ContentKind::DevelopmentExtension,
+            url: "https://example.test/extension.tar.gz".into(),
+            digest: digest(&extension),
+            size: extension.len() as u64,
+        }],
+    };
+    pure.base_release_identity = pure.content_only_identity().unwrap();
+    let content_path = temp.path().join("content.json");
+    fs::write(
+        &content_path,
+        release_content::sign(
+            &Snapshot::new(
+                "catalog".into(),
+                1,
+                now - 1,
+                now + 3600,
+                vec![
+                    pure,
+                    ReleaseContent {
+                        plugin_id: "example.npm".into(),
+                        version: "1.0.0".into(),
+                        base_kind: BaseKind::Package,
+                        base_release_identity: npm.immutable_identity().unwrap(),
+                        content: vec![Content {
+                            id: "editable".into(),
+                            kind: ContentKind::EditableTemplate,
+                            url: "https://example.test/template.tar.gz".into(),
+                            digest: digest(&template),
+                            size: template.len() as u64,
+                        }],
+                    },
+                ],
+            ),
+            "key",
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    let pure_args = [
+        "app",
+        "add",
+        "example.template@1.0.0",
+        "--root",
+        root.to_str().unwrap(),
+        "--trust",
+        trust_path.to_str().unwrap(),
+        "--content-snapshot",
+        content_path.to_str().unwrap(),
+        "--content-id",
+        "dev-extension",
+        "--content-archive",
+        extension_path.to_str().unwrap(),
+        "--content-destination",
+        "extensions/example-template",
+    ];
+    let preview = run(
+        cli,
+        &root,
+        &[pure_args.as_slice(), &["--content-preview"]].concat(),
+    );
+    assert!(
+        preview.status.success(),
+        "{}",
+        String::from_utf8_lossy(&preview.stderr)
+    );
+    assert!(!root.join("extensions").exists());
+    let copied = run(cli, &root, &pure_args);
+    assert!(
+        copied.status.success(),
+        "{}",
+        String::from_utf8_lossy(&copied.stderr)
+    );
+    assert!(
+        root.join("extensions/example-template/package.json")
+            .exists()
+    );
+    assert!(!root.join("plugins/example.template").exists());
+
+    let npm_args = [
+        "app",
+        "add",
+        "example.npm@1.0.0",
+        "--root",
+        root.to_str().unwrap(),
+        "--package-snapshot",
+        package_path.to_str().unwrap(),
+        "--trust",
+        trust_path.to_str().unwrap(),
+        "--content-snapshot",
+        content_path.to_str().unwrap(),
+        "--content-id",
+        "editable",
+        "--content-archive",
+        template_path.to_str().unwrap(),
+        "--content-destination",
+        "frontend/npm-example",
+    ];
+    let copied = run(cli, &root, &npm_args);
+    assert!(
+        copied.status.success(),
+        "{}",
+        String::from_utf8_lossy(&copied.stderr)
+    );
+    assert_eq!(
+        fs::read(root.join("frontend/npm-example/README.md")).unwrap(),
+        b"Editable, app-owned source.\n"
+    );
+    assert!(!root.join("vendor/lenso/npm/example.npm").exists());
 }
 
 #[test]

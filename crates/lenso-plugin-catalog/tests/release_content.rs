@@ -3,8 +3,10 @@ use std::collections::BTreeMap;
 use base64::Engine as _;
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
-    Artifact, Availability, Envelope, Release, Snapshot as PortableSnapshot, Trust, digest,
+    Artifact, Availability, Distribution, DistributionKind, Envelope, Release,
+    Snapshot as PortableSnapshot, Trust, digest,
     linked_cargo::{self, LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot},
+    package::{self, PackageRelease, PackageSnapshot},
     release_content::{self, BaseKind, Content, ContentKind, ReleaseContent, Snapshot},
 };
 
@@ -88,6 +90,107 @@ fn content(base_kind: BaseKind, base_release_identity: String) -> Snapshot {
             ],
         }],
     )
+}
+
+fn package() -> PackageRelease {
+    PackageRelease {
+        plugin_id: "example.web".into(),
+        version: "1.2.3".into(),
+        publisher_id: "example".into(),
+        title: "Web".into(),
+        summary: "Web plugin".into(),
+        source_url: "https://example.test/source".into(),
+        source_revision: "a".repeat(40),
+        license: "MIT".into(),
+        distributions: vec![Distribution {
+            id: "npm".into(),
+            kind: DistributionKind::NpmPackage,
+            package: "@example/web".into(),
+            version: "1.2.3".into(),
+            integrity: Some(digest(b"exact npm archive")),
+            registry_url: Some("https://registry.npmjs.org".into()),
+            artifact: None,
+            targets: Vec::new(),
+        }],
+        availability: Availability::Listed,
+        documentation: Vec::new(),
+    }
+}
+
+#[test]
+fn package_only_release_can_anchor_exact_content_without_portable_artifact() {
+    let (signing, trust) = trust();
+    let base = PackageSnapshot::new("catalog".into(), 1, 100, 200, vec![package()]);
+    let verified_base = package::verify(
+        &package::sign(&base, "key", &signing).unwrap(),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+    let content = content(
+        BaseKind::Package,
+        base.releases[0].immutable_identity().unwrap(),
+    );
+    let verified_content = release_content::verify(
+        &release_content::sign(&content, "key", &signing).unwrap(),
+        &trust,
+        None,
+        150,
+    )
+    .unwrap();
+    assert!(
+        verified_content
+            .select_package(&verified_base, "example.web", "1.2.3", 150)
+            .is_ok()
+    );
+    assert!(
+        verified_content
+            .select_package(&verified_base, "example.web", "1.2.4", 150)
+            .is_err()
+    );
+    assert!(
+        verified_content
+            .select_content_only("example.web", "1.2.3", 150)
+            .is_err()
+    );
+    let mut revoked = package();
+    revoked.availability = Availability::Revoked;
+    let revoked = PackageSnapshot::new("catalog".into(), 2, 100, 200, vec![revoked]);
+    let revoked = package::verify(
+        &package::sign(&revoked, "key", &signing).unwrap(),
+        &trust,
+        Some(verified_base.checkpoint()),
+        150,
+    )
+    .unwrap();
+    assert!(
+        verified_content
+            .select_package(&revoked, "example.web", "1.2.3", 150)
+            .is_err()
+    );
+}
+
+#[test]
+fn content_only_release_self_binds_exact_ordered_source_references() {
+    let (signing, trust) = trust();
+    let mut snapshot = content(BaseKind::ContentOnly, digest(b"placeholder"));
+    snapshot.releases[0].base_release_identity =
+        snapshot.releases[0].content_only_identity().unwrap();
+    let signed = release_content::sign(&snapshot, "key", &signing).unwrap();
+    let verified = release_content::verify(&signed, &trust, None, 150).unwrap();
+    assert!(
+        verified
+            .select_content_only("example.web", "1.2.3", 150)
+            .is_ok()
+    );
+    let mut changed = snapshot.clone();
+    changed.releases[0].content.swap(0, 1);
+    assert!(release_content::sign(&changed, "key", &signing).is_err());
+    changed.releases[0].base_release_identity =
+        changed.releases[0].content_only_identity().unwrap();
+    let changed = release_content::sign(&changed, "key", &signing).unwrap();
+    assert!(release_content::verify(&changed, &trust, Some(verified.checkpoint()), 150).is_err());
 }
 
 #[test]

@@ -317,12 +317,6 @@ fn tsconfig(root: &Path, source: &str) -> anyhow::Result<()> {
 
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(crate::plugins::project_root(args.root.clone())?)?;
-    if args.package_snapshot.is_some() || args.tgz.is_some() {
-        return npm_catalog::add(&root, &args);
-    }
-    if args.distribution.is_some() && args.release_details.is_none() {
-        bail!("--distribution requires --release-details or --package-snapshot");
-    }
     if args.content_snapshot.is_some()
         || args.content_id.is_some()
         || args.content_archive.is_some()
@@ -333,6 +327,12 @@ pub fn add(args: AddArgs) -> anyhow::Result<()> {
             bail!("--release-details cannot be combined with source-content adoption");
         }
         return linked_catalog::content::add(&root, &args);
+    }
+    if args.package_snapshot.is_some() || args.tgz.is_some() {
+        return npm_catalog::add(&root, &args);
+    }
+    if args.distribution.is_some() && args.release_details.is_none() {
+        bail!("--distribution requires --release-details or --package-snapshot");
     }
     if args.release_details.is_some() {
         if args.linked_snapshot.is_some() {

@@ -60,16 +60,24 @@ product-specific Host integration and must not be advertised as generically
 adoptable.
 
 `release_content` is a separately signed v2 channel for optional editable
-templates and development extensions under the same exact Plugin ID and version.
+templates and development extensions under an exact Plugin ID and version.
 It does not add fields to either v1 signed payload, so existing v1 signatures
 and readers remain unchanged. Each v2 entry binds the immutable identity of an
-exact listed Portable or linked Cargo base release. Content references carry an
-HTTPS URL, SHA-256 digest and byte size for a bounded `.tar.gz` source tree.
+exact listed Portable, linked Cargo, or package-only base release. A
+`content_only` entry has no fabricated runtime/package base: its
+`base_release_identity` is the SHA-256 digest of the canonical JSON tuple
+`[plugin_id,version,[[id,kind,url,digest,size],...]]` in signed content order.
+Content references carry an HTTPS URL, SHA-256 digest and byte size for a
+bounded `.tar.gz` source tree.
 The URL is only a reference: verification never fetches, copies, selects or
 executes it. A consumer must verify both signed snapshots, their independent
 checkpoints, the selected base identity and the received archive bytes before
-copying. Content identity is immutable across revisions; publication of a new
-version is required to change it.
+copying. Package-attached content does not install its npm distribution;
+content-only and development-extension copies are likewise inert until a
+separate explicit source selection. Content identity is immutable across
+revisions; publication of a new version is required to change it. The v2
+channel has not been publicly released yet; the old v1 signatures and readers
+are unchanged.
 
 This new package is prepared for local review. It has not been published; registry
 release requires the repository's Trusted Publisher workflow and explicit approval.

@@ -189,14 +189,13 @@ impl VerifiedPackageSnapshot {
         &self.checkpoint
     }
 
-    /// Select one currently listed npm distribution by exact Plugin and distribution IDs.
-    pub fn select_npm(
+    /// Select one currently listed exact package-only Plugin release.
+    pub fn select_release(
         &self,
         plugin_id: &str,
         version: &str,
-        distribution_id: &str,
         now: u64,
-    ) -> Result<&Distribution> {
+    ) -> Result<&PackageRelease> {
         ensure!(
             now >= self.snapshot.issued_at && now < self.snapshot.expires_at,
             "package catalog is not current"
@@ -211,6 +210,18 @@ impl VerifiedPackageSnapshot {
             release.availability == Availability::Listed,
             "package release is not available for adoption"
         );
+        Ok(release)
+    }
+
+    /// Select one currently listed npm distribution by exact Plugin and distribution IDs.
+    pub fn select_npm(
+        &self,
+        plugin_id: &str,
+        version: &str,
+        distribution_id: &str,
+        now: u64,
+    ) -> Result<&Distribution> {
+        let release = self.select_release(plugin_id, version, now)?;
         release
             .distributions
             .iter()

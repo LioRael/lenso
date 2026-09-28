@@ -14,6 +14,7 @@ use crate::{
     Envelope, MAX_ENVELOPE_BYTES, MAX_RELEASES, MAX_VALIDITY_SECONDS, Release, Trust,
     VerifiedSnapshot as VerifiedPortableSnapshot, bounded_text, digest, https_url,
     linked_cargo::{LinkedCargoRelease, VerifiedLinkedCargoSnapshot},
+    package::{PackageRelease, VerifiedPackageSnapshot},
     valid_digest,
 };
 
@@ -27,6 +28,8 @@ const MAX_HISTORY_BYTES: usize = 8 * 1024 * 1024;
 pub enum BaseKind {
     Portable,
     LinkedCargo,
+    Package,
+    ContentOnly,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -112,7 +115,28 @@ impl ReleaseContent {
                 "duplicate release content identity"
             );
         }
+        if self.base_kind == BaseKind::ContentOnly {
+            ensure!(
+                self.base_release_identity == self.content_only_identity()?,
+                "content-only release identity does not match its signed content"
+            );
+        }
         Ok(())
+    }
+
+    /// A content-only release has no fabricated runtime or package base. Its
+    /// exact ordered source references bind the existing base-identity field.
+    pub fn content_only_identity(&self) -> Result<String> {
+        let content = self
+            .content
+            .iter()
+            .map(|item| (&item.id, item.kind, &item.url, &item.digest, item.size))
+            .collect::<Vec<_>>();
+        Ok(digest(&serde_json::to_vec(&(
+            &self.plugin_id,
+            &self.version,
+            content,
+        ))?))
     }
 
     pub fn select(&self, id: &str) -> Result<&Content> {
@@ -161,6 +185,19 @@ impl ReleaseContent {
                 && self.version == base.version
                 && self.base_release_identity == base.immutable_identity()?,
             "release content does not match exact linked Cargo base"
+        );
+        Ok(())
+    }
+
+    fn validate_package(&self, base: &PackageRelease) -> Result<()> {
+        self.validate()?;
+        base.validate()?;
+        ensure!(
+            self.base_kind == BaseKind::Package
+                && self.plugin_id == base.plugin_id
+                && self.version == base.version
+                && self.base_release_identity == base.immutable_identity()?,
+            "release content does not match exact package base"
         );
         Ok(())
     }
@@ -289,6 +326,38 @@ impl VerifiedSnapshot {
         let base = base.select(plugin_id, version, now)?;
         let release = self.select(plugin_id, version, now)?;
         release.validate_linked(base)?;
+        Ok(release)
+    }
+
+    pub fn select_package(
+        &self,
+        base: &VerifiedPackageSnapshot,
+        plugin_id: &str,
+        version: &str,
+        now: u64,
+    ) -> Result<&ReleaseContent> {
+        ensure!(
+            self.snapshot.catalog_id == base.snapshot().catalog_id,
+            "release content belongs to another catalog"
+        );
+        let base = base.select_release(plugin_id, version, now)?;
+        let release = self.select(plugin_id, version, now)?;
+        release.validate_package(base)?;
+        Ok(release)
+    }
+
+    pub fn select_content_only(
+        &self,
+        plugin_id: &str,
+        version: &str,
+        now: u64,
+    ) -> Result<&ReleaseContent> {
+        let release = self.select(plugin_id, version, now)?;
+        ensure!(
+            release.base_kind == BaseKind::ContentOnly,
+            "release content requires an exact signed base"
+        );
+        release.validate()?;
         Ok(release)
     }
 }
