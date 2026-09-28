@@ -15,7 +15,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { path = "../../../../crates/lenso-contract-codegen", version = "0.9.1" }
+lenso-contract-codegen = { path = "../../../../crates/lenso-contract-codegen", version = "0.10.0" }
 
 [lints]
 workspace = true

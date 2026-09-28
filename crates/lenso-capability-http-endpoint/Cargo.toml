@@ -36,7 +36,7 @@ schemars.workspace = true
 lenso.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { version = "=0.9.1", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "=0.10.0", path = "../lenso-contract-codegen" }
 serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]

@@ -725,7 +725,7 @@ output = "generated/text.ts"
 schemars = "1.2"
 lenso-contract-authoring = "=0.1.1"
 [build-dependencies]
-lenso-contract-codegen = "=0.9.1"
+lenso-contract-codegen = "=0.10.0"
 "#,
         )
         .unwrap();

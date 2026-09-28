@@ -24,4 +24,4 @@ lenso-guest-sdk = { version = "0.5.0", path = "../lenso-guest-sdk" }
 lenso-runtime-codec = { version = "=0.4.3", path = "../lenso-runtime-codec" }
 
 [dev-dependencies]
-lenso-contract-codegen = { version = "0.9.1", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "0.10.0", path = "../lenso-contract-codegen" }
