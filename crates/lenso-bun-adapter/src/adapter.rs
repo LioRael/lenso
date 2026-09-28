@@ -25,9 +25,7 @@ use crate::{
         EndpointDescriptor, EventBindingDescriptor, WireOutcome, WireStreamOutcome,
         from_wire_failure, handshake_for, wire_event, wire_request, wire_stream_open,
     },
-    transport::{
-        ProcessState, TransportClient, TransportStreamSession, open_transport, spawn_process,
-    },
+    transport::{ProcessState, TransportClient, TransportStreamSession, open_transport},
 };
 
 pub use crate::transport::BunWire;
@@ -126,6 +124,7 @@ pub trait BunCapabilityCodec: std::fmt::Debug + 'static {
 /// Configuration owned by one Bun Execution Adapter package.
 #[derive(Clone, Debug)]
 pub struct BunAdapterConfig {
+    pub(crate) shutdown_evidence: crate::ShutdownEvidence,
     pub(crate) bun_binary: PathBuf,
     wire: BunWire,
     working_directory: PathBuf,
@@ -138,6 +137,7 @@ impl BunAdapterConfig {
     /// Creates a Bun process configuration with bounded defaults.
     pub fn new(bun_binary: impl Into<PathBuf>, wire: BunWire) -> Self {
         Self {
+            shutdown_evidence: crate::ShutdownEvidence::default(),
             bun_binary: bun_binary.into(),
             wire,
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
@@ -191,6 +191,12 @@ pub struct BunAdapter {
 }
 
 impl BunAdapter {
+    /// Captures retirement evidence covering this Adapter's entire lifetime.
+    #[must_use]
+    pub fn shutdown_evidence(&self) -> crate::ShutdownEvidence {
+        self.config.shutdown_evidence.clone()
+    }
+
     /// Creates an Adapter for one Bun binary and one candidate wire.
     pub fn new(bun_binary: impl Into<PathBuf>, wire: BunWire) -> Self {
         Self {
@@ -384,7 +390,7 @@ impl BunAdapter {
         ) {
             Ok(transport) => transport,
             Err(error) => {
-                process.stop();
+                let _ = process.stop();
                 return Err(error);
             }
         };
@@ -488,7 +494,11 @@ impl BunAdapter {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let process = spawn_process(command, capability)?;
+        let process = crate::transport::spawn_process_tracked(
+            command,
+            capability,
+            self.config.shutdown_evidence.clone(),
+        )?;
         Ok(process)
     }
 
@@ -1145,10 +1155,7 @@ struct BunProcessResource {
 impl ManagedResource for BunProcessResource {
     fn release(&self) -> lenso_kernel::ResourceFuture {
         let transport = self.transport.clone();
-        Box::pin(async move {
-            transport.shutdown();
-            Ok(())
-        })
+        Box::pin(async move { transport.shutdown() })
     }
 }
 

@@ -961,14 +961,18 @@ impl JsonRpcTransport {
         }
     }
 
-    pub(super) fn shutdown(&self) {
-        self.process.stop();
+    pub(super) fn shutdown(&self) -> Result<(), RuntimeFailure> {
+        let result = self.process.await_shutdown();
+        if result.is_err() {
+            let _ = self.process.stop();
+        }
+        result
     }
 }
 
 impl Drop for JsonRpcTransport {
     fn drop(&mut self) {
-        self.process.stop();
+        let _ = self.process.stop();
     }
 }
 
