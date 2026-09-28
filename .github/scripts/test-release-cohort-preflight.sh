@@ -67,6 +67,9 @@ name = "fnv"
 version = "1.0.7"
 edition = "2024"
 publish = true
+
+[dev-dependencies]
+test-only-fixture = { path = "../test-only-fixture" }
 EOF
 cat >"$fixture/crates/fnv/src/lib.rs" <<'EOF'
 pub fn placeholder() {}

@@ -357,37 +357,63 @@ verify_fixture_only_lock_change() {
       sub(/^name = "/, "", owner)
       sub(/"$/, "", owner)
     }
-    /^dependencies = \[$/ { in_dependencies = 1 }
+    /^dependencies = \[$/ {
+      in_dependencies = 1
+      dependency_header = $0
+      retained = ""
+      kept = 0
+      removed = 0
+      next
+    }
     in_dependencies && /^ "[^"]+",$/ {
       dependency = $0
       sub(/^ "/, "", dependency)
       sub(/",$/, "", dependency)
-      if (removable[owner SUBSEP dependency]) next
+      if (removable[owner SUBSEP dependency]) { removed++; next }
+      kept++
+      retained = retained $0 ORS
+      next
     }
-    in_dependencies && /^\]$/ { in_dependencies = 0 }
+    in_dependencies && /^\]$/ {
+      if (kept || !removed) printf "%s\n%s%s\n", dependency_header, retained, $0
+      in_dependencies = 0
+      next
+    }
+    in_dependencies { kept++; retained = retained $0 ORS; next }
     { print }
   ' "$allowed" "$before" >"$expected"
   ! cmp -s "$before" "$after" && cmp -s "$expected" "$after"
 }
 
+append_omitted_private_fixture_edges() {
+  local owner="$1"
+  local manifest="$2"
+  local allowed="$3"
+  local edge_owner fixture
+  while IFS=$'\t' read -r edge_owner fixture; do
+    [[ "$edge_owner" == "$owner" && -n "$fixture" ]] || continue
+    grep -Fq "$fixture" "$manifest" && continue
+    printf '%s\t%s\n' "$owner" "$fixture" >>"$allowed"
+  done <<<"$private_fixture_edges"
+}
+
 validate_or_normalize_scratch_lock() {
   local before="$scratch/before-normalization-Cargo.lock"
   local allowed="$scratch/allowed-private-fixture-edges.tsv"
-  local index owner edge_owner fixture artifact_manifest
+  local index
 
   if (cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null) 2>"$scratch/locked-metadata.err"; then
     return 0
   fi
 
   : >"$allowed"
+  for index in "${!registry_dependencies[@]}"; do
+    append_omitted_private_fixture_edges \
+      "${registry_dependencies[$index]}" "${registry_source_dirs[$index]}/Cargo.toml" "$allowed"
+  done
   for index in "${!completed_packages[@]}"; do
-    owner="${completed_packages[$index]}"
-    artifact_manifest="${completed_dirs[$index]}/Cargo.toml"
-    while IFS=$'\t' read -r edge_owner fixture; do
-      [[ "$edge_owner" == "$owner" && -n "$fixture" ]] || continue
-      grep -Fq "$fixture" "$artifact_manifest" && continue
-      printf '%s\t%s\n' "$owner" "$fixture" >>"$allowed"
-    done <<<"$private_fixture_edges"
+    append_omitted_private_fixture_edges \
+      "${completed_packages[$index]}" "${completed_dirs[$index]}/Cargo.toml" "$allowed"
   done
   if [[ ! -s "$allowed" ]]; then
     sed -n '1,30p' "$scratch/locked-metadata.err" >&2
