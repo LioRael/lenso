@@ -11,8 +11,8 @@ use ed25519_dalek::{Signature, Signer as _, SigningKey};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Envelope, MAX_ENVELOPE_BYTES, MAX_RELEASES, MAX_VALIDITY_SECONDS, Release, Trust,
-    VerifiedSnapshot as VerifiedPortableSnapshot, bounded_text, digest, https_url,
+    Documentation, Envelope, MAX_ENVELOPE_BYTES, MAX_RELEASES, MAX_VALIDITY_SECONDS, Release,
+    Trust, VerifiedSnapshot as VerifiedPortableSnapshot, bounded_text, digest, https_url,
     linked_cargo::{LinkedCargoRelease, VerifiedLinkedCargoSnapshot},
     package::{PackageRelease, VerifiedPackageSnapshot},
     valid_digest,
@@ -49,6 +49,57 @@ pub struct Content {
     pub url: String,
     pub digest: String,
     pub size: u64,
+}
+
+/// Signed purpose, provenance, and versioned Markdown references for a
+/// release whose only distribution is editable source content.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContentOnlyMetadata {
+    pub publisher_id: String,
+    pub title: String,
+    pub summary: String,
+    pub source_url: String,
+    pub source_revision: String,
+    pub license: String,
+    pub documentation: Vec<Documentation>,
+}
+
+impl ContentOnlyMetadata {
+    pub fn validate(&self) -> Result<()> {
+        bounded_text(&self.publisher_id, 128)?;
+        bounded_text(&self.title, 160)?;
+        bounded_text(&self.summary, 640)?;
+        bounded_text(&self.license, 128)?;
+        https_url(&self.source_url)?;
+        ensure!(
+            matches!(self.source_revision.len(), 40 | 64)
+                && self
+                    .source_revision
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+            "source must name an exact commit digest"
+        );
+        ensure!(
+            !self.documentation.is_empty() && self.documentation.len() <= 64,
+            "content-only release needs one to 64 Markdown documents"
+        );
+        let mut identities = BTreeSet::new();
+        let mut has_getting_started = false;
+        for document in &self.documentation {
+            document.validate()?;
+            ensure!(
+                identities.insert((&document.id, &document.revision)),
+                "duplicate content-only documentation revision"
+            );
+            has_getting_started |= document.topic == "getting-started";
+        }
+        ensure!(
+            has_getting_started,
+            "content-only release needs getting-started Markdown"
+        );
+        Ok(())
+    }
 }
 
 impl Content {
@@ -94,6 +145,8 @@ pub struct ReleaseContent {
     pub version: String,
     pub base_kind: BaseKind,
     pub base_release_identity: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ContentOnlyMetadata>,
     pub content: Vec<Content>,
 }
 
@@ -115,18 +168,59 @@ impl ReleaseContent {
                 "duplicate release content identity"
             );
         }
-        if self.base_kind == BaseKind::ContentOnly {
-            ensure!(
-                self.base_release_identity == self.content_only_identity()?,
-                "content-only release identity does not match its signed content"
-            );
+        match self.base_kind {
+            BaseKind::ContentOnly => {
+                ensure!(
+                    self.base_release_identity == self.content_only_identity()?,
+                    "content-only release identity does not match its signed metadata and content"
+                );
+            }
+            _ => ensure!(
+                self.metadata.is_none(),
+                "attached release content cannot override signed base metadata"
+            ),
         }
         Ok(())
     }
 
     /// A content-only release has no fabricated runtime or package base. Its
-    /// exact ordered source references bind the existing base-identity field.
+    /// exact ordered metadata and source references bind the base-identity field.
     pub fn content_only_identity(&self) -> Result<String> {
+        ensure!(
+            self.base_kind == BaseKind::ContentOnly,
+            "content-only identity requires a content-only release"
+        );
+        let metadata = self
+            .metadata
+            .as_ref()
+            .context("content-only release needs signed metadata")?;
+        metadata.validate()?;
+        let documentation = metadata
+            .documentation
+            .iter()
+            .map(|item| {
+                (
+                    &item.id,
+                    &item.revision,
+                    &item.language,
+                    &item.topic,
+                    item.target.as_deref(),
+                    &item.url,
+                    &item.digest,
+                    item.size,
+                    &item.media_type,
+                )
+            })
+            .collect::<Vec<_>>();
+        let metadata = (
+            &metadata.publisher_id,
+            &metadata.title,
+            &metadata.summary,
+            &metadata.source_url,
+            &metadata.source_revision,
+            &metadata.license,
+            documentation,
+        );
         let content = self
             .content
             .iter()
@@ -135,6 +229,7 @@ impl ReleaseContent {
         Ok(digest(&serde_json::to_vec(&(
             &self.plugin_id,
             &self.version,
+            metadata,
             content,
         ))?))
     }

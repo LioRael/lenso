@@ -66,7 +66,10 @@ and readers remain unchanged. Each v2 entry binds the immutable identity of an
 exact listed Portable, linked Cargo, or package-only base release. A
 `content_only` entry has no fabricated runtime/package base: its
 `base_release_identity` is the SHA-256 digest of the canonical JSON tuple
-`[plugin_id,version,[[id,kind,url,digest,size],...]]` in signed content order.
+`[plugin_id,version,[publisher_id,title,summary,source_url,source_revision,license,documentation-tuples],content-tuples]`
+in signed array order. Its metadata is required and signed: publisher, purpose,
+exact source revision, license, and at least one digest-bound getting-started
+Markdown document. Attached entries cannot override their signed base metadata.
 Content references carry an HTTPS URL, SHA-256 digest and byte size for a
 bounded `.tar.gz` source tree.
 The URL is only a reference: verification never fetches, copies, selects or

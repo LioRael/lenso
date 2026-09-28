@@ -6,11 +6,13 @@ use std::{
 
 use ed25519_dalek::SigningKey;
 use lenso_plugin_catalog::{
-    Artifact, Availability, Distribution, DistributionKind, Release, Snapshot as PortableSnapshot,
-    digest,
+    Artifact, Availability, Distribution, DistributionKind, Documentation, Release,
+    Snapshot as PortableSnapshot, digest,
     linked_cargo::{self, LinkedCargoIntegration, LinkedCargoRelease, LinkedCargoSnapshot},
     package::{self, PackageRelease, PackageSnapshot},
-    release_content::{self, BaseKind, Content, ContentKind, ReleaseContent, Snapshot},
+    release_content::{
+        self, BaseKind, Content, ContentKind, ContentOnlyMetadata, ReleaseContent, Snapshot,
+    },
 };
 
 fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -87,6 +89,7 @@ fn portable_base_can_anchor_content_without_installing_its_runtime() {
             version: "2.0.0".into(),
             base_kind: BaseKind::Portable,
             base_release_identity: base.immutable_identity().unwrap(),
+            metadata: None,
             content: vec![Content {
                 id: "readme-template".into(),
                 kind: ContentKind::EditableTemplate,
@@ -227,6 +230,25 @@ fn pure_content_and_npm_only_release_copy_without_runtime_adoption() {
         version: "1.0.0".into(),
         base_kind: BaseKind::ContentOnly,
         base_release_identity: digest(b"placeholder"),
+        metadata: Some(ContentOnlyMetadata {
+            publisher_id: "example".into(),
+            title: "Template".into(),
+            summary: "Editable source and development extension".into(),
+            source_url: "https://example.test/source".into(),
+            source_revision: "a".repeat(40),
+            license: "MIT".into(),
+            documentation: vec![Documentation {
+                id: "start".into(),
+                revision: "r1".into(),
+                language: "en".into(),
+                topic: "getting-started".into(),
+                target: None,
+                url: "https://example.test/start.md".into(),
+                digest: digest(b"docs"),
+                size: 4,
+                media_type: "text/markdown".into(),
+            }],
+        }),
         content: vec![Content {
             id: "dev-extension".into(),
             kind: ContentKind::DevelopmentExtension,
@@ -252,6 +274,7 @@ fn pure_content_and_npm_only_release_copy_without_runtime_adoption() {
                         version: "1.0.0".into(),
                         base_kind: BaseKind::Package,
                         base_release_identity: npm.immutable_identity().unwrap(),
+                        metadata: None,
                         content: vec![Content {
                             id: "editable".into(),
                             kind: ContentKind::EditableTemplate,
@@ -424,6 +447,7 @@ fn exact_signed_content_previews_copies_and_preserves_user_edits() {
             version: "1.2.3".into(),
             base_kind: BaseKind::LinkedCargo,
             base_release_identity: linked.immutable_identity().unwrap(),
+            metadata: None,
             content: vec![
                 Content {
                     id: "frontend-template".into(),
