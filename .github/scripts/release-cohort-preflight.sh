@@ -138,7 +138,7 @@ prefetch_dependencies() {
     [.packages[] | select(.name == $package)]
     | if length == 1 then .[0] else error("release package must occur once in metadata") end
     | .dependencies[]?
-    | select(.kind != "dev" and .source == null and (.path // "") != "")
+    | select((.kind != "dev" or .req != "*") and .source == null and (.path // "") != "")
     | .name
   ' <<<"$metadata"
 }

@@ -10,12 +10,12 @@ else
   cargo_dir="$(dirname -- "$(command -v cargo)")"
 fi
 
-mkdir -p "$fixture/.github/scripts" "$fixture/crates/cohort-alpha/src" "$fixture/crates/cohort-beta/src" "$fixture/crates/fnv/src" "$fixture/crates/test-only-fixture/src" "$fixture/cargo-home"
+mkdir -p "$fixture/.github/scripts" "$fixture/crates/cohort-alpha/src" "$fixture/crates/cohort-beta/src" "$fixture/crates/equivalent/src" "$fixture/crates/fnv/src" "$fixture/crates/test-only-fixture/src" "$fixture/cargo-home"
 cp "$script_dir/release-cohort-preflight.sh" "$script_dir/release-set.sh" "$fixture/.github/scripts/"
 
 cat >"$fixture/Cargo.toml" <<'EOF'
 [workspace]
-members = ["crates/cohort-alpha", "crates/cohort-beta", "crates/fnv", "crates/test-only-fixture"]
+members = ["crates/cohort-alpha", "crates/cohort-beta", "crates/equivalent", "crates/fnv", "crates/test-only-fixture"]
 resolver = "2"
 
 [patch.crates-io]
@@ -45,10 +45,21 @@ publish = true
 cohort-alpha = "=0.1.0"
 
 [dev-dependencies]
+equivalent = { path = "../equivalent", version = "=1.0.2" }
 test-only-fixture = { path = "../test-only-fixture" }
 EOF
 cat >"$fixture/crates/cohort-beta/src/lib.rs" <<'EOF'
 pub fn answer() -> u8 { cohort_alpha::answer() }
+EOF
+cat >"$fixture/crates/equivalent/Cargo.toml" <<'EOF'
+[package]
+name = "equivalent"
+version = "1.0.2"
+edition = "2024"
+publish = true
+EOF
+cat >"$fixture/crates/equivalent/src/lib.rs" <<'EOF'
+pub fn placeholder() {}
 EOF
 cat >"$fixture/crates/fnv/Cargo.toml" <<'EOF'
 [package]
@@ -89,7 +100,8 @@ output="$(
 }
 records="$(printf '%s\n' "$output" | sed -n 's/^Cohort artifact preflight completed: //p')"
 if ! grep -Fxq 'Fetching exact registry package fnv@1.0.7' <<<"$output" ||
-  ! grep -Fxq 'Staged exact registry source fnv@1.0.7' <<<"$output"; then
+  ! grep -Fxq 'Staged exact registry source fnv@1.0.7' <<<"$output" ||
+  ! grep -Fxq 'Fetching exact registry package equivalent@1.0.2' <<<"$output"; then
   printf 'cohort preflight did not fetch the exact out-of-cohort version:\n%s\n' "$output" >&2
   exit 1
 fi
