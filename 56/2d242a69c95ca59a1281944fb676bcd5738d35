@@ -1,0 +1,35 @@
+crates/lenso-http-egress-plugin/tests/portable_wasm_client.rs
+  s_7d146975368699::t_a3f98cb2a00b02 168-177,192,200
+crates/lenso-wasm-component-adapter/tests/wasm_host.rs
+  s_7d146975368699::t_2e1a2fd97dda0b 47-53,57
+crates/lenso-web-ingress-plugin/tests/portable_http_component.rs
+  s_7d146975368699::t_4b99b4333cc229 62-71,85,90
+.github/workflows/ci.yml
+  s_e848d4070108e0::t_1b84e3b3eacd5c 18-19,23,34-41,56-61
+docs/performance/ci-feedback.md
+  s_e848d4070108e0::t_60241592ccaebb 110-163,172-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "562d242a69c95ca59a1281944fb676bcd5738d35",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    },
+    "s_e848d4070108e0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0e81c-1e31-76f3-a8c8-94e4a3d2c771",
+        "model": "unknown"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

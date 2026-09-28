@@ -1,0 +1,41 @@
+crates/lenso-engine-app/src/app/convention_authoring/linked_catalog.rs
+  s_7d146975368699::t_3361c27c4958cc 14,630-638,640-656,661-670,677-692,699-716,721-723,727-756,758-769,771,785,831-833
+  s_7d146975368699::t_3d492d7988bc66 657-660,671-676,693-698,717-720,724-726
+  s_7d146975368699::t_4e51052e314088 639,757,770,791-792
+crates/lenso-engine-app/src/app/convention_authoring.rs
+  s_7d146975368699::t_8158fbc2ba98bd 27-32,316-318,321-322
+  s_7d146975368699::t_4e51052e314088 589-590
+  s_7d146975368699::t_fd4a17bf413e5c 323
+crates/lenso-engine-app/src/plugins/signed_install/checkpoint.rs
+  s_7d146975368699::t_2c04222f0dcc74 11,122-125,145,147,149,181
+  s_7d146975368699::t_f39def7be572d6 6,27-40,116-121,126-144,148,150-180,182-197,199-225,291-308
+  s_7d146975368699::t_fc2ef88e47c87e 146,198
+  s_7d146975368699::t_698d2cc6a963b0 309
+crates/lenso-cli/tests/release_details_cargo_adoption.rs
+  s_7d146975368699::t_dd3464f8cab835 249,252-293
+  s_7d146975368699::t_7b9ee671db6f8b 1-13,27-38,44-77,79,93-128,133-136,144-186,192-196,198-199,201-206,211-213,223-229,248,250-251,294-297
+  s_7d146975368699::t_445ee09aa565ff 235-236
+  s_7d146975368699::t_0ba5b9f99b48a8 237-242
+  s_7d146975368699::t_d2d0530abbe8b1 78,80-92,197,200
+  s_7d146975368699::t_d8a456d70c97fd 15,18,22-25
+  s_7d146975368699::t_031d5b1a87521e 243-247
+  s_7d146975368699::t_23a521fa5e9e1f 14,16-17,19-21,26,39-43,129-132,137-143,187-191,207-210,214-222,230-234
+crates/lenso-cli/README.md
+  s_7d146975368699::t_122529d59512b8 138-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9afe4fe46a422b33145db827065d7f2386c6587",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

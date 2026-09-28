@@ -1,0 +1,26 @@
+crates/lenso-cli/docs/engine.md
+  s_7d146975368699::t_3d24da3b54edd3 3-8,36,257-263
+docs/components/engine.md
+  s_7d146975368699::t_9d1199b003c2aa 3-7,11-13,17-19,21,23-29,31-36,38,40-47,50-52,54-55,58-62,68-73,76-78,80-84,88-89,93-94,129-131,155-160,164-167,171-172,180-186,195-216,220-233,238-239,241-242,246-254,258,264-265,270-273
+  s_7d146975368699::t_78e939d76a38b6 259-260
+crates/lenso-cli/README.md
+  s_7d146975368699::t_3d24da3b54edd3 33-34
+docs/README.md
+  s_7d146975368699::t_78e939d76a38b6 14-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6b47d35ac677580d856552e426eec4db6f5117a",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

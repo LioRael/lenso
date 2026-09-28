@@ -1,0 +1,40 @@
+crates/lenso-engine-app/src/plugin/tests.rs
+  s_7d146975368699::t_3d24d2ae354a83 149
+  s_7d146975368699::t_9d864eed3973af 154
+crates/lenso-engine-app/src/plugin/scaffold.rs
+  s_7d146975368699::t_3d24d2ae354a83 119,135,506
+crates/lenso-engine-app/src/app/convention_authoring/openapi.rs
+  s_7d146975368699::t_3d24d2ae354a83 60,165
+crates/lenso-engine-app/src/app/local_host.rs
+  s_7d146975368699::t_3d24d2ae354a83 2430,2439,2449
+  s_7d146975368699::t_60ebdbc02b9bc6 136,1085,1092
+crates/lenso-openapi-plugin/Cargo.toml
+  s_7d146975368699::t_60ebdbc02b9bc6 27
+crates/lenso-engine-app/src/plugin/web_dev.rs
+  s_7d146975368699::t_3d24d2ae354a83 572,575,679,735,742
+  s_7d146975368699::t_60ebdbc02b9bc6 388,391,397-398,428-429,455-456
+crates/lenso-web-host/Cargo.toml
+  s_7d146975368699::t_60ebdbc02b9bc6 3,24
+crates/lenso-engine-app/Cargo.toml
+  s_7d146975368699::t_60ebdbc02b9bc6 38
+crates/lenso-web-ingress-plugin/Cargo.toml
+  s_7d146975368699::t_60ebdbc02b9bc6 3
+Cargo.lock
+  s_7d146975368699::t_ea51b86cee11e0 2865,2908
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1ec28c44782bc64d0cf570f6cbeafef00ae615c",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
