@@ -1,0 +1,51 @@
+spec/fixtures/portable-contract/rust/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 18
+crates/lenso-engine-app/src/app/contracts/scaffold.rs
+  s_7d146975368699::t_708e2f7c1a9844 102
+crates/lenso-capability-configuration-source/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 28
+crates/lenso-capability-http-client/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 27
+crates/lenso-capability-websocket-endpoint/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 25
+spec/fixtures/event-contract/rust/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 18
+crates/lenso-contract-codegen/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 3
+crates/lenso-engine-app/src/app/contracts.rs
+  s_7d146975368699::t_708e2f7c1a9844 728
+crates/lenso-capability-http-stream-endpoint/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 25
+crates/lenso-engine-runtime/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 27
+crates/lenso-engine-app/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 24
+crates/lenso-capability-http-endpoint/Cargo.toml
+  s_7d146975368699::t_708e2f7c1a9844 39
+Cargo.lock
+  s_b6468f6cd89953::t_1b4dd800cf175c 2105,2121,2140,2167,2180,2252-2264,2333,2425,2455,2750
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eef70dd201b9323a1a97d45a83b7c5454ee389fb",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    },
+    "s_b6468f6cd89953": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0e663-dfe1-7592-b5c2-6778b9d14ec6",
+        "model": "unknown"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
