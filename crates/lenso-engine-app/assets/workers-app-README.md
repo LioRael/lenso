@@ -2,7 +2,7 @@
 
 This directory is a local-workerd build from one selected, verified Workers
 Component Bundle. The `plan.mjs`, Component, Jco bindings, and pinned
-`@lenso/workers-runtime` module are self-contained. Their identities and
+`@lenso/workers-runtime` modules are self-contained. Their identities and
 digests are recorded in `workers-build.json`; the selected Bundle and Host
 authority are retained under `bundles/` and `.lenso/`.
 For authoring V2, the embedded source descriptor must carry the exact trusted

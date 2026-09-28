@@ -30,13 +30,13 @@ fn pinned_runtime_rejects_a_different_module() {
         "export const unsafe = true;",
     )
     .unwrap();
-    let error = copy_pinned_runtime(&package, &output).unwrap_err();
+    let error = runtime::PinnedRuntime::load(&package).unwrap_err();
     assert!(error.to_string().contains("differs from pinned"));
     assert!(!output.join("component-requests.mjs").exists());
 }
 
 #[test]
-fn pinned_knowledge_settings_runtime_rejects_a_different_module() {
+fn pinned_split_runtime_rejects_a_different_module() {
     let temp = tempfile::tempdir().unwrap();
     let package = temp.path().join("package");
     let output = temp.path().join("output");
@@ -44,15 +44,15 @@ fn pinned_knowledge_settings_runtime_rejects_a_different_module() {
     fs::create_dir(&output).unwrap();
     fs::write(
         package.join("package.json"),
-        r#"{"name":"@lenso/workers-runtime","version":"0.1.5","exports":{"./component-requests":"./component-requests.mjs","./knowledge-settings-local":"./knowledge-settings-local.mjs"}}"#,
+        r#"{"name":"@lenso/workers-runtime","version":"0.1.5","exports":{"./component-requests":"./component-requests.mjs"}}"#,
     )
     .unwrap();
-    for (name, _) in KNOWLEDGE_SETTINGS_RUNTIME_FILES {
+    for name in ["component-admission.mjs", "component-requests.mjs"] {
         fs::write(package.join(name), "export const unsafe = true;").unwrap();
     }
-    let error = copy_pinned_knowledge_settings_runtime(&package, &output).unwrap_err();
+    let error = runtime::PinnedRuntime::load(&package).unwrap_err();
     assert!(error.to_string().contains("differs from pinned"));
-    for (name, _) in KNOWLEDGE_SETTINGS_RUNTIME_FILES {
+    for name in ["component-admission.mjs", "component-requests.mjs"] {
         assert!(!output.join(name).exists());
     }
 }
@@ -221,6 +221,8 @@ fn native_only_bundle_cannot_fall_back_to_workers() {
         out: output.clone(),
         workers_runtime: PathBuf::from("unused"),
         jco: PathBuf::from("unused"),
+        integration: None,
+        trust_integration: None,
     })
     .unwrap_err();
     let explanation = format!("{error:#}");
@@ -283,6 +285,8 @@ fn dependency_closure_reports_the_consumer_requirement_and_provider() {
         out: output.clone(),
         workers_runtime: PathBuf::from("unused"),
         jco: PathBuf::from("unused"),
+        integration: None,
+        trust_integration: None,
     })
     .unwrap_err();
     let explanation = format!("{error:#}");
@@ -361,6 +365,8 @@ fn verified_bundle_builds_a_self_contained_workers_app() {
         out: output.clone(),
         workers_runtime,
         jco,
+        integration: None,
+        trust_integration: None,
     })
     .unwrap();
     let after = super::super::super::local_host::input_digest(root.path()).unwrap();
@@ -394,7 +400,12 @@ fn verified_bundle_builds_a_self_contained_workers_app() {
     // The bundled runtime is a copied, pinned input, never a sibling worktree import.
     assert_eq!(
         super::super::super::local_host::digest(&output.join("component-requests.mjs")).unwrap(),
-        format!("sha256:{RUNTIME_MODULE_SHA256}")
+        receipt["workers_runtime"]["module_digest"]
+            .as_str()
+            .or_else(
+                || receipt["workers_runtime"]["module_digests"]["component-requests.mjs"].as_str()
+            )
+            .unwrap()
     );
     if std::env::var_os("LENSO_A8_KEEP_OUTPUT").as_deref() == Some(std::ffi::OsStr::new("1")) {
         eprintln!("retained exact Workers App: {}", root.path().display());
@@ -402,51 +413,41 @@ fn verified_bundle_builds_a_self_contained_workers_app() {
     }
 }
 
-/// Run with the exact verified KB Component and task-local Jco 1.35.0.
-/// This proves local build input closure, not PostgreSQL or workerd behavior.
+/// Runs a prepared source App with an explicitly authorized integration.
+/// This proves build input closure, not storage or workerd behavior.
 #[test]
-#[ignore = "requires a built knowledge-settings Component, local JS runtime and Jco 1.35.0"]
-fn verified_knowledge_settings_bundle_builds_a_bounded_local_workers_app() {
-    let component = PathBuf::from(std::env::var_os("LENSO_KB_COMPONENT").expect("Component path"));
+#[ignore = "requires a prepared Workers App, integration, pinned runtime and Jco 1.35.0"]
+fn verified_integration_builds_a_bounded_local_workers_app() {
+    let app = PathBuf::from(std::env::var_os("LENSO_WORKERS_APP").expect("App path"));
+    let integration =
+        PathBuf::from(std::env::var_os("LENSO_WORKERS_INTEGRATION").expect("integration path"));
     let workers_runtime =
-        PathBuf::from(std::env::var_os("LENSO_KB_RUNTIME").expect("JS package path"));
-    let jco = PathBuf::from(std::env::var_os("LENSO_KB_JCO").expect("Jco path"));
+        PathBuf::from(std::env::var_os("LENSO_WORKERS_RUNTIME").expect("JS package path"));
+    let jco = PathBuf::from(std::env::var_os("LENSO_WORKERS_JCO").expect("Jco path"));
+    let profile_bytes = fs::read(&integration).unwrap();
+    let profile: Value = serde_json::from_slice(&profile_bytes).unwrap();
+    let trust = digest_bytes(&profile_bytes);
     let root = tempfile::tempdir().unwrap();
-    let app = root.path().join("app");
-    fs::create_dir(&app).unwrap();
-    let contract = PluginContract::new(KNOWLEDGE_SETTINGS_PLUGIN_ID, "0.1.0", "web")
-        .with_authoring_version(2)
-        .with_capability(CapabilityEndpointPlan::new(
-            lenso_capability_http_endpoint::CAPABILITY_ID,
-            lenso_capability_http_endpoint::DESCRIPTOR_VERSION,
-            ["describe", "handle"],
-        ));
-    test_bundle(
-        app.join("knowledge-settings"),
-        &component,
-        contract,
-        HOST_TARGET,
-        vec![
-            ExecutionTargetCapability::Request,
-            ExecutionTargetCapability::WasmComponent,
-            ExecutionTargetCapability::Workers,
-        ],
-    );
     let output = root.path().join("dist-workers");
     build(BuildArgs {
-        root: root.path().to_path_buf(),
+        root: app,
         out: output.clone(),
         workers_runtime,
         jco,
+        integration: Some(integration),
+        trust_integration: Some(trust.clone()),
     })
     .unwrap();
     let receipt: Value =
         serde_json::from_slice(&fs::read(output.join("workers-build.json")).unwrap()).unwrap();
-    assert_eq!(receipt["plugin_id"], KNOWLEDGE_SETTINGS_PLUGIN_ID);
-    assert_eq!(receipt["private_world"], KNOWLEDGE_SETTINGS_WORLD);
+    assert_eq!(receipt["plugin_id"], profile["plugin_id"]);
+    assert_eq!(receipt["integration"]["world"], profile["world"]);
+    assert_eq!(receipt["integration"]["profile_digest"], trust);
+    assert_eq!(receipt["integration"]["module_digests"], profile["files"]);
+    assert_eq!(receipt["manifest_digest"], profile["manifest_digest"]);
     assert_eq!(
-        receipt["host_bridge"],
-        "local-loopback-knowledge-settings.v1"
+        fs::read(output.join("workers-integration.json")).unwrap(),
+        profile_bytes
     );
     let wrangler_config: Value =
         serde_json::from_slice(&fs::read(output.join("wrangler.jsonc")).unwrap()).unwrap();
@@ -460,7 +461,11 @@ fn verified_knowledge_settings_bundle_builds_a_bounded_local_workers_app() {
     .unwrap();
     assert_eq!(
         plan["plugin_instances"][0]["instance_key"],
-        KNOWLEDGE_SETTINGS_PLAN_KEY
+        format!(
+            "{}/{}",
+            profile["plugin_id"].as_str().unwrap(),
+            profile["instance_key"].as_str().unwrap()
+        )
     );
     assert_eq!(
         plan["plugin_instances"][0]["package_revision"],
@@ -468,10 +473,8 @@ fn verified_knowledge_settings_bundle_builds_a_bounded_local_workers_app() {
     );
     for file in [
         "worker.mjs",
-        "component-admission.mjs",
         "component-requests.mjs",
-        "knowledge-settings-local.mjs",
-        "knowledge-settings-artifact.mjs",
+        "artifact.mjs",
         "plan.mjs",
         "guest.component.wasm",
         "guest.core.wasm",
@@ -480,8 +483,14 @@ fn verified_knowledge_settings_bundle_builds_a_bounded_local_workers_app() {
     ] {
         assert!(output.join(file).is_file(), "missing {file}");
     }
+    for (name, digest) in profile["files"].as_object().unwrap() {
+        assert_eq!(
+            digest_bytes(&fs::read(output.join(name)).unwrap()),
+            digest.as_str().unwrap()
+        );
+    }
     assert!(!output.join("workers-http.mjs").exists());
-    if std::env::var_os("LENSO_KB_KEEP_OUTPUT").as_deref() == Some(std::ffi::OsStr::new("1")) {
+    if std::env::var_os("LENSO_WORKERS_KEEP_OUTPUT").as_deref() == Some(std::ffi::OsStr::new("1")) {
         eprintln!("retained exact Workers App: {}", root.path().display());
         let _ = root.keep();
     }

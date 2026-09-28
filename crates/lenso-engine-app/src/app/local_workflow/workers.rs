@@ -26,29 +26,10 @@ use sha2::{Digest as _, Sha256};
 
 use crate::archive::{archive_bundle, with_bundle_directory};
 
+mod integration;
+mod runtime;
+
 const HOST_TARGET: &str = "workers";
-const RUNTIME_VERSION: &str = "0.1.4";
-// Exact module from lenso-js 3f83cde (not a floating package release).
-const RUNTIME_MODULE_SHA256: &str =
-    "b7f72c8dd0c14cd2a3e63a4ca2c04fddb08deadc76b7b0c238533dddb845576b";
-const KNOWLEDGE_SETTINGS_PLUGIN_ID: &str = "lenso.reference.knowledge-settings";
-const KNOWLEDGE_SETTINGS_PLAN_KEY: &str = "lenso.reference.knowledge-settings/default";
-const KNOWLEDGE_SETTINGS_WORLD: &str = "lenso:knowledge-settings-local@1.0.0/plugin";
-const KNOWLEDGE_SETTINGS_RUNTIME_VERSION: &str = "0.1.5";
-const KNOWLEDGE_SETTINGS_RUNTIME_FILES: [(&str, &str); 3] = [
-    (
-        "component-admission.mjs",
-        "e06d95bc3fe958f72e4eefd4c97a21f6a81b94a65dd6ca32e0e61bfa4de5b14e",
-    ),
-    (
-        "component-requests.mjs",
-        "b5e315b999b2ee6fa6ab374c8238dff4428cfa0b792270d0953e12560cac0b43",
-    ),
-    (
-        "knowledge-settings-local.mjs",
-        "dfbbf31eea1db4c1cc17496316b0d9529fe45661abcd2dda80dcd00077a3711e",
-    ),
-];
 const JCO_VERSION: &str = "1.35.0";
 const MAX_WORKERS_MODULE_BYTES: u64 = 32 * 1024 * 1024;
 
@@ -57,6 +38,8 @@ pub(super) struct BuildArgs {
     pub(super) out: PathBuf,
     pub(super) workers_runtime: PathBuf,
     pub(super) jco: PathBuf,
+    pub(super) integration: Option<PathBuf>,
+    pub(super) trust_integration: Option<String>,
 }
 
 struct SelectedBundle {
@@ -78,6 +61,10 @@ struct DescriptorEvidence {
 }
 
 pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
+    ensure!(
+        args.integration.is_some() == args.trust_integration.is_some(),
+        "Workers integration requires both its profile and explicit trusted digest"
+    );
     let root = fs::canonicalize(&args.root).context("locate source App")?;
     let source_digest = super::super::local_host::input_digest(&root)?;
     let report = discover(&root)?;
@@ -292,20 +279,35 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
     let (authority, resolved) =
         GeneratedHostBuild::lower_local("local.app", inputs)?.with_local_root(stage.path())?;
     let selected = admit_plan(&resolved, &selected)?;
-    let knowledge_settings = selected.plugin_id == KNOWLEDGE_SETTINGS_PLUGIN_ID;
-    if knowledge_settings {
-        let instance = &resolved.plan().plugin_instances()[0];
-        ensure!(
-            instance.instance_key() == KNOWLEDGE_SETTINGS_PLAN_KEY
-                && instance.package_id() == KNOWLEDGE_SETTINGS_PLUGIN_ID
-                && instance.authoring_version() == 2,
-            "Knowledge settings local Workers bridge requires the exact verified Plugin, package, Plan Instance and authoring V2 identity"
-        );
-    }
-    let descriptor = source_descriptor_evidence(
+    let instance = &resolved.plan().plugin_instances()[0];
+    let runtime = runtime::PinnedRuntime::load(&args.workers_runtime)?;
+    let integration = args
+        .integration
+        .as_ref()
+        .map(|path| {
+            integration::Integration::load(
+                path,
+                args.trust_integration
+                    .as_deref()
+                    .context("Workers integration trust digest")?,
+                integration::Expected {
+                    plugin_id: &selected.plugin_id,
+                    instance_key: instance.instance_key(),
+                    authoring_version: instance.authoring_version(),
+                    manifest_digest: &selected.manifest_digest,
+                    artifact_digest: &selected.artifact_digest,
+                    runtime_version: runtime.version(),
+                },
+            )
+        })
+        .transpose()?;
+    let descriptor = source_descriptor_evidence(&selected.component, instance.authoring_version())?;
+    fs::copy(
         &selected.component,
-        resolved.plan().plugin_instances()[0].authoring_version(),
+        stage.path().join("guest.component.wasm"),
     )?;
+    // Stage executable Host inputs only after checking the compiler's output closure.
+    transpile_component(&args.jco, stage.path())?;
     fs::write(
         stage.path().join(".lenso/host-build.json"),
         serde_json::to_vec_pretty(&authority)?,
@@ -332,36 +334,19 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
         stage.path().join("descriptor-digests.mjs"),
         format!("export default {trusted_digests};\n"),
     )?;
-    fs::copy(
-        &selected.component,
-        stage.path().join("guest.component.wasm"),
-    )?;
-
-    let runtime_evidence = if knowledge_settings {
-        copy_pinned_knowledge_settings_runtime(&args.workers_runtime, stage.path())?
-    } else {
-        json!({
-            "package": "@lenso/workers-runtime",
-            "version": RUNTIME_VERSION,
-            "module_digest": copy_pinned_runtime(&args.workers_runtime, stage.path())?,
-        })
-    };
-    transpile_component(&args.jco, stage.path())?;
-    if knowledge_settings {
+    let runtime_evidence = runtime.stage(stage.path())?;
+    let integration_evidence = if let Some(integration) = &integration {
         fs::write(
-            stage.path().join("knowledge-settings-artifact.mjs"),
+            stage.path().join("artifact.mjs"),
             format!(
                 "export default {};\n",
                 serde_json::to_string(&json!({
-                    "world": KNOWLEDGE_SETTINGS_WORLD,
+                    "world": integration.world(),
                     "digest": selected.artifact_digest,
                 }))?
             ),
         )?;
-        fs::write(
-            stage.path().join("worker.mjs"),
-            include_str!("../../../assets/workers-knowledge-settings-app.mjs"),
-        )?;
+        Some(integration.stage(stage.path())?)
     } else {
         fs::write(
             stage.path().join("workers-http.mjs"),
@@ -371,18 +356,15 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
             stage.path().join("worker.mjs"),
             include_str!("../../../assets/workers-app.mjs"),
         )?;
-    }
+        fs::write(
+            stage.path().join("README.md"),
+            include_str!("../../../assets/workers-app-README.md"),
+        )?;
+        None
+    };
     fs::write(
         stage.path().join("wrangler.jsonc"),
         include_str!("../../../assets/workers-wrangler.jsonc"),
-    )?;
-    fs::write(
-        stage.path().join("README.md"),
-        if knowledge_settings {
-            include_str!("../../../assets/workers-knowledge-settings-README.md")
-        } else {
-            include_str!("../../../assets/workers-app-README.md")
-        },
     )?;
     let mut receipt = json!({
         "schema": "lenso.workers-app-build.v1",
@@ -405,9 +387,8 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
         "jco_core_digest": super::super::local_host::digest(&stage.path().join("guest.core.wasm"))?,
         "jco_bindings_digest": super::super::local_host::digest(&stage.path().join("guest.js"))?,
     });
-    if knowledge_settings {
-        receipt["private_world"] = json!(KNOWLEDGE_SETTINGS_WORLD);
-        receipt["host_bridge"] = json!("local-loopback-knowledge-settings.v1");
+    if let Some(evidence) = integration_evidence {
+        receipt["integration"] = evidence;
     }
     fs::write(
         stage.path().join("workers-build.json"),
@@ -429,6 +410,9 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
             "Plugin `{}` source changed during Workers build; retry",
             candidate.plugin_id
         );
+    }
+    if let Some(integration) = &integration {
+        integration.recheck()?;
     }
     super::super::preset::checkpoint()?;
     super::super::build::publish_new_output(stage.path(), &destination)?;
@@ -577,83 +561,6 @@ fn admit_plan<'a>(
         "Workers App target admission differs from selected Plan Instance `{id}`",
     );
     Ok(bundle)
-}
-
-fn copy_pinned_runtime(package: &Path, stage: &Path) -> anyhow::Result<String> {
-    let package = fs::canonicalize(package).context("locate @lenso/workers-runtime package")?;
-    let package_json = package.join("package.json");
-    let module = package.join("component-requests.mjs");
-    for path in [&package_json, &module] {
-        let metadata = fs::symlink_metadata(path)?;
-        ensure!(
-            metadata.file_type().is_file() && metadata.len() <= MAX_WORKERS_MODULE_BYTES,
-            "Workers runtime input must be a bounded regular file: {}",
-            path.display()
-        );
-    }
-    let manifest: Value = serde_json::from_slice(&fs::read(&package_json)?)?;
-    ensure!(
-        manifest["name"] == "@lenso/workers-runtime"
-            && manifest["version"] == RUNTIME_VERSION
-            && manifest["exports"]["./component-requests"] == "./component-requests.mjs",
-        "Workers runtime package must expose @lenso/workers-runtime/component-requests at version {RUNTIME_VERSION}",
-    );
-    let bytes = fs::read(&module)?;
-    let digest = digest_bytes(&bytes);
-    ensure!(
-        digest == format!("sha256:{RUNTIME_MODULE_SHA256}"),
-        "Workers runtime Component adapter differs from pinned lenso-js 3f83cde candidate: {digest}",
-    );
-    fs::write(stage.join("component-requests.mjs"), bytes)?;
-    Ok(digest)
-}
-
-fn copy_pinned_knowledge_settings_runtime(package: &Path, stage: &Path) -> anyhow::Result<Value> {
-    let package = fs::canonicalize(package).context("locate @lenso/workers-runtime package")?;
-    let package_json = package.join("package.json");
-    let metadata = fs::symlink_metadata(&package_json)?;
-    ensure!(
-        metadata.file_type().is_file() && metadata.len() <= MAX_WORKERS_MODULE_BYTES,
-        "Workers runtime input must be a bounded regular file: {}",
-        package_json.display()
-    );
-    let manifest: Value = serde_json::from_slice(&fs::read(&package_json)?)?;
-    ensure!(
-        manifest["name"] == "@lenso/workers-runtime"
-            && manifest["version"] == KNOWLEDGE_SETTINGS_RUNTIME_VERSION
-            && manifest["exports"]["./component-requests"] == "./component-requests.mjs"
-            && manifest["exports"]["./knowledge-settings-local"]
-                == "./knowledge-settings-local.mjs",
-        "Knowledge settings local Workers App requires the exact @lenso/workers-runtime {} package exports",
-        KNOWLEDGE_SETTINGS_RUNTIME_VERSION
-    );
-    let mut copies = Vec::new();
-    let mut digests = BTreeMap::new();
-    for (name, expected_sha256) in KNOWLEDGE_SETTINGS_RUNTIME_FILES {
-        let path = package.join(name);
-        let metadata = fs::symlink_metadata(&path)?;
-        ensure!(
-            metadata.file_type().is_file() && metadata.len() <= MAX_WORKERS_MODULE_BYTES,
-            "Workers runtime input must be a bounded regular file: {}",
-            path.display()
-        );
-        let bytes = fs::read(&path)?;
-        let digest = digest_bytes(&bytes);
-        ensure!(
-            digest == format!("sha256:{expected_sha256}"),
-            "Knowledge settings Workers runtime module {name} differs from pinned local candidate: {digest}"
-        );
-        copies.push((name, bytes));
-        digests.insert(name.to_owned(), digest);
-    }
-    for (name, bytes) in copies {
-        fs::write(stage.join(name), bytes)?;
-    }
-    Ok(json!({
-        "package": "@lenso/workers-runtime",
-        "version": KNOWLEDGE_SETTINGS_RUNTIME_VERSION,
-        "module_digests": digests,
-    }))
 }
 
 fn transpile_component(jco: &Path, stage: &Path) -> anyhow::Result<()> {

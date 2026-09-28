@@ -4,6 +4,11 @@ Status: implementation interface, not target qualification. This contract is
 specific to the reference knowledge base. It does not make arbitrary Component
 imports, PostgreSQL, or deployed Workers available to other Plugins.
 
+The private Host entrypoint and bridge implementation belong to the reference
+Plugin's `workers-host/` sources in `lenso-examples`. They are selected through
+the [generic, explicitly trusted integration input](../../crates/lenso-cli/docs/workers-host-integrations.md),
+not a knowledge-base branch in Engine.
+
 ## Selected source and Component boundary
 
 The reference knowledge base owns one Rust settings business-core module. Its
@@ -17,9 +22,10 @@ use the same settings business-core source and the same PostgreSQL rows; this
 does not claim the full KB Plugin is portable. The Component is selected from
 a locally verified V4/V6 Bundle by the Workers App builder. Its manifest and
 selected Artifact digest are recorded in the Plan/build receipt and rechecked
-against copied bytes. The specialized Rust builder and JS Host reject any
-other Plugin ID, Instance key, Descriptor, or Artifact identity before a
-bridge call. The sidecar authenticates the local Bearer token and validates
+against copied bytes. The generic Rust builder matches the operator-pinned
+integration to the selected Plugin, Instance, Descriptor and Artifact. The
+Plugin-owned JS Host enforces this private world's identities and exports
+before a bridge call. The sidecar authenticates the local Bearer token and validates
 only the bounded store operation; it does not inspect Plugin or Plan identity.
 The selected HTTP Endpoint remains
 `lenso.http.endpoint@1`, Descriptor version `1.1.0`, Descriptor digest
@@ -39,8 +45,8 @@ PostgreSQL, or synchronous storage import. Pinned Jco 1.35.0 currently
 transpiles with `--instantiation sync`; Workerd Fetch and the local PostgreSQL
 bridge are asynchronous, so a synchronous WIT import could not truthfully
 perform the database operation. The Worker Host awaits the bridge between two
-pure Component calls. The existing generic import-free Worker target remains
-unchanged for every other Bundle.
+pure Component calls. The generic import-free Worker entrypoint remains the
+default for every Bundle without an explicitly selected integration.
 
 `prepare-settings` accepts one of these bounded JSON values (UTF-8, at most
 64 KiB):
