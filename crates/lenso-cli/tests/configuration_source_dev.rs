@@ -328,14 +328,18 @@ fn start_dev(cli: &str, source: &Path, policy: &Path, log: &Path, cwd: Option<&P
 }
 
 fn await_source_outage(dev: &mut Child, log: &Path, from: usize) {
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // A pending candidate can already be inside --prepare when its source is
+    // removed; that check has a 60-second bound before the next source poll.
+    let deadline = Instant::now() + Duration::from_secs(75);
     loop {
         let bytes = fs::read(log).unwrap_or_default();
-        if bytes.len() > from
-            && String::from_utf8_lossy(&bytes[from..])
-                .contains("Configuration source unavailable or rejected")
-        {
-            return;
+        if bytes.len() > from {
+            let new_log = String::from_utf8_lossy(&bytes[from..]);
+            if new_log.contains("Configuration source unavailable or rejected")
+                || new_log.contains("Configuration source unavailable during rebuild")
+            {
+                return;
+            }
         }
         assert!(
             dev.try_wait().unwrap().is_none(),
