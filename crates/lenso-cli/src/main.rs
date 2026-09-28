@@ -273,6 +273,7 @@ mod tests {
                 "build",
                 "create",
                 "start",
+                "tools",
                 "dev",
                 "prepare",
                 "init",
