@@ -1,0 +1,27 @@
+crates/lenso-contract-codegen/tests/codegen.rs
+  s_7d146975368699::t_8ae317d13d1bf6 21-32,982-985,1151-1154,1453-1460,1463-1464
+crates/lenso-contract-codegen/tests/fixtures/portable-contract/conformance.json
+  s_7d146975368699::t_dad945333d22a9 1-64
+crates/lenso-contract-codegen/tests/fixtures/portable-contract/generated/profile.rs
+  s_7d146975368699::t_76a3391e9663cc 1-697
+crates/lenso-contract-codegen/tests/fixtures/portable-contract/generated/profile.ts
+  s_7d146975368699::t_04b4dd4aef79a5 1-341
+crates/lenso-contract-codegen/tests/fixtures/portable-contract/portable-pattern-conformance.json
+  s_7d146975368699::t_447e4580aed00b 1-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c285f5ed22509127bc8c3dadb8e3ff3e0c13a9a",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
