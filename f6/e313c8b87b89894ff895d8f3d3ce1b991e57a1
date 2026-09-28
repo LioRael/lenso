@@ -1,0 +1,22 @@
+.github/scripts/release-cohort-preflight.sh
+  s_7d146975368699::t_dda66396d1c3df 169-183,239-267
+  s_7d146975368699::t_879e3c687114a4 268
+.github/scripts/test-release-cohort-preflight.sh
+  s_7d146975368699::t_8bb839b3a13fcc 151-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f6e313c8b87b89894ff895d8f3d3ce1b991e57a1",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
