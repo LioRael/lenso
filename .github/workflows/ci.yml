@@ -15,9 +15,12 @@ permissions: {}
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      LENSO_WASM_FIXTURE_CACHE_DIR: ${{ github.workspace }}/.lenso/ci-wasm-fixtures
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+        id: toolchain
         with:
           toolchain: 1.94.0
           components: rustfmt, clippy
@@ -28,6 +31,14 @@ jobs:
         with:
           # Seed via workflow_dispatch on main; sibling candidates cannot share caches.
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Restore Wasm fixture builds
+        id: wasm-fixtures
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.LENSO_WASM_FIXTURE_CACHE_DIR }}
+          key: wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.toml', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.lock', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.toml', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.lock', 'tests/fixtures/portable-http-endpoint/guest/Cargo.toml', 'tests/fixtures/portable-http-endpoint/guest/Cargo.lock') }}
+          restore-keys: |
+            wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-
       - name: Test release cohort packaging
         run: bash .github/scripts/test-release-cohort-preflight.sh
       - name: Lint the workspace
@@ -42,6 +53,12 @@ jobs:
           cargo check --locked --timings -p lenso-workers-http-parity-host --target wasm32-unknown-unknown
           cargo check --locked --timings -p lenso-http-egress-plugin --no-default-features --features workers --target wasm32-unknown-unknown
           cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2
+      - name: Save Wasm fixture builds on main
+        if: ${{ github.ref == 'refs/heads/main' && steps.wasm-fixtures.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.LENSO_WASM_FIXTURE_CACHE_DIR }}
+          key: ${{ steps.wasm-fixtures.outputs.cache-primary-key }}
       - name: Upload Cargo timings
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

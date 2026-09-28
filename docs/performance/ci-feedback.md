@@ -107,12 +107,75 @@ These local results establish the hotspot and the selective optimization's
 effect, not an end-to-end Linux CI speedup. Candidate CI must confirm the
 remaining compile cost, phase durations, and full native/Wasm gate.
 
+## Wasm fixture build reuse
+
+The adapter, HTTP egress, and HTTP ingress integration tests still build and
+execute their real guests. By default each harness uses temporary Cargo output.
+Setting the absolute `LENSO_WASM_FIXTURE_CACHE_DIR` opts into one shared
+`wasm-guests` target directory under that root for all five fixture manifests.
+Test inputs, encoded components, and runtime instances remain isolated.
+
+Every fixture still invokes Cargo with its original manifest, release profile,
+Wasm target, and `--locked`; egress also retains `--offline`. This caches build
+work, not an assertion that a previously generated artifact is valid. Cargo
+checks changed inputs and serializes writers to the shared target. Guest
+artifact names are distinct. One cache root must belong to one checkout at a
+time: do not point concurrently running, different source revisions at it.
+Keep it separate from the outer workspace Cargo target to avoid lock conflicts.
+
+CI uses `.lenso/ci-wasm-fixtures` and a separate Actions cache, leaving the
+existing Rust dependency cache paths and keys unchanged. The fixture key
+includes OS, architecture, compiler identity, and manifest/lockfile inputs;
+restore fallbacks stay within the same platform and compiler. Only successful
+`main` runs save it. The first candidate can share dependencies within its run
+even without a cache archive; cross-run reuse requires a successful main seed
+after landing this workflow, using the existing manual CI trigger. Confirm
+the fixture restore log separately from the ordinary Rust cache log.
+
+Local measurements used already-built native harnesses, the configured
+Rust 1.98.1/mbx toolchain, and `TMPDIR=/tmp`. Each column runs the three
+commands in the same order; times include each Cargo command's remaining
+overhead, not just libtest execution:
+
+| Harness | Isolated temporary output | Empty shared output | Repeated shared output |
+| --- | ---: | ---: | ---: |
+| Wasm adapter | 18.931s | 19.654s | 6.744s |
+| HTTP egress | 20.089s | 17.733s | 4.647s |
+| HTTP ingress | 13.956s | 3.395s | 2.505s |
+| Total | 52.976s | 40.782s | 13.896s |
+
+All 11 tests passed in every column. Sharing an initially empty directory
+reduced this local workload by 23%; the repeat reduced it by 74%. The first
+adapter build did not improve; most same-run savings came from later guests
+reusing dependencies. These are local measurements, not a prediction for
+Linux CI or an assumption that its compiler caches are equivalent.
+
+The empty-directory case retained the machine's configured mbx compiler cache;
+it was not a globally cold compiler build. The local fixture target occupied
+404 MiB, so CI archive size and restore overhead must be measured separately.
+
+All three harnesses also passed concurrently against another empty shared
+directory, with Cargo build-lock waits observed. To test invalidation, the
+HTTP egress guest's success response key was temporarily changed. The normal
+cached `--locked --offline` build recompiled that guest and its real Wasmtime
+test failed on the changed response. Restoring the source caused another
+rebuild and both egress tests passed. The mutation is not part of the change.
+
 ## Focused reproduction
 
 ```sh
 cargo test --locked -p lenso-cli --test mcp \
   stdio_authorized_build_reports_the_same_app_check -- --exact --test-threads=1
 cargo test --locked -p lenso-cli --test configuration_source_dev -- --test-threads=1
+```
+
+To exercise shared Wasm fixture output locally:
+
+```sh
+export LENSO_WASM_FIXTURE_CACHE_DIR="$PWD/.lenso/ci-wasm-fixtures"
+cargo test --locked -p lenso-wasm-component-adapter --test wasm_host
+cargo test --locked -p lenso-http-egress-plugin --test portable_wasm_client
+cargo test --locked -p lenso-web-ingress-plugin --test portable_http_component
 ```
 
 Record toolchain, cache warmth, outer compilation, and test execution separately.

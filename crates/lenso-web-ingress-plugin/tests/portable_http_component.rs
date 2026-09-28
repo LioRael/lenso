@@ -59,7 +59,16 @@ fn plan(wasm: bool) -> ResolvedAppPlan {
 }
 
 fn component() -> (tempfile::NamedTempFile, ArtifactHandle) {
-    let target = tempfile::tempdir().unwrap();
+    let temporary_target = tempfile::tempdir().unwrap();
+    let target = match std::env::var_os("LENSO_WASM_FIXTURE_CACHE_DIR") {
+        Some(root) => {
+            let root = std::path::PathBuf::from(root);
+            assert!(root.is_absolute(), "fixture cache root must be absolute");
+            // Keep nested Cargo's lock separate from the outer workspace build.
+            root.join("wasm-guests")
+        }
+        None => temporary_target.path().to_owned(),
+    };
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures/portable-http-endpoint/guest/Cargo.toml");
     let status = Command::new(env!("CARGO"))
@@ -73,14 +82,12 @@ fn component() -> (tempfile::NamedTempFile, ArtifactHandle) {
         ])
         .arg(&manifest)
         .arg("--target-dir")
-        .arg(target.path())
+        .arg(&target)
         .status()
         .unwrap();
     assert!(status.success(), "portable HTTP guest did not compile");
     let module = std::fs::read(
-        target
-            .path()
-            .join("wasm32-unknown-unknown/release/lenso_portable_http_test_guest.wasm"),
+        target.join("wasm32-unknown-unknown/release/lenso_portable_http_test_guest.wasm"),
     )
     .unwrap();
     let component = wit_component::ComponentEncoder::default()

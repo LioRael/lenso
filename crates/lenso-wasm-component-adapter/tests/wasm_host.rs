@@ -44,10 +44,17 @@ static FIXTURE_TARGET: OnceLock<tempfile::TempDir> = OnceLock::new();
 const NOTIFICATIONS_CAPABILITY_ID: &str = "test.notifications@1";
 const NOTIFICATIONS_VERSION: &str = "1.0.0";
 
-fn fixture_target() -> &'static std::path::Path {
+fn fixture_target() -> std::path::PathBuf {
+    if let Some(root) = std::env::var_os("LENSO_WASM_FIXTURE_CACHE_DIR") {
+        let root = std::path::PathBuf::from(root);
+        assert!(root.is_absolute(), "fixture cache root must be absolute");
+        // Keep nested Cargo's lock separate from the outer workspace build.
+        return root.join("wasm-guests");
+    }
     FIXTURE_TARGET
         .get_or_init(|| tempfile::tempdir().unwrap())
         .path()
+        .to_owned()
 }
 
 fn wasm_fixture(
