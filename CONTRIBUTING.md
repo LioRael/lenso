@@ -61,6 +61,46 @@ Contributors do not need to run every platform or release check. The upstream
 candidate gate supplies the repository's native and portable WebAssembly proof
 when the final change requires it.
 
+### CI feedback and dependency caches
+
+The candidate gate retains workspace Clippy, all workspace tests (including
+doctests), both portable WebAssembly targets, and Rust/Bun conformance. Native
+`cargo check` with the same target/features is covered by Clippy. Formatting
+runs before cache restoration and packaging tests.
+
+`Compile workspace tests` measures the outer Cargo build separately from
+`Test the workspace`. The latter still invokes Cargo normally so doctests are
+not lost; it also includes any builds launched inside integration tests.
+Clippy, test compilation, and target checks upload timestamped Cargo HTML
+timings as a seven-day artifact, including reports available after a failure.
+These reports do not measure nested Cargo invocations or test execution;
+use the test logs and step durations for those.
+
+Baseline: [candidate run 36392186537 at `07247a8`](https://github.com/LioRael/lenso/actions/runs/36392186537)
+had a cold Rust cache. Clippy took 2m24s, the redundant native check 28s,
+and workspace tests 25m50s (including 4m28s of outer compilation).
+`configuration_source_dev` alone ran for 729.59s; its two cases serialize
+independent release-mode App builds. This is the first test-internal
+optimization target, not evidence that packaging or Wasm checks should be
+removed. Cache reuse and timing instrumentation are not a measured 5–10 minute
+gate yet.
+
+GitHub caches are branch-scoped: one `candidate/**` branch cannot restore a
+sibling's cache. Rust caches are therefore saved only on trusted `main`, with
+the same workflow/job keys used by candidates. After this workflow lands,
+seed the default-branch caches using the existing manual trigger:
+
+```sh
+gh workflow run ci.yml --repo LioRael/lenso --ref main
+```
+
+Repeat when dependencies or the toolchain change, or when caches expire.
+This runs the full workflow once; it is not an automatic second gate after
+every landing, and its result does not replace candidate CI. Inspect the
+Rust cache restore logs on the next candidate to confirm reuse. A cache hit
+does not eliminate workspace compilation or isolated fixture builds. Until
+the first successful seed, candidates continue to work with cold caches.
+
 ## Maintainer integration
 
 The maintainer imports the immutable Issue revision into an isolated checkout,
