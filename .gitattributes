@@ -1,0 +1,3 @@
+# Keep checked-in generated Rust stable across Windows checkouts.
+crates/*/src/generated*.rs text eol=lf
+spec/fixtures/*/generated/*.rs text eol=lf
