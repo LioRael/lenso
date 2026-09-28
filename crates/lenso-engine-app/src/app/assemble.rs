@@ -581,11 +581,7 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     super::local_host::verify_dependency_lock_digests(&dependency_locks)?;
     fs::write(
         stage.path().join("local-sources.json"),
-        serde_json::to_vec_pretty(&json!({
-            "schema": "lenso.local-sources.v1", "template": "lenso.local-host@1",
-            "cli_version": env!("CARGO_PKG_VERSION"), "target": lenso_app_authoring::native_host_target(),
-            "sources": sources, "source_digests":source_digests,
-        }))?,
+        serde_json::to_vec_pretty(&local_source_provenance(&sources, &source_digests))?,
     )?;
     if executable {
         fs::write(
@@ -614,6 +610,18 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+fn local_source_provenance(
+    sources: &[lenso_app_authoring::discovery::Candidate],
+    source_digests: &BTreeMap<String, String>,
+) -> serde_json::Value {
+    json!({
+        "schema": "lenso.local-sources.v2", "template": "lenso.local-host@1",
+        "engine_app_version": env!("CARGO_PKG_VERSION"),
+        "target": lenso_app_authoring::native_host_target(),
+        "sources": sources, "source_digests": source_digests,
+    })
 }
 
 pub(super) fn stage_output(root: &Path, parent: &Path) -> anyhow::Result<tempfile::TempDir> {
@@ -851,6 +859,14 @@ mod tests {
     use lenso_plugin_bundle::{
         PluginArtifactV2, PluginImplementationV3, PluginManifest, PluginManifestV3,
     };
+
+    #[test]
+    fn local_source_provenance_identifies_engine_app_not_cli() {
+        let provenance = local_source_provenance(&[], &BTreeMap::new());
+        assert_eq!(provenance["schema"], "lenso.local-sources.v2");
+        assert_eq!(provenance["engine_app_version"], env!("CARGO_PKG_VERSION"));
+        assert!(provenance.get("cli_version").is_none());
+    }
 
     #[test]
     fn explicit_portable_host_choice_selects_exact_v3_implementation_without_fallback() {

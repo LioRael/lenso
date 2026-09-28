@@ -356,6 +356,12 @@ Hosts remain available.
 
 ## Discovery contract
 
+A completed Native build locks `local-sources.json`. New builds use
+`lenso.local-sources.v2`: `engine_app_version` identifies the
+`lenso-engine-app` builder library, not the CLI binary. The facts reader still
+accepts locked v1 distributions; rebuild instead of editing an older artifact
+to change its provenance.
+
 - Paths are relative to the App root, independent of the calling directory.
   Absolute paths and component globs (`*`, `?`, character classes) are supported.
   A directory is scanned recursively; recursive `**` globs are rejected to keep
