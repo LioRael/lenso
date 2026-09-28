@@ -154,6 +154,35 @@ prefetch_dependencies() {
   ' <<<"$metadata"
 }
 
+published_transitive_workspace_dependencies() {
+  local workspace_metadata="$1"
+  local published_metadata="$2"
+  jq -r --slurpfile workspace <(printf '%s\n' "$workspace_metadata") '
+    .packages[]
+    | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
+    | .name as $name | .version as $version
+    | select(any($workspace[0].packages[]; .name == $name and .version == $version))
+    | [$name, $version] | @tsv
+  ' <<<"$published_metadata"
+}
+
+published_workspace_requirements() {
+  local workspace_metadata="$1"
+  local published_metadata="$2"
+  jq -r --slurpfile workspace <(printf '%s\n' "$workspace_metadata") '
+    .packages[]
+    | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
+    | .dependencies[]?
+    | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
+    | .name as $name
+    | [$workspace[0].packages[] | select(.name == $name)] as $matches
+    | if ($matches | length) == 0 then empty
+      elif ($matches | length) == 1 then $matches[0] | [.name, .version] | @tsv
+      else error("published requirement matches multiple workspace packages: " + $name)
+      end
+  ' <<<"$published_metadata" | sort -u
+}
+
 package_index() {
   local package="$1"
   local index
@@ -208,6 +237,64 @@ if (( ${#registry_dependencies[@]} > 0 )); then
     fail "could not fetch exact published out-of-cohort workspace dependencies"
   prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
     fail "could not inspect fetched registry dependencies"
+
+  # Cargo can omit a registry dependency's dev or optional dependencies until
+  # its published source is overlaid into this workspace. Fetch the matching
+  # workspace identity for each named dependency before the offline locked
+  # check; Cargo then validates the published version requirement and lock.
+  prefetch_requested=("${registry_dependencies[@]}")
+  while :; do
+    added=false
+    published_requirements="$(published_workspace_requirements "$metadata" "$prefetch_metadata")" ||
+      fail "could not inspect published workspace requirements"
+    while IFS=$'\t' read -r dependency version; do
+      [[ -n "$dependency" ]] || continue
+      contains "$dependency" "${prefetch_requested[@]}" && continue
+      package_index "$dependency" >/dev/null &&
+        fail "published dependency requires an unshipped cohort package: $dependency@$version"
+      dependency_record="$(jq -ce --arg dependency "$dependency" --arg version "$version" '
+          [.packages[] | select(.name == $dependency and .version == $version)]
+          | if length == 1 then .[0] else error("exact published requirement must match one workspace package") end
+        ' <<<"$metadata")" || fail "could not locate exact published requirement: $dependency@$version"
+      dependency_manifest="$(jq -r '.manifest_path' <<<"$dependency_record")"
+      grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$dependency_manifest" ||
+        fail "published dependency requires a private workspace package: $dependency@$version"
+      printf 'Fetching exact published requirement %s@%s\n' "$dependency" "$version" >&2
+      printf '%s = "=%s"\n' "$dependency" "$version" >>"$prefetch_root/Cargo.toml"
+      prefetch_requested+=("$dependency")
+      added=true
+    done <<<"$published_requirements"
+    [[ "$added" == true ]] || break
+    cargo fetch --manifest-path "$prefetch_root/Cargo.toml" ||
+      fail "could not fetch exact published workspace requirements"
+    prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
+      fail "could not inspect exact published workspace requirements"
+  done
+
+  # A published direct dependency can refer to another crate in this workspace
+  # using only its registry identity. Stage that exact published source too, so
+  # the scratch lock does not gain a second identity for the same local crate.
+  while IFS=$'\t' read -r dependency version; do
+    [[ -n "$dependency" ]] || continue
+    package_index "$dependency" >/dev/null && continue
+    contains "$dependency" "${registry_dependencies[@]-}" && continue
+    dependency_record="$(jq -ce --arg dependency "$dependency" --arg version "$version" '
+        [.packages[] | select(.name == $dependency and .version == $version)]
+        | if length == 1 then .[0] else error("published transitive dependency must match one workspace package") end
+      ' <<<"$metadata")" || fail "could not locate transitive workspace dependency: $dependency@$version"
+    dependency_manifest="$(jq -r '.manifest_path' <<<"$dependency_record")"
+    grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$dependency_manifest" ||
+      fail "transitive workspace dependency is not publish=true: $dependency@$version"
+    dependency_dir="$(cd -- "$(dirname -- "$dependency_manifest")" && pwd -P)"
+    case "$dependency_dir" in
+      "$source_root"/*) ;;
+      *) fail "transitive workspace dependency is outside the exact release snapshot: $dependency@$version" ;;
+    esac
+    registry_dependencies+=("$dependency")
+    registry_versions+=("$version")
+    registry_source_dirs+=("$dependency_dir")
+  done < <(published_transitive_workspace_dependencies "$metadata" "$prefetch_metadata")
+
   mkdir -p "$scratch/published-sources" "$scratch/retired-registry-sources"
   for index in "${!registry_dependencies[@]}"; do
     dependency="${registry_dependencies[$index]}"
@@ -270,37 +357,63 @@ verify_fixture_only_lock_change() {
       sub(/^name = "/, "", owner)
       sub(/"$/, "", owner)
     }
-    /^dependencies = \[$/ { in_dependencies = 1 }
+    /^dependencies = \[$/ {
+      in_dependencies = 1
+      dependency_header = $0
+      retained = ""
+      kept = 0
+      removed = 0
+      next
+    }
     in_dependencies && /^ "[^"]+",$/ {
       dependency = $0
       sub(/^ "/, "", dependency)
       sub(/",$/, "", dependency)
-      if (removable[owner SUBSEP dependency]) next
+      if (removable[owner SUBSEP dependency]) { removed++; next }
+      kept++
+      retained = retained $0 ORS
+      next
     }
-    in_dependencies && /^\]$/ { in_dependencies = 0 }
+    in_dependencies && /^\]$/ {
+      if (kept || !removed) printf "%s\n%s%s\n", dependency_header, retained, $0
+      in_dependencies = 0
+      next
+    }
+    in_dependencies { kept++; retained = retained $0 ORS; next }
     { print }
   ' "$allowed" "$before" >"$expected"
   ! cmp -s "$before" "$after" && cmp -s "$expected" "$after"
 }
 
+append_omitted_private_fixture_edges() {
+  local owner="$1"
+  local manifest="$2"
+  local allowed="$3"
+  local edge_owner fixture
+  while IFS=$'\t' read -r edge_owner fixture; do
+    [[ "$edge_owner" == "$owner" && -n "$fixture" ]] || continue
+    grep -Fq "$fixture" "$manifest" && continue
+    printf '%s\t%s\n' "$owner" "$fixture" >>"$allowed"
+  done <<<"$private_fixture_edges"
+}
+
 validate_or_normalize_scratch_lock() {
   local before="$scratch/before-normalization-Cargo.lock"
   local allowed="$scratch/allowed-private-fixture-edges.tsv"
-  local index owner edge_owner fixture artifact_manifest
+  local index
 
   if (cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null) 2>"$scratch/locked-metadata.err"; then
     return 0
   fi
 
   : >"$allowed"
+  for index in "${!registry_dependencies[@]}"; do
+    append_omitted_private_fixture_edges \
+      "${registry_dependencies[$index]}" "${registry_source_dirs[$index]}/Cargo.toml" "$allowed"
+  done
   for index in "${!completed_packages[@]}"; do
-    owner="${completed_packages[$index]}"
-    artifact_manifest="${completed_dirs[$index]}/Cargo.toml"
-    while IFS=$'\t' read -r edge_owner fixture; do
-      [[ "$edge_owner" == "$owner" && -n "$fixture" ]] || continue
-      grep -Fq "$fixture" "$artifact_manifest" && continue
-      printf '%s\t%s\n' "$owner" "$fixture" >>"$allowed"
-    done <<<"$private_fixture_edges"
+    append_omitted_private_fixture_edges \
+      "${completed_packages[$index]}" "${completed_dirs[$index]}/Cargo.toml" "$allowed"
   done
   if [[ ! -s "$allowed" ]]; then
     sed -n '1,30p' "$scratch/locked-metadata.err" >&2

@@ -67,6 +67,9 @@ name = "fnv"
 version = "1.0.7"
 edition = "2024"
 publish = true
+
+[dev-dependencies]
+test-only-fixture = { path = "../test-only-fixture" }
 EOF
 cat >"$fixture/crates/fnv/src/lib.rs" <<'EOF'
 pub fn placeholder() {}
@@ -139,4 +142,25 @@ for unexpected_lock in "$lock_bad_version" "$lock_bad_checksum" "$lock_bad_edge"
     exit 1
   fi
 done
+
+source <(sed -n '/^published_transitive_workspace_dependencies() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
+workspace_metadata='{"packages":[{"name":"fnv","version":"1.0.7"},{"name":"equivalent","version":"1.0.2"}]}'
+published_metadata='{"packages":[{"name":"fnv","version":"1.0.7","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.2","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.2","source":"git+https://example.invalid/equivalent"},{"name":"unrelated","version":"1.0.0","source":"registry+https://github.com/rust-lang/crates.io-index"}]}'
+transitive_workspace_dependencies="$(published_transitive_workspace_dependencies "$workspace_metadata" "$published_metadata" | sort)"
+if [[ "$transitive_workspace_dependencies" != $'equivalent\t1.0.2\nfnv\t1.0.7' ]]; then
+  printf 'transitive workspace dependency selection was not exact:\n%s\n' "$transitive_workspace_dependencies" >&2
+  exit 1
+fi
+source <(sed -n '/^published_workspace_requirements() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
+published_requirement_metadata='{"packages":[{"name":"registry-parent","version":"1.0.0","source":"registry+https://github.com/rust-lang/crates.io-index","dependencies":[{"name":"equivalent","req":"=1.0.2","source":"registry+https://github.com/rust-lang/crates.io-index","kind":"dev"},{"name":"fnv","req":"^1.0.7","source":"registry+https://github.com/rust-lang/crates.io-index","kind":null,"optional":true},{"name":"equivalent","req":"=1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index","kind":"dev"},{"name":"equivalent","req":"=1.0.2","source":"git+https://example.invalid/equivalent","kind":"dev"}]}]}'
+published_requirements="$(published_workspace_requirements "$workspace_metadata" "$published_requirement_metadata")"
+if [[ "$published_requirements" != $'equivalent\t1.0.2\nfnv\t1.0.7' ]]; then
+  printf 'published workspace requirement selection missed a dev or optional edge:\n%s\n' "$published_requirements" >&2
+  exit 1
+fi
+duplicate_workspace_metadata='{"packages":[{"name":"fnv","version":"1.0.7"},{"name":"fnv","version":"1.0.8"}]}'
+if published_workspace_requirements "$duplicate_workspace_metadata" "$published_requirement_metadata" >/dev/null 2>&1; then
+  printf 'published workspace requirement selection accepted duplicate workspace names\n' >&2
+  exit 1
+fi
 printf '%s\n' 'two-package cohort with published runtime and private dev dependencies passed'
