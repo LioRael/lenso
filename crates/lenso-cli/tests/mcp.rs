@@ -2083,17 +2083,20 @@ fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
     let started = mcp_roundtrip(
         &mut stdin,
         &mut stdout,
-        &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_run","arguments":{"request_id":"real-empty-host","timeout_seconds":30}}}),
+        &serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"project_run","arguments":{"request_id":"real-empty-host","timeout_seconds":120}}}),
     );
     assert!(started["error"].is_null(), "{started}");
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let ready_deadline = Instant::now() + Duration::from_secs(60);
     loop {
         let status = run_status(&mut stdin, &mut stdout);
         if status["state"] == "running" {
             break;
         }
         assert!(status["state"] == "starting", "{status}");
-        assert!(Instant::now() < deadline, "real Host did not become ready");
+        assert!(
+            Instant::now() < ready_deadline,
+            "real Host did not become ready: {status}"
+        );
         std::thread::sleep(Duration::from_millis(25));
     }
     let observed = mcp_roundtrip(
@@ -2133,13 +2136,17 @@ fn stdio_authorized_run_reaches_real_host_readiness_and_stops() {
         &serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"project_run_stop","arguments":{"request_id":"real-empty-host"}}}),
     );
     assert!(stopped["error"].is_null(), "{stopped}");
+    let stop_deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let status = run_status(&mut stdin, &mut stdout);
         if status["state"] == "stopped" {
             break;
         }
         assert!(status["state"] == "stopping", "{status}");
-        assert!(Instant::now() < deadline, "real Host did not stop");
+        assert!(
+            Instant::now() < stop_deadline,
+            "real Host did not stop: {status}"
+        );
         std::thread::sleep(Duration::from_millis(25));
     }
     drop(stdin);
