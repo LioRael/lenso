@@ -144,6 +144,41 @@ package_index() {
   return 1
 }
 
+registry_dependencies=()
+registry_versions=()
+for package in "${packages[@]}"; do
+  while IFS= read -r dependency; do
+    [[ -z "$dependency" ]] && continue
+    package_index "$dependency" >/dev/null && continue
+    contains "$dependency" "${registry_dependencies[@]-}" && continue
+
+    dependency_record="$(jq -ce --arg dependency "$dependency" '
+        [.packages[] | select(.name == $dependency)]
+        | if length == 1 then .[0] else error("path dependency must occur once in workspace metadata") end
+      ' <<<"$metadata")" || fail "out-of-cohort path dependency is not a workspace package: $dependency"
+    dependency_manifest="$(jq -r '.manifest_path' <<<"$dependency_record")"
+    grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$dependency_manifest" ||
+      fail "out-of-cohort workspace dependency is not publish=true: $dependency"
+    registry_dependencies+=("$dependency")
+    registry_versions+=("$(jq -r '.version' <<<"$dependency_record")")
+  done < <(source_dependencies "$package")
+done
+
+if (( ${#registry_dependencies[@]} > 0 )); then
+  prefetch_root="$scratch/registry-dependencies"
+  mkdir -p "$prefetch_root/src"
+  touch "$prefetch_root/src/lib.rs"
+  {
+    printf '%s\n' '[package]' 'name = "lenso-cohort-registry-prefetch"' 'version = "0.0.0"' 'edition = "2024"' '' '[dependencies]'
+    for index in "${!registry_dependencies[@]}"; do
+      printf 'Fetching exact registry package %s@%s\n' "${registry_dependencies[$index]}" "${registry_versions[$index]}" >&2
+      printf '%s = "=%s"\n' "${registry_dependencies[$index]}" "${registry_versions[$index]}"
+    done
+  } >"$prefetch_root/Cargo.toml"
+  cargo fetch --manifest-path "$prefetch_root/Cargo.toml" ||
+    fail "could not fetch exact published out-of-cohort workspace dependencies"
+fi
+
 completed_packages=()
 completed_dirs=()
 
