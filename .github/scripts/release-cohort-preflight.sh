@@ -73,6 +73,7 @@ metadata="$(cd "$source_root" && cargo metadata --locked --no-deps --format-vers
 
 packages=()
 versions=()
+source_dirs=()
 artifact_records='[]'
 while IFS=$'\t' read -r package expected_version; do
   package_record="$(jq -ce --arg package "$package" '
@@ -85,8 +86,14 @@ while IFS=$'\t' read -r package expected_version; do
     fail "release set version for $package is $expected_version, source has $actual_version"
   grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$manifest_path" ||
     fail "package is not in the publish=true allowlist: $package"
+  source_dir="$(cd -- "$(dirname -- "$manifest_path")" && pwd -P)"
+  case "$source_dir" in
+    "$source_root"/*) ;;
+    *) fail "package source is outside the exact release snapshot: $package" ;;
+  esac
   packages+=("$package")
   versions+=("$actual_version")
+  source_dirs+=("$source_dir")
 done < <(jq -r '.[] | [.package_name, .version] | @tsv' <<<"$expected")
 
 report_success() {
@@ -178,7 +185,7 @@ while (( ${#completed_packages[@]} < ${#packages[@]} )); do
     build_completed_patch_args
     (
       cd "$source_root"
-      run_cargo_with_completed_patches metadata --offline --format-version 1 >/dev/null
+      run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null
       run_cargo_with_completed_patches package --locked --offline --no-verify \
         --target-dir "$package_target" -p "$package"
     ) || fail "could not package $package from the exact cohort source"
@@ -196,8 +203,17 @@ while (( ${#completed_packages[@]} < ${#packages[@]} )); do
     [[ "$digest" =~ ^[0-9a-f]{64}$ ]] ||
       fail "could not calculate the SHA-256 digest for $package"
 
+    # Keep path dependencies pointing at this package, but make the packaged
+    # artifact its sole identity in the source workspace and registry patch.
+    source_dir="${source_dirs[$index]}"
+    mkdir -p "$scratch/packed-sources"
+    mv -- "$source_dir" "$scratch/packed-sources/$package-$version" ||
+      fail "could not retire the packed source for $package"
+    ln -s -- "$extracted_dir" "$source_dir" ||
+      fail "could not link the packed artifact for $package"
+
     completed_packages+=("$package")
-    completed_dirs+=("$(cd -- "$extracted_dir" && pwd -P)")
+    completed_dirs+=("$source_dir")
     artifact_records="$(jq -c --arg package "$package" --arg version "$version" --arg digest "$digest" \
       '. + [{package_name: $package, version: $version, sha256: $digest}]' <<<"$artifact_records")"
     made_progress=true

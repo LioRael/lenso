@@ -23,6 +23,8 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown,wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
+      - name: Test release cohort packaging
+        run: bash .github/scripts/test-release-cohort-preflight.sh
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Lint the workspace
