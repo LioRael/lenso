@@ -217,6 +217,13 @@ fn public_build_diagnostic(message: &str, cancelled: bool) -> (&'static str, Opt
                 "Use named fields in #[lenso::plugin]; for a stateless Plugin, declare `struct Name {}` rather than a unit struct.",
             ),
         )
+    } else if message.contains("a Capability client must be namespace-qualified") {
+        (
+            "LENSO_CAPABILITY_CLIENT_NAMESPACE_REQUIRED",
+            Some(
+                "In a #[lenso::plugin] dependency field, use the generated client's qualified path, such as `lenso_capability_secrets::SecretsClient`, not an imported bare `SecretsClient`.",
+            ),
+        )
     } else {
         ("LENSO_BUILD_FAILED", None)
     }
@@ -358,5 +365,39 @@ mod tests {
             public_build_diagnostic("/private/machine-only/credential SECRET_CANARY", false),
             ("LENSO_BUILD_FAILED", None)
         );
+    }
+
+    #[test]
+    fn build_status_exposes_only_the_fixed_client_namespace_hint() {
+        let temp = tempfile::tempdir().unwrap();
+        let script = temp.path().join("failed-build");
+        fs::write(
+            &script,
+            "#!/bin/sh\nprintf '%s\\n' 'error: a Capability client must be namespace-qualified, for example `model::ModelClient`' '/private/machine-only/credential SECRET_CANARY' >&2\nexit 1\n",
+        )
+        .unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+        let controller = BuildController::default();
+        controller
+            .start_with_executable(temp.path(), "client-namespace-error", 5, &[], &script)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let status = controller.status("client-namespace-error").unwrap();
+            if status.state == "failed" {
+                assert_eq!(
+                    status.diagnostic_code,
+                    Some("LENSO_CAPABILITY_CLIENT_NAMESPACE_REQUIRED")
+                );
+                assert!(status.diagnostic_hint.is_some());
+                let public = serde_json::to_string(&status).unwrap();
+                assert!(!public.contains("SECRET_CANARY"));
+                assert!(!public.contains("/private/machine-only/credential"));
+                assert!(!public.contains("model::ModelClient"));
+                break;
+            }
+            assert!(Instant::now() < deadline, "build did not finish");
+            thread::sleep(Duration::from_millis(25));
+        }
     }
 }
