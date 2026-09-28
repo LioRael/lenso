@@ -85,6 +85,10 @@ optimization target, not evidence that packaging or Wasm checks should be
 removed. Cache reuse and timing instrumentation are not a measured 5–10 minute
 gate yet.
 
+See [CI feedback cost and coverage](docs/performance/ci-feedback.md) for
+test-retention decisions, focused reproduction commands, and measured local
+experiments. Local warm-cache results do not establish cold candidate latency.
+
 GitHub caches are branch-scoped: one `candidate/**` branch cannot restore a
 sibling's cache. Rust caches are therefore saved only on trusted `main`, with
 the same workflow/job keys used by candidates. After this workflow lands,
