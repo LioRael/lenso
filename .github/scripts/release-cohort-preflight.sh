@@ -166,7 +166,7 @@ published_transitive_workspace_dependencies() {
   ' <<<"$published_metadata"
 }
 
-published_exact_workspace_requirements() {
+published_workspace_requirements() {
   local workspace_metadata="$1"
   local published_metadata="$2"
   jq -r --slurpfile workspace <(printf '%s\n' "$workspace_metadata") '
@@ -174,10 +174,12 @@ published_exact_workspace_requirements() {
     | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
     | .dependencies[]?
     | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
-    | .name as $name | .req as $requirement
-    | $workspace[0].packages[]
-    | select(.name == $name and ("=" + .version) == $requirement)
-    | [.name, .version] | @tsv
+    | .name as $name
+    | [$workspace[0].packages[] | select(.name == $name)] as $matches
+    | if ($matches | length) == 0 then empty
+      elif ($matches | length) == 1 then $matches[0] | [.name, .version] | @tsv
+      else error("published requirement matches multiple workspace packages: " + $name)
+      end
   ' <<<"$published_metadata" | sort -u
 }
 
@@ -236,12 +238,15 @@ if (( ${#registry_dependencies[@]} > 0 )); then
   prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
     fail "could not inspect fetched registry dependencies"
 
-  # Cargo does not resolve a registry dependency's dev dependencies until its
-  # published source is overlaid into this workspace. Fetch exact workspace
-  # identities named by those manifests before the offline locked check.
+  # Cargo can omit a registry dependency's dev or optional dependencies until
+  # its published source is overlaid into this workspace. Fetch the matching
+  # workspace identity for each named dependency before the offline locked
+  # check; Cargo then validates the published version requirement and lock.
   prefetch_requested=("${registry_dependencies[@]}")
   while :; do
     added=false
+    published_requirements="$(published_workspace_requirements "$metadata" "$prefetch_metadata")" ||
+      fail "could not inspect published workspace requirements"
     while IFS=$'\t' read -r dependency version; do
       [[ -n "$dependency" ]] || continue
       contains "$dependency" "${prefetch_requested[@]}" && continue
@@ -258,7 +263,7 @@ if (( ${#registry_dependencies[@]} > 0 )); then
       printf '%s = "=%s"\n' "$dependency" "$version" >>"$prefetch_root/Cargo.toml"
       prefetch_requested+=("$dependency")
       added=true
-    done < <(published_exact_workspace_requirements "$metadata" "$prefetch_metadata")
+    done <<<"$published_requirements"
     [[ "$added" == true ]] || break
     cargo fetch --manifest-path "$prefetch_root/Cargo.toml" ||
       fail "could not fetch exact published workspace requirements"
