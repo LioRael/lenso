@@ -6,8 +6,13 @@ use std::{
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::Mutex,
     time::{Duration, Instant},
 };
+
+// Both cases compile independent release-mode Apps. Share the runner's small
+// CI machine instead of making their cold builds compete for the same budget.
+static APP_BUILD_TEST: Mutex<()> = Mutex::new(());
 
 struct DevGuard(Child);
 
@@ -193,7 +198,7 @@ fn generation(source: &Path) -> Option<PathBuf> {
 }
 
 fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> PathBuf {
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + Duration::from_secs(300);
     loop {
         for output in generations(source) {
             let state_path = output.join("intent/.lenso/configuration-source-state.json");
@@ -220,6 +225,15 @@ fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> 
             dev.try_wait().unwrap().is_none(),
             "App development Host exited: {}",
             fs::read_to_string(log).unwrap_or_default()
+        );
+        let output = fs::read_to_string(log).unwrap_or_default();
+        assert!(
+            !output.contains("App rebuild failed; edit the source to retry.")
+                && !output
+                    .contains("Configuration candidate failed readiness; candidate not activated")
+                && !output.contains("this session cannot safely retry dynamic activation"),
+            "App build or readiness failed: {:?}",
+            recent_cargo_diagnostics(&output)
         );
         assert!(
             Instant::now() < deadline,
@@ -342,6 +356,9 @@ fn await_source_outage(dev: &mut Child, log: &Path, from: usize) {
     reason = "the ordered outage, pending revision, and verified restart form one Process Host lifecycle"
 )]
 fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
+    let _serial_build = APP_BUILD_TEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let temporary = tempfile::tempdir().unwrap();
     let source = temporary.path().join("source");
     let cli = env!("CARGO_BIN_EXE_lenso");
@@ -376,7 +393,7 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     .unwrap();
     let mut dev = start_dev(cli, &source, &policy, &log, None);
 
-    let deadline = Instant::now() + Duration::from_secs(120);
+    let deadline = Instant::now() + Duration::from_secs(300);
     while !generation(&source).is_some_and(|path| path.join(".lenso/host").is_file()) {
         assert!(dev.0.try_wait().unwrap().is_none());
         let output = fs::read_to_string(&log).unwrap_or_default();
@@ -470,6 +487,9 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
 
 #[test]
 fn external_configuration_changes_openapi_title_after_supervised_restart() {
+    let _serial_build = APP_BUILD_TEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let temporary = tempfile::tempdir().unwrap();
     let source = temporary.path().join("source");
     let cli = env!("CARGO_BIN_EXE_lenso");
