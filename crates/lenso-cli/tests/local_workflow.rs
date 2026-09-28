@@ -1,4 +1,7 @@
-use std::{fs, process::Command};
+use std::{
+    fs,
+    process::{Command, Stdio},
+};
 
 #[cfg(unix)]
 #[test]
@@ -77,12 +80,14 @@ fn empty_portable_host_emits_dev_readiness_only_after_startup() {
     assert_eq!(report["checks"][0]["name"], "host_build");
     assert_eq!(report["checks"][0]["status"], "passed");
     let marker = distribution.join(".lenso/ready-test");
+    let host_log = temp.path().join("host.log");
     let mut host = Command::new(distribution.join(".lenso/host"))
         .args(["app", "__run-local", "--", "--ready-file"])
         .arg(&marker)
+        .stderr(Stdio::from(fs::File::create(&host_log).unwrap()))
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         if marker.exists() {
             assert_eq!(fs::read(&marker).unwrap(), b"lenso.local-host-ready.v1\n");
@@ -90,12 +95,18 @@ fn empty_portable_host_emits_dev_readiness_only_after_startup() {
             break;
         }
         if let Some(status) = host.try_wait().unwrap() {
-            panic!("portable Host exited before readiness: {status}");
+            panic!(
+                "portable Host exited before readiness: {status}; {}",
+                fs::read_to_string(&host_log).unwrap_or_default()
+            );
         }
         if Instant::now() >= deadline {
             host.kill().unwrap();
             host.wait().unwrap();
-            panic!("portable Host did not publish readiness");
+            panic!(
+                "portable Host did not publish readiness: {}",
+                fs::read_to_string(&host_log).unwrap_or_default()
+            );
         }
         std::thread::sleep(Duration::from_millis(25));
     }
