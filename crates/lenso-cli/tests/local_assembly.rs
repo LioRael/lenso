@@ -61,6 +61,20 @@ fn assemble(root: &Path, out: &str) -> std::process::Output {
         .unwrap()
 }
 
+fn assert_no_staged_output(root: &Path) {
+    let generated = root.join(".lenso");
+    if generated.exists() {
+        let entries = fs::read_dir(&generated)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>();
+        assert!(
+            entries.is_empty(),
+            "assembly left staged output: {entries:?}"
+        );
+    }
+}
+
 #[test]
 fn shared_sources_require_explicit_root_intent_and_failed_assembly_is_atomic() {
     let temp = tempfile::tempdir().unwrap();
@@ -71,7 +85,7 @@ fn shared_sources_require_explicit_root_intent_and_failed_assembly_is_atomic() {
     let missing = assemble(root, "missing");
     assert!(!missing.status.success());
     assert!(!root.join("missing").exists());
-    assert!(!root.join(".lenso").exists());
+    assert_no_staged_output(root);
     fs::create_dir_all(root.join("plugins/company.store")).unwrap();
     fs::write(root.join("plugins/company.store/default.toml"), "").unwrap();
     let output = assemble(root, "assembled");
@@ -140,5 +154,5 @@ fn app_defaults_can_be_disabled_without_changing_the_original_root() {
             .len(),
         1
     );
-    assert!(!root.join(".lenso").exists());
+    assert_no_staged_output(root);
 }

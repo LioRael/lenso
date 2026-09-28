@@ -228,6 +228,8 @@ fn signed_dual_distribution_cargo_adopts_and_builds_exact_host() {
     let built = Command::new(cli)
         .args(["app", "build", "--root"])
         .arg(&root)
+        .arg("--trust-linked-build")
+        .arg(format!("example.web@0.4.5={}", digest(&archive_bytes)))
         .current_dir(&root)
         .output()
         .unwrap();

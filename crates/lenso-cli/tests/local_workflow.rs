@@ -146,15 +146,24 @@ fn create_is_configuration_free_and_preserves_existing_projects() {
 
 #[test]
 fn local_build_does_not_change_explicit_host_flag_contract() {
-    for args in [
-        ["app", "build", "--source", "host.ts"],
-        ["app", "build", "--target", "aarch64-apple-darwin"],
+    for (args, exit_code, diagnostic) in [
+        (["app", "build", "--source", "host.ts"], 2, "--out <OUT>"),
+        (
+            ["app", "build", "--target", "aarch64-apple-darwin"],
+            1,
+            "unsupported local App build target",
+        ),
     ] {
         let output = Command::new(env!("CARGO_BIN_EXE_lenso"))
             .args(args)
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.status.code(), Some(exit_code));
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(diagnostic),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 }
 

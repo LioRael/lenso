@@ -47,7 +47,7 @@ fn package_archive(root: &std::path::Path) -> std::path::PathBuf {
         writeln!(&mut patches, "{name}={{git='{url}',rev='{revision}'}}").unwrap();
     }
     let manifest = format!(
-        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.linked-web'\nroot-slot='web'\n[dependencies]\nlenso={{version='=0.5.26',git='{url}',rev='{revision}'}}\n[patch.crates-io]\n{patches}"
+        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.linked-web'\nroot-slot='web'\n[dependencies]\nlenso={{version='=0.5.27',git='{url}',rev='{revision}'}}\n[patch.crates-io]\n{patches}"
     );
     let source = b"#[lenso::plugin(consumer)]\n#[derive(Clone, Debug, Default)]\nstruct Web { value: std::rc::Rc<std::cell::Cell<u8>> }\npub fn link() { link_plugin(); }\n";
     fs::write(root.join("Cargo.toml"), &manifest).unwrap();
@@ -119,6 +119,7 @@ fn assert_mismatched_contract_fails_build(
     output: &Path,
     snapshot: &Path,
     trust: &Path,
+    crate_digest: &str,
 ) {
     let mismatched = root.join("mismatched-contract");
     let input = mismatched.join("implementations/native/example-linked-web-0.4.5.crate");
@@ -172,6 +173,8 @@ fn assert_mismatched_contract_fails_build(
         .current_dir(root)
         .args(["app", "build", "--root", "forged-app", "--out"])
         .arg(root.join("forged-output"))
+        .arg("--trust-linked-build")
+        .arg(format!("example.linked-web@0.4.5={crate_digest}"))
         .output()
         .unwrap();
     assert!(!built.status.success());
@@ -271,7 +274,13 @@ fn ordinary_plugin_pack_emits_a_verified_native_cargo_input_from_exact_crate() {
     assert_eq!(source_lock["v6"]["implementation_id"], "native");
     assert_eq!(source_lock["v6"]["variant_id"], "cargo");
 
-    assert_mismatched_contract_fails_build(root.path(), &output, &snapshot, &trust);
+    assert_mismatched_contract_fails_build(
+        root.path(),
+        &output,
+        &snapshot,
+        &trust,
+        &build_input.digest,
+    );
 }
 
 #[test]
