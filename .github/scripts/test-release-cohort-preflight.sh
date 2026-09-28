@@ -148,4 +148,11 @@ if [[ "$transitive_workspace_dependencies" != $'equivalent\t1.0.2\nfnv\t1.0.7' ]
   printf 'transitive workspace dependency selection was not exact:\n%s\n' "$transitive_workspace_dependencies" >&2
   exit 1
 fi
+source <(sed -n '/^published_exact_workspace_requirements() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
+published_requirement_metadata='{"packages":[{"name":"fnv","version":"1.0.7","source":"registry+https://github.com/rust-lang/crates.io-index","dependencies":[{"name":"equivalent","req":"=1.0.2","source":"registry+https://github.com/rust-lang/crates.io-index","kind":"dev"},{"name":"equivalent","req":"=1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index","kind":"dev"},{"name":"fnv","req":"^1.0.7","source":"registry+https://github.com/rust-lang/crates.io-index","kind":"dev"},{"name":"equivalent","req":"=1.0.2","source":"git+https://example.invalid/equivalent","kind":"dev"}]}]}'
+exact_requirements="$(published_exact_workspace_requirements "$workspace_metadata" "$published_requirement_metadata")"
+if [[ "$exact_requirements" != $'equivalent\t1.0.2' ]]; then
+  printf 'published exact workspace requirement selection was not exact:\n%s\n' "$exact_requirements" >&2
+  exit 1
+fi
 printf '%s\n' 'two-package cohort with published runtime and private dev dependencies passed'

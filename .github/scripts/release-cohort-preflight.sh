@@ -166,6 +166,21 @@ published_transitive_workspace_dependencies() {
   ' <<<"$published_metadata"
 }
 
+published_exact_workspace_requirements() {
+  local workspace_metadata="$1"
+  local published_metadata="$2"
+  jq -r --slurpfile workspace <(printf '%s\n' "$workspace_metadata") '
+    .packages[]
+    | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
+    | .dependencies[]?
+    | select(.source == "registry+https://github.com/rust-lang/crates.io-index")
+    | .name as $name | .req as $requirement
+    | $workspace[0].packages[]
+    | select(.name == $name and ("=" + .version) == $requirement)
+    | [.name, .version] | @tsv
+  ' <<<"$published_metadata" | sort -u
+}
+
 package_index() {
   local package="$1"
   local index
@@ -220,6 +235,36 @@ if (( ${#registry_dependencies[@]} > 0 )); then
     fail "could not fetch exact published out-of-cohort workspace dependencies"
   prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
     fail "could not inspect fetched registry dependencies"
+
+  # Cargo does not resolve a registry dependency's dev dependencies until its
+  # published source is overlaid into this workspace. Fetch exact workspace
+  # identities named by those manifests before the offline locked check.
+  prefetch_requested=("${registry_dependencies[@]}")
+  while :; do
+    added=false
+    while IFS=$'\t' read -r dependency version; do
+      [[ -n "$dependency" ]] || continue
+      contains "$dependency" "${prefetch_requested[@]}" && continue
+      package_index "$dependency" >/dev/null &&
+        fail "published dependency requires an unshipped cohort package: $dependency@$version"
+      dependency_record="$(jq -ce --arg dependency "$dependency" --arg version "$version" '
+          [.packages[] | select(.name == $dependency and .version == $version)]
+          | if length == 1 then .[0] else error("exact published requirement must match one workspace package") end
+        ' <<<"$metadata")" || fail "could not locate exact published requirement: $dependency@$version"
+      dependency_manifest="$(jq -r '.manifest_path' <<<"$dependency_record")"
+      grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$dependency_manifest" ||
+        fail "published dependency requires a private workspace package: $dependency@$version"
+      printf 'Fetching exact published requirement %s@%s\n' "$dependency" "$version" >&2
+      printf '%s = "=%s"\n' "$dependency" "$version" >>"$prefetch_root/Cargo.toml"
+      prefetch_requested+=("$dependency")
+      added=true
+    done < <(published_exact_workspace_requirements "$metadata" "$prefetch_metadata")
+    [[ "$added" == true ]] || break
+    cargo fetch --manifest-path "$prefetch_root/Cargo.toml" ||
+      fail "could not fetch exact published workspace requirements"
+    prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
+      fail "could not inspect exact published workspace requirements"
+  done
 
   # A published direct dependency can refer to another crate in this workspace
   # using only its registry identity. Stage that exact published source too, so
