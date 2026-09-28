@@ -203,6 +203,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(simulated.contains(r##"Bytes::from_static(br#"{"name":"Lenso"}"#)"##));
     let golden_path = files.get(Path::new("WEB_GOLDEN_PATH.md")).unwrap();
     assert!(golden_path.contains("business Capability"));
+    assert!(golden_path.contains("struct Name {}"));
     assert!(golden_path.contains("open_stream"));
     assert!(golden_path.contains("lenso-test@0.1.2"));
     assert!(golden_path.contains("exact registry versions"));

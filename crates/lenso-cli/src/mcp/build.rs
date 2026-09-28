@@ -24,6 +24,8 @@ pub(super) struct BuildStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     diagnostic_code: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostic_hint: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     check: Option<serde_json::Value>,
 }
 
@@ -118,6 +120,7 @@ impl BuildController {
             output: output.clone(),
             timeout_seconds,
             diagnostic_code: None,
+            diagnostic_hint: None,
             check: None,
         };
         state.entries.insert(
@@ -159,17 +162,10 @@ impl BuildController {
                             } else {
                                 "failed"
                             };
-                        entry.status.diagnostic_code = Some(if outcome_uncertain {
-                            "LENSO_BUILD_OUTCOME_UNCERTAIN"
-                        } else if cancelled.load(Ordering::SeqCst) {
-                            "LENSO_BUILD_CANCELLED"
-                        } else if message.contains("execution budget") {
-                            "LENSO_BUILD_TIMEOUT"
-                        } else if message.contains("output exceeds") {
-                            "LENSO_BUILD_OUTPUT_LIMIT"
-                        } else {
-                            "LENSO_BUILD_FAILED"
-                        });
+                        let (code, hint) =
+                            public_build_diagnostic(&message, cancelled.load(Ordering::SeqCst));
+                        entry.status.diagnostic_code = Some(code);
+                        entry.status.diagnostic_hint = hint;
                     }
                 }
             }
@@ -200,6 +196,29 @@ impl BuildController {
         entry.cancelled.store(true, Ordering::SeqCst);
         entry.status.state = "cancelling";
         Ok(entry.status.clone())
+    }
+}
+
+// Build stderr can contain paths, source text, or values printed by build scripts.
+// Only these fixed messages cross the MCP boundary; never echo arbitrary stderr.
+fn public_build_diagnostic(message: &str, cancelled: bool) -> (&'static str, Option<&'static str>) {
+    if message.contains("build output needs reconciliation") {
+        ("LENSO_BUILD_OUTCOME_UNCERTAIN", None)
+    } else if cancelled {
+        ("LENSO_BUILD_CANCELLED", None)
+    } else if message.contains("execution budget") {
+        ("LENSO_BUILD_TIMEOUT", None)
+    } else if message.contains("output exceeds") {
+        ("LENSO_BUILD_OUTPUT_LIMIT", None)
+    } else if message.contains("a struct-level Plugin requires named fields") {
+        (
+            "LENSO_PLUGIN_NAMED_FIELDS_REQUIRED",
+            Some(
+                "Use named fields in #[lenso::plugin]; for a stateless Plugin, declare `struct Name {}` rather than a unit struct.",
+            ),
+        )
+    } else {
+        ("LENSO_BUILD_FAILED", None)
     }
 }
 
@@ -248,7 +267,7 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use super::BuildController;
+    use super::{BuildController, public_build_diagnostic};
 
     #[test]
     fn build_request_is_idempotent_exclusive_and_cancellable() {
@@ -302,5 +321,42 @@ mod tests {
             assert!(Instant::now() < deadline, "build timeout did not finish");
             thread::sleep(Duration::from_millis(25));
         }
+    }
+
+    #[test]
+    fn build_status_exposes_only_a_fixed_compiler_hint() {
+        let temp = tempfile::tempdir().unwrap();
+        let script = temp.path().join("failed-build");
+        fs::write(
+            &script,
+            "#!/bin/sh\nprintf '%s\\n' 'error: a struct-level Plugin requires named fields' '/private/machine-only/credential SECRET_CANARY' >&2\nexit 1\n",
+        )
+        .unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+        let controller = BuildController::default();
+        controller
+            .start_with_executable(temp.path(), "compiler-error", 5, &[], &script)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let status = controller.status("compiler-error").unwrap();
+            if status.state == "failed" {
+                assert_eq!(
+                    status.diagnostic_code,
+                    Some("LENSO_PLUGIN_NAMED_FIELDS_REQUIRED")
+                );
+                assert!(status.diagnostic_hint.is_some());
+                let public = serde_json::to_string(&status).unwrap();
+                assert!(!public.contains("SECRET_CANARY"));
+                assert!(!public.contains("/private/machine-only/credential"));
+                break;
+            }
+            assert!(Instant::now() < deadline, "build did not finish");
+            thread::sleep(Duration::from_millis(25));
+        }
+        assert_eq!(
+            public_build_diagnostic("/private/machine-only/credential SECRET_CANARY", false),
+            ("LENSO_BUILD_FAILED", None)
+        );
     }
 }
