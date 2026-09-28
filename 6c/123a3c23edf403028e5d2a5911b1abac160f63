@@ -1,0 +1,52 @@
+.github/scripts/verify-release-stage-output.sh
+  s_7d146975368699::t_34f49fc822cb97 1-18
+.github/scripts/test-release-scripts.sh
+  s_7d146975368699::t_dc17f68e10ed0a 188-192,210-212
+  s_7d146975368699::t_22cda0a186769c 208
+  s_7d146975368699::t_7141b78ef12fd5 193-203
+  s_7d146975368699::t_63401c611c634f 7-8,10-12,28,30,102-121,125-127,146,150-167,172-176,182-187,204-207,209,213-216
+  s_7d146975368699::t_07d69e9b1d0b4a 217
+.github/release-plz.toml
+  s_7d146975368699::t_34f49fc822cb97 4
+.github/scripts/release-gate.sh
+  s_7d146975368699::t_711b71dca8a6e9 42-43,63-65,109-145,237-238
+CONTRIBUTING.md
+  s_7d146975368699::t_cbc8b9e6260f65 169-170,176
+  s_7d146975368699::t_f6c494ea341353 171-172,178
+  s_7d146975368699::t_fe221e22a82b55 179
+  s_7d146975368699::t_5e8b7804b2755d 180
+  s_7d146975368699::t_18d6a95a0eeb12 186-187
+  s_7d146975368699::t_710fc52d53da6d 184
+  s_7d146975368699::t_4812180e917209 183
+  s_7d146975368699::t_b790f4be0e95eb 181-182
+  s_7d146975368699::t_187328c3f8360b 177
+  s_7d146975368699::t_cea2dae62498c6 188-191
+  s_7d146975368699::t_393033e3558772 185
+  s_7d146975368699::t_0f26f0d7311772 192
+.github/scripts/release-stage-config.sh
+  s_7d146975368699::t_22cda0a186769c 41-44
+  s_7d146975368699::t_34f49fc822cb97 1-40,45-56
+.github/workflows/release-plz.yml
+  s_7d146975368699::t_cea2dae62498c6 84
+  s_7d146975368699::t_22cda0a186769c 153
+  s_7d146975368699::t_d76bdeacb38455 99,128-131
+  s_7d146975368699::t_608151c2228e8c 30-31,51,68,85-88,108-109,132-133,137,141-145,147,151,154-157
+.github/workflows/ci.yml
+  s_7d146975368699::t_b2ad57646df35f 44-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c123a3c23edf403028e5d2a5911b1abac160f63",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
