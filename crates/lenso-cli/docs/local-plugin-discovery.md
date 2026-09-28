@@ -169,11 +169,13 @@ are different permissions and artifacts.
 
 An optional `lenso.marketplace.release-content.v2` snapshot can attach a
 template or development extension to the same exact Plugin ID and version as
-a signed Portable or linked Cargo release. It is a separate signature and
-checkpoint; the v1 release bytes and adoption behavior do not change. Use
-`--linked-snapshot` for a linked-only base, or `--portable-snapshot` for a
-Portable base. The content archive is a local, downloaded `.tar.gz`; this
-command does not fetch its signed URL.
+a signed Portable, linked Cargo, or npm-only package release. It can also
+describe a `content_only` release with no executable or package base. It is a
+separate signature and checkpoint; the v1 release bytes and adoption behavior
+do not change. Use `--linked-snapshot`, `--portable-snapshot`, or
+`--package-snapshot` for the respective signed base. Omit a base snapshot only
+for a signed `content_only` release. The content archive is a local, downloaded
+`.tar.gz`; this command does not fetch its signed URL.
 This content-copy path currently requires Unix filesystem primitives.
 
 ```sh
@@ -189,6 +191,20 @@ lenso app add example.web@1.2.3 --root ./my-app \
   --content-snapshot ./content.json --content-id react-template \
   --content-archive ./react-template.tar.gz \
   --content-destination frontend/from-example
+
+# A content-only template has no fake runtime/package base.
+lenso app add example.starter@1.0.0 --root ./my-app \
+  --trust ./catalog-trust.json --content-snapshot ./content.json \
+  --content-id react-template --content-archive ./react-template.tar.gz \
+  --content-destination frontend/from-starter
+
+# A package-only release can supply optional editable source without
+# installing its npm distribution.
+lenso app add example.web@1.2.3 --root ./my-app \
+  --package-snapshot ./package.json --trust ./catalog-trust.json \
+  --content-snapshot ./content.json --content-id react-template \
+  --content-archive ./react-template.tar.gz \
+  --content-destination frontend/from-package
 ```
 
 Preview verifies both current signed snapshots, the immutable base identity,
