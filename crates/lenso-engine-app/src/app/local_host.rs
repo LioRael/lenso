@@ -14,6 +14,7 @@ use std::{
 
 mod business_snapshot;
 pub(crate) mod facilities;
+mod root_linking;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct AdapterSet {
@@ -152,6 +153,11 @@ pub(super) fn generate(
     let mut web_contract = None;
     let mut business_snapshot = business_snapshot::HostBinding::default();
     let mut facilities = facilities::Sources::default();
+    let mut root_linked = root_linking::Sources::new(
+        candidates
+            .iter()
+            .map(|candidate| candidate.plugin_id.clone()),
+    );
     let mut watch_roots = BTreeSet::new();
     for (index, candidate) in candidates.iter().enumerate() {
         // A portable Cargo Guest can depend on a rust-runtime projection for
@@ -268,6 +274,7 @@ pub(super) fn generate(
                     .iter()
                     .find(|p| p["id"] == id)
                     .context("reachable Cargo package")?;
+                root_linked.select(stage, package)?;
                 collect_local_lenso_patch(&mut local_lenso_patches, package)?;
                 collect_git_lenso_source(&mut git_lenso_source, package)?;
             }
@@ -352,6 +359,21 @@ pub(super) fn generate(
     // Adapters have historically changed the Codec cohort in patch releases.
     // Pin a tested set instead of allowing Cargo to mix distinct traits.
     let cohort = codec_cohorts.first().map_or("0.4", String::as_str);
+    for (index, (plugin_id, package)) in root_linked.packages().enumerate() {
+        let alias = format!("root_plugin_{index}");
+        dependencies.insert(alias.clone(), dependency(package)?);
+        linked.push_str(&format!("{alias}::link_plugin();\n"));
+        business_snapshot.select(&alias, package)?;
+        let root = Path::new(
+            package["manifest_path"]
+                .as_str()
+                .context("linked source manifest")?,
+        )
+        .parent()
+        .context("linked source directory")?;
+        facilities.select(&alias, plugin_id, package, root)?;
+    }
+    root_linked.record(stage)?;
     let local_crates = local_framework_crates_dir(&local_lenso_patches)?;
     let versions = match cohort {
         "0.3" => [
@@ -676,6 +698,17 @@ pub(super) fn generate(
         .filter(|c| is_native(c))
         .map(|c| c.plugin_id.as_str())
         .collect::<BTreeSet<_>>();
+    for (id, package) in root_linked.packages() {
+        expected.insert(id);
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor.plugin_id() == id)
+            .context("Root-selected linked Plugin is absent from registry")?;
+        anyhow::ensure!(
+            Some(descriptor.release_version()) == package["version"].as_str(),
+            "Root-selected linked Plugin `{id}` package version differs from its Descriptor"
+        );
+    }
     if web
         && descriptors
             .iter()
@@ -1202,6 +1235,7 @@ fn distribution_file_paths(stage: &Path, runtime_artifacts: &[Value]) -> Vec<Str
         ".lenso/host-mode",
         ".lenso/host-build.json",
         ".lenso/host-facility-sources.json",
+        ".lenso/root-linked-sources.json",
         "runtime/lenso-resolver",
         "bundles.json",
         "runtime-codecs.json",
