@@ -9,6 +9,9 @@ use lenso_app_authoring::identity::validate_plugin_id_v1;
 
 use super::{PluginNewArgs, PluginRuntimeArg, WASM_TARGET, run_bun, run_cargo};
 
+// Canonical Web routes use the released API; the opt-in Process SDK is versioned separately.
+pub(super) const RELEASED_WEB_HTTP_ENDPOINT_VERSION: &str = "0.3.4";
+
 pub(super) fn create(args: PluginNewArgs) -> anyhow::Result<()> {
     validate_plugin_id_v1(&args.plugin_id)?;
     let base = args.repo_root.unwrap_or(env::current_dir()?);
@@ -117,7 +120,7 @@ root-slot = "web"
 
 [dependencies]
 lenso = "=0.5.27"
-lenso-capability-http-endpoint = "=0.3.5"
+lenso-capability-http-endpoint = "={RELEASED_WEB_HTTP_ENDPOINT_VERSION}"
 serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
 

@@ -13,6 +13,7 @@ use tokio::process::{Child, Command as TokioCommand};
 
 use crate::watch::SourceWatcher;
 
+use super::scaffold::RELEASED_WEB_HTTP_ENDPOINT_VERSION;
 use super::{
     CargoPackage, DevImplementationArg, PluginDevArgs, cargo_target_directory, project_root,
     read_package,
@@ -391,7 +392,7 @@ fn registry_framework_version(name: &str) -> Option<&'static str> {
         "lenso-native-adapter" => "0.3.18",
         "lenso-runner" => "0.2.19",
         "lenso-contract-runtime" => "0.2.0",
-        "lenso-capability-http-endpoint" => "0.3.5",
+        "lenso-capability-http-endpoint" => RELEASED_WEB_HTTP_ENDPOINT_VERSION,
         "lenso-capability-http-stream-endpoint" => "0.1.2",
         "lenso-capability-websocket-endpoint" => "0.1.2",
         "lenso-web-host" => "0.2.4",
@@ -667,6 +668,32 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
     }
 
     #[test]
+    fn unpublished_endpoint_api_requires_explicit_git_source_without_registry_fallback() {
+        let registry =
+            "[dependencies]\nlenso = \"=0.5.27\"\nlenso-capability-http-endpoint = \"=0.3.5\"\n";
+        assert!(
+            source(registry)
+                .unwrap_err()
+                .to_string()
+                .contains("lenso-capability-http-endpoint@0.3.4")
+        );
+        let rev = "2039cee33d8570e8cf202714a9b87c10fb55548b";
+        let manifest = format!(
+            r#"[dependencies]
+lenso = {{ git = "https://github.com/LioRael/lenso", rev = "{rev}" }}
+lenso-capability-http-endpoint = {{ version = "=0.3.5", git = "https://github.com/LioRael/lenso", rev = "{rev}" }}
+"#
+        );
+        assert_eq!(
+            source(&manifest).unwrap(),
+            FrameworkSource::Git {
+                url: "https://github.com/LioRael/lenso".into(),
+                rev: rev.into()
+            }
+        );
+    }
+
+    #[test]
     fn incompatible_registry_and_mixed_sources_fail_closed() {
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
         let git =
@@ -679,7 +706,7 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
                 .contains("lenso@0.5.27")
         );
 
-        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.5\"\n");
+        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.4\"\n");
         assert!(
             source(&mixed)
                 .unwrap_err()

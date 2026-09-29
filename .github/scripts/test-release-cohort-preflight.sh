@@ -203,7 +203,7 @@ edition = "2024"
 [dependencies]
 cohort-alpha = "^0.1.0"
 EOF
-caret_metadata="$(CARGO_HOME="$fixture/cargo-home" cargo metadata --offline --manifest-path "$semver_fixture/Cargo.toml" --format-version 1)" || {
+caret_metadata="$(PATH="$cargo_dir:$PATH" CARGO_HOME="$fixture/cargo-home" cargo metadata --offline --manifest-path "$semver_fixture/Cargo.toml" --format-version 1)" || {
   printf '%s\n' 'Cargo rejected compatible published caret requirement' >&2
   exit 1
 }
@@ -213,7 +213,7 @@ verify_planned_cohort_identities "$caret_metadata" "$planned_set" || {
 }
 sed 's/\^0\.1\.0/=0.1.0/' "$semver_fixture/consumer/Cargo.toml" >"$semver_fixture/consumer/Cargo.toml.next"
 mv "$semver_fixture/consumer/Cargo.toml.next" "$semver_fixture/consumer/Cargo.toml"
-if incompatible_metadata="$(CARGO_HOME="$fixture/cargo-home" cargo metadata --offline --manifest-path "$semver_fixture/Cargo.toml" --format-version 1 2>/dev/null)" &&
+if incompatible_metadata="$(PATH="$cargo_dir:$PATH" CARGO_HOME="$fixture/cargo-home" cargo metadata --offline --manifest-path "$semver_fixture/Cargo.toml" --format-version 1 2>/dev/null)" &&
   verify_planned_cohort_identities "$incompatible_metadata" "$planned_set"; then
   printf '%s\n' 'incompatible published exact pin was accepted' >&2
   exit 1
