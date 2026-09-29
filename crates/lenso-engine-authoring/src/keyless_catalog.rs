@@ -21,7 +21,6 @@ use sha2::{Digest as _, Sha256};
 const MAX_INPUT: u64 = 8 * 1024 * 1024;
 const MAX_OUTPUT: u64 = 2 * 1024 * 1024;
 const REPOSITORY: &str = "LioRael/lenso-marketplace";
-const WORKFLOW: &str = "LioRael/lenso-marketplace/.github/workflows/publish-keyless-catalog.yml";
 const IDENTITY: &str = "https://github.com/LioRael/lenso-marketplace/.github/workflows/publish-keyless-catalog.yml@refs/heads/main";
 
 /// Operator-selected verifier inputs, never derived from the catalog itself.
@@ -334,10 +333,6 @@ fn verification_command(
             REPOSITORY,
             "--hostname",
             "github.com",
-            "--signer-repo",
-            REPOSITORY,
-            "--signer-workflow",
-            WORKFLOW,
             "--source-ref",
             "refs/heads/main",
             "--source-digest",
@@ -525,6 +520,9 @@ mod tests {
         );
         assert!(args.contains(&"--deny-self-hosted-runners".into()));
         assert!(!args.contains(&"--owner".into()));
+        assert!(!args.contains(&"--signer-repo".into()));
+        assert!(!args.contains(&"--signer-workflow".into()));
+        assert!(!args.contains(&"--cert-identity-regex".into()));
     }
 
     #[test]
