@@ -1,0 +1,48 @@
+crates/lenso-bun-adapter/src/adapter_v2.rs
+  h_9d56aba080c170 974-976
+crates/lenso-bun-adapter/src/authoring_v2.rs
+  h_9d56aba080c170 380-390,392-394
+crates/lenso-bun-adapter/src/transport/framed.rs
+  h_9d56aba080c170 559,564,577-632
+crates/lenso-bun-adapter/src/transport/json_rpc.rs
+  h_9d56aba080c170 496-500,970
+crates/lenso-bun-adapter/src/transport/mod.rs
+  h_9d56aba080c170 10,80,120,344-393,427-429,1104-1168,1183
+crates/lenso-bun-adapter/tests/authoring_v2.rs
+  h_9d56aba080c170 43-44,745,783
+crates/lenso-bun-adapter/tests/authoring_v2_recovery/mod.rs
+  h_9d56aba080c170 1-127
+crates/lenso-bun-adapter/tests/bun_cross_runtime.rs
+  h_9d56aba080c170 2981,3025-3029
+crates/lenso-process-adapter/src/bin/test_fixture.rs
+  h_9d56aba080c170 21-48
+crates/lenso-process-adapter/src/bin/test_fixture_v2.rs
+  h_9d56aba080c170 23-24,69-84,132-153,211-213,241,244,248-250
+crates/lenso-process-adapter/src/lib.rs
+  h_9d56aba080c170 582,613-615,709-715,722-729
+crates/lenso-process-adapter/src/shutdown.rs
+  h_9d56aba080c170 54-71,192-217
+crates/lenso-process-adapter/src/v2.rs
+  h_9d56aba080c170 440-444,555,593,599,603,611-617,769-776,830-835,1376-1382,1385,1390-1403,1416-1422
+crates/lenso-process-adapter/tests/process_host.rs
+  h_9d56aba080c170 26-28
+crates/lenso-process-adapter/tests/process_host/recovery.rs
+  h_9d56aba080c170 1-148
+crates/lenso-process-adapter/tests/process_v2_host.rs
+  h_9d56aba080c170 37-39,634-663,684,686-687,690-692,694-699,715,751
+crates/lenso-process-adapter/tests/process_v2_host/recovery.rs
+  h_9d56aba080c170 1-140
+docs/adr/0078-bound-automatic-recovery-to-managed-resource-retirement.md
+  h_9d56aba080c170 29-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e591ffaed80f62cf4eb4c2f8e522dafeea0caf9",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
