@@ -1,0 +1,20 @@
+crates/lenso-cli/src/main.rs
+  s_7d146975368699::t_52696bad004c0f 279,288
+  s_7d146975368699::t_039f5277e65b41 289-297,358-367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d66c8f551e49523026c33e5787cde2d7793a48b9",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
