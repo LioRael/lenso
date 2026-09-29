@@ -1,0 +1,33 @@
+crates/lenso-cli/Cargo.toml
+  s_7d146975368699::t_3da9273e8a275b 3,60,62
+crates/lenso-engine-app/Cargo.toml
+  s_7d146975368699::t_3da9273e8a275b 3,58
+crates/lenso-engine-authoring/Cargo.toml
+  s_7d146975368699::t_3da9273e8a275b 3
+Cargo.lock
+  s_7e49840bd36c3b::t_141d303c402195 2191,2317,2372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a8d9d6bc1824c8521c7b4dc8fa92d801c6554160",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    },
+    "s_7e49840bd36c3b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0eeef-e9f6-7782-9ec5-1b9c88dd6c33",
+        "model": "unknown"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
