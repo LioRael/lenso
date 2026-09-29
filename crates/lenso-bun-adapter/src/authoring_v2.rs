@@ -377,8 +377,21 @@ impl BunAuthoringHost {
         result
     }
 
-    /// Terminates and reaps a child when graceful settlement cannot be established.
+    pub(crate) fn cleanup_crashed(&self) -> Result<bool, RuntimeFailure> {
+        if self.process.begin_shutdown()? {
+            self.process.await_cleanup()?;
+            self.callback.shutdown();
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Reaps a crashed child or terminates one whose graceful settlement is unconfirmed.
     pub fn terminate(&self) -> Result<(), RuntimeFailure> {
+        if self.cleanup_crashed()? {
+            return Ok(());
+        }
         self.callback.shutdown();
         self.process.stop()?;
         self.process.confirmed_shutdown()

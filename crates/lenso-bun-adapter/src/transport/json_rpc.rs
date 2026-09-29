@@ -493,6 +493,11 @@ impl JsonRpcTransport {
     pub(super) fn deactivate(
         self: &Arc<Self>,
     ) -> futures::future::LocalBoxFuture<'static, Result<(), RuntimeFailure>> {
+        match self.process.begin_shutdown() {
+            Ok(false) => {}
+            Ok(true) => return Box::pin(futures::future::ready(self.process.await_cleanup())),
+            Err(error) => return Box::pin(futures::future::ready(Err(error))),
+        }
         let client = Arc::clone(&self.client);
         let session = self.session.clone();
         let capability = self.capability;
@@ -962,7 +967,7 @@ impl JsonRpcTransport {
     }
 
     pub(super) fn shutdown(&self) -> Result<(), RuntimeFailure> {
-        let result = self.process.await_shutdown();
+        let result = self.process.await_cleanup();
         if result.is_err() {
             let _ = self.process.stop();
         }

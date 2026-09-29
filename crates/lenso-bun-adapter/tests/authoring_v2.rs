@@ -40,6 +40,8 @@ use lenso_runtime_codec::{
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
+mod authoring_v2_recovery;
+
 const STORE_ID: &str = "example.document-store@1";
 const SYNC_ID: &str = "example.sync@1";
 const VERSION: &str = "1.0.0";
@@ -740,6 +742,7 @@ fn execution_adapter_runs_authoring_v2_through_kernel_lifecycle() {
     let adapter = BunAdapter::production(bun_binary())
         .with_artifacts(artifacts)
         .with_authoring_codec(EchoCodec);
+    let evidence = adapter.shutdown_evidence();
     let adapters = ExecutionAdapterCatalog::new()
         .with_adapter(NativePluginRegistry::new().with_factory(EmptyConsumerFactory))
         .unwrap()
@@ -777,6 +780,7 @@ fn execution_adapter_runs_authoring_v2_through_kernel_lifecycle() {
         driver.run(app.shutdown(Duration::from_secs(1))),
         lenso_kernel::ShutdownOutcome::Clean
     ));
+    assert!(evidence.is_clean());
 }
 
 #[test]

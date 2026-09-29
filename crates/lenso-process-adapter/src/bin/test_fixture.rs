@@ -18,6 +18,34 @@ impl ProcessPlugin for Echo {
 
     fn invoke(&self, capability: &str, operation: &str, request: Value) -> ProcessOutcome {
         if capability == "example.echo@1" && operation == "echo" {
+            #[cfg(unix)]
+            if request.get("malformed_result") == Some(&Value::Bool(true)) {
+                // This mode must be the first invocation: intentionally bypass the SDK
+                // with two terminal values, then still honor ordinary Host shutdown.
+                println!(r#"{{"type":"result","id":1,"ok":true,"error":true}}"#);
+                let mut line = String::new();
+                // The SDK holds StdinLock while invoking; read the next unbuffered frame.
+                let mut input = std::io::BufReader::new(std::fs::File::open("/dev/stdin").unwrap());
+                std::io::BufRead::read_line(&mut input, &mut line).unwrap();
+                assert_eq!(
+                    serde_json::from_str::<Value>(&line).unwrap()["type"],
+                    "shutdown"
+                );
+                std::process::exit(0);
+            }
+            if request.get("domain_error") == Some(&Value::Bool(true)) {
+                return ProcessOutcome::DomainError(json!({"kind": "rejected"}));
+            }
+            if let Some(path) = request.get("crash_log").and_then(Value::as_str) {
+                use std::io::Write as _;
+                let mut log = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .unwrap();
+                writeln!(log, "invoked").unwrap();
+                std::process::exit(23);
+            }
             if request.get("unicode_failure") == Some(&Value::Bool(true)) {
                 return ProcessOutcome::Failure("界".repeat(200));
             }

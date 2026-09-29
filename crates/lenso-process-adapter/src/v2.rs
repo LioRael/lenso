@@ -437,6 +437,11 @@ impl ProcessGenerationV2 {
             })
     }
 
+    fn reject_guest_protocol(&self) -> RuntimeFailure {
+        self.shutdown_evidence.uncertain();
+        protocol_failure(self.execution_class)
+    }
+
     fn abort(&self) {
         if self.stopped.swap(true, Ordering::AcqRel) {
             return;
@@ -547,7 +552,7 @@ impl JsonRequestTransport for ProcessGenerationV2 {
                         InvocationEvent::Outcome(result) => {
                             result
                                 .validate_for(&params)
-                                .map_err(|error| protocol(self.execution_class, error))?;
+                                .map_err(|_| self.reject_guest_protocol())?;
                             outcome = Some(result.outcome);
                         }
                         InvocationEvent::Outbound(call) => {
@@ -585,17 +590,17 @@ impl JsonRequestTransport for ProcessGenerationV2 {
                             if !cancellation_sent || !ack.accepted || ack.session != self.identity.session
                                 || ack.scope_id != scope.scope_id || ack.correlation_id != correlation_id
                             {
-                                return Err(protocol_failure(self.execution_class));
+                                return Err(self.reject_guest_protocol());
                             }
                         }
                         InvocationEvent::Settlement(settlement) => {
                             settlement
                                 .validate_for(&self.identity)
-                                .map_err(|error| protocol(self.execution_class, error))?;
+                                .map_err(|_| self.reject_guest_protocol())?;
                             if settlement.scope_id != scope.scope_id
                                 || settlement.correlation_id != correlation_id
                             {
-                                return Err(protocol_failure(self.execution_class));
+                                return Err(self.reject_guest_protocol());
                             }
                             self.pending.lock().expect("Process V2 pending").remove(&correlation_id);
                             if cancellation_sent && settlement.state != SettlementState::Completed {
@@ -603,8 +608,13 @@ impl JsonRequestTransport for ProcessGenerationV2 {
                             }
                             return outcome
                                 .take()
-                                .ok_or_else(|| protocol_failure(self.execution_class))
-                                .and_then(|outcome| from_wire_outcome(outcome, self.execution_class));
+                                .ok_or_else(|| self.reject_guest_protocol())
+                                .and_then(|outcome| from_wire_outcome(outcome, self.execution_class))
+                                .inspect_err(|error| {
+                                    if matches!(error, RuntimeFailure::ProtocolViolation { .. }) {
+                                        self.shutdown_evidence.uncertain();
+                                    }
+                                });
                         }
                     },
                     () = cancelled => {
@@ -756,7 +766,14 @@ impl PluginLifecycle for ProcessLifecycleV2 {
             let outcome = async {
                 if generation.failed.load(Ordering::Acquire) {
                     generation.imports.deactivate();
-                    generation.abort();
+                    generation.shutdown_evidence.uncertain();
+                    reap_generation(
+                        &generation,
+                        context.remaining_budget(),
+                        ReapExpectation::FailedGeneration,
+                    )
+                    .await?;
+                    generation.stopped.store(true, Ordering::Release);
                     return Ok(());
                 }
                 let params = StopParams {
@@ -810,7 +827,12 @@ impl PluginLifecycle for ProcessLifecycleV2 {
                     .validate_for(&params)
                     .map_err(|error| protocol(generation.execution_class, error))?;
                 generation.imports.deactivate();
-                reap_after_stopped(&generation, context.remaining_budget()).await?;
+                reap_generation(
+                    &generation,
+                    context.remaining_budget(),
+                    ReapExpectation::SuccessfulStop,
+                )
+                .await?;
                 generation.stopped.store(true, Ordering::Release);
                 if result.hook == StopHookOutcome::Failed {
                     return Err(RuntimeFailure::PluginFailure {
@@ -1351,13 +1373,34 @@ fn terminate_child(child: &mut Child) {
     let _ = child.wait();
 }
 
-async fn reap_after_stopped(
+#[derive(Clone, Copy)]
+enum ReapExpectation {
+    SuccessfulStop,
+    FailedGeneration,
+}
+
+async fn reap_generation(
     generation: &ProcessGenerationV2,
     remaining_budget: Option<Duration>,
+    expectation: ReapExpectation,
 ) -> Result<(), RuntimeFailure> {
     const MAX_EXIT_GRACE: Duration = Duration::from_secs(3);
     const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
+    if matches!(expectation, ReapExpectation::FailedGeneration) {
+        let mut child = generation.child.lock().expect("Process V2 child");
+        let process = child.as_mut().ok_or_else(unavailable)?;
+        if process
+            .try_wait()
+            .map_err(|error| RuntimeFailure::PluginFailure {
+                detail: error.to_string(),
+            })?
+            .is_some()
+        {
+            child.take();
+            return Ok(());
+        }
+    }
     let grace = remaining_budget
         .unwrap_or(MAX_EXIT_GRACE)
         .min(MAX_EXIT_GRACE);
@@ -1370,6 +1413,13 @@ async fn reap_after_stopped(
                 let _ = sender.send(Err(unavailable()));
                 return;
             };
+            if matches!(expectation, ReapExpectation::FailedGeneration) {
+                let result = child.reap_failed(grace).map_err(|error| RuntimeFailure::PluginFailure {
+                    detail: error.to_string(),
+                });
+                let _ = sender.send(result);
+                return;
+            }
             let deadline = Instant::now() + grace;
             let result = loop {
                 match child.try_wait() {

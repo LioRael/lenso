@@ -556,12 +556,12 @@ impl FramedTransport {
     }
 
     pub(super) fn shutdown(&self) -> Result<(), RuntimeFailure> {
-        if self.process.is_alive()
+        if !self.process.begin_shutdown()?
             && let Ok(frame) = encode_frame(&FramedMessage::Shutdown, self.max_frame_bytes)
         {
             let _ = self.control_sender.try_send(frame);
         }
-        let result = self.process.await_shutdown();
+        let result = self.process.await_cleanup();
         if result.is_err() {
             let _ = self.process.stop();
         }
@@ -572,5 +572,61 @@ impl FramedTransport {
 impl Drop for FramedTransport {
     fn drop(&mut self) {
         let _ = self.process.stop();
+    }
+}
+
+#[cfg(all(test, unix))]
+mod shutdown_tests {
+    use super::*;
+
+    #[test]
+    fn live_child_exiting_nonzero_on_shutdown_is_failed_cleanup() {
+        let child = std::process::Command::new("sh")
+            .args(["-c", "dd bs=1 count=1 >/dev/null 2>&1; exit 17"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let process = ProcessState::start(child, "example.greeting@1");
+        let mut stdin = process.take_stdin().unwrap();
+        let (sender, _receiver) = mpsc::sync_channel(1);
+        let (control_sender, control_receiver) = mpsc::sync_channel::<Vec<u8>>(1);
+        let writer = thread::spawn(move || {
+            let frame = control_receiver.recv().unwrap();
+            assert!(matches!(
+                read_frame(&mut &frame[..], 4096).unwrap(),
+                FramedMessage::Shutdown
+            ));
+            stdin.write_all(&frame).unwrap();
+        });
+        let transport = FramedTransport {
+            process: process.clone(),
+            sender: sender.clone(),
+            event_sender: sender,
+            control_sender,
+            pending: Arc::default(),
+            event_pending: Arc::default(),
+            stream_pending: Arc::default(),
+            cancelled: Arc::default(),
+            stream_cancelled: Arc::default(),
+            retired: Arc::default(),
+            stream_retired: Arc::default(),
+            max_frame_bytes: 4096,
+            admission_capacity: 1,
+            event_admission_capacity: 1,
+            stream_admission_capacity: 1,
+            session: "shutdown-test".to_owned(),
+            capability: "example.greeting@1",
+            capability_ids: Arc::default(),
+        };
+        assert!(!process.reaped_crash().unwrap());
+        let result = transport.shutdown();
+        writer.join().unwrap();
+        assert!(
+            result.is_err(),
+            "nonzero exit after Shutdown must fail cleanup"
+        );
+        assert!(transport.shutdown().is_err());
+        assert!(!process.begin_shutdown().unwrap());
+        assert!(!process.shutdown_evidence.is_clean());
     }
 }
