@@ -1,0 +1,161 @@
+crates/lenso-engine-app/src/app/local_workflow.rs
+  s_f4202e28c6b5b1::t_d3219fc8b5f0e9 34-36,76,86
+  s_f4202e28c6b5b1::t_72592505175fe4 31-33,75,85
+  s_f4202e28c6b5b1::t_34c3183481a3fe 28-30,59-61,63,73-74,77,84
+  s_f4202e28c6b5b1::t_2e43e75f272456 308
+  s_f4202e28c6b5b1::t_0880213966e2fa 307,309,326,340,379-381,521,648
+crates/lenso-native-adapter/src/lib.rs
+  s_f4202e28c6b5b1::t_384ae6dc93d2a7 9,11,371,378,385,408-412,420,476-479,591,671
+  s_f4202e28c6b5b1::t_8577ff78ebd6b8 5-6,10,56
+  s_f4202e28c6b5b1::t_c6f3df8199be22 4
+  s_f4202e28c6b5b1::t_3440e44cedf590 561
+  s_f4202e28c6b5b1::t_dbd8dfcfb36052 480-482
+crates/lenso-cli/docs/workers-host-integrations.md
+  s_f4202e28c6b5b1::t_d1f8a85afea27c 60-64
+  s_f4202e28c6b5b1::t_40e50382d499d3 3-26,31-59,65-107,117-156,159-160
+  s_f4202e28c6b5b1::t_0c8482b376ad4b 27-30
+  s_f4202e28c6b5b1::t_d59bd47ec76b41 108-116
+crates/lenso-contract-authoring/tests/source.rs
+  s_f4202e28c6b5b1::t_e474bf1adb60ab 65,97-111
+  s_f4202e28c6b5b1::t_2062a6d447f528 112-128
+crates/lenso-engine-app/src/app/local_workflow/workers/linked/limits.rs
+  s_f4202e28c6b5b1::t_5f9bc16f0aca11 1-63
+  s_f4202e28c6b5b1::t_b7900cd8f68c35 64-85
+crates/lenso-native-adapter/tests/facility_authoring.rs
+  s_f4202e28c6b5b1::t_a08ac0a0ca03a0 1-56
+  s_f4202e28c6b5b1::t_e799afe7a7fd80 57-92
+crates/lenso-engine-app/src/app/local_host/facilities.rs
+  s_f4202e28c6b5b1::t_4b4f3ad1fa2962 1,7-17,20-27,30-38,52-54,69,74,110,118-123,128-131,135,139,143-146,151-154,164-167,175-177,193-194,214-222,224,229-231,240,264-265,273-284,286-290,301,309,320-322
+  s_f4202e28c6b5b1::t_2e43e75f272456 223
+  s_f4202e28c6b5b1::t_8577ff78ebd6b8 18-19,28-29,68,115,136-138,142
+  s_f4202e28c6b5b1::t_be7a5429ce570b 2-6,39-51,55-67,70-73,75-109,111-114,116-117,124-127,140-141,147-150,155-163,168-174,178-182,184-192,195-213,225-228,232-239,243-247,250-257,260-263,266,268-269,272,285,302-308,310-319
+  s_f4202e28c6b5b1::t_72592505175fe4 132-134,241-242,248-249,258-259
+  s_f4202e28c6b5b1::t_d3219fc8b5f0e9 183,267,270-271
+  s_f4202e28c6b5b1::t_d59bd47ec76b41 291-300
+  s_f4202e28c6b5b1::t_b06552ad73ee8c 323-325
+crates/lenso-engine-app/src/app/local_workflow/workers/linked_host.rs
+  s_f4202e28c6b5b1::t_72592505175fe4 22-23,110-111,115
+  s_f4202e28c6b5b1::t_8633588ea2ee9c 1-21,24-109,112-114,116-138
+crates/lenso-engine-app/assets/workers-linked-wrangler.jsonc
+  s_f4202e28c6b5b1::t_0c8482b376ad4b 1-11
+crates/lenso-contract-codegen/src/source.rs
+  s_f4202e28c6b5b1::t_b0ff1b14109b9e 102
+  s_f4202e28c6b5b1::t_d1f8a85afea27c 41-43
+  s_f4202e28c6b5b1::t_0a5879eb49e699 44-48,86,103-107
+crates/lenso-engine-app/src/app/local_workflow/workers/runtime.rs
+  s_f4202e28c6b5b1::t_8633588ea2ee9c 97
+crates/lenso-native-adapter/src/descriptor_admission.rs
+  s_f4202e28c6b5b1::t_c6f3df8199be22 1-141
+  s_f4202e28c6b5b1::t_0a1ba91c4b45f2 142-175
+crates/lenso-native-adapter-macros/src/lib.rs
+  s_f4202e28c6b5b1::t_c6f3df8199be22 11,26,43-44,123,1007-1010
+  s_f4202e28c6b5b1::t_6fa3cd96dae9b5 15,32,82-87,94-96,102,111-112,128-149,1284-1303,3036-3062,3066
+  s_f4202e28c6b5b1::t_3440e44cedf590 150,1094,1518,1904-1913,1996-1999,2004,2011,2019-2023
+  s_f4202e28c6b5b1::t_2efd8720a671d6 1197-1198,1260,1829-1830,2030-2035,2042-2045,2187,2272,2275-2277
+  s_f4202e28c6b5b1::t_452cf2b1d73bdc 1283,1304-1331
+  s_f4202e28c6b5b1::t_a08ac0a0ca03a0 2024-2029,3032-3035,3063-3065
+  s_f4202e28c6b5b1::t_fe303a6af1efe4 673,1006,1042,1093,1196,1282,1482,1517,1591,1828,1870,1877,1882,1903
+crates/lenso-engine-app/src/app/local_host.rs
+  s_f4202e28c6b5b1::t_de3bd10f77e71d 234-244,789
+  s_f4202e28c6b5b1::t_4b4f3ad1fa2962 16,154,226
+  s_f4202e28c6b5b1::t_c14dca9836d67e 228-229
+  s_f4202e28c6b5b1::t_b427612ee5f4ff 245-258,546-547,770-788,790-798,1109,1534-1535,1539-1569
+crates/lenso-engine-app/src/app/local_workflow/workers/tests.rs
+  s_f4202e28c6b5b1::t_e49f4a6ede17fe 226,294,378,451
+  s_f4202e28c6b5b1::t_07e8bcc7e34412 223-224,227,291-292,295,375-376,379,448-449,452
+  s_f4202e28c6b5b1::t_e75120f16d1557 225,293,377,450
+crates/lenso-contract-codegen/src/ir.rs
+  s_f4202e28c6b5b1::t_86e34022bc28b9 10
+crates/lenso-contract-codegen/src/lib.rs
+  s_f4202e28c6b5b1::t_86e34022bc28b9 79,695-699,701,704-716
+  s_f4202e28c6b5b1::t_e474bf1adb60ab 694,700,702-703,717-720,4060,4067-4068
+  s_f4202e28c6b5b1::t_b0ff1b14109b9e 221,453,612,623,633,648,655-660
+crates/lenso-engine-app/src/app/local_host/native_facilities.rs
+  s_f4202e28c6b5b1::t_9409b40f19a966 15
+  s_f4202e28c6b5b1::t_8577ff78ebd6b8 13
+  s_f4202e28c6b5b1::t_4b4f3ad1fa2962 1-12,14,16-36
+crates/lenso-engine-app/src/app/local_runtime_template.rs
+  s_f4202e28c6b5b1::t_4b4f3ad1fa2962 599-600,615-618,896
+  s_f4202e28c6b5b1::t_8577ff78ebd6b8 874,1009
+  s_f4202e28c6b5b1::t_06715fc07ef6fd 619
+.github/workflows/ci.yml
+  s_f4202e28c6b5b1::t_ac76abbc251978 85,89
+crates/lenso-native-adapter/src/facilities.rs
+  s_f4202e28c6b5b1::t_be7a5429ce570b 2,9,12-20,23-26,31-33,35-39,41-45,48,50-58,60-64,69-77,88-90,92-96,99-101,112-119,127-129,138-140,142-172,178-190,192-205
+  s_f4202e28c6b5b1::t_384ae6dc93d2a7 1,3-8,10-11,21-22,27-30,34,40,46-47,49,59,65-68,78-87,91,97-98,102-111,120-126,130-137,141,173-177,191,206-207
+  s_f4202e28c6b5b1::t_ea75388aa21463 208-231
+crates/lenso-cli/docs/execution-target-preflight.md
+  s_f4202e28c6b5b1::t_40e50382d499d3 97-107
+crates/lenso-contract-authoring-macros/src/lib.rs
+  s_f4202e28c6b5b1::t_b0ff1b14109b9e 16,26-27,37-42,49-59,109
+  s_f4202e28c6b5b1::t_3010cfffd05051 60-65,73,103-108,110-111,165
+crates/lenso-native-adapter/src/host_clock.rs
+  s_f4202e28c6b5b1::t_8577ff78ebd6b8 1-56
+  s_f4202e28c6b5b1::t_6fd9954c4a8ec7 57-72
+crates/lenso-native-adapter/src/authoring.rs
+  s_f4202e28c6b5b1::t_384ae6dc93d2a7 53,57
+  s_f4202e28c6b5b1::t_ea47b3a4c194ec 58-61,66,84-88,204,222,231-236,343
+crates/lenso-engine-app/src/app/local_workflow/workers.rs
+  s_f4202e28c6b5b1::t_d3219fc8b5f0e9 44
+  s_f4202e28c6b5b1::t_72592505175fe4 43
+  s_f4202e28c6b5b1::t_34c3183481a3fe 30,41-42,45,69-74,321
+crates/lenso-engine-app/src/app/facility_inspection.rs
+  s_f4202e28c6b5b1::t_cd240a54ebe21f 8-13,16-18,21-34,37-67,70-74,85,105-120,124,129-136,138-143,147,181,183,188-189,191-192,194-195,203-209,264-270,273-277
+  s_f4202e28c6b5b1::t_e827195f9d79e4 1-7,14-15,19-20,35-36,75-84,125-128,160,182,190,193,210-226,255-263,271-272,278-280
+  s_f4202e28c6b5b1::t_2f11ec38cd2579 68-69,86-104,121-123,137,144-146,148-159,161-180,196,201-202
+  s_f4202e28c6b5b1::t_7e104610721f92 184-187,197-200,227-254
+  s_f4202e28c6b5b1::t_e6e64891d0bbd5 281-299
+crates/lenso-contract-codegen/tests/source_snapshot.rs
+  s_f4202e28c6b5b1::t_e474bf1adb60ab 3,62-68,78-80,99-100
+  s_f4202e28c6b5b1::t_d1f8a85afea27c 85-92,98,101
+  s_f4202e28c6b5b1::t_b0ff1b14109b9e 15
+  s_f4202e28c6b5b1::t_e409ecf0441411 69-77,81-84,93-97
+  s_7d146975368699::t_f9ad1c6cf0c9be 102-103
+crates/lenso-native-adapter/tests/same_role_provides.rs
+  s_f4202e28c6b5b1::t_452cf2b1d73bdc 11-12,24-26,37-39,53-54,66-68,79-81,110-112,114-128,133-137,152,159,165-172,174-180
+  s_f4202e28c6b5b1::t_10721196dbc1cd 108-109,113,129-132,138-151,153-158
+crates/lenso-engine-app/src/app/local_workflow/workers/linked.rs
+  s_f4202e28c6b5b1::t_8633588ea2ee9c 1,7-13,15,36-37,39,59,61-62,80,83,92-93,108-109,123-126,133-141,199-200,228,233-234,239,258-259,286-287,294-297,300-303,308-309,338-339,344-347,358,370,381-383,403-407,423-426,430,437-438,454,459-461,581
+  s_f4202e28c6b5b1::t_0c8482b376ad4b 38,277,298,327-330,333-336
+  s_f4202e28c6b5b1::t_5f9bc16f0aca11 14,57-58,160,165-180,266-267,307,396-401
+  s_f4202e28c6b5b1::t_4768798af1e38d 283
+  s_f4202e28c6b5b1::t_06c59053af856d 2-6,16-35,40-55,63-79,81-82,84-91,94-107,110-122,127-132,194-197,201-204,206-227,229-232,235-238,240-256,262-264,274-276,278-282,288-293,310-319,321-325,340-343,348-357,359-369,371-380,409-421,427-429,431-436,439-453,455-458,473-475,479,492-498,500,533-544,551-560,563-565,569-578
+  s_f4202e28c6b5b1::t_868f0146a569c0 60,205,299,320,337,408,422,509-514,524-532,545-550,561-562,566-568,579-580
+  s_f4202e28c6b5b1::t_657fb0a11be441 142-147,154,162-164,181-185,191-193,306,478,484-485,490-491,501
+  s_f4202e28c6b5b1::t_3c2eaded425a79 148-153,155-159,161,186-190,198,257,265,268-273,284-285,384-395,402,476-477,480-483,486-489,504-507,515-523
+  s_f4202e28c6b5b1::t_2f11ec38cd2579 304,326,331-332
+  s_f4202e28c6b5b1::t_93aed02a609cce 56,260-261,305,462-472,499,502-503,508
+  s_f4202e28c6b5b1::t_a0e5ba075b942f 582-584
+crates/lenso-engine-app/src/app/explain.rs
+  s_f4202e28c6b5b1::t_e827195f9d79e4 33-35,54-61,64
+  s_f4202e28c6b5b1::t_82c5c3d6156cb3 62-63,65-66,82-84
+crates/lenso-contract-authoring/src/lib.rs
+  s_f4202e28c6b5b1::t_b0ff1b14109b9e 41,45-49
+  s_f4202e28c6b5b1::t_e94c3bed4a6940 50-51
+crates/lenso-engine-app/src/app.rs
+  s_f4202e28c6b5b1::t_9989f617ba43c7 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed7afe86dae4d8bcd78451c2666c0e0725d14a43",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    },
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
