@@ -92,7 +92,7 @@ source-to-Workers build or a deployment command. The generated distribution's
 README owns its profile-specific instructions and limits:
 
 - [Request-only HTTP Endpoint profile](../../lenso-engine-app/assets/workers-app-README.md).
-- [Local knowledge-settings slice](../../lenso-engine-app/assets/workers-knowledge-settings-README.md).
+- [Plugin-owned local Workers integrations](workers-host-integrations.md).
 
 These source-checkout capabilities do not establish package release availability;
 see [CLI installation](../README.md#install).

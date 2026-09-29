@@ -25,6 +25,12 @@ pub struct BuildArgs {
     /// Jco 1.35.0 executable for a Workers Component build.
     #[arg(long, requires = "target")]
     jco: Option<PathBuf>,
+    /// Plugin-owned Workers Host integration profile; requires explicit code trust.
+    #[arg(long, requires_all = ["target", "trust_workers_integration"], conflicts_with = "source")]
+    workers_integration: Option<PathBuf>,
+    /// Authorize the exact profile and its digest-bound trusted Host JavaScript.
+    #[arg(long, value_name = "sha256:DIGEST", requires = "workers_integration")]
+    trust_workers_integration: Option<String>,
     /// Trust exact adopted linked Cargo or npm build-time code for this unsandboxed build.
     #[arg(
         long,
@@ -54,10 +60,18 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
                 .workers_runtime
                 .context("Workers build needs --workers-runtime pointing to an exact @lenso/workers-runtime package")?,
             jco: args.jco.context("Workers build needs --jco pointing to Jco 1.35.0")?,
+            integration: args.workers_integration,
+            trust_integration: args.trust_workers_integration,
         });
     }
-    if args.workers_runtime.is_some() || args.jco.is_some() {
-        bail!("--workers-runtime and --jco are only for `app build --target workers`");
+    if args.workers_runtime.is_some()
+        || args.jco.is_some()
+        || args.workers_integration.is_some()
+        || args.trust_workers_integration.is_some()
+    {
+        bail!(
+            "Workers runtime, Jco and integration inputs are only for `app build --target workers`"
+        );
     }
     if let Some(source) = args.source {
         if !args.trust_linked_build.is_empty() || !args.portable_implementations.is_empty() {
@@ -490,7 +504,51 @@ mod tests {
 
     use clap::Parser;
 
-    use super::{AppLanguage, CreateArgs, StartArgs, create, prepare_web_starter, start_command};
+    use super::{
+        AppLanguage, BuildArgs, CreateArgs, StartArgs, create, prepare_web_starter, start_command,
+    };
+
+    #[derive(Parser)]
+    struct ParsedBuild {
+        #[command(flatten)]
+        args: BuildArgs,
+    }
+
+    #[test]
+    fn workers_integration_requires_separate_explicit_trust() {
+        assert!(
+            ParsedBuild::try_parse_from([
+                "build",
+                "--target",
+                "workers",
+                "--workers-integration",
+                "integration.json"
+            ])
+            .is_err()
+        );
+        assert!(
+            ParsedBuild::try_parse_from(["build", "--trust-workers-integration", "sha256:pin"])
+                .is_err()
+        );
+        let parsed = ParsedBuild::try_parse_from([
+            "build",
+            "--target",
+            "workers",
+            "--workers-integration",
+            "integration.json",
+            "--trust-workers-integration",
+            "sha256:pin",
+        ])
+        .unwrap();
+        assert_eq!(
+            parsed.args.workers_integration,
+            Some("integration.json".into())
+        );
+        assert_eq!(
+            parsed.args.trust_workers_integration.as_deref(),
+            Some("sha256:pin")
+        );
+    }
 
     #[derive(Parser)]
     struct ParsedStart {
