@@ -71,9 +71,12 @@ impl BunWire {
 
 pub(crate) struct ProcessState {
     child: Mutex<Child>,
+    shutdown_evidence: crate::ShutdownEvidence,
+    clean_recorded: AtomicBool,
     capability: &'static str,
     alive: AtomicBool,
     monitor_started: AtomicBool,
+    forced: AtomicBool,
     failure: Mutex<Option<RuntimeFailure>>,
     diagnostics: Mutex<VecDeque<String>>,
     failure_handler: Mutex<Option<FailureHandler>>,
@@ -94,12 +97,25 @@ impl std::fmt::Debug for ProcessState {
 }
 
 impl ProcessState {
+    #[cfg(test)]
     pub(crate) fn start(child: Child, capability: &'static str) -> Arc<Self> {
+        Self::start_tracked(child, capability, crate::ShutdownEvidence::default())
+    }
+
+    fn start_tracked(
+        child: Child,
+        capability: &'static str,
+        shutdown_evidence: crate::ShutdownEvidence,
+    ) -> Arc<Self> {
+        shutdown_evidence.started();
         Arc::new(Self {
             child: Mutex::new(child),
+            shutdown_evidence,
+            clean_recorded: AtomicBool::new(false),
             capability,
             alive: AtomicBool::new(true),
             monitor_started: AtomicBool::new(false),
+            forced: AtomicBool::new(false),
             failure: Mutex::new(None),
             diagnostics: Mutex::new(VecDeque::new()),
             failure_handler: Mutex::new(None),
@@ -137,6 +153,7 @@ impl ProcessState {
                         }
                         Ok(None) => thread::sleep(Duration::from_millis(10)),
                         Err(detail) => {
+                            monitor.forced.store(true, Ordering::Release);
                             monitor.mark_dead(RuntimeFailure::PluginFailure { detail });
                             break;
                         }
@@ -254,6 +271,7 @@ impl ProcessState {
             }
             Ok(None) => self.failure(),
             Err(error) => {
+                self.forced.store(true, Ordering::Release);
                 self.mark_dead(error.clone());
                 Some(error)
             }
@@ -302,18 +320,55 @@ impl ProcessState {
         receiver
     }
 
-    pub(crate) fn stop(&self) {
-        if let Ok(mut child) = self.child.lock() {
-            let _ = child.kill();
-            let deadline = Instant::now() + PROCESS_STOP_TIMEOUT;
-            loop {
-                match child.try_wait() {
-                    Ok(Some(_)) | Err(_) => break,
-                    Ok(None) if Instant::now() >= deadline => break,
-                    Ok(None) => thread::sleep(Duration::from_millis(10)),
-                }
-            }
+    pub(crate) fn stop(&self) -> Result<(), RuntimeFailure> {
+        let mut child = self
+            .child
+            .lock()
+            .map_err(|_| process_cleanup_failure("lock poisoned"))?;
+        if child
+            .try_wait()
+            .map_err(|error| process_cleanup_failure(error.to_string()))?
+            .is_some()
+        {
+            return Ok(());
         }
+        self.forced.store(true, Ordering::Release);
+        child
+            .kill()
+            .map_err(|error| process_cleanup_failure(error.to_string()))?;
+        wait_for_process_exit(&mut child, PROCESS_STOP_TIMEOUT, false)
+    }
+
+    pub(crate) fn await_shutdown(&self) -> Result<(), RuntimeFailure> {
+        let mut child = self
+            .child
+            .lock()
+            .map_err(|_| process_cleanup_failure("lock poisoned"))?;
+        if self.forced.load(Ordering::Acquire) {
+            return Err(process_cleanup_failure("forced termination was required"));
+        }
+        let result = wait_for_process_exit(&mut child, PROCESS_STOP_TIMEOUT, true);
+        if result.is_ok() {
+            if !self.clean_recorded.swap(true, Ordering::AcqRel) {
+                self.shutdown_evidence.reaped_cleanly();
+            }
+        } else {
+            self.forced.store(true, Ordering::Release);
+        }
+        result
+    }
+
+    pub(crate) fn confirmed_shutdown(&self) -> Result<(), RuntimeFailure> {
+        if self.clean_recorded.load(Ordering::Acquire) && !self.forced.load(Ordering::Acquire) {
+            Ok(())
+        } else {
+            Err(process_cleanup_failure("normal shutdown was not confirmed"))
+        }
+    }
+
+    pub(crate) fn reject_shutdown(&self) {
+        self.forced.store(true, Ordering::Release);
+        self.shutdown_evidence.failed();
     }
 
     fn mark_dead(&self, failure: RuntimeFailure) {
@@ -372,7 +427,34 @@ fn redact_diagnostic_line(line: &str) -> String {
 
 impl Drop for ProcessState {
     fn drop(&mut self) {
-        self.stop();
+        let _ = self.stop();
+    }
+}
+
+fn process_cleanup_failure(detail: impl std::fmt::Display) -> RuntimeFailure {
+    RuntimeFailure::PluginFailure {
+        detail: format!("Bun process cleanup failed: {detail}"),
+    }
+}
+
+fn wait_for_process_exit(
+    child: &mut Child,
+    timeout: Duration,
+    require_success: bool,
+) -> Result<(), RuntimeFailure> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child
+            .try_wait()
+            .map_err(|error| process_cleanup_failure(error.to_string()))?
+        {
+            Some(status) if !require_success || status.success() => return Ok(()),
+            Some(status) => return Err(process_cleanup_failure(format!("exited with {status}"))),
+            None if Instant::now() >= deadline => {
+                return Err(process_cleanup_failure("reap timed out"));
+            }
+            None => thread::sleep(Duration::from_millis(2)),
+        }
     }
 }
 
@@ -541,7 +623,7 @@ impl TransportClient {
         }
     }
 
-    pub(crate) fn shutdown(&self) {
+    pub(crate) fn shutdown(&self) -> Result<(), RuntimeFailure> {
         match self {
             Self::Framed(transport) => transport.shutdown(),
             Self::JsonRpc(transport) => transport.shutdown(),
@@ -736,9 +818,18 @@ fn json_rpc_failure(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn spawn_process(
+    command: std::process::Command,
+    capability: &'static str,
+) -> Result<Arc<ProcessState>, RuntimeFailure> {
+    spawn_process_tracked(command, capability, crate::ShutdownEvidence::default())
+}
+
+pub(crate) fn spawn_process_tracked(
     mut command: std::process::Command,
     capability: &'static str,
+    shutdown_evidence: crate::ShutdownEvidence,
 ) -> Result<Arc<ProcessState>, RuntimeFailure> {
     command.stderr(std::process::Stdio::piped());
     let child = command
@@ -746,7 +837,7 @@ pub(crate) fn spawn_process(
         .map_err(|error| RuntimeFailure::PluginFailure {
             detail: format!("failed to start Bun child process: {error}"),
         })?;
-    let process = ProcessState::start(child, capability);
+    let process = ProcessState::start_tracked(child, capability, shutdown_evidence);
     if let Some(stderr) = process.take_stderr() {
         spawn_output_drain(
             Arc::downgrade(&process),
@@ -871,7 +962,7 @@ pub(crate) fn open_transport(
                         .unwrap_or_else(|| process.decorate_failure(error)));
                 }
                 Err(_) => {
-                    process.stop();
+                    let _ = process.stop();
                     return Err(process.decorate_failure(RuntimeFailure::PluginFailure {
                         detail: "Bun JSON-RPC process readiness timed out".to_owned(),
                     }));
@@ -940,6 +1031,91 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_requires_a_successful_reaped_child() {
+        for (script, successful) in [("exit 0", true), ("exit 7", false)] {
+            let child = std::process::Command::new("sh")
+                .args(["-c", script])
+                .spawn()
+                .unwrap();
+            let process = ProcessState::start(child, "example.greeting@1");
+            assert_eq!(process.await_shutdown().is_ok(), successful);
+            assert!(process.child.lock().unwrap().try_wait().unwrap().is_some());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn forced_cleanup_never_becomes_graceful_shutdown() {
+        let child = std::process::Command::new("sh")
+            .args(["-c", "exec sleep 30"])
+            .spawn()
+            .unwrap();
+        let process = ProcessState::start(child, "example.greeting@1");
+        {
+            let mut child = process.child.lock().unwrap();
+            assert!(wait_for_process_exit(&mut child, Duration::from_millis(10), true).is_err());
+            assert!(child.try_wait().unwrap().is_none());
+        }
+        process.stop().unwrap();
+        assert!(process.await_shutdown().is_err());
+        assert!(process.child.lock().unwrap().try_wait().unwrap().is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_evidence_survives_replacement_and_startup_abandonment() {
+        let evidence = crate::ShutdownEvidence::default();
+        let spawn = |script: &str| {
+            let child = std::process::Command::new("sh")
+                .args(["-c", script])
+                .spawn()
+                .unwrap();
+            ProcessState::start_tracked(child, "example.greeting@1", evidence.clone())
+        };
+        let first = spawn("exec sleep 30");
+        first.stop().unwrap();
+        let replacement = spawn("exit 0");
+        replacement.await_shutdown().unwrap();
+        replacement.await_shutdown().unwrap();
+        drop((first, replacement));
+        assert!(!evidence.is_clean());
+
+        let abandoned = crate::ShutdownEvidence::default();
+        let child = std::process::Command::new("sh")
+            .args(["-c", "exec sleep 30"])
+            .spawn()
+            .unwrap();
+        drop(ProcessState::start_tracked(
+            child,
+            "example.greeting@1",
+            abandoned.clone(),
+        ));
+        assert!(!abandoned.is_clean());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_evidence_requires_all_children_to_exit_cleanly() {
+        let evidence = crate::ShutdownEvidence::default();
+        let spawn = || {
+            let child = std::process::Command::new("sh")
+                .args(["-c", "exit 0"])
+                .spawn()
+                .unwrap();
+            ProcessState::start_tracked(child, "example.greeting@1", evidence.clone())
+        };
+        let first = spawn();
+        let second = spawn();
+        first.await_shutdown().unwrap();
+        assert!(!evidence.is_clean());
+        second.await_shutdown().unwrap();
+        assert!(evidence.is_clean());
+        drop((first, second));
+        assert!(evidence.is_clean());
+    }
 
     #[test]
     fn process_state_reports_exit_to_waiters() {

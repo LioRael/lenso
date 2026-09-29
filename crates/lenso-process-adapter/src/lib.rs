@@ -4,14 +4,18 @@
 //! readiness, cancellation retirement, and cleanup. It intentionally exposes
 //! request-only V1 first; Stream and Host imports fail before readiness.
 
+mod shutdown;
 mod v2;
+
+use shutdown::ManagedChild as Child;
+pub use shutdown::ShutdownEvidence;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     io::{self, BufRead as _, BufReader, BufWriter, Write as _},
     path::{Path, PathBuf},
-    process::{Child, ChildStdin, Command, Stdio},
+    process::{ChildStdin, Command, Stdio},
     rc::Rc,
     sync::{
         Arc, Mutex,
@@ -121,15 +125,23 @@ pub struct ProcessAdapter {
     codecs: BTreeMap<String, Rc<dyn JsonCapabilityCodec>>,
     duplicate_codecs: BTreeSet<String>,
     limits: ProcessLimits,
+    shutdown_evidence: ShutdownEvidence,
 }
 
 impl ProcessAdapter {
+    /// Captures retirement evidence covering this Adapter's entire lifetime.
+    #[must_use]
+    pub fn shutdown_evidence(&self) -> ShutdownEvidence {
+        self.shutdown_evidence.clone()
+    }
+
     pub fn new(artifacts: ArtifactCatalog) -> Self {
         Self {
             artifacts,
             codecs: BTreeMap::new(),
             duplicate_codecs: BTreeSet::new(),
             limits: ProcessLimits::default(),
+            shutdown_evidence: ShutdownEvidence::default(),
         }
     }
 
@@ -175,6 +187,7 @@ impl ProcessAdapter {
                 EXECUTION_CLASS,
                 RUNTIME_PROFILE_V2,
                 ProcessLauncher::direct(),
+                self.shutdown_evidence.clone(),
             );
         }
         if instance.runtime_profile() != RUNTIME_PROFILE_V1 {
@@ -202,7 +215,12 @@ impl ProcessAdapter {
         }
         let artifact = self.artifacts.require(instance.instance_key())?.clone();
         let codecs = codecs_for_instance(instance, &self.codecs)?;
-        let generation = ProcessGeneration::start(artifact, instance, self.limits.clone())?;
+        let generation = ProcessGeneration::start(
+            artifact,
+            instance,
+            self.limits.clone(),
+            &self.shutdown_evidence,
+        )?;
         let endpoints = json_request_endpoints(generation.clone(), codecs);
         Ok(PreparedNativePlugin::with_endpoints(
             endpoints,
@@ -290,9 +308,16 @@ pub struct AuthoringProcessAdapter {
     duplicate_codecs: BTreeSet<String>,
     limits: ProcessLimits,
     launcher: ProcessLauncher,
+    shutdown_evidence: ShutdownEvidence,
 }
 
 impl AuthoringProcessAdapter {
+    /// Captures retirement evidence covering this Adapter's entire lifetime.
+    #[must_use]
+    pub fn shutdown_evidence(&self) -> ShutdownEvidence {
+        self.shutdown_evidence.clone()
+    }
+
     /// Creates a request-only Authoring V2 process engine for one outer Adapter.
     #[must_use]
     pub fn new(
@@ -308,6 +333,7 @@ impl AuthoringProcessAdapter {
             duplicate_codecs: BTreeSet::new(),
             limits: ProcessLimits::default(),
             launcher: ProcessLauncher::direct(),
+            shutdown_evidence: ShutdownEvidence::default(),
         }
     }
 
@@ -371,6 +397,7 @@ impl AuthoringProcessAdapter {
             self.execution_class,
             self.runtime_profile,
             self.launcher.clone(),
+            self.shutdown_evidence.clone(),
         )
     }
 }
@@ -476,6 +503,7 @@ struct ProcessGeneration {
     next_id: AtomicU64,
     failed: Arc<AtomicBool>,
     stopped: AtomicBool,
+    stop_result: Mutex<Option<Result<(), RuntimeFailure>>>,
     limits: ProcessLimits,
 }
 
@@ -495,6 +523,7 @@ impl ProcessGeneration {
         artifact: ArtifactHandle,
         instance: &PluginInstancePlan,
         limits: ProcessLimits,
+        shutdown_evidence: &ShutdownEvidence,
     ) -> Result<Rc<Self>, RuntimeFailure> {
         let executable = artifact.path().to_path_buf();
         let mut command = Command::new(&executable);
@@ -509,7 +538,7 @@ impl ProcessGeneration {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = command
+        let child = command
             .spawn()
             .map_err(|error| RuntimeFailure::PluginFailure {
                 detail: if error.kind() == io::ErrorKind::PermissionDenied {
@@ -521,6 +550,7 @@ impl ProcessGeneration {
                     format!("failed to start Process Plugin: {error}")
                 },
             })?;
+        let mut child = shutdown_evidence.track(child);
         let stdin = child.stdin.take().ok_or_else(|| RuntimeFailure::Internal {
             detail: "Process Plugin stdin was not piped".to_owned(),
         })?;
@@ -641,6 +671,7 @@ impl ProcessGeneration {
             next_id: AtomicU64::new(1),
             failed,
             stopped: AtomicBool::new(false),
+            stop_result: Mutex::new(None),
             limits,
         }))
     }
@@ -661,19 +692,37 @@ impl ProcessGeneration {
             .map_err(|error| process_io(&error))
     }
 
-    fn stop(&self) {
+    fn stop(&self) -> Result<(), RuntimeFailure> {
+        let mut result = self.stop_result.lock().expect("process stop result");
+        if let Some(result) = result.as_ref() {
+            return result.clone();
+        }
         if self.stopped.swap(true, Ordering::AcqRel) {
-            return;
+            return Err(RuntimeFailure::PluginFailure {
+                detail: "Process Plugin was forcibly retired".to_owned(),
+            });
         }
-        let _ = self.send(&HostFrame::Shutdown);
-        if let Some(mut child) = self.child.lock().expect("process child").take() {
+        let outcome = self.send(&HostFrame::Shutdown).and_then(|()| {
+            let mut child = self.child.lock().expect("process child");
+            let child = child
+                .as_mut()
+                .ok_or_else(|| RuntimeFailure::PluginFailure {
+                    detail: "Process Plugin child termination is unconfirmed".to_owned(),
+                })?;
+            wait_for_shutdown(child, self.limits.cancellation_settlement_timeout)
+        });
+        if outcome.is_err()
+            && let Some(child) = self.child.lock().expect("process child").as_mut()
+        {
+            // Forced cleanup is best effort, never evidence of a graceful stop.
             let _ = child.kill();
-            let _ = child.wait();
+            let _ = wait_for_shutdown(child, self.limits.cancellation_settlement_timeout);
         }
-        if let Some(reader) = self.reader.lock().expect("process reader").take() {
-            let _ = reader.join();
-        }
+        // A guest can leak its stdout to unmanaged descendants; do not block on EOF.
+        self.reader.lock().expect("process reader").take();
         retire_pending(&self.pending, &self.failed, "Process Plugin stopped");
+        *result = Some(outcome.clone());
+        outcome
     }
 
     fn abort(&self) {
@@ -801,7 +850,7 @@ impl JsonRequestTransport for ProcessGeneration {
 
 impl Drop for ProcessGeneration {
     fn drop(&mut self) {
-        self.stop();
+        let _ = self.stop();
     }
 }
 
@@ -812,8 +861,27 @@ struct ProcessLifecycle {
 
 impl PluginLifecycle for ProcessLifecycle {
     fn deactivate(&self, _: lenso_kernel::DeactivateContext) -> lenso_kernel::PluginFuture {
-        self.generation.stop();
-        Box::pin(futures::future::ready(Ok(())))
+        Box::pin(futures::future::ready(self.generation.stop()))
+    }
+}
+
+fn wait_for_shutdown(child: &mut Child, timeout: Duration) -> Result<(), RuntimeFailure> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait().map_err(|error| process_io(&error))? {
+            Some(status) if status.success() => return Ok(()),
+            Some(status) => {
+                return Err(RuntimeFailure::PluginFailure {
+                    detail: format!("Process Plugin shutdown exited with {status}"),
+                });
+            }
+            None if std::time::Instant::now() >= deadline => {
+                return Err(RuntimeFailure::PluginFailure {
+                    detail: "Process Plugin shutdown timed out; forced cleanup required".to_owned(),
+                });
+            }
+            None => thread::sleep(Duration::from_millis(2)),
+        }
     }
 }
 
@@ -899,6 +967,34 @@ fn protocol_failure() -> RuntimeFailure {
 #[cfg(test)]
 mod authoring_process_adapter_tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_requires_a_successful_reaped_child() {
+        for (script, successful) in [("exit 0", true), ("exit 7", false)] {
+            let mut child = ShutdownEvidence::default()
+                .track(Command::new("sh").args(["-c", script]).spawn().unwrap());
+            assert_eq!(
+                wait_for_shutdown(&mut child, Duration::from_secs(1)).is_ok(),
+                successful
+            );
+            assert!(child.try_wait().unwrap().is_some());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_timeout_does_not_confirm_cleanup() {
+        let child = Command::new("sh")
+            .args(["-c", "exec sleep 30"])
+            .spawn()
+            .unwrap();
+        let mut child = ShutdownEvidence::default().track(child);
+        assert!(wait_for_shutdown(&mut child, Duration::from_millis(10)).is_err());
+        assert!(child.try_wait().unwrap().is_none());
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
 
     const FIXTURE_EXECUTION_CLASS: &str = "example.language@1";
     const FIXTURE_RUNTIME_PROFILE: &str = "example.language-authoring@2";

@@ -108,6 +108,8 @@ struct BunGenerationV2 {
     shared_scopes: SharedScopes,
     settlements: SettlementSenders,
     stop_started: AtomicBool,
+    termination_result: RefCell<Option<Result<(), RuntimeFailure>>>,
+    deactivation_result: RefCell<Option<Result<(), RuntimeFailure>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -128,6 +130,28 @@ impl std::fmt::Debug for BunGenerationV2 {
 }
 
 impl BunGenerationV2 {
+    fn record_deactivation(
+        &self,
+        outcome: Result<(), RuntimeFailure>,
+    ) -> Result<(), RuntimeFailure> {
+        if outcome.is_err() {
+            self.config.shutdown_evidence.failed();
+        }
+        *self.deactivation_result.borrow_mut() = Some(outcome.clone());
+        outcome
+    }
+
+    fn deactivation_outcome(&self) -> Result<(), RuntimeFailure> {
+        self.deactivation_result
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| {
+                Err(protocol(
+                    "Bun shutdown completion is unconfirmed".to_owned(),
+                ))
+            })
+    }
+
     fn new(
         artifact: ArtifactHandle,
         instance: PluginInstancePlan,
@@ -183,6 +207,8 @@ impl BunGenerationV2 {
             shared_scopes: SharedScopes::default(),
             settlements: SettlementSenders::default(),
             stop_started: AtomicBool::new(false),
+            termination_result: RefCell::new(None),
+            deactivation_result: RefCell::new(None),
         }))
     }
 
@@ -285,15 +311,16 @@ impl BunGenerationV2 {
         Ok(initialization)
     }
 
-    fn terminate(&self) {
+    fn terminate(&self) -> Result<(), RuntimeFailure> {
         if let Some(host) = self.host.borrow_mut().take() {
-            host.terminate();
+            *self.termination_result.borrow_mut() = Some(host.terminate());
         }
         self.settlements.lock().expect("Bun settlements").clear();
         self.shared_scopes.lock().expect("Bun scopes").clear();
         self.contexts.borrow_mut().clear();
         self.outbound_receive_sequences.borrow_mut().clear();
         self.imports.deactivate();
+        self.termination_result.borrow().clone().unwrap_or(Ok(()))
     }
 }
 
@@ -406,7 +433,7 @@ impl JsonRequestTransport for BunGenerationV2 {
                         if value.scope_id != scope.scope_id
                             || value.correlation_id != correlation_id
                         {
-                            self.terminate();
+                            let _ = self.terminate();
                             return Err(protocol("Bun settlement identity mismatch"));
                         }
                         settled = Some(value.state);
@@ -426,7 +453,7 @@ impl JsonRequestTransport for BunGenerationV2 {
                             .name(format!("lenso-bun-v2-cancel-{correlation_id}"))
                             .spawn(move || match cancel_host.cancel(cancel) {
                                 Ok(ack) if ack.validate_for(&identity).is_ok() => {}
-                                _ => cancel_host.terminate(),
+                                _ => { let _ = cancel_host.terminate(); },
                             });
                         arm_termination(
                             host.clone(),
@@ -609,7 +636,7 @@ impl JsonStreamTransport for BunGenerationV2 {
                             || value.correlation_id != correlation_id
                         {
                             self.retire_invocation(&correlation_id, &scope.scope_id);
-                            self.terminate();
+                            let _ = self.terminate();
                             return Err(protocol("Bun Stream open settlement identity mismatch"));
                         }
                         settled = Some(value.state);
@@ -629,7 +656,7 @@ impl JsonStreamTransport for BunGenerationV2 {
                             .name(format!("lenso-bun-v2-stream-open-cancel-{correlation_id}"))
                             .spawn(move || match cancel_host.cancel(cancel) {
                                 Ok(ack) if ack.validate_for(&identity).is_ok() => {}
-                                _ => cancel_host.terminate(),
+                                _ => { let _ = cancel_host.terminate(); },
                             });
                         arm_termination(
                             host.clone(),
@@ -798,7 +825,7 @@ impl JsonStreamSessionTransport for BunStreamSessionV2 {
         let host = self.host.clone();
         let _ = thread::Builder::new().name(format!("lenso-bun-v2-stream-cancel-{}", self.stream_id)).spawn(move || {
             if !matches!(host.cancel_stream(&params), Ok(result) if result.outcome == StreamActionOutcome::Accepted) {
-                host.terminate();
+                let _ = host.terminate();
             }
         });
     }
@@ -860,11 +887,12 @@ impl PluginLifecycle for BunLifecycleV2 {
                 scopes: generation.shared_scopes.clone(),
                 settlements: generation.settlements.clone(),
             };
-            let host = Arc::new(BunAuthoringHost::start(
+            let host = Arc::new(BunAuthoringHost::start_tracked(
                 &generation.config.bun_binary,
                 generation.artifact.path(),
                 initialization.clone(),
                 callback,
+                generation.config.shutdown_evidence.clone(),
             )?);
             let exit = host.exit_waiter();
             generation.initialization.replace(Some(initialization));
@@ -937,60 +965,64 @@ impl PluginLifecycle for BunLifecycleV2 {
         let generation = self.generation.clone();
         Box::pin(async move {
             if generation.stop_started.swap(true, Ordering::AcqRel) {
-                return Ok(());
+                return generation.deactivation_outcome();
             }
-            let Some(host) = generation.host.borrow().clone() else {
-                generation.terminate();
-                return Ok(());
-            };
-            let params = StopParams {
-                session: generation.identity.session.clone(),
-                cleanup_scope_id: "cleanup-1".to_owned(),
-                remaining_budget_nanos: duration_nanos(context.remaining_budget()),
-            };
-            let scope = lifecycle_scope(&params.cleanup_scope_id, &params.remaining_budget_nanos)?;
-            let invocation_context = context.dependency_invocation_context()?;
-            generation
-                .contexts
-                .borrow_mut()
-                .insert(scope.scope_id.clone(), invocation_context);
-            generation
-                .shared_scopes
-                .lock()
-                .expect("Bun scopes")
-                .insert(scope.scope_id.clone(), scope.clone());
-            let (callback_sender, mut callback_receiver) =
-                mpsc::channel(generation.config.request_queue_capacity);
-            let sender = generation
-                .callback_sender
-                .borrow()
-                .clone()
-                .ok_or(RuntimeFailure::AdmissionClosed)?;
-            *sender.lock().expect("Bun callback sender") = callback_sender;
-            let request = params.clone();
-            let rpc = spawn_rpc("stop", move || host.stop(request))?;
-            let result = await_lifecycle_rpc(
-                rpc,
-                &mut callback_receiver,
-                context.cancellation(),
-                &generation,
-            )
+            let outcome = async {
+                let Some(host) = generation.host.borrow().clone() else {
+                    return generation.terminate();
+                };
+                let params = StopParams {
+                    session: generation.identity.session.clone(),
+                    cleanup_scope_id: "cleanup-1".to_owned(),
+                    remaining_budget_nanos: duration_nanos(context.remaining_budget()),
+                };
+                let scope =
+                    lifecycle_scope(&params.cleanup_scope_id, &params.remaining_budget_nanos)?;
+                let invocation_context = context.dependency_invocation_context()?;
+                generation
+                    .contexts
+                    .borrow_mut()
+                    .insert(scope.scope_id.clone(), invocation_context);
+                generation
+                    .shared_scopes
+                    .lock()
+                    .expect("Bun scopes")
+                    .insert(scope.scope_id.clone(), scope.clone());
+                let (callback_sender, mut callback_receiver) =
+                    mpsc::channel(generation.config.request_queue_capacity);
+                let sender = generation
+                    .callback_sender
+                    .borrow()
+                    .clone()
+                    .ok_or(RuntimeFailure::AdmissionClosed)?;
+                *sender.lock().expect("Bun callback sender") = callback_sender;
+                let request = params.clone();
+                let rpc = spawn_rpc("stop", move || host.stop(request))?;
+                let result = await_lifecycle_rpc(
+                    rpc,
+                    &mut callback_receiver,
+                    context.cancellation(),
+                    &generation,
+                )
+                .await;
+                generation.retire_lifecycle(&scope.scope_id);
+                let result = result?;
+                result
+                    .validate_for(&params)
+                    .map_err(|error| protocol(error.to_string()))?;
+                generation.terminate()?;
+                if result.hook == StopHookOutcome::Failed {
+                    return Err(RuntimeFailure::PluginFailure {
+                        detail: result.diagnostics.first().map_or_else(
+                            || "Bun Authoring V2 stop failed".to_owned(),
+                            |diagnostic| diagnostic.detail.clone(),
+                        ),
+                    });
+                }
+                Ok(())
+            }
             .await;
-            generation.retire_lifecycle(&scope.scope_id);
-            let result = result?;
-            result
-                .validate_for(&params)
-                .map_err(|error| protocol(error.to_string()))?;
-            generation.terminate();
-            if result.hook == StopHookOutcome::Failed {
-                return Err(RuntimeFailure::PluginFailure {
-                    detail: result.diagnostics.first().map_or_else(
-                        || "Bun Authoring V2 stop failed".to_owned(),
-                        |diagnostic| diagnostic.detail.clone(),
-                    ),
-                });
-            }
-            Ok(())
+            generation.record_deactivation(outcome)
         })
     }
 }
@@ -1000,10 +1032,63 @@ struct BunV2Resource {
     generation: Rc<BunGenerationV2>,
 }
 
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+    use sha2::Sha256;
+
+    #[test]
+    fn failed_stop_is_not_erased_by_successful_process_cleanup() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("plugin.js");
+        let bytes = b"export {};";
+        std::fs::write(&path, bytes).unwrap();
+        let digest = format!("sha256:{}", hex::encode(Sha256::digest(bytes)));
+        let artifact = ArtifactHandle::open(&path, &digest, bytes.len() as u64).unwrap();
+        let config = BunAdapterConfig::new("bun", crate::BunWire::JsonRpcHttp);
+        let evidence = config.shutdown_evidence.clone();
+        let generation = BunGenerationV2::new(
+            artifact,
+            PluginInstancePlan::new("test", "test.plugin"),
+            Vec::new(),
+            Vec::new(),
+            Rc::new(JsonHostImports::new(Vec::new(), 0).unwrap()),
+            config,
+        )
+        .unwrap();
+        generation.stop_started.store(true, Ordering::Release);
+        let failure = RuntimeFailure::PluginFailure {
+            detail: "stop hook failed".to_owned(),
+        };
+        assert!(
+            generation
+                .record_deactivation(Err(failure.clone()))
+                .is_err()
+        );
+        assert!(generation.terminate().is_ok());
+        assert_eq!(generation.deactivation_outcome(), Err(failure.clone()));
+        let resource = BunV2Resource { generation };
+        assert_eq!(
+            futures::executor::block_on(resource.release()),
+            Err(failure.clone())
+        );
+        assert_eq!(
+            futures::executor::block_on(resource.release()),
+            Err(failure)
+        );
+        assert!(!evidence.is_clean());
+    }
+}
+
 impl ManagedResource for BunV2Resource {
     fn release(&self) -> lenso_kernel::ResourceFuture {
-        self.generation.terminate();
-        Box::pin(futures::future::ready(Ok(())))
+        let termination = self.generation.terminate();
+        let deactivation = if self.generation.stop_started.load(Ordering::Acquire) {
+            self.generation.deactivation_outcome()
+        } else {
+            Ok(())
+        };
+        Box::pin(futures::future::ready(deactivation.and(termination)))
     }
 }
 
@@ -1532,7 +1617,7 @@ async fn await_lifecycle_rpc<T>(
             response = response => return response.map_err(|_| unavailable())?,
             callback = callback => {
                 let Some(callback) = callback else {
-                    generation.terminate();
+                    let _ = generation.terminate();
                     return Err(unavailable());
                 };
                 let initialization = generation
@@ -1549,7 +1634,7 @@ async fn await_lifecycle_rpc<T>(
                 ).await;
             },
             () = cancelled => {
-                generation.terminate();
+                let _ = generation.terminate();
                 return Err(RuntimeFailure::AdmissionClosed);
             }
         }
@@ -1591,7 +1676,7 @@ fn arm_termination(
                 .expect("Bun settlements")
                 .contains_key(&correlation_id)
             {
-                host.terminate();
+                let _ = host.terminate();
             }
         });
 }
@@ -1853,6 +1938,6 @@ fn unavailable() -> RuntimeFailure {
 
 impl Drop for BunGenerationV2 {
     fn drop(&mut self) {
-        self.terminate();
+        let _ = self.terminate();
     }
 }

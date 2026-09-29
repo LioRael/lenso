@@ -13,6 +13,7 @@ pub mod process_v1;
 mod protocol;
 mod request;
 mod server;
+mod shutdown;
 mod target_capabilities;
 mod transport;
 
@@ -30,6 +31,7 @@ pub use server::{
     BunProviderStream, BunRequest, BunResponse, BunStreamAction, BunStreamEvent,
     BunStreamOpenResponse, BunStreamReceive,
 };
+pub use shutdown::ShutdownEvidence;
 pub use target_capabilities::{
     BunExecutionTargetCapability, BunExecutionTargetCapabilityProfile,
     EXECUTION_TARGET_CAPABILITY_PROFILE_CONTRACT, bun_authoring_target_capability_profile,

@@ -66,7 +66,7 @@ pub(crate) fn open_framed(
         if let Ok(result) = handshake_receiver.recv_timeout(PROCESS_STARTUP_TIMEOUT) {
             result?
         } else {
-            process.stop();
+            let _ = process.stop();
             return Err(RuntimeFailure::PluginFailure {
                 detail: "Bun framed-stdio handshake timed out".to_owned(),
             });
@@ -555,18 +555,22 @@ impl FramedTransport {
         }
     }
 
-    pub(super) fn shutdown(&self) {
+    pub(super) fn shutdown(&self) -> Result<(), RuntimeFailure> {
         if self.process.is_alive()
             && let Ok(frame) = encode_frame(&FramedMessage::Shutdown, self.max_frame_bytes)
         {
             let _ = self.control_sender.try_send(frame);
         }
-        self.process.stop();
+        let result = self.process.await_shutdown();
+        if result.is_err() {
+            let _ = self.process.stop();
+        }
+        result
     }
 }
 
 impl Drop for FramedTransport {
     fn drop(&mut self) {
-        self.process.stop();
+        let _ = self.process.stop();
     }
 }

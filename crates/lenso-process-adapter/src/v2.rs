@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::{self, BufRead as _, BufReader, BufWriter, Write as _},
-    process::{Child, ChildStdin, Stdio},
+    process::{ChildStdin, Stdio},
     rc::Rc,
     sync::{
         Arc, Mutex,
@@ -36,7 +36,7 @@ use lenso_runtime_codec::{
 use serde::de::DeserializeOwned;
 use sha2::{Digest as _, Sha256};
 
-use super::{ProcessLauncher, ProcessLimits, invalid};
+use super::{Child, ProcessLauncher, ProcessLimits, ShutdownEvidence, invalid};
 
 static NEXT_PROCESS_SESSION: AtomicU64 = AtomicU64::new(1);
 
@@ -78,8 +78,13 @@ struct ProcessExecutionProfile {
     execution_class: &'static str,
     runtime_profile: &'static str,
     launcher: ProcessLauncher,
+    shutdown_evidence: ShutdownEvidence,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the private constructor binds the selected execution profile and its retirement witness"
+)]
 pub(super) fn prepare_instance(
     artifacts: &ArtifactCatalog,
     codecs: &BTreeMap<String, Rc<dyn JsonCapabilityCodec>>,
@@ -88,6 +93,7 @@ pub(super) fn prepare_instance(
     execution_class: &'static str,
     runtime_profile: &'static str,
     launcher: ProcessLauncher,
+    shutdown_evidence: ShutdownEvidence,
 ) -> Result<PreparedNativePlugin, RuntimeFailure> {
     if instance.entrypoint() != "plugin" {
         return invalid(format!(
@@ -111,6 +117,7 @@ pub(super) fn prepare_instance(
         execution_class,
         runtime_profile,
         launcher,
+        shutdown_evidence,
     };
     let generation = ProcessGenerationV2::start(
         artifact,
@@ -147,6 +154,8 @@ struct ProcessGenerationV2 {
     next_invocation: AtomicU64,
     failed: Arc<AtomicBool>,
     stop_started: AtomicBool,
+    deactivation_result: std::cell::RefCell<Option<Result<(), RuntimeFailure>>>,
+    shutdown_evidence: ShutdownEvidence,
     stopped: AtomicBool,
     limits: ProcessLimits,
     execution_class: &'static str,
@@ -198,11 +207,12 @@ impl ProcessGenerationV2 {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = command
+        let child = command
             .spawn()
             .map_err(|error| RuntimeFailure::PluginFailure {
                 detail: format!("failed to start Process V2 Plugin: {error}"),
             })?;
+        let mut child = profile.shutdown_evidence.track(child);
         let Some(stdin) = child.stdin.take() else {
             terminate_child(&mut child);
             return Err(RuntimeFailure::Internal {
@@ -295,6 +305,8 @@ impl ProcessGenerationV2 {
             next_invocation: AtomicU64::new(1),
             failed,
             stop_started: AtomicBool::new(false),
+            deactivation_result: std::cell::RefCell::new(None),
+            shutdown_evidence: profile.shutdown_evidence.clone(),
             stopped: AtomicBool::new(false),
             limits,
             execution_class: profile.execution_class,
@@ -735,74 +747,87 @@ impl PluginLifecycle for ProcessLifecycleV2 {
         let generation = self.generation.clone();
         Box::pin(async move {
             if generation.stop_started.swap(true, Ordering::AcqRel) {
-                return Ok(());
+                return generation
+                    .deactivation_result
+                    .borrow()
+                    .clone()
+                    .unwrap_or_else(|| Err(unavailable()));
             }
-            if generation.failed.load(Ordering::Acquire) {
+            let outcome = async {
+                if generation.failed.load(Ordering::Acquire) {
+                    generation.imports.deactivate();
+                    generation.abort();
+                    return Ok(());
+                }
+                let params = StopParams {
+                    session: generation.identity.session.clone(),
+                    cleanup_scope_id: "cleanup-1".to_owned(),
+                    remaining_budget_nanos: duration_nanos(context.remaining_budget()),
+                };
+                let initialization = generation
+                    .initialization
+                    .borrow()
+                    .clone()
+                    .ok_or(RuntimeFailure::AdmissionClosed)?;
+                let scope =
+                    lifecycle_scope(&params.cleanup_scope_id, &params.remaining_budget_nanos);
+                let dependency_context = context.dependency_invocation_context()?;
+                let pending_key = lifecycle_pending_key(&scope.scope_id);
+                let (event_sender, event_receiver) = mpsc::unbounded();
+                if generation
+                    .pending
+                    .lock()
+                    .expect("Process V2 pending")
+                    .insert(pending_key.clone(), event_sender)
+                    .is_some()
+                {
+                    return Err(protocol_failure(generation.execution_class));
+                }
+                let (sender, receiver) = futures::channel::oneshot::channel();
+                generation
+                    .stopped_result
+                    .lock()
+                    .expect("stopped slot")
+                    .replace(sender);
+                generation.send(&HostFrameV2::Stop(params.clone()))?;
+                let result = await_lifecycle(
+                    receiver,
+                    event_receiver,
+                    dependency_context,
+                    context.cancellation(),
+                    &generation,
+                    &initialization,
+                    &scope,
+                )
+                .await;
+                generation
+                    .pending
+                    .lock()
+                    .expect("Process V2 pending")
+                    .remove(&pending_key);
+                let result = result?;
+                result
+                    .validate_for(&params)
+                    .map_err(|error| protocol(generation.execution_class, error))?;
                 generation.imports.deactivate();
-                generation.abort();
-                return Ok(());
+                reap_after_stopped(&generation, context.remaining_budget()).await?;
+                generation.stopped.store(true, Ordering::Release);
+                if result.hook == StopHookOutcome::Failed {
+                    return Err(RuntimeFailure::PluginFailure {
+                        detail: result.diagnostics.first().map_or_else(
+                            || "Process V2 stop failed".to_owned(),
+                            |value| value.detail.clone(),
+                        ),
+                    });
+                }
+                Ok(())
             }
-            let params = StopParams {
-                session: generation.identity.session.clone(),
-                cleanup_scope_id: "cleanup-1".to_owned(),
-                remaining_budget_nanos: duration_nanos(context.remaining_budget()),
-            };
-            let initialization = generation
-                .initialization
-                .borrow()
-                .clone()
-                .ok_or(RuntimeFailure::AdmissionClosed)?;
-            let scope = lifecycle_scope(&params.cleanup_scope_id, &params.remaining_budget_nanos);
-            let dependency_context = context.dependency_invocation_context()?;
-            let pending_key = lifecycle_pending_key(&scope.scope_id);
-            let (event_sender, event_receiver) = mpsc::unbounded();
-            if generation
-                .pending
-                .lock()
-                .expect("Process V2 pending")
-                .insert(pending_key.clone(), event_sender)
-                .is_some()
-            {
-                return Err(protocol_failure(generation.execution_class));
-            }
-            let (sender, receiver) = futures::channel::oneshot::channel();
-            generation
-                .stopped_result
-                .lock()
-                .expect("stopped slot")
-                .replace(sender);
-            generation.send(&HostFrameV2::Stop(params.clone()))?;
-            let result = await_lifecycle(
-                receiver,
-                event_receiver,
-                dependency_context,
-                context.cancellation(),
-                &generation,
-                &initialization,
-                &scope,
-            )
             .await;
-            generation
-                .pending
-                .lock()
-                .expect("Process V2 pending")
-                .remove(&pending_key);
-            let result = result?;
-            result
-                .validate_for(&params)
-                .map_err(|error| protocol(generation.execution_class, error))?;
-            generation.imports.deactivate();
-            reap_after_stopped(&generation, context.remaining_budget()).await?;
-            generation.stopped.store(true, Ordering::Release);
-            if result.hook == StopHookOutcome::Failed {
-                return Err(RuntimeFailure::PluginFailure {
-                    detail: result.diagnostics.first().map_or_else(
-                        || "Process V2 stop failed".to_owned(),
-                        |value| value.detail.clone(),
-                    ),
-                });
+            if outcome.is_err() {
+                generation.shutdown_evidence.uncertain();
             }
-            Ok(())
+            *generation.deactivation_result.borrow_mut() = Some(outcome.clone());
+            outcome
         })
     }
 }
@@ -1348,7 +1373,10 @@ async fn reap_after_stopped(
             let deadline = Instant::now() + grace;
             let result = loop {
                 match child.try_wait() {
-                    Ok(Some(_)) => break Ok(()),
+                    Ok(Some(status)) if status.success() => break Ok(()),
+                    Ok(Some(status)) => break Err(RuntimeFailure::PluginFailure {
+                        detail: format!("Process V2 Plugin shutdown exited with {status}"),
+                    }),
                     Ok(None) if Instant::now() < deadline => {
                         thread::sleep(POLL_INTERVAL.min(deadline.saturating_duration_since(Instant::now())));
                     }

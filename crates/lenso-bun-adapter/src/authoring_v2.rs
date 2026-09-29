@@ -36,7 +36,9 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use tokio::sync::oneshot;
 
-use crate::transport::{ProcessState, build_json_rpc_client, json_rpc_runtime, spawn_process};
+use crate::transport::{
+    ProcessState, build_json_rpc_client, json_rpc_runtime, spawn_process_tracked,
+};
 
 pub const BUN_AUTHORING_RUNTIME_PROFILE: &str = "lenso.bun-authoring@2";
 pub const BUN_AUTHORING_CALLBACK_PROOF_HEADER: &str = "x-lenso-authoring-proof";
@@ -121,6 +123,22 @@ impl BunAuthoringHost {
         initialize: InitializeParams,
         callback: impl BunAuthoringCallback,
     ) -> Result<Self, RuntimeFailure> {
+        Self::start_tracked(
+            bun_binary,
+            entrypoint,
+            initialize,
+            callback,
+            crate::ShutdownEvidence::default(),
+        )
+    }
+
+    pub(crate) fn start_tracked(
+        bun_binary: impl AsRef<Path>,
+        entrypoint: impl AsRef<Path>,
+        initialize: InitializeParams,
+        callback: impl BunAuthoringCallback,
+        shutdown_evidence: crate::ShutdownEvidence,
+    ) -> Result<Self, RuntimeFailure> {
         initialize
             .validate_for_runtime_profile(BUN_AUTHORING_RUNTIME_PROFILE)
             .map_err(protocol_failure)?;
@@ -138,13 +156,14 @@ impl BunAuthoringHost {
             .arg(entrypoint.as_ref())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped());
-        let process = match spawn_process(command, "lenso.bun-authoring@2") {
-            Ok(process) => process,
-            Err(error) => {
-                callback.shutdown();
-                return Err(error);
-            }
-        };
+        let process =
+            match spawn_process_tracked(command, "lenso.bun-authoring@2", shutdown_evidence) {
+                Ok(process) => process,
+                Err(error) => {
+                    callback.shutdown();
+                    return Err(error);
+                }
+            };
         let result = Self::open(
             process.clone(),
             callback,
@@ -154,7 +173,7 @@ impl BunAuthoringHost {
             initialize,
         );
         if result.is_err() {
-            process.stop();
+            let _ = process.stop();
         }
         result
     }
@@ -325,21 +344,44 @@ impl BunAuthoringHost {
         rpc(&self.client, "lenso.cancel", params)
     }
 
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "preserve the public owned stop request API"
+    )]
     pub fn stop(&self, params: StopParams) -> Result<StoppedResult, RuntimeFailure> {
         params
             .validate_for(&self.initialize.identity)
             .map_err(protocol_failure)?;
-        let result = rpc(&self.client, "lenso.stop", params);
+        let result: Result<StoppedResult, RuntimeFailure> =
+            rpc(&self.client, "lenso.stop", &params);
         self.stopped
             .store(true, std::sync::atomic::Ordering::Release);
-        self.terminate();
+        let result = result.and_then(|result| {
+            result.validate_for(&params).map_err(protocol_failure)?;
+            if result.hook == lenso_process_protocol::authoring::StopHookOutcome::Failed {
+                return Err(RuntimeFailure::PluginFailure {
+                    detail: result.diagnostics.first().map_or_else(
+                        || "Bun Authoring V2 stop hook failed".to_owned(),
+                        |diagnostic| diagnostic.detail.clone(),
+                    ),
+                });
+            }
+            self.process.await_shutdown()?;
+            Ok(result)
+        });
+        self.callback.shutdown();
+        if result.is_err() {
+            self.process.reject_shutdown();
+            let _ = self.process.stop();
+        }
         result
     }
 
     /// Terminates and reaps a child when graceful settlement cannot be established.
-    pub fn terminate(&self) {
+    pub fn terminate(&self) -> Result<(), RuntimeFailure> {
         self.callback.shutdown();
-        self.process.stop();
+        self.process.stop()?;
+        self.process.confirmed_shutdown()
     }
 
     pub(crate) fn exit_waiter(&self) -> futures::channel::oneshot::Receiver<()> {
@@ -349,7 +391,7 @@ impl BunAuthoringHost {
 
 impl Drop for BunAuthoringHost {
     fn drop(&mut self) {
-        self.terminate();
+        let _ = self.terminate();
     }
 }
 

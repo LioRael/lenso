@@ -1309,7 +1309,14 @@ fn cancellation_keeps_noncooperative_execution_admitted_until_host_termination()
     ));
     assert_eq!(settlements.lock().unwrap().len(), 1);
 
-    host.terminate();
+    assert!(
+        host.terminate().is_err(),
+        "forced cleanup is not a clean stop"
+    );
+    assert!(
+        host.terminate().is_err(),
+        "forced cleanup remains unclean after reaping"
+    );
     assert!(worker.join().unwrap().is_err());
 }
 
