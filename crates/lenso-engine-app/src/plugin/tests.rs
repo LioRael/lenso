@@ -164,7 +164,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     let parsed: toml::Value = toml::from_str(manifest).unwrap();
     for (name, version) in [
         ("lenso", "=0.5.27"),
-        ("lenso-capability-http-endpoint", "=0.3.5"),
+        ("lenso-capability-http-endpoint", "=0.3.4"),
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.11"),
         ("lenso-test", "=0.1.2"),
