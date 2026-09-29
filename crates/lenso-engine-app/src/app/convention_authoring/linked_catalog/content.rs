@@ -258,6 +258,103 @@ pub(crate) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub(in crate::app::convention_authoring) fn add_admitted(
+    root: &Path,
+    args: &AddArgs,
+    admitted: &lenso_app_authoring::keyless_current::AdmittedRelease,
+    current: &lenso_app_authoring::keyless_current::CurrentAdmission,
+) -> anyhow::Result<()> {
+    let lenso_app_authoring::keyless_current::ReleaseRecord::Content(release) = admitted.record()
+    else {
+        bail!("admitted release is not source content");
+    };
+    ensure!(
+        release.base_kind == BaseKind::ContentOnly,
+        "attached content requires its exact runtime base; use an independent content-only release"
+    );
+    ensure!(
+        !args.replace && !args.no_install,
+        "source content cannot install dependencies or replace user-owned files"
+    );
+    let content_id = args
+        .content_id
+        .as_deref()
+        .context("--content-id required for source content")?;
+    let relative = args
+        .content_destination
+        .as_deref()
+        .context("--content-destination required for source content")?;
+    validate_destination(relative)?;
+    super::super::writable_path(root, relative)?;
+    let _app_lock = adoption::lock_app(root)?;
+    let content = release.select(content_id)?;
+    let archive = read_archive(
+        args.content_archive
+            .as_deref()
+            .context("content archive required")?,
+        content,
+    )?;
+    let unpacked = tempfile::tempdir()?;
+    let files = unpack(&archive, unpacked.path())?;
+    if content.kind == ContentKind::DevelopmentExtension {
+        verify_extension_source(unpacked.path(), &release.plugin_id, &release.version)?;
+    }
+    let destination = root.join(relative);
+    let conflict = fs::symlink_metadata(&destination).is_ok();
+    let preview = Preview {
+        schema_version: 1,
+        kind: "lenso.keyless-release-content-preview",
+        plugin_id: &release.plugin_id,
+        version: &release.version,
+        content_id,
+        content_kind: content.kind,
+        base_kind: release.base_kind,
+        destination: relative.display().to_string(),
+        files,
+        conflict,
+        execution: "not_selected",
+    };
+    if args.content_preview {
+        println!("{}", serde_json::to_string_pretty(&preview)?);
+        return Ok(());
+    }
+    ensure!(
+        !conflict,
+        "content destination already exists; user-owned files are never overwritten"
+    );
+    let parent = destination.parent().context("content destination parent")?;
+    super::super::writable_path(
+        root,
+        relative.parent().context("content destination parent")?,
+    )?;
+    fs::create_dir_all(parent)?;
+    let stage = tempfile::Builder::new()
+        .prefix(".release-content-")
+        .tempdir_in(parent)?;
+    copy_tree(unpacked.path(), stage.path(), &preview.files)?;
+    fs::write(
+        stage.path().join(ATTRIBUTION),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "schema_version": 1, "catalog_id": admitted.catalog_id(),
+            "plugin_id": release.plugin_id, "version": release.version,
+            "base_kind": release.base_kind, "base_release_identity": release.base_release_identity,
+            "content_id": content_id, "content_kind": content.kind,
+            "content_digest": content.digest, "source_url": content.url,
+            "adoption": "editable_copy", "execution": "not_selected"
+        }))?,
+    )?;
+    current.before_commit(|| {
+        super::super::super::build::publish_new_output(stage.path(), &destination)
+    })?;
+    println!(
+        "Copied verified {}@{} content `{content_id}` to {}; no extension or runtime was selected",
+        release.plugin_id,
+        release.version,
+        destination.display()
+    );
+    Ok(())
+}
+
 enum BaseCheckpoint {
     Linked(
         lenso_plugin_catalog::linked_cargo::LinkedCargoCheckpoint,

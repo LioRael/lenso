@@ -596,6 +596,42 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
     )?;
     checkpoint::persist(root, &app_lock, verified.checkpoint(), previous.as_ref())?;
     let release = verified.select(plugin_id, version, now)?;
+    adopt_linked_release(root, args, release, app_lock, None)
+}
+
+pub(super) fn add_admitted(
+    root: &Path,
+    args: &AddArgs,
+    admitted: &lenso_app_authoring::keyless_current::AdmittedRelease,
+    current: &lenso_app_authoring::keyless_current::CurrentAdmission,
+) -> anyhow::Result<()> {
+    let lenso_app_authoring::keyless_current::ReleaseRecord::LinkedCargo(release) =
+        admitted.record()
+    else {
+        bail!("admitted release is not a linked Cargo source");
+    };
+    adopt_linked_release(
+        root,
+        args,
+        release,
+        adoption::lock_app(root)?,
+        Some(current),
+    )
+}
+
+fn adopt_linked_release(
+    root: &Path,
+    args: &AddArgs,
+    release: &linked_cargo::LinkedCargoRelease,
+    app_lock: fs::File,
+    current: Option<&lenso_app_authoring::keyless_current::CurrentAdmission>,
+) -> anyhow::Result<()> {
+    let plugin_id = release.plugin_id.as_str();
+    let version = release.version.as_str();
+    ensure!(
+        args.crate_archive.is_some() != args.bundle.is_some(),
+        "choose exactly one crate or Bundle input"
+    );
     ensure!(
         release.integration == LinkedCargoIntegration::LinkedPlugin,
         "Host integration required: this release cannot be added as a generic linked Plugin"
@@ -605,18 +641,17 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         release.targets.iter().any(|candidate| candidate == target),
         "linked Cargo release does not support Host target {target}"
     );
-    ensure!(
-        release.registry_url == "https://crates.io",
-        "linked Cargo registry is unsupported; use an authorized custom Host"
-    );
+    lenso_app_authoring::keyless_current::cargo_artifact_url(release)?;
     let (archive, v6_lock) = if let Some(bundle) = &args.bundle {
         let selected = verified_v6_archive(bundle, release, target)?;
         (selected.bytes, Some(selected.lock))
     } else {
         let mut bytes = Vec::new();
-        fs::File::open(args.crate_archive.as_ref().context("--crate required")?)?
-            .take(MAX_CRATE_BYTES + 1)
-            .read_to_end(&mut bytes)?;
+        crate::plugins::signed_install::open_regular(
+            args.crate_archive.as_ref().context("--crate required")?,
+        )?
+        .take(MAX_CRATE_BYTES + 1)
+        .read_to_end(&mut bytes)?;
         (bytes, None)
     };
     ensure!(
@@ -637,6 +672,7 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
             digest: &release.crate_digest,
             bytes: &archive,
             v6_lock,
+            current,
         },
         app_lock,
     )
@@ -736,9 +772,11 @@ pub(super) fn add_from_release_details(root: &Path, args: &AddArgs) -> anyhow::R
         .as_deref()
         .context("Cargo distribution is missing its signed crate digest")?;
     let mut archive = Vec::new();
-    fs::File::open(args.crate_archive.as_ref().context("--crate required")?)?
-        .take(MAX_CRATE_BYTES + 1)
-        .read_to_end(&mut archive)?;
+    crate::plugins::signed_install::open_regular(
+        args.crate_archive.as_ref().context("--crate required")?,
+    )?
+    .take(MAX_CRATE_BYTES + 1)
+    .read_to_end(&mut archive)?;
     ensure!(
         !archive.is_empty() && u64::try_from(archive.len())? <= MAX_CRATE_BYTES,
         "crate archive exceeds size limit"
@@ -757,6 +795,7 @@ pub(super) fn add_from_release_details(root: &Path, args: &AddArgs) -> anyhow::R
             digest: crate_digest,
             bytes: &archive,
             v6_lock: None,
+            current: None,
         },
         app_lock,
     )
@@ -866,6 +905,7 @@ struct VerifiedCrateArchive<'a> {
     digest: &'a str,
     bytes: &'a [u8],
     v6_lock: Option<V6BuildInputLock>,
+    current: Option<&'a lenso_app_authoring::keyless_current::CurrentAdmission>,
 }
 
 fn adopt_archive(
@@ -960,8 +1000,13 @@ fn adopt_archive(
         "linked Cargo source lock exceeds size limit"
     );
     fs::write(stage.path().join(SOURCE_LOCK), lock_bytes)?;
-    prepared
-        .commit(stage.path())
+    let publish = || prepared.commit(stage.path());
+    let result = if let Some(current) = archive.current {
+        current.before_commit(publish)
+    } else {
+        publish()
+    };
+    result
         .with_context(|| format!(
             "linked Cargo source selection failed; inspect the error and retry the same exact signed app add input after resolving any filesystem conflict; source={}, cargo={}, config={}, intent={}",
             destination.display(),

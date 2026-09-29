@@ -68,34 +68,67 @@ impl VerifiedKeylessCatalog {
 pub fn verify_official_catalog(
     input: &KeylessCatalogVerification<'_>,
 ) -> anyhow::Result<VerifiedKeylessCatalog> {
-    validate_hex(input.source_sha, 40, "reviewed source SHA")?;
     validate_hex(input.trusted_root_sha256, 64, "trusted root SHA-256")?;
-    ensure!(input.gh.is_absolute(), "trusted gh path must be absolute");
-    let gh = input
-        .gh
-        .canonicalize()
-        .context("resolve trusted gh executable")?;
-    ensure!(gh.is_file(), "trusted gh executable must be a regular file");
-    let catalog = read_bounded(input.catalog, 4 * 1024 * 1024)?;
-    let bundle = read_bounded(input.bundle, MAX_INPUT)?;
     let roots = read_bounded(input.trusted_root, MAX_INPUT)?;
-    let document: Value = serde_json::from_slice(&catalog).context("parse catalog candidate")?;
-    validate_catalog(&document)?;
     ensure!(
         digest(&roots) == input.trusted_root_sha256,
         "trusted root SHA-256 does not match its independent pin"
     );
+    verify_catalog(
+        input.catalog,
+        input.bundle,
+        input.source_sha,
+        input.gh,
+        Some(&roots),
+        None,
+    )
+}
+
+pub(crate) fn verify_catalog_with_managed_tool(
+    catalog: &Path,
+    bundle: &Path,
+    source_sha: &str,
+    gh: &Path,
+    cache: &Path,
+) -> anyhow::Result<VerifiedKeylessCatalog> {
+    ensure!(
+        cache.is_absolute(),
+        "managed verifier cache must be absolute"
+    );
+    verify_catalog(catalog, bundle, source_sha, gh, None, Some(cache))
+}
+
+fn verify_catalog(
+    catalog_path: &Path,
+    bundle_path: &Path,
+    source_sha: &str,
+    gh: &Path,
+    roots: Option<&[u8]>,
+    cache: Option<&Path>,
+) -> anyhow::Result<VerifiedKeylessCatalog> {
+    validate_hex(source_sha, 40, "verified source SHA")?;
+    ensure!(gh.is_absolute(), "trusted gh path must be absolute");
+    let gh = gh.canonicalize().context("resolve trusted gh executable")?;
+    ensure!(gh.is_file(), "trusted gh executable must be a regular file");
+    let catalog = read_bounded(catalog_path, 4 * 1024 * 1024)?;
+    let bundle = read_bounded(bundle_path, MAX_INPUT)?;
+    let document: Value = serde_json::from_slice(&catalog).context("parse catalog candidate")?;
+    validate_catalog(&document)?;
     let scratch = tempfile::tempdir().context("create verifier scratch")?;
     let artifact = scratch.path().join("catalog.json");
     let bundle_path = scratch.path().join("bundle.jsonl");
     let roots_path = scratch.path().join("trusted-root.jsonl");
     fs::write(&artifact, &catalog)?;
     fs::write(&bundle_path, bundle)?;
-    fs::write(&roots_path, roots)?;
+    if let Some(roots) = roots {
+        fs::write(&roots_path, roots)?;
+    }
     let output = scratch.path().join("verified.json");
     let errors = scratch.path().join("stderr.txt");
-    let mut command =
-        verification_command(&gh, &artifact, &bundle_path, &roots_path, input.source_sha);
+    let mut command = strict_verification_command(&gh, &artifact, &bundle_path, source_sha);
+    if roots.is_some() {
+        command.arg("--custom-trusted-root").arg(&roots_path);
+    }
     command
         .current_dir(scratch.path())
         .env_clear()
@@ -106,6 +139,9 @@ pub fn verify_official_catalog(
         .stdin(Stdio::null())
         .stdout(File::create(&output)?)
         .stderr(File::create(&errors)?);
+    if let Some(cache) = cache {
+        command.env("XDG_CACHE_HOME", cache);
+    }
     let mut child = command
         .spawn()
         .context("start trusted gh attestation verifier")?;
@@ -142,13 +178,44 @@ pub fn verify_official_catalog(
     ensure!(
         verification
             .as_array()
-            .is_some_and(|results| !results.is_empty()),
-        "trusted verifier returned no verified attestation"
+            .is_some_and(|results| !results.is_empty()
+                && results
+                    .iter()
+                    .all(|result| public_good_result(result, source_sha))),
+        "trusted verifier returned no official public-good attestation"
     );
     Ok(VerifiedKeylessCatalog {
         catalog: document,
         sha256: digest(&catalog),
     })
+}
+
+fn public_good_result(result: &Value, source_sha: &str) -> bool {
+    let certificate = &result["verificationResult"]["signature"]["certificate"];
+    let issuer = certificate["certificateIssuer"]
+        .as_str()
+        .unwrap_or_default();
+    !issuer.contains('\\')
+        && issuer
+            .split(',')
+            .filter(|field| field.trim().starts_with("O="))
+            .map(str::trim)
+            .eq(["O=sigstore.dev"])
+        && certificate["subjectAlternativeName"] == IDENTITY
+        && certificate["issuer"] == "https://token.actions.githubusercontent.com"
+        && certificate["sourceRepositoryURI"] == "https://github.com/LioRael/lenso-marketplace"
+        && certificate["sourceRepositoryDigest"] == source_sha
+        && certificate["buildSignerDigest"] == source_sha
+        && certificate["sourceRepositoryRef"] == "refs/heads/main"
+        && certificate["runnerEnvironment"] == "github-hosted"
+        && certificate["sourceRepositoryVisibilityAtSigning"] == "public"
+        && result["verificationResult"]["verifiedTimestamps"]
+            .as_array()
+            .is_some_and(|timestamps| {
+                timestamps
+                    .iter()
+                    .any(|timestamp| timestamp["type"] == "Tlog")
+            })
 }
 
 #[derive(Deserialize)]
@@ -189,7 +256,7 @@ struct LegacySource {
     payload_digest: String,
 }
 
-fn validate_catalog(document: &Value) -> anyhow::Result<()> {
+pub(crate) fn validate_catalog(document: &Value) -> anyhow::Result<()> {
     let catalog: Catalog = serde_json::from_value(document.clone())?;
     ensure!(
         catalog.schema == "lenso.marketplace.keyless-catalog.v1",
@@ -313,6 +380,7 @@ fn validate_record(release: CatalogRelease) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn verification_command(
     gh: &Path,
     artifact: &Path,
@@ -320,14 +388,18 @@ fn verification_command(
     roots: &Path,
     source: &str,
 ) -> Command {
+    let mut command = strict_verification_command(gh, artifact, bundle, source);
+    command.arg("--custom-trusted-root").arg(roots);
+    command
+}
+
+fn strict_verification_command(gh: &Path, artifact: &Path, bundle: &Path, source: &str) -> Command {
     let mut command = Command::new(gh);
     command
         .args(["attestation", "verify"])
         .arg(artifact)
         .arg("--bundle")
         .arg(bundle)
-        .arg("--custom-trusted-root")
-        .arg(roots)
         .args([
             "--repo",
             REPOSITORY,
@@ -385,7 +457,7 @@ fn validate_hex(value: &str, length: usize, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn digest(bytes: &[u8]) -> String {
+pub(crate) fn digest(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut encoded = String::with_capacity(64);
     for &byte in Sha256::digest(bytes).iter() {
@@ -396,10 +468,10 @@ fn digest(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn fixture_catalog() -> Value {
+    pub(crate) fn fixture_catalog() -> Value {
         let mut sources = serde_json::Map::new();
         for (channel, schema) in [
             ("portable", "lenso.marketplace.snapshot.v1"),
@@ -431,6 +503,32 @@ mod tests {
     #[test]
     fn catalog_with_complete_status_set_is_valid() {
         assert!(validate_catalog(&fixture_catalog()).is_ok());
+    }
+
+    #[test]
+    fn verified_result_requires_public_good_identity_and_transparency() {
+        let source = "a".repeat(40);
+        let mut result = serde_json::json!({"verificationResult":{
+            "signature":{"certificate":{
+                "certificateIssuer":"CN=sigstore-intermediate,O=sigstore.dev",
+                "subjectAlternativeName":IDENTITY,"issuer":"https://token.actions.githubusercontent.com",
+                "sourceRepositoryURI":"https://github.com/LioRael/lenso-marketplace",
+                "sourceRepositoryDigest":source,"buildSignerDigest":source,
+                "sourceRepositoryRef":"refs/heads/main","runnerEnvironment":"github-hosted",
+                "sourceRepositoryVisibilityAtSigning":"public"
+            }},"verifiedTimestamps":[{"type":"Tlog"}]
+        }});
+        assert!(public_good_result(&result, &source));
+        result["verificationResult"]["signature"]["certificate"]["certificateIssuer"] =
+            "CN=GitHub,O=GitHub".into();
+        assert!(!public_good_result(&result, &source));
+        result["verificationResult"]["signature"]["certificate"]["certificateIssuer"] =
+            "CN=evil\\,O=sigstore.dev".into();
+        assert!(!public_good_result(&result, &source));
+        result["verificationResult"]["signature"]["certificate"]["certificateIssuer"] =
+            "CN=sigstore-intermediate,O=sigstore.dev".into();
+        result["verificationResult"]["verifiedTimestamps"] = serde_json::json!([]);
+        assert!(!public_good_result(&result, &source));
     }
 
     #[test]

@@ -12,6 +12,8 @@ pub mod discovery;
 pub mod host_authoring;
 pub mod identity;
 pub mod keyless_catalog;
+pub mod keyless_current;
+pub mod keyless_managed;
 pub mod signed_plugin_catalog;
 
 use host_authoring::{GeneratedHostBuild, HOST_BUILD, HostInput};

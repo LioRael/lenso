@@ -8,11 +8,15 @@ use std::{
 };
 include!(concat!(env!("OUT_DIR"), "/terminal_assets.rs"));
 pub(crate) mod linked_catalog;
+mod marketplace;
 pub(crate) mod npm_catalog;
 mod openapi;
 
 #[derive(Clone, Debug, Args)]
 pub struct AddArgs {
+    /// Adopt an exact release from the current official Marketplace.
+    #[arg(long, conflicts_with_all = ["linked_snapshot", "portable_snapshot", "package_snapshot", "release_details", "content_snapshot", "trust", "origin"])]
+    marketplace: bool,
     /// Local Plugin source directory, or bundled @lenso/cli or @lenso/openapi support.
     source: String,
     #[arg(long)]
@@ -317,6 +321,9 @@ fn tsconfig(root: &Path, source: &str) -> anyhow::Result<()> {
 
 pub fn add(args: AddArgs) -> anyhow::Result<()> {
     let root = fs::canonicalize(crate::plugins::project_root(args.root.clone())?)?;
+    if args.marketplace {
+        return marketplace::add(&root, &args);
+    }
     if args.content_snapshot.is_some()
         || args.content_id.is_some()
         || args.content_archive.is_some()
@@ -605,6 +612,7 @@ pub fn new(command: PluginCommand) -> anyhow::Result<()> {
 
 pub fn adopt(root: PathBuf, source: String, install_dependencies: bool) -> anyhow::Result<()> {
     add(AddArgs {
+        marketplace: false,
         root: Some(root),
         source,
         no_install: !install_dependencies,
@@ -643,7 +651,43 @@ pub fn create_plugin(
 
 #[cfg(test)]
 mod plugin_new_tests {
-    use super::{Language, NewArgs, PluginCommand, new};
+    use super::{AddArgs, Language, NewArgs, PluginCommand, new};
+
+    #[test]
+    fn keyless_marketplace_cli_needs_no_operator_trust_flags() {
+        use clap::Parser as _;
+        #[derive(clap::Parser)]
+        struct Command {
+            #[command(flatten)]
+            args: AddArgs,
+        }
+        let command =
+            Command::try_parse_from(["add", "example.plugin@1.0.0", "--marketplace"]).unwrap();
+        assert!(command.args.marketplace);
+        assert!(command.args.trust.is_none());
+        assert!(
+            Command::try_parse_from([
+                "add",
+                "example.plugin@1.0.0",
+                "--marketplace",
+                "--trust",
+                "trust.json"
+            ])
+            .is_err()
+        );
+        assert!(
+            Command::try_parse_from([
+                "add",
+                "example.plugin@1.0.0",
+                "--marketplace",
+                "--content-id",
+                "source",
+                "--content-destination",
+                "app/copied"
+            ])
+            .is_ok()
+        );
+    }
 
     #[test]
     fn app_cli_plugin_creation_points_web_authors_to_web_scaffold() {

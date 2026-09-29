@@ -743,6 +743,67 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
                 .map(|selected| &selected.distribution)
         })
         .context("signed npm distribution is missing")?;
+    adopt_distribution(
+        root,
+        args,
+        distribution,
+        selected_package.as_ref(),
+        selected_linked.as_ref(),
+        app_lock,
+        None,
+    )
+}
+
+pub(super) fn add_admitted(
+    root: &Path,
+    args: &AddArgs,
+    admitted: &lenso_app_authoring::keyless_current::AdmittedRelease,
+    current: &lenso_app_authoring::keyless_current::CurrentAdmission,
+) -> anyhow::Result<()> {
+    let lenso_app_authoring::keyless_current::ReleaseRecord::Package(release) = admitted.record()
+    else {
+        bail!("admitted release is not an npm-only source");
+    };
+    let candidates: Vec<_> = release
+        .distributions
+        .iter()
+        .filter(|distribution| {
+            distribution.kind == DistributionKind::NpmPackage
+                && args
+                    .distribution
+                    .as_deref()
+                    .is_none_or(|id| distribution.id == id)
+                && native_target_matches(&distribution.targets)
+        })
+        .collect();
+    let [distribution] = candidates.as_slice() else {
+        bail!("select exactly one npm distribution for this Host; use --distribution when needed");
+    };
+    lenso_app_authoring::keyless_current::npm_artifact_url(distribution)?;
+    adopt_distribution(
+        root,
+        args,
+        distribution,
+        None,
+        None,
+        linked_catalog::adoption::lock_app(root)?,
+        Some(current),
+    )
+}
+
+fn adopt_distribution(
+    root: &Path,
+    args: &AddArgs,
+    distribution: &Distribution,
+    selected_package: Option<&SelectedPackage>,
+    selected_linked: Option<&linked_catalog::LinkedNpmSelection>,
+    app_lock: fs::File,
+    current: Option<&lenso_app_authoring::keyless_current::CurrentAdmission>,
+) -> anyhow::Result<()> {
+    let (plugin_id, release_version) = args
+        .source
+        .split_once('@')
+        .context("exact npm release identity required")?;
     let bytes = read_archive(args.tgz.as_deref().unwrap())?;
     let archive_digest = digest(&bytes);
     ensure!(
@@ -848,15 +909,22 @@ pub(super) fn add(root: &Path, args: &AddArgs) -> anyhow::Result<()> {
         stage.path().join(SOURCE_LOCK),
         serde_json::to_vec_pretty(&lock)?,
     )?;
-    commit_source(
-        root,
-        &destination,
-        candidate,
-        &lock,
-        stage.path(),
-        args.replace,
-        app_lock,
-    )?;
+    let publish = || {
+        commit_source(
+            root,
+            &destination,
+            candidate,
+            &lock,
+            stage.path(),
+            args.replace,
+            app_lock,
+        )
+    };
+    if let Some(current) = current {
+        current.before_commit(publish)?;
+    } else {
+        publish()?;
+    }
     if args.no_install {
         println!(
             "Adopted {}@{} from npm {}@{} at {} without dependencies; run `bun install --ignore-scripts --frozen-lockfile --backend=copyfile --linker=hoisted` there before approving the build digest",
@@ -1569,6 +1637,7 @@ mod tests {
             .unwrap();
         };
         let args = AddArgs {
+            marketplace: false,
             source: "example.notes@1.2.3".into(),
             root: Some(root.clone()),
             no_install: true,
@@ -1769,6 +1838,7 @@ mod tests {
         )
         .unwrap();
         let args = AddArgs {
+            marketplace: false,
             source: "example.notes@1.2.3".into(),
             root: None,
             no_install: true,

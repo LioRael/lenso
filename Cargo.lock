@@ -2372,6 +2372,7 @@ name = "lenso-engine-authoring"
 version = "0.2.2"
 dependencies = [
  "anyhow",
+ "flate2",
  "glob",
  "jsonschema",
  "lenso-app-plan",
@@ -2384,6 +2385,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "tar",
  "tempfile",
  "toml",
  "ureq",

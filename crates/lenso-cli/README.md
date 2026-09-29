@@ -479,7 +479,36 @@ Local Capability authoring is integrated into `app dev/build`.
 providers remove manual cross-language JSON plumbing. See
 [Capability authoring](docs/capability-authoring.md).
 
-### Keyless catalog verification foundation
+### Official Marketplace adoption
+
+Delivery status: this source change is a candidate feature, not yet available
+in a newly published CLI version. Production adoption also requires promotion
+of the canonical v3 current head. A source commit alone does not complete either step.
+
+Use an exact identity; the verified catalog selects the source channel:
+
+```sh
+lenso app add PLUGIN_ID@VERSION --marketplace
+```
+
+The CLI fetches current official status, verifies the publishing identity and
+public transparency proof, checks durable history independently of the App,
+then downloads and verifies the exact archive. It rechecks current status at
+the App publication boundary. Unavailable status, withdrawn releases, changed
+release records, rollback, and revoked-release resurrection fail closed.
+
+On macOS ARM64/x64 and Linux GNU ARM64/x64, Lenso provisions its pinned official
+verifier automatically and maintains public trust roots. No GitHub login,
+private signing key, manually supplied root hash, or periodic catalog renewal
+is required. Other targets reject this path until secure provisioning is supported.
+
+Keep `--distribution` when a release has several compatible packages. For an
+independent template or development extension, use `--content-id` and
+`--content-destination`; copying content does not execute or select it.
+Existing artifact flags can supply already downloaded archives. Build-code
+approval and removable App-source semantics are unchanged.
+
+### Advanced offline provenance inspection
 
 `lenso marketplace verify` checks an official catalog attestation offline
 without changing an App. This transition command requires an independently
@@ -501,5 +530,5 @@ their existing typed metadata and validation rules.
 
 The output reports provenance verification, not current availability or
 installation permission. It does not change existing signed-catalog expiry
-rules or provide the final automatic App adoption flow. No Marketplace private
+rules or replace current-status admission through `app add --marketplace`. No Marketplace private
 key is required by this command.
