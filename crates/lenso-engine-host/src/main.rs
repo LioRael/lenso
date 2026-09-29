@@ -61,6 +61,7 @@ mod tests {
         let _ = AppCommand::Explain(ExplainArgs {
             root: None,
             json: true,
+            host_facilities: None,
         });
     }
 }
