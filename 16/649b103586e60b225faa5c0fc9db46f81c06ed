@@ -1,0 +1,14 @@
+.agents/skills/land/SKILL.md
+  h_9d56aba080c170 35-36,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16649b103586e60b225faa5c0fc9db46f81c06ed",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
