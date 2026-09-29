@@ -1,0 +1,19 @@
+crates/lenso-engine-authoring/src/keyless_catalog.rs
+  s_7d146975368699::t_c9c8a5736e471b 394-400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ab558e86aba89cc5879f2837fe5a6a5734f17b9",
+  "prompts": {},
+  "sessions": {
+    "s_7d146975368699": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0c54a-381f-7362-9b4d-95aea89e2437",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
