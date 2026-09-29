@@ -3,6 +3,8 @@
 mod authoring;
 mod contract;
 mod extract;
+#[cfg(feature = "process")]
+pub mod process;
 pub mod response;
 pub mod testing;
 

@@ -187,6 +187,12 @@ where
         context: InvocationContext,
         request: HandleRequest,
     ) -> NativeRequestFuture<EndpointHandle> {
+        if !T::ROUTES
+            .iter()
+            .any(|route| route.route_id() == request.route_id && route.method() == request.method)
+        {
+            return Box::pin(async { Ok(Err(crate::HandleError::Rejected)) });
+        }
         self.dispatch(context, request)
     }
 }

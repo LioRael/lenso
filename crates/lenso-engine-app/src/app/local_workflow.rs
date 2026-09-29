@@ -2,6 +2,7 @@ use anyhow::{Context, bail};
 use clap::{Args, ValueEnum};
 use std::{fs, path::PathBuf, process::Command};
 
+mod notes;
 mod workers;
 
 #[derive(Clone, Debug, Args)]
@@ -114,6 +115,9 @@ pub struct CreateArgs {
     /// Application language. Rust creates a normal root Cargo package.
     #[arg(long, value_enum, conflicts_with_all = ["runtime", "web", "cli"])]
     lang: Option<AppLanguage>,
+    /// Select a matching HTTP Endpoint SDK source crate for the typed Process starter.
+    #[arg(long, value_name = "DIR", conflicts_with_all = ["runtime", "web", "cli"])]
+    http_sdk_source: Option<PathBuf>,
     /// Legacy nested starter implementation under app/.
     #[arg(long, value_enum)]
     runtime: Option<Starter>,
@@ -132,6 +136,9 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
         bail!("--lang selects the root package and cannot be combined with a nested starter");
     }
     let root_package = !args.cli && !args.web && args.runtime.is_none();
+    if args.http_sdk_source.is_some() && !root_package {
+        bail!("--http-sdk-source selects the root Rust Process starter");
+    }
     let destination = std::path::absolute(args.directory)?;
     if fs::symlink_metadata(&destination).is_ok() {
         bail!("App directory already exists: {}", destination.display());
@@ -177,7 +184,7 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
                 }
             }
         } else {
-            for (path, contents) in process_notes_scaffold() {
+            for (path, contents) in notes::scaffold(args.http_sdk_source.as_deref())? {
                 let file = staging.path().join(path);
                 if let Some(parent) = file.parent() {
                     fs::create_dir_all(parent)?;
@@ -212,7 +219,7 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
     let web_routes = if args.web {
         "The starter Web Plugin keeps one handler per `src/routes/*.rs` file. Add or remove a file and rebuild; duplicate route IDs or method/path pairs fail during compilation. The built Host never scans route source.\n\n"
     } else if root_package {
-        "The root Process Plugin provides `POST /notes` and `GET /notes/{id}` through the typed HTTP Endpoint Capability. Notes are in-memory development data and do not survive a restart. Process Plugins are trusted native executables, not sandboxed.\n\nThe generated Guest pins published `lenso-process-sdk = 0.2.0` and `lenso-capability-http-endpoint = 0.3.2`; the latter has the same Endpoint Descriptor version and digest as the precompiled Host's 0.3.4 codec. The current Host and codec changes are local release candidates, not proof that those newer packages are published. Keep using the same Lenso CLI binary for build and start; source-mode path patches are only for candidate verification, not a registry-only distribution claim. Editing Guest source rebuilds its Process artifact while reusing that Host binary.\n\nTo remove the Web surface from a built App, disable both `local.starter/default` and `lenso.web-ingress/default` under the built Plugin Root, then run `lenso app start --from dist --root dist`. Ingress without any Endpoint routes deliberately refuses readiness. Plain `--from dist` keeps the immutable build snapshot.\n\n"
+        notes::readme(args.http_sdk_source.is_some())
     } else {
         ""
     };
@@ -249,193 +256,6 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
         destination.display()
     );
     Ok(())
-}
-
-fn process_notes_scaffold() -> Vec<(PathBuf, &'static str)> {
-    vec![
-        (
-            PathBuf::from("Cargo.toml"),
-            r#"[package]
-name = "local-starter"
-version = "0.1.0"
-edition = "2024"
-publish = false
-
-[package.metadata.lenso]
-plugin-id = "local.starter"
-root-slot = "web"
-
-[package.metadata.lenso-cli]
-runtime = "process"
-
-[dependencies]
-lenso-process-sdk = "=0.2.0"
-lenso-capability-http-endpoint = "=0.3.2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-[workspace]
-"#,
-        ),
-        (
-            PathBuf::from("src/main.rs"),
-            "fn main() { local_starter::serve(); }\n",
-        ),
-        (
-            PathBuf::from("src/lib.rs"),
-            r###"use std::{cell::{Cell, RefCell}, collections::BTreeMap};
-
-use lenso_capability_http_endpoint::{
-    Bytes, CAPABILITY_ID, DESCRIBE_OPERATION, DESCRIPTOR_VERSION, HANDLE_OPERATION,
-    DescribeResponse, DescribeResponseRoutesItem, HandleRequest, HandleResponse,
-    HandleResponseHeadersItem,
-};
-use lenso_process_sdk::{ProcessOutcome, ProcessPlugin};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CreateNote { title: String, body: String }
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Note { id: String, title: String, body: String }
-
-#[derive(Debug, Default)]
-pub struct Notes {
-    next_id: Cell<u64>,
-    notes: RefCell<BTreeMap<String, Note>>,
-}
-
-impl Notes {
-    fn describe() -> ProcessOutcome {
-        let routes = [
-            ("notes.create", "POST", "/notes"),
-            ("notes.read", "GET", "/notes/{id}"),
-        ].into_iter().map(|(route_id, method, path)| DescribeResponseRoutesItem {
-            route_id: route_id.into(), method: method.into(), path: path.into(), openapi: None,
-        }).collect();
-        Self::success(DescribeResponse { routes })
-    }
-
-    fn success(value: impl Serialize) -> ProcessOutcome {
-        match serde_json::to_value(value) {
-            Ok(value) => ProcessOutcome::Success(value),
-            Err(error) => ProcessOutcome::Failure(error.to_string()),
-        }
-    }
-
-    fn response(status: i64, value: impl Serialize) -> ProcessOutcome {
-        let body = match serde_json::to_vec(&value) {
-            Ok(body) => body,
-            Err(error) => return ProcessOutcome::Failure(error.to_string()),
-        };
-        Self::success(HandleResponse {
-            status,
-            headers: vec![HandleResponseHeadersItem {
-                name: "content-type".into(), value: "application/json; charset=utf-8".into(),
-            }],
-            body: Bytes::from(body),
-        })
-    }
-
-    fn handle(&self, request: Value) -> ProcessOutcome {
-        let request: HandleRequest = match serde_json::from_value(request) {
-            Ok(request) => request,
-            Err(error) => return ProcessOutcome::Failure(format!("invalid Endpoint request: {error}")),
-        };
-        match request.route_id.as_str() {
-            "notes.create" if request.method == "POST" => {
-                let input: CreateNote = match serde_json::from_slice(request.body.as_ref()) {
-                    Ok(input) => input,
-                    Err(_) => return Self::response(400, json!({"error":"invalid JSON note"})),
-                };
-                if input.title.trim().is_empty() {
-                    return Self::response(400, json!({"error":"title is required"}));
-                }
-                let id = (self.next_id.get() + 1).to_string();
-                self.next_id.set(self.next_id.get() + 1);
-                let note = Note { id: id.clone(), title: input.title, body: input.body };
-                self.notes.borrow_mut().insert(id, note.clone());
-                Self::response(201, note)
-            }
-            "notes.read" if request.method == "GET" => {
-                let id = request.path_parameters.iter()
-                    .find(|parameter| parameter.name == "id")
-                    .map(|parameter| parameter.value.as_str());
-                match id.and_then(|id| self.notes.borrow().get(id).cloned()) {
-                    Some(note) => Self::response(200, note),
-                    None => Self::response(404, json!({"error":"note not found"})),
-                }
-            }
-            _ => ProcessOutcome::Failure("unknown notes route".into()),
-        }
-    }
-}
-
-impl ProcessPlugin for Notes {
-    fn descriptor(&self) -> Value {
-        json!({
-            "abi": "lenso.json-request@1",
-            "capabilities": [{
-                "capability_id": CAPABILITY_ID,
-                "descriptor_version": DESCRIPTOR_VERSION,
-                "request_operations": [DESCRIBE_OPERATION, HANDLE_OPERATION],
-            }],
-        })
-    }
-
-    fn invoke(&self, capability: &str, operation: &str, request: Value) -> ProcessOutcome {
-        if capability != CAPABILITY_ID {
-            return ProcessOutcome::Failure("unknown Capability".into());
-        }
-        match operation {
-            DESCRIBE_OPERATION => Self::describe(),
-            HANDLE_OPERATION => self.handle(request),
-            _ => ProcessOutcome::Failure("unknown Endpoint operation".into()),
-        }
-    }
-}
-
-pub fn serve() {
-    lenso_process_sdk::serve(&Notes::default()).expect("serve trusted Process Plugin");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use lenso_capability_http_endpoint::{HandleRequestPathParametersItem, DescribeResponse};
-
-    #[test]
-    fn notes_create_then_read_via_endpoint_contract() {
-        let notes = Notes::default();
-        let ProcessOutcome::Success(described) = notes.invoke(CAPABILITY_ID, DESCRIBE_OPERATION, json!({})) else { panic!("describe failed") };
-        let routes: DescribeResponse = serde_json::from_value(described).unwrap();
-        assert_eq!(routes.routes.len(), 2);
-
-        let request = |route_id: &str, method: &str, body: Vec<u8>, path_parameters: Vec<HandleRequestPathParametersItem>| HandleRequest {
-            route_id: route_id.into(), method: method.into(), body: Bytes::from(body),
-            path: "/notes".into(), path_parameters, headers: vec![], credential: None,
-            query: None, request_id: "test".into(),
-        };
-        let ProcessOutcome::Success(created) = notes.invoke(CAPABILITY_ID, HANDLE_OPERATION,
-            serde_json::to_value(request("notes.create", "POST", br#"{"title":"First","body":"Hello"}"#.to_vec(), vec![])).unwrap()) else { panic!("create failed") };
-        let created: HandleResponse = serde_json::from_value(created).unwrap();
-        assert_eq!(created.status, 201);
-        let note: Note = serde_json::from_slice(created.body.as_ref()).unwrap();
-        let ProcessOutcome::Success(found) = notes.invoke(CAPABILITY_ID, HANDLE_OPERATION,
-            serde_json::to_value(request("notes.read", "GET", vec![], vec![HandleRequestPathParametersItem {
-                name: "id".into(), value: note.id.clone(),
-            }])).unwrap()) else { panic!("read failed") };
-        let found: HandleResponse = serde_json::from_value(found).unwrap();
-        assert_eq!(found.status, 200);
-        let read: Note = serde_json::from_slice(found.body.as_ref()).unwrap();
-        assert_eq!(read.title, "First");
-    }
-}
-"###,
-        ),
-    ]
 }
 
 #[derive(Clone, Debug, Args)]
@@ -643,6 +463,7 @@ pub fn create_empty(directory: PathBuf) -> anyhow::Result<()> {
     create(CreateArgs {
         directory,
         lang: None,
+        http_sdk_source: None,
         runtime: Some(Starter::Empty),
         web: false,
         cli: false,
@@ -675,6 +496,33 @@ mod tests {
     struct ParsedStart {
         #[command(flatten)]
         args: StartArgs,
+    }
+
+    #[derive(Parser)]
+    struct ParsedCreate {
+        #[command(flatten)]
+        args: CreateArgs,
+    }
+
+    #[test]
+    fn sdk_source_selects_only_the_root_process_starter() {
+        for extra in [vec!["--web"], vec!["--cli"], vec!["--runtime", "process"]] {
+            let mut args = vec!["create", "app", "--http-sdk-source", "sdk"];
+            args.extend(extra);
+            assert!(ParsedCreate::try_parse_from(args).is_err());
+        }
+        let registry = ParsedCreate::try_parse_from(["create", "app", "--no-install"]).unwrap();
+        assert!(registry.args.http_sdk_source.is_none());
+        let typed = ParsedCreate::try_parse_from([
+            "create",
+            "app",
+            "--http-sdk-source",
+            "sdk",
+            "--no-install",
+        ])
+        .unwrap();
+        assert_eq!(typed.args.http_sdk_source, Some("sdk".into()));
+        assert!(typed.args.no_install);
     }
 
     #[test]
@@ -744,6 +592,7 @@ mod tests {
         create(CreateArgs {
             directory: destination.clone(),
             lang: None,
+            http_sdk_source: None,
             runtime: None,
             web: true,
             cli: false,
@@ -787,6 +636,7 @@ mod tests {
         create(CreateArgs {
             directory: destination.clone(),
             lang: None,
+            http_sdk_source: None,
             runtime: None,
             web: true,
             cli: false,
@@ -802,12 +652,16 @@ mod tests {
     }
 
     #[test]
-    fn default_rust_app_uses_the_root_cargo_package() {
+    fn source_sdk_rust_app_uses_typed_handlers_in_the_root_cargo_package() {
         let root = tempfile::tempdir().unwrap();
         let destination = root.path().join("notes");
         create(CreateArgs {
             directory: destination.clone(),
             lang: Some(AppLanguage::Rust),
+            http_sdk_source: Some(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../lenso-capability-http-endpoint"),
+            ),
             runtime: None,
             web: false,
             cli: false,
@@ -818,12 +672,34 @@ mod tests {
         assert!(destination.join("Cargo.toml").is_file());
         assert!(destination.join("src/lib.rs").is_file());
         assert!(destination.join("src/main.rs").is_file());
+        assert!(destination.join("tests/notes.rs").is_file());
         let manifest = fs::read_to_string(destination.join("Cargo.toml")).unwrap();
         assert!(manifest.contains("runtime = \"process\""));
         assert!(manifest.contains("root-slot = \"web\""));
+        let parsed: toml::Value = toml::from_str(&manifest).unwrap();
+        assert_eq!(
+            parsed["dependencies"]["lenso-capability-http-endpoint"]["features"][0].as_str(),
+            Some("process")
+        );
+        assert!(parsed["dependencies"].get("lenso-process-sdk").is_none());
+        assert!(parsed.get("patch").is_none());
         let source = fs::read_to_string(destination.join("src/lib.rs")).unwrap();
-        assert!(source.contains("notes.create"));
-        assert!(source.contains("notes.read"));
+        assert_eq!(source.matches("\"notes.create\"").count(), 1);
+        assert_eq!(source.matches("\"notes.read\"").count(), 1);
+        assert!(source.contains("#[endpoint(standalone)]"));
+        for protocol in [
+            "ProcessPlugin",
+            "ProcessOutcome",
+            "DESCRIBE_OPERATION",
+            "HANDLE_OPERATION",
+            "HandleRequest",
+            "HandleResponse",
+        ] {
+            assert!(
+                !source.contains(protocol),
+                "business source contains {protocol}"
+            );
+        }
         let readme = fs::read_to_string(destination.join("README.md")).unwrap();
         assert!(readme.contains("in-memory development data"));
         assert!(readme.contains("disable both"));

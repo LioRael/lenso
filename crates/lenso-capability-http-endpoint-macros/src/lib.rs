@@ -22,6 +22,10 @@ use syn::{
 /// every route before route-specific middleware. A handler that already has an
 /// `#[openapi(...)]` Operation Object may opt into strict type-derived drift
 /// detection with `#[openapi_contract(...)]`.
+///
+/// Use `#[endpoint(standalone)]` when serving through the optional
+/// `lenso_capability_http_endpoint::process` bridge rather than linked Host
+/// registration. This generates the same route table, extractors, and dispatch.
 #[proc_macro_attribute]
 pub fn endpoint(arguments: TokenStream, input: TokenStream) -> TokenStream {
     let register_plugin = if arguments.is_empty() {
@@ -29,12 +33,9 @@ pub fn endpoint(arguments: TokenStream, input: TokenStream) -> TokenStream {
     } else {
         let mode = parse_macro_input!(arguments as Ident);
         if mode != "standalone" {
-            return Error::new_spanned(
-                mode,
-                "endpoint accepts only the internal `standalone` mode",
-            )
-            .into_compile_error()
-            .into();
+            return Error::new_spanned(mode, "endpoint accepts only the `standalone` mode")
+                .into_compile_error()
+                .into();
         }
         false
     };
