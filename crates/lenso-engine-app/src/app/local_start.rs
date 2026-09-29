@@ -447,9 +447,9 @@ async fn kill_group(child: &mut Child, group_id: u32) -> anyhow::Result<std::pro
     Ok(reaped.context("timed out reaping supervised Host")??)
 }
 
-use super::local_host_retirement::wait_for_exit_unreaped;
 #[cfg(unix)]
-use super::local_host_retirement::{exited_unreaped, group_only_zombies};
+use super::local_host_retirement::group_only_zombies;
+use super::local_host_retirement::wait_for_exit_unreaped;
 
 #[cfg(unix)]
 fn signal_group(group_id: u32, signal: nix::sys::signal::Signal) -> anyhow::Result<()> {
@@ -459,7 +459,7 @@ fn signal_group(group_id: u32, signal: nix::sys::signal::Signal) -> anyhow::Resu
         Ok(()) | Err(Errno::ESRCH) => Ok(()),
         #[cfg(target_os = "macos")]
         Err(Errno::EPERM)
-            if exited_unreaped(group_id)?
+            if super::local_host_retirement::exited_unreaped(group_id)?
                 && super::local_dev::darwin_group_only_zombies(group_id)? =>
         {
             Ok(())
