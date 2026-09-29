@@ -32,11 +32,11 @@ authorizes landing; review or skill installation alone does not.
 
 ## Verify one final candidate
 
-1. Push the final commit once to a unique ref such as
-   `delta/verify/lenso/<attempt>`:
+1. Push the final commit once to a unique `candidate/<task>/<attempt>` ref,
+   matching the push trigger in `.github/workflows/ci.yml`:
 
    ```sh
-   git push origin <candidate-sha>:refs/heads/delta/verify/<task>/<attempt>
+   git push origin <candidate-sha>:refs/heads/candidate/<task>/<attempt>
    ```
 
 2. Accept only the `CI` workflow run created by that `push` whose repository,
