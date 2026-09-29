@@ -94,7 +94,7 @@ pub(super) async fn shutdown_native_plugins(
         }
     }
 
-    let mut first_error = None;
+    let mut first_error = runtime.cleanup_failure.borrow().clone();
     for instance_key in runtime.activation_order.iter().rev() {
         runtime.mark_plugin_endpoints_unavailable(instance_key);
         let plugin = runtime
@@ -215,15 +215,22 @@ pub(super) async fn drain_supervision_until(
     deadline: Duration,
 ) -> bool {
     let tasks = std::mem::take(&mut *runtime.supervision_tasks.borrow_mut());
-    for (index, task) in tasks.values().enumerate() {
-        if wait_until(&runtime.driver, deadline, task.join())
-            .await
-            .is_none()
-        {
-            for pending in tasks.values().skip(index) {
-                pending.cancel();
+    for (index, (instance_key, task)) in tasks.iter().enumerate() {
+        match wait_until(&runtime.driver, deadline, task.join()).await {
+            Some(super::TaskOutcome::Completed) => {}
+            Some(outcome) => {
+                runtime.record_cleanup_failure(&RuntimeFailure::Internal {
+                    detail: format!(
+                        "Plugin `{instance_key}` supervision task ended with {outcome:?}"
+                    ),
+                });
             }
-            return false;
+            None => {
+                for pending in tasks.values().skip(index) {
+                    pending.cancel();
+                }
+                return false;
+            }
         }
     }
     true
@@ -309,14 +316,51 @@ pub(super) fn begin_plugin_supervision(
     Ok(true)
 }
 
+struct SupervisionCompletion {
+    runtime: Rc<NativeAppRuntime>,
+    instance_key: String,
+    completed: bool,
+}
+
+impl Drop for SupervisionCompletion {
+    fn drop(&mut self) {
+        if !self.completed {
+            // A task handle can be replaced by the next supervision episode.
+            // Preserve incomplete cleanup before panic or cancellation drops it.
+            self.runtime
+                .record_cleanup_failure(&RuntimeFailure::Internal {
+                    detail: format!(
+                        "Plugin `{}` supervision ended before completing cleanup",
+                        self.instance_key
+                    ),
+                });
+        }
+    }
+}
+
 pub(super) fn schedule_plugin_supervision(
     runtime: &Rc<NativeAppRuntime>,
     instance_key: &str,
 ) -> Result<(), RuntimeFailure> {
+    if let Some(previous) = runtime.supervision_tasks.borrow_mut().remove(instance_key)
+        && previous.join().now_or_never() != Some(super::TaskOutcome::Completed)
+    {
+        runtime.record_cleanup_failure(&RuntimeFailure::Internal {
+            detail: format!(
+                "Plugin `{instance_key}` previous supervision task did not complete normally"
+            ),
+        });
+    }
     let task_runtime = runtime.clone();
     let task_instance_key = instance_key.to_owned();
     let task = (runtime.driver.spawn_local)(Box::pin(async move {
+        let mut completion = SupervisionCompletion {
+            runtime: task_runtime.clone(),
+            instance_key: task_instance_key.clone(),
+            completed: false,
+        };
         let _ = supervise_plugin_instance(task_runtime, task_instance_key).await;
+        completion.completed = true;
     }))
     .map_err(|error| {
         if let Some(state) = runtime.supervision.borrow_mut().get_mut(instance_key) {
@@ -607,6 +651,7 @@ pub(super) fn finish_plugin_cleanup_failure(
     instance_key: &str,
     error: RuntimeFailure,
 ) -> Result<(), RuntimeFailure> {
+    runtime.record_cleanup_failure(&error);
     let must_fail = {
         let mut supervision = runtime.supervision.borrow_mut();
         let state = supervision
@@ -885,7 +930,7 @@ async fn cleanup_native_generation_with_budget(
         .get(instance_key)
         .cloned()
         .unwrap_or_default();
-    match cleanup_generation(
+    let error = match cleanup_generation(
         instance_key,
         generation,
         dependencies,
@@ -911,7 +956,11 @@ async fn cleanup_native_generation_with_budget(
             }
             Some(error)
         }
+    };
+    if let Some(error) = &error {
+        runtime.record_cleanup_failure(error);
     }
+    error
 }
 
 enum GenerationCleanupOutcome {

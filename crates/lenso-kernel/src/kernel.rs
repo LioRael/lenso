@@ -223,6 +223,7 @@ impl Kernel {
             shutdown: ShutdownCoordinator::default(),
             shutdown_task: RefCell::new(None),
             terminal_failure: RefCell::new(None),
+            cleanup_failure: RefCell::new(None),
         });
         runtime_link.replace(Rc::downgrade(&runtime));
         attach_managed_task_failure_handlers(&runtime);
@@ -727,6 +728,9 @@ pub(super) async fn prepare_native_plugins(
 }
 
 fn retain_unsafe_startup(runtime: &Rc<NativeAppRuntime>, cleanup_error: Option<&RuntimeFailure>) {
+    if let Some(error) = cleanup_error {
+        runtime.record_cleanup_failure(error);
+    }
     if matches!(cleanup_error, Some(RuntimeFailure::DeadlineExceeded { .. })) {
         // Native code cannot be preempted safely. With no App handle to carry
         // this failed startup generation, retain ownership until the embedding
