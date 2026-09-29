@@ -1,0 +1,46 @@
+crates/lenso-cli/docs/configuration-sources.md
+  h_9d56aba080c170 38-50,63-64,68-92,167-202
+crates/lenso-cli/src/mcp.rs
+  h_9d56aba080c170 1354-1357
+crates/lenso-cli/tests/configuration_source_dev.rs
+  h_9d56aba080c170 257-270,277-278,290-295,384,456,460,488,584
+crates/lenso-cli/tests/configuration_source_retirement.rs
+  h_9d56aba080c170 1-454
+crates/lenso-cli/tests/fixtures/local-host-binding/src/lib.rs
+  h_9d56aba080c170 25-29,77-82,84-88
+crates/lenso-cli/tests/local_host_bindings.rs
+  h_9d56aba080c170 73-74,102-103,142-143,150,173-250,262,270-271,296
+crates/lenso-cli/tests/process_notes.rs
+  h_9d56aba080c170 5-6,19,106-155,396-397
+crates/lenso-cli/tests/support/process_notes_supervision.rs
+  h_9d56aba080c170 1-148
+crates/lenso-engine-app/src/app.rs
+  h_9d56aba080c170 31
+crates/lenso-engine-app/src/app/local_dev.rs
+  h_9d56aba080c170 5,24-25,78,85,165,332-335,395,446,462,479-483,485-489,492-494,530,636-648,691-698,700,702-703,708-710,717-766,768-781,783-786,835,1191,1229,1311,1322,1335,1530,1579,1598,1674,1684-1703,1728-1740,1812,2169,2253,2356,2380-2445,2641,2723,2803-2812,2816,2839,2844-2848,2856,2870,2872-2880,2882-2887,2911,2914,2917,2922-2923,2939,2965
+crates/lenso-engine-app/src/app/local_dev/managed_host.rs
+  h_9d56aba080c170 1-117
+crates/lenso-engine-app/src/app/local_host_retirement.rs
+  h_9d56aba080c170 1-302
+crates/lenso-engine-app/src/app/local_runtime_template.rs
+  h_9d56aba080c170 15-105,663-666,848-865,971-974,997-998,1027-1032,1069,1082-1102
+crates/lenso-engine-app/src/app/local_start.rs
+  h_9d56aba080c170 18-19,24,31,52,64,89,94,97-101,174-189,243,264-275,282,295,368,380,382-398,400-401,403-405,450,452,623,818-822,888
+crates/lenso-engine-app/src/app/local_start/retirement.rs
+  h_9d56aba080c170 1-33
+docs/adr/0078-bound-automatic-recovery-to-managed-resource-retirement.md
+  h_9d56aba080c170 1-51
+docs/adr/README.md
+  h_9d56aba080c170 5,104-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f803a3df369e747b74c91f6052f04b5ead83781d",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
