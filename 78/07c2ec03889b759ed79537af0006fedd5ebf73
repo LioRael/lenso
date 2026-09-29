@@ -1,0 +1,14 @@
+crates/lenso-engine-app/src/app/local_start.rs
+  h_9d56aba080c170 451-452,462
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7807c2ec03889b759ed79537af0006fedd5ebf73",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

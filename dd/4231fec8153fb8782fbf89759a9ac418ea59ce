@@ -1,0 +1,36 @@
+crates/lenso-bun-adapter/src/adapter.rs
+  h_9d56aba080c170 28,127,140,194-199,393,497-501,1158
+crates/lenso-bun-adapter/src/adapter_v2.rs
+  h_9d56aba080c170 111-112,133-154,210-211,314,316,323,436,456,639,659,828,890,895,968,970-1022,1024-1025,1035-1082,1085-1091,1620,1637,1679,1941
+crates/lenso-bun-adapter/src/authoring_v2.rs
+  h_9d56aba080c170 39-41,125-140,159-166,176,347-350,355-356,359-376,381,383-384,394
+crates/lenso-bun-adapter/src/lib.rs
+  h_9d56aba080c170 16,34
+crates/lenso-bun-adapter/src/shutdown.rs
+  h_9d56aba080c170 1-36
+crates/lenso-bun-adapter/src/transport/framed.rs
+  h_9d56aba080c170 69,558,564-568,574
+crates/lenso-bun-adapter/src/transport/json_rpc.rs
+  h_9d56aba080c170 964-969,975
+crates/lenso-bun-adapter/src/transport/mod.rs
+  h_9d56aba080c170 74-75,79,100,102-110,113-114,118,156,274,323-353,355-356,358-371,430-457,626,821,823-829,832,840,965,1035-1119
+crates/lenso-bun-adapter/tests/authoring_v2.rs
+  h_9d56aba080c170 1312-1319
+crates/lenso-process-adapter/src/lib.rs
+  h_9d56aba080c170 7,10-12,18,128,132-137,144,190,218-223,311,315-320,336,400,506,526,541,553,674,695-699,701-703,705-717,719,721-722,724-725,853,864-884,971-998
+crates/lenso-process-adapter/src/shutdown.rs
+  h_9d56aba080c170 1-174
+crates/lenso-process-adapter/src/v2.rs
+  h_9d56aba080c170 4,39,81,84-87,96,120,157-158,210,215,308-309,750-754,756-811,813-823,826-827,829-830,1376-1379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd4231fec8153fb8782fbf89759a9ac418ea59ce",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

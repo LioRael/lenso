@@ -1,0 +1,20 @@
+crates/lenso-kernel/src/kernel.rs
+  h_9d56aba080c170 226,731-733
+crates/lenso-kernel/src/runtime.rs
+  h_9d56aba080c170 291,317-324
+crates/lenso-kernel/src/supervision.rs
+  h_9d56aba080c170 97,218-232,319-340,345-353,357-361,363,654,933,959-961,963
+crates/lenso-kernel/tests/supervision.rs
+  h_9d56aba080c170 123,131,133,150,159,168,205,213-218,229-236,244,261,267,289-291,314-317,514-518,737-879,912-915
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3d588a1913f520ae89b6c77d5dc01db9b58afd5",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
