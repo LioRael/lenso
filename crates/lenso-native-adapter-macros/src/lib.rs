@@ -892,7 +892,9 @@ fn expand_provides(
             let lower = &contribution.lower;
             lowers_domain_methods.then(|| {
                 quote! {
-                    #namespace::#lower!(#plugin_ident, #sdk::__private);
+                    const _: () = {
+                        #namespace::#lower!(#plugin_ident, #sdk::__private);
+                    };
                 }
             })
         })
