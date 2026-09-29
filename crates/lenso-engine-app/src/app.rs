@@ -20,6 +20,7 @@ mod contracts;
 pub(crate) mod convention_authoring;
 mod convention_build;
 mod explain;
+mod facility_inspection;
 pub mod facts;
 pub use configuration_source::Status as ConfigurationStatus;
 pub use configuration_source::sync_external_configuration;
@@ -98,7 +99,16 @@ pub use explain::ExplainArgs;
 /// Inspect the same persisted Host admission and binding evidence as
 /// `lenso app explain --json`, without invoking a second resolver.
 pub fn inspect_app_explanation(root: impl AsRef<Path>) -> anyhow::Result<serde_json::Value> {
-    explain::report(root.as_ref())
+    inspect_app_explanation_with_facilities(root, None)
+}
+
+/// Inspect persisted App evidence and optional Host grants without constructing
+/// owner facilities or querying resources.
+pub fn inspect_app_explanation_with_facilities(
+    root: impl AsRef<Path>,
+    host_facilities: Option<&Path>,
+) -> anyhow::Result<serde_json::Value> {
+    explain::report_with_facilities(root.as_ref(), host_facilities)
 }
 
 /// Validate one built App with the same resolver as `lenso app check`.

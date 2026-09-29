@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use lenso_contract_authoring::{CapabilitySnapshot, OperationSnapshot};
+use lenso_contract_authoring::{CapabilitySnapshot, OperationSnapshot, RequestAdmissionSnapshot};
 use lenso_contract_codegen::{
     CodegenError, check_source_snapshot, generate, write_source_snapshot,
 };
@@ -12,6 +12,7 @@ fn snapshot() -> CapabilitySnapshot {
         version: "1.0.0".to_owned(),
         portable: true,
         cross_lane_transfer: false,
+        request_admission: None,
         operations: vec![OperationSnapshot {
             name: "run".to_owned(),
             interaction: "request".to_owned(),
@@ -56,6 +57,48 @@ fn source_snapshots_are_deterministic_and_drift_checked() {
         Err(CodegenError::GeneratedArtifactDrift { .. })
     ));
     assert!(Path::new(&descriptor).exists());
+}
+
+#[test]
+fn explicit_admission_is_locked_digest_bound_and_projected() {
+    let root = tempfile::tempdir().unwrap();
+    let descriptor = root.path().join("capability.json");
+    let mut source = snapshot();
+    write_source_snapshot(&source, &descriptor).unwrap();
+    let default = generate(&descriptor).unwrap();
+    assert!(
+        !std::fs::read_to_string(&descriptor)
+            .unwrap()
+            .contains("request_admission")
+    );
+    source.request_admission = Some(RequestAdmissionSnapshot {
+        queue_capacity: 16,
+        max_concurrency: 2,
+    });
+    write_source_snapshot(&source, &descriptor).unwrap();
+    check_source_snapshot(&source, &descriptor).unwrap();
+    let explicit = generate(&descriptor).unwrap();
+    assert_ne!(
+        default.metadata.descriptor_digest,
+        explicit.metadata.descriptor_digest
+    );
+    let literal = explicit
+        .rust
+        .split_once("macro_rules! __lenso_provided_derived { () => { ")
+        .unwrap()
+        .1
+        .split_once(" }; }")
+        .unwrap()
+        .0;
+    let fragment: String = serde_json::from_str(literal).unwrap();
+    let provided: serde_json::Value = serde_json::from_str(&fragment).unwrap();
+    assert_eq!(provided["default_admission"]["queue_capacity"], 16);
+    assert_eq!(provided["default_admission"]["max_concurrency"], 2);
+    assert_eq!(provided["capability_id"], "example.derived@1");
+    let bytes = std::fs::read(&descriptor).unwrap();
+    source.request_admission.as_mut().unwrap().max_concurrency = 0;
+    assert!(write_source_snapshot(&source, &descriptor).is_err());
+    assert_eq!(std::fs::read(&descriptor).unwrap(), bytes);
 }
 
 #[test]

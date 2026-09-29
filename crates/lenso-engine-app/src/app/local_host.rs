@@ -13,6 +13,7 @@ use std::{
 };
 
 mod business_snapshot;
+pub(crate) mod facilities;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct AdapterSet {
@@ -150,6 +151,7 @@ pub(super) fn generate(
     let mut codec_cohorts = BTreeSet::new();
     let mut web_contract = None;
     let mut business_snapshot = business_snapshot::HostBinding::default();
+    let mut facilities = facilities::Sources::default();
     let mut watch_roots = BTreeSet::new();
     for (index, candidate) in candidates.iter().enumerate() {
         // A portable Cargo Guest can depend on a rust-runtime projection for
@@ -221,13 +223,39 @@ pub(super) fn generate(
             dependencies.insert(alias.clone(), dependency(package)?);
             linked.push_str(&format!("{alias}::link_plugin();\n"));
             business_snapshot.select(&alias, package)?;
+            facilities.select(&alias, &candidate.plugin_id, package, &candidate.project)?;
         }
-        // Only normal reachable dependencies are eligible: test/build helper
-        // contracts must not introduce runtime identities or competing versions.
+        // Build helpers share source patches but cannot contribute runtime codecs
+        // or Capability identities. The runtime traversal below remains normal-only.
         let nodes = metadata
             .pointer("/resolve/nodes")
             .and_then(Value::as_array)
             .context("resolved Cargo graph")?;
+        if native {
+            for id in
+                reachable_host_sources(package["id"].as_str().context("Cargo package ID")?, nodes)?
+            {
+                let source = packages
+                    .iter()
+                    .find(|source| source["id"] == id)
+                    .context("reachable Host build package")?;
+                collect_local_lenso_patch(&mut local_lenso_patches, source)?;
+                collect_git_lenso_source(&mut git_lenso_source, source)?;
+                if source["source"].is_null() {
+                    let manifest = Path::new(
+                        source["manifest_path"]
+                            .as_str()
+                            .context("Host build source manifest")?,
+                    );
+                    watch_roots.insert(
+                        manifest
+                            .parent()
+                            .context("Host build source directory")?
+                            .to_path_buf(),
+                    );
+                }
+            }
+        }
         let mut pending = vec![
             package["id"]
                 .as_str()
@@ -515,6 +543,8 @@ pub(super) fn generate(
         },
     );
     source = business_snapshot.render(&source);
+    source = facilities.render_native(&source);
+    facilities.write(stage)?;
     source = source.replace("// LENSO_DESCRIBE_WEB", if web { r#"
         let mut releases = catalog.plugins().to_vec();
         if releases.iter().any(|r| r.descriptor().provided_capabilities().iter().any(|c| c.capability_id() == local_web_contract::CAPABILITY_ID)) {
@@ -737,6 +767,35 @@ fn pin_host_framework_versions(
     }
 }
 
+fn reachable_host_sources(root: &str, nodes: &[Value]) -> anyhow::Result<BTreeSet<String>> {
+    let mut selected = BTreeSet::new();
+    let mut pending = vec![root.to_owned()];
+    while let Some(id) = pending.pop() {
+        if !selected.insert(id.clone()) {
+            continue;
+        }
+        let node = nodes
+            .iter()
+            .find(|node| node["id"] == id)
+            .context("Host build dependency node")?;
+        for dependency in node["deps"].as_array().context("Host build dependencies")? {
+            if dependency["dep_kinds"].as_array().is_some_and(|kinds| {
+                kinds
+                    .iter()
+                    .any(|kind| kind["kind"].is_null() || kind["kind"] == "build")
+            }) {
+                pending.push(
+                    dependency["pkg"]
+                        .as_str()
+                        .context("Host build dependency ID")?
+                        .to_owned(),
+                );
+            }
+        }
+    }
+    Ok(selected)
+}
+
 fn collect_local_lenso_patch(
     patches: &mut BTreeMap<String, (String, Value)>,
     package: &Value,
@@ -830,6 +889,15 @@ fn local_framework_dependency(
 struct GitLensoSources {
     source: Option<(String, String)>,
     packages: BTreeMap<String, (String, String)>,
+    pending: Vec<GitLensoPackage>,
+}
+
+struct GitLensoPackage {
+    name: String,
+    id: String,
+    version: String,
+    git: String,
+    rev: String,
 }
 
 fn collect_git_lenso_source(selected: &mut GitLensoSources, package: &Value) -> anyhow::Result<()> {
@@ -841,33 +909,72 @@ fn collect_git_lenso_source(selected: &mut GitLensoSources, package: &Value) -> 
     let (Some(git), Some(rev)) = (dependency["git"].as_str(), dependency["rev"].as_str()) else {
         return Ok(());
     };
-    let source = (git.to_owned(), rev.to_owned());
-    if selected
+    let package = GitLensoPackage {
+        name: name.to_owned(),
+        id: package["id"]
+            .as_str()
+            .context("Cargo package ID")?
+            .to_owned(),
+        version: package["version"]
+            .as_str()
+            .context("Cargo package version")?
+            .to_owned(),
+        git: git.to_owned(),
+        rev: rev.to_owned(),
+    };
+    // Plugin owners share the lenso-* namespace. Only the facade or Kernel
+    // identifies the framework repository; dependency traversal order does not.
+    if matches!(package.name.as_str(), "lenso" | "lenso-kernel") {
+        let source = (package.git.clone(), package.rev.clone());
+        if selected
+            .source
+            .as_ref()
+            .is_some_and(|previous| previous != &source)
+        {
+            bail!(
+                "native Plugins use incompatible Lenso Git source revisions; align their dependencies before generating one Host"
+            );
+        }
+        selected.source = Some(source);
+    }
+    if selected.source.is_none() {
+        selected.pending.push(package);
+        return Ok(());
+    }
+    for pending in std::mem::take(&mut selected.pending) {
+        collect_selected_git_lenso_package(selected, pending)?;
+    }
+    collect_selected_git_lenso_package(selected, package)
+}
+
+fn collect_selected_git_lenso_package(
+    selected: &mut GitLensoSources,
+    package: GitLensoPackage,
+) -> anyhow::Result<()> {
+    let (git, rev) = selected
         .source
         .as_ref()
-        .is_some_and(|previous| previous != &source)
-    {
+        .context("selected Git framework source")?;
+    if &package.git != git {
+        return Ok(());
+    }
+    if &package.rev != rev {
         bail!(
             "native Plugins use incompatible Lenso Git source revisions; align their dependencies before generating one Host"
         );
     }
-    let id = package["id"].as_str().context("Cargo package ID")?;
-    let version = package["version"]
-        .as_str()
-        .context("Cargo package version")?;
+    let identity = (package.id, package.version);
     if selected
         .packages
-        .get(name)
-        .is_some_and(|previous| previous != &(id.to_owned(), version.to_owned()))
+        .get(&package.name)
+        .is_some_and(|previous| previous != &identity)
     {
         bail!(
-            "native Plugins use incompatible {name} Git package identities; align their dependencies before generating one Host"
+            "native Plugins use incompatible {} Git package identities; align their dependencies before generating one Host",
+            package.name
         );
     }
-    selected
-        .packages
-        .insert(name.to_owned(), (id.to_owned(), version.to_owned()));
-    selected.source = Some(source);
+    selected.packages.insert(package.name, identity);
     Ok(())
 }
 
@@ -1047,6 +1154,7 @@ fn distribution_file_paths(stage: &Path, runtime_artifacts: &[Value]) -> Vec<Str
         ".lenso/host",
         ".lenso/host-mode",
         ".lenso/host-build.json",
+        ".lenso/host-facility-sources.json",
         "runtime/lenso-resolver",
         "bundles.json",
         "runtime-codecs.json",
@@ -1471,9 +1579,40 @@ mod tests {
         contract_dependency_alias, copy_generated_host_provenance, dependency,
         dependency_lock_digests, distribution_file_paths, input_digest, local_framework_crates_dir,
         local_framework_dependency, merge_lenso_patches, pin_host_framework_versions,
-        verify_dependency_lock_digests, verify_git_lenso_lock, web_ingress_dependency,
-        write_generated_host_file,
+        reachable_host_sources, verify_dependency_lock_digests, verify_git_lenso_lock,
+        web_ingress_dependency, write_generated_host_file,
     };
+
+    #[test]
+    fn source_patches_include_build_closure_and_exclude_dev_helpers() {
+        let nodes = vec![
+            json!({"id":"root","deps":[
+                {"pkg":"runtime","dep_kinds":[{"kind":null}]},
+                {"pkg":"codegen","dep_kinds":[{"kind":"build"}]},
+                {"pkg":"test-only","dep_kinds":[{"kind":"dev"}]}
+            ]}),
+            json!({"id":"runtime","deps":[]}),
+            json!({"id":"codegen","deps":[{"pkg":"source-authoring","dep_kinds":[{"kind":null}]}]}),
+            json!({"id":"source-authoring","deps":[]}),
+        ];
+        let selected = reachable_host_sources("root", &nodes).unwrap();
+        assert_eq!(
+            selected,
+            BTreeSet::from([
+                "root".to_owned(),
+                "runtime".to_owned(),
+                "codegen".to_owned(),
+                "source-authoring".to_owned()
+            ])
+        );
+        let mut local = BTreeMap::new();
+        collect_local_lenso_patch(&mut local, &json!({"id":"codegen", "name":"lenso-contract-codegen", "version":"0.10.0", "source":null, "manifest_path":"/approved/lenso/crates/lenso-contract-codegen/Cargo.toml"})).unwrap();
+        let patches = merge_lenso_patches(local, &GitLensoSources::default(), false).unwrap();
+        assert_eq!(
+            patches["lenso-contract-codegen"]["path"],
+            "/approved/lenso/crates/lenso-contract-codegen"
+        );
+    }
 
     #[test]
     fn host_provenance_is_locked_and_rebuildable_without_source_cache() {
@@ -1554,11 +1693,111 @@ mod tests {
         );
     }
 
+    fn selected_git_framework_fixture(rev: &str) -> GitLensoSources {
+        GitLensoSources {
+            source: Some((
+                "https://github.com/LioRael/lenso".to_owned(),
+                rev.to_owned(),
+            )),
+            ..GitLensoSources::default()
+        }
+    }
+
+    #[test]
+    fn git_framework_selection_ignores_independent_plugin_repositories() {
+        let git = "https://git.example/framework";
+        let rev = "framework-revision";
+        let packages = [
+            json!({"name":"lenso-auth-sdk","version":"0.2.4","id":"auth-sdk", "source":"git+https://git.example/auth?rev=auth-revision#auth-revision"}),
+            json!({"name":"lenso-console-plugin","version":"0.4.0","id":"console", "source":"git+https://git.example/console?rev=console-revision#console-revision"}),
+            json!({"name":"lenso-agent-management-plugin","version":"0.3.0","id":"agent", "source":"git+https://git.example/agent?rev=agent-revision#agent-revision"}),
+            json!({"name":"lenso-native-adapter","version":"0.3.18","id":"adapter", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            json!({"name":"lenso-contract-codegen","version":"0.10.0","id":"codegen", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            json!({"name":"lenso","version":"0.5.27","id":"facade", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            json!({"name":"lenso-kernel","version":"0.3.11","id":"kernel", "source":format!("git+{git}?rev={rev}#{rev}")}),
+        ];
+        for reverse in [false, true] {
+            let mut selected = GitLensoSources::default();
+            let mut ordered = packages.iter().collect::<Vec<_>>();
+            if reverse {
+                ordered.reverse();
+            }
+            for package in ordered {
+                collect_git_lenso_source(&mut selected, package).unwrap();
+            }
+            assert_eq!(selected.source, Some((git.to_owned(), rev.to_owned())));
+            let patches = merge_lenso_patches(BTreeMap::new(), &selected, false).unwrap();
+            assert_eq!(
+                patches.keys().map(String::as_str).collect::<BTreeSet<_>>(),
+                BTreeSet::from([
+                    "lenso",
+                    "lenso-contract-codegen",
+                    "lenso-kernel",
+                    "lenso-native-adapter"
+                ])
+            );
+            assert_eq!(patches["lenso-native-adapter"]["git"], git);
+            assert_eq!(patches["lenso-contract-codegen"]["rev"], rev);
+        }
+    }
+
+    #[test]
+    fn git_framework_selection_requires_a_facade_or_kernel_anchor() {
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({"name":"lenso-auth-sdk","version":"0.2.4","id":"auth-sdk", "source":"git+https://git.example/auth?rev=auth-revision#auth-revision"}),
+        )
+        .unwrap();
+        assert!(selected.source.is_none());
+        assert!(
+            merge_lenso_patches(BTreeMap::new(), &selected, false)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn git_framework_selection_rejects_conflicts_before_and_after_anchoring() {
+        for adapter_first in [false, true] {
+            let mut selected = GitLensoSources::default();
+            let facade = json!({"name":"lenso","version":"0.5.27","id":"facade", "source":"git+https://git.example/framework?rev=current#current"});
+            let adapter = json!({"name":"lenso-native-adapter","version":"0.3.18","id":"adapter", "source":"git+https://git.example/framework?rev=old#old"});
+            let (first, second) = if adapter_first {
+                (&adapter, &facade)
+            } else {
+                (&facade, &adapter)
+            };
+            collect_git_lenso_source(&mut selected, first).unwrap();
+            assert!(
+                collect_git_lenso_source(&mut selected, second)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("incompatible Lenso Git source revisions")
+            );
+        }
+        let mut selected = GitLensoSources::default();
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({"name":"lenso","version":"0.5.27","id":"facade", "source":"git+https://git.example/framework?rev=current#current"}),
+        )
+        .unwrap();
+        assert!(
+            collect_git_lenso_source(
+                &mut selected,
+                &json!({"name":"lenso-kernel","version":"0.3.11","id":"kernel", "source":"git+https://git.example/other-framework?rev=current#current"}),
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("incompatible Lenso Git source revisions")
+        );
+    }
+
     #[test]
     fn generated_host_patches_selected_git_framework_for_registry_transitives() {
         let git = "https://github.com/LioRael/lenso";
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
-        let mut selected = GitLensoSources::default();
+        let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
             &json!({
@@ -1597,7 +1836,7 @@ mod tests {
     fn selected_git_framework_patches_a_reachable_registry_duplicate() {
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
         let git_id = "git+https://github.com/LioRael/lenso#lenso-native-adapter@0.3.15";
-        let mut selected = GitLensoSources::default();
+        let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
             &json!({
@@ -1629,7 +1868,7 @@ mod tests {
         let git = "https://github.com/LioRael/lenso";
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
         let other_rev = "c9cd15629b7d65d6f6cdc12113234acd85c89a89";
-        let mut selected = GitLensoSources::default();
+        let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
             &json!({
@@ -1677,7 +1916,7 @@ mod tests {
     #[test]
     fn selected_git_framework_rejects_conflicting_local_patch_source() {
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
-        let mut selected = GitLensoSources::default();
+        let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
             &json!({
@@ -1716,7 +1955,7 @@ mod tests {
         let lock = root.path().join("Cargo.lock");
         let git = "https://github.com/LioRael/lenso";
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
-        let mut selected = GitLensoSources::default();
+        let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
             &json!({
@@ -1782,7 +2021,7 @@ mod tests {
         let lock = root.path().join("Cargo.lock");
         let git = "https://github.com/LioRael/lenso";
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
-        let mut selected = GitLensoSources::default();
+        let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
             &json!({
@@ -1825,7 +2064,7 @@ mod tests {
         let lock = root.path().join("Cargo.lock");
         let git = "https://github.com/LioRael/lenso";
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
-        let mut selected = GitLensoSources::default();
+        let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
             &json!({

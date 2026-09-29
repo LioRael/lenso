@@ -596,6 +596,8 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let mut agent_tool_cli = false;
     #[cfg(generated_native_host)]
     let mut business_snapshot_policy = None;
+    #[cfg(generated_native_host)]
+    let mut host_facilities = None;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -609,6 +611,11 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 business_snapshot_policy = Some(PathBuf::from(
                     args.get(index).context("--business-snapshot-policy needs a file")?,
                 ));
+            }
+            #[cfg(generated_native_host)]
+            "--host-facilities" => {
+                index += 1;
+                host_facilities = Some(PathBuf::from(args.get(index).context("--host-facilities needs a file")?));
             }
             "--check" => check = true,
             "--prepare" => prepare = true,
@@ -864,6 +871,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         }
     };
     // LENSO_BUSINESS_SNAPSHOT_DECL
+    let driver = lenso_runner::TokioDriver::new();
     #[cfg(generated_native_host)]
     let native = {
         let mut resources = native_resources::InstanceResourceCatalog::new();
@@ -885,6 +893,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         let registry = NativePluginRegistry::new()
             .with_linked_factories()
             .with_resources(resources);
+        // LENSO_NATIVE_FACILITY_BIND
         // LENSO_BUSINESS_SNAPSHOT_BIND
     };
     #[cfg(not(generated_native_host))]
@@ -997,7 +1006,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let entered = runtime.enter();
     let result = futures::executor::block_on(
         tokio::task::LocalSet::new().run_until(async move {
-            let app = Kernel::start(resolution.plan, lenso_runner::TokioDriver::new(), catalog)
+            let app = Kernel::start(resolution.plan, driver, catalog)
                 .await.map_err(|e| anyhow::anyhow!("Host startup failed: {e:?}"))?;
             // LENSO_BUSINESS_SNAPSHOT_READY
             if !check

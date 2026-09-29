@@ -94,6 +94,17 @@ README owns its profile-specific instructions and limits:
 - [Request-only HTTP Endpoint profile](../../lenso-engine-app/assets/workers-app-README.md).
 - [Plugin-owned local Workers integrations](workers-host-integrations.md).
 
+The separate `--wasm-bindgen PATH` source candidate builds
+`lenso.linked-rust-workers@1` through ordinary source App resolution. It supports
+static linked Rust Instances, nonempty configuration, named request bindings and
+owner facilities. `--workers-facilities PATH` selects exact event bindings;
+`--workers-host-limits PATH` supplies explicit bounded Host budgets. `app explain
+--root dist-workers --json` checks persisted artifact identities and explains
+selection without invoking factories. Neither that inspection nor compilation
+proves DB readiness. This candidate rejects other execution classes, streams,
+events, dynamic loading and restart supervision. See the integration guide for
+the exact command and lifecycle limits.
+
 These source-checkout capabilities do not establish package release availability;
 see [CLI installation](../README.md#install).
 

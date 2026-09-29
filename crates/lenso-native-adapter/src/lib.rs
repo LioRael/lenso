@@ -1,7 +1,13 @@
 //! Native Rust Execution Adapter for statically linked Plugin packages.
 
 mod authoring;
+mod descriptor_admission;
+mod facilities;
+mod host_clock;
 mod managed_tasks;
+
+pub use facilities::{NativeFacilities, NativeInstanceFacilities};
+pub use host_clock::NativeHostClock;
 
 use std::{
     collections::BTreeMap,
@@ -47,6 +53,7 @@ pub trait Lifecycle: Clone + 'static {
 #[doc(hidden)]
 pub mod __private {
     pub use crate::authoring::{ErasedConstructionFuture, LinkedPluginConstruction};
+    pub use crate::descriptor_admission::{admission_len, join, joined_len, text, with_admission};
     pub use crate::{
         __inventory, CompleteObjectLifecycle, ConstructionContext, Lifecycle, LifecycleContext,
         LinkedNativePluginFactory, NativePluginDefinition, NativePluginFactory,
@@ -361,18 +368,21 @@ pub struct NativePluginFactoryContext<'a> {
     entrypoint: &'a str,
     configuration: &'a str,
     resources: &'a InstanceResources,
+    facilities: &'a NativeFacilities,
 }
 
 impl<'a> NativePluginFactoryContext<'a> {
     fn from_plan(
         instance: &'a lenso_app_plan::PluginInstancePlan,
         resources: &'a InstanceResources,
+        facilities: &'a NativeFacilities,
     ) -> Self {
         Self {
             instance_key: instance.instance_key(),
             entrypoint: instance.entrypoint(),
             configuration: instance.configuration(),
             resources,
+            facilities,
         }
     }
 
@@ -395,6 +405,11 @@ impl<'a> NativePluginFactoryContext<'a> {
     pub const fn resources(self) -> &'a InstanceResources {
         self.resources
     }
+
+    /// Returns only the Host attachments granted to this exact Instance.
+    pub const fn facilities(self) -> &'a NativeFacilities {
+        self.facilities
+    }
 }
 
 /// Statically linked native Plugin factories available to an App binary.
@@ -402,6 +417,7 @@ impl<'a> NativePluginFactoryContext<'a> {
 pub struct NativePluginRegistry {
     factories: Vec<Rc<dyn NativePluginFactory>>,
     resources: lenso_runtime_codec::InstanceResourceCatalog,
+    facilities: NativeInstanceFacilities,
     overrides: BTreeMap<String, Rc<dyn NativePluginFactory>>,
     linked: bool,
 }
@@ -454,6 +470,13 @@ impl NativePluginRegistry {
         resources: lenso_runtime_codec::InstanceResourceCatalog,
     ) -> Self {
         self.resources = resources;
+        self
+    }
+
+    /// Supplies typed Host facilities without adding resources to the Kernel Plan.
+    #[must_use]
+    pub fn with_facilities(mut self, facilities: NativeInstanceFacilities) -> Self {
+        self.facilities = facilities;
         self
     }
 
@@ -535,6 +558,7 @@ impl NativePluginRegistry {
         plan: &ResolvedAppPlan,
     ) -> Result<(NativeInstances, PreparedGenerations), RuntimeFailure> {
         self.validate_overrides()?;
+        self.facilities.validate(plan)?;
         let mut instances = BTreeMap::new();
         let mut generations = BTreeMap::new();
         for expected in plan
@@ -564,6 +588,7 @@ impl NativePluginRegistry {
             let generation = factory.instantiate(NativePluginFactoryContext::from_plan(
                 expected,
                 self.resources.for_instance(expected.instance_key()),
+                self.facilities.for_instance(expected.instance_key()),
             ))?;
             generations.insert(
                 expected.instance_key().to_owned(),
@@ -643,6 +668,7 @@ impl NativeExecutionAdapter for NativePluginRegistry {
         let generation = factory.instantiate(NativePluginFactoryContext::from_plan(
             expected,
             self.resources.for_instance(expected.instance_key()),
+            self.facilities.for_instance(expected.instance_key()),
         ))?;
         Ok(PreparedNativePlugin::with_endpoint_set_lifecycle(
             generation.endpoints.clone(),

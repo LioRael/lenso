@@ -1596,6 +1596,14 @@ fn stdio_authorized_build_reports_the_same_app_check() {
     )
     .unwrap();
     assert_eq!(actual_explanation, expected_explanation);
+    assert_eq!(
+        actual_explanation["host_facilities"]["status"],
+        "not_supplied"
+    );
+    assert_eq!(
+        actual_explanation["host_facilities"]["readiness"],
+        "not_run"
+    );
 
     // Default scope needs a dist-rooted session, but not another real build.
     assert_distribution_default_scope_matches_cli(

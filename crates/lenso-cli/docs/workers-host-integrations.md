@@ -1,10 +1,163 @@
 # Plugin-owned local Workers integrations
 
+The source candidate supports a static linked Rust App through the ordinary
+Plugin Root resolver, Native Adapter and Kernel. Select this profile with
+`--wasm-bindgen`; select the existing restricted Component profile with `--jco`.
+These are separate build choices with separate admission checks.
+
+## Build a static Rust App
+
+```sh
+lenso app build --target workers --root ./app --out ./dist-workers \
+  --workers-runtime /path/to/pinned/workers-runtime \
+  --wasm-bindgen /path/to/wasm-bindgen \
+  --workers-facilities ./profiles/workers.json \
+  --workers-host-limits ./profiles/workers-limits.json
+lenso app explain --root ./dist-workers --json
+```
+
+The profile is `lenso.linked-rust-workers@1`. It requires wasm-bindgen 0.2.127,
+`wasm32-unknown-unknown`, linked Cargo Plugins, one main execution lane, request
+Capabilities, and the selected Web Ingress. It admits nonempty configuration,
+multiple Instances and exact named Port bindings from the same resolved App
+Plan used by the Native build. Requests invoke typed providers through the
+Kernel. Unsupported streams/events, convention compilers, published-resource
+loading, dynamic loading and restart supervision fail before publication.
+
+The linked profile emits compatibility date `2026-09-26`, paired locally with
+Wrangler 4.143.1 and workerd 1.20260926.1. The restricted Component profile keeps
+its existing configuration and pinned runtime cohort.
+
+The build first uses the ordinary source Host assembly to validate source trust,
+Plugin discovery, configuration and bindings. Adopted code retains the existing
+`--trust-linked-build PLUGIN_ID@VERSION=sha256:DIGEST` authorization. Linked Rust
+and owner JavaScript execute as trusted Host code; facility matching does not
+sandbox that code or grant database permissions.
+
+Each HTTP event constructs its own Kernel App and typed Plugin Instances.
+Configuration and bindings are static; Plugin memory is recreated for each
+event. Persist state through an explicitly selected owner backend. An in-memory
+backend does not supply cross-request CAS or restart persistence.
+
+## Owner facilities
+
+A Plugin owns each concrete adapter and its configuration validation. Declare
+its private typed input in the Root and its factories in Cargo metadata:
+
+```rust
+#[lenso::plugin]
+struct StateRoot {
+    #[facility(id = "state")]
+    state: StateHandle,
+}
+```
+
+```toml
+[package.metadata.lenso.host-facilities.state]
+native = "host_facilities::state"
+workers = "host_facilities::state"
+workers-adapter = "src/host_facilities/state.mjs"
+
+[package.metadata.lenso.host-facilities.cache]
+native = "host_facilities::cache"
+workers = "host_facilities::cache"
+workers-adapter = "src/host_facilities/cache.mjs"
+```
+
+The Native factory has signature
+`fn(&serde_json::Value) -> Result<StateHandle, RuntimeFailure>`. It receives one
+operator-supplied slot value and runs when its generation constructs the typed
+input. The Workers Rust factory has signature
+`fn(&wasm_bindgen::JsValue) -> Result<StateHandle, RuntimeFailure>`. Its private
+JavaScript module exports synchronous `create(binding, scope, configuration)`;
+the returned adapter performs asynchronous I/O through the event scope. The
+builder stages that owner module and records its digest. Use a self-contained
+module; this profile does not package an npm dependency tree for owner adapters.
+
+The grant file uses exact resolved Instance keys and named slots. For Workers:
+
+```json
+{
+  "schema": "lenso.host-facilities.v1",
+  "instances": {
+    "example.state/primary": {
+      "state": {"binding": "PRIMARY_DB", "configuration": {"schema": "private_a"}},
+      "cache": {"binding": null, "configuration": {"enabled": false}}
+    },
+    "example.state/secondary": {
+      "state": {"binding": "SECONDARY_DB", "configuration": {"schema": "private_b"}}
+    }
+  }
+}
+```
+
+The Host passes only each selected binding to its owner factory. A binding must
+be an own property of the event environment. Explicit `null` passes no binding;
+its meaning and whether that profile is supported belong to the owner. Missing
+bindings, unknown Instances and undeclared slots fail before business admission.
+Two Instances may select different authorized schemas on one physical PG, or
+independent D1/PG backends, without relying on array order. Business configuration
+and Capability requirements remain separate from these Host grants.
+
+For Native, slot values use the owner's Native schema rather than the Workers
+`binding`/`configuration` shape. Build the ordinary Native distribution, then run
+`lenso app start --root ./dist --host-facilities ./profiles/native.json`.
+Credentials remain in operator-managed sources consumed by the owner factory.
+Startup validates readiness; it never runs operator migrations automatically.
+
+A Native owner that compares invocation deadlines can opt into the exact Host
+Driver clock with `native-clock = true` in that slot's Cargo metadata. Its
+factory signature becomes
+`fn(&serde_json::Value, &lenso_native_adapter::NativeHostClock) -> Result<Handle, RuntimeFailure>`.
+The owner may retain `clock.clone()` and call `clock.now()`. The generated Host
+passes the same Tokio Driver to that clock and the Kernel; it does not create a
+second `Instant` epoch. Factories still construct a fresh typed input per
+generation. Slots without this opt-in retain the single-argument factory.
+
+## Budgets, admission and evidence
+
+An optional `--workers-host-limits` file contains a flat JSON object of explicit
+Host limits. For example:
+
+```json
+{"eventLimitMs":10000,"cancellationLimitMs":1000,"cleanupTimeoutMs":1000,"maxOperations":128}
+```
+
+Known fields are event/session/cancellation durations, retirement admission
+count, maximum concurrent events, HTTP body/head/read bounds, and event cleanup
+duration/operation count. Values must be bounded positive integers. Scope limits
+go to the generated scope factory; the rest go to the Host facade. Omission
+preserves the runtime defaults, including the 1000 ms event deadline and 250 ms
+cleanup budget. Size budgets using observed infrastructure latency. A deadline
+does not establish rollback; an unconfirmed write requires owner reconciliation
+and is never automatically replayed.
+
+Contract source can set `request_queue_capacity` and `request_max_concurrency`
+together on `#[capability(...)]`. A Root can set those same fields on
+`#[plugin(...)]` to override the default admission of its own provided
+Capabilities, including an HTTP Endpoint, without changing the shared contract.
+Concurrency must be positive. Existing source without these fields retains its
+default policy. Owners must ensure their implementation supports the selected
+concurrency; a bounded queue does not make private mutable state concurrent.
+
+`workers-build.json` records the exact graph, Wasm/bindings/entrypoint bytes,
+runtime modules, owner modules, grants and explicit budgets. `app explain`
+checks those persisted digests and reports Instances, named requirements,
+selected providers, authorized binding names and rejected/missing grants. It
+does not invoke factories, read credentials, write configuration or probe a DB.
+It reports live readiness as `not_run`/`not_observed`.
+
+Build, local workerd behavior and deployed Environment-plus-Infrastructure
+qualification are distinct evidence. D1 and PostgreSQL acceptance belong to the
+owning fixture. Remote Hyperdrive qualification is deferred for this candidate;
+it must remain `not_run`. Source candidates do not establish registry publication.
+
+## Restricted Component integration
+
 An import-free HTTP Component may need a Plugin-owned JavaScript Host entrypoint
 for private infrastructure. The local Workers builder can assemble that code
-without knowing the Plugin's identity or business protocol. This is a source
-integration for the existing restricted Workers target, not general multi-Plugin
-Workers support.
+without knowing the Plugin's identity or business protocol. The following source
+integration applies to the restricted Component profile.
 
 The Plugin owner supplies a profile and its Host files. The Host operator
 separately approves the exact profile digest:

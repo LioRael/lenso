@@ -27,6 +27,7 @@ use sha2::{Digest as _, Sha256};
 use crate::archive::{archive_bundle, with_bundle_directory};
 
 mod integration;
+mod linked;
 mod runtime;
 
 const HOST_TARGET: &str = "workers";
@@ -37,7 +38,11 @@ pub(super) struct BuildArgs {
     pub(super) root: PathBuf,
     pub(super) out: PathBuf,
     pub(super) workers_runtime: PathBuf,
-    pub(super) jco: PathBuf,
+    pub(super) jco: Option<PathBuf>,
+    pub(super) wasm_bindgen: Option<PathBuf>,
+    pub(super) facilities: Option<PathBuf>,
+    pub(super) host_limits: Option<PathBuf>,
+    pub(super) trust_linked_build: Vec<String>,
     pub(super) integration: Option<PathBuf>,
     pub(super) trust_integration: Option<String>,
 }
@@ -61,6 +66,12 @@ struct DescriptorEvidence {
 }
 
 pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
+    if args.wasm_bindgen.is_some() {
+        return linked::build(args);
+    }
+    let jco = args.jco.as_deref().context(
+        "Workers Component build needs --jco 1.35.0; the static linked-Rust profile uses --wasm-bindgen 0.2.127",
+    )?;
     ensure!(
         args.integration.is_some() == args.trust_integration.is_some(),
         "Workers integration requires both its profile and explicit trusted digest"
@@ -307,7 +318,7 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
         stage.path().join("guest.component.wasm"),
     )?;
     // Stage executable Host inputs only after checking the compiler's output closure.
-    transpile_component(&args.jco, stage.path())?;
+    transpile_component(jco, stage.path())?;
     fs::write(
         stage.path().join(".lenso/host-build.json"),
         serde_json::to_vec_pretty(&authority)?,

@@ -38,6 +38,14 @@ fn snapshot_artifacts(
             detail: "a source Capability must declare at least one Operation".to_owned(),
         });
     }
+    if snapshot
+        .request_admission
+        .is_some_and(|admission| admission.max_concurrency == 0)
+    {
+        return Err(CodegenError::InvalidDescriptor {
+            detail: "request_admission max_concurrency must be positive".to_owned(),
+        });
+    }
     let root = descriptor_path.parent().unwrap_or_else(|| Path::new("."));
     let mut artifacts = BTreeMap::new();
     let mut operations = Vec::with_capacity(snapshot.operations.len());
@@ -75,7 +83,7 @@ fn snapshot_artifacts(
             pretty_json(&operation.domain_error_schema)?,
         );
     }
-    let descriptor = Value::Object(Map::from_iter([
+    let mut descriptor = Value::Object(Map::from_iter([
         (
             "id".to_owned(),
             Value::String(snapshot.capability_id.clone()),
@@ -91,6 +99,12 @@ fn snapshot_artifacts(
         ),
         ("operations".to_owned(), Value::Array(operations)),
     ]));
+    if let Some(admission) = snapshot.request_admission {
+        descriptor["request_admission"] = json!({
+            "queue_capacity": admission.queue_capacity,
+            "max_concurrency": admission.max_concurrency,
+        });
+    }
     artifacts.insert(descriptor_path.to_path_buf(), pretty_json(&descriptor)?);
     Ok(artifacts)
 }

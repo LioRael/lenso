@@ -30,6 +30,9 @@ pub struct ExplainArgs {
     /// Emit the stable `lenso.app-explain.v1` JSON contract.
     #[arg(long)]
     pub json: bool,
+    /// Inspect per-Instance facility grants without running factories or touching resources.
+    #[arg(long)]
+    pub host_facilities: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,7 +51,8 @@ struct BundleSelectionRecord {
 
 pub(super) fn run(args: ExplainArgs) -> anyhow::Result<()> {
     let root = crate::plugins::project_root(args.root)?;
-    let report = report(&root)?;
+    let report =
+        super::inspect_app_explanation_with_facilities(&root, args.host_facilities.as_deref())?;
     if args.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
@@ -64,7 +68,24 @@ pub(super) fn run(args: ExplainArgs) -> anyhow::Result<()> {
             requirements.len(),
         );
     }
+    if report["host_facilities"]["status"] == "invalid" {
+        bail!("Host facility grants are invalid; use the reported Instance, slot and reason");
+    }
     Ok(())
+}
+
+pub(super) fn report_with_facilities(
+    root: &Path,
+    host_facilities: Option<&Path>,
+) -> anyhow::Result<Value> {
+    if root.join("workers-build.json").is_file() {
+        return super::facility_inspection::workers(root, host_facilities);
+    }
+    let mut explanation = report(root)?;
+    let resolved = lenso_app_authoring::load_resolved_app(root)?;
+    explanation["host_facilities"] =
+        super::facility_inspection::report(root, resolved.plan(), "native", host_facilities)?;
+    Ok(explanation)
 }
 
 /// Produces the JSON-ready App contract from the current persisted Host output.
