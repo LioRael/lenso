@@ -1351,7 +1351,9 @@ fn project_facts_page_items(
     ))
 }
 
-#[expect(
+// CI's Clippy 1.94 predates this lint; newer local toolchains diagnose SDK output.
+#[allow(unknown_lints)]
+#[allow(
     clippy::unused_async_trait_impl,
     reason = "the SDK generates an async ServerHandler for the synchronous tool router"
 )]
