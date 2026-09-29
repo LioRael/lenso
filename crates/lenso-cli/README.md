@@ -463,7 +463,7 @@ characters; JSON retains the signed text for data consumers.
 ### App commands
 
 The CLI keeps its authoring and maintenance roots static: `plugin`, `plugins`,
-`app`, `run`, and `doctor`. Any other root command is validated against the
+`app`, `marketplace`, `run`, and `doctor`. Any other root command is validated against the
 current App and forwarded unchanged to `.lenso/host`. The Host's selected
 `lenso.terminal.command` aggregate and `lenso.terminal.cli` surface own dynamic
 catalog discovery, help, argument parsing, execution, and the Generation lease.
@@ -478,3 +478,28 @@ Local Capability authoring is integrated into `app dev/build`.
 `--source rust` creates a source-first Rust contract. Generated typed clients and
 providers remove manual cross-language JSON plumbing. See
 [Capability authoring](docs/capability-authoring.md).
+
+### Keyless catalog verification foundation
+
+`lenso marketplace verify` checks an official catalog attestation offline
+without changing an App. This transition command requires an independently
+trusted GitHub CLI executable, public Sigstore roots with an independent
+SHA-256 pin, the downloaded catalog and bundle, and the reviewed publishing
+source commit:
+
+```sh
+lenso marketplace verify --catalog catalog.json --bundle bundle.jsonl \
+  --trusted-root trusted-root.jsonl --trusted-root-sha256 ROOT_SHA256 \
+  --source-sha REVIEWED_SOURCE_SHA --gh /absolute/path/to/gh
+```
+
+The command pins the official Marketplace repository, publishing workflow,
+main ref, GitHub OIDC issuer, and source and signer commits. It rejects
+self-hosted runner attestations. It invokes the trusted verifier itself;
+caller-provided verification receipts are not evidence. Catalog records retain
+their existing typed metadata and validation rules.
+
+The output reports provenance verification, not current availability or
+installation permission. It does not change existing signed-catalog expiry
+rules or provide the final automatic App adoption flow. No Marketplace private
+key is required by this command.

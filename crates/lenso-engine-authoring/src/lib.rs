@@ -11,6 +11,7 @@ pub mod bundle_archive;
 pub mod discovery;
 pub mod host_authoring;
 pub mod identity;
+pub mod keyless_catalog;
 pub mod signed_plugin_catalog;
 
 use host_authoring::{GeneratedHostBuild, HOST_BUILD, HostInput};
