@@ -11,7 +11,7 @@ anyhow = "1.0"
 flate2 = "1"
 tar = "0.4"
 lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.6" }
-lenso-bun-adapter = { path = "../lenso-bun-adapter", version = "=0.1.15" }
+lenso-bun-adapter = { path = "../lenso-bun-adapter", version = "=0.1.16" }
 lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.6.1" }
 lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.2", features = ["bundle-verification"] }
 serde = { version = "1.0", features = ["derive"] }

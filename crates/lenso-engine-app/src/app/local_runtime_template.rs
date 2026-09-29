@@ -671,6 +671,11 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         std::env::var_os("LENSO_MANAGED_SHUTDOWN_RECEIPT"),
         std::env::var_os("LENSO_MANAGED_SHUTDOWN_TOKEN"),
     )?;
+    #[cfg(all(generated_native_host, not(generated_shutdown_evidence), any(generated_bun_adapter, generated_process_adapter)))]
+    anyhow::ensure!(
+        shutdown_receipt.is_none(),
+        "Legacy Codec 0.3 adapters cannot confirm managed retirement; use the current Codec cohort or start manually"
+    );
     let distribution_lock_bytes = fs::read(root.join(".lenso/distribution.lock.json"))?;
     let distribution_lock_sha256 = format!(
         "sha256:{}",
@@ -977,9 +982,9 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         ))]
         let _ = codec;
     }
-    #[cfg(any(not(generated_native_host), generated_bun_adapter))]
+    #[cfg(any(not(generated_native_host), all(generated_bun_adapter, generated_shutdown_evidence)))]
     let bun_shutdown_evidence = bun.shutdown_evidence();
-    #[cfg(any(not(generated_native_host), generated_process_adapter))]
+    #[cfg(any(not(generated_native_host), all(generated_process_adapter, generated_shutdown_evidence)))]
     let process_shutdown_evidence = process.shutdown_evidence();
     let catalog = ExecutionAdapterCatalog::new();
     let catalog = catalog
@@ -1096,12 +1101,12 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     drop(runtime);
     result?;
     if let Some(receipt) = shutdown_receipt {
-        #[cfg(any(not(generated_native_host), generated_bun_adapter))]
+        #[cfg(any(not(generated_native_host), all(generated_bun_adapter, generated_shutdown_evidence)))]
         if !bun_shutdown_evidence.is_clean() {
             eprintln!("Managed shutdown acknowledgement unavailable: Bun Adapter lifetime cleanup is unconfirmed");
             return Ok(());
         }
-        #[cfg(any(not(generated_native_host), generated_process_adapter))]
+        #[cfg(any(not(generated_native_host), all(generated_process_adapter, generated_shutdown_evidence)))]
         if !process_shutdown_evidence.is_clean() {
             eprintln!("Managed shutdown acknowledgement unavailable: Process Adapter lifetime cleanup is unconfirmed");
             return Ok(());

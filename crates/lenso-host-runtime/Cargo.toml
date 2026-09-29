@@ -9,11 +9,11 @@ description = "Prepared-distribution runtime for TypeScript-authored Lenso Hosts
 
 [dependencies]
 lenso = { version = "=0.5.27", path = "../lenso", features = ["host"] }
-lenso-bun-adapter = { version = "=0.1.15", path = "../lenso-bun-adapter" }
+lenso-bun-adapter = { version = "=0.1.16", path = "../lenso-bun-adapter" }
 lenso-host-distribution = { version = "=0.1.24", path = "../lenso-host-distribution" }
 lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }
 lenso-plugin-control-plane = { version = "=0.4.25", path = "../lenso-plugin-control-plane" }
-lenso-process-adapter = { version = "=0.3.13", path = "../lenso-process-adapter" }
+lenso-process-adapter = { version = "=0.3.14", path = "../lenso-process-adapter" }
 lenso-runtime-codec = { version = "=0.4.3", path = "../lenso-runtime-codec" }
 serde_json.workspace = true
 tokio.workspace = true

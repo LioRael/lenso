@@ -361,8 +361,8 @@ pub(super) fn generate(
             ("lenso-runtime-codec", "=0.3.4"),
         ],
         "0.4" => [
-            ("lenso-bun-adapter", "=0.1.15"),
-            ("lenso-process-adapter", "=0.3.13"),
+            ("lenso-bun-adapter", "=0.1.16"),
+            ("lenso-process-adapter", "=0.3.14"),
             ("lenso-wasm-component-adapter", "=0.2.17"),
             ("lenso-runtime-codec", "=0.4.3"),
         ],
@@ -602,20 +602,7 @@ pub(super) fn generate(
         toml::to_string_pretty(&manifest)?.as_bytes(),
     )?;
     write_generated_host_file(&generated.join("src/main.rs"), source.as_bytes())?;
-    let mut build_script = "fn main() { println!(\"cargo:rustc-check-cfg=cfg(generated_native_host)\"); println!(\"cargo:rustc-cfg=generated_native_host\");".to_owned();
-    for (enabled, name) in [
-        (adapters.bun, "generated_bun_adapter"),
-        (adapters.process, "generated_process_adapter"),
-        (adapters.wasm, "generated_wasm_adapter"),
-    ] {
-        build_script.push_str(&format!(
-            " println!(\"cargo:rustc-check-cfg=cfg({name})\");"
-        ));
-        if enabled {
-            build_script.push_str(&format!(" println!(\"cargo:rustc-cfg={name}\");"));
-        }
-    }
-    build_script.push_str(" }\n");
+    let build_script = generated_host_build_script(adapters, cohort);
     write_generated_host_file(&generated.join("build.rs"), build_script.as_bytes())?;
 
     let output = super::cargo_command()
@@ -1568,6 +1555,25 @@ pub(super) fn digest_text(value: &str) -> String {
         .collect()
 }
 
+fn generated_host_build_script(adapters: AdapterSet, cohort: &str) -> String {
+    let mut script = "fn main() { println!(\"cargo:rustc-check-cfg=cfg(generated_native_host)\"); println!(\"cargo:rustc-cfg=generated_native_host\");".to_owned();
+    for (enabled, name) in [
+        (adapters.bun, "generated_bun_adapter"),
+        (adapters.process, "generated_process_adapter"),
+        (adapters.wasm, "generated_wasm_adapter"),
+        (cohort == "0.4", "generated_shutdown_evidence"),
+    ] {
+        script.push_str(&format!(
+            " println!(\"cargo:rustc-check-cfg=cfg({name})\");"
+        ));
+        if enabled {
+            script.push_str(&format!(" println!(\"cargo:rustc-cfg={name}\");"));
+        }
+    }
+    script.push_str(" }\n");
+    script
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
@@ -1582,6 +1588,27 @@ mod tests {
         reachable_host_sources, verify_dependency_lock_digests, verify_git_lenso_lock,
         web_ingress_dependency, write_generated_host_file,
     };
+
+    #[test]
+    fn legacy_adapters_never_claim_managed_retirement_evidence() {
+        let adapters = AdapterSet {
+            bun: true,
+            process: true,
+            wasm: false,
+        };
+        let legacy = super::generated_host_build_script(adapters, "0.3");
+        let current = super::generated_host_build_script(adapters, "0.4");
+        let evidence = "cargo:rustc-cfg=generated_shutdown_evidence";
+        assert!(!legacy.contains(evidence));
+        assert!(current.contains(evidence));
+        let runtime = include_str!("local_runtime_template.rs");
+        assert!(
+            runtime
+                .find("Legacy Codec 0.3 adapters cannot confirm managed retirement")
+                .unwrap()
+                < runtime.find("let distribution_lock_bytes").unwrap()
+        );
+    }
 
     #[test]
     fn source_patches_include_build_closure_and_exclude_dev_helpers() {
