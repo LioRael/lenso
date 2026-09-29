@@ -391,7 +391,7 @@ fn registry_framework_version(name: &str) -> Option<&'static str> {
         "lenso-native-adapter" => "0.3.18",
         "lenso-runner" => "0.2.19",
         "lenso-contract-runtime" => "0.2.0",
-        "lenso-capability-http-endpoint" => "0.3.4",
+        "lenso-capability-http-endpoint" => "0.3.5",
         "lenso-capability-http-stream-endpoint" => "0.1.2",
         "lenso-capability-websocket-endpoint" => "0.1.2",
         "lenso-web-host" => "0.2.4",
@@ -679,7 +679,7 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
                 .contains("lenso@0.5.27")
         );
 
-        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.4\"\n");
+        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.5\"\n");
         assert!(
             source(&mixed)
                 .unwrap_err()

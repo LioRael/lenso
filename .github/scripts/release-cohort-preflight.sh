@@ -250,8 +250,11 @@ if (( ${#registry_dependencies[@]} > 0 )); then
     while IFS=$'\t' read -r dependency version; do
       [[ -n "$dependency" ]] || continue
       contains "$dependency" "${prefetch_requested[@]}" && continue
-      package_index "$dependency" >/dev/null &&
-        fail "published dependency requires an unshipped cohort package: $dependency@$version"
+      if package_index "$dependency" >/dev/null; then
+        # The planned source overlay is provisional until Cargo's resolved
+        # identities below prove every published requirement selects it.
+        continue
+      fi
       dependency_record="$(jq -ce --arg dependency "$dependency" --arg version "$version" '
           [.packages[] | select(.name == $dependency and .version == $version)]
           | if length == 1 then .[0] else error("exact published requirement must match one workspace package") end
@@ -328,12 +331,27 @@ build_completed_patch_args() {
       "patch.crates-io.${registry_dependencies[$index]}.path=\"${registry_source_dirs[$index]}\""
     )
   done
-  for index in "${!completed_packages[@]}"; do
+  for index in "${!packages[@]}"; do
+    local cohort_dir="${source_dirs[$index]}"
     patch_args+=(
       --config
-      "patch.crates-io.${completed_packages[$index]}.path=\"${completed_dirs[$index]}\""
+      "patch.crates-io.${packages[$index]}.path=\"$cohort_dir\""
     )
   done
+}
+
+verify_planned_cohort_identities() {
+  local resolved_metadata="$1"
+  local release_set="$2"
+  jq -e --argjson expected "$release_set" '
+    .packages as $resolved
+    | all($expected[];
+        . as $planned
+        | [$resolved[] | select(.name == $planned.package_name)] as $matches
+        | ($matches | length) == 1
+          and $matches[0].version == $planned.version
+          and $matches[0].source == null)
+  ' <<<"$resolved_metadata" >/dev/null
 }
 
 run_cargo_with_completed_patches() {
@@ -401,8 +419,11 @@ validate_or_normalize_scratch_lock() {
   local before="$scratch/before-normalization-Cargo.lock"
   local allowed="$scratch/allowed-private-fixture-edges.tsv"
   local index
+  local resolved_metadata
 
-  if (cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null) 2>"$scratch/locked-metadata.err"; then
+  if resolved_metadata="$(cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1)" 2>"$scratch/locked-metadata.err"; then
+    verify_planned_cohort_identities "$resolved_metadata" "$expected" ||
+      fail "published requirements did not resolve to the exact planned cohort identities"
     return 0
   fi
 
@@ -421,8 +442,10 @@ validate_or_normalize_scratch_lock() {
   fi
 
   cp "$source_root/Cargo.lock" "$before"
-  (cd "$source_root" && run_cargo_with_completed_patches metadata --offline --format-version 1 >/dev/null) ||
+  resolved_metadata="$(cd "$source_root" && run_cargo_with_completed_patches metadata --offline --format-version 1)" ||
     fail "could not inspect scratch-only lock normalization"
+  verify_planned_cohort_identities "$resolved_metadata" "$expected" ||
+    fail "published requirements did not resolve to the exact planned cohort identities"
   if ! verify_fixture_only_lock_change "$before" "$source_root/Cargo.lock" "$allowed"; then
     diff -u "$before" "$source_root/Cargo.lock" >&2 || true
     fail "scratch lock drift exceeds omitted private path-only dev fixture edges"

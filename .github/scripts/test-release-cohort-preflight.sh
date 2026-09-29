@@ -163,4 +163,59 @@ if published_workspace_requirements "$duplicate_workspace_metadata" "$published_
   printf 'published workspace requirement selection accepted duplicate workspace names\n' >&2
   exit 1
 fi
+
+source <(sed -n '/^verify_planned_cohort_identities() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
+planned_set='[{"package_name":"cohort-alpha","version":"0.1.1"}]'
+planned_metadata='{"packages":[{"name":"cohort-alpha","version":"0.1.1","source":null}]}'
+verify_planned_cohort_identities "$planned_metadata" "$planned_set" || {
+  printf '%s\n' 'exact planned source identity was rejected' >&2
+  exit 1
+}
+duplicate_metadata='{"packages":[{"name":"cohort-alpha","version":"0.1.1","source":null},{"name":"cohort-alpha","version":"0.1.0","source":"registry+https://github.com/rust-lang/crates.io-index"}]}'
+if verify_planned_cohort_identities "$duplicate_metadata" "$planned_set"; then
+  printf '%s\n' 'old registry identity was accepted beside the planned source' >&2
+  exit 1
+fi
+
+semver_fixture="$fixture/semver-binding"
+mkdir -p "$semver_fixture/planned/src" "$semver_fixture/consumer/src"
+cat >"$semver_fixture/Cargo.toml" <<'EOF'
+[workspace]
+members = ["planned", "consumer"]
+resolver = "3"
+
+[patch.crates-io]
+cohort-alpha = { path = "planned" }
+EOF
+cat >"$semver_fixture/planned/Cargo.toml" <<'EOF'
+[package]
+name = "cohort-alpha"
+version = "0.1.1"
+edition = "2024"
+EOF
+touch "$semver_fixture/planned/src/lib.rs" "$semver_fixture/consumer/src/lib.rs"
+cat >"$semver_fixture/consumer/Cargo.toml" <<'EOF'
+[package]
+name = "published-consumer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cohort-alpha = "^0.1.0"
+EOF
+caret_metadata="$(CARGO_HOME="$fixture/cargo-home" cargo metadata --offline --manifest-path "$semver_fixture/Cargo.toml" --format-version 1)" || {
+  printf '%s\n' 'Cargo rejected compatible published caret requirement' >&2
+  exit 1
+}
+verify_planned_cohort_identities "$caret_metadata" "$planned_set" || {
+  printf '%s\n' 'compatible caret requirement selected a different identity' >&2
+  exit 1
+}
+sed 's/\^0\.1\.0/=0.1.0/' "$semver_fixture/consumer/Cargo.toml" >"$semver_fixture/consumer/Cargo.toml.next"
+mv "$semver_fixture/consumer/Cargo.toml.next" "$semver_fixture/consumer/Cargo.toml"
+if incompatible_metadata="$(CARGO_HOME="$fixture/cargo-home" cargo metadata --offline --manifest-path "$semver_fixture/Cargo.toml" --format-version 1 2>/dev/null)" &&
+  verify_planned_cohort_identities "$incompatible_metadata" "$planned_set"; then
+  printf '%s\n' 'incompatible published exact pin was accepted' >&2
+  exit 1
+fi
 printf '%s\n' 'two-package cohort with published runtime and private dev dependencies passed'

@@ -117,7 +117,7 @@ root-slot = "web"
 
 [dependencies]
 lenso = "=0.5.27"
-lenso-capability-http-endpoint = "=0.3.4"
+lenso-capability-http-endpoint = "=0.3.5"
 serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
 
