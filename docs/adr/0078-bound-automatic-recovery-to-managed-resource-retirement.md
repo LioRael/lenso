@@ -26,6 +26,12 @@ generation. Optional Plugin failure may leave the App available, but a failed
 managed cleanup must prevent a later `Clean` shutdown; replacement cannot erase
 that evidence.
 
+Confirmed death and reaping of a crashed process may permit configured Plugin
+supervision to recreate that generation. This is not a normal Host retirement:
+the Adapter's lifetime evidence remains unclean after the crash, even when the
+replacement succeeds. Unconfirmed termination and failed stop hooks still fail
+cleanup; the Kernel's cleanup-failure record is not bypassed.
+
 The supervisor supplies a private per-generation token through the Host
 environment. It clears the durable crash fence only after receiving the matching
 retirement receipt, observing successful Host exit, and confirming that the

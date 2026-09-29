@@ -23,6 +23,9 @@ use lenso_runtime_codec::{ArtifactCatalog, ArtifactHandle, JsonCapabilityCodec};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
+#[path = "process_host/recovery.rs"]
+mod recovery;
+
 #[derive(Debug)]
 struct EchoCodec;
 

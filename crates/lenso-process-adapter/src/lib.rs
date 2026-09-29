@@ -579,6 +579,7 @@ impl ProcessGeneration {
         let (ready_sender, ready_receiver) = std::sync::mpsc::sync_channel(1);
         let reader_pending = pending.clone();
         let reader_failed = failed.clone();
+        let reader_evidence = shutdown_evidence.clone();
         let max_frame_bytes = limits.max_frame_bytes;
         let reader = thread::Builder::new()
             .name("lenso-process-reader".to_owned())
@@ -609,6 +610,9 @@ impl ProcessGeneration {
                             failure,
                         }) => {
                             let outcome = decode_result(ok, error, failure);
+                            if matches!(outcome, Err(RuntimeFailure::ProtocolViolation { .. })) {
+                                reader_evidence.uncertain();
+                            }
                             if let Some(sender) =
                                 reader_pending.lock().expect("pending").remove(&id)
                             {
@@ -702,15 +706,27 @@ impl ProcessGeneration {
                 detail: "Process Plugin was forcibly retired".to_owned(),
             });
         }
-        let outcome = self.send(&HostFrame::Shutdown).and_then(|()| {
+        let outcome = (|| {
+            // A crashed generation has no shutdown hook left to acknowledge.
+            // Reaping it permits supervision, not a clean Host receipt.
+            let failed = self.failed.load(Ordering::Acquire);
+            if !failed {
+                self.send(&HostFrame::Shutdown)?;
+            }
             let mut child = self.child.lock().expect("process child");
             let child = child
                 .as_mut()
                 .ok_or_else(|| RuntimeFailure::PluginFailure {
                     detail: "Process Plugin child termination is unconfirmed".to_owned(),
                 })?;
-            wait_for_shutdown(child, self.limits.cancellation_settlement_timeout)
-        });
+            if failed {
+                child
+                    .reap_failed(self.limits.cancellation_settlement_timeout)
+                    .map_err(|error| process_io(&error))
+            } else {
+                wait_for_shutdown(child, self.limits.cancellation_settlement_timeout)
+            }
+        })();
         if outcome.is_err()
             && let Some(child) = self.child.lock().expect("process child").as_mut()
         {

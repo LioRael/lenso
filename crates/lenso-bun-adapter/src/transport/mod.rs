@@ -7,7 +7,7 @@ use std::{
     pin::Pin,
     process::{Child, ChildStderr, ChildStdin, ChildStdout},
     sync::{
-        Arc, Mutex, Weak,
+        Arc, Mutex, OnceLock, Weak,
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError},
     },
@@ -77,6 +77,7 @@ pub(crate) struct ProcessState {
     alive: AtomicBool,
     monitor_started: AtomicBool,
     forced: AtomicBool,
+    failed_before_shutdown: OnceLock<Result<bool, RuntimeFailure>>,
     failure: Mutex<Option<RuntimeFailure>>,
     diagnostics: Mutex<VecDeque<String>>,
     failure_handler: Mutex<Option<FailureHandler>>,
@@ -116,6 +117,7 @@ impl ProcessState {
             alive: AtomicBool::new(true),
             monitor_started: AtomicBool::new(false),
             forced: AtomicBool::new(false),
+            failed_before_shutdown: OnceLock::new(),
             failure: Mutex::new(None),
             diagnostics: Mutex::new(VecDeque::new()),
             failure_handler: Mutex::new(None),
@@ -339,6 +341,56 @@ impl ProcessState {
         wait_for_process_exit(&mut child, PROCESS_STOP_TIMEOUT, false)
     }
 
+    /// A reaped crash permits Plugin supervision, but never proves Host retirement.
+    pub(crate) fn reaped_crash(&self) -> Result<bool, RuntimeFailure> {
+        let status = self
+            .child
+            .lock()
+            .map_err(|_| process_cleanup_failure("lock poisoned"))?
+            .try_wait()
+            .map_err(|error| process_cleanup_failure(error.to_string()))?;
+        if self.forced.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+        if status.is_some_and(|status| !status.success()) {
+            self.shutdown_evidence.failed();
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// Freeze the recovery path before sending shutdown; EOF may precede OS reaping.
+    pub(crate) fn begin_shutdown(&self) -> Result<bool, RuntimeFailure> {
+        self.failed_before_shutdown
+            .get_or_init(|| Ok(!self.is_alive() || self.reaped_crash()?))
+            .clone()
+    }
+
+    pub(crate) fn await_cleanup(&self) -> Result<(), RuntimeFailure> {
+        if !self.begin_shutdown()? {
+            return self.await_shutdown();
+        }
+        self.shutdown_evidence.failed();
+        if self.forced.load(Ordering::Acquire) {
+            return Err(process_cleanup_failure("forced termination was required"));
+        }
+        let result = {
+            let mut child = self
+                .child
+                .lock()
+                .map_err(|_| process_cleanup_failure("lock poisoned"))?;
+            wait_for_process_exit(&mut child, PROCESS_STOP_TIMEOUT, false)
+        };
+        if let Err(error) = result {
+            self.reject_shutdown();
+            return Err(error);
+        }
+        if self.forced.load(Ordering::Acquire) {
+            return Err(process_cleanup_failure("forced termination was required"));
+        }
+        Ok(())
+    }
+
     pub(crate) fn await_shutdown(&self) -> Result<(), RuntimeFailure> {
         let mut child = self
             .child
@@ -372,6 +424,9 @@ impl ProcessState {
     }
 
     fn mark_dead(&self, failure: RuntimeFailure) {
+        if matches!(failure, RuntimeFailure::ProtocolViolation { .. }) {
+            self.reject_shutdown();
+        }
         if self.alive.swap(false, Ordering::AcqRel) {
             if let Ok(mut stored) = self.failure.lock() {
                 *stored = Some(failure.clone());
@@ -1048,6 +1103,71 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn crashed_generation_cleanup_does_not_prove_lifetime_retirement() {
+        let evidence = crate::ShutdownEvidence::default();
+        let spawn = |script: &str| {
+            let child = std::process::Command::new("sh")
+                .args(["-c", script])
+                .spawn()
+                .unwrap();
+            ProcessState::start_tracked(child, "example.greeting@1", evidence.clone())
+        };
+        let crashed = spawn("exit 17");
+        wait_for_process_exit(
+            &mut crashed.child.lock().unwrap(),
+            PROCESS_STOP_TIMEOUT,
+            false,
+        )
+        .unwrap();
+        crashed.await_cleanup().unwrap();
+        crashed.await_cleanup().unwrap();
+        assert!(crashed.reaped_crash().unwrap());
+        assert!(crashed.confirmed_shutdown().is_err());
+        let replacement = spawn("exit 0");
+        replacement.await_shutdown().unwrap();
+        assert!(!evidence.is_clean());
+        assert!(crashed.await_shutdown().is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn observed_failure_before_os_exit_uses_bounded_recovery_cleanup() {
+        use std::io::Write;
+
+        let child = std::process::Command::new("sh")
+            .args(["-c", "dd bs=1 count=1 >/dev/null 2>&1; exit 17"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let process = ProcessState::start(child, "example.greeting@1");
+        let mut stdin = process.take_stdin().unwrap();
+        process.mark_dead(RuntimeFailure::PluginFailure {
+            detail: "transport closed before child exit".to_owned(),
+        });
+        assert!(process.child.lock().unwrap().try_wait().unwrap().is_none());
+        assert!(process.begin_shutdown().unwrap());
+        stdin.write_all(b"x").unwrap();
+        process.await_cleanup().unwrap();
+        assert!(process.child.lock().unwrap().try_wait().unwrap().is_some());
+        assert!(!process.shutdown_evidence.is_clean());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejected_protocol_cleanup_cannot_be_reclassified_as_a_crash() {
+        let child = std::process::Command::new("sh")
+            .args(["-c", "exit 17"])
+            .spawn()
+            .unwrap();
+        let process = ProcessState::start(child, "example.greeting@1");
+        process.mark_dead(protocol_violation(Some("example.greeting@1")));
+        assert!(process.await_cleanup().is_err());
+        assert!(!process.reaped_crash().unwrap());
+        assert!(!process.shutdown_evidence.is_clean());
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn forced_cleanup_never_becomes_graceful_shutdown() {
         let child = std::process::Command::new("sh")
             .args(["-c", "exec sleep 30"])
@@ -1060,6 +1180,7 @@ mod tests {
             assert!(child.try_wait().unwrap().is_none());
         }
         process.stop().unwrap();
+        assert!(process.await_cleanup().is_err());
         assert!(process.await_shutdown().is_err());
         assert!(process.child.lock().unwrap().try_wait().unwrap().is_some());
     }

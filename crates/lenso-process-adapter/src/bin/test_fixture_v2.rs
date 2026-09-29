@@ -20,6 +20,8 @@ struct SyncPlugin {
     lifecycle_calls: Mutex<bool>,
     exit_after_construct_ms: Mutex<Option<u64>>,
     linger_after_stopped: Arc<AtomicBool>,
+    nonzero_after_stopped: Arc<AtomicBool>,
+    fail_stop: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -60,6 +62,22 @@ impl ProcessPluginV2 for SyncPlugin {
             params
                 .config
                 .get("linger_after_stopped")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            Ordering::Release,
+        );
+        self.nonzero_after_stopped.store(
+            params
+                .config
+                .get("nonzero_after_stopped")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            Ordering::Release,
+        );
+        self.fail_stop.store(
+            params
+                .config
+                .get("fail_stop")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             Ordering::Release,
@@ -111,6 +129,28 @@ impl ProcessPluginV2 for SyncPlugin {
         params: InvokeParams,
         context: ProcessInvocationContext,
     ) -> InvocationOutcome {
+        if let Some(path) = params.payload.get("crash_log").and_then(Value::as_str) {
+            use std::io::Write as _;
+            let mut log = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .unwrap();
+            writeln!(log, "invoked").unwrap();
+            std::process::exit(23);
+        }
+        if params.payload.get("domain_error") == Some(&Value::Bool(true)) {
+            return InvocationOutcome::Domain {
+                error: json!({"kind": "rejected"}),
+            };
+        }
+        if params.payload.get("protocol_failure") == Some(&Value::Bool(true)) {
+            return InvocationOutcome::Runtime {
+                failure: lenso_process_protocol::authoring::RuntimeFailure::ProtocolViolation {
+                    capability: "example.sync@1".to_owned(),
+                },
+            };
+        }
         if params.capability_id != "example.sync@1" || params.operation != "sync" {
             return InvocationOutcome::Domain {
                 error: json!({"kind": "unknown_operation"}),
@@ -168,6 +208,9 @@ impl ProcessPluginV2 for SyncPlugin {
         _params: &StopParams,
         context: ProcessLifecycleContext,
     ) -> ProcessStopOutcome {
+        if self.fail_stop.load(Ordering::Acquire) {
+            return ProcessStopOutcome::Failed("fixture stop hook failed".to_owned());
+        }
         if *self.lifecycle_calls.lock().expect("fixture lifecycle flag") {
             let route = self.routes.lock().expect("fixture routes")["destination"].clone();
             return match context.call(
@@ -195,11 +238,16 @@ fn runtime_failure(detail: String) -> InvocationOutcome {
 
 fn main() {
     let linger_after_stopped = Arc::new(AtomicBool::new(false));
+    let nonzero_after_stopped = Arc::new(AtomicBool::new(false));
     let plugin = SyncPlugin {
         linger_after_stopped: linger_after_stopped.clone(),
+        nonzero_after_stopped: nonzero_after_stopped.clone(),
         ..SyncPlugin::default()
     };
     lenso_process_sdk::serve_v2(plugin).expect("serve Process V2 Plugin fixture");
+    if nonzero_after_stopped.load(Ordering::Acquire) {
+        std::process::exit(7);
+    }
     if linger_after_stopped.load(Ordering::Acquire) {
         loop {
             std::thread::park();

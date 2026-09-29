@@ -2978,6 +2978,7 @@ fn assert_provider_exit_recreates_generation(wire: BunWire) {
     let script = fixture("request-provider.ts");
     let driver = DeterministicDriver::new();
     let adapter = BunAdapter::new(bun_binary(), wire).with_codec(GreetingCodec);
+    let shutdown_evidence = adapter.shutdown_evidence();
     let app = driver
         .run(Kernel::start(
             greeting_plan(&script),
@@ -3021,4 +3022,9 @@ fn assert_provider_exit_recreates_generation(wire: BunWire) {
     ));
     let _ = driver.run(app.shutdown(Duration::from_secs(2)));
     assert!(matches!(result, Ok(Ok(GreetResponse { .. }))));
+    drop(app);
+    assert!(
+        !shutdown_evidence.is_clean(),
+        "successful replacement must not erase the crashed child's retirement failure"
+    );
 }

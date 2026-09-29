@@ -971,6 +971,9 @@ impl PluginLifecycle for BunLifecycleV2 {
                 let Some(host) = generation.host.borrow().clone() else {
                     return generation.terminate();
                 };
+                if host.cleanup_crashed()? {
+                    return generation.terminate();
+                }
                 let params = StopParams {
                     session: generation.identity.session.clone(),
                     cleanup_scope_id: "cleanup-1".to_owned(),

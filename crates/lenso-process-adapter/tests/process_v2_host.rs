@@ -34,6 +34,9 @@ use lenso_runtime_codec::{
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
+#[path = "process_v2_host/recovery.rs"]
+mod recovery;
+
 const STORE_ID: &str = "example.document-store@1";
 const SYNC_ID: &str = "example.sync@1";
 const DESCRIPTOR_VERSION: &str = "1.0.0";
@@ -628,6 +631,36 @@ fn start_process_app_with_configuration(
     configuration: &Value,
     host_essential: bool,
 ) -> (DeterministicDriver, lenso_kernel::NativeApp) {
+    let (driver, app, _) = start_process_app_with_supervision(
+        source,
+        destination,
+        source_calls,
+        destination_calls,
+        limits,
+        generic_engine,
+        configuration,
+        host_essential,
+        lenso_app_plan::RestartPolicy::default(),
+    );
+    (driver, app)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn start_process_app_with_supervision(
+    source: &Arc<Mutex<BTreeMap<String, String>>>,
+    destination: &Arc<Mutex<BTreeMap<String, String>>>,
+    source_calls: &Arc<AtomicUsize>,
+    destination_calls: &Arc<AtomicUsize>,
+    limits: ProcessLimits,
+    generic_engine: bool,
+    configuration: &Value,
+    host_essential: bool,
+    restart_policy: lenso_app_plan::RestartPolicy,
+) -> (
+    DeterministicDriver,
+    lenso_kernel::NativeApp,
+    lenso_process_adapter::ShutdownEvidence,
+) {
     let executable = std::path::Path::new(env!("CARGO_BIN_EXE_lenso-process-v2-test-fixture"));
     let bytes = fs::read(executable).unwrap();
     let digest = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
@@ -648,28 +681,22 @@ fn start_process_app_with_configuration(
         })
         .with_factory(EmptyConsumerFactory);
     let adapters = ExecutionAdapterCatalog::new().with_adapter(native).unwrap();
+    let evidence;
     let adapters = if generic_engine {
-        adapters
-            .with_adapter(
-                AuthoringProcessAdapter::new(
-                    LANGUAGE_EXECUTION_CLASS,
-                    RUNTIME_PROFILE_V2,
-                    artifacts,
-                )
+        let adapter =
+            AuthoringProcessAdapter::new(LANGUAGE_EXECUTION_CLASS, RUNTIME_PROFILE_V2, artifacts)
                 .with_codec(StoreCodec)
                 .with_codec(SyncCodec)
-                .with_limits(limits),
-            )
-            .unwrap()
+                .with_limits(limits);
+        evidence = adapter.shutdown_evidence();
+        adapters.with_adapter(adapter).unwrap()
     } else {
-        adapters
-            .with_adapter(
-                ProcessAdapter::new(artifacts)
-                    .with_codec(StoreCodec)
-                    .with_codec(SyncCodec)
-                    .with_limits(limits),
-            )
-            .unwrap()
+        let adapter = ProcessAdapter::new(artifacts)
+            .with_codec(StoreCodec)
+            .with_codec(SyncCodec)
+            .with_limits(limits);
+        evidence = adapter.shutdown_evidence();
+        adapters.with_adapter(adapter).unwrap()
     };
     let process_execution_class = if generic_engine {
         LANGUAGE_EXECUTION_CLASS
@@ -685,6 +712,7 @@ fn start_process_app_with_configuration(
                 CapabilityEndpointPlan::new(STORE_ID, DESCRIPTOR_VERSION, ["put", "read"]),
             ),
             PluginInstancePlan::new("sync", "test.process-v2")
+                .with_restart_policy(restart_policy)
                 .with_configuration(configuration.to_string())
                 .with_authoring(2, RUNTIME_PROFILE_V2)
                 .with_entrypoint("plugin")
@@ -720,7 +748,7 @@ fn start_process_app_with_configuration(
     let app = driver
         .run(Kernel::start(plan, driver.clone(), adapters))
         .expect("the Process V2 App should activate");
-    (driver, app)
+    (driver, app, evidence)
 }
 
 fn apply_terminal_policy(

@@ -51,6 +51,24 @@ pub(crate) struct ManagedChild {
 }
 
 impl ManagedChild {
+    /// Reap an already failed generation, without claiming graceful retirement.
+    pub(crate) fn reap_failed(&mut self, timeout: Duration) -> io::Result<()> {
+        self.evidence.uncertain();
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.try_wait()? {
+                Some(_) => return Ok(()),
+                None if Instant::now() >= deadline => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "failed Process generation termination is unconfirmed",
+                    ));
+                }
+                None => std::thread::sleep(Duration::from_millis(2)),
+            }
+        }
+    }
+
     pub(crate) fn kill(&mut self) -> io::Result<()> {
         self.evidence.uncertain();
         self.child.kill()
@@ -169,6 +187,32 @@ mod tests {
         assert!(evidence.is_clean());
         evidence.uncertain();
         spawn(&evidence, "exit 0").wait().unwrap();
+        assert!(!evidence.is_clean());
+    }
+
+    #[test]
+    fn failed_generation_reap_allows_replacement_but_never_cleans_lifetime_evidence() {
+        for script in ["exit 0", "exit 23"] {
+            let evidence = ShutdownEvidence::default();
+            let mut failed = spawn(&evidence, script);
+            failed.reap_failed(Duration::from_secs(1)).unwrap();
+            assert!(failed.try_wait().unwrap().is_some());
+            spawn(&evidence, "exit 0").wait().unwrap();
+            assert!(!evidence.is_clean());
+            assert_eq!(evidence.0.outstanding.load(Ordering::Acquire), 0);
+        }
+    }
+
+    #[test]
+    fn failed_generation_still_alive_is_not_confirmed_cleanup() {
+        let evidence = ShutdownEvidence::default();
+        let mut failed = spawn(&evidence, "exec sleep 30");
+        let error = failed.reap_failed(Duration::from_millis(10)).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(failed.try_wait().unwrap().is_none());
+        assert!(!evidence.is_clean());
+        failed.kill().unwrap();
+        failed.wait().unwrap();
         assert!(!evidence.is_clean());
     }
 }
