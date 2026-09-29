@@ -995,20 +995,11 @@ fn merge_lenso_patches(
     Ok(patches)
 }
 
-fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Result<()> {
-    if selected.packages.is_empty() {
-        return Ok(());
-    }
-    let lock: toml::Value = toml::from_str(&fs::read_to_string(path)?)
-        .with_context(|| format!("read generated Host Cargo lock {}", path.display()))?;
-    let packages = lock
-        .get("package")
-        .and_then(toml::Value::as_array)
-        .context("generated Host Cargo lock has no packages")?;
-    let (git, rev) = selected
-        .source
-        .as_ref()
-        .context("selected Git Lenso packages have no source")?;
+fn git_framework_lock_names(
+    packages: &[toml::Value],
+    selected: &GitLensoSources,
+    git: &str,
+) -> anyhow::Result<BTreeSet<String>> {
     let mut framework_names = selected.packages.keys().cloned().collect::<BTreeSet<_>>();
     framework_names.extend(["lenso".to_owned(), "lenso-kernel".to_owned()]);
     for package in packages {
@@ -1029,6 +1020,24 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
             }
         }
     }
+    Ok(framework_names)
+}
+
+fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Result<()> {
+    if selected.packages.is_empty() {
+        return Ok(());
+    }
+    let lock: toml::Value = toml::from_str(&fs::read_to_string(path)?)
+        .with_context(|| format!("read generated Host Cargo lock {}", path.display()))?;
+    let packages = lock
+        .get("package")
+        .and_then(toml::Value::as_array)
+        .context("generated Host Cargo lock has no packages")?;
+    let (git, rev) = selected
+        .source
+        .as_ref()
+        .context("selected Git Lenso packages have no source")?;
+    let framework_names = git_framework_lock_names(packages, selected, git)?;
     let mut seen_versions = BTreeSet::new();
     let mut seen_names = BTreeSet::new();
     let mut codec_versions = BTreeSet::new();
@@ -1036,9 +1045,8 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
         if let Some(name) = package.get("name").and_then(toml::Value::as_str)
             && framework_names.contains(name)
         {
-            // Codegen is a build-only tool. Git and registry copies may coexist
-            // without splitting the linked native Plugin's runtime identity.
-            if name == "lenso-contract-codegen" && !selected.packages.contains_key(name) {
+            // Generator versions do not share Kernel endpoints or linked role types.
+            if name == "lenso-contract-codegen" {
                 continue;
             }
             let version = package
@@ -1070,6 +1078,25 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
                     && package.get("version").and_then(toml::Value::as_str) == Some(version)
             })
             .collect::<Vec<_>>();
+        let matches = if name == "lenso-contract-codegen" {
+            matches
+                .into_iter()
+                .filter(|package| {
+                    package
+                        .get("source")
+                        .and_then(toml::Value::as_str)
+                        .is_some_and(|source| {
+                            dependency(&json!({"name":name,"version":version,"source":source}))
+                                .is_ok_and(|dependency| {
+                                    dependency["git"].as_str() == Some(git)
+                                        && dependency["rev"].as_str() == Some(rev)
+                                })
+                        })
+                })
+                .collect::<Vec<_>>()
+        } else {
+            matches
+        };
         if matches.len() != 1 {
             bail!(
                 "generated Host resolved conflicting {name} Cargo package identities; align framework sources before linking"
@@ -2130,6 +2157,40 @@ mod tests {
         )
         .unwrap();
         verify_git_lenso_lock(&lock, &selected).unwrap();
+    }
+
+    #[test]
+    fn generated_host_lock_preserves_selected_generator_with_independent_build_versions() {
+        let root = tempfile::tempdir().unwrap();
+        let lock = root.path().join("Cargo.lock");
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let mut selected = selected_git_framework_fixture(rev);
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({"name":"lenso-contract-codegen","version":"0.10.0","id":"selected-generator", "source":format!("git+{git}?rev={rev}#{rev}")}),
+        ).unwrap();
+        let exact = format!(
+            "[[package]]\nname = \"lenso-contract-codegen\"\nversion = \"0.10.0\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n"
+        );
+        let tools = r#"
+[[package]]
+name = "lenso-contract-codegen"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "lenso-contract-codegen"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"#;
+        std::fs::write(&lock, format!("{exact}\n{tools}")).unwrap();
+        verify_git_lenso_lock(&lock, &selected).unwrap();
+        std::fs::write(&lock, tools).unwrap();
+        assert!(verify_git_lenso_lock(&lock, &selected).is_err());
+        let wrong = exact.replace(rev, "different-revision");
+        std::fs::write(&lock, format!("{wrong}\n{tools}")).unwrap();
+        assert!(verify_git_lenso_lock(&lock, &selected).is_err());
     }
 
     #[test]
