@@ -253,6 +253,31 @@ fn generation(source: &Path) -> Option<PathBuf> {
         .map(|(_, path)| path)
 }
 
+fn await_retired_generation_cleanup(source: &Path, active: &Path, dev: &mut Child, log: &Path) {
+    let _phase = Phase::new("retired generation cleanup", log);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let output = fs::read_to_string(log).unwrap_or_default();
+        assert!(
+            !output.contains("Previous inactive generation could not be removed"),
+            "retired generation cleanup failed: {output}"
+        );
+        assert!(
+            dev.try_wait().unwrap().is_none(),
+            "App supervisor exited: {output}"
+        );
+        let remaining = generations(source);
+        if remaining == [active.to_path_buf()] {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "retired generation remains after activation: {remaining:?} | {output}"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> PathBuf {
     await_source_state(source, dev, revision, revision, log)
 }
@@ -583,7 +608,9 @@ fn external_configuration_changes_openapi_title_after_supervised_restart() {
     let second = await_revision(&source, &mut dev.0, 2, &log);
     assert_ne!(second, first, "changed Root needs a new built Generation");
     assert_eq!(openapi_title(&log), "Second API");
-    assert_eq!(generations(&source), vec![second.clone()]);
+    // Ready/activation is published before the supervisor removes the retired
+    // distribution. Require that separate cleanup to complete as well.
+    await_retired_generation_cleanup(&source, &second, &mut dev.0, &log);
 
     let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_openapi_snapshot(&snapshot, 3, "title = 'Rejected API'\nversion = '2.0.0'\n");
