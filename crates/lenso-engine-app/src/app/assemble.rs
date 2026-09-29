@@ -290,6 +290,23 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     for contribution in &generated_resources {
         publish_convention_resources(contribution, stage.path(), &mut published_resources)?;
     }
+    let candidate_ids = candidates
+        .iter()
+        .map(|candidate| candidate.plugin_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for descriptor in &native {
+        if descriptor.plugin_id() != "lenso.web-ingress"
+            && !candidate_ids.contains(descriptor.plugin_id())
+        {
+            inputs.push(LocalPluginInput {
+                descriptor: descriptor.clone(),
+                manifest_digest: super::local_host::digest(&stage.path().join(".lenso/host"))?,
+                app_owned: false,
+                source: "Root-selected reachable Cargo Plugin".into(),
+            });
+        }
+    }
+    drop(candidate_ids);
     for candidate in candidates {
         super::preset::checkpoint()?;
         // Shared sources are not built merely because they can be discovered.
