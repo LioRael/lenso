@@ -1005,12 +1005,36 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
         .get("package")
         .and_then(toml::Value::as_array)
         .context("generated Host Cargo lock has no packages")?;
+    let (git, rev) = selected
+        .source
+        .as_ref()
+        .context("selected Git Lenso packages have no source")?;
+    let mut framework_names = selected.packages.keys().cloned().collect::<BTreeSet<_>>();
+    framework_names.extend(["lenso".to_owned(), "lenso-kernel".to_owned()]);
+    for package in packages {
+        let Some(name) = package.get("name").and_then(toml::Value::as_str) else {
+            continue;
+        };
+        if name == "lenso-contract-codegen" && !selected.packages.contains_key(name) {
+            continue;
+        }
+        let Some(source) = package.get("source").and_then(toml::Value::as_str) else {
+            continue;
+        };
+        let version = package.get("version").and_then(toml::Value::as_str);
+        if let Some(version) = version {
+            let source = dependency(&json!({"name":name,"version":version,"source":source}))?;
+            if source["git"].as_str() == Some(git) {
+                framework_names.insert(name.to_owned());
+            }
+        }
+    }
     let mut seen_versions = BTreeSet::new();
     let mut seen_names = BTreeSet::new();
     let mut codec_versions = BTreeSet::new();
     for package in packages {
         if let Some(name) = package.get("name").and_then(toml::Value::as_str)
-            && (name == "lenso" || name.starts_with("lenso-"))
+            && framework_names.contains(name)
         {
             // Codegen is a build-only tool. Git and registry copies may coexist
             // without splitting the linked native Plugin's runtime identity.
@@ -1038,10 +1062,6 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
             "generated Host resolved conflicting lenso-runtime-codec Cargo package identities; align framework sources before linking"
         );
     }
-    let (git, rev) = selected
-        .source
-        .as_ref()
-        .context("selected Git Lenso packages have no source")?;
     for (name, (_, version)) in &selected.packages {
         let matches = packages
             .iter()
@@ -2110,6 +2130,50 @@ mod tests {
         )
         .unwrap();
         verify_git_lenso_lock(&lock, &selected).unwrap();
+    }
+
+    #[test]
+    fn generated_host_lock_allows_private_owner_wire_dependencies() {
+        let root = tempfile::tempdir().unwrap();
+        let lock = root.path().join("Cargo.lock");
+        let git = "https://github.com/LioRael/lenso";
+        let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
+        let mut selected = selected_git_framework_fixture(rev);
+        collect_git_lenso_source(
+            &mut selected,
+            &json!({"name":"lenso","version":"0.5.25","id":"framework-facade", "source":format!("git+{git}?rev={rev}#{rev}")}),
+        ).unwrap();
+        let framework = format!(
+            "[[package]]\nname = \"lenso\"\nversion = \"0.5.25\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n"
+        );
+        let owners = r#"
+[[package]]
+name = "lenso-auth-sdk"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "lenso-auth-sdk"
+version = "0.2.4"
+source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
+
+[[package]]
+name = "lenso-capability-auth"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "lenso-capability-auth"
+version = "0.2.0"
+source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
+"#;
+        std::fs::write(&lock, format!("{framework}\n{owners}")).unwrap();
+        verify_git_lenso_lock(&lock, &selected).unwrap();
+        let conflicting = format!(
+            "{framework}\n{owners}\n[[package]]\nname = \"lenso\"\nversion = \"0.5.25\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+        );
+        std::fs::write(&lock, conflicting).unwrap();
+        assert!(verify_git_lenso_lock(&lock, &selected).is_err());
     }
 
     #[test]
