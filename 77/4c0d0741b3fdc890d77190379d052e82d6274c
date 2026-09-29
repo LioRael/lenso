@@ -1,0 +1,14 @@
+crates/lenso-cli/docs/local-plugin-discovery.md
+  h_9d56aba080c170 34-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "774c0d0741b3fdc890d77190379d052e82d6274c",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
