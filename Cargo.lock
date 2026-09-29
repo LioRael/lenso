@@ -2130,7 +2130,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "futures",
  "http",

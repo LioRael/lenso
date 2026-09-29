@@ -370,7 +370,7 @@ fn typed_process_notes_rebuild_guest_and_reuse_precompiled_host() {
     );
     assert!(manifest["dependencies"].get("lenso-process-sdk").is_none());
     let endpoint = &manifest["dependencies"]["lenso-capability-http-endpoint"];
-    assert_eq!(endpoint["version"].as_str(), Some("=0.3.4"));
+    assert_eq!(endpoint["version"].as_str(), Some("=0.3.5"));
     assert_eq!(endpoint["path"].as_str(), sdk.to_str());
     assert!(
         endpoint["features"]
