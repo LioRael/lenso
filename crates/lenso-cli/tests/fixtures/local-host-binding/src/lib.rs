@@ -22,6 +22,11 @@ impl lenso::Lifecycle for Observer {
 
     async fn deactivate(&self, _: lenso::DeactivateContext) -> Result<(), lenso::RuntimeFailure> {
         record("deactivate");
+        if std::env::var("LENSO_TEST_BINDING_STOP").as_deref() == Ok("stop-failure") {
+            return Err(lenso::RuntimeFailure::PluginFailure {
+                detail: "fixture stop rejected".to_owned(),
+            });
+        }
         Ok(())
     }
 }
@@ -69,7 +74,18 @@ pub mod business_snapshot {
 
     impl Drop for Guard {
         fn drop(&mut self) {
+            if let Some(receipt) = std::env::var_os("LENSO_MANAGED_SHUTDOWN_RECEIPT") {
+                assert!(
+                    !Path::new(&receipt).exists(),
+                    "receipt preceded binding guard cleanup"
+                );
+            }
             super::record("drop");
+            assert_ne!(
+                std::env::var("LENSO_TEST_BINDING_STOP").as_deref(),
+                Ok("panic"),
+                "fixture guard cleanup panicked"
+            );
         }
     }
 }

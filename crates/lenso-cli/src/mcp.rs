@@ -1351,7 +1351,10 @@ fn project_facts_page_items(
     ))
 }
 
-// The SDK generates an async handler for the synchronous tool router.
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "the SDK generates an async ServerHandler for the synchronous tool router"
+)]
 #[tool_handler]
 impl ServerHandler for AppTools {}
 

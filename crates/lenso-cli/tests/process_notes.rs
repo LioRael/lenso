@@ -2,6 +2,8 @@
 
 #[path = "support/process_notes_source.rs"]
 mod process_notes_source;
+#[path = "support/process_notes_supervision.rs"]
+mod process_notes_supervision;
 
 use std::{
     fs::{self, File},
@@ -14,7 +16,7 @@ use std::{
 };
 
 use nix::{
-    sys::signal::{Signal, killpg},
+    sys::signal::{Signal, kill, killpg},
     unistd::Pid,
 };
 use serde_json::Value;
@@ -99,6 +101,56 @@ fn start(distribution: &Path, log: &Path) -> (ProcessGuard, SocketAddr) {
         );
         std::thread::sleep(Duration::from_millis(25));
     }
+}
+
+fn assert_process_shutdown_receipt(distribution: &Path, log: &Path) {
+    let private = tempfile::tempdir().unwrap();
+    let ready = private.path().join("ready");
+    let receipt = private.path().join("shutdown");
+    let token = "ef".repeat(32);
+    let mut child = ProcessGuard::spawn(
+        Command::new(distribution.join(".lenso/host"))
+            .args(["app", "__run-local", "--", "--ready-file"])
+            .arg(&ready)
+            .env("LENSO_MANAGED_SHUTDOWN_RECEIPT", &receipt)
+            .env("LENSO_MANAGED_SHUTDOWN_TOKEN", &token),
+        log,
+    );
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !ready.exists() {
+        assert!(
+            child.0.try_wait().unwrap().is_none() && Instant::now() < deadline,
+            "Host did not become ready:\n{}",
+            fs::read_to_string(log).unwrap()
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!receipt.exists());
+    // Signal only the Host; its Adapter must stop and reap the Process Plugin.
+    kill(
+        Pid::from_raw(child.0.id().try_into().unwrap()),
+        Signal::SIGTERM,
+    )
+    .unwrap();
+    loop {
+        if let Some(status) = child.0.try_wait().unwrap() {
+            assert!(status.success(), "{}", fs::read_to_string(log).unwrap());
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Host did not stop:\n{}",
+            fs::read_to_string(log).unwrap()
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert_eq!(
+        fs::read(&receipt).unwrap_or_else(|error| panic!(
+            "shutdown receipt missing: {error}\n{}",
+            fs::read_to_string(log).unwrap()
+        )),
+        token.as_bytes()
+    );
 }
 
 fn request(address: SocketAddr, method: &str, path: &str, body: &str) -> (u16, String, Value) {
@@ -341,6 +393,8 @@ fn typed_process_notes_rebuild_guest_and_reuse_precompiled_host() {
     create_and_read(address, "First");
     assert_input_problems(address);
     drop(running);
+    assert_process_shutdown_receipt(&first, &temp.path().join("shutdown.log"));
+    process_notes_supervision::assert_update_and_restart(&first);
 
     let original = "title: input.title,";
     assert_eq!(business.matches(original).count(), 1);

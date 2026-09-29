@@ -70,6 +70,8 @@ fn assert_provenance(distribution: &Path) {
     let provenance = distribution.join(".lenso/generated-host");
     let source = fs::read_to_string(provenance.join("src/main.rs")).unwrap();
     assert!(source.contains("local_plugin_0::business_snapshot::bind("));
+    assert!(source.contains("struct ManagedShutdownReceipt"));
+    assert!(source.contains("receipt.publish()?"));
     assert!(!source.contains("mod local_business_snapshot"));
     assert!(!provenance.join("src/local_business_snapshot.rs").exists());
     let manifest: toml::Value =
@@ -97,6 +99,8 @@ fn selected_plugin_owns_binding_and_guard_lifetime_in_generated_host() {
     let distribution = temp.path().join("dist");
     let events = temp.path().join("events");
     let policy = temp.path().join("policy");
+    let receipt = temp.path().join("shutdown-receipt");
+    let token = "ab".repeat(32);
     let cli = env!("CARGO_BIN_EXE_lenso");
     success(
         Command::new(cli)
@@ -135,12 +139,15 @@ fn selected_plugin_owns_binding_and_guard_lifetime_in_generated_host() {
             .args(["app", "start", "--from"])
             .arg(&distribution)
             .arg("--check")
+            .env("LENSO_MANAGED_SHUTDOWN_RECEIPT", &receipt)
+            .env("LENSO_MANAGED_SHUTDOWN_TOKEN", &token)
             .env("LENSO_TEST_BINDING_EVENTS", &events);
         if mode != "absent" {
             command.arg("--business-snapshot-policy").arg(&policy);
         }
         let output = command.output().unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!receipt.exists(), "--check must not acknowledge cleanup");
         assert_eq!(
             output.status.success(),
             diagnostic.is_none(),
@@ -163,6 +170,84 @@ fn selected_plugin_owns_binding_and_guard_lifetime_in_generated_host() {
             );
         }
     }
+    #[cfg(unix)]
+    for mode in ["clean", "stop-failure", "panic", "forced"] {
+        assert_shutdown_receipt(&distribution, &policy, &events, &token, mode);
+    }
+}
+
+#[cfg(unix)]
+fn assert_shutdown_receipt(
+    distribution: &Path,
+    policy: &Path,
+    events: &Path,
+    token: &str,
+    mode: &str,
+) {
+    let ready = distribution.join(format!(".lenso/{mode}-ready"));
+    let receipt = events.with_extension(format!("{mode}-receipt"));
+    let log = events.with_extension(format!("{mode}-stderr"));
+    fs::write(events, "").unwrap();
+    fs::write(policy, "valid").unwrap();
+    let mut child = Command::new(distribution.join(".lenso/host"))
+        .arg("--business-snapshot-policy")
+        .arg(policy)
+        .arg("--ready-file")
+        .arg(&ready)
+        .env("LENSO_TEST_BINDING_EVENTS", events)
+        .env("LENSO_TEST_BINDING_STOP", mode)
+        .env("LENSO_MANAGED_SHUTDOWN_RECEIPT", &receipt)
+        .env("LENSO_MANAGED_SHUTDOWN_TOKEN", token)
+        .stdout(Stdio::null())
+        .stderr(fs::File::create(&log).unwrap())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !ready.exists() {
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "{}",
+            fs::read_to_string(&log).unwrap()
+        );
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!(
+                "Host did not become ready: {}",
+                fs::read_to_string(&log).unwrap()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!receipt.exists(), "running generation must not acknowledge");
+    let signal = if mode == "forced" { "-KILL" } else { "-TERM" };
+    success(Command::new("kill").args([signal, &child.id().to_string()]));
+    let status = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("Host did not stop: {}", fs::read_to_string(&log).unwrap());
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    };
+    assert_eq!(
+        status.success(),
+        mode == "clean",
+        "{}",
+        fs::read_to_string(&log).unwrap()
+    );
+    if mode != "clean" {
+        assert!(!receipt.exists(), "{mode} must not acknowledge cleanup");
+        return;
+    }
+    assert_eq!(fs::read(&receipt).unwrap(), token.as_bytes());
+    assert_eq!(
+        fs::read_to_string(events).unwrap(),
+        "bind\nactivate\nrecheck\nspawn\ndeactivate\ndrop\n"
+    );
 }
 
 fn assert_failure_has_no_readiness(
@@ -174,6 +259,7 @@ fn assert_failure_has_no_readiness(
 ) {
     let marker = distribution.join(".lenso/test-ready");
     let log = events.with_extension("stderr");
+    let receipt = events.with_extension("failure-receipt");
     fs::write(events, "").unwrap();
     let mut child = Command::new(distribution.join(".lenso/host"))
         .arg("--business-snapshot-policy")
@@ -181,6 +267,8 @@ fn assert_failure_has_no_readiness(
         .arg("--ready-file")
         .arg(&marker)
         .env("LENSO_TEST_BINDING_EVENTS", events)
+        .env("LENSO_MANAGED_SHUTDOWN_RECEIPT", &receipt)
+        .env("LENSO_MANAGED_SHUTDOWN_TOKEN", "cd".repeat(32))
         .stdout(Stdio::null())
         .stderr(fs::File::create(&log).unwrap())
         .spawn()
@@ -205,6 +293,7 @@ fn assert_failure_has_no_readiness(
     assert!(stderr.contains(diagnostic), "{stderr}");
     assert_eq!(fs::read_to_string(events).unwrap(), expected, "{stderr}");
     assert!(!marker.exists());
+    assert!(!receipt.exists());
     assert!(!marker.with_extension("stage").exists());
     assert!(!stderr.contains("Local App ready"), "{stderr}");
 }

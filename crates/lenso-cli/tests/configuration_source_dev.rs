@@ -254,14 +254,28 @@ fn generation(source: &Path) -> Option<PathBuf> {
 }
 
 fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> PathBuf {
-    let _phase = Phase::new(format!("activate revision {revision}"), log);
+    await_source_state(source, dev, revision, revision, log)
+}
+
+fn await_source_state(
+    source: &Path,
+    dev: &mut Child,
+    revision: u64,
+    activated_revision: u64,
+    log: &Path,
+) -> PathBuf {
+    let _phase = Phase::new(
+        format!("source revision {revision}, last activation {activated_revision}"),
+        log,
+    );
     let deadline = Instant::now() + Duration::from_secs(300);
     loop {
         for output in generations(source) {
             let state_path = output.join("intent/.lenso/configuration-source-state.json");
             if let Ok(bytes) = fs::read(&state_path)
                 && let Ok(state) = serde_json::from_slice::<serde_json::Value>(&bytes)
-                && state["last_activated"]["revision"] == revision
+                && state["last_activated"]["revision"] == activated_revision
+                && state["desired"]["revision"] == revision
             {
                 assert!(dev.try_wait().unwrap().is_none());
                 let status = Command::new(env!("CARGO_BIN_EXE_lenso"))
@@ -273,8 +287,12 @@ fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> 
                 assert!(status.status.success());
                 let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
                 assert_eq!(status["desired_revision"], revision);
-                assert_eq!(status["last_activated_revision"], revision);
-                assert_eq!(status["pending_activation"], false);
+                assert_eq!(status["last_activated_revision"], activated_revision);
+                assert_eq!(status["pending_activation"], revision != activated_revision);
+                assert_eq!(
+                    status["desired_matches_last_activated_root_and_policy"],
+                    true
+                );
                 return output;
             }
         }
@@ -306,59 +324,6 @@ fn await_revision(source: &Path, dev: &mut Child, revision: u64, log: &Path) -> 
                     .unwrap_or_default()
                 ))
                 .collect::<Vec<_>>()
-        );
-        std::thread::sleep(Duration::from_millis(200));
-    }
-}
-
-fn await_pending_revision(
-    source: &Path,
-    dev: &mut Child,
-    revision: u64,
-    active_revision: u64,
-    log: &Path,
-    log_offset: usize,
-) -> PathBuf {
-    let _phase = Phase::new(format!("pending revision {revision}"), log);
-    let deadline = Instant::now() + Duration::from_secs(60);
-    loop {
-        let bytes = fs::read(log).unwrap_or_default();
-        let blocked = bytes.len() > log_offset
-            && String::from_utf8_lossy(&bytes[log_offset..]).contains(
-                "live replacement is blocked; the old preview remains only while its source proof is valid",
-            );
-        for output in generations(source) {
-            let state_path = output.join("intent/.lenso/configuration-source-state.json");
-            if let Ok(bytes) = fs::read(&state_path)
-                && let Ok(state) = serde_json::from_slice::<serde_json::Value>(&bytes)
-                && state["desired"]["revision"] == revision
-                && state["last_activated"]["revision"] == active_revision
-                && blocked
-            {
-                assert!(dev.try_wait().unwrap().is_none());
-                let status = Command::new(env!("CARGO_BIN_EXE_lenso"))
-                    .args(["app", "config-status", "--root"])
-                    .arg(&output)
-                    .arg("--json")
-                    .output()
-                    .unwrap();
-                assert!(status.status.success());
-                let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
-                assert_eq!(status["desired_revision"], revision);
-                assert_eq!(status["last_activated_revision"], active_revision);
-                assert_eq!(status["pending_activation"], true);
-                return output;
-            }
-        }
-        assert!(
-            dev.try_wait().unwrap().is_none(),
-            "App development Host exited: {}",
-            String::from_utf8_lossy(&bytes)
-        );
-        assert!(
-            Instant::now() < deadline,
-            "configuration revision {revision} was not left pending: {}",
-            String::from_utf8_lossy(&bytes)
         );
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -416,7 +381,7 @@ fn await_source_outage(dev: &mut Child, log: &Path, from: usize) {
 #[test]
 #[expect(
     clippy::too_many_lines,
-    reason = "the ordered outage, pending revision, and verified restart form one Process Host lifecycle"
+    reason = "the ordered outage, revision renewal, and clean restart form one Process Host lifecycle"
 )]
 fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     let _serial_build = APP_BUILD_TEST
@@ -487,13 +452,12 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     let output = await_revision(&source, &mut dev.0, 1, &log);
     assert_eq!(generation(&source).unwrap(), output);
 
-    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_snapshot(&snapshot, 2, "");
-    await_pending_revision(&source, &mut dev.0, 2, 1, &log, log_offset);
+    assert_eq!(await_source_state(&source, &mut dev.0, 2, 1, &log), output);
 
     // Unlike the initial missing source, this outage happens after a real
     // Host has activated. Poll failure must retain that Host and its receipt,
-    // even while a later revision remains pending.
+    // with renewed source authority but the original activation receipt.
     let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     fs::remove_file(&snapshot).unwrap();
     await_source_outage(&mut dev.0, &log, log_offset);
@@ -511,7 +475,6 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
         .unwrap();
     assert!(status.status.success());
     let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
-    assert_eq!(status["state"], "pending_activation");
     assert_eq!(status["desired_revision"], 2);
     assert_eq!(status["last_activated_revision"], 1);
     assert_eq!(status["pending_activation"], true);
@@ -521,9 +484,8 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
             .contains("Local Host exited")
     );
 
-    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_snapshot(&snapshot, 3, "");
-    await_pending_revision(&source, &mut dev.0, 3, 1, &log, log_offset);
+    assert_eq!(await_source_state(&source, &mut dev.0, 3, 1, &log), output);
     let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_snapshot(&snapshot, 4, "unauthorized = 'no'\n");
     await_source_outage(&mut dev.0, &log, log_offset);
@@ -617,18 +579,9 @@ fn external_configuration_changes_openapi_title_after_supervised_restart() {
     let first = await_revision(&source, &mut dev.0, 1, &log);
     assert_eq!(openapi_title(&log), "First API");
 
-    let log_offset = usize::try_from(fs::metadata(&log).unwrap().len()).unwrap();
     write_openapi_snapshot(&snapshot, 2, "title = 'Second API'\n");
-    await_pending_revision(&source, &mut dev.0, 2, 1, &log, log_offset);
-    assert_eq!(openapi_title(&log), "First API");
-    assert!(
-        dev.stop(),
-        "App development supervisor did not stop cleanly"
-    );
-    assert!(!first.exists());
-    let mut dev = start_dev(cli, &source, &policy, &log, Some(temporary.path()));
     let second = await_revision(&source, &mut dev.0, 2, &log);
-    assert_ne!(second, first);
+    assert_ne!(second, first, "changed Root needs a new built Generation");
     assert_eq!(openapi_title(&log), "Second API");
     assert_eq!(generations(&source), vec![second.clone()]);
 

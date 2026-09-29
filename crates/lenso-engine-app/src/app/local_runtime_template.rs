@@ -12,6 +12,97 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, time::Duration};
 
+struct ManagedShutdownReceipt {
+    path: PathBuf,
+    token: String,
+}
+
+impl ManagedShutdownReceipt {
+    fn parse(
+        path: Option<std::ffi::OsString>,
+        token: Option<std::ffi::OsString>,
+    ) -> anyhow::Result<Option<Self>> {
+        let (path, token) = match (path, token) {
+            (None, None) => return Ok(None),
+            (Some(path), Some(token)) => (PathBuf::from(path), token),
+            _ => bail!("managed shutdown receipt path and token must be supplied together"),
+        };
+        let token = token.into_string().map_err(|_| anyhow::anyhow!("invalid shutdown token"))?;
+        anyhow::ensure!(
+            path.is_absolute()
+                && token.len() == 64
+                && token.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+            "managed shutdown requires an absolute receipt path and a 64-character lowercase hex token"
+        );
+        Ok(Some(Self { path, token }))
+    }
+
+    fn publish(self) -> anyhow::Result<()> {
+        // The supervisor owns the private directory and accepts this only after
+        // successful process exit. Never replace a stale receipt or symlink.
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(self.path)?;
+        std::io::Write::write_all(&mut file, self.token.as_bytes())?;
+        file.sync_all()?;
+        Ok(())
+    }
+}
+
+fn supports_managed_shutdown_receipt(execution_class: &str) -> bool {
+    // Child-process Adapters additionally require lifetime cleanup evidence
+    // after runtime teardown, including any retired generations.
+    matches!(
+        execution_class,
+        "lenso.native-rust@1" | "lenso.wasm-component@1" | "lenso.process@1" | "lenso.bun-process@1"
+    )
+}
+
+#[cfg(test)]
+mod managed_shutdown_tests {
+    use super::*;
+
+    #[test]
+    fn receipt_requires_paired_valid_generation_inputs() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("receipt").into_os_string();
+        let token = std::ffi::OsString::from("ab".repeat(32));
+        assert!(ManagedShutdownReceipt::parse(None, None).unwrap().is_none());
+        for (path, token) in [
+            (Some(path.clone()), None),
+            (None, Some(token.clone())),
+            (Some("relative".into()), Some(token.clone())),
+            (Some(path.clone()), Some("AB".repeat(32).into())),
+            (Some(path.clone()), Some("ab".into())),
+        ] {
+            assert!(ManagedShutdownReceipt::parse(path, token).is_err());
+        }
+        assert!(ManagedShutdownReceipt::parse(Some(path), Some(token)).unwrap().is_some());
+    }
+
+    #[test]
+    fn receipt_is_explicit_exact_and_never_overwritten() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("receipt");
+        let receipt = || ManagedShutdownReceipt {
+            path: path.clone(),
+            token: "ab".repeat(32),
+        };
+        drop(receipt());
+        assert!(!path.exists(), "Drop must never acknowledge errors or panics");
+        receipt().publish().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), "ab".repeat(32).as_bytes());
+        assert!(receipt().publish().is_err());
+    }
+
+    #[test]
+    fn adapters_without_lifetime_cleanup_evidence_cannot_acknowledge() {
+        assert!(supports_managed_shutdown_receipt("lenso.native-rust@1"));
+        assert!(supports_managed_shutdown_receipt("lenso.wasm-component@1"));
+        assert!(supports_managed_shutdown_receipt("lenso.process@1"));
+        assert!(supports_managed_shutdown_receipt("lenso.bun-process@1"));
+        assert!(!supports_managed_shutdown_receipt("unknown"));
+    }
+}
+
 #[derive(Deserialize)]
 struct Resolution {
     schema: String,
@@ -569,6 +660,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     if agent_tool_cli {
         bail!("Agent Tool CLI is unavailable in this generated native Host profile");
     }
+    let shutdown_receipt = ManagedShutdownReceipt::parse(
+        std::env::var_os("LENSO_MANAGED_SHUTDOWN_RECEIPT"),
+        std::env::var_os("LENSO_MANAGED_SHUTDOWN_TOKEN"),
+    )?;
     let distribution_lock_bytes = fs::read(root.join(".lenso/distribution.lock.json"))?;
     let distribution_lock_sha256 = format!(
         "sha256:{}",
@@ -750,6 +845,24 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     if prepare {
         return Ok(());
     }
+    let shutdown_receipt = if check {
+        None
+    } else {
+        let unconfirmed = resolution.plan.plugin_instances().iter().find(|instance| {
+            !supports_managed_shutdown_receipt(instance.execution_class().as_str())
+        });
+        if let Some(instance) = unconfirmed {
+            if shutdown_receipt.is_some() {
+                eprintln!(
+                    "Managed shutdown acknowledgement unavailable: Adapter cleanup is unconfirmed for {} ({}, {})",
+                    instance.instance_key(), instance.execution_class().as_str(), instance.runtime_profile()
+                );
+            }
+            None
+        } else {
+            shutdown_receipt
+        }
+    };
     // LENSO_BUSINESS_SNAPSHOT_DECL
     #[cfg(generated_native_host)]
     let native = {
@@ -855,6 +968,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         ))]
         let _ = codec;
     }
+    #[cfg(any(not(generated_native_host), generated_bun_adapter))]
+    let bun_shutdown_evidence = bun.shutdown_evidence();
+    #[cfg(any(not(generated_native_host), generated_process_adapter))]
+    let process_shutdown_evidence = process.shutdown_evidence();
     let catalog = ExecutionAdapterCatalog::new();
     let catalog = catalog
         .with_adapter(native)
@@ -877,8 +994,8 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
-    let _entered = runtime.enter();
-    futures::executor::block_on(
+    let entered = runtime.enter();
+    let result = futures::executor::block_on(
         tokio::task::LocalSet::new().run_until(async move {
             let app = Kernel::start(resolution.plan, lenso_runner::TokioDriver::new(), catalog)
                 .await.map_err(|e| anyhow::anyhow!("Host startup failed: {e:?}"))?;
@@ -907,6 +1024,12 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             if let Some(address) = &local_web_url { eprintln!("Listening on {address}"); }
             // LENSO_WEB_READY
             // LENSO_WEB_ROUTE_FACTS
+            #[cfg(unix)]
+            let mut terminate = if !check && command_args.is_none() {
+                Some(tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?)
+            } else {
+                None
+            };
             if let Some(path) = web_address_file {
                 let address = local_web_url.context("frontend dev requires a ready Web Ingress")?;
                 let stage = path.with_extension("stage");
@@ -940,12 +1063,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             }
             // LENSO_TERMINAL_RUN
             if !check && command_args.is_none() {
-                #[cfg(unix)]
-                let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
                 loop {
                     tokio::select! {
                         signal = tokio::signal::ctrl_c() => { signal?; break; }
-                        _ = async { #[cfg(unix)] { terminate.recv().await; }
+                        _ = async { #[cfg(unix)] { if let Some(signal) = &mut terminate { signal.recv().await; } }
                             #[cfg(not(unix))] { std::future::pending::<()>().await; } } => break,
                         () = tokio::time::sleep(Duration::from_millis(50)) => { if app.is_failed() { break; } }
                     }
@@ -958,7 +1079,27 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             eprintln!("Local App stopped cleanly");
             command_result
         })
-    )
+    );
+    // Drop the LocalSet, Plugin/binding guards and Adapter state before the
+    // receipt. Kernel Clean proves managed work settled, not arbitrary tasks
+    // or descendants created by trusted Plugin code outside its managed scopes.
+    drop(entered);
+    drop(runtime);
+    result?;
+    if let Some(receipt) = shutdown_receipt {
+        #[cfg(any(not(generated_native_host), generated_bun_adapter))]
+        if !bun_shutdown_evidence.is_clean() {
+            eprintln!("Managed shutdown acknowledgement unavailable: Bun Adapter lifetime cleanup is unconfirmed");
+            return Ok(());
+        }
+        #[cfg(any(not(generated_native_host), generated_process_adapter))]
+        if !process_shutdown_evidence.is_clean() {
+            eprintln!("Managed shutdown acknowledgement unavailable: Process Adapter lifetime cleanup is unconfirmed");
+            return Ok(());
+        }
+        receipt.publish()?;
+    }
+    Ok(())
 }
 
 #[cfg(generated_native_host)]

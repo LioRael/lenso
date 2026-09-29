@@ -2,7 +2,7 @@
 
 ## vNext decisions
 
-ADRs 0030 through 0077 record the accepted architecture decisions for Lenso
+ADRs 0030 through 0078 record the accepted architecture decisions for Lenso
 vNext, subject to their supersession and explicit adoption rules. Acceptance is
 not evidence of shipped implementation, release, target qualification, or
 deployment. Start with
@@ -100,6 +100,12 @@ Environment-plus-Infrastructure combination.
 supersedes ADR 0064's physical repository split. The Rust main chain is one
 workspace, JavaScript and TypeScript tooling live in `lenso-js`, and genuine
 products retain independent ownership.
+
+[`0078-bound-automatic-recovery-to-managed-resource-retirement.md`](0078-bound-automatic-recovery-to-managed-resource-retirement.md)
+bounds automatic supervised recovery to framework-managed work and
+Execution-Adapter-owned children, requiring generation retirement before the
+crash fence is cleared rather than claiming containment of arbitrary trusted
+code.
 
 ## Legacy decisions
 

@@ -35,13 +35,19 @@ The source file is a regular, non-symlink JSON document:
 Run `lenso app start --from dist --configuration-policy /etc/my-app/policy.json`.
 With a policy, `app start` supervises the generated Host for its lifetime:
 it polls the source, stops the current Host if source proof becomes too old or
-the Host policy changes, and hard-stops it when a newer accepted revision
-would replace it. A hard stop leaves the crash fence described below because
-adapter descendants can use independent process groups; the supervisor does
-**not** automatically start the replacement. After an operator verifies all
-descendants stopped and clears the fence, a new start can activate the accepted
-revision. This is a remaining automatic-update capability gap, not a seamless
-switch. The generated Host may perform Kernel side effects before its Ready
+the Host policy changes, and stops it before activating a changed accepted
+revision. For File/HTTPS sources on the supported supervised-start path, a
+normal stop releases managed resources so you can restart without manually
+clearing a marker. An accepted update can start its replacement only after that
+cleanup completes and the source and policy still authorize startup. A failed
+or forced stop instead requires the recovery steps below; no replacement is
+started automatically.
+
+This automatic path applies to the current Native, Wasm Component, Process V1/V2,
+and Bun Adapter profiles only when their lifetime cleanup evidence is clean.
+It does not cover Windows or the bootstrap Configuration Source Plugin path
+described below. `app dev` has the additional restrictions below. The generated
+Host may perform Kernel side effects before its Ready
 marker; stopping it is not an atomic cross-system rollback or a pre-activation
 gate. One-shot `--check` and terminal `-- ...` arguments are rejected with
 `--configuration-policy` because they cannot provide continuous supervision.
@@ -54,26 +60,36 @@ new `desired_revision` separate from the historical `last_activated_revision`,
 sets `desired_matches_last_activated_root_and_policy` to true, and still marks
 `pending_activation`. That field compares stored Root and policy identities;
 it is not a live-process health check. A changed Root or policy still requires
-the hard-stop and recovery path above.
+stopping the old Host; a policy change requires fresh authorization rather than
+reusing the old policy's permission to start.
 
 Only one supervised `app start` may own a built distribution at a time. Before
 starting a Host, the supervisor durably writes
-`dist/.lenso/supervised-start.uncertain`. Once a Host has been spawned, the
-marker remains even after a clean Host exit or normal supervisor shutdown:
-the Host process group cannot prove that a Plugin or descendant did not start
-a process in a separate group or session. Only a failed spawn that created no
-Host clears the marker automatically. A subsequent supervised start refuses
-to run even though its session lock was released. This is a fail-closed crash
-fence, not a rollback of side effects the Host may already have performed.
-To recover, first verify that **every Host process and descendant for this
-exact distribution** has stopped; checking only the former leader PID is
-insufficient. Then manually remove the marker and restart. The CLI does not
-automatically kill processes identified only by an old PID or clear an
-uncertain marker.
+`dist/.lenso/supervised-start.uncertain`. On the automatic path, it removes this
+crash fence only after the generated Host reports completed managed cleanup for
+that launch, exits successfully, and leaves no live members in its original
+process group. A failed spawn that created no Host can also clear the marker.
 
-Automatic restart after a normal stop is also a remaining W4 capability gap.
-Do not treat exit status zero or the absence of the former Host process group
-as proof that all descendants are gone.
+Managed cleanup covers framework-managed tasks, lifecycle work, and resources,
+including Adapter-owned child processes. It does not cover arbitrary Native or
+Bun code deliberately spawning or escaping descendants. The generated Host
+reports cleanup only after Kernel shutdown is `Clean`, binding guards are
+released, and its local task set and runtime are dropped. Historical managed
+cleanup failures remain disqualifying even if a later Plugin generation succeeds;
+Process and Bun Adapters also track owned children across their entire lifetime.
+Its receipt carries a
+private per-generation environment token to distinguish launches, not to
+authenticate against trusted code. This is not cgroup isolation or a sandbox;
+see [ADR 0078](../../../docs/adr/0078-bound-automatic-recovery-to-managed-resource-retirement.md).
+
+If the receipt is missing or has the wrong token, the Host exits abnormally,
+cleanup times out or requires force, or the supervisor crashes, the marker
+remains and a later supervised start refuses to run. To recover, first verify
+that **every Host process and descendant for this exact distribution** has
+stopped; checking only the former leader PID is insufficient. Then manually
+remove the marker and restart. The CLI does not automatically kill processes
+identified only by an old PID or clear an uncertain marker. Exit status zero
+or disappearance of the former process group alone is not enough.
 
 `lenso app config-sync --root dist --policy /etc/my-app/policy.json` performs
 only source reconciliation, without starting the Host. Check the distribution
@@ -148,27 +164,42 @@ subscriptions are supported only where explicitly described above, not by
 the Plugin contract. The Host policy itself is the trust root for the exact
 release; the digest pins are not marketplace signature verification.
 
-For a local preview, `lenso app dev --configuration-policy POLICY` applies the
-same freshness boundary to both the Host and its configured frontend dev
-process. It shortens a longer requested source poll interval to at most half
-the stale limit (and logs the adjustment), so a healthy source is revalidated
-before the deadline. On expiry or detected policy revocation it force-stops
-both process groups without a graceful-shutdown allowance and removes the
-published dev backend URL. An accepted replacement first checks the candidate's
-locked distribution, resolved Root, and artifacts without starting Plugin
-lifecycles. Failure at this static preparation stage leaves a still-valid old
-preview running. Dynamic readiness can itself start the Kernel, so the same
-`app dev` session will not automatically run `--check` or start a replacement
-after any dynamic activation attempt. A statically prepared update stays
-pending while the old preview and its source proof remain valid. If that proof
-expires or the Host policy changes, the old preview is stopped and this session
-stays unavailable rather than automatically starting a replacement. Stop the
-session, verify that the previous Host and all descendants have stopped, then
-explicitly restart `app dev` to attempt the pending revision. A failed initial
-dynamic check also requires that restart; static-preparation failures can be
-retried without it. Ordinary source read failures do not stop a still-fresh
-preview. This is a fail-closed local preview rule, not OS containment or an
-atomic rollback of Plugin side effects.
+This bootstrap Plugin runs under a separate owner from the generated App Host.
+Until that owner implements retirement, supervised starts using a Plugin source
+retain the crash fence even after a normal stop. Before restarting or activating
+an update, verify all Host and bootstrap Plugin descendants have stopped, then
+manually clear the marker as described above. App Host cleanup alone cannot
+authorize automatic recovery of this source path.
+
+For a local preview, run `lenso app dev --configuration-policy POLICY`. On Unix,
+File/HTTPS sources without a separate frontend dev process use the same managed
+retirement rule:
+
+- Ctrl+C stops the Host and clears the recovery marker only after confirmed
+  cleanup, so another `app dev` can start normally.
+- An accepted changed Root first passes static `--prepare` checks while the old
+  preview remains available. The supervisor then retires the old Host before
+  launching its replacement. The actual new Host's Ready Gate is the only
+  dynamic startup; there is no extra `--check` generation.
+- A newer source revision resolving to the same Root renews authority without
+  restarting or replacing the original activation receipt.
+- Static preparation failures can be retried. Failed dynamic startup, missing
+  cleanup confirmation, forced stop, and supervisor crashes retain the marker
+  at the source App root's `.lenso/supervised-dev.uncertain`, outside disposable
+  build generations. Before clearing it manually, verify all processes from the
+  prior preview have stopped. SIGTERM is not the normal dev shutdown path.
+
+The supervisor shortens a longer requested source poll interval to at most half
+the stale limit. Ordinary source failures do not stop a still-fresh preview.
+Expiry or detected policy revocation force-stops the active process groups,
+withdraws any published backend URL, and retains the recovery marker.
+
+A separately configured frontend dev process still supports initial startup,
+but does not provide the required retirement acknowledgement. Such sessions
+remain conservative: no automatic replacement, and the root recovery marker
+remains even after normal shutdown. Bootstrap Configuration Source Plugins and
+unsupported platforms also retain manual recovery. These limits are not OS
+containment or atomic rollback of Plugin side effects.
 
 The accepted desired revision is persisted in the built App's private
 `intent/.lenso/configuration-source-state.json` before publication. A repeated or stale

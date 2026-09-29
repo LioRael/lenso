@@ -15,78 +15,20 @@ use tokio::{
 
 use super::configuration_source::{self, AcceptedSourceProof};
 
+mod retirement;
+
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 const POLICY_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 const KILL_CONFIRM_TIMEOUT: Duration = Duration::from_secs(2);
 const READY_RECEIPT: &[u8] = b"lenso.local-host-ready.v1\n";
-const UNCERTAIN_RECEIPT: &[u8] = b"lenso.supervised-start-uncertain.v1\n";
-
-struct CrashFence {
-    path: PathBuf,
-    marked: bool,
-}
-
-impl CrashFence {
-    fn new(distribution: &Path) -> anyhow::Result<Self> {
-        let path = distribution.join(".lenso/supervised-start.uncertain");
-        match fs::symlink_metadata(&path) {
-            Ok(_) => bail!(
-                "previous supervised start is unconfirmed; verify every Host and descendant for this distribution has stopped, then manually remove {} before restarting",
-                path.display()
-            ),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error).context("inspect supervised start crash fence"),
-        }
-        Ok(Self {
-            path,
-            marked: false,
-        })
-    }
-
-    fn mark(&mut self) -> anyhow::Result<()> {
-        ensure!(
-            !self.marked,
-            "supervised start crash fence is already marked"
-        );
-        let directory = self
-            .path
-            .parent()
-            .context("supervised start fence directory")?;
-        let mut stage = tempfile::NamedTempFile::new_in(directory)?;
-        stage.write_all(UNCERTAIN_RECEIPT)?;
-        stage.as_file().sync_all()?;
-        stage.persist_noclobber(&self.path)?;
-        fs::File::open(directory)?.sync_all()?;
-        self.marked = true;
-        Ok(())
-    }
-
-    fn clear_after_failed_spawn(&mut self) -> anyhow::Result<()> {
-        ensure!(self.marked, "supervised start crash fence was not marked");
-        let metadata = fs::symlink_metadata(&self.path)?;
-        ensure!(
-            metadata.file_type().is_file()
-                && metadata.len() == u64::try_from(UNCERTAIN_RECEIPT.len())?
-                && fs::read(&self.path)? == UNCERTAIN_RECEIPT,
-            "supervised start crash fence changed after staging"
-        );
-        fs::remove_file(&self.path)?;
-        fs::File::open(
-            self.path
-                .parent()
-                .context("supervised start fence directory")?,
-        )?
-        .sync_all()?;
-        self.marked = false;
-        Ok(())
-    }
-}
+use super::local_host_retirement::CrashFence;
 
 struct Active {
     child: Child,
     group_id: u32,
     proof: AcceptedSourceProof,
     observed_at: Instant,
+    retirement: Option<retirement::Receipt>,
 }
 
 impl Active {
@@ -107,6 +49,7 @@ pub(super) async fn run(
         "App distribution is already supervised by another lenso app start session",
     )?;
     let mut crash_fence = CrashFence::new(&from)?;
+    let mut shutdown = ShutdownSignal::new()?;
     let policy = std::path::absolute(policy)?;
     let executable = fs::canonicalize(from.join(".lenso/host"))
         .context("locate built local Host; run lenso app build first")?;
@@ -118,6 +61,7 @@ pub(super) async fn run(
         proof,
         observed_at,
         &mut crash_fence,
+        &mut shutdown,
     )
     .await?;
     if let Some(path) = &ready_file
@@ -142,18 +86,19 @@ pub(super) async fn run(
                 kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
                 bail!("external configuration freshness expired; App was stopped");
             }
-            signal = shutdown_signal() => {
+            signal = shutdown.wait() => {
                 if let Err(error) = signal {
                     kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
                     return Err(error).context("watch supervised App shutdown signal");
                 }
-                stop_group(&mut active.child, active.group_id).await?;
-                return Ok(());
+                return retirement::stop(&mut active, &mut crash_fence, true).await;
             }
             status = wait_for_exit_unreaped(&mut active.child, active.group_id) => {
-                let exit = kill_group(&mut active.child, active.group_id).await?;
-                status?;
-                bail!("supervised App exited: {exit}");
+                if let Err(error) = status {
+                    kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
+                    return Err(error).context("observe supervised Host exit");
+                }
+                return retirement::stop(&mut active, &mut crash_fence, false).await;
             }
             _ = tokio::time::sleep_until(next_policy_check) => {
                 next_policy_check = Instant::now() + POLICY_CHECK_INTERVAL;
@@ -226,11 +171,22 @@ pub(super) async fn run(
                     active.observed_at = observed_at;
                     continue;
                 }
-                // A newer accepted source revision may revoke a value or scope.
-                // The generated Host has no traffic gate before its Ready Gate,
-                // so hard-stop the old process before any further activation.
-                kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
-                bail!("external configuration changed; App was hard-stopped, but independently grouped descendants cannot be proven stopped; verify all Host descendants for this distribution, then manually remove {} before restarting", crash_fence.path.display());
+                // Never overlap Generations. Clean retirement covers managed
+                // resources only; unknown or forced cleanup keeps the fence.
+                retirement::stop(&mut active, &mut crash_fence, true).await?;
+                if let Some(path) = &ready_file {
+                    fs::remove_file(path).context("withdraw previous Generation readiness")?;
+                }
+                active = launch(
+                    &from, &policy, &executable, proof, observed_at, &mut crash_fence, &mut shutdown,
+                ).await?;
+                if let Some(path) = &ready_file
+                    && let Err(error) = publish_ready(path)
+                {
+                    kill_fenced_group(&mut active.child, active.group_id, &mut crash_fence).await?;
+                    return Err(error).context("publish replacement App readiness");
+                }
+                next_poll = Instant::now() + poll_interval(active.proof.max_stale_seconds);
             }
         }
     }
@@ -284,6 +240,7 @@ async fn launch(
     proof: AcceptedSourceProof,
     observed_at: Instant,
     crash_fence: &mut CrashFence,
+    shutdown: &mut ShutdownSignal,
 ) -> anyhow::Result<Active> {
     let deadline = observed_at + Duration::from_secs(proof.max_stale_seconds);
     ensure!(
@@ -304,13 +261,25 @@ async fn launch(
         .arg(&marker)
         .arg("--defer-activation")
         .kill_on_drop(true);
+    // Bootstrap Plugins execute outside this Host and have a separate cleanup
+    // owner. Their sources retain conservative recovery until that is covered.
+    let retirement = if cfg!(unix) && matches!(proof.source.kind(), "file_snapshot" | "https_poll")
+    {
+        let receipt = retirement::Receipt::new(from)?;
+        receipt.configure(&mut command);
+        Some(receipt)
+    } else {
+        command.env_remove("LENSO_MANAGED_SHUTDOWN_TOKEN");
+        command.env_remove("LENSO_MANAGED_SHUTDOWN_RECEIPT");
+        None
+    };
     #[cfg(unix)]
     command.process_group(0);
     crash_fence.mark()?;
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
-            crash_fence.clear_after_failed_spawn()?;
+            crash_fence.clear()?;
             return Err(error).context("start supervised local Host");
         }
     };
@@ -323,7 +292,7 @@ async fn launch(
                 kill_fenced_group(&mut child, group_id, crash_fence).await?;
                 bail!("supervised App did not become ready before its startup or configuration deadline");
             }
-            signal = shutdown_signal() => {
+            signal = shutdown.wait() => {
                 kill_fenced_group(&mut child, group_id, crash_fence).await?;
                 signal?;
                 bail!("supervised App startup was interrupted");
@@ -396,6 +365,7 @@ async fn launch(
         group_id,
         proof,
         observed_at,
+        retirement,
     })
 }
 
@@ -407,19 +377,33 @@ fn publish_ready(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn shutdown_signal() -> anyhow::Result<()> {
+struct ShutdownSignal {
     #[cfg(unix)]
-    {
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-        tokio::select! {
-            signal = tokio::signal::ctrl_c() => signal?,
-            _ = terminate.recv() => {},
-        }
+    terminate: tokio::signal::unix::Signal,
+    #[cfg(unix)]
+    interrupt: tokio::signal::unix::Signal,
+}
+
+impl ShutdownSignal {
+    fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            #[cfg(unix)]
+            terminate: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?,
+            #[cfg(unix)]
+            interrupt: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?,
+        })
     }
-    #[cfg(not(unix))]
-    tokio::signal::ctrl_c().await?;
-    Ok(())
+
+    async fn wait(&mut self) -> anyhow::Result<()> {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = self.interrupt.recv() => {},
+            _ = self.terminate.recv() => {},
+        }
+        #[cfg(not(unix))]
+        tokio::signal::ctrl_c().await?;
+        Ok(())
+    }
 }
 
 async fn kill_fenced_group(
@@ -431,40 +415,6 @@ async fn kill_fenced_group(
     // descendants may own independent process groups, so keep the marker.
     kill_group(child, group_id).await?;
     ensure!(crash_fence.marked, "hard-stopped Host lost its crash fence");
-    Ok(())
-}
-
-async fn stop_group(child: &mut Child, group_id: u32) -> anyhow::Result<()> {
-    #[cfg(unix)]
-    {
-        if let Err(error) = signal_group(group_id, nix::sys::signal::Signal::SIGTERM) {
-            kill_group(child, group_id).await?;
-            return Err(error).context("gracefully stop supervised App process group");
-        }
-        let observed = tokio::time::timeout(
-            Duration::from_secs(10),
-            wait_for_exit_unreaped(child, group_id),
-        )
-        .await;
-        // Even if the leader exited, descendants in its group can still run.
-        // Signal them while the unreaped leader reserves the group ID.
-        let exit = kill_group(child, group_id).await?;
-        if let Ok(result) = observed {
-            result?;
-            ensure!(exit.success(), "supervised Host did not exit cleanly");
-        } else {
-            bail!("supervised Host did not stop cooperatively");
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = group_id;
-        child.start_kill()?;
-        ensure!(
-            child.wait().await?.success(),
-            "supervised Host did not exit cleanly"
-        );
-    }
     Ok(())
 }
 
@@ -497,87 +447,9 @@ async fn kill_group(child: &mut Child, group_id: u32) -> anyhow::Result<std::pro
     Ok(reaped.context("timed out reaping supervised Host")??)
 }
 
-#[cfg(target_os = "macos")]
-fn group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
-    super::local_dev::darwin_group_only_zombies(group_id)
-}
-
-#[cfg(target_os = "linux")]
-fn group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
-    for entry in fs::read_dir("/proc").context("enumerate supervised process group")? {
-        let entry = entry?;
-        if entry.file_name().to_string_lossy().parse::<u32>().is_err() {
-            continue;
-        }
-        let stat = match fs::read_to_string(entry.path().join("stat")) {
-            Ok(stat) => stat,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error).context("inspect supervised process-group member"),
-        };
-        let (_, fields) = stat
-            .rsplit_once(") ")
-            .context("invalid supervised process-group member status")?;
-        let mut fields = fields.split_whitespace();
-        let state = fields.next().context("missing process state")?;
-        let _parent = fields.next().context("missing parent process ID")?;
-        let member_group: u32 = fields.next().context("missing process-group ID")?.parse()?;
-        if member_group == group_id && state != "Z" && state != "X" {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
-fn group_only_zombies(group_id: u32) -> anyhow::Result<bool> {
-    use nix::{errno::Errno, sys::signal::kill, unistd::Pid};
-    match kill(Pid::from_raw(-i32::try_from(group_id)?), None) {
-        Err(Errno::ESRCH) => Ok(true),
-        Ok(()) | Err(Errno::EPERM) => Ok(false),
-        Err(error) => Err(error.into()),
-    }
-}
-
+use super::local_host_retirement::wait_for_exit_unreaped;
 #[cfg(unix)]
-async fn wait_for_exit_unreaped(_child: &mut Child, group_id: u32) -> anyhow::Result<()> {
-    loop {
-        if exited_unreaped(group_id)? {
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-}
-
-#[cfg(unix)]
-fn exited_unreaped(group_id: u32) -> anyhow::Result<bool> {
-    use nix::libc;
-    let id = i32::try_from(group_id)?;
-    // WNOWAIT retains the group leader's PID until the entire process group
-    // has been signalled, so an unrelated group cannot reuse it.
-    let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::zeroed();
-    let result = unsafe {
-        libc::waitid(
-            libc::P_PID,
-            id as libc::id_t,
-            info.as_mut_ptr(),
-            libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
-        )
-    };
-    if result == -1 {
-        let error = std::io::Error::last_os_error();
-        if error.kind() == std::io::ErrorKind::Interrupted {
-            return Ok(false);
-        }
-        return Err(error).context("observe supervised Host exit without reaping");
-    }
-    Ok(unsafe { info.assume_init().si_pid() } == id)
-}
-
-#[cfg(not(unix))]
-async fn wait_for_exit_unreaped(child: &mut Child, _group_id: u32) -> anyhow::Result<()> {
-    child.wait().await?;
-    Ok(())
-}
+use super::local_host_retirement::{exited_unreaped, group_only_zombies};
 
 #[cfg(unix)]
 fn signal_group(group_id: u32, signal: nix::sys::signal::Signal) -> anyhow::Result<()> {
@@ -748,7 +620,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("independently grouped descendants cannot be proven stopped")
+                .contains("managed cleanup is unconfirmed")
         );
         assert!(!root.join("overlap").exists());
         assert_eq!(
@@ -943,7 +815,11 @@ mod tests {
             .expect("first supervisor should observe clean Host exit")
             .unwrap()
             .unwrap_err();
-        assert!(first_result.to_string().contains("supervised App exited"));
+        assert!(
+            first_result
+                .to_string()
+                .contains("managed cleanup is unconfirmed")
+        );
         assert!(root.join(".lenso/supervised-start.uncertain").is_file());
         let retry = run(root, policy, None).await.unwrap_err();
         assert!(retry.to_string().contains("unconfirmed"), "{retry:#}");
@@ -1009,7 +885,7 @@ mod tests {
             .expect("supervisor should observe clean Host exit")
             .unwrap()
             .unwrap_err();
-        assert!(first.to_string().contains("supervised App exited"));
+        assert!(first.to_string().contains("managed cleanup is unconfirmed"));
 
         let observed = StdCommand::new("ps")
             .args([

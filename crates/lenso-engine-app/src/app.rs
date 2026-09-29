@@ -28,6 +28,7 @@ pub use facts::{ProjectFacts, inspect_project_facts};
 mod local_dev;
 pub use local_dev::DevArgs;
 mod local_host;
+mod local_host_retirement;
 mod local_lock;
 mod local_start;
 mod local_workflow;
