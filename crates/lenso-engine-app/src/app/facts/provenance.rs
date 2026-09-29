@@ -56,6 +56,8 @@ struct LockedFile {
 #[derive(Deserialize)]
 struct LocalSources {
     schema: String,
+    #[serde(default)]
+    engine_app_version: Option<String>,
     target: String,
     sources: Vec<BuildSourceRecord>,
     source_digests: BTreeMap<String, String>,
@@ -164,9 +166,18 @@ pub(super) fn inspect(
     let sources: LocalSources = serde_json::from_slice(&source_bytes)
         .with_context(|| ProvenancePath(PathBuf::from("local-sources.json")))?;
     ensure!(
-        sources.schema == "lenso.local-sources.v1",
+        sources.schema == "lenso.local-sources.v1" || sources.schema == "lenso.local-sources.v2",
         "source schema changed"
     );
+    if sources.schema == "lenso.local-sources.v2" {
+        ensure!(
+            sources
+                .engine_app_version
+                .as_deref()
+                .is_some_and(|version| !version.is_empty() && version.len() <= 64),
+            "Engine App builder version is missing or invalid"
+        );
+    }
     ensure!(sources.target == host_target, "source target changed");
     ensure!(
         sources.sources.len() <= MAX_BUILD_SOURCES,
@@ -312,9 +323,13 @@ mod tests {
     use crate::app::facts::{PluginFacts, SourceLocation};
 
     fn fixture(root: &Path) {
+        fixture_with_schema(root, "lenso.local-sources.v1");
+    }
+
+    fn fixture_with_schema(root: &Path, schema: &str) {
         fs::create_dir_all(root.join(".lenso/generated-host/src")).unwrap();
-        let sources = serde_json::to_vec(&json!({
-            "schema": "lenso.local-sources.v1",
+        let mut source_document = json!({
+            "schema": schema,
             "target": "aarch64-apple-darwin",
             "sources": [
                 {"plugin_id":"example.active","release_version":"1.2.3","role":"app_owned","project":"/private/do-not-echo"},
@@ -324,8 +339,11 @@ mod tests {
                 "example.active": format!("sha256:{}", "a".repeat(64)),
                 "example.available": format!("sha256:{}", "b".repeat(64))
             }
-        }))
-        .unwrap();
+        });
+        if schema == "lenso.local-sources.v2" {
+            source_document["engine_app_version"] = json!("0.3.0");
+        }
+        let sources = serde_json::to_vec(&source_document).unwrap();
         let generated = b"generated Host source";
         fs::write(root.join("local-sources.json"), &sources).unwrap();
         fs::write(root.join(".lenso/generated-host/src/main.rs"), generated).unwrap();
@@ -377,6 +395,16 @@ mod tests {
         assert_eq!(facts.generated_artifacts[0].owner, "lenso_host_build");
         let json = serde_json::to_string(&facts).unwrap();
         assert!(!json.contains("/private/do-not-echo"));
+    }
+
+    #[test]
+    fn reads_v2_local_source_provenance() {
+        let root = tempfile::tempdir().unwrap();
+        fixture_with_schema(root.path(), "lenso.local-sources.v2");
+        let facts = inspect(root.path(), "aarch64-apple-darwin", &adopted())
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.build_sources.len(), 2);
     }
 
     #[test]
