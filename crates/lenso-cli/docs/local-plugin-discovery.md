@@ -31,7 +31,12 @@ and the initial compile check to the developer.
 ### Typed Process authoring from source
 
 The new typed Process API is a source candidate, not yet a registry installation
-path. Select the matching HTTP Endpoint SDK crate explicitly:
+path. The published HTTP Endpoint SDK
+[`0.3.4`](https://crates.io/api/v1/crates/lenso-capability-http-endpoint/0.3.4)
+does not include the `process` feature. A matching version number alone does not
+make that registry package equivalent to this checkout.
+
+Select the matching HTTP Endpoint SDK crate explicitly:
 
 ```sh
 lenso new typed-notes \
