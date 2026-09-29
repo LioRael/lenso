@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-cli"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -2314,7 +2314,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-app"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2369,9 +2369,10 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-authoring"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
+ "flate2",
  "glob",
  "jsonschema",
  "lenso-app-plan",
@@ -2384,6 +2385,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "tar",
  "tempfile",
  "toml",
  "ureq",

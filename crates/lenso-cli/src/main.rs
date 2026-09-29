@@ -1,6 +1,7 @@
 use lenso_engine_app::app;
 use lenso_engine_app::doctor;
 mod engine;
+mod marketplace;
 mod mcp;
 use lenso_engine_app::plugin;
 use lenso_engine_app::plugins;
@@ -26,6 +27,11 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum RootCommand {
+    /// Inspect Marketplace provenance without changing an App.
+    Marketplace {
+        #[command(subcommand)]
+        command: marketplace::MarketplaceCommand,
+    },
     /// Create a source App with a root Rust package by default.
     New(app::CreateArgs),
     /// Build, run, and watch a source App.
@@ -93,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         observe_build_shutdown()?;
     }
     match command {
+        RootCommand::Marketplace { command } => marketplace::run(command),
         RootCommand::New(args) => app::create_source(args),
         RootCommand::Dev(args) => app::dev_source(args).await,
         RootCommand::Mcp(args) => mcp::serve(args).await,
@@ -159,7 +166,16 @@ fn should_delegate_to_host(arguments: &[String]) -> bool {
     !first.starts_with('-')
         && !matches!(
             first,
-            "new" | "dev" | "mcp" | "engine" | "plugin" | "plugins" | "app" | "run" | "doctor"
+            "new"
+                | "dev"
+                | "mcp"
+                | "marketplace"
+                | "engine"
+                | "plugin"
+                | "plugins"
+                | "app"
+                | "run"
+                | "doctor"
         )
 }
 
@@ -207,6 +223,37 @@ fn run_current_host_at(root: Option<PathBuf>, arguments: Vec<String>) -> anyhow:
 #[cfg(test)]
 mod tests {
     #[test]
+    fn marketplace_verification_is_a_static_read_only_root_command() {
+        use clap::Parser;
+        let command = super::Cli::try_parse_from([
+            "lenso",
+            "marketplace",
+            "verify",
+            "--catalog",
+            "catalog.json",
+            "--bundle",
+            "bundle.jsonl",
+            "--trusted-root",
+            "trusted-root.jsonl",
+            "--trusted-root-sha256",
+            &"a".repeat(64),
+            "--source-sha",
+            &"b".repeat(40),
+            "--gh",
+            "/trusted/gh",
+        ])
+        .unwrap();
+        assert!(matches!(
+            command.command,
+            super::RootCommand::Marketplace { .. }
+        ));
+        assert!(!super::should_delegate_to_host(&[
+            "marketplace".into(),
+            "verify".into()
+        ]));
+    }
+
+    #[test]
     fn plugin_release_versions_do_not_collide_with_cli_version_flags() {
         use clap::{CommandFactory, Parser};
         super::Cli::command().debug_assert();
@@ -229,7 +276,7 @@ mod tests {
     use clap::{CommandFactory, Parser};
 
     #[test]
-    fn public_command_tree_contains_only_plugin_app_owner_and_run_workflows() {
+    fn public_command_tree_contains_only_supported_static_workflows() {
         let command = Cli::command();
         let names = command
             .get_subcommands()
@@ -238,7 +285,16 @@ mod tests {
         assert_eq!(
             names,
             [
-                "new", "dev", "mcp", "engine", "plugin", "plugins", "app", "run", "doctor"
+                "marketplace",
+                "new",
+                "dev",
+                "mcp",
+                "engine",
+                "plugin",
+                "plugins",
+                "app",
+                "run",
+                "doctor"
             ]
         );
 
@@ -299,7 +355,16 @@ mod tests {
     #[test]
     fn static_maintenance_roots_stay_local_and_app_roots_delegate() {
         for command in [
-            "new", "dev", "mcp", "engine", "plugin", "plugins", "app", "run", "doctor",
+            "new",
+            "dev",
+            "mcp",
+            "marketplace",
+            "engine",
+            "plugin",
+            "plugins",
+            "app",
+            "run",
+            "doctor",
         ] {
             assert!(!should_delegate_to_host(&[command.to_owned()]));
         }

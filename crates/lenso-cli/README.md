@@ -463,7 +463,7 @@ characters; JSON retains the signed text for data consumers.
 ### App commands
 
 The CLI keeps its authoring and maintenance roots static: `plugin`, `plugins`,
-`app`, `run`, and `doctor`. Any other root command is validated against the
+`app`, `marketplace`, `run`, and `doctor`. Any other root command is validated against the
 current App and forwarded unchanged to `.lenso/host`. The Host's selected
 `lenso.terminal.command` aggregate and `lenso.terminal.cli` surface own dynamic
 catalog discovery, help, argument parsing, execution, and the Generation lease.
@@ -478,3 +478,57 @@ Local Capability authoring is integrated into `app dev/build`.
 `--source rust` creates a source-first Rust contract. Generated typed clients and
 providers remove manual cross-language JSON plumbing. See
 [Capability authoring](docs/capability-authoring.md).
+
+### Official Marketplace adoption
+
+Delivery status: this source change is a candidate feature, not yet available
+in a newly published CLI version. Production adoption also requires promotion
+of the canonical v3 current head. A source commit alone does not complete either step.
+
+Use an exact identity; the verified catalog selects the source channel:
+
+```sh
+lenso app add PLUGIN_ID@VERSION --marketplace
+```
+
+The CLI fetches current official status, verifies the publishing identity and
+public transparency proof, checks durable history independently of the App,
+then downloads and verifies the exact archive. It rechecks current status at
+the App publication boundary. Unavailable status, withdrawn releases, changed
+release records, rollback, and revoked-release resurrection fail closed.
+
+On macOS ARM64/x64 and Linux GNU ARM64/x64, Lenso provisions its pinned official
+verifier automatically and maintains public trust roots. No GitHub login,
+private signing key, manually supplied root hash, or periodic catalog renewal
+is required. Other targets reject this path until secure provisioning is supported.
+
+Keep `--distribution` when a release has several compatible packages. For an
+independent template or development extension, use `--content-id` and
+`--content-destination`; copying content does not execute or select it.
+Existing artifact flags can supply already downloaded archives. Build-code
+approval and removable App-source semantics are unchanged.
+
+### Advanced offline provenance inspection
+
+`lenso marketplace verify` checks an official catalog attestation offline
+without changing an App. This transition command requires an independently
+trusted GitHub CLI executable, public Sigstore roots with an independent
+SHA-256 pin, the downloaded catalog and bundle, and the reviewed publishing
+source commit:
+
+```sh
+lenso marketplace verify --catalog catalog.json --bundle bundle.jsonl \
+  --trusted-root trusted-root.jsonl --trusted-root-sha256 ROOT_SHA256 \
+  --source-sha REVIEWED_SOURCE_SHA --gh /absolute/path/to/gh
+```
+
+The command pins the official Marketplace repository, publishing workflow,
+main ref, GitHub OIDC issuer, and source and signer commits. It rejects
+self-hosted runner attestations. It invokes the trusted verifier itself;
+caller-provided verification receipts are not evidence. Catalog records retain
+their existing typed metadata and validation rules.
+
+The output reports provenance verification, not current availability or
+installation permission. It does not change existing signed-catalog expiry
+rules or replace current-status admission through `app add --marketplace`. No Marketplace private
+key is required by this command.

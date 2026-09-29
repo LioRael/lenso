@@ -201,7 +201,7 @@ fn now() -> anyhow::Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
 }
 
-fn open_regular(path: &Path) -> anyhow::Result<fs::File> {
+pub(crate) fn open_regular(path: &Path) -> anyhow::Result<fs::File> {
     let mut options = fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -353,13 +353,72 @@ pub(crate) fn adopt_source(
         current == selected,
         "signed Portable release changed during acquisition; retry the exact selection"
     );
+    checkpoint::persist(root, &app_lock, &accepted, previous.as_ref())?;
+    adopt_verified_source(
+        root,
+        &selected,
+        &archive,
+        &accepted.catalog_id,
+        app_lock,
+        None,
+    )
+}
+
+pub(crate) fn adopt_admitted_source(
+    root: &Path,
+    admitted: &lenso_app_authoring::keyless_current::AdmittedRelease,
+    archive_path: &Path,
+    replace: bool,
+    current: &lenso_app_authoring::keyless_current::CurrentAdmission,
+) -> anyhow::Result<()> {
+    ensure!(
+        !replace,
+        "Portable replacement requires explicit app unadopt, then app add"
+    );
+    let lenso_app_authoring::keyless_current::ReleaseRecord::Portable(selected) = admitted.record()
+    else {
+        bail!("admitted release is not a Portable source");
+    };
+    let archive = VerifiedPluginArchive::read_release(
+        open_regular(archive_path)?,
+        &PluginArchiveIdentity {
+            size: selected.artifact.size,
+            sha256: selected.artifact.digest.clone(),
+        },
+        &PluginReleaseIdentity {
+            plugin_id: selected.plugin_id.clone(),
+            release_version: selected.version.clone(),
+            manifest_digest: selected.artifact.manifest_digest.clone(),
+        },
+    )?;
+    preflight_source_bundle(&archive, &selected.plugin_id, &selected.version)?;
+    adopt_verified_source(
+        root,
+        selected,
+        &archive,
+        admitted.catalog_id(),
+        lock_app(root)?,
+        Some(current),
+    )
+}
+
+fn adopt_verified_source(
+    root: &Path,
+    selected: &Release,
+    archive: &VerifiedPluginArchive,
+    catalog_id: &str,
+    _app_lock: fs::File,
+    current: Option<&lenso_app_authoring::keyless_current::CurrentAdmission>,
+) -> anyhow::Result<()> {
+    let plugin_id = selected.plugin_id.as_str();
+    let version = selected.version.as_str();
     let relative = Path::new("vendor/lenso/portable")
         .join(plugin_id)
         .join(format!("{version}.lenso-plugin"));
     let destination = root.join(&relative);
     let source_lock = PortableSourceLock {
         schema_version: 1,
-        catalog_id: accepted.catalog_id.clone(),
+        catalog_id: catalog_id.to_owned(),
         plugin_id: plugin_id.to_owned(),
         version: version.to_owned(),
         artifact: selected.artifact.clone(),
@@ -399,21 +458,28 @@ pub(crate) fn adopt_source(
             "existing Portable source differs from signed Release archive"
         );
     }
-    checkpoint::persist(root, &app_lock, &accepted, previous.as_ref())?;
     let directory = destination.parent().context("Portable source parent")?;
-    fs::create_dir_all(directory)?;
-    publish_immutable_archive(&destination, &archive)?;
-    publish_source_lock(&lock_path, &source_lock)?;
-    // Ordinary App source adoption retains the source-App approval boundary and
-    // the established Plugin Root intent semantics.
-    crate::app::convention_authoring::adopt(
-        root.to_path_buf(),
-        destination
-            .to_str()
-            .context("Portable source path UTF-8")?
-            .to_owned(),
-        false,
-    )?;
+    let publish = || -> anyhow::Result<()> {
+        fs::create_dir_all(directory)?;
+        publish_immutable_archive(&destination, archive)?;
+        publish_source_lock(&lock_path, &source_lock)?;
+        // Ordinary App source adoption retains the source-App approval boundary and
+        // the established Plugin Root intent semantics.
+        crate::app::convention_authoring::adopt(
+            root.to_path_buf(),
+            destination
+                .to_str()
+                .context("Portable source path UTF-8")?
+                .to_owned(),
+            false,
+        )?;
+        Ok(())
+    };
+    if let Some(current) = current {
+        current.before_commit(publish)?;
+    } else {
+        publish()?;
+    }
     println!(
         "Adopted exact signed Portable Release `{plugin_id}@{version}` as a source App Bundle."
     );
