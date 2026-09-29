@@ -276,7 +276,7 @@ mod tests {
     use clap::{CommandFactory, Parser};
 
     #[test]
-    fn public_command_tree_contains_only_plugin_app_owner_and_run_workflows() {
+    fn public_command_tree_contains_only_supported_static_workflows() {
         let command = Cli::command();
         let names = command
             .get_subcommands()
@@ -285,7 +285,16 @@ mod tests {
         assert_eq!(
             names,
             [
-                "new", "dev", "mcp", "engine", "plugin", "plugins", "app", "run", "doctor"
+                "marketplace",
+                "new",
+                "dev",
+                "mcp",
+                "engine",
+                "plugin",
+                "plugins",
+                "app",
+                "run",
+                "doctor"
             ]
         );
 
@@ -346,7 +355,16 @@ mod tests {
     #[test]
     fn static_maintenance_roots_stay_local_and_app_roots_delegate() {
         for command in [
-            "new", "dev", "mcp", "engine", "plugin", "plugins", "app", "run", "doctor",
+            "new",
+            "dev",
+            "mcp",
+            "marketplace",
+            "engine",
+            "plugin",
+            "plugins",
+            "app",
+            "run",
+            "doctor",
         ] {
             assert!(!should_delegate_to_host(&[command.to_owned()]));
         }
