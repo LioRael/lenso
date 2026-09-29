@@ -1,0 +1,14 @@
+crates/lenso-cli/src/mcp.rs
+  h_9d56aba080c170 1354-1356
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f39baf6b17ae3cf0f571907c104a1c6e7ed3dfaf",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
