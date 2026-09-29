@@ -257,6 +257,10 @@ mod tests {
         let bytes = serde_json::to_vec(&receipt).unwrap();
         fs::write(root.path().join("workers-build.json"), &bytes).unwrap();
         let explanation = workers(root.path(), None).unwrap();
+        assert_eq!(
+            super::super::inspect_app_explanation(root.path()).unwrap(),
+            explanation
+        );
         assert_eq!(explanation["engine_execution"]["status"], "not_observed");
         assert_eq!(explanation["host_facilities"]["readiness"], "not_run");
         assert_eq!(
