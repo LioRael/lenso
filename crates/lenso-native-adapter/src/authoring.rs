@@ -50,14 +50,20 @@ pub struct ConstructionContext {
     configuration: String,
     dependencies: PluginDependencies,
     lifecycle: LifecycleContext,
+    facilities: crate::NativeFacilities,
 }
 
 impl ConstructionContext {
-    fn new(configuration: String, context: &ActivateContext) -> Self {
+    fn new(
+        configuration: String,
+        context: &ActivateContext,
+        facilities: crate::NativeFacilities,
+    ) -> Self {
         Self {
             configuration,
             dependencies: context.dependencies().clone(),
             lifecycle: LifecycleContext::constructing(context),
+            facilities,
         }
     }
 
@@ -74,6 +80,11 @@ impl ConstructionContext {
     /// Returns the construction cancellation context.
     pub const fn lifecycle(&self) -> &LifecycleContext {
         &self.lifecycle
+    }
+
+    /// Clones one typed owner attachment selected by the Host before activation.
+    pub fn facility<T: Any + Clone>(&self, name: &str) -> Result<T, RuntimeFailure> {
+        self.facilities.require(name)
     }
 }
 
@@ -190,6 +201,7 @@ impl<T> fmt::Debug for PluginObject<T> {
 pub struct CompleteObjectLifecycle<T> {
     object: PluginObject<T>,
     configuration: String,
+    facilities: crate::NativeFacilities,
     constructor: Constructor<T>,
     initializer: Option<Initializer<T>>,
     stopper: Option<Stopper<T>>,
@@ -207,12 +219,19 @@ impl<T> CompleteObjectLifecycle<T> {
         Self {
             object,
             configuration: configuration.into(),
+            facilities: crate::NativeFacilities::new(),
             constructor: Rc::new(constructor),
             initializer: None,
             stopper: None,
             construction_started: Cell::new(false),
             stop_attempted: Cell::new(false),
         }
+    }
+
+    #[must_use]
+    pub fn with_facilities(mut self, facilities: crate::NativeFacilities) -> Self {
+        self.facilities = facilities;
+        self
     }
 
     /// Selects the unique generated constructor for this exact Plugin type.
@@ -321,6 +340,7 @@ impl<T: 'static> PluginLifecycle for CompleteObjectLifecycle<T> {
         let construction = (self.constructor)(ConstructionContext::new(
             self.configuration.clone(),
             &context,
+            self.facilities.clone(),
         ));
         let cancellation = context.cancellation();
         Box::pin(async move {

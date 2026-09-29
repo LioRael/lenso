@@ -94,7 +94,7 @@ impl PinnedRuntime {
     }
 }
 
-fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
+pub(super) fn read_file(path: &Path) -> anyhow::Result<Vec<u8>> {
     #[cfg(unix)]
     let file = File::from(rustix::fs::open(
         path,

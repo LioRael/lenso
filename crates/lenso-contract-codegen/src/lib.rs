@@ -76,6 +76,7 @@ fn contract_ir(descriptor: &Descriptor) -> ContractIr {
         capability_id: descriptor.capability_id.clone(),
         version: descriptor.version.clone(),
         descriptor_digest: descriptor.digest.clone(),
+        request_admission: descriptor.request_admission,
         portable: descriptor.portable,
         cross_lane_transfer: descriptor.cross_lane_transfer,
         operations: descriptor
@@ -217,6 +218,7 @@ pub struct Descriptor {
     parsed_version: Version,
     portable: bool,
     cross_lane_transfer: bool,
+    request_admission: Option<(u32, u32)>,
     operations: Vec<Operation>,
 }
 
@@ -448,6 +450,7 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
         .get("cross_lane_transfer")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let request_admission = request_admission(object.get("request_admission"))?;
     let operation_values = object
         .get("operations")
         .and_then(Value::as_array)
@@ -606,6 +609,7 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
         &version,
         portable,
         cross_lane_transfer,
+        request_admission,
         &operations,
     );
     Ok(Descriptor {
@@ -616,6 +620,7 @@ pub fn load_descriptor(path: &Path) -> Result<Descriptor, CodegenError> {
         parsed_version,
         portable,
         cross_lane_transfer,
+        request_admission,
         operations,
     })
 }
@@ -625,6 +630,7 @@ fn resolved_descriptor_digest(
     version: &str,
     portable: bool,
     cross_lane_transfer: bool,
+    request_admission: Option<(u32, u32)>,
     operations: &[Operation],
 ) -> String {
     let operations = operations
@@ -639,13 +645,19 @@ fn resolved_descriptor_digest(
             })
         })
         .collect::<Vec<_>>();
-    let value = serde_json::json!({
+    let mut value = serde_json::json!({
         "capability_id": capability_id,
         "version": version,
         "portable": portable,
         "cross_lane_transfer": cross_lane_transfer,
         "operations": operations,
     });
+    if let Some((queue_capacity, max_concurrency)) = request_admission {
+        value["request_admission"] = serde_json::json!({
+            "queue_capacity": queue_capacity,
+            "max_concurrency": max_concurrency,
+        });
+    }
     let canonical = canonicalize_json(&value);
     format!("sha256:{:x}", Sha256::digest(canonical.as_bytes()))
 }
@@ -677,6 +689,33 @@ fn canonicalize_json(value: &Value) -> String {
         }
         _ => serde_json::to_string(value).expect("JSON values serialize"),
     }
+}
+
+fn request_admission(value: Option<&Value>) -> Result<Option<(u32, u32)>, CodegenError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let invalid = || {
+        CodegenError::InvalidDescriptor {
+        detail: "request_admission requires only queue_capacity (u32) and max_concurrency (positive u32)".to_owned(),
+    }
+    };
+    let object = value.as_object().ok_or_else(invalid)?;
+    if object.len() != 2 {
+        return Err(invalid());
+    }
+    let queue = object
+        .get("queue_capacity")
+        .and_then(Value::as_u64)
+        .and_then(|number| u32::try_from(number).ok())
+        .ok_or_else(invalid)?;
+    let concurrency = object
+        .get("max_concurrency")
+        .and_then(Value::as_u64)
+        .and_then(|number| u32::try_from(number).ok())
+        .filter(|number| *number > 0)
+        .ok_or_else(invalid)?;
+    Ok(Some((queue, concurrency)))
 }
 
 fn required_string(object: &Map<String, Value>, key: &str) -> Result<String, CodegenError> {
@@ -4018,14 +4057,15 @@ fn generate_rust(contract: &ContractIr) -> String {
             )
         })
         .collect::<Map<_, _>>();
+    let (queue_capacity, max_concurrency) = contract.request_admission.unwrap_or((0, 1));
     let provided_fragment = canonical_json(&serde_json::json!({
         "capability_id": contract.capability_id,
         "descriptor_version": contract.version,
         "operations": operations,
         "operation_kinds": operation_kinds,
         "default_admission": {
-            "queue_capacity": 0,
-            "max_concurrency": 1
+            "queue_capacity": queue_capacity,
+            "max_concurrency": max_concurrency
         },
         "operation_admissions": {},
         "event_admission": null,

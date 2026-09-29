@@ -7,6 +7,7 @@ pub(super) struct ContractIr {
     pub(super) descriptor_digest: String,
     pub(super) portable: bool,
     pub(super) cross_lane_transfer: bool,
+    pub(super) request_admission: Option<(u32, u32)>,
     pub(super) operations: Vec<OperationIr>,
 }
 

@@ -20,6 +20,7 @@ mod contracts;
 pub(crate) mod convention_authoring;
 mod convention_build;
 mod explain;
+mod facility_inspection;
 pub mod facts;
 pub use configuration_source::Status as ConfigurationStatus;
 pub use configuration_source::sync_external_configuration;

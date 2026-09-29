@@ -25,6 +25,15 @@ pub struct BuildArgs {
     /// Jco 1.35.0 executable for a Workers Component build.
     #[arg(long, requires = "target")]
     jco: Option<PathBuf>,
+    /// wasm-bindgen 0.2.127 executable for the static linked-Rust Workers profile.
+    #[arg(long, requires = "target", conflicts_with_all = ["jco", "workers_integration"])]
+    wasm_bindgen: Option<PathBuf>,
+    /// Exact per-Instance grants to source-owned Workers facility factories.
+    #[arg(long, requires = "wasm_bindgen")]
+    workers_facilities: Option<PathBuf>,
+    /// Explicit bounded event, HTTP and cleanup limits for the static Workers Host.
+    #[arg(long, requires = "wasm_bindgen")]
+    workers_host_limits: Option<PathBuf>,
     /// Plugin-owned Workers Host integration profile; requires explicit code trust.
     #[arg(long, requires_all = ["target", "trust_workers_integration"], conflicts_with = "source")]
     workers_integration: Option<PathBuf>,
@@ -47,9 +56,11 @@ pub struct BuildArgs {
 }
 pub fn build(args: BuildArgs) -> anyhow::Result<()> {
     if args.target.as_deref() == Some("workers") && args.source.is_none() {
-        if !args.trust_linked_build.is_empty() || !args.portable_implementations.is_empty() {
+        if !args.portable_implementations.is_empty()
+            || (!args.trust_linked_build.is_empty() && args.wasm_bindgen.is_none())
+        {
             bail!(
-                "--trust-linked-build and --portable-implementation are only for a native source App build"
+                "Workers linked-build trust requires --wasm-bindgen; portable implementation overrides are only for native builds"
             );
         }
         let root = crate::plugins::project_root(args.root)?;
@@ -59,13 +70,20 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
             workers_runtime: args
                 .workers_runtime
                 .context("Workers build needs --workers-runtime pointing to an exact @lenso/workers-runtime package")?,
-            jco: args.jco.context("Workers build needs --jco pointing to Jco 1.35.0")?,
+            jco: args.jco,
+            wasm_bindgen: args.wasm_bindgen,
+            facilities: args.workers_facilities,
+            host_limits: args.workers_host_limits,
+            trust_linked_build: args.trust_linked_build,
             integration: args.workers_integration,
             trust_integration: args.trust_workers_integration,
         });
     }
     if args.workers_runtime.is_some()
         || args.jco.is_some()
+        || args.wasm_bindgen.is_some()
+        || args.workers_facilities.is_some()
+        || args.workers_host_limits.is_some()
         || args.workers_integration.is_some()
         || args.trust_workers_integration.is_some()
     {
@@ -286,6 +304,9 @@ pub struct StartArgs {
     /// Host-owned authority for one selected business snapshot object.
     #[arg(long, conflicts_with_all = ["configuration_policy", "args"])]
     business_snapshot_policy: Option<PathBuf>,
+    /// Explicit per-Instance binding file for source-owned Host facilities.
+    #[arg(long, conflicts_with = "configuration_policy")]
+    host_facilities: Option<PathBuf>,
     /// Start, validate readiness and shut down immediately.
     #[arg(long, conflicts_with = "configuration_policy")]
     check: bool,
@@ -302,6 +323,7 @@ pub(super) fn start_built_local_app(from: PathBuf, args: Vec<String>) -> anyhow:
         root: None,
         configuration_policy: None,
         business_snapshot_policy: None,
+        host_facilities: None,
         check: false,
         ready_file: None,
         args,
@@ -315,6 +337,7 @@ pub(super) fn start_built_local_tool_app(from: PathBuf, args: Vec<String>) -> an
             root: None,
             configuration_policy: None,
             business_snapshot_policy: None,
+            host_facilities: None,
             check: false,
             ready_file: None,
             args,
@@ -352,6 +375,9 @@ fn start_with_host_command(args: StartArgs, agent_tool_cli: bool) -> anyhow::Res
     }
     if let Some(policy) = args.business_snapshot_policy {
         command.arg("--business-snapshot-policy").arg(policy);
+    }
+    if let Some(facilities) = args.host_facilities {
+        command.arg("--host-facilities").arg(facilities);
     }
     if args.check {
         command.arg("--check");
@@ -492,6 +518,7 @@ pub fn start_distribution(from: PathBuf, arguments: Vec<String>) -> anyhow::Resu
         root: None,
         configuration_policy: None,
         business_snapshot_policy: None,
+        host_facilities: None,
         check: false,
         ready_file: None,
         args: arguments,
@@ -618,6 +645,7 @@ mod tests {
             root: None,
             configuration_policy: Some("missing-policy".into()),
             business_snapshot_policy: None,
+            host_facilities: None,
             check: false,
             ready_file: None,
             args: Vec::new(),

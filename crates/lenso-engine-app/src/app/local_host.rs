@@ -13,6 +13,7 @@ use std::{
 };
 
 mod business_snapshot;
+pub(crate) mod facilities;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct AdapterSet {
@@ -150,6 +151,7 @@ pub(super) fn generate(
     let mut codec_cohorts = BTreeSet::new();
     let mut web_contract = None;
     let mut business_snapshot = business_snapshot::HostBinding::default();
+    let mut facilities = facilities::Sources::default();
     let mut watch_roots = BTreeSet::new();
     for (index, candidate) in candidates.iter().enumerate() {
         // A portable Cargo Guest can depend on a rust-runtime projection for
@@ -221,13 +223,39 @@ pub(super) fn generate(
             dependencies.insert(alias.clone(), dependency(package)?);
             linked.push_str(&format!("{alias}::link_plugin();\n"));
             business_snapshot.select(&alias, package)?;
+            facilities.select(&alias, &candidate.plugin_id, package, &candidate.project)?;
         }
-        // Only normal reachable dependencies are eligible: test/build helper
-        // contracts must not introduce runtime identities or competing versions.
+        // Build helpers share source patches but cannot contribute runtime codecs
+        // or Capability identities. The runtime traversal below remains normal-only.
         let nodes = metadata
             .pointer("/resolve/nodes")
             .and_then(Value::as_array)
             .context("resolved Cargo graph")?;
+        if native {
+            for id in
+                reachable_host_sources(package["id"].as_str().context("Cargo package ID")?, nodes)?
+            {
+                let source = packages
+                    .iter()
+                    .find(|source| source["id"] == id)
+                    .context("reachable Host build package")?;
+                collect_local_lenso_patch(&mut local_lenso_patches, source)?;
+                collect_git_lenso_source(&mut git_lenso_source, source)?;
+                if source["source"].is_null() {
+                    let manifest = Path::new(
+                        source["manifest_path"]
+                            .as_str()
+                            .context("Host build source manifest")?,
+                    );
+                    watch_roots.insert(
+                        manifest
+                            .parent()
+                            .context("Host build source directory")?
+                            .to_path_buf(),
+                    );
+                }
+            }
+        }
         let mut pending = vec![
             package["id"]
                 .as_str()
@@ -515,6 +543,8 @@ pub(super) fn generate(
         },
     );
     source = business_snapshot.render(&source);
+    source = facilities.render_native(&source);
+    facilities.write(stage)?;
     source = source.replace("// LENSO_DESCRIBE_WEB", if web { r#"
         let mut releases = catalog.plugins().to_vec();
         if releases.iter().any(|r| r.descriptor().provided_capabilities().iter().any(|c| c.capability_id() == local_web_contract::CAPABILITY_ID)) {
@@ -735,6 +765,35 @@ fn pin_host_framework_versions(
             _ => {}
         }
     }
+}
+
+fn reachable_host_sources(root: &str, nodes: &[Value]) -> anyhow::Result<BTreeSet<String>> {
+    let mut selected = BTreeSet::new();
+    let mut pending = vec![root.to_owned()];
+    while let Some(id) = pending.pop() {
+        if !selected.insert(id.clone()) {
+            continue;
+        }
+        let node = nodes
+            .iter()
+            .find(|node| node["id"] == id)
+            .context("Host build dependency node")?;
+        for dependency in node["deps"].as_array().context("Host build dependencies")? {
+            if dependency["dep_kinds"].as_array().is_some_and(|kinds| {
+                kinds
+                    .iter()
+                    .any(|kind| kind["kind"].is_null() || kind["kind"] == "build")
+            }) {
+                pending.push(
+                    dependency["pkg"]
+                        .as_str()
+                        .context("Host build dependency ID")?
+                        .to_owned(),
+                );
+            }
+        }
+    }
+    Ok(selected)
 }
 
 fn collect_local_lenso_patch(
@@ -1047,6 +1106,7 @@ fn distribution_file_paths(stage: &Path, runtime_artifacts: &[Value]) -> Vec<Str
         ".lenso/host",
         ".lenso/host-mode",
         ".lenso/host-build.json",
+        ".lenso/host-facility-sources.json",
         "runtime/lenso-resolver",
         "bundles.json",
         "runtime-codecs.json",
@@ -1471,9 +1531,40 @@ mod tests {
         contract_dependency_alias, copy_generated_host_provenance, dependency,
         dependency_lock_digests, distribution_file_paths, input_digest, local_framework_crates_dir,
         local_framework_dependency, merge_lenso_patches, pin_host_framework_versions,
-        verify_dependency_lock_digests, verify_git_lenso_lock, web_ingress_dependency,
-        write_generated_host_file,
+        reachable_host_sources, verify_dependency_lock_digests, verify_git_lenso_lock,
+        web_ingress_dependency, write_generated_host_file,
     };
+
+    #[test]
+    fn source_patches_include_build_closure_and_exclude_dev_helpers() {
+        let nodes = vec![
+            json!({"id":"root","deps":[
+                {"pkg":"runtime","dep_kinds":[{"kind":null}]},
+                {"pkg":"codegen","dep_kinds":[{"kind":"build"}]},
+                {"pkg":"test-only","dep_kinds":[{"kind":"dev"}]}
+            ]}),
+            json!({"id":"runtime","deps":[]}),
+            json!({"id":"codegen","deps":[{"pkg":"source-authoring","dep_kinds":[{"kind":null}]}]}),
+            json!({"id":"source-authoring","deps":[]}),
+        ];
+        let selected = reachable_host_sources("root", &nodes).unwrap();
+        assert_eq!(
+            selected,
+            BTreeSet::from([
+                "root".to_owned(),
+                "runtime".to_owned(),
+                "codegen".to_owned(),
+                "source-authoring".to_owned()
+            ])
+        );
+        let mut local = BTreeMap::new();
+        collect_local_lenso_patch(&mut local, &json!({"id":"codegen", "name":"lenso-contract-codegen", "version":"0.10.0", "source":null, "manifest_path":"/approved/lenso/crates/lenso-contract-codegen/Cargo.toml"})).unwrap();
+        let patches = merge_lenso_patches(local, &GitLensoSources::default(), false).unwrap();
+        assert_eq!(
+            patches["lenso-contract-codegen"]["path"],
+            "/approved/lenso/crates/lenso-contract-codegen"
+        );
+    }
 
     #[test]
     fn host_provenance_is_locked_and_rebuildable_without_source_cache() {

@@ -38,7 +38,15 @@ pub struct CapabilitySnapshot {
     pub version: String,
     pub portable: bool,
     pub cross_lane_transfer: bool,
+    pub request_admission: Option<RequestAdmissionSnapshot>,
     pub operations: Vec<OperationSnapshot>,
+}
+
+/// Explicit bounded request admission owned by a Capability's source contract.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RequestAdmissionSnapshot {
+    pub queue_capacity: u32,
+    pub max_concurrency: u32,
 }
 
 /// One request Operation and its derived portable value Schemas.

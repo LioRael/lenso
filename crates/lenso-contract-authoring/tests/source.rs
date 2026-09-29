@@ -62,6 +62,7 @@ fn annotated_trait_derives_identity_operations_values_and_errors() {
     assert_eq!(snapshot.version, "1.0.0");
     assert!(snapshot.portable);
     assert!(!snapshot.cross_lane_transfer);
+    assert_eq!(snapshot.request_admission, None);
     assert_eq!(snapshot.operations.len(), 2);
     let operation = &snapshot.operations[0];
     assert_eq!(operation.name, "ping");
@@ -92,4 +93,36 @@ fn annotated_trait_derives_identity_operations_values_and_errors() {
     );
     assert_eq!(snapshot.operations[1].name, "watch");
     assert_eq!(snapshot.operations[1].interaction, "stream");
+}
+
+mod bounded {
+    use super::*;
+
+    #[lenso::capability(
+        id = "example.bounded",
+        major = 1,
+        version = "1.0.0",
+        portable = true,
+        cross_lane_transfer = false,
+        request_queue_capacity = 16,
+        request_max_concurrency = 2
+    )]
+    trait Bounded {
+        async fn ping(
+            &self,
+            context: lenso::Ctx<'_>,
+            request: PingRequest,
+        ) -> Result<PingResponse, PingError>;
+    }
+
+    #[test]
+    fn source_declares_bounded_admission() {
+        assert_eq!(
+            __lenso_capability_snapshot().request_admission,
+            Some(lenso::RequestAdmissionSnapshot {
+                queue_capacity: 16,
+                max_concurrency: 2
+            })
+        );
+    }
 }

@@ -13,6 +13,7 @@ struct CapabilityArguments {
     version: LitStr,
     portable: LitBool,
     cross_lane_transfer: LitBool,
+    request_admission: Option<(LitInt, LitInt)>,
 }
 
 impl syn::parse::Parse for CapabilityArguments {
@@ -22,6 +23,8 @@ impl syn::parse::Parse for CapabilityArguments {
         let mut version = None;
         let mut portable = None;
         let mut cross_lane_transfer = None;
+        let mut request_queue_capacity: Option<LitInt> = None;
+        let mut request_max_concurrency: Option<LitInt> = None;
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
             input.parse::<Token![=]>()?;
@@ -31,12 +34,35 @@ impl syn::parse::Parse for CapabilityArguments {
                 "version" => version = Some(input.parse()?),
                 "portable" => portable = Some(input.parse()?),
                 "cross_lane_transfer" => cross_lane_transfer = Some(input.parse()?),
+                "request_queue_capacity" if request_queue_capacity.is_none() => {
+                    request_queue_capacity = Some(input.parse()?);
+                }
+                "request_max_concurrency" if request_max_concurrency.is_none() => {
+                    request_max_concurrency = Some(input.parse()?);
+                }
                 _ => return Err(syn::Error::new(key.span(), "unknown Capability argument")),
             }
             if !input.is_empty() {
                 input.parse::<Token![,]>()?;
             }
         }
+        let request_admission =
+            match (request_queue_capacity, request_max_concurrency) {
+                (None, None) => None,
+                (Some(queue), Some(concurrency)) => {
+                    queue.base10_parse::<u32>()?;
+                    if concurrency.base10_parse::<u32>()? == 0 {
+                        return Err(syn::Error::new_spanned(
+                            concurrency,
+                            "request_max_concurrency must be positive",
+                        ));
+                    }
+                    Some((queue, concurrency))
+                }
+                _ => return Err(input.error(
+                    "request_queue_capacity and request_max_concurrency must be declared together",
+                )),
+            };
         Ok(Self {
             id: id.ok_or_else(|| input.error("missing `id`"))?,
             major: major.ok_or_else(|| input.error("missing `major`"))?,
@@ -44,6 +70,7 @@ impl syn::parse::Parse for CapabilityArguments {
             portable: portable.ok_or_else(|| input.error("missing `portable`"))?,
             cross_lane_transfer: cross_lane_transfer
                 .ok_or_else(|| input.error("missing `cross_lane_transfer`"))?,
+            request_admission,
         })
     }
 }
@@ -73,6 +100,15 @@ fn expand_capability(
     let version = &arguments.version;
     let portable = &arguments.portable;
     let cross_lane_transfer = &arguments.cross_lane_transfer;
+    let request_admission = arguments.request_admission.as_ref().map_or_else(
+        || quote!(None),
+        |(queue, concurrency)| {
+            quote!(Some(::lenso_contract_authoring::RequestAdmissionSnapshot {
+                queue_capacity: #queue,
+                max_concurrency: #concurrency,
+            }))
+        },
+    );
     let mut operations = Vec::new();
 
     for item in &mut contract.items {
@@ -126,6 +162,7 @@ fn expand_capability(
                 version: #version.to_owned(),
                 portable: #portable,
                 cross_lane_transfer: #cross_lane_transfer,
+                request_admission: #request_admission,
                 operations: vec![#(#operations),*],
             }
         }

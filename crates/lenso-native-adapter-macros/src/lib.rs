@@ -8,10 +8,11 @@ use quote::{format_ident, quote};
 use serde_json::{Map, Value, json};
 use syn::{
     Attribute, Data, DeriveInput, Expr, Fields, GenericArgument, Item, ItemFn, ItemImpl,
-    ItemStruct, LitStr, Path, PathArguments, Token, Type, parse_macro_input,
+    ItemStruct, LitInt, LitStr, Path, PathArguments, Token, Type, parse_macro_input,
     punctuated::Punctuated,
 };
 
+#[derive(Default)]
 struct PluginAttributes {
     descriptor: Option<LitStr>,
     configuration_schema: Option<LitStr>,
@@ -22,22 +23,13 @@ struct PluginAttributes {
     deactivate: Option<Path>,
     lifecycle: bool,
     consumer: bool,
+    request_admission: Option<(u32, u32)>,
 }
 
 impl syn::parse::Parse for PluginAttributes {
     fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         if input.is_empty() {
-            return Ok(Self {
-                descriptor: None,
-                configuration_schema: None,
-                configuration_defaults: None,
-                validate: None,
-                prepare: None,
-                activate: None,
-                deactivate: None,
-                lifecycle: false,
-                consumer: false,
-            });
+            return Ok(Self::default());
         }
         let mut descriptor = None;
         let mut configuration_schema = None;
@@ -48,6 +40,8 @@ impl syn::parse::Parse for PluginAttributes {
         let mut deactivate = None;
         let mut lifecycle = false;
         let mut consumer = false;
+        let mut request_queue_capacity: Option<LitInt> = None;
+        let mut request_max_concurrency: Option<LitInt> = None;
         while !input.is_empty() {
             let name: syn::Ident = input.parse()?;
             if name == "lifecycle" {
@@ -85,19 +79,27 @@ impl syn::parse::Parse for PluginAttributes {
                 "prepare" if prepare.is_none() => prepare = Some(input.parse()?),
                 "activate" if activate.is_none() => activate = Some(input.parse()?),
                 "deactivate" if deactivate.is_none() => deactivate = Some(input.parse()?),
+                "request_queue_capacity" if request_queue_capacity.is_none() => {
+                    request_queue_capacity = Some(input.parse()?);
+                }
+                "request_max_concurrency" if request_max_concurrency.is_none() => {
+                    request_max_concurrency = Some(input.parse()?);
+                }
                 "descriptor"
                 | "configuration_schema"
                 | "configuration_defaults"
                 | "validate"
                 | "prepare"
                 | "activate"
-                | "deactivate" => {
+                | "deactivate"
+                | "request_queue_capacity"
+                | "request_max_concurrency" => {
                     return Err(syn::Error::new(name.span(), "duplicate Plugin attribute"));
                 }
                 _ => {
                     return Err(syn::Error::new(
                         name.span(),
-                        "expected `descriptor`, `configuration_schema`, `configuration_defaults`, `validate`, `prepare`, `activate`, `deactivate`, `lifecycle`, or `consumer`",
+                        "expected `descriptor`, `configuration_schema`, `configuration_defaults`, `validate`, `prepare`, `activate`, `deactivate`, `lifecycle`, `consumer`, `request_queue_capacity`, or `request_max_concurrency`",
                     ));
                 }
             }
@@ -106,6 +108,8 @@ impl syn::parse::Parse for PluginAttributes {
             }
             input.parse::<Token![,]>()?;
         }
+        let request_admission =
+            parse_request_admission(input, request_queue_capacity, request_max_concurrency)?;
         Ok(Self {
             descriptor,
             configuration_schema,
@@ -116,7 +120,31 @@ impl syn::parse::Parse for PluginAttributes {
             deactivate,
             lifecycle,
             consumer,
+            request_admission,
         })
+    }
+}
+
+fn parse_request_admission(
+    input: syn::parse::ParseStream<'_>,
+    queue: Option<LitInt>,
+    concurrency: Option<LitInt>,
+) -> syn::Result<Option<(u32, u32)>> {
+    match (queue, concurrency) {
+        (None, None) => Ok(None),
+        (Some(queue), Some(concurrency)) => {
+            let queue = queue.base10_parse::<u32>()?;
+            let max = concurrency.base10_parse::<u32>()?;
+            if max == 0 {
+                return Err(syn::Error::new_spanned(
+                    concurrency,
+                    "request_max_concurrency must be positive",
+                ));
+            }
+            Ok(Some((queue, max)))
+        }
+        _ => Err(input
+            .error("request_queue_capacity and request_max_concurrency must be declared together")),
     }
 }
 
@@ -642,6 +670,7 @@ fn expand_plugin_function(
         || attributes.deactivate.is_some()
         || attributes.lifecycle
         || attributes.consumer
+        || attributes.request_admission.is_some()
     {
         return Err(syn::Error::new_spanned(
             function,
@@ -974,11 +1003,11 @@ fn expand_provides(
             #(#provided_descriptors),*
         );
         #[doc(hidden)]
-        const __LENSO_PLUGIN_DESCRIPTOR_ARTIFACT_TEXT: &str = concat!(
-            "LENSO_PLUGIN_DESCRIPTOR_V1\0",
-            #plugin_descriptor!(#(#provided_descriptors),*),
-            "\0END_LENSO_PLUGIN_DESCRIPTOR_V1",
-        );
+        const __LENSO_PLUGIN_DESCRIPTOR_ARTIFACT_TEXT: &str = {
+            const PARTS: &[&str] = &["LENSO_PLUGIN_DESCRIPTOR_V1\0", PLUGIN_DESCRIPTOR_JSON, "\0END_LENSO_PLUGIN_DESCRIPTOR_V1"];
+            const BYTES: [u8; #sdk::__private::joined_len(PARTS)] = #sdk::__private::join(PARTS);
+            #sdk::__private::text(&BYTES)
+        };
         /// Linker-retained descriptor artifact consumed without executing package code.
         #[doc(hidden)]
         #[used]
@@ -1010,7 +1039,7 @@ fn expand_provides(
                         let lifecycle = #sdk::__private::CompleteObjectLifecycle::linked(
                             plugin.clone(),
                             context.configuration(),
-                        )?;
+                        )?.with_facilities(context.facilities().clone());
                         let mut request_endpoints = Vec::new();
                         let mut stream_endpoints = Vec::new();
                         let mut event_endpoints = Vec::new();
@@ -1061,7 +1090,8 @@ fn expand_provides(
                     let lifecycle = #sdk::__private::CompleteObjectLifecycle::linked(
                         plugin.clone(),
                         context.configuration(),
-                    )?.with_initialize(move |value| initialize(value));
+                    )?.with_facilities(context.facilities().clone())
+                        .with_initialize(move |value| initialize(value));
                     let mut request_endpoints = Vec::new();
                     let mut stream_endpoints = Vec::new();
                     let mut event_endpoints = Vec::new();
@@ -1163,7 +1193,9 @@ fn expand_plugin_struct(
     let input_fields = construction_fields
         .iter()
         .filter_map(|field| match field.kind {
-            ConstructionFieldKind::Config | ConstructionFieldKind::Dependency { .. } => {
+            ConstructionFieldKind::Config
+            | ConstructionFieldKind::Dependency { .. }
+            | ConstructionFieldKind::Facility { .. } => {
                 let name = &field.name;
                 let ty = &field.ty;
                 Some(quote!(#name: #ty))
@@ -1225,6 +1257,7 @@ fn expand_plugin_struct(
                 cardinality,
             } => Some(named_requirement_macro(client, *cardinality, id)),
             ConstructionFieldKind::Config
+            | ConstructionFieldKind::Facility { .. }
             | ConstructionFieldKind::Private
             | ConstructionFieldKind::Legacy => None,
         })
@@ -1246,6 +1279,56 @@ fn expand_plugin_struct(
         authoring_version,
         runtime_profile,
     );
+    if attributes.consumer && attributes.request_admission.is_some() {
+        return Err(syn::Error::new_spanned(
+            name,
+            "request admission requires provided Capabilities; a consumer has none",
+        ));
+    }
+    let descriptor_definition = if let Some((queue_capacity, max_concurrency)) =
+        attributes.request_admission
+    {
+        let policy = canonical_json(
+            &json!({"queue_capacity": queue_capacity, "max_concurrency": max_concurrency}),
+        );
+        let overridden = |fragment: proc_macro2::TokenStream| {
+            quote!({
+                const SOURCE: &str = #fragment;
+                const POLICY: &str = #policy;
+                const BYTES: [u8; #sdk::__private::admission_len(SOURCE, POLICY)] =
+                    #sdk::__private::with_admission(SOURCE, POLICY);
+                #sdk::__private::text(&BYTES)
+            })
+        };
+        let first = overridden(quote!($first));
+        let rest = overridden(quote!($rest));
+        quote! {
+            #[doc(hidden)]
+            macro_rules! #descriptor_macro {
+                ($first:expr $(, $rest:expr)*) => {{
+                    const PARTS: &[&str] = &[
+                        #prefix, #schema, ",\"configuration_defaults\":", #configuration_defaults,
+                        #after_schema, #first $(, ",", #rest)*,
+                        #suffix #(, #requirement_parts)*, #defaults,
+                    ];
+                    const BYTES: [u8; #sdk::__private::joined_len(PARTS)] = #sdk::__private::join(PARTS);
+                    #sdk::__private::text(&BYTES)
+                }};
+            }
+        }
+    } else {
+        quote! {
+            #[doc(hidden)]
+            macro_rules! #descriptor_macro {
+                () => {
+                    concat!(#prefix, #schema, ",\"configuration_defaults\":", #configuration_defaults, #after_schema, #suffix #(, #requirement_parts)*, #defaults)
+                };
+                ($first:expr $(, $rest:expr)*) => {
+                    concat!(#prefix, #schema, ",\"configuration_defaults\":", #configuration_defaults, #after_schema, $first $(, ",", $rest)*, #suffix #(, #requirement_parts)*, #defaults)
+                };
+            }
+        }
+    };
     let construct_configuration = if let Some(config_type) = &config_type {
         let validate = attributes
             .validate
@@ -1396,7 +1479,7 @@ fn expand_plugin_struct(
                             let lifecycle = #sdk::__private::CompleteObjectLifecycle::linked(
                                 object,
                                 context.configuration(),
-                            )?;
+                            )?.with_facilities(context.facilities().clone());
                             return Ok(#sdk::__private::NativePluginInstance::with_lifecycle(
                                 Vec::new(),
                                 lifecycle,
@@ -1431,7 +1514,8 @@ fn expand_plugin_struct(
                         let lifecycle = #sdk::__private::CompleteObjectLifecycle::linked(
                             object,
                             context.configuration(),
-                        )?.with_initialize(move |value| initialize(value));
+                        )?.with_facilities(context.facilities().clone())
+                            .with_initialize(move |value| initialize(value));
                         return Ok(#sdk::__private::NativePluginInstance::with_lifecycle(
                             Vec::new(),
                             lifecycle,
@@ -1504,15 +1588,7 @@ fn expand_plugin_struct(
             #(#input_fields),*
         }
 
-        #[doc(hidden)]
-        macro_rules! #descriptor_macro {
-            () => {
-                concat!(#prefix, #schema, ",\"configuration_defaults\":", #configuration_defaults, #after_schema, #suffix #(, #requirement_parts)*, #defaults)
-            };
-            ($first:expr $(, $rest:expr)*) => {
-                concat!(#prefix, #schema, ",\"configuration_defaults\":", #configuration_defaults, #after_schema, $first $(, ",", $rest)*, #suffix #(, #requirement_parts)*, #defaults)
-            };
-        }
+        #descriptor_definition
 
         impl #name {
             #[doc(hidden)]
@@ -1749,6 +1825,9 @@ struct ConstructionField {
 
 enum ConstructionFieldKind {
     Config,
+    Facility {
+        id: LitStr,
+    },
     Dependency {
         id: LitStr,
         client: Box<Type>,
@@ -1788,16 +1867,19 @@ fn analyze_struct_fields(
     let mut resources = None;
     let mut initializers = Vec::new();
     let mut construction_fields = Vec::new();
+    let mut facility_ids = BTreeSet::new();
     for field in &mut fields.named {
         let name = field.ident.as_ref().expect("named fields have identifiers");
         let is_config = take_marker(&mut field.attrs, "config");
         let is_tasks = take_marker(&mut field.attrs, "tasks");
         let is_resources = take_marker(&mut field.attrs, "resources");
         let dependency = take_dependency(&mut field.attrs)?;
+        let facility = take_named_marker(&mut field.attrs, "facility")?;
         if usize::from(is_config)
             + usize::from(is_tasks)
             + usize::from(is_resources)
             + usize::from(dependency.is_some())
+            + usize::from(facility.is_some())
             > 1
         {
             return Err(syn::Error::new_spanned(
@@ -1817,6 +1899,17 @@ fn analyze_struct_fields(
                 name: name.clone(),
                 ty: field.ty.clone(),
                 kind: ConstructionFieldKind::Config,
+            });
+        } else if let Some(id) = facility {
+            if !facility_ids.insert(id.value()) {
+                return Err(syn::Error::new_spanned(id, "duplicate facility id"));
+            }
+            let ty = &field.ty;
+            initializers.push(quote!(#name: context.facilities().require::<#ty>(#id)?));
+            construction_fields.push(ConstructionField {
+                name: name.clone(),
+                ty: field.ty.clone(),
+                kind: ConstructionFieldKind::Facility { id },
             });
         } else if let Some(id) = dependency {
             let (client, cardinality) = dependency_client(&field.ty)?;
@@ -1900,18 +1993,22 @@ fn analyze_struct_fields(
 }
 
 fn take_dependency(attributes: &mut Vec<Attribute>) -> syn::Result<Option<LitStr>> {
+    take_named_marker(attributes, "dependency")
+}
+
+fn take_named_marker(attributes: &mut Vec<Attribute>, marker: &str) -> syn::Result<Option<LitStr>> {
     let mut id = None;
     let mut seen = false;
     let mut retained = Vec::with_capacity(attributes.len());
     for attribute in attributes.drain(..) {
-        if !attribute.path().is_ident("dependency") {
+        if !attribute.path().is_ident(marker) {
             retained.push(attribute);
             continue;
         }
         if seen {
             return Err(syn::Error::new_spanned(
                 attribute,
-                "duplicate `dependency` marker",
+                format!("duplicate `{marker}` marker"),
             ));
         }
         seen = true;
@@ -1919,14 +2016,33 @@ fn take_dependency(attributes: &mut Vec<Attribute>) -> syn::Result<Option<LitStr
             if !meta.path.is_ident("id") {
                 return Err(meta.error("expected `id = \"public_requirement_id\"`"));
             }
-            id = Some(meta.value()?.parse()?);
+            if id.is_some() {
+                return Err(meta.error("duplicate id"));
+            }
+            let value: LitStr = meta.value()?.parse()?;
+            if marker == "facility"
+                && (value.value().is_empty()
+                    || !value
+                        .value()
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'))
+            {
+                return Err(syn::Error::new_spanned(
+                    value,
+                    "id must contain only letters, digits, underscores, or hyphens",
+                ));
+            }
+            id = Some(value);
             Ok(())
         })?;
     }
     *attributes = retained;
     if seen {
         id.map(Some).ok_or_else(|| {
-            syn::Error::new(proc_macro2::Span::call_site(), "dependency id is required")
+            syn::Error::new(
+                proc_macro2::Span::call_site(),
+                format!("{marker} id is required"),
+            )
         })
     } else {
         Ok(None)
@@ -2068,6 +2184,7 @@ fn v2_field_initializer(
     let ty = &field.ty;
     match &field.kind {
         ConstructionFieldKind::Config => quote!(#name: configuration),
+        ConstructionFieldKind::Facility { id } => quote!(#name: context.facility::<#ty>(#id)?),
         ConstructionFieldKind::Dependency {
             id,
             client,
@@ -2152,8 +2269,12 @@ fn v2_input_initializer(
     sdk: &proc_macro2::TokenStream,
 ) -> Option<proc_macro2::TokenStream> {
     let name = &field.name;
+    let ty = &field.ty;
     match &field.kind {
         ConstructionFieldKind::Config => Some(quote!(#name: configuration)),
+        ConstructionFieldKind::Facility { id } => {
+            Some(quote!(#name: context.facility::<#ty>(#id)?))
+        }
         ConstructionFieldKind::Dependency {
             id,
             client,
@@ -2906,6 +3027,41 @@ mod tests {
             "plugin . tasks . __lenso_disconnect () ;"
         );
         assert!(plugin.fields.iter().next().unwrap().attrs.is_empty());
+    }
+
+    #[test]
+    fn facility_field_rejects_duplicate_ids_and_other_construction_markers() {
+        for mut plugin in [
+            parse_quote!(
+                struct Provider {
+                    #[facility(id = "state")]
+                    first: OwnerHandle,
+                    #[facility(id = "state")]
+                    second: OwnerHandle,
+                }
+            ),
+            parse_quote!(
+                struct Provider {
+                    #[config]
+                    #[facility(id = "state")]
+                    state: OwnerHandle,
+                }
+            ),
+            parse_quote!(
+                struct Provider {
+                    #[facility(id = "../state")]
+                    state: OwnerHandle,
+                }
+            ),
+            parse_quote!(
+                struct Provider {
+                    #[facility]
+                    state: OwnerHandle,
+                }
+            ),
+        ] {
+            assert!(analyze_struct_fields(&mut plugin, &quote!(::lenso)).is_err());
+        }
     }
 
     #[test]
