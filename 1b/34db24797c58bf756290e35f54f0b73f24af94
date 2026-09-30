@@ -1,0 +1,22 @@
+crates/lenso-engine-app/src/app/convention_authoring.rs
+  s_f4202e28c6b5b1::t_38a29d007ee7ca 656-678
+  s_f4202e28c6b5b1::t_f49b726f9100b6 679
+crates/lenso-engine-app/assets/terminal/rust-sdk/Cargo.toml.template
+  s_f4202e28c6b5b1::t_38a29d007ee7ca 13,17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b34db24797c58bf756290e35f54f0b73f24af94",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
