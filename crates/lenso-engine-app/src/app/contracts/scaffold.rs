@@ -43,7 +43,7 @@ pub fn run(command: ContractCommand) -> anyhow::Result<()> {
                 staging.path().join("package.json"),
                 serde_json::to_vec_pretty(&json!({
                     "name":format!("{package_name}-contract"),"version":"1.0.0","private":true,"type":"module",
-                "exports":"./generated/contract.ts", "dependencies":{"@lenso/contract-runtime":"0.3.0"},
+                "exports":"./generated/contract.ts", "dependencies":{"@lenso/contract-runtime":"0.3.1"},
                     "lenso":{"contract":{"descriptor":"capability.json","projection":"typescript","output":"generated/contract.ts"}}
                 }))?,
             )?;

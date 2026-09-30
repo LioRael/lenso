@@ -387,7 +387,7 @@ fn clean_room_bun_generated_capabilities_build_and_start_without_cargo() {
         fs::write(package.join("package.json"), serde_json::to_vec_pretty(&serde_json::json!({
             "name":format!("example-{name}"),"version":"1.0.0","private":true,"type":"module",
             "scripts":{"check":"tsc --noEmit"},
-            "dependencies":{"@lenso/bun-plugin":"0.4.1","@lenso/contract-runtime":"0.3.0"},
+            "dependencies":{"@lenso/bun-plugin":"0.4.2","@lenso/contract-runtime":"0.3.1"},
             "devDependencies":{"typescript":"7.0.2","@types/bun":"1.4.0"},
             "lenso":{"pluginId":format!("example.{name}"),"runtime":"bun","rootSlot":"tools","entry":"plugin.ts",
                 "contract":{"descriptor":if name == "consumer" { "../../../contracts/example.text/capability.json" } else { "../../contracts/example.text/capability.json" },"projection":"typescript","output":"generated.ts"}}

@@ -305,7 +305,7 @@ fn install(root: &Path) -> anyhow::Result<()> {
 fn package(id: &str, source: &str) -> serde_json::Value {
     json!({"name":id,"version":"1.0.0","private":true,"type":"module",
         "scripts":{"check":"tsc --noEmit"},
-        "dependencies":{"@lenso/bun-plugin":"0.4.1","@lenso/contract-runtime":"0.3.0"},
+        "dependencies":{"@lenso/bun-plugin":"0.4.2","@lenso/contract-runtime":"0.3.1"},
         "devDependencies":{"typescript":"7.0.2","@types/bun":"1.4.0"},
         "lenso":{"pluginId":id,"runtime":"bun","rootSlot":"tools","source":source}})
 }
@@ -575,7 +575,7 @@ pub fn new(command: PluginCommand) -> anyhow::Result<()> {
                 stage.path(),
                 "Cargo.toml",
                 format!(
-                    "[package]\nname = {:?}\nversion = \"1.0.0\"\nedition = \"2024\"\n[workspace]\n[package.metadata.lenso]\nplugin-id = {:?}\nroot-slot = \"tools\"\n[dependencies]\nlenso = \"=0.5.23\"\n",
+                    "[package]\nname = {:?}\nversion = \"1.0.0\"\nedition = \"2024\"\n[workspace]\n[package.metadata.lenso]\nplugin-id = {:?}\nroot-slot = \"tools\"\n[dependencies]\nlenso = \"=0.5.28\"\n",
                     args.id.replace('.', "-"),
                     args.id
                 ),
@@ -675,6 +675,10 @@ mod plugin_new_tests {
         );
         assert!(support.join("rust-macros/Cargo.toml").is_file());
         assert!(support.join("rust-sdk/src/generated.rs").is_file());
+        let npm: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(support.join("package.json")).unwrap()).unwrap();
+        assert_eq!(npm["dependencies"]["@lenso/bun-plugin"], "0.4.2");
+        assert_eq!(npm["dependencies"]["@lenso/contract-runtime"], "0.3.1");
     }
 
     #[test]
