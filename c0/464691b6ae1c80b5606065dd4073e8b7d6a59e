@@ -1,0 +1,47 @@
+crates/lenso-native-adapter-macros/src/lib.rs
+  s_f4202e28c6b5b1::t_c9bd057b7cca79 1830-1831,1909-1915
+  s_f4202e28c6b5b1::t_d23889a586d750 1919-1923,2104-2113,2208-2219,2306-2316
+crates/lenso-engine-app/src/app/local_host/facilities.rs
+  s_f4202e28c6b5b1::t_621d6878a17e91 14-16
+  s_f4202e28c6b5b1::t_ac84cb8c18c44d 26-27,49-50,95-97,121
+  s_f4202e28c6b5b1::t_e1ffa8caa4db6d 12-13,188
+  s_f4202e28c6b5b1::t_603810b9227e4e 113,122-123,152-187,189,231,356,450-451
+  s_f4202e28c6b5b1::t_2585e057cd52d7 29-39,53-54,67,98,109-112,190-212,219,232,244,283,400-401,454-455,457
+  s_f4202e28c6b5b1::t_b36a1ca5b8a806 382,426
+  s_f4202e28c6b5b1::t_e930000de7f929 213-218,220-230,233-243,245-282,355,357-359,368,436,443-449,452-453,456,458-502,510,520-521
+crates/lenso-engine-app/src/app/local_host.rs
+  s_f4202e28c6b5b1::t_e64364749093ef 156,233-239,362,382-387
+  s_f4202e28c6b5b1::t_de71c9cfbe5a18 388-392
+crates/lenso-engine-app/src/app/local_host/facilities/owner_assets_tests.rs
+  s_f4202e28c6b5b1::t_d7c6d8c936a6cc 52,65
+  s_f4202e28c6b5b1::t_621d6878a17e91 1-51,53-64,66-99
+  s_f4202e28c6b5b1::t_1d7e63ffab6e73 100-154
+skills/lenso-plugin-authoring/references/paths/linked-rust.md
+  s_f4202e28c6b5b1::t_a072bc7d05908f 55-62
+  s_f4202e28c6b5b1::t_b36a1ca5b8a806 47-54
+  s_f4202e28c6b5b1::t_f93a40df291dc7 63-71
+crates/lenso-native-adapter/tests/optional_facility_authoring.rs
+  s_f4202e28c6b5b1::t_a072bc7d05908f 1-139
+  s_f4202e28c6b5b1::t_a6f01158567e5b 140-167
+crates/lenso-native-adapter/src/authoring.rs
+  s_f4202e28c6b5b1::t_c9bd057b7cca79 121-125
+  s_f4202e28c6b5b1::t_4008f927131a6f 126-128
+crates/lenso-native-adapter/src/facilities.rs
+  s_f4202e28c6b5b1::t_c9bd057b7cca79 101-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c0464691b6ae1c80b5606065dd4073e8b7d6a59e",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
