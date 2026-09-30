@@ -1,9 +1,10 @@
 # Managed facilities SDK release candidate
 
-This stage packages the source changes already landed at
-`c0464691b6ae1c80b5606065dd4073e8b7d6a59e` under fresh versions. It has not
-been published. Existing Native and Workers qualification receipts remain
-bound to their original source commits and artifacts.
+This stage packages the managed facility changes landed at
+`c0464691b6ae1c80b5606065dd4073e8b7d6a59e`, plus registered snapshot
+compatibility and selected Root feature/linking fixes, under fresh versions.
+It has not been published. Existing Native and Workers qualification receipts
+remain bound to their original source commits and artifacts.
 
 The exact proposed set is
 [`managed-facilities-sdk.json`](../../.github/release-sets/managed-facilities-sdk.json).
@@ -51,6 +52,13 @@ out-of-stage sources with their exact registry archives, and compiles extracted
 cohort archives in a clean workspace. Its source overlay models staged
 predecessors; it does not prove registry visibility or authorize publication.
 Retain its terminal result and per-package digests with the exact candidate CI.
+
+The selected version must be the sole identity in its SemVer-compatible line.
+Older incompatible registry codegen and legacy Codec lines remain independent
+dependencies and are recorded separately. This permits immutable older Role
+archives without accepting a second Kernel or Codec identity in the selected
+runtime line. Missing candidates, alternate sources and compatible-line
+duplicates fail the preflight.
 
 The dependency order is authoring/native macros and Kernel first, followed by
 authoring/codegen and codec, Runtime Drivers and Adapters, Capability/provider
