@@ -98,6 +98,9 @@ done < <(jq -r '.[] | [.package_name, .version] | @tsv' <<<"$expected")
 
 report_success() {
   printf 'Cohort artifact preflight completed: %s\n' "$artifact_records"
+  if [[ -f "$scratch/cohort-legacy-dependencies.json" ]]; then
+    printf 'Registered incompatible legacy dependencies: %s\n' "$(cat "$scratch/cohort-legacy-dependencies.json")"
+  fi
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     printf 'cohort_artifacts=%s\n' "$artifact_records" >>"$GITHUB_OUTPUT"
   fi
@@ -344,14 +347,36 @@ verify_planned_cohort_identities() {
   local resolved_metadata="$1"
   local release_set="$2"
   jq -e --argjson expected "$release_set" '
+    def compatible_line:
+      split("-")[0] | split("+")[0] | split(".") | map(tonumber)
+      | if .[0] > 0 then [.[0]]
+        elif .[1] > 0 then [0, .[1]]
+        else [0, 0, .[2]] end;
     .packages as $resolved
     | all($expected[];
         . as $planned
         | [$resolved[] | select(.name == $planned.package_name)] as $matches
-        | ($matches | length) == 1
-          and $matches[0].version == $planned.version
-          and $matches[0].source == null)
+        | ($planned.version | compatible_line) as $line
+        | [$matches[] | select((.version | compatible_line) == $line)] as $cohort
+        | ($cohort | length) == 1
+          and $cohort[0].version == $planned.version
+          and $cohort[0].source == null
+          and all($matches[];
+            (.version | compatible_line) == $line
+            or .source == "registry+https://github.com/rust-lang/crates.io-index"))
   ' <<<"$resolved_metadata" >/dev/null
+}
+
+record_legacy_cohort_dependencies() {
+  local resolved_metadata="$1"
+  jq -c --argjson expected "$expected" '
+    [.packages[]
+      | . as $resolved
+      | select(any($expected[];
+          .package_name == $resolved.name and .version != $resolved.version))
+      | {package_name: .name, version, source, cargo_package_id: .id}]
+    | sort_by(.package_name, .version)
+  ' <<<"$resolved_metadata" >"$scratch/cohort-legacy-dependencies.json"
 }
 
 run_cargo_with_completed_patches() {
@@ -424,6 +449,7 @@ validate_or_normalize_scratch_lock() {
   if resolved_metadata="$(cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1)" 2>"$scratch/locked-metadata.err"; then
     verify_planned_cohort_identities "$resolved_metadata" "$expected" ||
       fail "published requirements did not resolve to the exact planned cohort identities"
+    record_legacy_cohort_dependencies "$resolved_metadata"
     return 0
   fi
 
@@ -446,6 +472,7 @@ validate_or_normalize_scratch_lock() {
     fail "could not inspect scratch-only lock normalization"
   verify_planned_cohort_identities "$resolved_metadata" "$expected" ||
     fail "published requirements did not resolve to the exact planned cohort identities"
+  record_legacy_cohort_dependencies "$resolved_metadata"
   if ! verify_fixture_only_lock_change "$before" "$source_root/Cargo.lock" "$allowed"; then
     diff -u "$before" "$source_root/Cargo.lock" >&2 || true
     fail "scratch lock drift exceeds omitted private path-only dev fixture edges"

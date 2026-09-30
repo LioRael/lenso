@@ -177,6 +177,32 @@ if verify_planned_cohort_identities "$duplicate_metadata" "$planned_set"; then
   exit 1
 fi
 
+sdk_set='[{"package_name":"codegen","version":"0.10.1"},{"package_name":"codec","version":"0.4.4"},{"package_name":"kernel","version":"0.3.12"}]'
+sdk_metadata='{"packages":[{"name":"codegen","version":"0.10.1","source":null},{"name":"codegen","version":"0.8.2","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"codegen","version":"0.9.0","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"codec","version":"0.4.4","source":null},{"name":"codec","version":"0.3.4","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"kernel","version":"0.3.12","source":null}]}'
+verify_planned_cohort_identities "$sdk_metadata" "$sdk_set" || {
+  printf '%s\n' 'registered incompatible legacy minors were rejected' >&2
+  exit 1
+}
+for conflicting in \
+  '{"name":"kernel","version":"0.3.11","source":"registry+https://github.com/rust-lang/crates.io-index"}' \
+  '{"name":"codec","version":"0.4.4","source":"registry+https://github.com/rust-lang/crates.io-index"}' \
+  '{"name":"codegen","version":"0.10.0","source":"registry+https://github.com/rust-lang/crates.io-index"}' \
+  '{"name":"codegen","version":"0.7.0","source":"git+https://example.invalid/unreviewed"}'; do
+  invalid_metadata="$(jq -c --argjson extra "$conflicting" '.packages += [$extra]' <<<"$sdk_metadata")"
+  if verify_planned_cohort_identities "$invalid_metadata" "$sdk_set"; then
+    printf '%s\n' 'a conflicting runtime line or unreviewed legacy source was accepted' >&2
+    exit 1
+  fi
+done
+source <(sed -n '/^record_legacy_cohort_dependencies() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
+expected="$sdk_set"
+record_legacy_cohort_dependencies "$sdk_metadata"
+jq -e 'length == 3 and all(.[]; .source == "registry+https://github.com/rust-lang/crates.io-index")' \
+  "$scratch/cohort-legacy-dependencies.json" >/dev/null || {
+  printf '%s\n' 'legacy dependency provenance was not recorded' >&2
+  exit 1
+}
+
 semver_fixture="$fixture/semver-binding"
 mkdir -p "$semver_fixture/planned/src" "$semver_fixture/consumer/src"
 cat >"$semver_fixture/Cargo.toml" <<'EOF'
