@@ -1122,7 +1122,7 @@ fn verify_git_lenso_lock(path: &Path, selected: &GitLensoSources) -> anyhow::Res
             }
         }
     }
-    if codec_versions.len() > 1 && codec_versions != BTreeSet::from(["0.3.4", "0.4.2"]) {
+    if codec_versions.len() > 1 && codec_versions != BTreeSet::from(["0.3.4", "0.4.4"]) {
         bail!(
             "generated Host resolved conflicting lenso-runtime-codec Cargo package identities; align framework sources before linking"
         );
@@ -2148,7 +2148,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_host_lock_allows_distinct_codec_versions_but_rejects_same_version_split() {
+    fn generated_host_lock_allows_current_legacy_codec_pair_but_rejects_other_splits() {
         let root = tempfile::tempdir().unwrap();
         let lock = root.path().join("Cargo.lock");
         let git = "https://github.com/LioRael/lenso";
@@ -2167,7 +2167,7 @@ mod tests {
         let git_codec = format!(
             "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.3.4\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n"
         );
-        let other_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        let other_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
         std::fs::write(&lock, format!("{git_codec}\n{other_codec}")).unwrap();
         verify_git_lenso_lock(&lock, &selected).unwrap();
 
@@ -2180,7 +2180,7 @@ mod tests {
                 .contains("generated Host resolved conflicting lenso-runtime-codec")
         );
 
-        let unsupported_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        let unsupported_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
         std::fs::write(&lock, format!("{git_codec}\n{unsupported_codec}")).unwrap();
         let error = verify_git_lenso_lock(&lock, &selected).unwrap_err();
         assert!(

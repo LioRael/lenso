@@ -5,7 +5,7 @@ if (request.schema !== "lenso.convention-compile.v1") throw new Error("unsupport
 const output = request.output;
 if (request.entry.endsWith(".rs")) {
   const sdk = path.join(import.meta.dir, "rust-sdk");
-  const cargo = `[package]\nname = ${JSON.stringify(request.plugin_id.replaceAll(".", "-"))}\nversion = ${JSON.stringify(request.release_version)}\nedition = "2024"\n[workspace]\n[package.metadata.lenso]\nplugin-id = ${JSON.stringify(request.plugin_id)}\nroot-slot = "terminal-providers"\n[dependencies]\nlenso = "=0.5.23"\nanyhow = "1"\nlenso-cli-support = { path = ${JSON.stringify(sdk)} }\n`;
+  const cargo = `[package]\nname = ${JSON.stringify(request.plugin_id.replaceAll(".", "-"))}\nversion = ${JSON.stringify(request.release_version)}\nedition = "2024"\n[workspace]\n[package.metadata.lenso]\nplugin-id = ${JSON.stringify(request.plugin_id)}\nroot-slot = "terminal-providers"\n[dependencies]\nlenso = "=0.5.28"\nanyhow = "1"\nlenso-cli-support = { path = ${JSON.stringify(sdk)} }\n`;
   fs.writeFileSync(path.join(output,"Cargo.toml"),cargo);
   fs.mkdirSync(path.join(output,"src"));
   fs.writeFileSync(path.join(output,"src/lib.rs"), `
@@ -40,7 +40,7 @@ fs.writeFileSync(path.join(output,"plugin.ts"), [
 ].join("\n"));
 fs.writeFileSync(path.join(output,"package.json"), JSON.stringify({
   name: request.plugin_id, version: request.release_version, private: true, type: "module",
-  dependencies: { "@lenso/bun-plugin":"0.4.1", "@lenso/contract-runtime":"0.3.0", "@lenso/cli":`file:${root}` },
+  dependencies: { "@lenso/bun-plugin":"0.4.2", "@lenso/contract-runtime":"0.3.1", "@lenso/cli":`file:${root}` },
   devDependencies: { typescript:"7.0.2", "@types/bun":"1.4.0" },
   scripts: { check:"tsc --noEmit" },
   lenso:{ pluginId:request.plugin_id, runtime:"bun", rootSlot:"terminal-providers", source:"plugin.ts" },

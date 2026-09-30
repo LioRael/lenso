@@ -668,7 +668,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 lenso = {{ package = "lenso-plugin-sdk", version = "0.4.6" }}
-lenso-agent-tool-sdk = "0.3.2"
+lenso-agent-tool-sdk = "0.4.0"
 schemars = "1"
 serde = {{ version = "1", features = ["derive"] }}
 

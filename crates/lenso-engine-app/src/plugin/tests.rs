@@ -392,6 +392,7 @@ fn clean_room_web_plugin_builds_generated_dev_host() {
 #[test]
 fn rust_plugin_scaffold_exposes_only_portable_authoring() {
     let files = plugin_scaffold("uppercase");
+    let manifest = files.get(Path::new("Cargo.toml")).unwrap();
     let author_source = files.get(Path::new("src/lib.rs")).unwrap();
     let all = files.values().cloned().collect::<String>();
 
@@ -399,6 +400,7 @@ fn rust_plugin_scaffold_exposes_only_portable_authoring() {
     assert!(author_source.contains("#[lenso_agent_tool_sdk::tool_provider]"));
     assert!(author_source.contains("#[tool("));
     assert!(author_source.contains("fn execute(arguments: Arguments)"));
+    assert!(manifest.contains("lenso-agent-tool-sdk = \"0.4.0\""));
     assert!(all.contains("plugin-id = \"uppercase\""));
     assert!(all.contains("root-slot = \"tool-providers\""));
     assert!(all.contains("lenso plugin new"));
@@ -466,7 +468,7 @@ fn process_plugin_scaffold_uses_the_sdk_owned_lowering() {
     assert!(manifest.contains("runtime = \"process\""));
     assert!(manifest.contains("package = \"lenso-plugin-sdk\", version = \"0.4.6\""));
     assert!(!manifest.contains("lenso-runtime-rust\""));
-    assert!(manifest.contains("lenso-agent-tool-sdk"));
+    assert!(manifest.contains("lenso-agent-tool-sdk = \"0.4.0\""));
     assert!(!manifest.contains("github.com/LioRael/lenso-agent"));
     assert_eq!(
         entrypoint,
@@ -481,6 +483,7 @@ fn multi_scaffold_keeps_one_business_source_for_two_outputs() {
     let manifest = files.get(Path::new("Cargo.toml")).unwrap();
 
     assert!(manifest.contains("outputs = [\"wasm\", \"process\"]"));
+    assert!(manifest.contains("lenso-agent-tool-sdk = \"0.4.0\""));
     assert!(files.contains_key(Path::new("src/lib.rs")));
     assert!(files.contains_key(Path::new("src/main.rs")));
     assert_eq!(
