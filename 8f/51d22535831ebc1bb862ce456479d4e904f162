@@ -1,0 +1,20 @@
+crates/lenso-cli/tests/configuration_source_dev.rs
+  s_f4202e28c6b5b1::t_107bb7440c2eef 170-185
+  s_f4202e28c6b5b1::t_935e1eca405f37 192,590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f51d22535831ebc1bb862ce456479d4e904f162",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
