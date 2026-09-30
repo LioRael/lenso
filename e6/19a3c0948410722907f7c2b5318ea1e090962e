@@ -1,0 +1,19 @@
+crates/lenso-engine-app/src/app/local_host.rs
+  s_f4202e28c6b5b1::t_ba4a45f2e67653 1008-1031,1037,2135-2178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e619a3c0948410722907f7c2b5318ea1e090962e",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

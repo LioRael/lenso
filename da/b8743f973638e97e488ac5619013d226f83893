@@ -1,0 +1,28 @@
+crates/lenso-engine-app/src/plugin/web_dev.rs
+  s_f4202e28c6b5b1::t_b7f745e3b0b6dc 674
+  s_f4202e28c6b5b1::t_e56f424c09b3a1 395,695
+  s_f4202e28c6b5b1::t_aff84ff6402cee 670-673,675-682
+  s_f4202e28c6b5b1::t_89cc08d2fe1537 16,683-694,709
+.github/scripts/test-release-cohort-preflight.sh
+  s_f4202e28c6b5b1::t_32ebe0c8b1dd7f 206,216
+crates/lenso-engine-app/src/plugin/tests.rs
+  s_f4202e28c6b5b1::t_e56f424c09b3a1 167
+crates/lenso-engine-app/src/plugin/scaffold.rs
+  s_f4202e28c6b5b1::t_e56f424c09b3a1 12-14,123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dab8743f973638e97e488ac5619013d226f83893",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
