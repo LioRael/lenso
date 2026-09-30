@@ -1,0 +1,23 @@
+crates/lenso-cli/tests/process_notes.rs
+  s_f4202e28c6b5b1::t_44fad440abd641 373
+crates/lenso-engine-app/assets/process-notes/Cargo.toml.template
+  s_f4202e28c6b5b1::t_4b1644aa8f71a6 15
+crates/lenso-engine-app/src/app/local_workflow/notes.rs
+  s_f4202e28c6b5b1::t_6ae5b472bc3d1a 121,123,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cac6db9d3293197754cce0ec707e909e0bed79a6",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
