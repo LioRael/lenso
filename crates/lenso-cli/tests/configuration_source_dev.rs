@@ -444,7 +444,12 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
         String::from_utf8_lossy(&created.stderr)
     );
     let guest_manifest = source.join("app/local.starter/Cargo.toml");
-    let mut manifest = fs::read_to_string(&guest_manifest).unwrap();
+    let mut manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(&guest_manifest).unwrap()).unwrap();
+    // This lifecycle fixture uses the immutable published Tool SDK. The emitted
+    // SDK 4 consumer is qualified separately with its exact candidate archives.
+    manifest["dependencies"]["lenso-agent-tool-sdk"] = toml::Value::String("=0.3.3".into());
+    let mut manifest = toml::to_string(&manifest).unwrap();
     manifest.push_str(&candidate_crate_patches(&["lenso-plugin-sdk"]));
     fs::write(&guest_manifest, manifest).unwrap();
     let snapshot = temporary.path().join("snapshot.json");
