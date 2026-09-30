@@ -167,12 +167,29 @@ fn use_candidate_crates(root: &Path, packages: &[&str]) {
     .unwrap();
 }
 
+fn use_candidate_web_endpoint(source: &Path) {
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let candidate: toml::Value = toml::from_str(
+        &fs::read_to_string(crates.join("lenso-capability-http-endpoint/Cargo.toml")).unwrap(),
+    )
+    .unwrap();
+    let version = candidate["package"]["version"].as_str().unwrap();
+    let path = source.join("app/local.starter/Cargo.toml");
+    let mut manifest: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    // OpenAPI and Web Host use the workspace Endpoint. Select that exact source
+    // cohort explicitly after creating the ordinary released Web starter.
+    manifest["dependencies"]["lenso-capability-http-endpoint"] =
+        toml::Value::String(format!("={version}"));
+    fs::write(path, toml::to_string(&manifest).unwrap()).unwrap();
+}
+
 fn recent_cargo_diagnostics(log: &str) -> Vec<&str> {
     log.lines()
         .rev()
         .filter(|line| {
             line.contains("Compiling ")
                 || line.contains("error:")
+                || line.contains("Error:")
                 || line.contains("failed")
                 || line.contains("candidate versions")
         })
@@ -570,6 +587,7 @@ fn external_configuration_changes_openapi_title_after_supervised_restart() {
         "{}",
         String::from_utf8_lossy(&created.stderr)
     );
+    use_candidate_web_endpoint(&source);
     let added = Command::new(cli)
         .current_dir(temporary.path())
         .args(["app", "add", "@lenso/openapi", "--root"])
