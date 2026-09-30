@@ -284,7 +284,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-client"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "futures",
  "lenso-contract-codegen",
@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-contract-authoring"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "lenso-contract-authoring-macros",
  "schemars",
@@ -308,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-contract-authoring-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-contract-codegen"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "lenso-contract-authoring",
  "regex",
@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-kernel"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "futures",
  "lenso-app-plan",
@@ -368,7 +368,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-runtime-codec"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "futures",
  "hex",
