@@ -98,6 +98,15 @@ impl NativeFacilities {
         };
         value.downcast_ref::<T>().cloned().ok_or_else(missing)
     }
+
+    /// Returns explicit absence when no attachment exists; present inputs stay type checked.
+    pub fn optional<T: Any + Clone>(&self, name: &str) -> Result<Option<T>, RuntimeFailure> {
+        if self.values.contains_key(name) {
+            self.require(name).map(Some)
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]

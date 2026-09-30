@@ -1827,6 +1827,8 @@ enum ConstructionFieldKind {
     Config,
     Facility {
         id: LitStr,
+        handle: Box<Type>,
+        optional: bool,
     },
     Dependency {
         id: LitStr,
@@ -1904,12 +1906,21 @@ fn analyze_struct_fields(
             if !facility_ids.insert(id.value()) {
                 return Err(syn::Error::new_spanned(id, "duplicate facility id"));
             }
-            let ty = &field.ty;
-            initializers.push(quote!(#name: context.facilities().require::<#ty>(#id)?));
+            let (handle, optional) = facility_handle(&field.ty)?;
+            let method = if optional {
+                format_ident!("optional")
+            } else {
+                format_ident!("require")
+            };
+            initializers.push(quote!(#name: context.facilities().#method::<#handle>(#id)?));
             construction_fields.push(ConstructionField {
                 name: name.clone(),
                 ty: field.ty.clone(),
-                kind: ConstructionFieldKind::Facility { id },
+                kind: ConstructionFieldKind::Facility {
+                    id,
+                    handle: Box::new(handle),
+                    optional,
+                },
             });
         } else if let Some(id) = dependency {
             let (client, cardinality) = dependency_client(&field.ty)?;
@@ -2090,6 +2101,16 @@ fn dependency_client(ty: &Type) -> syn::Result<(Type, DependencyCardinality)> {
     Ok((ty.clone(), DependencyCardinality::One))
 }
 
+fn facility_handle(ty: &Type) -> syn::Result<(Type, bool)> {
+    if let Type::Path(path) = ty
+        && let Some(segment) = path.path.segments.last()
+        && segment.ident == "Option"
+    {
+        return Ok((single_type_argument(segment, ty)?.clone(), true));
+    }
+    Ok((ty.clone(), false))
+}
+
 fn single_type_argument<'a>(segment: &'a syn::PathSegment, ty: &Type) -> syn::Result<&'a Type> {
     let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
         return Err(syn::Error::new_spanned(
@@ -2184,7 +2205,18 @@ fn v2_field_initializer(
     let ty = &field.ty;
     match &field.kind {
         ConstructionFieldKind::Config => quote!(#name: configuration),
-        ConstructionFieldKind::Facility { id } => quote!(#name: context.facility::<#ty>(#id)?),
+        ConstructionFieldKind::Facility {
+            id,
+            handle,
+            optional,
+        } => {
+            let method = if *optional {
+                format_ident!("optional_facility")
+            } else {
+                format_ident!("facility")
+            };
+            quote!(#name: context.#method::<#handle>(#id)?)
+        }
         ConstructionFieldKind::Dependency {
             id,
             client,
@@ -2269,11 +2301,19 @@ fn v2_input_initializer(
     sdk: &proc_macro2::TokenStream,
 ) -> Option<proc_macro2::TokenStream> {
     let name = &field.name;
-    let ty = &field.ty;
     match &field.kind {
         ConstructionFieldKind::Config => Some(quote!(#name: configuration)),
-        ConstructionFieldKind::Facility { id } => {
-            Some(quote!(#name: context.facility::<#ty>(#id)?))
+        ConstructionFieldKind::Facility {
+            id,
+            handle,
+            optional,
+        } => {
+            let method = if *optional {
+                format_ident!("optional_facility")
+            } else {
+                format_ident!("facility")
+            };
+            Some(quote!(#name: context.#method::<#handle>(#id)?))
         }
         ConstructionFieldKind::Dependency {
             id,

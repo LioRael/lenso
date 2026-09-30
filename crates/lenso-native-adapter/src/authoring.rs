@@ -118,6 +118,14 @@ impl ConstructionContext {
     pub fn facility<T: Any + Clone>(&self, name: &str) -> Result<T, RuntimeFailure> {
         self.facilities.require(name)
     }
+
+    /// Clones an optional typed owner attachment without searching for another resource.
+    pub fn optional_facility<T: Any + Clone>(
+        &self,
+        name: &str,
+    ) -> Result<Option<T>, RuntimeFailure> {
+        self.facilities.optional(name)
+    }
 }
 
 /// Future returned by one generated complete-object constructor.

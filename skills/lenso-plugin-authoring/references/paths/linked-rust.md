@@ -44,6 +44,31 @@ The Host Catalog owns default Instances, root Slots, private attachments, and
 implementation policy. Generated registration makes the Plugin available; it
 does not activate an App-owned Instance or choose a provider.
 
+A source-owned facility may opt into the selected Driver's deadline clock with
+`native-clock = true` or `workers-clock = true` under its
+`package.metadata.lenso.host-facilities.<slot>` metadata. The declared Rust factory
+then receives a second `&lenso_native_adapter::NativeHostClock` argument. Its
+`now()` uses the same Driver as the Kernel; the type also accepts the Workers
+Driver in a statically linked Rust Worker. The default factory still receives
+only its binding. This monotonic clock is not an issuer's wall-clock authority.
+
+`#[facility(id = "state")] state: Option<OwnerHandle>` accepts absence of that
+private attachment in either authoring profile. A present attachment must still
+have the exact type, and owner factory failures remain errors. A direct
+`OwnerHandle` field requires the attachment. An owner selecting a D1 profile must
+reject `None` during preparation; the optional field permits a separate Native
+profile without silently selecting another resource. This private attachment
+absence does not replace a Capability dependency's persisted explicit-none choice.
+
+Workers facility metadata may select a private adapter file from one explicitly
+named runtime Cargo dependency with `workers-adapter-package = "owner-package"`
+and `workers-adapter = "src/workers/adapter.mjs"`. The owner must be uniquely
+reachable from the selected Plugin's resolved normal dependencies. The relative
+file must remain inside that owner's source directory, including after symlink
+resolution. The Host copies one module of at most 1 MiB and records its owner
+Cargo identity and content digest. Supply a closed module; this path does not
+bundle imports or discover npm dependencies.
+
 This path is complete when the linked factory is discoverable in the exact Host
 build, typed configuration fails closed, generated Capability calls exercise a
 real consumer/provider path, lifecycle cleanup is observable, and removing the

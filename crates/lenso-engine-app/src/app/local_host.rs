@@ -153,6 +153,7 @@ pub(super) fn generate(
     let mut web_contract = None;
     let mut business_snapshot = business_snapshot::HostBinding::default();
     let mut facilities = facilities::Sources::default();
+    let mut facility_graphs = Vec::new();
     let mut root_linked = root_linking::Sources::new(
         candidates
             .iter()
@@ -229,7 +230,13 @@ pub(super) fn generate(
             dependencies.insert(alias.clone(), dependency(package)?);
             linked.push_str(&format!("{alias}::link_plugin();\n"));
             business_snapshot.select(&alias, package)?;
-            facilities.select(&alias, &candidate.plugin_id, package, &candidate.project)?;
+            facilities.select(
+                &alias,
+                &candidate.plugin_id,
+                package,
+                &candidate.project,
+                Some(&metadata),
+            )?;
         }
         // Build helpers share source patches but cannot contribute runtime codecs
         // or Capability identities. The runtime traversal below remains normal-only.
@@ -352,6 +359,7 @@ pub(super) fn generate(
                 codecs.insert(capability, (id, dep));
             }
         }
+        facility_graphs.push(metadata);
     }
     if codec_cohorts.len() > 1 {
         bail!("native contracts use incompatible Codec cohorts: {codec_cohorts:?}");
@@ -371,7 +379,17 @@ pub(super) fn generate(
         )
         .parent()
         .context("linked source directory")?;
-        facilities.select(&alias, plugin_id, package, root)?;
+        let graph = facility_graphs
+            .iter()
+            .find(|graph| {
+                graph["packages"].as_array().is_some_and(|packages| {
+                    packages
+                        .iter()
+                        .any(|candidate| candidate["id"] == package["id"])
+                })
+            })
+            .context("Root-linked facility Cargo graph")?;
+        facilities.select(&alias, plugin_id, package, root, Some(graph))?;
     }
     root_linked.record(stage)?;
     let local_crates = local_framework_crates_dir(&local_lenso_patches)?;
