@@ -691,11 +691,11 @@ mod tests {
         let parsed: toml::Value = toml::from_str(&manifest).unwrap();
         assert_eq!(
             parsed["dev-dependencies"]["lenso-web-host"].as_str(),
-            Some("=0.2.4")
+            Some("=0.2.5")
         );
         assert_eq!(
             parsed["dev-dependencies"]["lenso-test"].as_str(),
-            Some("=0.1.2")
+            Some("=0.1.3")
         );
         assert!(parsed.get("patch").is_none());
         assert!(!manifest.contains("git ="));
