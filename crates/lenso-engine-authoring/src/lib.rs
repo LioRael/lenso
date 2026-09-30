@@ -846,8 +846,9 @@ fn runtimes_for_local_authoring() -> anyhow::Result<Vec<RuntimeAdmission>> {
         .context("validate Bun Adapter target capability profile")?;
     if bun_profile.target_profile != lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE
         || !bun_profile.supports(ExecutionTargetCapability::Request)
+        || !bun_profile.supports(ExecutionTargetCapability::NativeProcess)
     {
-        bail!("Bun Adapter did not expose its required Request target profile");
+        bail!("Bun Adapter did not expose its required Request/native-process target profile");
     }
     Ok([
         ("lenso.quickjs@1", "lenso.quickjs@1"),
@@ -857,16 +858,27 @@ fn runtimes_for_local_authoring() -> anyhow::Result<Vec<RuntimeAdmission>> {
     ]
     .into_iter()
     .map(|(execution_class, runtime_profile)| {
+        let mut capabilities = vec![ExecutionTargetCapability::Request];
+        match execution_class {
+            "lenso.process@1" => capabilities.push(ExecutionTargetCapability::NativeProcess),
+            "lenso.wasm-component@1" => {
+                capabilities.push(ExecutionTargetCapability::WasmComponent);
+            }
+            _ => {}
+        }
         RuntimeAdmission::new(
             ExecutionClassId::new(execution_class),
             runtime_profile,
-            ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+            ExecutionTargetCapabilities::new(capabilities),
         )
     })
     .chain(std::iter::once(RuntimeAdmission::new(
         ExecutionClassId::bun_child_process(),
         bun_profile.target_profile,
-        ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request]),
+        ExecutionTargetCapabilities::new([
+            ExecutionTargetCapability::Request,
+            ExecutionTargetCapability::NativeProcess,
+        ]),
     )))
     .collect())
 }
@@ -1613,6 +1625,144 @@ mod tests {
         HostBinding, HostCatalog, HostDefaultPlugin, HostPluginRelease, HostSlot,
     };
     use lenso_app_plan::{CapabilityEndpointPlan, CapabilityRequirementPlan};
+
+    #[test]
+    fn local_authoring_admission_declares_only_supported_mechanisms() {
+        let runtimes = runtimes_for_local_authoring().unwrap();
+        assert_eq!(runtimes.len(), 5);
+        for runtime in runtimes {
+            let expected = match runtime.execution_class.as_str() {
+                "lenso.process@1" | "lenso.bun-process@1" => ExecutionTargetCapabilities::new([
+                    ExecutionTargetCapability::Request,
+                    ExecutionTargetCapability::NativeProcess,
+                ]),
+                "lenso.wasm-component@1" => ExecutionTargetCapabilities::new([
+                    ExecutionTargetCapability::Request,
+                    ExecutionTargetCapability::WasmComponent,
+                ]),
+                "lenso.quickjs@1" => {
+                    ExecutionTargetCapabilities::new([ExecutionTargetCapability::Request])
+                }
+                other => panic!("unexpected locally admitted execution class {other}"),
+            };
+            assert_eq!(runtime.capabilities, expected);
+        }
+    }
+
+    #[test]
+    fn local_authoring_v4_admits_exact_process_and_bun_request_mechanisms() {
+        for (class, profile) in [
+            ("lenso.process@1", "lenso.process-stdio@2"),
+            ("lenso.process@1", "lenso.process@1"),
+            (
+                "lenso.bun-process@1",
+                lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE,
+            ),
+        ] {
+            let (_root, bundle, verified) = local_authoring_v4_fixture(
+                class,
+                profile,
+                &[lenso_app_plan::ExecutionTargetCapability::NativeProcess],
+            );
+            let selected =
+                read_verified_bundle_descriptor(&bundle, "example.local", &verified).unwrap();
+            assert_eq!(selected.execution_class().as_str(), class);
+            assert_eq!(selected.runtime_profile(), profile);
+        }
+    }
+
+    #[test]
+    fn local_authoring_v4_rejects_unsupported_interactions_and_foreign_profiles() {
+        use lenso_app_plan::ExecutionTargetCapability as Feature;
+
+        for (class, profile) in [
+            ("lenso.process@1", "lenso.process-stdio@2"),
+            (
+                "lenso.bun-process@1",
+                lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE,
+            ),
+        ] {
+            for feature in [
+                Feature::Stream,
+                Feature::Event,
+                Feature::HostImports,
+                Feature::Workers,
+                Feature::WebSocket,
+            ] {
+                let (_root, bundle, verified) =
+                    local_authoring_v4_fixture(class, profile, &[Feature::NativeProcess, feature]);
+                let error = read_verified_bundle_descriptor(&bundle, "example.local", &verified)
+                    .unwrap_err();
+                assert!(error.to_string().contains("missing target capabilities"));
+                assert!(error.to_string().contains(feature.as_str()));
+            }
+            let (_root, bundle, verified) = local_authoring_v4_fixture(
+                class,
+                "example.foreign-profile@1",
+                &[Feature::NativeProcess],
+            );
+            let error =
+                read_verified_bundle_descriptor(&bundle, "example.local", &verified).unwrap_err();
+            let diagnostic = error.to_string();
+            assert!(diagnostic.contains("runtime ABI/profile"), "{error}");
+            assert!(diagnostic.contains("example.foreign-profile@1"), "{error}");
+            assert!(diagnostic.contains("not admitted"), "{error}");
+        }
+    }
+
+    fn local_authoring_v4_fixture(
+        class: &str,
+        profile: &str,
+        features: &[lenso_app_plan::ExecutionTargetCapability],
+    ) -> (tempfile::TempDir, PathBuf, VerifiedBundle) {
+        use lenso_app_plan::authoring::PluginContract;
+        use lenso_plugin_bundle::{
+            SourcePluginImplementation, SourcePluginReleaseBuild,
+            build_source_plugin_release_bundle,
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let artifact = root.path().join("plugin");
+        fs::write(
+            &artifact,
+            b"verified, not executed, local admission fixture",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        if class == "lenso.process@1" {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&artifact, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let bundle = root.path().join("bundle");
+        let verified = build_source_plugin_release_bundle(&SourcePluginReleaseBuild {
+            contract: PluginContract::new("example.local", "1.0.0", "tools")
+                .with_authoring_version(2)
+                .with_capability(CapabilityEndpointPlan::new(
+                    "example.echo@1",
+                    "1.0.0",
+                    ["echo"],
+                )),
+            implementations: vec![SourcePluginImplementation {
+                id: "local".to_owned(),
+                host_targets: vec![native_host_target().to_owned()],
+                artifact,
+                bundle_path: "implementations/local/plugin".to_owned(),
+                media_type: if class == "lenso.bun-process@1" {
+                    "application/javascript".to_owned()
+                } else {
+                    "application/vnd.lenso.process".to_owned()
+                },
+                target: native_host_target().to_owned(),
+                entrypoint: "plugin".to_owned(),
+                execution_class: ExecutionClassId::new(class),
+                runtime_profile: profile.to_owned(),
+                required_target_capabilities: features.to_vec(),
+            }],
+            output: bundle.clone(),
+        })
+        .unwrap();
+        (root, bundle, verified)
+    }
 
     fn fixture_root() -> tempfile::TempDir {
         let root = tempfile::tempdir().unwrap();

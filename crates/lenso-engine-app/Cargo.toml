@@ -55,7 +55,7 @@ url = "2.5"
 zip = { version = "8.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 jsonschema = { version = "0.51", default-features = false }
 glob = "0.3.3"
-lenso_app_authoring = { package = "lenso-engine-authoring", version = "0.2.4", path = "../lenso-engine-authoring" }
+lenso_app_authoring = { package = "lenso-engine-authoring", version = "=0.2.5", path = "../lenso-engine-authoring" }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.30", features = ["signal"] }
