@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 
 const PROFILE: &str = "lenso.linked-rust-workers@1";
 const BINDGEN_VERSION: &str = "wasm-bindgen 0.2.127";
+const WORKERS_DRIVER_REQUIREMENT: &str = "=0.1.2";
 mod limits;
 const RUNTIME_FILES: &[(&str, &str)] = &[
     (
@@ -424,11 +425,11 @@ fn wasm_manifest(mut manifest: Value) -> anyhow::Result<(Value, String)> {
     }
     let framework = patched_kernel.unwrap_or_else(|| dependencies["lenso-kernel"].clone());
     let workers = if let Some(path) = framework["path"].as_str() {
-        json!({"path":Path::new(path).parent().context("framework crates directory")?.join("lenso-workers-driver"),"version":"=0.1.1"})
+        json!({"path":Path::new(path).parent().context("framework crates directory")?.join("lenso-workers-driver"),"version":WORKERS_DRIVER_REQUIREMENT})
     } else if let Some(git) = framework["git"].as_str() {
-        json!({"version":"=0.1.1","git":git,"rev":framework["rev"]})
+        json!({"version":WORKERS_DRIVER_REQUIREMENT,"git":git,"rev":framework["rev"]})
     } else {
-        json!("=0.1.1")
+        json!(WORKERS_DRIVER_REQUIREMENT)
     };
     dependencies.insert("lenso-workers-driver".into(), workers);
     for (name, version) in [
@@ -559,6 +560,31 @@ mod tests {
             links,
             "local_plugin_1::link_plugin();\nroot_plugin_2::link_plugin();\n"
         );
+    }
+
+    #[test]
+    fn wasm_host_pins_the_workers_driver_for_each_framework_source() {
+        for (kernel, expected_driver) in [
+            (
+                json!({"path":"/owner/framework/crates/lenso-kernel","version":"=0.3.12"}),
+                json!({"path":"/owner/framework/crates/lenso-workers-driver","version":"=0.1.2"}),
+            ),
+            (
+                json!({"git":"https://example.test/framework","rev":"selected-source","version":"=0.3.12"}),
+                json!({"git":"https://example.test/framework","rev":"selected-source","version":"=0.1.2"}),
+            ),
+            (json!("=0.3.12"), json!("=0.1.2")),
+        ] {
+            let manifest = json!({"package":{"name":"native"},"dependencies":{
+                "lenso-kernel":kernel,
+                "lenso-web-ingress-plugin":"=0.4.10"
+            }});
+            let (wasm, _) = wasm_manifest(manifest).unwrap();
+            assert_eq!(
+                wasm["dependencies"]["lenso-workers-driver"],
+                expected_driver
+            );
+        }
     }
 
     #[test]
