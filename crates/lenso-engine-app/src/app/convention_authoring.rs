@@ -654,6 +654,30 @@ mod plugin_new_tests {
     use super::{AddArgs, Language, NewArgs, PluginCommand, new};
 
     #[test]
+    fn adopted_terminal_rust_sdk_uses_the_current_host_contract_cohort() {
+        let root = tempfile::tempdir().unwrap();
+        super::adopt(root.path().into(), "@lenso/cli".into(), false).unwrap();
+        let support = root.path().join("app/lenso-terminal-cli");
+        let manifest: toml::Value =
+            toml::from_str(&std::fs::read_to_string(support.join("rust-sdk/Cargo.toml")).unwrap())
+                .unwrap();
+        assert_eq!(
+            manifest["dependencies"]["lenso-kernel"].as_str(),
+            Some("=0.3.12")
+        );
+        assert_eq!(
+            manifest["dependencies"]["lenso-runtime-codec"].as_str(),
+            Some("=0.4.4")
+        );
+        assert_eq!(
+            manifest["dependencies"]["lenso-cli-macros"]["path"].as_str(),
+            Some("../rust-macros")
+        );
+        assert!(support.join("rust-macros/Cargo.toml").is_file());
+        assert!(support.join("rust-sdk/src/generated.rs").is_file());
+    }
+
+    #[test]
     fn keyless_marketplace_cli_needs_no_operator_trust_flags() {
         use clap::Parser as _;
         #[derive(clap::Parser)]
