@@ -108,3 +108,5 @@ jobs:
           -p lenso-bun-adapter --features js-integration
           --test authoring_v2 --test bun_cross_runtime --test process_v1_bootstrap
           -- --include-ignored --test-threads=1
+      - name: Test plugin build symbol classification
+        run: node --test lenso/crates/lenso-engine-app/tests/plugin-build-symbols.test.mjs

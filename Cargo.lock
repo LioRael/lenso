@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-cli"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -2315,7 +2315,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-app"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "clap",

@@ -828,7 +828,7 @@ fn materialize_process(
         .join(&package.name);
     let source = dev::read_process_descriptor(&executable)?;
     let descriptor = tempfile::NamedTempFile::new().context("stage Process descriptor")?;
-    serde_json::to_writer(descriptor.as_file(), &source.descriptor)?;
+    serde_json::to_writer(descriptor.as_file(), &source.runtime_descriptor)?;
     Ok(build_source_process_plugin_bundle(
         &SourceProcessPluginBuild {
             package_manifest: root.join("Cargo.toml"),
@@ -895,7 +895,10 @@ fn materialize_multi(
         .join(&package.name);
     let runtime_descriptor = staging.path().join("process-descriptor.json");
     let source = dev::read_process_descriptor(&executable)?;
-    fs::write(&runtime_descriptor, serde_json::to_vec(&source.descriptor)?)?;
+    fs::write(
+        &runtime_descriptor,
+        serde_json::to_vec(&source.runtime_descriptor)?,
+    )?;
     build_source_process_plugin_bundle(&SourceProcessPluginBuild {
         package_manifest: root.join("Cargo.toml"),
         executable,
@@ -1449,9 +1452,7 @@ pub fn local_runtime_descriptor(
             }
             Ok(Some(serde_json::from_slice(&line[prefix.len()..])?))
         }
-        "lenso.process@1" => Ok(Some(serde_json::to_value(
-            dev::read_process_descriptor(path)?.descriptor,
-        )?)),
+        "lenso.process@1" => Ok(Some(dev::read_process_descriptor(path)?.runtime_descriptor)),
         "lenso.wasm-component@1" => Ok(Some(serde_json::from_slice(
             &lenso_plugin_bundle::extract_plugin_descriptor(&fs::read(path)?)?,
         )?)),

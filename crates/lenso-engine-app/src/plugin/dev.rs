@@ -459,6 +459,8 @@ impl ExecutionAdapter for DevClientAdapter {
 
 pub(super) struct ProcessSourceDescriptor {
     pub(super) descriptor: PluginDescriptor,
+    // Typed defaults must not add fields to the Guest's public descriptor.
+    pub(super) runtime_descriptor: Value,
     pub(super) authoring_version: u32,
     pub(super) runtime_profile: String,
 }
@@ -486,6 +488,7 @@ pub(super) fn read_process_descriptor(
             )?;
             return Ok(ProcessSourceDescriptor {
                 descriptor,
+                runtime_descriptor: ready,
                 authoring_version: 2,
                 runtime_profile: PROCESS_RUNTIME_PROFILE_V2.to_owned(),
             });
@@ -495,15 +498,15 @@ pub(super) fn read_process_descriptor(
         {
             bail!("Process Plugin did not complete the expected readiness handshake");
         }
-        let descriptor = serde_json::from_value(
-            ready
-                .get("descriptor")
-                .cloned()
-                .context("Process Plugin readiness omitted its descriptor")?,
-        )
-        .context("Process Plugin readiness descriptor is invalid")?;
+        let runtime_descriptor = ready
+            .get("descriptor")
+            .cloned()
+            .context("Process Plugin readiness omitted its descriptor")?;
+        let descriptor = serde_json::from_value(runtime_descriptor.clone())
+            .context("Process Plugin readiness descriptor is invalid")?;
         Ok(ProcessSourceDescriptor {
             descriptor,
+            runtime_descriptor,
             authoring_version: 1,
             runtime_profile: PROCESS_RUNTIME_PROFILE_V1.to_owned(),
         })
@@ -881,5 +884,119 @@ mod tests {
             source.descriptor.capabilities[0].capability_id,
             "example.echo@1"
         );
+        assert_eq!(
+            source.runtime_descriptor,
+            serde_json::json!({
+                "abi": "lenso.json-request@1",
+                "capabilities": [{
+                    "capability_id": "example.echo@1",
+                    "descriptor_version": "1",
+                    "request_operations": ["execute"]
+                }],
+                "required_capabilities": []
+            })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn process_descriptor_roundtrip_packs_standard_named_requirements() {
+        let original = serde_json::json!({
+            "abi": "lenso.json-host-imports@2",
+            "capabilities": [{
+                "capability_id": "example.copy@1", "descriptor_version": "1.0.0",
+                "descriptor_digest": format!("sha256:{}", "a".repeat(64)),
+                "request_operations": ["copy"]
+            }],
+            "required_capabilities": [
+                { "requirement_id": "source", "capability_id": "example.store@1",
+                  "descriptor_version": "1.0.0", "cardinality": "one" },
+                { "requirement_id": "destination", "capability_id": "example.store@1",
+                  "descriptor_version": "1.0.0", "cardinality": "one" }
+            ],
+            "configuration_schema": { "type": "object", "required": ["prefix"] }
+        });
+        let executable = descriptor_fixture(&original.to_string());
+        let source = read_process_descriptor(&executable).unwrap();
+
+        assert_eq!(source.runtime_descriptor, original);
+        assert_eq!(
+            super::super::local_runtime_descriptor(&executable, PROCESS_EXECUTION_CLASS).unwrap(),
+            Some(original)
+        );
+        let (_output, bundle) = stage_process_bundle(&executable, &source).unwrap();
+        let manifest = lenso_plugin_bundle::read_bundle_manifest(&bundle).unwrap();
+        let lenso_plugin_bundle::PluginManifest::V2(manifest) = manifest else {
+            panic!("expected the standard Process Bundle");
+        };
+        let requirements = manifest.entry.descriptor["required_capabilities"]
+            .as_array()
+            .unwrap();
+        assert_eq!(requirements.len(), 2);
+        assert_eq!(requirements[0]["requirement_id"], "source");
+        assert_eq!(requirements[1]["requirement_id"], "destination");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn process_descriptor_roundtrip_preserves_explicit_fields_for_strict_validation() {
+        let original = serde_json::json!({
+            "abi": "lenso.json-host-imports@2",
+            "capabilities": [],
+            "required_capabilities": [{
+                "requirement_id": "source", "capability_id": "example.store@1",
+                "descriptor_version": "1.0.0", "cardinality": "one",
+                "descriptor_digest": format!("sha256:{}", "a".repeat(64)),
+                "request_operations": ["read"], "stream_operations": [],
+                "event_operations": []
+            }]
+        });
+        let executable = descriptor_fixture(&original.to_string());
+        let source = read_process_descriptor(&executable).unwrap();
+
+        assert_eq!(source.runtime_descriptor, original);
+        assert_eq!(
+            source.descriptor.required_capabilities[0].request_operations,
+            ["read"]
+        );
+        let error = stage_process_bundle(&executable, &source).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unknown field `descriptor_digest`")
+        );
+    }
+
+    #[cfg(unix)]
+    fn stage_process_bundle(
+        executable: &Path,
+        source: &ProcessSourceDescriptor,
+    ) -> anyhow::Result<(tempfile::TempDir, std::path::PathBuf)> {
+        let staging = tempfile::tempdir()?;
+        let manifest = staging.path().join("Cargo.toml");
+        fs::write(
+            &manifest,
+            "[package]\nname = \"example-copy\"\nversion = \"1.0.0\"\n\
+             [package.metadata.lenso]\nplugin-id = \"example.copy\"\nroot-slot = \"tools\"\n",
+        )?;
+        let runtime_descriptor = staging.path().join("descriptor.json");
+        fs::write(
+            &runtime_descriptor,
+            serde_json::to_vec(&source.runtime_descriptor)?,
+        )?;
+        let output = tempfile::tempdir()?;
+        let bundle = output.path().join("bundle");
+        lenso_plugin_bundle::build_source_process_plugin_bundle(
+            &lenso_plugin_bundle::SourceProcessPluginBuild {
+                package_manifest: manifest,
+                executable: executable.to_path_buf(),
+                runtime_descriptor,
+                authoring_version: source.authoring_version,
+                runtime_profile: source.runtime_profile.clone(),
+                target: "test-host".to_owned(),
+                output: bundle.clone(),
+            },
+        )?;
+        Ok((output, bundle))
     }
 }

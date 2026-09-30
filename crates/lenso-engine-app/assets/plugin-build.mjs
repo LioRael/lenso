@@ -156,9 +156,7 @@ function classifySymbol(origin) {
   const local =
     originFile.startsWith(`${root}${path.sep}`) &&
     !originFile.includes(`${path.sep}node_modules${path.sep}`);
-  const contract = generatedContract(origin, local);
-  if (contract) return contract;
-  if (local) return undefined;
+  if (local) return generatedContract(origin, true);
   const info = packageForFile(origin.file);
   const subpath = exportSubpath(info, origin);
   if (info.manifest.name === "@lenso/bun-plugin" && subpath === ".") {
@@ -175,6 +173,8 @@ function classifySymbol(origin) {
       };
     }
   }
+  const contract = generatedContract(origin, false);
+  if (contract) return contract;
   const rawMetadata = info.manifest.lenso?.build;
   if (!rawMetadata) return undefined;
   const metadata = buildApi.validateBuildPackageMetadata(rawMetadata);
