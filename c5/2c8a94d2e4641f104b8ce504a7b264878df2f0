@@ -1,0 +1,26 @@
+crates/lenso-engine-app/src/app/convention_authoring/openapi.rs
+  s_f4202e28c6b5b1::t_3d3c618bd7054e 51,61,166
+docs/releases/managed-facilities-sdk.md
+  s_f4202e28c6b5b1::t_dee74bd3f6d418 3-7,56-61
+  s_f4202e28c6b5b1::t_d195d59185ab4b 62
+.github/scripts/test-release-cohort-preflight.sh
+  s_f4202e28c6b5b1::t_c25682210988d3 180-205
+.github/scripts/release-cohort-preflight.sh
+  s_f4202e28c6b5b1::t_c25682210988d3 101-103,350-354,359-366,370-381,452,475
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c52c8a94d2e4641f104b8ce504a7b264878df2f0",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

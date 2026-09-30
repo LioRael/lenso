@@ -1,0 +1,165 @@
+docs/releases/managed-facilities-sdk.md
+  s_f4202e28c6b5b1::t_19e0dcaead46d4 22-29
+  s_f4202e28c6b5b1::t_2710fbf564880f 1-21,30-85
+crates/lenso/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,19-20,35-36
+crates/lenso-engine-app/src/app/contracts.rs
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 726,728
+crates/lenso-agent-tool-cli-plugin/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,14
+crates/lenso-contract-codegen/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 3,11
+crates/lenso-engine-runtime/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 27
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,13-15,24
+crates/lenso-http-auth/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,14
+crates/lenso-contract-authoring-macros/src/lib.rs
+  s_f4202e28c6b5b1::t_c4984462f8e8c4 141,147-148,153-161,171-173,186
+  s_f4202e28c6b5b1::t_4e80de9bc25a3b 162-170,174-185
+  s_f4202e28c6b5b1::t_6ee9fac102ae23 187-189
+crates/lenso-web-ingress-plugin/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,39-41,51-52,60
+crates/lenso-contract-codegen/src/source.rs
+  s_f4202e28c6b5b1::t_4e80de9bc25a3b 5,12,23,33,36-37,43,101
+crates/lenso-capability-configuration-source/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,20,23
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 28
+crates/lenso-capability-http-endpoint/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,30,33
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 43
+crates/lenso-workers-driver/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+crates/lenso-cli/tests/v6_linked_pack.rs
+  s_f4202e28c6b5b1::t_9da1d086285378 50
+crates/lenso-runner/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,34
+crates/lenso-process-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,21,27
+crates/lenso-engine-app/src/plugin/scaffold.rs
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 12-13,122-123,136-138,509
+crates/lenso-engine-app/src/app/local_host.rs
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 131-133,413,443,1200,1207,1821,1846,1848-1849,1896-1897,1914,1920,2019,2138,2183,2471,2773,2782,2789,2792
+  s_f4202e28c6b5b1::t_7ad54ad483c944 410-412
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 1741,1847,2229,2232,2242
+  s_f4202e28c6b5b1::t_bd8c358c4e4475 278,280-286,292,296-303,378
+crates/lenso-capability-http-stream-endpoint/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 25
+crates/lenso-engine-app/src/app/local_workflow/workers/linked.rs
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 531-532
+  s_f4202e28c6b5b1::t_bd8c358c4e4475 454,533-534,550-552
+  s_f4202e28c6b5b1::t_40abc0d33fc547 553-561
+crates/lenso-contract-authoring/src/lib.rs
+  s_f4202e28c6b5b1::t_4e80de9bc25a3b 44-88
+  s_f4202e28c6b5b1::t_a157d75dc1ec51 89
+crates/lenso-runtime-codec/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+crates/lenso-wasm-component-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,14
+crates/lenso-contract-authoring/tests/source.rs
+  s_f4202e28c6b5b1::t_4e80de9bc25a3b 65-68,125
+  s_f4202e28c6b5b1::t_e40bafc9762104 128
+crates/lenso-remote-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,14
+crates/lenso-cli/tests/release_details_cargo_adoption.rs
+  s_f4202e28c6b5b1::t_9da1d086285378 22
+crates/lenso-web-host/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,18-20,24,33-34
+crates/lenso-openapi-plugin/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,18,27
+crates/lenso-libbun-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 14-15
+crates/lenso-contract-authoring-macros/tests/fixtures/registered_snapshot.rs
+  s_f4202e28c6b5b1::t_0d7c8e6fee3cb9 1-39
+crates/lenso-engine-authoring/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,14
+crates/lenso-http-egress-plugin/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,27,49-50
+crates/lenso-cli/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,60,62,64,67
+crates/lenso-native-adapter-macros/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+crates/lenso-capability-http-client/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 27
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,20,22
+crates/lenso-bun-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,23,25,39,41
+Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 37
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 35,39-41,43
+crates/lenso-contract-authoring/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 3
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 11
+crates/lenso-contract-authoring-macros/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+  s_f4202e28c6b5b1::t_0d7c8e6fee3cb9 20-22
+crates/lenso-host-runtime/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,11-12,14-17
+crates/lenso-plugin-control-plane/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,15-21,31
+.github/release-sets/managed-facilities-sdk.json
+  s_f4202e28c6b5b1::t_6a2ce9d3c7dbb5 1-43,45-51,53-142
+  s_f4202e28c6b5b1::t_19e0dcaead46d4 44,52
+crates/lenso-engine-app/src/app/convention_authoring/openapi.rs
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 60,165
+crates/lenso-engine-app/src/app/contracts/scaffold.rs
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 101-102
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 93,97
+crates/lenso-kernel/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+crates/lenso-test/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,20
+crates/lenso-contract-authoring-macros/tests/registered_snapshot.rs
+  s_f4202e28c6b5b1::t_0d7c8e6fee3cb9 1-17,19-41
+  s_f4202e28c6b5b1::t_58a004b9121d0b 18
+crates/lenso-contract-codegen/tests/source_snapshot.rs
+  s_f4202e28c6b5b1::t_4e80de9bc25a3b 65,73,98
+crates/lenso-capability-websocket-endpoint/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 25
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+crates/lenso-engine-app/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 23-24
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,11,18-19,21-22,28-29,36,38-41,58
+crates/lenso-quickjs-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,14
+crates/lenso-browser-driver/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3
+spec/fixtures/event-contract/rust/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 18
+crates/lenso-dylib-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,14
+crates/lenso-native-adapter/Cargo.toml
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 3,19,21
+crates/lenso-engine-app/src/plugin/tests.rs
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 166-167,169-171,210
+crates/lenso-engine-app/src/plugin/web_dev.rs
+  s_f4202e28c6b5b1::t_7ad54ad483c944 671,673
+  s_f4202e28c6b5b1::t_fe8cf18b20aed2 16,389,391-393,395-399,428-430,455-457,573,575-576,621,678,706,709,760-763,769
+spec/fixtures/portable-contract/rust/Cargo.toml
+  s_f4202e28c6b5b1::t_6763a5308f1d8a 18
+Cargo.lock
+  s_f4202e28c6b5b1::t_79552c23ca23a9 94,105,1012,1959,1967,1976,2022,2035,2052,2102,2105,2111,2118,2121,2126,2133,2140,2146,2165,2168,2178,2181,2191,2220,2230,2235,2266,2289,2295,2318,2335,2349,2373,2424,2429,2437,2459,2491,2500,2509,2518,2528,2546,2562,2586,2594,2601,2630,2705,2719,2754,2773,2783,2812,2818,2828,2834,2845,2880,2903,2924,2931,2980,3023,3046,3078,3370,3806,4230,4310,4638,4792,5736
+crates/lenso-engine-app/src/app/local_host/root_linking.rs
+  s_f4202e28c6b5b1::t_70662199f1896c 14-19,30-35,46,59-60,62,65,71-77,85-96,101,111-159,165-169,189-195,241
+  s_f4202e28c6b5b1::t_7bfae339c31ee9 196,201,205-206,219-221,224-226,236-240,242-243,245,249,287-289
+crates/lenso-engine-app/src/app/local_host/root_linking/feature_tests.rs
+  s_f4202e28c6b5b1::t_95d0b181dea48c 1-95
+  s_f4202e28c6b5b1::t_022089c08784ac 96-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16a2156e0c2727fa4db0bdc772e10501e1e410fa",
+  "prompts": {},
+  "sessions": {
+    "s_f4202e28c6b5b1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ee9e-623b-7d12-a648-d8b462390eec",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
