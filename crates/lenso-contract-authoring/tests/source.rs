@@ -62,7 +62,10 @@ fn annotated_trait_derives_identity_operations_values_and_errors() {
     assert_eq!(snapshot.version, "1.0.0");
     assert!(snapshot.portable);
     assert!(!snapshot.cross_lane_transfer);
-    assert_eq!(snapshot.request_admission, None);
+    assert_eq!(
+        lenso::SourceCapabilitySnapshot::request_admission(&snapshot),
+        None
+    );
     assert_eq!(snapshot.operations.len(), 2);
     let operation = &snapshot.operations[0];
     assert_eq!(operation.name, "ping");
@@ -119,10 +122,10 @@ mod bounded {
     fn source_declares_bounded_admission() {
         assert_eq!(
             __lenso_capability_snapshot().request_admission,
-            Some(lenso::RequestAdmissionSnapshot {
+            lenso::RequestAdmissionSnapshot {
                 queue_capacity: 16,
                 max_concurrency: 2
-            })
+            }
         );
     }
 }

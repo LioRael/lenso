@@ -90,16 +90,16 @@ projection = "rust-runtime"
 output = "src/generated.rs"
 [dependencies]
 futures = "0.3"
-lenso-kernel = "=0.3.11"
+lenso-kernel = "=0.3.12"
 lenso-contract-runtime = "0.2.0"
 lenso-plugin-authoring = "0.2.0"
 lenso-guest-sdk = "0.5.0"
-lenso-runtime-codec = "=0.4.3"
+lenso-runtime-codec = "=0.4.4"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 [build-dependencies]
-lenso-contract-authoring = "=0.1.1"
-lenso-contract-codegen = "=0.10.0"
+lenso-contract-authoring = "=0.1.2"
+lenso-contract-codegen = "=0.10.1"
 schemars = "1.2"
 "#
                 ),

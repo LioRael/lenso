@@ -1,6 +1,6 @@
 [package]
 name = "lenso-engine-runtime"
-version = "0.2.0"
+version = "0.2.1"
 publish = true
 edition = "2024"
 license = "MIT"
@@ -10,9 +10,9 @@ repository.workspace = true
 [dependencies]
 lenso-engine = { path = "../lenso-engine", version = "0.2.0" }
 lenso-app-plan = { version = "=0.4.6", path = "../lenso-app-plan" }
-lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }
-lenso-native-adapter = { version = "=0.3.18", path = "../lenso-native-adapter" }
-lenso-runner = { version = "=0.2.19", path = "../lenso-runner" }
+lenso-kernel = { version = "=0.3.12", path = "../lenso-kernel" }
+lenso-native-adapter = { version = "=0.3.19", path = "../lenso-native-adapter" }
+lenso-runner = { version = "=0.2.20", path = "../lenso-runner" }
 lenso-plugin-authoring = { version = "0.2.0", path = "../lenso-plugin-authoring" }
 lenso-contract-runtime = { version = "0.2.0", path = "../lenso-contract-runtime" }
 futures = "0.3"
@@ -21,7 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 lenso-guest-sdk = { version = "0.5.0", path = "../lenso-guest-sdk" }
-lenso-runtime-codec = { version = "=0.4.3", path = "../lenso-runtime-codec" }
+lenso-runtime-codec = { version = "=0.4.4", path = "../lenso-runtime-codec" }
 
 [dev-dependencies]
-lenso-contract-codegen = { version = "0.10.0", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "0.10.1", path = "../lenso-contract-codegen" }

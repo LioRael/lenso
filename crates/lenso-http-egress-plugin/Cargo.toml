@@ -1,6 +1,6 @@
 [package]
 name = "lenso-http-egress-plugin"
-version = "0.3.5"
+version = "0.3.6"
 description = "Policy-bounded linked Rust HTTP Egress Plugin for Lenso backends."
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,7 @@ lenso-app-plan.workspace = true
 bytes.workspace = true
 futures.workspace = true
 lenso.workspace = true
-lenso-capability-http-client = { version = "0.3.2", path = "../lenso-capability-http-client" }
+lenso-capability-http-client = { version = "0.3.3", path = "../lenso-capability-http-client" }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
 lenso-native-adapter-macros.workspace = true
@@ -46,8 +46,8 @@ hyper = { version = "1", features = ["http2", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 lenso-app-plan.workspace = true
 lenso-runner.workspace = true
-lenso-runtime-codec = { version = "0.4.3", path = "../lenso-runtime-codec" }
-lenso-wasm-component-adapter = { version = "0.2.16", path = "../lenso-wasm-component-adapter" }
+lenso-runtime-codec = { version = "0.4.4", path = "../lenso-runtime-codec" }
+lenso-wasm-component-adapter = { version = "0.2.18", path = "../lenso-wasm-component-adapter" }
 sha2.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "time"] }

@@ -1,6 +1,6 @@
 [package]
 name = "lenso-contract-codegen"
-version = "0.10.0"
+version = "0.10.1"
 edition.workspace = true
 license.workspace = true
 publish = true
@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Generates exact Rust, TypeScript, and WIT bindings from portable Lenso Capability contracts."
 
 [dependencies]
-lenso-contract-authoring = { version = "0.1.1", path = "../lenso-contract-authoring" }
+lenso-contract-authoring = { version = "0.1.2", path = "../lenso-contract-authoring" }
 regex.workspace = true
 serde_json.workspace = true
 semver.workspace = true

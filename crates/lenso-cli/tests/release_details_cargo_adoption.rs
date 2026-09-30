@@ -19,7 +19,7 @@ fn crate_archive() -> Vec<u8> {
     )
     .unwrap();
     let manifest = format!(
-        "[package]\nname='example-web-plugin'\nversion='0.4.5'\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.web'\nroot-slot='tools'\n[dependencies]\nlenso={{ version='=0.5.27', path={:?} }}\nlenso-runner={{ version='=0.2.19', path={:?} }}\nlenso-native-adapter={{ version='=0.3.18', path={:?} }}\n",
+        "[package]\nname='example-web-plugin'\nversion='0.4.5'\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.web'\nroot-slot='tools'\n[dependencies]\nlenso={{ version='=0.5.28', path={:?} }}\nlenso-runner={{ version='=0.2.20', path={:?} }}\nlenso-native-adapter={{ version='=0.3.19', path={:?} }}\n",
         crates.join("lenso").display().to_string(),
         crates.join("lenso-runner").display().to_string(),
         crates.join("lenso-native-adapter").display().to_string(),

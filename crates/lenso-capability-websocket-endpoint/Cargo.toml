@@ -1,6 +1,6 @@
 [package]
 name = "lenso-capability-websocket-endpoint"
-version = "0.1.2"
+version = "0.1.3"
 description = "Portable WebSocket Endpoint Capability contract for Lenso backend Plugins."
 edition.workspace = true
 license.workspace = true
@@ -22,7 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { version = "=0.10.0", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "=0.10.1", path = "../lenso-contract-codegen" }
 serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]

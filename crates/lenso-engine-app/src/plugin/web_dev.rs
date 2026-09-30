@@ -13,7 +13,7 @@ use tokio::process::{Child, Command as TokioCommand};
 
 use crate::watch::SourceWatcher;
 
-use super::scaffold::RELEASED_WEB_HTTP_ENDPOINT_VERSION;
+use super::scaffold::WEB_HTTP_ENDPOINT_VERSION;
 use super::{
     CargoPackage, DevImplementationArg, PluginDevArgs, cargo_target_directory, project_root,
     read_package,
@@ -386,17 +386,17 @@ fn source_from_manifest(manifest: &toml::Value) -> anyhow::Result<FrameworkSourc
 
 fn registry_framework_version(name: &str) -> Option<&'static str> {
     Some(match name {
-        "lenso" => "0.5.27",
+        "lenso" => "0.5.28",
         "lenso-app-plan" => "0.4.6",
-        "lenso-kernel" => "0.3.11",
-        "lenso-native-adapter" => "0.3.18",
-        "lenso-runner" => "0.2.19",
+        "lenso-kernel" => "0.3.12",
+        "lenso-native-adapter" => "0.3.19",
+        "lenso-runner" => "0.2.20",
         "lenso-contract-runtime" => "0.2.0",
-        "lenso-capability-http-endpoint" => RELEASED_WEB_HTTP_ENDPOINT_VERSION,
-        "lenso-capability-http-stream-endpoint" => "0.1.2",
-        "lenso-capability-websocket-endpoint" => "0.1.2",
-        "lenso-web-host" => "0.2.4",
-        "lenso-web-ingress-plugin" => "0.4.9",
+        "lenso-capability-http-endpoint" => WEB_HTTP_ENDPOINT_VERSION,
+        "lenso-capability-http-stream-endpoint" => "0.1.3",
+        "lenso-capability-websocket-endpoint" => "0.1.3",
+        "lenso-web-host" => "0.2.5",
+        "lenso-web-ingress-plugin" => "0.4.10",
         _ => return None,
     })
 }
@@ -425,9 +425,9 @@ fn host_manifest(
     let (app_plan, kernel, native_adapter, web_host, patches) = match framework {
         FrameworkSource::Registry => (
             "\"=0.4.6\"".to_owned(),
-            "\"=0.3.11\"".to_owned(),
-            "\"=0.3.18\"".to_owned(),
-            "\"=0.2.4\"".to_owned(),
+            "\"=0.3.12\"".to_owned(),
+            "\"=0.3.19\"".to_owned(),
+            "\"=0.2.5\"".to_owned(),
             String::new(),
         ),
         FrameworkSource::Git { url, rev } => {
@@ -452,9 +452,9 @@ fn host_manifest(
             }
             (
                 dependency("0.4.6"),
-                dependency("0.3.11"),
-                dependency("0.3.18"),
-                dependency("0.2.4"),
+                dependency("0.3.12"),
+                dependency("0.3.19"),
+                dependency("0.2.5"),
                 patches,
             )
         }
@@ -570,10 +570,10 @@ mod tests {
 
         assert!(name.starts_with("lenso-web-dev-company-greetings-http-"));
         for (name, version) in [
-            ("lenso-web-host", "=0.2.4"),
+            ("lenso-web-host", "=0.2.5"),
             ("lenso-app-plan", "=0.4.6"),
-            ("lenso-kernel", "=0.3.11"),
-            ("lenso-native-adapter", "=0.3.18"),
+            ("lenso-kernel", "=0.3.12"),
+            ("lenso-native-adapter", "=0.3.19"),
         ] {
             assert_eq!(parsed["dependencies"][name].as_str(), Some(version));
         }
@@ -618,7 +618,7 @@ mod tests {
         let manifest = format!(
             r#"[dependencies]
 lenso = {{ version = "=0.5.25", git = "{git}", rev = "{rev}" }}
-lenso-capability-http-endpoint = {{ version = "0.3.4", git = "{git}", rev = "{rev}" }}
+lenso-capability-http-endpoint = {{ version = "0.3.6", git = "{git}", rev = "{rev}" }}
 
 [patch.crates-io]
 lenso = {{ git = "{git}", rev = "{rev}" }}
@@ -668,14 +668,14 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
     }
 
     #[test]
-    fn unpublished_endpoint_api_requires_explicit_git_source_without_registry_fallback() {
+    fn non_cohort_endpoint_api_requires_explicit_git_source_without_registry_fallback() {
         let registry =
-            "[dependencies]\nlenso = \"=0.5.27\"\nlenso-capability-http-endpoint = \"=0.3.5\"\n";
+            "[dependencies]\nlenso = \"=0.5.28\"\nlenso-capability-http-endpoint = \"=0.3.5\"\n";
         assert!(
             source(registry)
                 .unwrap_err()
                 .to_string()
-                .contains("lenso-capability-http-endpoint@0.3.4")
+                .contains("lenso-capability-http-endpoint@0.3.6")
         );
         let rev = "2039cee33d8570e8cf202714a9b87c10fb55548b";
         let manifest = format!(
@@ -703,10 +703,10 @@ lenso-capability-http-endpoint = {{ version = "=0.3.5", git = "https://github.co
             source(old_registry)
                 .unwrap_err()
                 .to_string()
-                .contains("lenso@0.5.27")
+                .contains("lenso@0.5.28")
         );
 
-        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.4\"\n");
+        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.6\"\n");
         assert!(
             source(&mixed)
                 .unwrap_err()
@@ -757,16 +757,16 @@ lenso-capability-http-endpoint = {{ version = "=0.3.5", git = "https://github.co
         let rev = "8e6eb5eb9f468959eea713eab5f20592dfe65a71";
         let git = "https://github.com/LioRael/lenso";
         for (name, version) in [
-            ("lenso-capability-http-stream-endpoint", "0.1.2"),
-            ("lenso-capability-websocket-endpoint", "0.1.2"),
-            ("lenso-web-ingress-plugin", "0.4.9"),
-            ("lenso-runner", "0.2.19"),
+            ("lenso-capability-http-stream-endpoint", "0.1.3"),
+            ("lenso-capability-websocket-endpoint", "0.1.3"),
+            ("lenso-web-ingress-plugin", "0.4.10"),
+            ("lenso-runner", "0.2.20"),
             ("lenso-contract-runtime", "0.2.0"),
         ] {
             let dependency = format!(
                 "{name} = {{ version = \"={version}\", git = \"{git}\", rev = \"{rev}\" }}"
             );
-            let registry_root = format!("[dependencies]\nlenso = \"=0.5.27\"\n{dependency}\n");
+            let registry_root = format!("[dependencies]\nlenso = \"=0.5.28\"\n{dependency}\n");
             let git_root = format!(
                 "[dependencies]\nlenso = {{ version = \"=0.5.25\", git = \"{git}\", rev = \"{rev}\" }}\n{name} = \"={version}\"\n"
             );

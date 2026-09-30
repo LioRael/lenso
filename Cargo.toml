@@ -32,15 +32,15 @@ getrandom = "0.3"
 hex = "0.4"
 hmac = "0.12"
 inventory = "0.3"
-lenso = { path = "crates/lenso", version = "=0.5.27" }
+lenso = { path = "crates/lenso", version = "=0.5.28" }
 lenso-app-plan = { path = "crates/lenso-app-plan", version = "=0.4.6" }
-lenso-contract-authoring = { path = "crates/lenso-contract-authoring", version = "=0.1.1" }
+lenso-contract-authoring = { path = "crates/lenso-contract-authoring", version = "=0.1.2" }
 lenso-contract-runtime = { path = "crates/lenso-contract-runtime", version = "=0.2.0" }
-lenso-kernel = { path = "crates/lenso-kernel", version = "=0.3.11" }
-lenso-native-adapter = { path = "crates/lenso-native-adapter", version = "=0.3.18" }
-lenso-native-adapter-macros = { path = "crates/lenso-native-adapter-macros", version = "=0.2.7" }
+lenso-kernel = { path = "crates/lenso-kernel", version = "=0.3.12" }
+lenso-native-adapter = { path = "crates/lenso-native-adapter", version = "=0.3.19" }
+lenso-native-adapter-macros = { path = "crates/lenso-native-adapter-macros", version = "=0.2.8" }
 lenso-plugin-authoring = { path = "crates/lenso-plugin-authoring", version = "=0.2.0" }
-lenso-runner = { path = "crates/lenso-runner", version = "=0.2.19" }
+lenso-runner = { path = "crates/lenso-runner", version = "=0.2.20" }
 lenso-runtime-conformance = { path = "crates/lenso-runtime-conformance", version = "=0.3.10" }
 http = "1"
 proc-macro2 = "1.0"

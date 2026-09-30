@@ -2,14 +2,14 @@
 
 use std::{collections::BTreeMap, fmt::Write as _, path::Path};
 
-use lenso_contract_authoring::CapabilitySnapshot;
+use lenso_contract_authoring::SourceCapabilitySnapshot;
 use serde_json::{Map, Value, json};
 
 use crate::{CodegenError, check_artifact, load_descriptor, write_artifact};
 
 /// Writes one Descriptor and its package-local Schemas from compiled source types.
 pub fn write_source_snapshot(
-    snapshot: &CapabilitySnapshot,
+    snapshot: &(impl SourceCapabilitySnapshot + ?Sized),
     descriptor_path: &Path,
 ) -> Result<(), CodegenError> {
     for (path, source) in snapshot_artifacts(snapshot, descriptor_path)? {
@@ -20,7 +20,7 @@ pub fn write_source_snapshot(
 
 /// Fails unless every committed Descriptor and Schema byte matches compiled source.
 pub fn check_source_snapshot(
-    snapshot: &CapabilitySnapshot,
+    snapshot: &(impl SourceCapabilitySnapshot + ?Sized),
     descriptor_path: &Path,
 ) -> Result<(), CodegenError> {
     for (path, source) in snapshot_artifacts(snapshot, descriptor_path)? {
@@ -30,18 +30,17 @@ pub fn check_source_snapshot(
 }
 
 fn snapshot_artifacts(
-    snapshot: &CapabilitySnapshot,
+    source: &(impl SourceCapabilitySnapshot + ?Sized),
     descriptor_path: &Path,
 ) -> Result<BTreeMap<std::path::PathBuf, String>, CodegenError> {
+    let snapshot = source.capability_snapshot();
+    let request_admission = source.request_admission();
     if snapshot.operations.is_empty() {
         return Err(CodegenError::InvalidDescriptor {
             detail: "a source Capability must declare at least one Operation".to_owned(),
         });
     }
-    if snapshot
-        .request_admission
-        .is_some_and(|admission| admission.max_concurrency == 0)
-    {
+    if request_admission.is_some_and(|admission| admission.max_concurrency == 0) {
         return Err(CodegenError::InvalidDescriptor {
             detail: "request_admission max_concurrency must be positive".to_owned(),
         });
@@ -99,7 +98,7 @@ fn snapshot_artifacts(
         ),
         ("operations".to_owned(), Value::Array(operations)),
     ]));
-    if let Some(admission) = snapshot.request_admission {
+    if let Some(admission) = request_admission {
         descriptor["request_admission"] = json!({
             "queue_capacity": admission.queue_capacity,
             "max_concurrency": admission.max_concurrency,

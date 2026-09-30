@@ -163,12 +163,12 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(manifest.contains("root-slot = \"web\""));
     let parsed: toml::Value = toml::from_str(manifest).unwrap();
     for (name, version) in [
-        ("lenso", "=0.5.27"),
-        ("lenso-capability-http-endpoint", "=0.3.4"),
+        ("lenso", "=0.5.28"),
+        ("lenso-capability-http-endpoint", "=0.3.6"),
         ("lenso-app-plan", "=0.4.6"),
-        ("lenso-kernel", "=0.3.11"),
-        ("lenso-test", "=0.1.2"),
-        ("lenso-web-host", "=0.2.4"),
+        ("lenso-kernel", "=0.3.12"),
+        ("lenso-test", "=0.1.3"),
+        ("lenso-web-host", "=0.2.5"),
     ] {
         let section = if matches!(name, "lenso" | "lenso-capability-http-endpoint") {
             "dependencies"
@@ -207,7 +207,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(golden_path.contains("namespace-qualified"));
     assert!(golden_path.contains("select provider Instances in Plugin Root"));
     assert!(golden_path.contains("open_stream"));
-    assert!(golden_path.contains("lenso-test@0.1.2"));
+    assert!(golden_path.contains("lenso-test@0.1.3"));
     assert!(golden_path.contains("exact registry versions"));
     assert!(golden_path.contains("must all be published"));
     assert!(!source.contains("NativeModuleFactory"));

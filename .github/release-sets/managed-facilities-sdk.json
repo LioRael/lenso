@@ -1,0 +1,142 @@
+[
+  {
+    "package_name": "lenso",
+    "version": "0.5.28"
+  },
+  {
+    "package_name": "lenso-agent-tool-cli-plugin",
+    "version": "0.1.1"
+  },
+  {
+    "package_name": "lenso-browser-driver",
+    "version": "0.1.10"
+  },
+  {
+    "package_name": "lenso-bun-adapter",
+    "version": "0.1.17"
+  },
+  {
+    "package_name": "lenso-capability-configuration-source",
+    "version": "0.1.1"
+  },
+  {
+    "package_name": "lenso-capability-http-client",
+    "version": "0.3.3"
+  },
+  {
+    "package_name": "lenso-capability-http-endpoint",
+    "version": "0.3.6"
+  },
+  {
+    "package_name": "lenso-capability-http-stream-endpoint",
+    "version": "0.1.3"
+  },
+  {
+    "package_name": "lenso-capability-websocket-endpoint",
+    "version": "0.1.3"
+  },
+  {
+    "package_name": "lenso-cli",
+    "version": "0.6.5"
+  },
+  {
+    "package_name": "lenso-contract-authoring",
+    "version": "0.1.2"
+  },
+  {
+    "package_name": "lenso-contract-authoring-macros",
+    "version": "0.1.1"
+  },
+  {
+    "package_name": "lenso-contract-codegen",
+    "version": "0.10.1"
+  },
+  {
+    "package_name": "lenso-dylib-adapter",
+    "version": "0.2.11"
+  },
+  {
+    "package_name": "lenso-engine-app",
+    "version": "0.3.2"
+  },
+  {
+    "package_name": "lenso-engine-authoring",
+    "version": "0.2.4"
+  },
+  {
+    "package_name": "lenso-engine-runtime",
+    "version": "0.2.1"
+  },
+  {
+    "package_name": "lenso-host-runtime",
+    "version": "0.1.10"
+  },
+  {
+    "package_name": "lenso-http-auth",
+    "version": "0.2.5"
+  },
+  {
+    "package_name": "lenso-http-egress-plugin",
+    "version": "0.3.6"
+  },
+  {
+    "package_name": "lenso-kernel",
+    "version": "0.3.12"
+  },
+  {
+    "package_name": "lenso-native-adapter",
+    "version": "0.3.19"
+  },
+  {
+    "package_name": "lenso-native-adapter-macros",
+    "version": "0.2.8"
+  },
+  {
+    "package_name": "lenso-openapi-plugin",
+    "version": "0.2.6"
+  },
+  {
+    "package_name": "lenso-plugin-control-plane",
+    "version": "0.4.26"
+  },
+  {
+    "package_name": "lenso-process-adapter",
+    "version": "0.3.15"
+  },
+  {
+    "package_name": "lenso-quickjs-adapter",
+    "version": "0.2.11"
+  },
+  {
+    "package_name": "lenso-remote-adapter",
+    "version": "0.1.10"
+  },
+  {
+    "package_name": "lenso-runner",
+    "version": "0.2.20"
+  },
+  {
+    "package_name": "lenso-runtime-codec",
+    "version": "0.4.4"
+  },
+  {
+    "package_name": "lenso-test",
+    "version": "0.1.3"
+  },
+  {
+    "package_name": "lenso-wasm-component-adapter",
+    "version": "0.2.18"
+  },
+  {
+    "package_name": "lenso-web-host",
+    "version": "0.2.5"
+  },
+  {
+    "package_name": "lenso-web-ingress-plugin",
+    "version": "0.4.10"
+  },
+  {
+    "package_name": "lenso-workers-driver",
+    "version": "0.1.2"
+  }
+]

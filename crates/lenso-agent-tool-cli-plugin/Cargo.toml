@@ -1,6 +1,6 @@
 [package]
 name = "lenso-agent-tool-cli-plugin"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 description = "Host-owned CLI ingress for explicitly bound Agent Tool providers"
@@ -11,7 +11,7 @@ plugin-id = "lenso.agent.tool-cli"
 root-slot = "agent-tool-cli"
 
 [dependencies]
-lenso = { path = "../lenso", version = "=0.5.27" }
+lenso = { path = "../lenso", version = "=0.5.28" }
 lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.6" }
 lenso-capability-agent-tool-provider = "=0.2.2"
 serde_json = "1"

@@ -528,8 +528,8 @@ mod tests {
     #[test]
     fn wasm_host_preserves_pinned_sources_and_disables_native_transport() {
         let manifest = json!({"package":{"name":"native"},"workspace":{},"dependencies":{
-            "lenso-kernel":"=0.3.11", "lenso-runner":"=0.2.19", "tokio":"1.52",
-            "lenso-web-ingress-plugin":{"version":"=0.4.9","git":"https://example.test/framework","rev":"exact"},
+            "lenso-kernel":"=0.3.12", "lenso-runner":"=0.2.20", "tokio":"1.52",
+            "lenso-web-ingress-plugin":{"version":"=0.4.10","git":"https://example.test/framework","rev":"exact"},
             "local_plugin_1":{"path":"/owner/plugin"},
             "root_plugin_2":{"path":"/owner/auth","default-features":false,"features":["workers"]}
         },"patch":{"crates-io":{"lenso-kernel":{"path":"/owner/framework/crates/lenso-kernel"}}}});

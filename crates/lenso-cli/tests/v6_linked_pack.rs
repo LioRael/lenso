@@ -47,7 +47,7 @@ fn package_archive(root: &std::path::Path) -> std::path::PathBuf {
         writeln!(&mut patches, "{name}={{git='{url}',rev='{revision}'}}").unwrap();
     }
     let manifest = format!(
-        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.linked-web'\nroot-slot='web'\n[dependencies]\nlenso={{version='=0.5.27',git='{url}',rev='{revision}'}}\n[patch.crates-io]\n{patches}"
+        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.linked-web'\nroot-slot='web'\n[dependencies]\nlenso={{version='=0.5.28',git='{url}',rev='{revision}'}}\n[patch.crates-io]\n{patches}"
     );
     let source = b"#[lenso::plugin(consumer)]\n#[derive(Clone, Debug, Default)]\nstruct Web { value: std::rc::Rc<std::cell::Cell<u8>> }\npub fn link() { link_plugin(); }\n";
     fs::write(root.join("Cargo.toml"), &manifest).unwrap();
