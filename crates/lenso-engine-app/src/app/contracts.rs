@@ -723,9 +723,9 @@ projection = "typescript"
 output = "generated/text.ts"
 [dependencies]
 schemars = "1.2"
-lenso-contract-authoring = "=0.1.1"
+lenso-contract-authoring = "=0.1.2"
 [build-dependencies]
-lenso-contract-codegen = "=0.10.0"
+lenso-contract-codegen = "=0.10.1"
 "#,
         )
         .unwrap();

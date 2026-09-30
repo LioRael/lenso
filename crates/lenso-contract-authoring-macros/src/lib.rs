@@ -95,20 +95,7 @@ fn expand_capability(
             "Capability `id` excludes the major; declare it with `major`",
         ));
     }
-    let id = &arguments.id;
     let major = arguments.major.base10_parse::<u64>()?;
-    let version = &arguments.version;
-    let portable = &arguments.portable;
-    let cross_lane_transfer = &arguments.cross_lane_transfer;
-    let request_admission = arguments.request_admission.as_ref().map_or_else(
-        || quote!(None),
-        |(queue, concurrency)| {
-            quote!(Some(::lenso_contract_authoring::RequestAdmissionSnapshot {
-                queue_capacity: #queue,
-                max_concurrency: #concurrency,
-            }))
-        },
-    );
     let mut operations = Vec::new();
 
     for item in &mut contract.items {
@@ -151,22 +138,53 @@ fn expand_capability(
         ));
     }
 
+    let (snapshot_type, snapshot) = snapshot_expression(arguments, major, &operations);
     Ok(quote! {
         #[allow(async_fn_in_trait)]
         #contract
 
         #[doc(hidden)]
-        pub fn __lenso_capability_snapshot() -> ::lenso_contract_authoring::CapabilitySnapshot {
-            ::lenso_contract_authoring::CapabilitySnapshot {
-                capability_id: format!("{}@{}", #id, #major),
-                version: #version.to_owned(),
-                portable: #portable,
-                cross_lane_transfer: #cross_lane_transfer,
-                request_admission: #request_admission,
-                operations: vec![#(#operations),*],
-            }
+        pub fn __lenso_capability_snapshot() -> #snapshot_type {
+            #snapshot
         }
     })
+}
+
+fn snapshot_expression(
+    arguments: &CapabilityArguments,
+    major: u64,
+    operations: &[proc_macro2::TokenStream],
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    let id = &arguments.id;
+    let version = &arguments.version;
+    let portable = &arguments.portable;
+    let cross_lane_transfer = &arguments.cross_lane_transfer;
+    let base_snapshot = quote! {
+        ::lenso_contract_authoring::CapabilitySnapshot {
+            capability_id: format!("{}@{}", #id, #major),
+            version: #version.to_owned(),
+            portable: #portable,
+            cross_lane_transfer: #cross_lane_transfer,
+            operations: vec![#(#operations),*],
+        }
+    };
+    match arguments.request_admission.as_ref() {
+        None => (
+            quote!(::lenso_contract_authoring::CapabilitySnapshot),
+            base_snapshot,
+        ),
+        Some((queue, concurrency)) => (
+            quote!(::lenso_contract_authoring::AdmittedCapabilitySnapshot),
+            quote! {
+                #base_snapshot.with_request_admission(
+                    ::lenso_contract_authoring::RequestAdmissionSnapshot {
+                        queue_capacity: #queue,
+                        max_concurrency: #concurrency,
+                    },
+                )
+            },
+        ),
+    }
 }
 
 struct OperationArguments {

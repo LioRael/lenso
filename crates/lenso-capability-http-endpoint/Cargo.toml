@@ -1,6 +1,6 @@
 [package]
 name = "lenso-capability-http-endpoint"
-version = "0.3.5"
+version = "0.3.6"
 description = "Portable HTTP Endpoint Capability contract for Lenso backend Plugins."
 edition.workspace = true
 license.workspace = true
@@ -27,10 +27,10 @@ lenso-capability-http-endpoint-macros = { path = "../lenso-capability-http-endpo
 lenso-contract-authoring.workspace = true
 lenso-contract-runtime = { version = "0.2.0", path = "../lenso-contract-runtime" }
 lenso-guest-sdk = { version = "0.5.0", path = "../lenso-guest-sdk" }
-lenso-kernel = { version = "=0.3.11", path = "../lenso-kernel" }
+lenso-kernel = { version = "=0.3.12", path = "../lenso-kernel" }
 lenso-plugin-authoring = { version = "0.2.0", path = "../lenso-plugin-authoring" }
 lenso-process-sdk = { version = "0.2.0", path = "../lenso-process-sdk", optional = true }
-lenso-runtime-codec = { version = "0.4.3", path = "../lenso-runtime-codec" }
+lenso-runtime-codec = { version = "0.4.4", path = "../lenso-runtime-codec" }
 serde.workspace = true
 serde_json.workspace = true
 serde_urlencoded.workspace = true
@@ -40,7 +40,7 @@ schemars.workspace = true
 lenso.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { version = "=0.10.0", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "=0.10.1", path = "../lenso-contract-codegen" }
 serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]

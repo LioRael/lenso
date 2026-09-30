@@ -38,8 +38,53 @@ pub struct CapabilitySnapshot {
     pub version: String,
     pub portable: bool,
     pub cross_lane_transfer: bool,
-    pub request_admission: Option<RequestAdmissionSnapshot>,
     pub operations: Vec<OperationSnapshot>,
+}
+
+impl CapabilitySnapshot {
+    /// Adds explicit bounded admission without changing the base snapshot layout.
+    pub fn with_request_admission(
+        self,
+        request_admission: RequestAdmissionSnapshot,
+    ) -> AdmittedCapabilitySnapshot {
+        AdmittedCapabilitySnapshot {
+            capability: self,
+            request_admission,
+        }
+    }
+}
+
+/// A source Capability with an explicitly selected request admission bound.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AdmittedCapabilitySnapshot {
+    pub capability: CapabilitySnapshot,
+    pub request_admission: RequestAdmissionSnapshot,
+}
+
+/// Supplies source facts for the base and explicitly admitted snapshot forms.
+pub trait SourceCapabilitySnapshot {
+    fn capability_snapshot(&self) -> &CapabilitySnapshot;
+    fn request_admission(&self) -> Option<RequestAdmissionSnapshot>;
+}
+
+impl SourceCapabilitySnapshot for CapabilitySnapshot {
+    fn capability_snapshot(&self) -> &CapabilitySnapshot {
+        self
+    }
+
+    fn request_admission(&self) -> Option<RequestAdmissionSnapshot> {
+        None
+    }
+}
+
+impl SourceCapabilitySnapshot for AdmittedCapabilitySnapshot {
+    fn capability_snapshot(&self) -> &CapabilitySnapshot {
+        &self.capability
+    }
+
+    fn request_admission(&self) -> Option<RequestAdmissionSnapshot> {
+        Some(self.request_admission)
+    }
 }
 
 /// Explicit bounded request admission owned by a Capability's source contract.

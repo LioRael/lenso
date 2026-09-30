@@ -1,6 +1,6 @@
 [package]
 name = "lenso-web-host"
-version = "0.2.4"
+version = "0.2.5"
 description = "Linked native Host helper that starts Web Ingress and bound HTTP Endpoint Plugins."
 edition.workspace = true
 license.workspace = true
@@ -15,13 +15,13 @@ bytes = "1"
 futures.workspace = true
 http = "1"
 lenso-app-plan.workspace = true
-lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "0.3.4" }
-lenso-capability-http-stream-endpoint = { path = "../lenso-capability-http-stream-endpoint", version = "0.1.2" }
-lenso-capability-websocket-endpoint = { path = "../lenso-capability-websocket-endpoint", version = "0.1.2" }
+lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "0.3.6" }
+lenso-capability-http-stream-endpoint = { path = "../lenso-capability-http-stream-endpoint", version = "0.1.3" }
+lenso-capability-websocket-endpoint = { path = "../lenso-capability-websocket-endpoint", version = "0.1.3" }
 lenso-kernel.workspace = true
 lenso-native-adapter.workspace = true
 lenso-runner.workspace = true
-lenso-web-ingress-plugin = { path = "../lenso-web-ingress-plugin", version = "=0.4.9" }
+lenso-web-ingress-plugin = { path = "../lenso-web-ingress-plugin", version = "=0.4.10" }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "signal", "time"] }
@@ -30,8 +30,8 @@ tower = { version = "0.5", features = ["util"] }
 [dev-dependencies]
 lenso-auth-sdk = { version = "0.2.3" }
 lenso-capability-auth = { version = "0.2.0" }
-lenso-http-auth = { path = "../lenso-http-auth", version = "0.2.4" }
-lenso-openapi-plugin = { path = "../lenso-openapi-plugin", version = "0.2.5" }
+lenso-http-auth = { path = "../lenso-http-auth", version = "0.2.5" }
+lenso-openapi-plugin = { path = "../lenso-openapi-plugin", version = "0.2.6" }
 lenso-web-duplex-fixture = { path = "../../tests/fixtures/duplex-endpoint-plugin" }
 lenso-web-greetings-plugin-example = { path = "../../examples/greetings-http-plugin" }
 lenso-web-http-parity-fixture = { path = "../../tests/fixtures/http-parity-plugin" }

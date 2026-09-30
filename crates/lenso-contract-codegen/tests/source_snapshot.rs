@@ -12,7 +12,6 @@ fn snapshot() -> CapabilitySnapshot {
         version: "1.0.0".to_owned(),
         portable: true,
         cross_lane_transfer: false,
-        request_admission: None,
         operations: vec![OperationSnapshot {
             name: "run".to_owned(),
             interaction: "request".to_owned(),
@@ -63,7 +62,7 @@ fn source_snapshots_are_deterministic_and_drift_checked() {
 fn explicit_admission_is_locked_digest_bound_and_projected() {
     let root = tempfile::tempdir().unwrap();
     let descriptor = root.path().join("capability.json");
-    let mut source = snapshot();
+    let source = snapshot();
     write_source_snapshot(&source, &descriptor).unwrap();
     let default = generate(&descriptor).unwrap();
     assert!(
@@ -71,7 +70,7 @@ fn explicit_admission_is_locked_digest_bound_and_projected() {
             .unwrap()
             .contains("request_admission")
     );
-    source.request_admission = Some(RequestAdmissionSnapshot {
+    let mut source = source.with_request_admission(RequestAdmissionSnapshot {
         queue_capacity: 16,
         max_concurrency: 2,
     });
@@ -96,7 +95,7 @@ fn explicit_admission_is_locked_digest_bound_and_projected() {
     assert_eq!(provided["default_admission"]["max_concurrency"], 2);
     assert_eq!(provided["capability_id"], "example.derived@1");
     let bytes = std::fs::read(&descriptor).unwrap();
-    source.request_admission.as_mut().unwrap().max_concurrency = 0;
+    source.request_admission.max_concurrency = 0;
     assert!(write_source_snapshot(&source, &descriptor).is_err());
     assert_eq!(std::fs::read(&descriptor).unwrap(), bytes);
 }

@@ -128,9 +128,9 @@ pub(super) fn generate(
         ("sha2", "0.10"),
         ("tempfile", "3"),
         ("lenso-app-plan", "=0.4.6"),
-        ("lenso-kernel", "=0.3.11"),
-        ("lenso-native-adapter", "=0.3.18"),
-        ("lenso-runner", "=0.2.19"),
+        ("lenso-kernel", "=0.3.12"),
+        ("lenso-native-adapter", "=0.3.19"),
+        ("lenso-runner", "=0.2.20"),
     ] {
         dependencies.insert(name.into(), json!(version));
         if name.starts_with("lenso-") {
@@ -401,10 +401,10 @@ pub(super) fn generate(
             ("lenso-runtime-codec", "=0.3.4"),
         ],
         "0.4" => [
-            ("lenso-bun-adapter", "=0.1.16"),
-            ("lenso-process-adapter", "=0.3.14"),
-            ("lenso-wasm-component-adapter", "=0.2.17"),
-            ("lenso-runtime-codec", "=0.4.3"),
+            ("lenso-bun-adapter", "=0.1.17"),
+            ("lenso-process-adapter", "=0.3.15"),
+            ("lenso-wasm-component-adapter", "=0.2.18"),
+            ("lenso-runtime-codec", "=0.4.4"),
         ],
         other => bail!("unsupported typed Codec cohort {other}; use a custom Host"),
     };
@@ -434,7 +434,7 @@ pub(super) fn generate(
     if cohort == "0.3" {
         dependencies.insert(
             "native-resources".into(),
-            json!({"package":"lenso-runtime-codec","version":"=0.4.3"}),
+            json!({"package":"lenso-runtime-codec","version":"=0.4.4"}),
         );
         host_framework_dependencies.insert("native-resources".into());
     }
@@ -1191,14 +1191,14 @@ fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
             let (dependency, _) = local_framework_dependency(
                 path.parent().context("Endpoint crates directory")?,
                 "lenso-web-ingress-plugin",
-                "=0.4.9",
+                "=0.4.10",
             )?;
             return Ok(dependency);
         }
     }
     // A registry Endpoint or standalone local package uses the matching
     // published Ingress, recorded exactly in the generated Cargo lock.
-    Ok(json!("=0.4.9"))
+    Ok(json!("=0.4.10"))
 }
 
 fn codec_name(capability: &str) -> anyhow::Result<String> {
@@ -1732,7 +1732,7 @@ mod tests {
             ])
         );
         let mut local = BTreeMap::new();
-        collect_local_lenso_patch(&mut local, &json!({"id":"codegen", "name":"lenso-contract-codegen", "version":"0.10.0", "source":null, "manifest_path":"/approved/lenso/crates/lenso-contract-codegen/Cargo.toml"})).unwrap();
+        collect_local_lenso_patch(&mut local, &json!({"id":"codegen", "name":"lenso-contract-codegen", "version":"0.10.1", "source":null, "manifest_path":"/approved/lenso/crates/lenso-contract-codegen/Cargo.toml"})).unwrap();
         let patches = merge_lenso_patches(local, &GitLensoSources::default(), false).unwrap();
         assert_eq!(
             patches["lenso-contract-codegen"]["path"],
@@ -1812,7 +1812,7 @@ mod tests {
             contract_dependency_alias(
                 "lenso.http.endpoint@1",
                 1,
-                &json!({"package": "lenso-capability-http-endpoint", "version": "0.3.4"}),
+                &json!({"package": "lenso-capability-http-endpoint", "version": "0.3.6"}),
                 Some(&web_contract),
             )
             .is_err()
@@ -1837,10 +1837,10 @@ mod tests {
             json!({"name":"lenso-auth-sdk","version":"0.2.4","id":"auth-sdk", "source":"git+https://git.example/auth?rev=auth-revision#auth-revision"}),
             json!({"name":"lenso-console-plugin","version":"0.4.0","id":"console", "source":"git+https://git.example/console?rev=console-revision#console-revision"}),
             json!({"name":"lenso-agent-management-plugin","version":"0.3.0","id":"agent", "source":"git+https://git.example/agent?rev=agent-revision#agent-revision"}),
-            json!({"name":"lenso-native-adapter","version":"0.3.18","id":"adapter", "source":format!("git+{git}?rev={rev}#{rev}")}),
-            json!({"name":"lenso-contract-codegen","version":"0.10.0","id":"codegen", "source":format!("git+{git}?rev={rev}#{rev}")}),
-            json!({"name":"lenso","version":"0.5.27","id":"facade", "source":format!("git+{git}?rev={rev}#{rev}")}),
-            json!({"name":"lenso-kernel","version":"0.3.11","id":"kernel", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            json!({"name":"lenso-native-adapter","version":"0.3.19","id":"adapter", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            json!({"name":"lenso-contract-codegen","version":"0.10.1","id":"codegen", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            json!({"name":"lenso","version":"0.5.28","id":"facade", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            json!({"name":"lenso-kernel","version":"0.3.12","id":"kernel", "source":format!("git+{git}?rev={rev}#{rev}")}),
         ];
         for reverse in [false, true] {
             let mut selected = GitLensoSources::default();
@@ -1887,8 +1887,8 @@ mod tests {
     fn git_framework_selection_rejects_conflicts_before_and_after_anchoring() {
         for adapter_first in [false, true] {
             let mut selected = GitLensoSources::default();
-            let facade = json!({"name":"lenso","version":"0.5.27","id":"facade", "source":"git+https://git.example/framework?rev=current#current"});
-            let adapter = json!({"name":"lenso-native-adapter","version":"0.3.18","id":"adapter", "source":"git+https://git.example/framework?rev=old#old"});
+            let facade = json!({"name":"lenso","version":"0.5.28","id":"facade", "source":"git+https://git.example/framework?rev=current#current"});
+            let adapter = json!({"name":"lenso-native-adapter","version":"0.3.19","id":"adapter", "source":"git+https://git.example/framework?rev=old#old"});
             let (first, second) = if adapter_first {
                 (&adapter, &facade)
             } else {
@@ -1905,13 +1905,13 @@ mod tests {
         let mut selected = GitLensoSources::default();
         collect_git_lenso_source(
             &mut selected,
-            &json!({"name":"lenso","version":"0.5.27","id":"facade", "source":"git+https://git.example/framework?rev=current#current"}),
+            &json!({"name":"lenso","version":"0.5.28","id":"facade", "source":"git+https://git.example/framework?rev=current#current"}),
         )
         .unwrap();
         assert!(
             collect_git_lenso_source(
                 &mut selected,
-                &json!({"name":"lenso-kernel","version":"0.3.11","id":"kernel", "source":"git+https://git.example/other-framework?rev=current#current"}),
+                &json!({"name":"lenso-kernel","version":"0.3.12","id":"kernel", "source":"git+https://git.example/other-framework?rev=current#current"}),
             )
             .unwrap_err()
             .to_string()
@@ -2010,7 +2010,7 @@ mod tests {
             &mut selected,
             &json!({
                 "name": "lenso-kernel",
-                "version": "0.3.11",
+                "version": "0.3.12",
                 "id": "git-kernel-other-revision",
                 "source": format!("git+{git}?rev={other_rev}#{other_rev}"),
             }),
@@ -2129,7 +2129,7 @@ mod tests {
         std::fs::write(
             &lock,
             format!(
-                "{git_package}\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.11\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.11\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
+                "{git_package}\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.12\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n\n[[package]]\nname = \"lenso-kernel\"\nversion = \"0.3.12\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n"
             ),
         )
         .unwrap();
@@ -2174,7 +2174,7 @@ mod tests {
                 .contains("generated Host resolved conflicting lenso-runtime-codec")
         );
 
-        let unsupported_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        let unsupported_codec = "[[package]]\nname = \"lenso-runtime-codec\"\nversion = \"0.4.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
         std::fs::write(&lock, format!("{git_codec}\n{unsupported_codec}")).unwrap();
         let error = verify_git_lenso_lock(&lock, &selected).unwrap_err();
         assert!(
@@ -2220,10 +2220,10 @@ mod tests {
         let mut selected = selected_git_framework_fixture(rev);
         collect_git_lenso_source(
             &mut selected,
-            &json!({"name":"lenso-contract-codegen","version":"0.10.0","id":"selected-generator", "source":format!("git+{git}?rev={rev}#{rev}")}),
+            &json!({"name":"lenso-contract-codegen","version":"0.10.1","id":"selected-generator", "source":format!("git+{git}?rev={rev}#{rev}")}),
         ).unwrap();
         let exact = format!(
-            "[[package]]\nname = \"lenso-contract-codegen\"\nversion = \"0.10.0\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n"
+            "[[package]]\nname = \"lenso-contract-codegen\"\nversion = \"0.10.1\"\nsource = \"git+{git}?rev={rev}#{rev}\"\n"
         );
         let tools = r#"
 [[package]]
@@ -2233,7 +2233,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "lenso-contract-codegen"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 "#;
         std::fs::write(&lock, format!("{exact}\n{tools}")).unwrap();
@@ -2462,7 +2462,7 @@ source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
             ("local_plugin_0".into(), vendor.clone()),
             (
                 "local_plugin_1".into(),
-                json!({"package":"lenso-kernel","version":"=0.3.11"}),
+                json!({"package":"lenso-kernel","version":"=0.3.12"}),
             ),
         ]);
         let framework = BTreeSet::from([
@@ -2764,7 +2764,7 @@ source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
         std::fs::create_dir_all(&ingress).unwrap();
         std::fs::write(
             ingress.join("Cargo.toml"),
-            "[package]\nname = \"lenso-web-ingress-plugin\"\nversion = \"0.4.9\"\n",
+            "[package]\nname = \"lenso-web-ingress-plugin\"\nversion = \"0.4.10\"\n",
         )
         .unwrap();
         let dependency = web_ingress_dependency(&json!({
@@ -2773,16 +2773,16 @@ source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
         }))
         .unwrap();
         assert_eq!(dependency["path"], ingress.to_string_lossy().as_ref());
-        assert_eq!(dependency["version"], "=0.4.9");
+        assert_eq!(dependency["version"], "=0.4.10");
     }
 
     #[test]
     fn registry_endpoint_uses_the_web_host_ingress_version() {
         let dependency = web_ingress_dependency(&json!({
             "package": "lenso-capability-http-endpoint",
-            "version": "=0.3.4"
+            "version": "=0.3.6"
         }))
         .unwrap();
-        assert_eq!(dependency, json!("=0.4.9"));
+        assert_eq!(dependency, json!("=0.4.10"));
     }
 }

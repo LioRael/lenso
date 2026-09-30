@@ -1,6 +1,6 @@
 [package]
 name = "lenso-cli"
-version = "0.6.4"
+version = "0.6.5"
 publish = true
 edition = "2024"
 license = "MIT"
@@ -57,14 +57,14 @@ rmcp = { version = "=3.4.0", default-features = false, features = ["macros", "se
 schemars = { workspace = true, optional = true }
 tempfile = { version = "3.23", optional = true }
 lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.6" }
-lenso-engine-authoring = { path = "../lenso-engine-authoring", version = "=0.2.3" }
+lenso-engine-authoring = { path = "../lenso-engine-authoring", version = "=0.2.4" }
 lenso-engine = { path = "../lenso-engine", version = "=0.2.0", optional = true }
-lenso-engine-app = { path = "../lenso-engine-app", version = "=0.3.1", optional = true }
+lenso-engine-app = { path = "../lenso-engine-app", version = "=0.3.2", optional = true }
 lenso-engine-markdown = { path = "../lenso-engine-markdown", version = "=0.2.0", optional = true }
-lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "=0.2.0", optional = true }
+lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "=0.2.1", optional = true }
 
 [dev-dependencies]
-lenso-bun-adapter = { version = "=0.1.16", path = "../lenso-bun-adapter" }
+lenso-bun-adapter = { version = "=0.1.17", path = "../lenso-bun-adapter" }
 lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.6.1" }
 lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.2" }
 ed25519-dalek = "2.2"

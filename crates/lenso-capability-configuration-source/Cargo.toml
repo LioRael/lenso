@@ -1,6 +1,6 @@
 [package]
 name = "lenso-capability-configuration-source"
-version = "0.1.0"
+version = "0.1.1"
 description = "Portable bootstrap Configuration Source Capability for Lenso Hosts"
 edition.workspace = true
 license.workspace = true
@@ -17,15 +17,15 @@ output = "src/generated.rs"
 futures.workspace = true
 lenso-contract-runtime = { path = "../lenso-contract-runtime", version = "0.2.0" }
 lenso-guest-sdk = { path = "../lenso-guest-sdk", version = "0.5.0" }
-lenso-kernel = { path = "../lenso-kernel", version = "=0.3.11" }
+lenso-kernel = { path = "../lenso-kernel", version = "=0.3.12" }
 lenso-plugin-sdk = { path = "../lenso-plugin-sdk", version = "0.4.5" }
 lenso-plugin-authoring = { path = "../lenso-plugin-authoring", version = "=0.2.0" }
-lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.3" }
+lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.4" }
 serde.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { path = "../lenso-contract-codegen", version = "=0.10.0" }
+lenso-contract-codegen = { path = "../lenso-contract-codegen", version = "=0.10.1" }
 
 [lints]
 workspace = true

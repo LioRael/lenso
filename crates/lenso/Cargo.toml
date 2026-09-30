@@ -1,6 +1,6 @@
 [package]
 name = "lenso"
-version = "0.5.27"
+version = "0.5.28"
 edition.workspace = true
 license.workspace = true
 publish = true
@@ -16,8 +16,8 @@ root-slot = "test"
 futures.workspace = true
 lenso-kernel.workspace = true
 lenso-plugin-authoring = { version = "0.2.0", path = "../lenso-plugin-authoring" }
-lenso-plugin-control-plane = { version = "0.4.25", path = "../lenso-plugin-control-plane", optional = true }
-lenso-native-adapter = { version = "=0.3.18", path = "../lenso-native-adapter" }
+lenso-plugin-control-plane = { version = "0.4.26", path = "../lenso-plugin-control-plane", optional = true }
+lenso-native-adapter = { version = "=0.3.19", path = "../lenso-native-adapter" }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, optional = true }
@@ -32,8 +32,8 @@ required-features = ["host"]
 
 [dev-dependencies]
 lenso-app-plan.workspace = true
-lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.3" }
-lenso-test = { path = "../lenso-test", version = "=0.1.2" }
+lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.4" }
+lenso-test = { path = "../lenso-test", version = "=0.1.3" }
 
 [lints]
 workspace = true
