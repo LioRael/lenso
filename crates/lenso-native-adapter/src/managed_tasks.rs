@@ -73,7 +73,7 @@ impl ManagedTasks {
 /// Failure returned when a Plugin cannot spawn generation-owned work.
 #[derive(Debug)]
 pub enum ManagedTasksError {
-    /// The Plugin has not entered activation.
+    /// This field or lifecycle phase has no active task scope.
     Inactive,
     /// The connected Kernel task scope rejected the task.
     Scope(ManagedTaskError),

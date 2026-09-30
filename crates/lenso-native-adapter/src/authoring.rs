@@ -2,13 +2,14 @@ use std::{
     any::{Any, TypeId},
     cell::{Cell, OnceCell},
     fmt,
+    future::Future,
     rc::Rc,
     time::Duration,
 };
 
 use lenso_kernel::{
-    ActivateContext, CancellationToken, DeactivateContext, PluginDependencies, PluginFuture,
-    PluginLifecycle, RuntimeFailure,
+    ActivateContext, CancellationToken, DeactivateContext, ManagedTask, ManagedTaskScope,
+    PluginDependencies, PluginFuture, PluginLifecycle, ReadinessContext, RuntimeFailure,
 };
 
 /// Bounded cooperative context available to complete-object construction and cleanup.
@@ -16,6 +17,8 @@ use lenso_kernel::{
 pub struct LifecycleContext {
     cancellation: CancellationToken,
     remaining_budget: Option<Duration>,
+    readiness: Option<ReadinessContext>,
+    tasks: Option<ManagedTaskScope>,
 }
 
 impl LifecycleContext {
@@ -23,6 +26,8 @@ impl LifecycleContext {
         Self {
             cancellation: context.cancellation(),
             remaining_budget: None,
+            readiness: Some(context.readiness()),
+            tasks: Some(context.tasks().clone()),
         }
     }
 
@@ -30,6 +35,8 @@ impl LifecycleContext {
         Self {
             cancellation: context.cancellation(),
             remaining_budget: context.remaining_budget(),
+            readiness: None,
+            tasks: None,
         }
     }
 
@@ -41,6 +48,31 @@ impl LifecycleContext {
     /// Returns the Host cleanup budget remaining when one is configured.
     pub const fn remaining_budget(&self) -> Option<Duration> {
         self.remaining_budget
+    }
+
+    /// Returns this generation's Ready Gate and declared dependencies during construction.
+    ///
+    /// Pass this context to managed work and wait there. Waiting inside the constructor
+    /// would prevent the App from completing activation and opening its Ready Gate.
+    pub fn readiness(&self) -> Result<ReadinessContext, RuntimeFailure> {
+        self.readiness
+            .clone()
+            .ok_or(RuntimeFailure::AdmissionClosed)
+    }
+
+    /// Spawns work in the constructing Plugin generation's existing task scope.
+    ///
+    /// Cleanup contexts reject new tasks. Retained construction contexts also reject
+    /// tasks once the Kernel closes their generation scope.
+    pub fn spawn_local(
+        &self,
+        task: impl Future<Output = ()> + 'static,
+    ) -> Result<ManagedTask, crate::ManagedTasksError> {
+        self.tasks
+            .as_ref()
+            .ok_or(crate::ManagedTasksError::Inactive)?
+            .spawn_local(Box::pin(task))
+            .map_err(crate::ManagedTasksError::Scope)
     }
 }
 
