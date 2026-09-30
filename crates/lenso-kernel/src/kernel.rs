@@ -235,27 +235,6 @@ impl Kernel {
             },
         );
         let prepared_instances = prepare_native_plugins(&runtime).await?;
-        if let Err(error) = construct_native_plugins(&runtime).await {
-            let cleanup_error = deactivate_in_reverse(
-                &runtime.plugins,
-                &runtime.dependencies,
-                &prepared_instances,
-                DeactivationReason::StartupRollback,
-                &runtime.admission,
-                &runtime.diagnostics,
-                &runtime.driver,
-                runtime
-                    .startup_cleanup
-                    .as_ref()
-                    .map(super::cleanup::StartupCleanupBudget::establish),
-            )
-            .await;
-            retain_unsafe_startup(&runtime, cleanup_error.as_ref());
-            runtime
-                .diagnostics
-                .emit_runtime_failure((runtime.driver.now)(), None, &error);
-            return Err(error);
-        }
         if let Err(error) = activate_native_plugins(&runtime).await {
             let cleanup_error = deactivate_in_reverse(
                 &runtime.plugins,
@@ -700,6 +679,10 @@ pub(super) async fn prepare_native_plugins(
                 elapsed: (runtime.driver.now)().saturating_sub(started_at),
             },
         );
+        let result = match result {
+            Ok(()) => construct_native_plugin(runtime, instance_key).await,
+            Err(error) => Err(error),
+        };
         if let Err(error) = result {
             let cleanup_error = deactivate_in_reverse(
                 &runtime.plugins,
@@ -806,69 +789,67 @@ pub(super) async fn activate_native_plugins(
     Ok(())
 }
 
-pub(super) async fn construct_native_plugins(
+async fn construct_native_plugin(
     runtime: &Rc<NativeAppRuntime>,
+    instance_key: &str,
 ) -> Result<(), RuntimeFailure> {
-    for instance_key in &runtime.activation_order {
-        let instance = runtime
-            .plan
-            .plugin_instance(instance_key)
-            .expect("construction order contains planned Instances");
-        if instance.authoring_version() == 1 {
-            continue;
-        }
-        startup_active(runtime)?;
-        let plugin = runtime
-            .plugins
-            .get(instance_key)
-            .expect("construction order contains planned Instances");
-        let (lifecycle, tasks, resources) = plugin
-            .generation_parts()
-            .expect("startup generation exists");
-        let started_at = (runtime.driver.now)();
-        runtime
-            .diagnostics
-            .emit(super::DiagnosticSource::Lifecycle, started_at, |_| {
-                super::DiagnosticEvent::LifecycleStarted {
-                    instance: instance_key.clone(),
-                    generation: 1,
-                    phase: super::PluginLifecyclePhase::Construct,
-                }
-            });
-        let result = lifecycle
-            .construct(ActivateContext {
-                instance_key: instance_key.clone(),
-                dependencies: runtime
-                    .dependencies
-                    .get(instance_key)
-                    .cloned()
-                    .unwrap_or_default(),
-                ready_gate: runtime.ready_gate.clone(),
-                tasks: tasks.clone(),
-                resources,
-                cancellation: lifecycle_cancellation(runtime, &tasks),
-                admission: runtime.admission.clone(),
-            })
-            .await
-            .and_then(|()| startup_active(runtime));
-        let outcome = result.as_ref().map_or_else(
-            |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
-            |()| super::DiagnosticOutcome::Succeeded,
-        );
-        runtime.diagnostics.emit(
-            super::DiagnosticSource::Lifecycle,
-            (runtime.driver.now)(),
-            |_| super::DiagnosticEvent::LifecycleCompleted {
-                instance: instance_key.clone(),
+    let instance = runtime
+        .plan
+        .plugin_instance(instance_key)
+        .expect("construction order contains planned Instances");
+    if instance.authoring_version() == 1 {
+        return Ok(());
+    }
+    startup_active(runtime)?;
+    let plugin = runtime
+        .plugins
+        .get(instance_key)
+        .expect("construction order contains planned Instances");
+    let (lifecycle, tasks, resources) = plugin
+        .generation_parts()
+        .expect("startup generation exists");
+    let started_at = (runtime.driver.now)();
+    runtime
+        .diagnostics
+        .emit(super::DiagnosticSource::Lifecycle, started_at, |_| {
+            super::DiagnosticEvent::LifecycleStarted {
+                instance: instance_key.to_owned(),
                 generation: 1,
                 phase: super::PluginLifecyclePhase::Construct,
-                outcome,
-                elapsed: (runtime.driver.now)().saturating_sub(started_at),
-            },
-        );
-        result?;
-    }
-    Ok(())
+            }
+        });
+    let result = lifecycle
+        .construct(ActivateContext {
+            instance_key: instance_key.to_owned(),
+            dependencies: runtime
+                .dependencies
+                .get(instance_key)
+                .cloned()
+                .unwrap_or_default(),
+            ready_gate: runtime.ready_gate.clone(),
+            tasks: tasks.clone(),
+            resources,
+            cancellation: lifecycle_cancellation(runtime, &tasks),
+            admission: runtime.admission.clone(),
+        })
+        .await
+        .and_then(|()| startup_active(runtime));
+    let outcome = result.as_ref().map_or_else(
+        |error| super::DiagnosticOutcome::RuntimeFailure(error.into()),
+        |()| super::DiagnosticOutcome::Succeeded,
+    );
+    runtime.diagnostics.emit(
+        super::DiagnosticSource::Lifecycle,
+        (runtime.driver.now)(),
+        |_| super::DiagnosticEvent::LifecycleCompleted {
+            instance: instance_key.to_owned(),
+            generation: 1,
+            phase: super::PluginLifecyclePhase::Construct,
+            outcome,
+            elapsed: (runtime.driver.now)().saturating_sub(started_at),
+        },
+    );
+    result
 }
 
 pub(super) async fn open_native_readiness(runtime: &Rc<NativeAppRuntime>) {

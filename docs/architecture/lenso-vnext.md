@@ -121,8 +121,11 @@ See ADRs [0047](../adr/0047-scope-runtime-work-to-module-lifecycles.md),
 
 A Plugin Release publishes data Descriptors plus factories understood by its
 Execution Adapters. A Resolved Plan may instantiate the same package several
-times. Boot validates the graph, prepares every Instance, activates providers in
-dependency order, and opens one App Ready Gate only after full activation.
+times. Boot validates the graph, then prepares each Instance and constructs its
+complete object in dependency order. A dependency's complete object therefore
+exists before a dependent Instance's preparation accesses its declared Port.
+Boot activates every prepared Instance in dependency order and opens one App
+Ready Gate only after full activation.
 Managed tasks and resources belong to one Instance generation; restarts create a
 new generation and preserve stable consumer handles when the Adapter supports
 recreation.
