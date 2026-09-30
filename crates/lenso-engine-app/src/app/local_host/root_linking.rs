@@ -11,7 +11,12 @@ use serde_json::{Value, json};
 #[derive(Default)]
 pub(super) struct Sources {
     declared: BTreeSet<String>,
-    selected: BTreeMap<String, Value>,
+    selected: BTreeMap<String, SelectedSource>,
+}
+
+struct SelectedSource {
+    package: Value,
+    features: BTreeSet<String>,
 }
 
 impl Sources {
@@ -22,7 +27,12 @@ impl Sources {
         }
     }
 
-    pub(super) fn select(&mut self, root: &Path, package: &Value) -> anyhow::Result<()> {
+    pub(super) fn select(
+        &mut self,
+        root: &Path,
+        package: &Value,
+        node: &Value,
+    ) -> anyhow::Result<()> {
         let Some(id) = package
             .pointer("/metadata/lenso/plugin-id")
             .and_then(Value::as_str)
@@ -33,34 +43,7 @@ impl Sources {
             return Ok(());
         }
         lenso_app_authoring::identity::classify_existing_plugin_id(id)?;
-        let directory = root.join("plugins").join(id);
-        let metadata = match fs::symlink_metadata(&directory) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(error.into()),
-        };
-        ensure!(
-            metadata.is_dir() && !metadata.file_type().is_symlink(),
-            "selected linked Plugin Root must be a regular directory"
-        );
-        let has_intent = fs::read_dir(directory)?.try_fold(
-            false,
-            |selected, entry| -> anyhow::Result<bool> {
-                let entry = entry?;
-                let kind = entry.file_type()?;
-                ensure!(
-                    !kind.is_symlink(),
-                    "linked Plugin Root intent cannot be a symbolic link"
-                );
-                let path = entry.path();
-                Ok(selected
-                    || kind.is_file()
-                        && path.extension().is_some_and(|extension| {
-                            extension == "toml" || extension == "disabled"
-                        }))
-            },
-        )?;
-        if !has_intent {
+        if !has_root_intent(root, id)? {
             return Ok(());
         }
         ensure!(
@@ -73,17 +56,25 @@ impl Sources {
                         .any(|kind| kind == "lib" || kind == "rlib")))),
             "Root-selected linked Plugin `{id}` needs a Rust library target"
         );
-        if let Some(previous) = self.selected.get(id) {
+        let features = resolved_features(package, node)?;
+        if let Some(previous) = self.selected.get_mut(id) {
             ensure!(
-                previous["id"] == package["id"],
+                previous.package["id"] == package["id"],
                 "Root-selected linked Plugin `{id}` has competing Cargo package identities"
             );
+            previous.features.extend(features);
         } else {
             ensure!(
                 self.selected.len() < 256,
                 "Root-selected linked Plugin limit exceeded"
             );
-            self.selected.insert(id.to_owned(), package.clone());
+            self.selected.insert(
+                id.to_owned(),
+                SelectedSource {
+                    package: package.clone(),
+                    features,
+                },
+            );
         }
         Ok(())
     }
@@ -91,12 +82,23 @@ impl Sources {
     pub(super) fn packages(&self) -> impl Iterator<Item = (&str, &Value)> {
         self.selected
             .iter()
-            .map(|(id, package)| (id.as_str(), package))
+            .map(|(id, source)| (id.as_str(), &source.package))
+    }
+
+    pub(super) fn dependency(&self, id: &str) -> anyhow::Result<Value> {
+        let source = self
+            .selected
+            .get(id)
+            .context("selected linked Cargo source")?;
+        let mut dependency = super::dependency(&source.package)?;
+        dependency["default-features"] = json!(false);
+        dependency["features"] = json!(source.features);
+        Ok(dependency)
     }
 
     pub(super) fn record(&self, stage: &Path) -> anyhow::Result<()> {
         let sources = self.packages().map(|(id, package)| -> anyhow::Result<Value> {
-            Ok(json!({"plugin_id":id,"cargo_package_id":package["id"],"version":package["version"],"dependency":super::dependency(package)?}))
+            Ok(json!({"plugin_id":id,"cargo_package_id":package["id"],"version":package["version"],"dependency":self.dependency(id)?}))
         }).collect::<anyhow::Result<Vec<_>>>()?;
         fs::write(
             stage.join(".lenso/root-linked-sources.json"),
@@ -106,12 +108,65 @@ impl Sources {
     }
 }
 
+fn has_root_intent(root: &Path, id: &str) -> anyhow::Result<bool> {
+    let directory = root.join("plugins").join(id);
+    let metadata = match fs::symlink_metadata(&directory) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    ensure!(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        "selected linked Plugin Root must be a regular directory"
+    );
+    fs::read_dir(directory)?.try_fold(false, |selected, entry| -> anyhow::Result<bool> {
+        let entry = entry?;
+        let kind = entry.file_type()?;
+        ensure!(
+            !kind.is_symlink(),
+            "linked Plugin Root intent cannot be a symbolic link"
+        );
+        Ok(selected
+            || kind.is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "toml" || extension == "disabled"))
+    })
+}
+
+fn resolved_features(package: &Value, node: &Value) -> anyhow::Result<BTreeSet<String>> {
+    ensure!(
+        node["id"] == package["id"],
+        "linked Cargo feature identity differs"
+    );
+    node["features"]
+        .as_array()
+        .context("linked Cargo resolved features")?
+        .iter()
+        .map(|feature| {
+            let feature = feature.as_str().context("linked Cargo feature name")?;
+            ensure!(
+                package["features"]
+                    .as_object()
+                    .is_some_and(|declared| declared.contains_key(feature)),
+                "linked Cargo resolved feature is not declared by its package"
+            );
+            Ok(feature.to_owned())
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn package(id: &str, source: &str) -> Value {
-        json!({"id":format!("{source}#owner@1.0.0"),"name":"owner","version":"1.0.0","source":source,"manifest_path":"/immutable/owner/Cargo.toml","metadata":{"lenso":{"plugin-id":id,"root-slot":"owners"}},"targets":[{"kind":["lib"]}]})
+        json!({"id":format!("{source}#owner@1.0.0"),"name":"owner","version":"1.0.0","source":source,"manifest_path":"/immutable/owner/Cargo.toml","metadata":{"lenso":{"plugin-id":id,"root-slot":"owners"}},"targets":[{"kind":["lib"]}],"features":{"default":[],"pg":[],"workers":[]}})
+    }
+
+    fn node(package: &Value, features: &[&str]) -> Value {
+        json!({"id":package["id"],"features":features})
     }
 
     #[test]
@@ -130,18 +185,25 @@ mod tests {
         );
         let selected = package("example.selected", &source);
         let mut sources = Sources::new(["example.app".into()]);
-        sources.select(root.path(), &selected).unwrap();
-        sources.select(root.path(), &selected).unwrap();
         sources
-            .select(root.path(), &package("example.unselected", &source))
+            .select(root.path(), &selected, &node(&selected, &["workers"]))
+            .unwrap();
+        sources
+            .select(root.path(), &selected, &node(&selected, &["workers"]))
+            .unwrap();
+        let unselected = package("example.unselected", &source);
+        sources
+            .select(root.path(), &unselected, &node(&unselected, &[]))
             .unwrap();
         let packages = sources.packages().collect::<Vec<_>>();
         assert_eq!(packages.len(), 1);
         assert_eq!(packages[0].0, "example.selected");
-        let dependency = super::super::dependency(packages[0].1).unwrap();
+        let dependency = sources.dependency(packages[0].0).unwrap();
         assert_eq!(dependency["git"], "https://example.test/owner");
         assert_eq!(dependency["rev"], "a".repeat(40));
         assert!(dependency.get("path").is_none());
+        assert_eq!(dependency["default-features"], false);
+        assert_eq!(dependency["features"], json!(["workers"]));
     }
 
     #[test]
@@ -154,10 +216,14 @@ mod tests {
             "example.owner",
             "registry+https://github.com/rust-lang/crates.io-index",
         );
-        sources.select(root.path(), &owner).unwrap();
+        sources
+            .select(root.path(), &owner, &node(&owner, &[]))
+            .unwrap();
         assert_eq!(sources.packages().count(), 0);
         fs::write(directory.join("default.disabled"), "").unwrap();
-        sources.select(root.path(), &owner).unwrap();
+        sources
+            .select(root.path(), &owner, &node(&owner, &[]))
+            .unwrap();
         assert_eq!(sources.packages().count(), 1);
     }
 
@@ -167,24 +233,20 @@ mod tests {
         fs::create_dir_all(root.path().join("plugins/example.owner")).unwrap();
         fs::write(root.path().join("plugins/example.owner/default.toml"), "").unwrap();
         let mut sources = Sources::default();
+        let first = package(
+            "example.owner",
+            "git+https://example.test/a#1111111111111111111111111111111111111111",
+        );
+        let second = package(
+            "example.owner",
+            "git+https://example.test/b#2222222222222222222222222222222222222222",
+        );
         sources
-            .select(
-                root.path(),
-                &package(
-                    "example.owner",
-                    "git+https://example.test/a#1111111111111111111111111111111111111111",
-                ),
-            )
+            .select(root.path(), &first, &node(&first, &[]))
             .unwrap();
         assert!(
             sources
-                .select(
-                    root.path(),
-                    &package(
-                        "example.owner",
-                        "git+https://example.test/b#2222222222222222222222222222222222222222"
-                    )
-                )
+                .select(root.path(), &second, &node(&second, &[]))
                 .is_err()
         );
     }
@@ -222,3 +284,6 @@ mod tests {
         assert!(authority.with_local_root(root.path()).is_err());
     }
 }
+
+#[cfg(test)]
+mod feature_tests;

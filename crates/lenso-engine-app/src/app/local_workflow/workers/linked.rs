@@ -451,7 +451,7 @@ fn wasm_manifest(mut manifest: Value) -> anyhow::Result<(Value, String)> {
         .insert("default-features".into(), json!(false));
     let mut plugins = dependencies
         .keys()
-        .filter(|name| name.starts_with("local_plugin_"))
+        .filter(|name| name.starts_with("local_plugin_") || name.starts_with("root_plugin_"))
         .cloned()
         .collect::<Vec<_>>();
     plugins.sort();
@@ -530,7 +530,8 @@ mod tests {
         let manifest = json!({"package":{"name":"native"},"workspace":{},"dependencies":{
             "lenso-kernel":"=0.3.11", "lenso-runner":"=0.2.19", "tokio":"1.52",
             "lenso-web-ingress-plugin":{"version":"=0.4.9","git":"https://example.test/framework","rev":"exact"},
-            "local_plugin_1":{"path":"/owner/plugin"}
+            "local_plugin_1":{"path":"/owner/plugin"},
+            "root_plugin_2":{"path":"/owner/auth","default-features":false,"features":["workers"]}
         },"patch":{"crates-io":{"lenso-kernel":{"path":"/owner/framework/crates/lenso-kernel"}}}});
         let (wasm, links) = wasm_manifest(manifest).unwrap();
         assert_eq!(
@@ -546,7 +547,18 @@ mod tests {
             false
         );
         assert!(wasm["dependencies"].get("tokio").is_none());
-        assert_eq!(links, "local_plugin_1::link_plugin();\n");
+        assert_eq!(
+            wasm["dependencies"]["root_plugin_2"]["default-features"],
+            false
+        );
+        assert_eq!(
+            wasm["dependencies"]["root_plugin_2"]["features"],
+            json!(["workers"])
+        );
+        assert_eq!(
+            links,
+            "local_plugin_1::link_plugin();\nroot_plugin_2::link_plugin();\n"
+        );
     }
 
     #[test]

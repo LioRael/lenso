@@ -275,28 +275,34 @@ pub(super) fn generate(
                 .context("Cargo package ID")?
                 .to_owned(),
         ];
+        let mut graph_seen = BTreeSet::new();
         while let Some(id) = pending.pop() {
+            if !graph_seen.insert(id.clone()) {
+                continue;
+            }
+            let node = nodes
+                .iter()
+                .find(|node| node["id"] == id)
+                .context("reachable Cargo node")?;
             if native {
                 let package = packages
                     .iter()
                     .find(|p| p["id"] == id)
                     .context("reachable Cargo package")?;
-                root_linked.select(stage, package)?;
+                root_linked.select(stage, package, node)?;
                 collect_local_lenso_patch(&mut local_lenso_patches, package)?;
                 collect_git_lenso_source(&mut git_lenso_source, package)?;
             }
+            for dep in node["deps"].as_array().context("Cargo dependencies")? {
+                if dep["dep_kinds"]
+                    .as_array()
+                    .is_some_and(|k| k.iter().any(|k| k["kind"].is_null()))
+                {
+                    pending.push(dep["pkg"].as_str().context("Cargo dependency ID")?.into());
+                }
+            }
             if !seen_packages.insert(id.clone()) {
                 continue;
-            }
-            if let Some(node) = nodes.iter().find(|n| n["id"] == id) {
-                for dep in node["deps"].as_array().context("Cargo dependencies")? {
-                    if dep["dep_kinds"]
-                        .as_array()
-                        .is_some_and(|k| k.iter().any(|k| k["kind"].is_null()))
-                    {
-                        pending.push(dep["pkg"].as_str().context("Cargo dependency ID")?.into());
-                    }
-                }
             }
             let package = packages
                 .iter()
@@ -369,7 +375,7 @@ pub(super) fn generate(
     let cohort = codec_cohorts.first().map_or("0.4", String::as_str);
     for (index, (plugin_id, package)) in root_linked.packages().enumerate() {
         let alias = format!("root_plugin_{index}");
-        dependencies.insert(alias.clone(), dependency(package)?);
+        dependencies.insert(alias.clone(), root_linked.dependency(plugin_id)?);
         linked.push_str(&format!("{alias}::link_plugin();\n"));
         business_snapshot.select(&alias, package)?;
         let root = Path::new(
