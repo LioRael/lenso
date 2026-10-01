@@ -68,6 +68,22 @@ fn assert_no_staged_output(root: &Path) {
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect::<Vec<_>>();
+        if entries == [std::ffi::OsString::from("contracts")] {
+            // Successful assembly records durable freshness, not staging.
+            // These fixtures declare no contracts, so only an empty receipt
+            // is valid; temporary files and any other outputs still fail.
+            let contracts = generated.join("contracts");
+            let files = fs::read_dir(&contracts)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect::<Vec<_>>();
+            assert_eq!(files, [std::ffi::OsString::from("freshness.json")]);
+            let receipt: serde_json::Value =
+                serde_json::from_slice(&fs::read(contracts.join("freshness.json")).unwrap())
+                    .unwrap();
+            assert_eq!(receipt, serde_json::json!([]));
+            return;
+        }
         assert!(
             entries.is_empty(),
             "assembly left staged output: {entries:?}"
