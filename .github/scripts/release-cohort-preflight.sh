@@ -227,20 +227,34 @@ for package in "${packages[@]}"; do
   done < <(prefetch_dependencies "$package")
 done
 
+fetch_exact_registry_package() {
+  local dependency="$1" version="$2"
+  local directory="$prefetch_root/$dependency-$version"
+  mkdir -p "$directory/src"
+  touch "$directory/src/lib.rs"
+  # These are acquisition roots, not a synthetic application graph. A resumed
+  # cohort may have already-published packages whose old consumers pin another
+  # compatible version; the real patched staging graph is validated below.
+  printf '%s\n' '[package]' 'name = "lenso-cohort-registry-prefetch"' \
+    'version = "0.0.0"' 'edition = "2024"' '' '[dependencies]' \
+    "$dependency = \"=$version\"" >"$directory/Cargo.toml"
+  cargo fetch --manifest-path "$directory/Cargo.toml" || return 1
+  cargo metadata --locked --offline --manifest-path "$directory/Cargo.toml" \
+    --format-version 1 >"$directory/metadata.json" || return 1
+  jq -e --arg name "$dependency" --arg version "$version" '
+    [.packages[] | select(.name == $name and .version == $version
+      and .source == "registry+https://github.com/rust-lang/crates.io-index")]
+    | length == 1' "$directory/metadata.json" >/dev/null
+}
+
 if (( ${#registry_dependencies[@]} > 0 )); then
   prefetch_root="$scratch/registry-dependencies"
-  mkdir -p "$prefetch_root/src"
-  touch "$prefetch_root/src/lib.rs"
-  {
-    printf '%s\n' '[package]' 'name = "lenso-cohort-registry-prefetch"' 'version = "0.0.0"' 'edition = "2024"' '' '[dependencies]'
-    for index in "${!registry_dependencies[@]}"; do
-      printf 'Fetching exact registry package %s@%s\n' "${registry_dependencies[$index]}" "${registry_versions[$index]}" >&2
-      printf '%s = "=%s"\n' "${registry_dependencies[$index]}" "${registry_versions[$index]}"
-    done
-  } >"$prefetch_root/Cargo.toml"
-  cargo fetch --manifest-path "$prefetch_root/Cargo.toml" ||
-    fail "could not fetch exact published out-of-cohort workspace dependencies"
-  prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
+  for index in "${!registry_dependencies[@]}"; do
+    printf 'Fetching exact registry package %s@%s\n' "${registry_dependencies[$index]}" "${registry_versions[$index]}" >&2
+    fetch_exact_registry_package "${registry_dependencies[$index]}" "${registry_versions[$index]}" ||
+      fail "could not fetch exact published out-of-cohort workspace dependency"
+  done
+  prefetch_metadata="$(python3 "$SCRIPT_DIR/release-cohort-staging.py" merge-prefetch "$prefetch_root")" ||
     fail "could not inspect fetched registry dependencies"
 
   # Cargo can omit a registry dependency's dev or optional dependencies until
@@ -268,14 +282,13 @@ if (( ${#registry_dependencies[@]} > 0 )); then
       grep -Eq '^[[:space:]]*publish[[:space:]]*=[[:space:]]*true[[:space:]]*$' "$dependency_manifest" ||
         fail "published dependency requires a private workspace package: $dependency@$version"
       printf 'Fetching exact published requirement %s@%s\n' "$dependency" "$version" >&2
-      printf '%s = "=%s"\n' "$dependency" "$version" >>"$prefetch_root/Cargo.toml"
+      fetch_exact_registry_package "$dependency" "$version" ||
+        fail "could not fetch exact published workspace requirement"
       prefetch_requested+=("$dependency")
       added=true
     done <<<"$published_requirements"
     [[ "$added" == true ]] || break
-    cargo fetch --manifest-path "$prefetch_root/Cargo.toml" ||
-      fail "could not fetch exact published workspace requirements"
-    prefetch_metadata="$(cargo metadata --locked --offline --manifest-path "$prefetch_root/Cargo.toml" --format-version 1)" ||
+    prefetch_metadata="$(python3 "$SCRIPT_DIR/release-cohort-staging.py" merge-prefetch "$prefetch_root")" ||
       fail "could not inspect exact published workspace requirements"
   done
 

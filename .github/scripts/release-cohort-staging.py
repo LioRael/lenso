@@ -20,6 +20,36 @@ def packages(lock):
     return result
 
 
+def merge_prefetch(root):
+    """Combine immutable registry inputs, not unrelated resolution graphs."""
+    records = {}
+    declarations = {}
+    for directory in sorted(root.glob("*/")):
+        metadata_file = directory / "metadata.json"
+        if not metadata_file.is_file():
+            continue
+        metadata = json.loads(metadata_file.read_text())
+        lock = packages(tomllib.loads((directory / "Cargo.lock").read_text()))
+        for package in metadata["packages"]:
+            key = identity(package)
+            if key[2] != "registry+https://github.com/rust-lang/crates.io-index":
+                continue
+            if key not in lock or not re.fullmatch(r"[0-9a-f]{64}", lock[key].get("checksum", "")):
+                raise ValueError(f"missing exact registry checksum: {key}")
+            record = {field: lock[key][field] for field in ("name", "version", "source", "checksum")}
+            if key in records and (records[key] != record or declarations[key] != package):
+                raise ValueError(f"inconsistent prefetched registry identity: {key}")
+            records[key] = record
+            declarations[key] = package
+    lines = ["# Registry checksum catalog; independent fetch graphs are not combined.", "version = 4", ""]
+    for key in sorted(records):
+        lines.append("[[package]]")
+        lines.extend(f"{field} = {json.dumps(value)}" for field, value in records[key].items())
+        lines.append("")
+    (root / "Cargo.lock").write_text("\n".join(lines))
+    return {"packages": list(declarations.values())}
+
+
 def dependency_identity(value, graph):
     parts = value.split(" ", 2)
     matches = [key for key in graph if key[0] == parts[0]
@@ -256,6 +286,8 @@ def main():
         external = {p["name"] for p in metadata["packages"] if p["name"] not in roots}
         validate(tomllib.loads(Path(before).read_text()), tomllib.loads(Path(after).read_text()),
                  metadata, external, [], metadata, registry_optional=True)
+    elif mode == "merge-prefetch":
+        print(json.dumps(merge_prefetch(Path(args[0]))))
     else:
         raise ValueError(f"unknown operation: {mode}")
 

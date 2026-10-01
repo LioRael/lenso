@@ -162,4 +162,57 @@ edition = "2024"
         else:
             raise AssertionError(f"clean-room {mutation} drift accepted")
 
-print("external published dev conflict, immutable manifest, runtime edges and drift rejection passed")
+with tempfile.TemporaryDirectory(prefix="lenso-resumed-prefetch-") as directory:
+    root = Path(directory)
+    registry = "registry+https://github.com/rust-lang/crates.io-index"
+
+    def fetched(name, version, checksum, dependency=None):
+        path = root / f"{name}-{version}"
+        path.mkdir(exist_ok=True)
+        package = {"name": name, "version": version, "source": registry,
+                   "id": f"{registry}#{name}@{version}", "manifest_path": f"/registry/{name}-{version}/Cargo.toml"}
+        (path / "metadata.json").write_text(json.dumps({"packages": [package]}))
+        locked = {"name": name, "version": version, "source": registry, "checksum": checksum}
+        if dependency:
+            locked["dependencies"] = [dependency]
+        lines = ["version = 4", "[[package]]"]
+        lines += [f"{key} = {json.dumps(value)}" for key, value in locked.items()]
+        (path / "Cargo.lock").write_text("\n".join(lines))
+        return path
+
+    # Distinct exact acquisition roots need not be one resolvable application.
+    # Keep both compatible old/new codegen identities in the input catalog;
+    # only the later validated staging graph selects the approved version.
+    fetched("codegen", "0.10.1", "1" * 64, "old-endpoint")
+    fetched("codegen", "0.10.2", "2" * 64, "new-endpoint")
+    metadata = staging.merge_prefetch(root)
+    catalog = tomllib.loads((root / "Cargo.lock").read_text())
+    assert {p["version"] for p in metadata["packages"]} == {"0.10.1", "0.10.2"}
+    assert all("dependencies" not in p for p in catalog["package"])
+    before = {"version": 4, "package": [{"name": "remaining", "version": "0.1.0",
+        "dependencies": ["codegen"]}, {"name": "codegen", "version": "0.10.2"}]}
+    cohort = [{"package_name": "remaining", "version": "0.1.0"}]
+    projected = tomllib.loads(staging.project_clean_room(before, catalog, cohort))
+    assert next(p for p in projected["package"] if p["name"] == "codegen")["version"] == "0.10.2"
+    for field, value in [("version", "0.10.1"), ("source", "git+https://example.invalid/codegen")]:
+        malicious = copy.deepcopy(projected)
+        next(p for p in malicious["package"] if p["name"] == "codegen")[field] = value
+        try:
+            staging.validate_registry_conversion(before, malicious, catalog, cohort)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"resumed cohort accepted wrong {field}")
+    duplicate = root / "duplicate"
+    duplicate.mkdir()
+    shutil_source = root / "codegen-0.10.2"
+    (duplicate / "metadata.json").write_bytes((shutil_source / "metadata.json").read_bytes())
+    (duplicate / "Cargo.lock").write_text((shutil_source / "Cargo.lock").read_text().replace("2" * 64, "3" * 64))
+    try:
+        staging.merge_prefetch(root)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("inconsistent registry checksum accepted")
+
+print("external dev roots, resumed registry inputs, immutable manifests and strict drift rejection passed")
