@@ -64,6 +64,12 @@ fn create_plugin(source: &Path) {
         include_str!("fixtures/local-host-binding/src/lib.rs"),
     )
     .unwrap();
+    // Contract discovery consumes prepared dependency inputs without resolving them.
+    success(
+        Command::new("cargo")
+            .args(["generate-lockfile", "--manifest-path"])
+            .arg(plugin.join("Cargo.toml")),
+    );
 }
 
 fn assert_provenance(distribution: &Path) {
