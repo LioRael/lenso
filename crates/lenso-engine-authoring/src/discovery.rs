@@ -40,7 +40,7 @@ struct Configuration {
 }
 
 /// Where a candidate was found, not whether an Instance is enabled.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceRole {
     AppOwned,
@@ -48,14 +48,14 @@ pub enum SourceRole {
 }
 
 /// Build metadata only; declarations and runtime availability still require validation.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Implementation {
     pub id: String,
     pub runtime: String,
     pub project: PathBuf,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Candidate {
     /// Source-declared native Plugin's public module linkage anchor.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,9 +92,10 @@ pub struct PublishedResource {
     pub schema: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DiscoveryReport {
     pub schema_version: u32,
+    #[serde(skip_deserializing, default = "discovery_kind")]
     pub kind: &'static str,
     pub root: PathBuf,
     pub candidates: Vec<Candidate>,
@@ -102,18 +103,27 @@ pub struct DiscoveryReport {
 
 /// Discover local projects without invoking package managers, build scripts or Plugins.
 pub fn discover(root: &Path) -> anyhow::Result<DiscoveryReport> {
+    discover_in(root, &lenso_engine::discovery::DiscoverySession::new(root)?)
+}
+
+/// Read-only Plugin discovery sharing a caller's explicitly selected inputs.
+pub fn discover_in(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<DiscoveryReport> {
     let root = fs::canonicalize(root).context("resolve App discovery root")?;
     if !root.is_dir() {
         bail!("App discovery root must be a directory");
     }
     let config_path = root.join("lenso.toml");
     let config: Configuration = if config_path.try_exists()? {
-        toml::from_str(&read_metadata(&config_path)?)
+        toml::from_str(&read_metadata_in(&config_path, inputs)?)
             .context("parse optional lenso.toml tooling configuration")?
     } else {
         Configuration::default()
     };
     let mut scanner = Scanner {
+        inputs: inputs.scope(&root)?,
         visited: BTreeMap::new(),
         candidates: BTreeMap::new(),
         entries: 0,
@@ -121,8 +131,8 @@ pub fn discover(root: &Path) -> anyhow::Result<DiscoveryReport> {
     // The App's root package can itself be the App-owned business Plugin.
     // Inspect only its package metadata here: recursively scanning the root
     // would also treat unrelated workspace members as adopted Plugins.
-    for candidate in
-        project::read_all(&root, SourceRole::AppOwned).context("inspect App root package")?
+    for candidate in project::read_all_in(&root, SourceRole::AppOwned, inputs)
+        .context("inspect App root package")?
     {
         scanner.insert(candidate)?;
     }
@@ -143,7 +153,12 @@ pub fn discover(root: &Path) -> anyhow::Result<DiscoveryReport> {
     })
 }
 
+fn discovery_kind() -> &'static str {
+    "lenso.app-discovery"
+}
+
 struct Scanner {
+    inputs: lenso_engine::discovery::DiscoverySession,
     visited: BTreeMap<PathBuf, SourceRole>,
     candidates: BTreeMap<String, Candidate>,
     entries: usize,
@@ -196,14 +211,14 @@ impl Scanner {
             );
         }
         if path.join("plugin.json").try_exists()? {
-            self.insert(conventions::composite(&path, role)?)?;
+            self.insert(conventions::composite(&path, role, &self.inputs)?)?;
             return Ok(());
         }
         if path.join(lenso_plugin_bundle::MANIFEST_FILE).try_exists()? {
             self.insert(project::bundle(&path, role)?)?;
             return Ok(());
         }
-        let candidates = project::read_all(&path, role)
+        let candidates = project::read_all_in(&path, role, &self.inputs)
             .with_context(|| format!("inspect Plugin source {}", path.display()))?;
         if !candidates.is_empty() {
             // A Plugin owns its nested implementation projects and build products.
@@ -212,21 +227,21 @@ impl Scanner {
             }
             return Ok(());
         }
-        if let Some(members) = project::workspace_members(&path)? {
+        if let Some(members) = project::workspace_members(&path, &self.inputs)? {
             for member in members {
                 self.scan(&member, role, depth + 1)?;
             }
             return Ok(());
         }
         let mut children = Vec::new();
-        for entry in fs::read_dir(&path)? {
+        for entry in self.inputs.scope(&path)?.directory("")? {
             self.entries += 1;
             if self.entries > MAX_ENTRIES {
                 bail!(
                     "local Plugin discovery exceeds {MAX_ENTRIES} entries; narrow plugin_sources"
                 );
             }
-            children.push(entry?.path());
+            children.push(path.join(entry.path));
         }
         children.sort();
         for child in children {
@@ -323,6 +338,19 @@ fn read_metadata(path: &Path) -> anyhow::Result<String> {
         bail!("Plugin metadata exceeds 4 MiB: {}", path.display());
     }
     Ok(text)
+}
+
+fn read_metadata_in(
+    path: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<String> {
+    let directory = path.parent().context("metadata parent")?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("metadata filename")?;
+    let bytes = inputs.scope(directory)?.read(name, 4 * 1024 * 1024)?;
+    Ok(std::str::from_utf8(&bytes)?.to_owned())
 }
 
 #[cfg(test)]

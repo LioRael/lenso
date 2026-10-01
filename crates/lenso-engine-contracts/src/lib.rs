@@ -4,7 +4,10 @@ mod baselines;
 mod discovery;
 mod output;
 pub use baselines::accept;
-pub use discovery::{DiscoveryOptions, ProjectionTarget, discover, snapshot_contract};
+pub use discovery::{
+    DiscoveryOptions, ProjectionTarget, discover, discover_in, snapshot_contract,
+    snapshot_contract_in,
+};
 pub use output::{Mode, apply, run};
 
 use anyhow::{Context, bail, ensure};

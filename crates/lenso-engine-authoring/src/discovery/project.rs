@@ -4,7 +4,10 @@ use crate::{
     identity::{classify_existing_plugin_id, validate_release_version},
 };
 
-pub(super) fn workspace_members(root: &Path) -> anyhow::Result<Option<Vec<std::path::PathBuf>>> {
+pub(super) fn workspace_members(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<Option<Vec<std::path::PathBuf>>> {
     let mut members = BTreeSet::new();
     let mut found = false;
     for filename in ["Cargo.toml", "package.json"] {
@@ -12,7 +15,7 @@ pub(super) fn workspace_members(root: &Path) -> anyhow::Result<Option<Vec<std::p
         if !path.try_exists()? {
             continue;
         }
-        let value = document(&path)?;
+        let value = document_in(&path, inputs)?;
         let workspace = if filename == "Cargo.toml" {
             value.get("workspace")
         } else {
@@ -94,22 +97,38 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 mod rust_source;
 
-pub(super) fn read_all(root: &Path, role: SourceRole) -> anyhow::Result<Vec<Candidate>> {
-    let source = rust_source::read(root)?;
+pub(super) fn read_all_in(
+    root: &Path,
+    role: SourceRole,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<Vec<Candidate>> {
+    let source = rust_source::read(root, inputs)?;
     if !source.is_empty() {
         return Ok(source);
     }
-    Ok(read(root, role)?.into_iter().collect())
+    Ok(read_in(root, role, inputs)?.into_iter().collect())
 }
 
 pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candidate>> {
+    read_in(
+        root,
+        role,
+        &lenso_engine::discovery::DiscoverySession::new(root)?,
+    )
+}
+
+pub(super) fn read_in(
+    root: &Path,
+    role: SourceRole,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<Option<Candidate>> {
     let mut found = Vec::new();
     for (filename, format) in [("Cargo.toml", "cargo"), ("package.json", "bun")] {
         let path = root.join(filename);
         if !path.try_exists()? {
             continue;
         }
-        let value = document(&path)?;
+        let value = document_in(&path, inputs)?;
         let metadata = if format == "cargo" {
             value.pointer("/package/metadata/lenso")
         } else {
@@ -139,7 +158,7 @@ pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candi
         let plugin_id = string(metadata, identity_key)?.to_owned();
         classify_existing_plugin_id(&plugin_id)?;
         let version = if format == "cargo" {
-            cargo_version(root, &value)?
+            cargo_version_in(root, &value, inputs)?
         } else {
             metadata
                 .get("releaseVersion")
@@ -292,15 +311,27 @@ fn valid_schema(value: &str) -> bool {
 
 pub(super) fn document(path: &Path) -> anyhow::Result<Value> {
     let text = read_metadata(path)?;
+    parse_document(path, &text)
+}
+
+pub(super) fn document_in(
+    path: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<Value> {
+    let text = super::read_metadata_in(path, inputs)?;
+    parse_document(path, &text)
+}
+
+fn parse_document(path: &Path, text: &str) -> anyhow::Result<Value> {
     if path
         .extension()
         .is_some_and(|extension| extension == "toml")
     {
         let value: toml::Value =
-            toml::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+            toml::from_str(text).with_context(|| format!("parse {}", path.display()))?;
         Ok(serde_json::to_value(value)?)
     } else {
-        serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))
+        serde_json::from_str(text).with_context(|| format!("parse {}", path.display()))
     }
 }
 
@@ -313,6 +344,18 @@ fn string<'a>(value: &'a Value, key: &str) -> anyhow::Result<&'a str> {
 }
 
 fn cargo_version(root: &Path, value: &Value) -> anyhow::Result<String> {
+    cargo_version_in(
+        root,
+        value,
+        &lenso_engine::discovery::DiscoverySession::new(root)?,
+    )
+}
+
+fn cargo_version_in(
+    root: &Path,
+    value: &Value,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<String> {
     let package = &value["package"];
     if let Some(version) = package["version"].as_str() {
         return Ok(version.to_owned());
@@ -340,7 +383,7 @@ fn cargo_version(root: &Path, value: &Value) -> anyhow::Result<String> {
         if !manifest.try_exists()? {
             continue;
         }
-        let workspace = document(&manifest)?;
+        let workspace = document_in(&manifest, inputs)?;
         if workspace.get("workspace").is_some() {
             return workspace
                 .pointer("/workspace/package/version")

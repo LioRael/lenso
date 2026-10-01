@@ -3,12 +3,15 @@ use super::*;
 use std::path::PathBuf;
 use syn::{Item, LitStr, Visibility};
 
-pub(super) fn read(root: &Path) -> anyhow::Result<Vec<Candidate>> {
+pub(super) fn read(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<Vec<Candidate>> {
     let manifest = root.join("Cargo.toml");
     if !manifest.is_file() {
         return Ok(Vec::new());
     }
-    let value = document(&manifest)?;
+    let value = document_in(&manifest, inputs)?;
     if value.get("package").is_none() {
         return Ok(Vec::new());
     }
@@ -22,12 +25,16 @@ pub(super) fn read(root: &Path) -> anyhow::Result<Vec<Candidate>> {
         return Ok(Vec::new());
     }
     let mut declarations = Vec::new();
-    let mut visited = Traversal::default();
+    let mut visited = Traversal {
+        active: BTreeSet::new(),
+        visits: 0,
+        inputs: inputs.scope(root)?,
+    };
     walk(root, &entry, &[], &mut visited, &mut declarations)?;
     if declarations.is_empty() {
         return Ok(Vec::new());
     }
-    let version = cargo_version(root, &value)?;
+    let version = cargo_version_in(root, &value, inputs)?;
     validate_release_version(&version)?;
     declarations
         .into_iter()
@@ -53,10 +60,10 @@ pub(super) fn read(root: &Path) -> anyhow::Result<Vec<Candidate>> {
         .collect()
 }
 
-#[derive(Default)]
 struct Traversal {
     active: BTreeSet<PathBuf>,
     visits: usize,
+    inputs: lenso_engine::discovery::DiscoverySession,
 }
 
 fn walk(
@@ -77,7 +84,7 @@ fn walk(
         bail!("recursive Rust module source: {}", file.display());
     }
     visited.visits += 1;
-    let source = read_metadata(&file)?;
+    let source = super::super::read_metadata_in(&file, &visited.inputs)?;
     let parsed = syn::parse_file(&source)
         .with_context(|| format!("parse Rust Plugin source {}", file.display()))?;
     let directory = if modules.is_empty()

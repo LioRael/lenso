@@ -15,6 +15,18 @@ For optional configurable Web routes and Capability projections, read
 These processors reuse `Plugin::plan/process` and Snapshot; explicit inputs and
 configuration replace their default readers. HTTP execution remains in WebHost.
 
+`lenso_engine::discovery::DiscoverySession` shares bounded physical directory
+listings, file bytes and JSON decoding within one acquisition epoch. Explicitly
+selected scoped roots share those identities; the session grants no adoption or
+execution authority. Web `read_sources_in`, Contracts `discover_in` and Plugin
+discovery/convention `*_in` APIs reuse it. The official prepared App preset uses
+one session through planning and staging. Separate Cargo processes remain
+separate acquisitions. Keep semantic validation and final live fingerprints
+independent of cache hits. Known file events invalidate that path and ancestor
+listings; configuration or unknown events require `begin_epoch` and replanning.
+Use `DiscoverySession::with_limits` for custom acquisition budgets; each selected
+reader retains its own validation and selection policy.
+
 Read Engine README and its processor examples. `engine inspect/run/dev --source
 ./content --markdown` uses optional reading support without an App or Rust
 toolchain. For custom workflows, `engine.json` identifies local source roots,

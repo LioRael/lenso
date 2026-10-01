@@ -30,6 +30,10 @@ mod local_dev;
 pub use local_dev::DevArgs;
 mod local_host;
 mod local_host_retirement;
+
+pub(crate) fn prepare_web_source(root: &Path, destination: &Path) -> anyhow::Result<PathBuf> {
+    local_host::web_authoring::stage_project(root, destination)
+}
 mod local_lock;
 mod local_start;
 mod local_workflow;
@@ -41,7 +45,7 @@ mod portable_runtime {
 mod precompiled;
 mod prepare;
 mod preset;
-pub use preset::AppProject;
+pub use preset::{AppProject, PreparedAppProject};
 mod signed_catalog;
 mod target_closure;
 mod tool_cli;

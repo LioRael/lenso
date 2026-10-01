@@ -217,7 +217,9 @@ impl DevHost {
         let project = tempfile::tempdir().context("create Web development Host directory")?;
         let target_directory = cargo_target_directory(root)?;
         let package_name = host_package_name(root, &package.name);
-        let manifest = host_manifest(root, package, &package_name, &framework);
+        let prepared_source =
+            crate::app::prepare_web_source(root, &project.path().join("plugin-source"))?;
+        let manifest = host_manifest(&prepared_source, package, &package_name, &framework);
         fs::write(project.path().join("Cargo.toml"), manifest)
             .context("write Web development Host manifest")?;
         fs::create_dir(project.path().join("src"))

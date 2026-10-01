@@ -1,6 +1,6 @@
 //! Atomic source-to-Host authoring; runtime startup remains a separate operation.
 use crate::archive::{archive_bundle, with_bundle_directory};
-use anyhow::{Context, bail};
+use anyhow::{Context, bail, ensure};
 use clap::Args;
 use lenso_app_authoring::{
     discovery::conventions::GeneratedResourceContribution,
@@ -97,11 +97,41 @@ fn parse_portable_implementations(
 }
 
 pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
+    assemble_with_report(args, None)
+}
+
+pub(super) fn assemble_with_report(
+    args: AssembleArgs,
+    report: Option<lenso_app_authoring::discovery::DiscoveryReport>,
+) -> anyhow::Result<()> {
+    assemble_in(args, report, None)
+}
+
+pub(super) fn assemble_in(
+    args: AssembleArgs,
+    report: Option<lenso_app_authoring::discovery::DiscoveryReport>,
+    inputs: Option<&lenso_engine::discovery::DiscoverySession>,
+) -> anyhow::Result<()> {
     let portable_implementations = parse_portable_implementations(&args.portable_implementations)?;
     let root = fs::canonicalize(crate::plugins::project_root(args.root)?)?;
-    let report = discover(&root)?;
+    let acquired = match inputs {
+        Some(inputs) => inputs.scope(&root)?,
+        None => lenso_engine::discovery::DiscoverySession::new(&root)?,
+    };
+    let report = match report {
+        Some(report) => {
+            ensure!(
+                report.root == root
+                    && report.kind == "lenso.app-discovery"
+                    && report.schema_version == 1,
+                "planned discovery does not match App root"
+            );
+            report
+        }
+        None => lenso_app_authoring::discovery::discover_in(&root, &acquired)?,
+    };
     super::convention_authoring::linked_catalog::verify_sources(&root, &report.candidates)?;
-    let convention_plan = lenso_app_authoring::discovery::conventions::plan(&report)?;
+    let convention_plan = lenso_app_authoring::discovery::conventions::plan_in(&report, &acquired)?;
     let selection_bytes = serde_json::to_vec(&convention_plan)?;
     let dependency_locks = super::local_host::dependency_lock_digests(
         std::iter::once(root.as_path())
@@ -190,7 +220,8 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         .filter(|c| precompiled.is_none() || !super::local_host::is_native(c))
         .cloned()
         .collect::<Vec<_>>();
-    let mut contract_evidence = super::contracts::synchronize(&root, &source_contracts)?;
+    let mut contract_evidence =
+        super::contracts::synchronize_in(&root, &source_contracts, &acquired)?;
     let convention_inputs = convention_plan
         .compilations
         .iter()
@@ -202,9 +233,10 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     if let Some(host) = &precompiled {
         host.admit(&compiled_conventions.candidates)?;
     }
-    contract_evidence.extend(super::contracts::synchronize(
+    contract_evidence.extend(super::contracts::synchronize_in(
         &root,
         &compiled_conventions.candidates,
+        &acquired,
     )?);
     contract_evidence.retain(|evidence| !evidence.root.starts_with(generated_sources.path()));
     let generated_resources = compiled_conventions.resources;
@@ -256,11 +288,12 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         if let Some(host) = &precompiled {
             host.install(stage.path(), &candidates)?
         } else {
-            super::local_host::generate(
+            super::local_host::generate_in(
                 stage.path(),
                 &root.join(".lenso/host-cache"),
                 &candidates,
                 generated_adapters.context("generated Host Adapter set")?,
+                &acquired,
             )?
         }
     } else {

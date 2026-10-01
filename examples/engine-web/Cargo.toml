@@ -6,10 +6,15 @@ publish = false
 
 [dependencies]
 lenso = { path = "../../crates/lenso" }
+lenso-kernel = { workspace = true }
 lenso-capability-http-endpoint = { path = "../../crates/lenso-capability-http-endpoint" }
 lenso-web-host = { path = "../../crates/lenso-web-host" }
 tokio = { workspace = true, features = ["macros", "rt", "signal", "net"] }
 serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+http.workspace = true
+bytes.workspace = true
 
 [build-dependencies]
 lenso-engine-web = { path = "../../crates/lenso-engine-web" }

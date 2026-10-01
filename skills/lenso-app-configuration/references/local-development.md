@@ -52,6 +52,16 @@ available; generated Plans remain diagnostic artifacts.
 
 ## Optional surfaces and no-Rust Hosts
 
+The source App `--web` starter uses `[package.metadata.lenso.web] preset = "v1"`.
+It infers one root Plugin provider, reads optional explicit `src/routes` handlers
+and filesystem `src/app/**/route.rs` handlers, and stages existing Endpoint
+bindings before native Host compilation. The default source needs no authored
+processor list, build script or generated include. Use App build/dev (or Plugin
+dev) to lower it; plain Cargo on its authored package does not run App lowering.
+Keep legacy build-script projects on their existing explicit path. See the
+[Web/Contracts APIs](../../../docs/architecture/engine-web-contracts.md) for
+method attributes, stable IDs, additive middleware scopes and overrides.
+
 Select support before expecting its files to have meaning. For CLI support use
 the supplied `app create --cli` or `app add @lenso/cli` path; that adoption
 uses bundled support, not a marketplace lookup. For Console use the matching

@@ -8,6 +8,59 @@ The defaults are replaceable policies, not required directory layouts.
 
 ## Web
 
+The official source App Web starter opts into the versioned preset:
+
+```toml
+[package.metadata.lenso.web]
+preset = "v1"
+```
+
+Its default tree is `src/lib.rs` (one source-declared Plugin),
+`src/app/**/route.rs` (filesystem routes), and optional `src/routes/**/*.rs`
+(explicit routes). The App infers the root Plugin provider and stages generated
+bindings into an immutable package before building its ordinary native Host.
+The authored project needs no processor registration, `build.rs`, or generated
+`include!`. Use App build/dev or Plugin dev for this preset; plain Cargo on the
+authored package does not perform App lowering. Existing Cargo/build-script
+projects keep their explicit pipeline. A custom build script cannot also opt
+into the preset.
+
+For example, `src/app/users/[id]/route.rs` contains:
+
+```rust
+#[get]
+#[route_id("users.read")] // optional stable ID; default is "get:/users/{id}"
+#[middleware(authenticate)]
+async fn read(&self, Path(user): Path<UserPath>) -> Result<Json<User>, Problem> {
+    self.lookup(user.id).await
+}
+```
+
+These are supported authoring APIs; the owning Plugin supplies the types and
+middleware methods. A method attribute is mandatory. Root `route.rs` is `/`,
+`[id]` is `{id}`, final `[...rest]` is `{*rest}`, and `(group)` contributes no URL
+segment. Optional catchalls, malformed names, traversal, repeated parameters,
+overlapping filesystem roots and ambiguous route shapes fail with provenance.
+An ID override preserves Plugin identity and manifest selection; the default
+route ID changes when its method or derived URL changes.
+
+Explicit handlers support `#[get("/health")]` (function name as ID), an optional
+`#[route_id("health")]`, and the unchanged `#[get("health", "/health")]` form.
+Both styles combine into one validated RouteSet and one existing Endpoint
+implementation. Duplicate IDs and method/path conflicts across styles fail.
+Different methods may share a URL. There is no second router or runtime.
+
+`WebOptions.middleware` supplies provider middleware. `WebOptions.scopes` maps
+physical directory prefixes to additive middleware lists, e.g.
+`{"src/app": ["authenticate"], "src/app/admin": ["require_admin"]}`. The preset
+accepts these same fields in its TOML table. Order is provider, outer directory,
+inner directory, handler; each list retains declaration order. Children cannot
+remove ancestor middleware. Route groups remain physical scopes. Existing
+Endpoint dispatch then extracts arguments in signature order before invoking
+the handler. Custom `FromRequest<Provider>` extractors, short-circuit responses,
+authorization ownership, errors and cancellation keep their existing semantics.
+No authentication is inferred from directories.
+
 ```rust
 let options = lenso_engine_web::WebOptions {
     provider: "Gateway".into(),
@@ -20,8 +73,8 @@ lenso_engine_web::build(source_root, out_dir, options)?;
 ```
 
 The default reader selects nested `.rs` handler sources under `src/routes`.
-One file can contain several functions. Each handler explicitly declares an ID,
-method and path with the existing HTTP attributes. Types, state and helper
+One file can contain several functions. Each handler declares a method and path
+with the existing HTTP attributes; its ID may be explicit or derived. Types, state and helper
 methods stay in the owning source module. The processor validates IDs, methods,
 path parameters and matcher conflicts, then emits an inherent `#[endpoint]`
 implementation. The official macro owns typed extractors and Endpoint bindings;

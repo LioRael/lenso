@@ -93,7 +93,7 @@ fn expand_endpoint_with_registration(
         let ImplItem::Fn(method) = item else {
             continue;
         };
-        let metadata = take_handler_metadata(&mut method.attrs)?;
+        let metadata = take_handler_metadata(&mut method.attrs, &method.sig.ident)?;
         if let Some(mut route) = metadata.route {
             if metadata.contract.is_some() && metadata.openapi.is_none() {
                 return Err(Error::new_spanned(
@@ -228,13 +228,28 @@ fn take_provider_middlewares(attributes: &mut Vec<Attribute>) -> Result<Vec<Iden
     Ok(middlewares)
 }
 
-fn take_handler_metadata(attributes: &mut Vec<Attribute>) -> Result<HandlerMetadata> {
+fn take_handler_metadata(
+    attributes: &mut Vec<Attribute>,
+    handler: &Ident,
+) -> Result<HandlerMetadata> {
     let mut route = None;
+    let mut id_override = None;
+    let mut explicit_id = false;
     let mut middlewares = Vec::new();
     let mut openapi = None;
     let mut contract = None;
     let mut retained = Vec::with_capacity(attributes.len());
     for attribute in attributes.drain(..) {
+        if attribute.path().is_ident("route_id") {
+            if id_override.is_some() {
+                return Err(Error::new_spanned(
+                    attribute,
+                    "duplicate route_id attribute",
+                ));
+            }
+            id_override = Some(attribute.parse_args::<LitStr>()?);
+            continue;
+        }
         if attribute.path().is_ident("middleware") {
             let arguments =
                 attribute.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)?;
@@ -282,14 +297,26 @@ fn take_handler_metadata(attributes: &mut Vec<Attribute>) -> Result<HandlerMetad
             ));
         }
         let arguments = attribute.parse_args::<RouteArguments>()?;
+        explicit_id = arguments.route_id.is_some();
         route = Some(Route {
             method: LitStr::new(http_method, attribute.path().span()),
-            id: arguments.route_id,
+            id: arguments
+                .route_id
+                .unwrap_or_else(|| LitStr::new(&handler.to_string(), handler.span())),
             path: arguments.path,
             openapi: None,
         });
     }
     *attributes = retained;
+    if let Some(id) = id_override {
+        if explicit_id {
+            return Err(Error::new_spanned(id, "route ID declared twice"));
+        }
+        let route = route
+            .as_mut()
+            .ok_or_else(|| Error::new_spanned(&id, "route_id requires an HTTP handler"))?;
+        route.id = id;
+    }
     Ok(HandlerMetadata {
         route,
         middlewares,
@@ -1104,22 +1131,23 @@ fn http_method(attribute: &Attribute) -> Option<&'static str> {
 }
 
 struct RouteArguments {
-    route_id: LitStr,
+    route_id: Option<LitStr>,
     path: LitStr,
 }
 
 impl Parse for RouteArguments {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let arguments = Punctuated::<LitStr, Token![,]>::parse_terminated(input)?;
-        if arguments.len() != 2 {
+        if !(1..=2).contains(&arguments.len()) {
             return Err(Error::new(
                 input.span(),
-                "HTTP handler attributes require a route ID and path",
+                "HTTP handler attributes require a path, or a route ID and path",
             ));
         }
+        let explicit_id = arguments.len() == 2;
         let mut arguments = arguments.into_iter();
         Ok(Self {
-            route_id: arguments.next().expect("length was checked"),
+            route_id: explicit_id.then(|| arguments.next().expect("length was checked")),
             path: arguments.next().expect("length was checked"),
         })
     }
@@ -1197,6 +1225,36 @@ enum ArgumentKind {
 mod tests {
     use super::expand_endpoint;
     use syn::parse_quote;
+
+    #[test]
+    fn shorthand_infers_function_identity_and_accepts_an_explicit_id() {
+        let expanded = expand_endpoint(parse_quote! {
+            impl Http {
+                #[get("/health")]
+                async fn health(&self) {}
+                #[route_id("orders.read")]
+                #[get("/orders/{id}")]
+                async fn read(&self, Path(path): Path<OrderPath>) {}
+            }
+        })
+        .unwrap()
+        .to_string();
+        assert!(expanded.contains("\"health\"") && expanded.contains("\"orders.read\""));
+        assert!(!expanded.contains("route_id ("));
+    }
+
+    #[test]
+    fn conflicting_identity_declarations_fail_before_expansion() {
+        let error = expand_endpoint(parse_quote! {
+            impl Http {
+                #[route_id("new")]
+                #[get("old", "/health")]
+                async fn health(&self) {}
+            }
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("route ID declared twice"));
+    }
 
     #[test]
     fn expands_handler_attributes_into_the_static_route_table() {

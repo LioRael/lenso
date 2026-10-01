@@ -121,7 +121,29 @@ fn dependency_free_local_contract_needs_no_lock_and_discovery_does_not_create_on
     fs::create_dir(root.join("src")).unwrap();
     fs::write(root.join("src/lib.rs"), "").unwrap();
     fs::write(root.join("Cargo.toml"), "[package]\nname='text-contract'\nversion='1.0.0'\nedition='2024'\n[workspace]\n[package.metadata.lenso.contract]\ndescriptor='capability.json'\nprojection='typescript'\noutput='generated/text.ts'\n").unwrap();
-    synchronize(temp.path(), &[]).unwrap();
+    let mut inputs = lenso_engine::discovery::DiscoverySession::new(temp.path()).unwrap();
+    assert!(
+        !inputs
+            .directory("contracts/text")
+            .unwrap()
+            .iter()
+            .any(|entry| entry.path.ends_with("/generated"))
+    );
+    synchronize_in(temp.path(), &[], &inputs).unwrap();
+    assert!(
+        inputs
+            .directory("contracts/text")
+            .unwrap()
+            .iter()
+            .any(|entry| entry.path.ends_with("/generated"))
+    );
+    assert_eq!(
+        inputs
+            .read("contracts/text/generated/text.ts", 1024 * 1024)
+            .unwrap()
+            .as_ref(),
+        fs::read(root.join("generated/text.ts")).unwrap()
+    );
     assert!(root.join("generated/text.ts").exists());
     assert!(!root.join("Cargo.lock").exists());
 }

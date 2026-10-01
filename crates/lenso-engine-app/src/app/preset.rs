@@ -15,11 +15,36 @@ impl Plugin for AppProject {
         "lenso.app.v1"
     }
     fn plan(&self, _: &Snapshot) -> anyhow::Result<Vec<Step>> {
-        let report = lenso_app_authoring::discovery::discover(&self.root)?;
+        self.plan_in(&lenso_engine::discovery::DiscoverySession::new(&self.root)?)
+    }
+    fn process(&self, context: &ContextView<'_>) -> anyhow::Result<BTreeMap<String, Resource>> {
+        self.process_in(
+            context,
+            &lenso_engine::discovery::DiscoverySession::new(&self.root)?,
+        )
+    }
+}
+
+impl AppProject {
+    /// Prepare one shared acquisition epoch for the official App pipeline.
+    pub fn prepare(self) -> anyhow::Result<PreparedAppProject> {
+        let inputs =
+            std::sync::Mutex::new(lenso_engine::discovery::DiscoverySession::new(&self.root)?);
+        Ok(PreparedAppProject {
+            project: self,
+            inputs,
+        })
+    }
+
+    fn plan_in(
+        &self,
+        inputs: &lenso_engine::discovery::DiscoverySession,
+    ) -> anyhow::Result<Vec<Step>> {
+        let report = lenso_app_authoring::discovery::discover_in(&self.root, inputs)?;
         let root = &report.root;
         super::convention_authoring::linked_catalog::verify_sources(root, &report.candidates)?;
         // Domain-specific source inspection belongs to this optional preset.
-        let conventions = lenso_app_authoring::discovery::conventions::plan(&report)?;
+        let conventions = lenso_app_authoring::discovery::conventions::plan_in(&report, inputs)?;
         let mut fingerprints = BTreeMap::new();
         fingerprints.insert(root.clone(), super::local_host::input_digest(root)?);
         for compilation in &conventions.compilations {
@@ -46,10 +71,14 @@ impl Plugin for AppProject {
             id: "app/build".into(),
             inputs: vec![],
             after: vec![],
-            options: serde_json::json!({"root":root,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks,"portable_implementations":self.portable_implementations}),
+            options: serde_json::json!({"root":root,"discovery":report,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks,"portable_implementations":self.portable_implementations}),
         }])
     }
-    fn process(&self, context: &ContextView<'_>) -> anyhow::Result<BTreeMap<String, Resource>> {
+    fn process_in(
+        &self,
+        context: &ContextView<'_>,
+        inputs: &lenso_engine::discovery::DiscoverySession,
+    ) -> anyhow::Result<BTreeMap<String, Resource>> {
         if context.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
             anyhow::bail!("App build cancelled");
         }
@@ -77,15 +106,21 @@ impl Plugin for AppProject {
         {
             anyhow::bail!("incompatible precompiled Engine Host");
         }
-        super::assemble::assemble(super::assemble::AssembleArgs {
-            root: Some(self.root.clone()),
-            id: "local.app".into(),
-            out: self.output.clone(),
-            json: false,
-            executable: true,
-            trust_linked_build: self.trust_linked_build.clone(),
-            portable_implementations: self.portable_implementations.clone(),
-        })?;
+        super::assemble::assemble_in(
+            super::assemble::AssembleArgs {
+                root: Some(self.root.clone()),
+                id: "local.app".into(),
+                out: self.output.clone(),
+                json: false,
+                executable: true,
+                trust_linked_build: self.trust_linked_build.clone(),
+                portable_implementations: self.portable_implementations.clone(),
+            },
+            Some(serde_json::from_value(
+                context.step.options["discovery"].clone(),
+            )?),
+            Some(inputs),
+        )?;
         Ok(BTreeMap::from([(
             "distribution".into(),
             Resource {
@@ -93,6 +128,34 @@ impl Plugin for AppProject {
                 value: serde_json::json!({"directory":self.output}),
             },
         )]))
+    }
+}
+
+/// Optional prepared preset; generic Engine registration remains explicit.
+#[derive(Debug)]
+pub struct PreparedAppProject {
+    project: AppProject,
+    inputs: std::sync::Mutex<lenso_engine::discovery::DiscoverySession>,
+}
+
+impl Plugin for PreparedAppProject {
+    fn identity(&self) -> &str {
+        self.project.identity()
+    }
+    fn plan(&self, _: &Snapshot) -> anyhow::Result<Vec<Step>> {
+        let mut inputs = self
+            .inputs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("App acquisition poisoned"))?;
+        inputs.begin_epoch();
+        self.project.plan_in(&inputs)
+    }
+    fn process(&self, context: &ContextView<'_>) -> anyhow::Result<BTreeMap<String, Resource>> {
+        let inputs = self
+            .inputs
+            .lock()
+            .map_err(|_| anyhow::anyhow!("App acquisition poisoned"))?;
+        self.project.process_in(context, &inputs)
     }
 }
 
