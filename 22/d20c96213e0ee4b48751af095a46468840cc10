@@ -1,0 +1,18 @@
+crates/lenso-cli/tests/process_notes.rs
+  h_9d56aba080c170 373
+crates/lenso-engine-app/assets/process-notes/Cargo.toml.template
+  h_9d56aba080c170 15
+crates/lenso-engine-app/src/app/local_workflow/notes.rs
+  h_9d56aba080c170 121,123,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22d20c96213e0ee4b48751af095a46468840cc10",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
