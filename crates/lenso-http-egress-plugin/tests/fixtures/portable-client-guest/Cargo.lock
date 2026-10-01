@@ -284,7 +284,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-client"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "futures",
  "lenso-contract-codegen",
@@ -317,13 +317,15 @@ dependencies = [
 
 [[package]]
 name = "lenso-contract-codegen"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "lenso-contract-authoring",
+ "proc-macro2",
  "regex",
  "semver",
  "serde_json",
  "sha2",
+ "syn 2.0.119",
 ]
 
 [[package]]
