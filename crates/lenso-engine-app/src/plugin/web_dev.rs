@@ -143,11 +143,13 @@ pub(super) fn is_web_plugin(root: &Path) -> anyhow::Result<bool> {
 pub(super) async fn run(args: PluginDevArgs) -> anyhow::Result<()> {
     validate_args(&args)?;
     let root = project_root(args.repo_root.clone())?;
-    let package = read_package(&root.join("Cargo.toml"))?;
-    let host = DevHost::prepare(&root, &package)?;
     let mut watcher = args.watch.then(|| SourceWatcher::new(&root)).transpose()?;
 
     loop {
+        // A preset stages immutable source. Reprepare after a watch event so
+        // the next Host points to the new generation and rechecks its cohort.
+        let package = read_package(&root.join("Cargo.toml"))?;
+        let host = DevHost::prepare(&root, &package)?;
         host.build()?;
         let mut child = host.spawn(args.json)?;
         if let Some(watcher) = watcher.as_mut() {
@@ -224,8 +226,11 @@ impl DevHost {
             .context("write Web development Host manifest")?;
         fs::create_dir(project.path().join("src"))
             .context("create Web development Host source directory")?;
-        fs::write(project.path().join("src/main.rs"), HOST_SOURCE)
-            .context("write Web development Host source")?;
+        fs::write(
+            project.path().join("src/main.rs"),
+            host_source(root, &prepared_source)?,
+        )
+        .context("write Web development Host source")?;
         run_cargo(
             project.path(),
             &target_directory,
@@ -279,6 +284,27 @@ impl DevHost {
             .spawn()
             .with_context(|| format!("start Web development Host `{}`", self.executable.display()))
     }
+}
+
+fn host_source(root: &Path, prepared: &Path) -> anyhow::Result<String> {
+    if prepared == root {
+        return Ok(HOST_SOURCE.into());
+    }
+    let report = lenso_app_authoring::discovery::discover(root)?;
+    let canonical_root = fs::canonicalize(root)?;
+    let candidates = report
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.project == canonical_root && candidate.format == "cargo")
+        .collect::<Vec<_>>();
+    if candidates.len() != 1 {
+        bail!("Web development preset requires one source-declared Plugin linkage anchor");
+    }
+    let link = candidates[0]
+        .native_link
+        .as_deref()
+        .unwrap_or("link_plugin");
+    Ok(HOST_SOURCE.replace("plugin::link();", &format!("plugin::{link}();")))
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -560,6 +586,87 @@ mod tests {
 
     fn source(manifest: &str) -> anyhow::Result<FrameworkSource> {
         source_from_manifest(&toml::from_str(manifest).unwrap())
+    }
+
+    #[test]
+    fn preset_without_empty_link_stub_builds_and_describes_the_real_dev_host() {
+        let source = tempfile::tempdir().unwrap();
+        let host = tempfile::tempdir().unwrap();
+        let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        for (relative, text) in web_plugin_scaffold("company.greetings-http") {
+            let path = source.path().join(relative);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        crate::app::prepare_web_starter(source.path(), true).unwrap();
+        assert!(
+            !fs::read_to_string(source.path().join("src/lib.rs"))
+                .unwrap()
+                .contains("fn link()")
+        );
+        let manifest_path = source.path().join("Cargo.toml");
+        let mut plugin_manifest: toml::Value =
+            toml::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        // Test the real scaffold and lowering against the local owning cohort;
+        // publication/registry availability is a separate release fact.
+        for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+            if let Some(dependencies) = plugin_manifest
+                .get_mut(section)
+                .and_then(toml::Value::as_table_mut)
+            {
+                for (name, dependency) in dependencies {
+                    if crates.join(name).join("Cargo.toml").is_file() {
+                        *dependency =
+                            toml::Value::try_from(serde_json::json!({"path":crates.join(name)}))
+                                .unwrap();
+                    }
+                }
+            }
+        }
+        fs::write(manifest_path, toml::to_string(&plugin_manifest).unwrap()).unwrap();
+        let prepared =
+            crate::app::prepare_web_source(source.path(), &host.path().join("plugin-source"))
+                .unwrap();
+        let code = super::host_source(source.path(), &prepared).unwrap();
+        assert!(code.contains("plugin::link_plugin();"));
+        let mut manifest: toml::Value = toml::from_str(&host_manifest(
+            &prepared,
+            &package(),
+            "preset-dev-regression",
+            &FrameworkSource::Registry,
+        ))
+        .unwrap();
+        for name in [
+            "lenso-app-plan",
+            "lenso-kernel",
+            "lenso-native-adapter",
+            "lenso-web-host",
+        ] {
+            manifest["dependencies"].as_table_mut().unwrap().insert(
+                name.into(),
+                toml::Value::try_from(serde_json::json!({"path":crates.join(name)})).unwrap(),
+            );
+        }
+        fs::write(
+            host.path().join("Cargo.toml"),
+            toml::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        fs::create_dir(host.path().join("src")).unwrap();
+        fs::write(host.path().join("src/main.rs"), code).unwrap();
+        let output = crate::app::cargo_command()
+            .args(["run", "--offline", "--manifest-path"])
+            .arg(host.path().join("Cargo.toml"))
+            .args(["--", "--describe"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let catalog: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(catalog.to_string().contains("company.greetings-http"));
     }
 
     #[test]

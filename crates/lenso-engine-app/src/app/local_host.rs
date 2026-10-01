@@ -478,7 +478,7 @@ pub(super) fn generate_in(
     )?;
     let local_inputs = watch_roots
         .iter()
-        .map(|path| Ok((path.clone(), input_digest(path)?)))
+        .map(|path| Ok((path.clone(), input_digest_in(path, inputs)?)))
         .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
     let ids = codecs
         .keys()
@@ -606,7 +606,9 @@ pub(super) fn generate_in(
         .iter()
         .filter(|candidate| candidate.native_link.is_some())
     {
-        for sibling in lenso_app_authoring::discovery::discover(&candidate.project)?.candidates {
+        for sibling in
+            lenso_app_authoring::discovery::discover_in(&candidate.project, inputs)?.candidates
+        {
             if sibling.native_link.is_some()
                 && !selected_source_ids.contains(sibling.plugin_id.as_str())
             {
@@ -714,8 +716,9 @@ pub(super) fn generate_in(
         bail!("generated local Host build failed");
     }
     verify_git_lenso_lock(&generated.join("Cargo.lock"), &git_lenso_source)?;
+    let verification = lenso_engine::discovery::DiscoverySession::new(inputs.root())?;
     for (path, before) in &local_inputs {
-        if &input_digest(path)? != before {
+        if &input_digest_in(path, &verification)? != before {
             bail!(
                 "native path dependency changed during build: {}; retry after edits settle",
                 path.display()
@@ -1430,71 +1433,83 @@ fn executable_on_path(name: &str) -> anyhow::Result<PathBuf> {
 /// Content evidence for authored inputs; generated dependency lockfiles are
 /// captured separately by Cargo/the package builder and may be created on first build.
 pub(super) fn input_digest(root: &Path) -> anyhow::Result<String> {
-    let mut pending = vec![root.to_path_buf()];
+    input_digest_in(root, &lenso_engine::discovery::DiscoverySession::new(root)?)
+}
+
+/// Hash the bytes and selected membership actually acquired by this epoch.
+/// Callers use a separate session for independent live verification.
+pub(super) fn input_digest_in(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<String> {
+    let mut session = inputs.scope(root)?;
+    let root = session.root().to_path_buf();
+    let mut pending = vec![String::new()];
     let mut files = Vec::new();
     let mut visited = 0;
-    while let Some(path) = pending.pop() {
-        visited += 1;
-        if visited > 50_000 {
-            bail!("source input exceeds 50,000 entries");
-        }
-        let metadata = fs::symlink_metadata(&path)?;
-        if metadata.is_dir() {
-            for entry in fs::read_dir(path)? {
-                let entry = entry?;
-                let name = entry.file_name();
-                if entry.path().parent() == Some(root) && generated_distribution(&entry.path())? {
-                    continue;
-                }
-                if name.to_str().is_some_and(|name| {
-                    [
-                        ".git",
-                        ".lenso",
-                        "target",
-                        "node_modules",
-                        "dist",
-                        "build",
-                        ".next",
-                        ".venv",
-                        "__pycache__",
-                        "Cargo.lock",
-                        "bun.lock",
-                        "bun.lockb",
-                        "package-lock.json",
-                        "pnpm-lock.yaml",
-                    ]
-                    .contains(&name)
-                }) {
-                    continue;
-                }
-                pending.push(entry.path());
+    while let Some(directory) = pending.pop() {
+        for entry in session.directory(&directory)? {
+            visited += 1;
+            if visited > 50_000 {
+                bail!("source input exceeds 50,000 entries");
             }
-        } else if metadata.is_file() {
-            files.push(path);
-        } else {
-            bail!(
-                "source input contains a symlink or special file: {}",
-                path.display()
-            );
-        }
-        if pending.len() + files.len() > 50_000 {
-            bail!("source input exceeds 50,000 entries");
+            let name = Path::new(&entry.path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("source filename")?;
+            if [
+                ".git",
+                ".lenso",
+                "target",
+                "node_modules",
+                "dist",
+                "build",
+                ".next",
+                ".venv",
+                "__pycache__",
+                "Cargo.lock",
+                "bun.lock",
+                "bun.lockb",
+                "package-lock.json",
+                "pnpm-lock.yaml",
+            ]
+            .contains(&name)
+            {
+                continue;
+            }
+            if directory.is_empty() && generated_distribution(&root.join(&entry.path))? {
+                continue;
+            }
+            if entry.kind.is_dir() {
+                pending.push(entry.path);
+            } else if entry.kind.is_file() {
+                files.push(entry.path);
+            } else {
+                bail!(
+                    "source input contains a symlink or special file: {}",
+                    entry.path
+                );
+            }
         }
     }
     files.sort();
     let mut hasher = Sha256::new();
     let mut size = 0;
-    for path in files {
-        let relative = path.strip_prefix(root)?.to_string_lossy();
-        size += fs::metadata(&path)?.len();
+    for relative in files {
+        // Preserve the existing source-budget diagnostic without reading an
+        // oversized (possibly sparse) file into the acquisition cache.
+        if fs::symlink_metadata(root.join(&relative))?.len() > 256 * 1024 * 1024 {
+            bail!("source input exceeds 256 MiB");
+        }
+        let bytes = session.read(&relative, 256 * 1024 * 1024)?;
+        size += bytes.len();
         if size > 256 * 1024 * 1024 {
             bail!("source input exceeds 256 MiB");
         }
-        let bytes = fs::read(&path)?;
         hasher.update((relative.len() as u64).to_be_bytes());
         hasher.update(relative.as_bytes());
         hasher.update((bytes.len() as u64).to_be_bytes());
-        hasher.update(bytes);
+        hasher.update(&bytes);
     }
     Ok(format!(
         "sha256:{}",

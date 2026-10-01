@@ -72,7 +72,24 @@ impl Host {
             manifest,
         }))
     }
+    #[cfg(test)]
     pub(super) fn admit(&self, candidates: &[Candidate]) -> anyhow::Result<()> {
+        for candidate in candidates
+            .iter()
+            .filter(|candidate| super::local_host::is_native(candidate))
+        {
+            self.admit_in(
+                std::slice::from_ref(candidate),
+                &lenso_engine::discovery::DiscoverySession::new(&candidate.project)?,
+            )?;
+        }
+        Ok(())
+    }
+    pub(super) fn admit_in(
+        &self,
+        candidates: &[Candidate],
+        inputs: &lenso_engine::discovery::DiscoverySession,
+    ) -> anyhow::Result<()> {
         for candidate in candidates
             .iter()
             .filter(|c| super::local_host::is_native(c))
@@ -80,7 +97,8 @@ impl Host {
             let source = self.manifest.sources.get(&candidate.plugin_id)
                 .with_context(|| format!("precompiled Host does not admit native Plugin {}; choose a matching Host or remove development_host to build with Cargo", candidate.plugin_id))?;
             if source.release_version != candidate.release_version
-                || source.input_digest != super::local_host::input_digest(&candidate.project)?
+                || source.input_digest
+                    != super::local_host::input_digest_in(&candidate.project, inputs)?
             {
                 bail!(
                     "precompiled Host source identity mismatch for {}; rebuild the Host package",
@@ -94,8 +112,9 @@ impl Host {
         &self,
         stage: &Path,
         candidates: &[Candidate],
+        inputs: &lenso_engine::discovery::DiscoverySession,
     ) -> anyhow::Result<Vec<PluginDescriptor>> {
-        self.admit(candidates)?;
+        self.admit_in(candidates, inputs)?;
         let installed = stage.join(".lenso/host");
         fs::copy(&self.binary, &installed)?;
         if super::local_host::digest(&installed)? != self.manifest.sha256 {

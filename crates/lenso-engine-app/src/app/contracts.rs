@@ -283,7 +283,7 @@ fn synchronize_selected_in(
         .map(|contract| {
             Ok((
                 contract.root.clone(),
-                super::local_host::input_digest(&contract.root)?,
+                super::local_host::input_digest_in(&contract.root, acquired)?,
             ))
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
@@ -526,8 +526,9 @@ fn synchronize_selected_in(
         }
         baselines.push((baseline, stage));
     }
+    let verification = lenso_engine::discovery::DiscoverySession::new(root)?;
     for (path, digest) in inputs {
-        if super::local_host::input_digest(&path)? != digest {
+        if super::local_host::input_digest_in(&path, &verification)? != digest {
             bail!(
                 "contract source changed during generation: {}; retry after edits settle",
                 path.display()
@@ -652,7 +653,10 @@ fn synchronize_selected_in(
                 None
             },
             source_digest: if contract.declaration.source.is_some() {
-                Some(super::local_host::input_digest(&contract.root)?)
+                Some(super::local_host::input_digest_in(
+                    &contract.root,
+                    acquired,
+                )?)
             } else {
                 None
             },

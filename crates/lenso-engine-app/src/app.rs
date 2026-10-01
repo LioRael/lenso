@@ -45,6 +45,8 @@ mod portable_runtime {
 mod precompiled;
 mod prepare;
 mod preset;
+#[cfg(test)]
+pub(crate) use local_workflow::prepare_web_starter;
 pub use preset::{AppProject, PreparedAppProject};
 mod signed_catalog;
 mod target_closure;

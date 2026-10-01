@@ -406,7 +406,7 @@ fn start_with_host_command(args: StartArgs, agent_tool_cli: bool) -> anyhow::Res
     }
 }
 
-fn prepare_web_starter(root: &std::path::Path, no_install: bool) -> anyhow::Result<()> {
+pub(crate) fn prepare_web_starter(root: &std::path::Path, no_install: bool) -> anyhow::Result<()> {
     let manifest_path = root.join("Cargo.toml");
     let mut manifest: toml::Value = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
     let package = manifest

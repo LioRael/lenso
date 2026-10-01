@@ -37,7 +37,7 @@ pub(crate) fn stage_project(root: &Path, destination: &Path) -> anyhow::Result<P
         .find(|package| {
             package["manifest_path"]
                 .as_str()
-                .is_some_and(|path| Path::new(path) == manifest_path)
+                .is_some_and(|path| fs::canonicalize(path).is_ok_and(|path| path == manifest_path))
         })
         .context("selected Web package")?;
     Ok(stage(package, &metadata, destination)?.unwrap_or_else(|| root.to_path_buf()))
@@ -189,7 +189,6 @@ pub(super) fn stage_in(
         }
     }
     rebase_dependencies(&mut manifest, root, workspace_root, &workspace)?;
-    let mut staged_workspace = toml::map::Map::new();
     if manifest
         .get("lints")
         .and_then(|lints| lints.get("workspace"))
@@ -200,12 +199,17 @@ pub(super) fn stage_in(
             .get("workspace")
             .and_then(|workspace| workspace.get("lints"))
             .context("inherited Cargo lints")?;
-        staged_workspace.insert("lints".into(), lints.clone());
+        manifest
+            .as_table_mut()
+            .context("Cargo manifest table")?
+            .insert("lints".into(), lints.clone());
     }
+    // A staged dependency may live inside a generated Host workspace. Resolve
+    // inherited fields above, then let its owning Host select membership.
     manifest
         .as_table_mut()
         .context("Cargo manifest table")?
-        .insert("workspace".into(), toml::Value::Table(staged_workspace));
+        .remove("workspace");
     let manifest = toml::to_string(&manifest)?;
     use sha2::{Digest, Sha256};
     let mut digest = Sha256::new();
@@ -399,6 +403,12 @@ mod tests {
         let report = lenso_app_authoring::discovery::discover_in(source.path(), &session).unwrap();
         assert_eq!(report.candidates.len(), 1);
         lenso_app_authoring::discovery::conventions::plan_in(&report, &session).unwrap();
+        // These are the actual digest entrypoints used by planning, assembly
+        // and native Host dependency evidence, all in the acquisition epoch.
+        for _phase in ["plan", "assembly", "native dependency"] {
+            crate::app::local_host::input_digest_in(source.path(), &session).unwrap();
+            crate::app::local_host::input_digest_in(&source.path().join("src"), &session).unwrap();
+        }
         let first = stage_in(&package, &metadata, output.path(), &session)
             .unwrap()
             .unwrap();
@@ -447,6 +457,50 @@ mod tests {
             fs::read_to_string(third.join("src/lib.rs"))
                 .unwrap()
                 .contains("authenticate")
+        );
+    }
+
+    #[test]
+    fn body_edit_between_discovery_and_fingerprinting_cannot_adopt_cached_bytes() {
+        let source = tempfile::tempdir().unwrap();
+        let (package, metadata) = fixture(source.path());
+        let session = DiscoverySession::new(source.path()).unwrap();
+        let old = fs::read_to_string(source.path().join("src/lib.rs")).unwrap();
+        let old = format!("{old}\nfn body() -> u8 {{ 1 }}\n");
+        fs::write(source.path().join("src/lib.rs"), &old).unwrap();
+        let report = lenso_app_authoring::discovery::discover_in(source.path(), &session).unwrap();
+        // Exact deterministic interleaving: discovery acquired v1, then an
+        // editor changes only a body before planning records its fingerprint.
+        fs::write(
+            source.path().join("src/lib.rs"),
+            old.replace("{ 1 }", "{ 2 }"),
+        )
+        .unwrap();
+        let planned = crate::app::local_host::input_digest_in(source.path(), &session).unwrap();
+        let verification = DiscoverySession::new(source.path()).unwrap();
+        assert_ne!(
+            planned,
+            crate::app::local_host::input_digest_in(source.path(), &verification).unwrap()
+        );
+        let fresh_report =
+            lenso_app_authoring::discovery::discover_in(source.path(), &verification).unwrap();
+        assert_eq!(
+            serde_json::to_value(report).unwrap(),
+            serde_json::to_value(fresh_report).unwrap()
+        );
+        let output = tempfile::tempdir().unwrap();
+        let staged = stage_in(&package, &metadata, output.path(), &session)
+            .unwrap()
+            .unwrap();
+        assert!(
+            fs::read_to_string(staged.join("src/lib.rs"))
+                .unwrap()
+                .contains("body() -> u8 { 1 }")
+        );
+        // Publication's separate verification epoch still compares to v1.
+        assert_ne!(
+            planned,
+            crate::app::local_host::input_digest_in(source.path(), &verification).unwrap()
         );
     }
 

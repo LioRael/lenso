@@ -24,6 +24,10 @@ one session through planning and staging. Separate Cargo processes remain
 separate acquisitions. Keep semantic validation and final live fingerprints
 independent of cache hits. Known file events invalidate that path and ancestor
 listings; configuration or unknown events require `begin_epoch` and replanning.
+Fingerprint acquired bytes and membership, then compare them in independent
+verification epochs. Do not fingerprint newer live bytes as evidence for an
+older cached source. Session counters cover selected acquisition only; lock and
+authority reads, distribution checks and subprocess I/O are outside them.
 Use `DiscoverySession::with_limits` for custom acquisition budgets; each selected
 reader retains its own validation and selection policy.
 

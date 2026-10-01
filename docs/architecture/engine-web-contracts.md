@@ -6,6 +6,23 @@ immutable `Snapshot` inputs, and emit normal Engine resources. Neither changes
 Kernel, Runtime Drivers, HTTP execution, Plugin identity or Host selection.
 The defaults are replaceable policies, not required directory layouts.
 
+Shared acquisition is scoped to one selected-input epoch. App planning,
+convention and contract baselines, source provenance and native dependency
+fingerprints hash the bytes and directory membership acquired in that epoch.
+Overlapping roots reuse physical inputs. Independent sessions verify inputs
+before execution, at compiler/native build boundaries, and before publication;
+those safety observations intentionally read again. Generated projection writes
+invalidate their changed files and ancestor listings before further acquisition.
+
+`acquisition.json` counters describe that acquisition session at staging time,
+not all filesystem reads in an App build. Distribution-marker validation,
+lock/authority checks, compilers and Cargo subprocesses have separate reads.
+The shared fingerprint regression exercises the actual digest entrypoints used
+by planning, assembly and native dependencies alongside discovery and staging;
+it proves reuse in that input epoch, not a single scan across the full pipeline
+or across processes. A deterministic App-process test rejects a body-only edit
+after discovery and before fingerprinting even when Plugin selection is equal.
+
 ## Web
 
 The official source App Web starter opts into the versioned preset:
