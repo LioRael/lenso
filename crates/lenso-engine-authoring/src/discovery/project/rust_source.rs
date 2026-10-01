@@ -22,7 +22,7 @@ pub(super) fn read(root: &Path) -> anyhow::Result<Vec<Candidate>> {
         return Ok(Vec::new());
     }
     let mut declarations = Vec::new();
-    let mut visited = BTreeSet::new();
+    let mut visited = Traversal::default();
     walk(root, &entry, &[], &mut visited, &mut declarations)?;
     if declarations.is_empty() {
         return Ok(Vec::new());
@@ -53,26 +53,30 @@ pub(super) fn read(root: &Path) -> anyhow::Result<Vec<Candidate>> {
         .collect()
 }
 
+#[derive(Default)]
+struct Traversal {
+    active: BTreeSet<PathBuf>,
+    visits: usize,
+}
+
 fn walk(
     root: &Path,
     file: &Path,
     modules: &[String],
-    visited: &mut BTreeSet<PathBuf>,
+    visited: &mut Traversal,
     found: &mut Vec<(String, String)>,
 ) -> anyhow::Result<()> {
     let file = fs::canonicalize(file)?;
     if !file.starts_with(fs::canonicalize(root)?) {
         bail!("Plugin source escapes its Cargo package");
     }
-    if modules.len() > 32 || visited.len() >= 1024 {
+    if modules.len() > 32 || visited.visits >= 1024 {
         bail!("Rust Plugin source discovery limit exceeded");
     }
-    if !visited.insert(file.clone()) {
-        bail!(
-            "Rust module source is included more than once: {}",
-            file.display()
-        );
+    if !visited.active.insert(file.clone()) {
+        bail!("recursive Rust module source: {}", file.display());
     }
+    visited.visits += 1;
     let source = read_metadata(&file)?;
     let parsed = syn::parse_file(&source)
         .with_context(|| format!("parse Rust Plugin source {}", file.display()))?;
@@ -85,7 +89,9 @@ fn walk(
     } else {
         file.with_extension("")
     };
-    items(root, &parsed.items, &directory, modules, visited, found)
+    let result = items(root, &parsed.items, &directory, modules, visited, found);
+    visited.active.remove(&file);
+    result
 }
 
 fn items(
@@ -93,7 +99,7 @@ fn items(
     declarations: &[Item],
     directory: &Path,
     modules: &[String],
-    visited: &mut BTreeSet<PathBuf>,
+    visited: &mut Traversal,
     found: &mut Vec<(String, String)>,
 ) -> anyhow::Result<()> {
     let mut module_identity = None;

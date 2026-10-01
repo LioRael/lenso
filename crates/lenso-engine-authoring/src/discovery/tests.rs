@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn repeated_helper_inclusion_preserves_metadata_plugin_and_rejects_duplicate_identity() {
+    let root = tempfile::tempdir().unwrap();
+    rust(root.path(), "app", "example.metadata");
+    write(
+        root.path(),
+        "app/src/lib.rs",
+        "#[path=\"shared.rs\"] pub mod first; #[path=\"shared.rs\"] pub mod second;",
+    );
+    write(root.path(), "app/src/shared.rs", "pub fn helper() {}");
+    let report = discover(root.path()).unwrap();
+    assert_eq!(report.candidates.len(), 1);
+    assert_eq!(report.candidates[0].plugin_id, "example.metadata");
+    assert!(report.candidates[0].native_link.is_none());
+    write(
+        root.path(),
+        "app/src/shared.rs",
+        "#[lenso::plugin(id=\"example.shared\", root_slot=\"tools\")] pub struct Plugin {}",
+    );
+    let error = format!("{:#}", discover(root.path()).unwrap_err());
+    assert!(error.contains("duplicate Plugin identity"), "{error}");
+}
+
+#[test]
+fn recursive_module_inclusion_is_rejected() {
+    let root = tempfile::tempdir().unwrap();
+    rust(root.path(), "app", "example.metadata");
+    write(
+        root.path(),
+        "app/src/lib.rs",
+        "#[path=\"lib.rs\"] pub mod recursive;",
+    );
+    let error = format!("{:#}", discover(root.path()).unwrap_err());
+    assert!(error.contains("recursive Rust module source"), "{error}");
+}
+
+#[test]
 fn source_modules_have_independent_identity_and_explicit_selection() {
     let root = tempfile::tempdir().unwrap();
     write(

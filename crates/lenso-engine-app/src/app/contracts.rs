@@ -356,6 +356,18 @@ fn synchronize_selected(
                 bail!("generated output has multiple owners: {}", output.display());
             }
             let extracted = stage.join(format!("projection-{projection_index}.txt"));
+            // Preserve local projections from a compatible generator cohort when
+            // the resolved descriptor (including schemas) is unchanged. An
+            // explicit exporter or module request still owns regeneration.
+            if !source_owned
+                && contract.output_root.is_none()
+                && projection.module.is_none()
+                && !extracted.is_file()
+                && fs::read_to_string(&output)
+                    .is_ok_and(|text| text.contains(next.descriptor_digest()))
+            {
+                continue;
+            }
             let bytes = if extracted.is_file() {
                 fs::read(extracted)?
             } else {
