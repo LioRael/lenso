@@ -1,0 +1,25 @@
+crates/lenso-engine-app/src/app.rs
+  s_f24ec9a17597d4::t_422c4b16a783a3 33-36,48
+crates/lenso-engine-authoring/src/discovery/project.rs
+  s_f24ec9a17597d4::t_e3707bce949fae 7-10,18,100-105,109,113-124,131,161,314-325,331,334,347-358,386
+crates/lenso-engine-authoring/src/discovery/project/rust_source.rs
+  s_f24ec9a17597d4::t_687ee061780f4b 6-9,14,28-32,37,66,87
+crates/lenso-engine/src/lib.rs
+  s_f24ec9a17597d4::t_403eec13dd3de5 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d07d8cb5b5dcc223219b58b24392e39250d52354",
+  "prompts": {},
+  "sessions": {
+    "s_f24ec9a17597d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f748-4186-76d3-a2d5-51e6339d7793",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
