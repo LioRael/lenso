@@ -1,0 +1,42 @@
+Cargo.lock
+  h_9d56aba080c170 2133,2155,2191,2307,2320,2378,2408,2422,2466
+crates/lenso-capability-http-endpoint-macros/Cargo.toml
+  h_9d56aba080c170 3
+crates/lenso-capability-http-endpoint/Cargo.toml
+  h_9d56aba080c170 3,26
+crates/lenso-cli/Cargo.toml
+  h_9d56aba080c170 3,60-62
+crates/lenso-engine-app/Cargo.toml
+  h_9d56aba080c170 3,12-14,24,61
+crates/lenso-engine-app/src/plugin/scaffold.rs
+  h_9d56aba080c170 13,128,508
+crates/lenso-engine-app/src/plugin/tests.rs
+  h_9d56aba080c170 167,185
+crates/lenso-engine-app/src/plugin/web_dev.rs
+  h_9d56aba080c170 730,787,818
+crates/lenso-engine-authoring/Cargo.toml
+  h_9d56aba080c170 3,10
+crates/lenso-engine-contracts/Cargo.toml
+  h_9d56aba080c170 3,10,20
+crates/lenso-engine-host/Cargo.toml
+  h_9d56aba080c170 3,10-12
+crates/lenso-engine-web/Cargo.toml
+  h_9d56aba080c170 3,10
+crates/lenso-engine/Cargo.toml
+  h_9d56aba080c170 3
+examples/greetings-web-app/Cargo.toml
+  h_9d56aba080c170 13
+tests/fixtures/bootstrap-file-source/Cargo.toml
+  h_9d56aba080c170 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4bee4aa24b89b9ce5a0c67390694cfa36f2057b4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
