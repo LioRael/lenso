@@ -1,0 +1,18 @@
+.github/scripts/fixtures/engine-nine-lock-pruning.json
+  h_9d56aba080c170 1-345
+.github/scripts/release-cohort-staging.py
+  h_9d56aba080c170 98,103-105,120-122,126-127,132,293
+.github/scripts/test-release-cohort-staging.py
+  h_9d56aba080c170 141,146,218-272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29b01e47d9b4c136f48a2a131ce5622087562512",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
