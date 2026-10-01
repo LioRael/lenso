@@ -35,6 +35,31 @@ fn configured_roots_exclusions_and_read_only_freshness_check() {
 }
 
 #[test]
+fn declared_processor_policy_checks_actual_projections_without_fake_app_receipt() {
+    let root = tempfile::tempdir().unwrap();
+    descriptor(&root.path().join("contracts/example"), "example.declared@1");
+    let options = lenso_engine_contracts::DiscoveryOptions::default();
+    fs::write(
+        root.path().join("lenso.contracts.json"),
+        serde_json::to_vec(&options).unwrap(),
+    )
+    .unwrap();
+    let (snapshot, selected) = lenso_engine_contracts::discover(root.path(), &options).unwrap();
+    lenso_engine_contracts::run(
+        snapshot,
+        selected,
+        root.path(),
+        None,
+        lenso_engine_contracts::Mode::Generate,
+    )
+    .unwrap();
+    check(root.path()).unwrap();
+    assert!(!root.path().join(".lenso/contracts/freshness.json").exists());
+    fs::write(root.path().join("contracts/example/generated.ts"), "stale").unwrap();
+    assert!(check(root.path()).is_err());
+}
+
+#[test]
 fn materialized_registry_and_git_snapshots_generate_only_consumer_local_outputs() {
     for source in [
         "registry+https://example.invalid/index",
@@ -220,7 +245,7 @@ output = "generated/text.ts"
 schemars = "1.2"
 lenso-contract-authoring = "=0.1.2"
 [build-dependencies]
-lenso-contract-codegen = "=0.10.1"
+lenso-contract-codegen = "=0.10.2"
 "#,
     )
     .unwrap();

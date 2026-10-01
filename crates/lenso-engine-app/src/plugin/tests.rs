@@ -163,12 +163,12 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(manifest.contains("root-slot = \"web\""));
     let parsed: toml::Value = toml::from_str(manifest).unwrap();
     for (name, version) in [
-        ("lenso", "=0.5.28"),
-        ("lenso-capability-http-endpoint", "=0.3.6"),
+        ("lenso", "=0.5.29"),
+        ("lenso-capability-http-endpoint", "=0.3.7"),
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.12"),
         ("lenso-test", "=0.1.3"),
-        ("lenso-web-host", "=0.2.5"),
+        ("lenso-web-host", "=0.2.6"),
     ] {
         let section = if matches!(name, "lenso" | "lenso-capability-http-endpoint") {
             "dependencies"
@@ -180,11 +180,13 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(parsed.get("patch").is_none());
     assert!(!manifest.contains("git ="));
     assert!(manifest.contains("schemars = \"1.2\""));
-    assert!(manifest.contains("syn = { version = \"2\", features = [\"full\"] }"));
+    assert_eq!(
+        parsed["build-dependencies"]["lenso-engine-web"].as_str(),
+        Some("=0.1.0")
+    );
     assert!(source.contains("#[lenso::plugin]"));
     assert!(source.contains("include!(concat!(env!(\"OUT_DIR\"), \"/web_routes.rs\"))"));
-    assert!(build.contains("syn::parse_file"));
-    assert!(build.contains("#[endpoint]"));
+    assert!(build.contains("lenso_engine_web::"));
     assert!(create_route.contains("#[openapi_contract("));
     assert!(create_route.contains("requestBody:"));
     assert!(create_route.contains("\"400\":"));

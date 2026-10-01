@@ -11,7 +11,7 @@ rust-version.workspace = true
 [dependencies]
 lenso-auth-sdk = { version = "0.2.3" }
 lenso-capability-auth = { version = "0.2.0" }
-lenso-capability-http-endpoint = { version = "0.3.6", path = "../lenso-capability-http-endpoint" }
+lenso-capability-http-endpoint = { version = "0.3.7", path = "../lenso-capability-http-endpoint" }
 lenso-kernel.workspace = true
 
 [lints]

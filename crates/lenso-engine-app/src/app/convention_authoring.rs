@@ -575,7 +575,7 @@ pub fn new(command: PluginCommand) -> anyhow::Result<()> {
                 stage.path(),
                 "Cargo.toml",
                 format!(
-                    "[package]\nname = {:?}\nversion = \"1.0.0\"\nedition = \"2024\"\n[workspace]\n[package.metadata.lenso]\nplugin-id = {:?}\nroot-slot = \"tools\"\n[dependencies]\nlenso = \"=0.5.28\"\n",
+                    "[package]\nname = {:?}\nversion = \"1.0.0\"\nedition = \"2024\"\n[workspace]\n[package.metadata.lenso]\nplugin-id = {:?}\nroot-slot = \"tools\"\n[dependencies]\nlenso = \"=0.5.29\"\n",
                     args.id.replace('.', "-"),
                     args.id
                 ),

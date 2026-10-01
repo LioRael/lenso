@@ -1,6 +1,6 @@
 [package]
 name = "lenso-capability-http-stream-endpoint"
-version = "0.1.3"
+version = "0.1.4"
 description = "Portable streaming HTTP Endpoint Capability contract for Lenso backend Plugins."
 edition.workspace = true
 license.workspace = true
@@ -22,7 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { version = "=0.10.1", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "=0.10.2", path = "../lenso-contract-codegen" }
 serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]

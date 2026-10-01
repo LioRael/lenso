@@ -129,7 +129,7 @@ pub(super) fn generate(
         ("tempfile", "3"),
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.12"),
-        ("lenso-native-adapter", "=0.3.19"),
+        ("lenso-native-adapter", "=0.3.20"),
         ("lenso-runner", "=0.2.20"),
     ] {
         dependencies.insert(name.into(), json!(version));
@@ -1234,14 +1234,14 @@ fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
             let (dependency, _) = local_framework_dependency(
                 path.parent().context("Endpoint crates directory")?,
                 "lenso-web-ingress-plugin",
-                "=0.4.10",
+                "=0.4.11",
             )?;
             return Ok(dependency);
         }
     }
     // A registry Endpoint or standalone local package uses the matching
     // published Ingress, recorded exactly in the generated Cargo lock.
-    Ok(json!("=0.4.10"))
+    Ok(json!("=0.4.11"))
 }
 
 fn codec_name(capability: &str) -> anyhow::Result<String> {
@@ -2807,7 +2807,7 @@ source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
         std::fs::create_dir_all(&ingress).unwrap();
         std::fs::write(
             ingress.join("Cargo.toml"),
-            "[package]\nname = \"lenso-web-ingress-plugin\"\nversion = \"0.4.10\"\n",
+            "[package]\nname = \"lenso-web-ingress-plugin\"\nversion = \"0.4.11\"\n",
         )
         .unwrap();
         let dependency = web_ingress_dependency(&json!({
@@ -2816,7 +2816,7 @@ source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
         }))
         .unwrap();
         assert_eq!(dependency["path"], ingress.to_string_lossy().as_ref());
-        assert_eq!(dependency["version"], "=0.4.10");
+        assert_eq!(dependency["version"], "=0.4.11");
     }
 
     #[test]
@@ -2826,6 +2826,6 @@ source = "git+https://github.com/LioRael/lenso-auth-plugin?rev=owner#owner"
             "version": "=0.3.6"
         }))
         .unwrap();
-        assert_eq!(dependency, json!("=0.4.10"));
+        assert_eq!(dependency, json!("=0.4.11"));
     }
 }

@@ -28,7 +28,7 @@ fs2 = "0.4"
 tokio.workspace = true
 
 [dev-dependencies]
-lenso-native-adapter = { version = "0.3.19", path = "../lenso-native-adapter" }
+lenso-native-adapter = { version = "0.3.20", path = "../lenso-native-adapter" }
 tempfile = "3"
 
 [lints]

@@ -99,7 +99,7 @@ serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 [build-dependencies]
 lenso-contract-authoring = "=0.1.2"
-lenso-contract-codegen = "=0.10.1"
+lenso-contract-codegen = "=0.10.2"
 schemars = "1.2"
 "#
                 ),

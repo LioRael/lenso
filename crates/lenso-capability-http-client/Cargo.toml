@@ -1,6 +1,6 @@
 [package]
 name = "lenso-capability-http-client"
-version = "0.3.3"
+version = "0.3.4"
 description = "Portable outbound HTTP Client Capability contract for Lenso Plugins."
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,7 @@ serde.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { version = "=0.10.1", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "=0.10.2", path = "../lenso-contract-codegen" }
 serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]

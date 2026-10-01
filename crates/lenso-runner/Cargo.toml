@@ -31,7 +31,7 @@ required-features = ["process-owner"]
 
 [dev-dependencies]
 tempfile = "3"
-lenso-native-adapter = { version = "0.3.19", path = "../lenso-native-adapter" }
+lenso-native-adapter = { version = "0.3.20", path = "../lenso-native-adapter" }
 lenso-runtime-conformance.workspace = true
 
 [lints]

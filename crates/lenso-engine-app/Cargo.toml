@@ -8,7 +8,7 @@ description = "Optional Lenso App authoring preset"
 include = ["/src/**", "/assets/**", "/examples/**", "/tests/**", "/build.rs", "/Cargo.toml"]
 
 [dependencies]
-lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "0.2.1" }
+lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "0.2.2" }
 lenso-engine = { path = "../lenso-engine", version = "0.2.0" }
 lenso-engine-contracts = { path = "../lenso-engine-contracts", version = "0.1.0" }
 anyhow = "1.0"
@@ -16,18 +16,18 @@ futures = { version = "0.3" }
 shell-words = { version = "1.1" }
 clap = { version = "4", features = ["derive", "string"] }
 lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.6" }
-lenso-agent-tool-cli-plugin = { path = "../lenso-agent-tool-cli-plugin", version = "=0.1.1" }
+lenso-agent-tool-cli-plugin = { path = "../lenso-agent-tool-cli-plugin", version = "=0.1.2" }
 lenso-bun-adapter = { path = "../lenso-bun-adapter", version = "=0.1.17" }
 lenso-capability-agent-tool-provider = "=0.2.2"
-lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "=0.3.6" }
-lenso-capability-configuration-source = { path = "../lenso-capability-configuration-source", version = "0.1.1" }
+lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "=0.3.7" }
+lenso-capability-configuration-source = { path = "../lenso-capability-configuration-source", version = "0.1.2" }
 lenso-contract-authoring-next = { package = "lenso-contract-authoring", path = "../lenso-contract-authoring", version = "0.1.2" }
-lenso-contract-codegen-next = { package = "lenso-contract-codegen", path = "../lenso-contract-codegen", version = "0.10.1" }
+lenso-contract-codegen-next = { package = "lenso-contract-codegen", path = "../lenso-contract-codegen", version = "0.10.2" }
 lenso-contract-runtime = { path = "../lenso-contract-runtime", version = "0.2.0" }
 lenso-plugin-authoring = { path = "../lenso-plugin-authoring", version = "0.2.0" }
 lenso-guest-sdk = { path = "../lenso-guest-sdk", version = "0.5.0" }
 lenso-kernel = { path = "../lenso-kernel", version = "=0.3.12" }
-lenso-native-adapter = { path = "../lenso-native-adapter", version = "=0.3.19" }
+lenso-native-adapter = { path = "../lenso-native-adapter", version = "=0.3.20" }
 lenso-plugin-bundle = { path = "../lenso-plugin-bundle", version = "=0.6.1" }
 lenso-plugin-catalog = { path = "../lenso-plugin-catalog", version = "0.1.2", features = ["bundle-verification"] }
 ed25519-dalek = "2.2"
@@ -39,7 +39,7 @@ lenso-process-protocol = { path = "../lenso-process-protocol", version = "=0.2.3
 lenso-runner = { path = "../lenso-runner", version = "=0.2.20" }
 lenso-runtime-codec = { path = "../lenso-runtime-codec", version = "=0.4.4" }
 lenso-wasm-component-adapter = { path = "../lenso-wasm-component-adapter", version = "=0.2.18" }
-lenso-web-ingress-plugin = { path = "../lenso-web-ingress-plugin", version = "=0.4.10" }
+lenso-web-ingress-plugin = { path = "../lenso-web-ingress-plugin", version = "=0.4.11" }
 notify = { version = "8.2" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -56,7 +56,7 @@ url = "2.5"
 zip = { version = "8.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 jsonschema = { version = "0.51", default-features = false }
 glob = "0.3.3"
-lenso_app_authoring = { package = "lenso-engine-authoring", version = "=0.2.5", path = "../lenso-engine-authoring" }
+lenso_app_authoring = { package = "lenso-engine-authoring", version = "=0.3.0", path = "../lenso-engine-authoring" }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.30", features = ["signal"] }

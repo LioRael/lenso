@@ -112,6 +112,16 @@ pub fn load_resolved_app(root: &Path) -> anyhow::Result<ResolvedApp> {
     host.resolve(&snapshot).map_err(anyhow::Error::msg)
 }
 
+/// Reads and validates the existing filesystem Root against its Host authority.
+/// Custom Hosts can supply this same snapshot to their runtime resolver.
+pub fn load_plugin_root_snapshot(root: &Path) -> anyhow::Result<PluginRootSnapshot> {
+    let _lock = lock_plugin_root_shared(root)?;
+    let host = load_host_catalog(root)?;
+    let snapshot = snapshot_plugin_root(root, &host)?;
+    host.resolve(&snapshot).map_err(anyhow::Error::msg)?;
+    Ok(snapshot)
+}
+
 /// Exact runtime input resolved from immutable distribution authority and one external Root.
 #[derive(Clone, Debug, Serialize)]
 pub struct RuntimeAppResolution {

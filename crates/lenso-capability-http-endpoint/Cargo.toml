@@ -1,6 +1,6 @@
 [package]
 name = "lenso-capability-http-endpoint"
-version = "0.3.6"
+version = "0.3.7"
 description = "Portable HTTP Endpoint Capability contract for Lenso backend Plugins."
 edition.workspace = true
 license.workspace = true
@@ -40,7 +40,7 @@ schemars.workspace = true
 lenso.workspace = true
 
 [build-dependencies]
-lenso-contract-codegen = { version = "=0.10.1", path = "../lenso-contract-codegen" }
+lenso-contract-codegen = { version = "=0.10.2", path = "../lenso-contract-codegen" }
 serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]

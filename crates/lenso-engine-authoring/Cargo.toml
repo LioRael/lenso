@@ -1,6 +1,6 @@
 [package]
 name = "lenso-engine-authoring"
-version = "0.2.5"
+version = "0.3.0"
 publish = true
 edition = "2024"
 license = "MIT"

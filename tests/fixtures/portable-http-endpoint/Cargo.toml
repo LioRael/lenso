@@ -13,7 +13,7 @@ linked = [
 ]
 
 [dependencies]
-lenso-capability-http-endpoint = { path = "../../../crates/lenso-capability-http-endpoint", version = "0.3.4", optional = true }
+lenso-capability-http-endpoint = { path = "../../../crates/lenso-capability-http-endpoint", version = "0.3.7", optional = true }
 lenso-kernel = { workspace = true, optional = true }
 lenso-native-adapter = { workspace = true, optional = true }
 

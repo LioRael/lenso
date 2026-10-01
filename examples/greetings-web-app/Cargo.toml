@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
-lenso-engine-authoring = { path = "../../crates/lenso-engine-authoring", version = "0.2.2" }
+lenso-engine-authoring = { path = "../../crates/lenso-engine-authoring", version = "0.3.0" }
 lenso-web-greetings-plugin-example = { path = "../greetings-http-plugin" }
 lenso-web-host = { path = "../../crates/lenso-web-host" }
 rustix = { version = "1.1", features = ["fs"] }

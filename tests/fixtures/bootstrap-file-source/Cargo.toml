@@ -15,8 +15,8 @@ runtime = "process"
 crate-type = ["cdylib"]
 
 [dependencies]
-lenso-capability-configuration-source = { path = "../../../crates/lenso-capability-configuration-source", version = "0.1.0" }
-lenso-engine-authoring = { path = "../../../crates/lenso-engine-authoring", version = "0.2.2" }
+lenso-capability-configuration-source = { path = "../../../crates/lenso-capability-configuration-source", version = "0.1.2" }
+lenso-engine-authoring = { path = "../../../crates/lenso-engine-authoring", version = "0.3.0" }
 lenso-plugin-sdk = { path = "../../../crates/lenso-plugin-sdk", version = "0.4.5" }
 serde.workspace = true
 serde_json.workspace = true

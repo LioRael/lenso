@@ -12,6 +12,24 @@ pub(crate) struct Freshness {
 pub(crate) fn check(root: &Path) -> anyhow::Result<()> {
     let path = root.join(".lenso/contracts/freshness.json");
     if !path.exists() {
+        let declared = root.join("lenso.contracts.json");
+        if declared.exists() {
+            let options: lenso_engine_contracts::DiscoveryOptions =
+                serde_json::from_slice(&fs::read(declared)?)?;
+            let (mut inputs, selected) = lenso_engine_contracts::discover(root, &options)?;
+            let lock = root.join("Cargo.lock");
+            if lock.exists() {
+                inputs.insert("tool-inputs/Cargo.lock".into(), fs::read(lock)?)?;
+            }
+            lenso_engine_contracts::run(
+                inputs,
+                selected,
+                root,
+                None,
+                lenso_engine_contracts::Mode::Check,
+            )?;
+            return Ok(());
+        }
         ensure!(
             !root.join(".lenso/contracts").exists(),
             "contract freshness evidence is missing; rebuild before check/pack"

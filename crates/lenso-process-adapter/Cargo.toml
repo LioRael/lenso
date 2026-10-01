@@ -24,7 +24,7 @@ serde_json.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
-lenso-native-adapter = { version = "0.3.19", path = "../lenso-native-adapter" }
+lenso-native-adapter = { version = "0.3.20", path = "../lenso-native-adapter" }
 lenso-process-sdk = { version = "0.2.0", path = "../lenso-process-sdk" }
 tempfile = "3"
 

@@ -527,6 +527,16 @@ impl NativeWebHost {
         self.resolve_plan_with_replication(false)
     }
 
+    /// Exports the same validated Catalog and Root used by this Host's resolver.
+    /// Does not instantiate factories, access facilities, or bind a listener.
+    /// Host owners may persist this authority for Engine App inspection. Root
+    /// configuration is included; private factory bindings are never exported.
+    pub fn authoring_snapshot(&self) -> Result<(HostCatalog, PluginRootSnapshot), WebHostError> {
+        let (host, root) = self.authoring_snapshot_with_replication(false)?;
+        resolve_plugin_root(&host, &root).map_err(|error| WebHostError::Plan(error.to_string()))?;
+        Ok((host, root))
+    }
+
     fn resolve_replicated_plan(&self) -> Result<lenso_app_plan::ResolvedAppPlan, WebHostError> {
         self.resolve_plan_with_replication(true)
     }
@@ -535,6 +545,16 @@ impl NativeWebHost {
         &self,
         replicated: bool,
     ) -> Result<lenso_app_plan::ResolvedAppPlan, WebHostError> {
+        let (host, root) = self.authoring_snapshot_with_replication(replicated)?;
+        resolve_plugin_root(&host, &root)
+            .map(|resolved| resolved.plan().clone())
+            .map_err(|error| WebHostError::Plan(error.to_string()))
+    }
+
+    fn authoring_snapshot_with_replication(
+        &self,
+        replicated: bool,
+    ) -> Result<(HostCatalog, PluginRootSnapshot), WebHostError> {
         let config = match self.bind_address {
             Some(address) => self
                 .ingress_config
@@ -549,14 +569,15 @@ impl NativeWebHost {
             .filter_map(|installer| installer.descriptor.clone().map(HostPluginRelease::new))
             .chain(self.extra_releases.iter().cloned())
             .collect::<Vec<_>>();
-        resolve_web_plan(
+        let (host, root) = web_authoring_snapshot(
             &config,
             &self.root,
             &self.extra_defaults,
             &self.extra_bindings,
             &extra_releases,
             replicated,
-        )
+        )?;
+        Ok((host, root))
     }
 
     fn into_event_components(self) -> Result<EventHostComponents, WebHostError> {
@@ -1079,6 +1100,7 @@ fn endpoint_ids_for(
         .collect()
 }
 
+#[cfg(test)]
 fn resolve_web_plan(
     config: &WebIngressConfig,
     root: &PluginRootSnapshot,
@@ -1087,6 +1109,27 @@ fn resolve_web_plan(
     extra_releases: &[HostPluginRelease],
     replicated: bool,
 ) -> Result<lenso_app_plan::ResolvedAppPlan, WebHostError> {
+    let (host, root) = web_authoring_snapshot(
+        config,
+        root,
+        extra_defaults,
+        extra_bindings,
+        extra_releases,
+        replicated,
+    )?;
+    resolve_plugin_root(&host, &root)
+        .map(|resolved| resolved.plan().clone())
+        .map_err(|error| WebHostError::Plan(error.to_string()))
+}
+
+fn web_authoring_snapshot(
+    config: &WebIngressConfig,
+    root: &PluginRootSnapshot,
+    extra_defaults: &[HostDefaultPlugin],
+    extra_bindings: &[HostBinding],
+    extra_releases: &[HostPluginRelease],
+    replicated: bool,
+) -> Result<(HostCatalog, PluginRootSnapshot), WebHostError> {
     let discovered = NativePluginRegistry::host_catalog([], []).map_err(WebHostError::Runtime)?;
     let ingress = WebIngressFactory::plugin_descriptor();
     let mut releases = vec![HostPluginRelease::new(ingress.clone())];
@@ -1184,9 +1227,7 @@ fn resolve_web_plan(
     let host = HostCatalog::new(slots, releases, defaults)
         .with_execution_lanes(execution_lanes)
         .with_bindings(bindings);
-    resolve_plugin_root(&host, root)
-        .map(|resolved| resolved.plan().clone())
-        .map_err(|error| WebHostError::Plan(error.to_string()))
+    Ok((host, root.clone()))
 }
 
 #[cfg(test)]

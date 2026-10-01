@@ -44,6 +44,19 @@ connection: close\r\n\
     String::from_utf8_lossy(&body).into_owned()
 }
 
+#[test]
+fn exported_authority_resolves_the_exact_runtime_plan() {
+    let host = NativeWebHost::new()
+        .plugin::<GreetingsHttp>()
+        .bind(SocketAddr::from(([127, 0, 0, 1], 0)));
+    let (catalog, root) = host.authoring_snapshot().unwrap();
+    let exported = lenso_app_plan::authoring::resolve_plugin_root(&catalog, &root).unwrap();
+    assert_eq!(
+        serde_json::to_value(exported.plan()).unwrap(),
+        serde_json::to_value(host.resolve_plan().unwrap()).unwrap()
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn serves_a_linked_endpoint_without_a_handwritten_plan() {
     LocalSet::new()
