@@ -1,5 +1,103 @@
 use super::*;
 
+#[test]
+fn source_modules_have_independent_identity_and_explicit_selection() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "Cargo.toml",
+        "[package]\nname='fixture'\nversion='1.0.0'\n",
+    );
+    write(root.path(), "src/lib.rs", "pub mod first; pub mod second;");
+    write(
+        root.path(),
+        "src/first.rs",
+        "#[lenso::plugin(id=\"example.first\", root_slot=\"tools\", consumer)] pub struct Plugin {}",
+    );
+    write(
+        root.path(),
+        "src/second.rs",
+        "#[lenso::plugin(id=\"example.second\", root_slot=\"tools\", consumer)] pub struct Plugin {}",
+    );
+    let report = discover(root.path()).unwrap();
+    assert_eq!(report.candidates.len(), 2);
+    assert_eq!(
+        report.candidates[0].native_link.as_deref(),
+        Some("first::link_plugin")
+    );
+    for candidate in &report.candidates {
+        assert_eq!(
+            conventions::active_instances(root.path(), candidate).unwrap(),
+            0
+        );
+    }
+    write(root.path(), "plugins/example.second/default.toml", "");
+    assert_eq!(
+        conventions::active_instances(root.path(), &report.candidates[1]).unwrap(),
+        1
+    );
+    assert_eq!(
+        conventions::active_instances(root.path(), &report.candidates[0]).unwrap(),
+        0
+    );
+    write(
+        root.path(),
+        "src/second.rs",
+        "#[lenso::plugin(id=\"example.first\", root_slot=\"tools\", consumer)] pub struct Plugin {}",
+    );
+    assert!(
+        discover(root.path()).is_err(),
+        "duplicate identities must fail discovery"
+    );
+}
+
+#[test]
+fn source_discovery_follows_library_module_paths_and_ignores_non_declarations() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "Cargo.toml",
+        "[package]\nname='fixture'\nversion='1.0.0'\n",
+    );
+    write(
+        root.path(),
+        "src/lib.rs",
+        "#[path=\"../plugins/health/plugin.rs\"] pub mod health; pub mod ordinary; #[cfg(test)] pub mod tests;",
+    );
+    write(
+        root.path(),
+        "plugins/health/plugin.rs",
+        "#[lenso::plugin(id=\"example.health\", root_slot=\"web\")] pub struct Plugin {}",
+    );
+    write(
+        root.path(),
+        "src/ordinary.rs",
+        "pub struct Plugin {} #[foreign::plugin(id=\"not.lenso\", root_slot=\"web\")] pub struct Other {}",
+    );
+    write(
+        root.path(),
+        "src/plugin.rs",
+        "#[lenso::plugin(id=\"not.reachable\", root_slot=\"web\")] pub struct Plugin {}",
+    );
+    let report = discover(root.path()).unwrap();
+    assert_eq!(report.candidates.len(), 1);
+    assert_eq!(
+        report.candidates[0].native_link.as_deref(),
+        Some("health::link_plugin")
+    );
+    write(
+        root.path(),
+        "plugins/health/plugin.rs",
+        "#[lenso::plugin(id=\"example.health\")] pub struct Plugin {}",
+    );
+    assert!(
+        discover(root.path())
+            .unwrap_err()
+            .to_string()
+            .contains("inspect")
+    );
+}
+
 fn write(root: &Path, path: &str, text: &str) {
     let path = root.join(path);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -312,6 +410,7 @@ fn convention_plan_accepts_one_file_bundle_without_scanning_it_as_a_directory() 
         kind: "lenso.app-discovery",
         root: root.path().to_path_buf(),
         candidates: vec![Candidate {
+            native_link: None,
             composite: None,
             surface_owner: None,
             plugin_id: "example.bundle".into(),
@@ -468,6 +567,35 @@ fn convention_conflicts_are_rejected_without_scan_order_preference() {
     support(root.path(), "app/b", "example.b", "cli.ts");
     let error = conventions::plan(&discover(root.path()).unwrap()).unwrap_err();
     assert!(error.to_string().contains("conflicting convention entry"));
+}
+
+#[test]
+fn explicit_convention_selects_custom_filename_and_preserves_options() {
+    let root = tempfile::tempdir().unwrap();
+    support(root.path(), "app/support", "example.web", "routes.rs");
+    let manifest = root.path().join("app/support/package.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    metadata["lenso"]["conventions"][0]["compiler"] =
+        serde_json::json!({"program":"never-run", "args":[]});
+    fs::write(manifest, metadata.to_string()).unwrap();
+    bun(root.path(), "app/owner", "example.owner");
+    write(
+        root.path(),
+        "app/owner/custom.input",
+        "not parsed during selection",
+    );
+    let manifest = root.path().join("app/owner/package.json");
+    let mut metadata: serde_json::Value =
+        serde_json::from_slice(&fs::read(&manifest).unwrap()).unwrap();
+    metadata["lenso"]["surfaces"] = serde_json::json!([{"entry":"custom.input", "convention":"example.web", "required":true, "options":{"provider":"Custom", "exclude":["private"]}}]);
+    fs::write(&manifest, metadata.to_string()).unwrap();
+    let plan = conventions::plan(&discover(root.path()).unwrap()).unwrap();
+    assert_eq!(plan.compilations.len(), 1);
+    assert_eq!(plan.compilations[0].options["provider"], "Custom");
+    metadata["lenso"]["surfaces"][0]["convention"] = "missing.support".into();
+    fs::write(manifest, metadata.to_string()).unwrap();
+    assert!(conventions::plan(&discover(root.path()).unwrap()).is_err());
 }
 
 #[test]
@@ -631,6 +759,7 @@ fn convention_outputs_cannot_change_identity_or_activate_more_conventions() {
         entry: root.path().join("cli.ts"),
         plugin_id: "example.generated".into(),
         convention: "example.cli".into(),
+        options: serde_json::Value::Null,
         compiler_project: root.path().into(),
         compiler: conventions::Compiler {
             program: "never-run".into(),
@@ -681,6 +810,7 @@ fn resource_only_convention_output_has_no_plugin_identity_or_runtime_metadata() 
         entry: root.path().join("agent"),
         plugin_id: "example.owner.surface-123456789abc".into(),
         convention: "example.agent".into(),
+        options: serde_json::Value::Null,
         compiler_project: root.path().into(),
         compiler: conventions::Compiler {
             program: "never-run".into(),

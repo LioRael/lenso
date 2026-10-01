@@ -66,13 +66,13 @@ pub(super) fn extract(
         .declaration
         .projections
         .iter()
-        .map(|p| p.projection.as_str())
+        .map(|p| (p.projection.as_str(), p.module.as_deref()))
         .collect::<Vec<_>>();
     if let Some(language) = &contract.declaration.projection {
-        languages.push(language);
+        languages.push((language, contract.declaration.module.as_deref()));
     }
     let mut generate = String::new();
-    for (index, language) in languages.into_iter().enumerate() {
+    for (index, (language, module)) in languages.into_iter().enumerate() {
         let variant = match language {
             "rust" => "Rust",
             "rust-runtime" => "RustRuntime",
@@ -81,7 +81,15 @@ pub(super) fn extract(
             "wit" => "Wit",
             other => bail!("unsupported projection {other}"),
         };
-        generate.push_str(&format!("std::fs::write(output.parent().unwrap().join(\"projection-{index}.txt\"), {generator}::generate_projection(output, {generator}::ProjectionLanguage::{variant}).expect(\"generate projection\").source).unwrap();\n"));
+        let projection = match module {
+            Some(module) => format!(
+                "{generator}::generate_module_projection(output, {generator}::ProjectionLanguage::{variant}, {module:?})"
+            ),
+            None => format!(
+                "{generator}::generate_projection(output, {generator}::ProjectionLanguage::{variant})"
+            ),
+        };
+        generate.push_str(&format!("std::fs::write(output.parent().unwrap().join(\"projection-{index}.txt\"), {projection}.expect(\"generate projection\").source).unwrap();\n"));
     }
     let module = match source {
         Some(source) => format!(

@@ -2266,10 +2266,12 @@ name = "lenso-contract-codegen"
 version = "0.10.1"
 dependencies = [
  "lenso-contract-authoring",
+ "proc-macro2",
  "regex",
  "semver",
  "serde_json",
  "sha2 0.10.9",
+ "syn 2.0.119",
  "tempfile",
  "wit-parser 0.252.0",
 ]
@@ -2336,6 +2338,7 @@ dependencies = [
  "lenso-contract-runtime",
  "lenso-engine",
  "lenso-engine-authoring",
+ "lenso-engine-contracts",
  "lenso-engine-runtime",
  "lenso-guest-sdk 0.5.1",
  "lenso-kernel",
@@ -2386,6 +2389,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
+ "syn 2.0.119",
  "tar",
  "tempfile",
  "toml",
@@ -2394,6 +2398,19 @@ dependencies = [
  "uuid",
  "winsafe",
  "zip",
+]
+
+[[package]]
+name = "lenso-engine-contracts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lenso-contract-codegen 0.10.1",
+ "lenso-engine",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
 ]
 
 [[package]]
@@ -2437,6 +2454,32 @@ dependencies = [
  "lenso-runtime-codec 0.4.4",
  "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "lenso-engine-web"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lenso-engine",
+ "matchit",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+ "tempfile",
+]
+
+[[package]]
+name = "lenso-engine-web-example"
+version = "0.1.0"
+dependencies = [
+ "lenso",
+ "lenso-capability-http-endpoint",
+ "lenso-engine-web",
+ "lenso-web-host",
+ "serde",
  "tokio",
 ]
 
@@ -2579,6 +2622,17 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+]
+
+[[package]]
+name = "lenso-multiple-plugins-example"
+version = "0.1.0"
+dependencies = [
+ "lenso",
+ "lenso-capability-http-endpoint",
+ "lenso-web-host",
+ "serde",
+ "tokio",
 ]
 
 [[package]]

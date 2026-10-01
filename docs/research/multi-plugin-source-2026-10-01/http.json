@@ -1,0 +1,26 @@
+[
+  {
+    "distribution": "health",
+    "route": "health",
+    "status": 200,
+    "body": "\"ok\""
+  },
+  {
+    "distribution": "health",
+    "route": "greeting",
+    "status": 404,
+    "body": "{\"error\":\"not_found\"}"
+  },
+  {
+    "distribution": "configured",
+    "route": "health",
+    "status": 200,
+    "body": "\"ok\""
+  },
+  {
+    "distribution": "configured",
+    "route": "greeting",
+    "status": 200,
+    "body": "\"Configured greeting\""
+  }
+]

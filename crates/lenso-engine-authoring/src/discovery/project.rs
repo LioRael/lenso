@@ -92,6 +92,16 @@ use anyhow::{Context, bail};
 use serde_json::Value;
 use std::{collections::BTreeSet, fs, path::Path};
 
+mod rust_source;
+
+pub(super) fn read_all(root: &Path, role: SourceRole) -> anyhow::Result<Vec<Candidate>> {
+    let source = rust_source::read(root)?;
+    if !source.is_empty() {
+        return Ok(source);
+    }
+    Ok(read(root, role)?.into_iter().collect())
+}
+
 pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candidate>> {
     let mut found = Vec::new();
     for (filename, format) in [("Cargo.toml", "cargo"), ("package.json", "bun")] {
@@ -166,6 +176,7 @@ pub(super) fn read(root: &Path, role: SourceRole) -> anyhow::Result<Option<Candi
             Some(metadata)
         };
         found.push(Candidate {
+            native_link: None,
             composite: None,
             surface_owner: None,
             plugin_id,
@@ -558,6 +569,7 @@ pub(super) fn bundle(path: &Path, role: SourceRole) -> anyhow::Result<Candidate>
         );
     }
     Ok(Candidate {
+        native_link: None,
         composite: None,
         surface_owner: None,
         plugin_id: manifest.plugin_id().to_owned(),

@@ -10,6 +10,7 @@ include = ["/src/**", "/assets/**", "/examples/**", "/tests/**", "/build.rs", "/
 [dependencies]
 lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "0.2.1" }
 lenso-engine = { path = "../lenso-engine", version = "0.2.0" }
+lenso-engine-contracts = { path = "../lenso-engine-contracts", version = "0.1.0" }
 anyhow = "1.0"
 futures = { version = "0.3" }
 shell-words = { version = "1.1" }

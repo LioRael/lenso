@@ -113,6 +113,7 @@ pub fn inspect_app_explanation_with_facilities(
 
 /// Validate one built App with the same resolver as `lenso app check`.
 pub fn inspect_app_check(root: impl AsRef<Path>) -> anyhow::Result<AppCheckReport> {
+    contracts::check(root.as_ref())?;
     let resolved = load_resolved_app(root.as_ref())?;
     target_closure::check_generated_host(root.as_ref(), &resolved)?;
     Ok(AppCheckReport {

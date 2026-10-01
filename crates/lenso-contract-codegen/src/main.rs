@@ -11,7 +11,7 @@ use lenso_contract_codegen::{
 };
 
 fn usage() -> &'static str {
-    "usage:\n  lenso-contract-codegen generate <descriptor> <rust-output> <typescript-output>\n  lenso-contract-codegen generate <descriptor> --rust <output>\n  lenso-contract-codegen generate <descriptor> --rust-runtime <output>\n  lenso-contract-codegen generate <descriptor> --rust-plugin <output>\n  lenso-contract-codegen generate <descriptor> --typescript <output>\n  lenso-contract-codegen generate <descriptor> --wit <output>\n  lenso-contract-codegen check <descriptor> <rust-output> <typescript-output>\n  lenso-contract-codegen check <descriptor> --rust <output>\n  lenso-contract-codegen check <descriptor> --rust-runtime <output>\n  lenso-contract-codegen check <descriptor> --rust-plugin <output>\n  lenso-contract-codegen check <descriptor> --typescript <output>\n  lenso-contract-codegen check <descriptor> --wit <output>\n  lenso-contract-codegen workspace <check|generate> [--manifest-path <Cargo.toml>]\n  lenso-contract-codegen lint <old-descriptor> <new-descriptor>"
+    "usage:\n  lenso-contract-codegen generate <descriptor> <rust-output> <typescript-output>\n  lenso-contract-codegen generate <descriptor> --rust <output>\n  lenso-contract-codegen generate <descriptor> --rust-runtime <output>\n  lenso-contract-codegen generate <descriptor> --rust-plugin <output>\n  lenso-contract-codegen generate <descriptor> --typescript <output>\n  lenso-contract-codegen generate <descriptor> --wit <output>\n  lenso-contract-codegen check <descriptor> <rust-output> <typescript-output>\n  lenso-contract-codegen check <descriptor> --rust <output>\n  lenso-contract-codegen check <descriptor> --rust-runtime <output>\n  lenso-contract-codegen check <descriptor> --rust-plugin <output>\n  lenso-contract-codegen check <descriptor> --typescript <output>\n  lenso-contract-codegen check <descriptor> --wit <output>\n  Rust module projections append --module <public::module::path>\n  lenso-contract-codegen workspace <check|generate> [--manifest-path <Cargo.toml>]\n  lenso-contract-codegen lint <old-descriptor> <new-descriptor>"
 }
 
 #[derive(Debug)]
@@ -41,6 +41,27 @@ fn run(arguments: &[String]) -> Result<(), String> {
     let Some(command) = arguments.first().map(String::as_str) else {
         return Err(usage().to_owned());
     };
+    if arguments.len() == 6 && arguments[4] == "--module" && matches!(command, "generate" | "check")
+    {
+        let selected = &arguments[..4];
+        let (language, output) = selected_projection(selected).ok_or_else(|| usage().to_owned())?;
+        return if command == "generate" {
+            lenso_contract_codegen::write_module_projection(
+                Path::new(&arguments[1]),
+                language,
+                &arguments[5],
+                output,
+            )
+        } else {
+            lenso_contract_codegen::check_module_projection(
+                Path::new(&arguments[1]),
+                language,
+                &arguments[5],
+                output,
+            )
+        }
+        .map_err(|error| error.to_string());
+    }
     match command {
         "generate" => match selected_projection(arguments) {
             Some((language, output)) => {

@@ -37,12 +37,15 @@ pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Co
         )?;
         let project = output.join(&compilation.plugin_id);
         fs::create_dir(&project)?;
-        let request = serde_json::json!({
+        let mut request = serde_json::json!({
             "schema":"lenso.convention-compile.v1", "entry":compilation.entry,
             "owner_project":compilation.owner_project, "plugin_id":compilation.plugin_id,
             "release_version":compilation.version, "convention":compilation.convention,
             "output": project,
         });
+        if !compilation.options.is_null() {
+            request["options"] = compilation.options.clone();
+        }
         let source_before = super::local_host::input_digest(&compilation.owner_project)?;
         let compiler_before = super::local_host::input_digest(&compilation.compiler_project)?;
         let mut engine = lenso_engine::Engine::default();

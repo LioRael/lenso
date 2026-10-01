@@ -147,6 +147,7 @@ pub(super) fn generate(
         json!({"version":"1.52", "features":["rt-multi-thread","macros","signal","time","net"]}),
     );
     let mut linked = String::new();
+    let mut native_packages = BTreeMap::new();
     let mut codecs = BTreeMap::<String, (String, Value)>::new();
     let mut seen_packages = BTreeSet::new();
     let mut codec_cohorts = BTreeSet::new();
@@ -226,9 +227,15 @@ pub(super) fn generate(
                     candidate.plugin_id
                 );
             }
-            let alias = format!("local_plugin_{index}");
-            dependencies.insert(alias.clone(), dependency(package)?);
-            linked.push_str(&format!("{alias}::link_plugin();\n"));
+            let alias = native_packages
+                .entry(manifest.clone())
+                .or_insert_with(|| format!("local_plugin_{index}"))
+                .clone();
+            dependencies
+                .entry(alias.clone())
+                .or_insert(dependency(package)?);
+            let link = candidate.native_link.as_deref().unwrap_or("link_plugin");
+            linked.push_str(&format!("{alias}::{link}();\n"));
             business_snapshot.select(&alias, package)?;
             facilities.select(
                 &alias,
@@ -576,6 +583,36 @@ pub(super) fn generate(
         + include_str!("local_json_template.rs"))
     .replace("// LENSO_REGISTER_CODECS", &register)
     .replace("// LENSO_LINK_PLUGINS", &linked);
+    // Cargo may retain inventory entries for every module of a selected crate.
+    // Its independently declared siblings are availability, not App selection.
+    let selected_source_ids = candidates
+        .iter()
+        .filter(|candidate| candidate.native_link.is_some())
+        .map(|candidate| candidate.plugin_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut unselected_source_ids = BTreeSet::new();
+    for candidate in candidates
+        .iter()
+        .filter(|candidate| candidate.native_link.is_some())
+    {
+        for sibling in lenso_app_authoring::discovery::discover(&candidate.project)?.candidates {
+            if sibling.native_link.is_some()
+                && !selected_source_ids.contains(sibling.plugin_id.as_str())
+            {
+                unselected_source_ids.insert(sibling.plugin_id);
+            }
+        }
+    }
+    let unselected_source_ids = unselected_source_ids.into_iter().collect::<Vec<_>>();
+    source = source.replace("// LENSO_SELECT_SOURCE_PLUGINS", &format!(r#"
+        let mut identities = std::collections::BTreeSet::new();
+        for release in catalog.plugins() {{
+            anyhow::ensure!(identities.insert(release.descriptor().plugin_id()), "duplicate linked Plugin identity: {{}}", release.descriptor().plugin_id());
+        }}
+        let excluded: &[&str] = &{unselected_source_ids:?};
+        let releases = catalog.plugins().iter().filter(|release| !excluded.contains(&release.descriptor().plugin_id())).cloned().collect::<Vec<_>>();
+        let catalog = HostCatalog::new([], releases, []);
+    "#));
     source = source.replace("// LENSO_TERMINAL_RUN", if terminal_enabled { "if let Some(args) = &command_args { command_result = terminal::run(&app, args).await; }" } else { "if command_args.is_some() { command_result = Err(anyhow::anyhow!(\"CLI support is not adopted\")); }" });
     if terminal_enabled {
         source.push_str("\n#[allow(dead_code)] mod terminal;\n");

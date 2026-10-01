@@ -70,7 +70,7 @@ mod store {
     }
 }
 
-#[plugin(consumer)]
+#[plugin(id = "example.named-dependencies", root_slot = "test", consumer)]
 #[derive(Debug)]
 struct NamedDependencies {
     #[dependency(id = "source")]

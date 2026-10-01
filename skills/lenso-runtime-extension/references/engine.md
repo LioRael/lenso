@@ -10,6 +10,11 @@ sessions, and publishes resources. App composition lives in optional
 `lenso-engine-app`; language and filename semantics belong to selected support.
 Do not move a CLI compiler switch or domain payload schema into the core.
 
+For optional configurable Web routes and Capability projections, read
+[Engine Web/Contracts](../../../docs/architecture/engine-web-contracts.md).
+These processors reuse `Plugin::plan/process` and Snapshot; explicit inputs and
+configuration replace their default readers. HTTP execution remains in WebHost.
+
 Read Engine README and its processor examples. `engine inspect/run/dev --source
 ./content --markdown` uses optional reading support without an App or Rust
 toolchain. For custom workflows, `engine.json` identifies local source roots,

@@ -1,0 +1,18 @@
+[package]
+name = "lenso-engine-web-example"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+lenso = { path = "../../crates/lenso" }
+lenso-capability-http-endpoint = { path = "../../crates/lenso-capability-http-endpoint" }
+lenso-web-host = { path = "../../crates/lenso-web-host" }
+tokio = { workspace = true, features = ["macros", "rt", "signal", "net"] }
+serde = { workspace = true, features = ["derive"] }
+
+[build-dependencies]
+lenso-engine-web = { path = "../../crates/lenso-engine-web" }
+
+[lints]
+workspace = true

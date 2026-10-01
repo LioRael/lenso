@@ -18,6 +18,96 @@ const SENSITIVE_FIXTURE: &str = "tests/fixtures/sensitive/capability.json";
 const TRANSFER_FIXTURE: &str = "tests/fixtures/transfer/capability.json";
 const WIT_FIXTURE: &str = "tests/fixtures/wit/capability.json";
 
+#[test]
+fn module_projection_preserves_contract_identity_and_scopes_authoring_macros() {
+    let path = Path::new(WIT_FIXTURE);
+    let standard = generate_projection(path, ProjectionLanguage::RustRuntime).unwrap();
+    let first = lenso_contract_codegen::generate_module_projection(
+        path,
+        ProjectionLanguage::RustRuntime,
+        "contracts::first",
+    )
+    .unwrap();
+    let second = lenso_contract_codegen::generate_module_projection(
+        path,
+        ProjectionLanguage::RustRuntime,
+        "contracts::second",
+    )
+    .unwrap();
+    assert_eq!(standard.metadata, first.metadata);
+    assert_eq!(first.metadata, second.metadata);
+    assert!(first.source.contains("$crate::contracts::first::"));
+    assert!(
+        first
+            .source
+            .contains("pub use crate::__lenso_contract_9_contracts_5_first_")
+    );
+    assert!(
+        second
+            .source
+            .contains("pub use crate::__lenso_contract_9_contracts_6_second_")
+    );
+    syn::parse_file(&first.source).expect("module projection remains valid Rust source");
+    assert_eq!(
+        first.source,
+        lenso_contract_codegen::generate_module_projection(
+            path,
+            ProjectionLanguage::RustRuntime,
+            "contracts::first"
+        )
+        .unwrap()
+        .source
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let output = directory.path().join("runtime.rs");
+    lenso_contract_codegen::write_module_projection(
+        path,
+        ProjectionLanguage::RustRuntime,
+        "contracts::first",
+        &output,
+    )
+    .unwrap();
+    lenso_contract_codegen::check_module_projection(
+        path,
+        ProjectionLanguage::RustRuntime,
+        "contracts::first",
+        &output,
+    )
+    .unwrap();
+    assert!(
+        lenso_contract_codegen::check_module_projection(
+            path,
+            ProjectionLanguage::RustRuntime,
+            "contracts::second",
+            &output
+        )
+        .is_err()
+    );
+    for module in [
+        "",
+        "crate::contracts",
+        "contracts<T>",
+        "contracts; fn injected() {}",
+    ] {
+        assert!(
+            lenso_contract_codegen::generate_module_projection(
+                path,
+                ProjectionLanguage::RustRuntime,
+                module
+            )
+            .is_err()
+        );
+    }
+    assert!(
+        lenso_contract_codegen::generate_module_projection(
+            path,
+            ProjectionLanguage::TypeScript,
+            "contracts"
+        )
+        .is_err()
+    );
+}
+
 fn check_shared_snapshot(relative: &str, bundled: &[u8]) {
     let shared = Path::new("../../spec/fixtures/portable-contract").join(relative);
     if shared.is_file() {

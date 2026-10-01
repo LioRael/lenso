@@ -34,6 +34,9 @@ struct Configuration {
     plugin_sources: Vec<String>,
     #[serde(default, rename = "development_host")]
     _development_host: Option<String>,
+    /// Optional support configuration is interpreted by App contract authoring.
+    #[serde(default, rename = "contracts")]
+    _contracts: Option<toml::Value>,
 }
 
 /// Where a candidate was found, not whether an Instance is enabled.
@@ -54,6 +57,9 @@ pub struct Implementation {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Candidate {
+    /// Source-declared native Plugin's public module linkage anchor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_link: Option<String>,
     /// Logical owner of a selected additive build contribution.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub surface_owner: Option<String>,
@@ -115,8 +121,8 @@ pub fn discover(root: &Path) -> anyhow::Result<DiscoveryReport> {
     // The App's root package can itself be the App-owned business Plugin.
     // Inspect only its package metadata here: recursively scanning the root
     // would also treat unrelated workspace members as adopted Plugins.
-    if let Some(candidate) =
-        project::read(&root, SourceRole::AppOwned).context("inspect App root package")?
+    for candidate in
+        project::read_all(&root, SourceRole::AppOwned).context("inspect App root package")?
     {
         scanner.insert(candidate)?;
     }
@@ -197,11 +203,13 @@ impl Scanner {
             self.insert(project::bundle(&path, role)?)?;
             return Ok(());
         }
-        if let Some(candidate) = project::read(&path, role)
-            .with_context(|| format!("inspect Plugin source {}", path.display()))?
-        {
+        let candidates = project::read_all(&path, role)
+            .with_context(|| format!("inspect Plugin source {}", path.display()))?;
+        if !candidates.is_empty() {
             // A Plugin owns its nested implementation projects and build products.
-            self.insert(candidate)?;
+            for candidate in candidates {
+                self.insert(candidate)?;
+            }
             return Ok(());
         }
         if let Some(members) = project::workspace_members(&path)? {

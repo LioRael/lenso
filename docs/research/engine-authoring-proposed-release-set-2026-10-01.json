@@ -1,0 +1,90 @@
+[
+  {
+    "package_name": "lenso",
+    "version": "0.5.29"
+  },
+  {
+    "package_name": "lenso-agent-tool-cli-plugin",
+    "version": "0.1.2"
+  },
+  {
+    "package_name": "lenso-capability-configuration-source",
+    "version": "0.1.2"
+  },
+  {
+    "package_name": "lenso-capability-http-client",
+    "version": "0.3.4"
+  },
+  {
+    "package_name": "lenso-capability-http-endpoint",
+    "version": "0.3.7"
+  },
+  {
+    "package_name": "lenso-capability-http-stream-endpoint",
+    "version": "0.1.4"
+  },
+  {
+    "package_name": "lenso-capability-websocket-endpoint",
+    "version": "0.1.4"
+  },
+  {
+    "package_name": "lenso-cli",
+    "version": "0.7.0"
+  },
+  {
+    "package_name": "lenso-contract-codegen",
+    "version": "0.10.2"
+  },
+  {
+    "package_name": "lenso-engine-app",
+    "version": "0.3.3"
+  },
+  {
+    "package_name": "lenso-engine-authoring",
+    "version": "0.3.0"
+  },
+  {
+    "package_name": "lenso-engine-contracts",
+    "version": "0.1.0"
+  },
+  {
+    "package_name": "lenso-engine-host",
+    "version": "0.2.4"
+  },
+  {
+    "package_name": "lenso-engine-runtime",
+    "version": "0.2.2"
+  },
+  {
+    "package_name": "lenso-engine-web",
+    "version": "0.1.0"
+  },
+  {
+    "package_name": "lenso-host-runtime",
+    "version": "0.1.11"
+  },
+  {
+    "package_name": "lenso-http-egress-plugin",
+    "version": "0.3.7"
+  },
+  {
+    "package_name": "lenso-native-adapter",
+    "version": "0.3.20"
+  },
+  {
+    "package_name": "lenso-native-adapter-macros",
+    "version": "0.2.9"
+  },
+  {
+    "package_name": "lenso-openapi-plugin",
+    "version": "0.2.7"
+  },
+  {
+    "package_name": "lenso-web-host",
+    "version": "0.2.6"
+  },
+  {
+    "package_name": "lenso-web-ingress-plugin",
+    "version": "0.4.11"
+  }
+]

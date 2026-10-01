@@ -28,6 +28,15 @@ pub(super) struct Composite {
 #[serde(deny_unknown_fields)]
 struct Surface {
     entry: String,
+    /// Select one declaration when a source package contains several Plugins.
+    #[serde(default)]
+    owner: Option<String>,
+    /// Explicit support selection overrides default filename recognition.
+    #[serde(default)]
+    convention: Option<String>,
+    /// Interpreted by selected support, never by generic discovery.
+    #[serde(default)]
+    options: serde_json::Value,
     #[serde(default)]
     project: Option<String>,
     #[serde(default)]
@@ -38,6 +47,8 @@ struct Surface {
 #[serde(deny_unknown_fields)]
 struct Convention {
     id: String,
+    #[serde(default)]
+    owner: Option<String>,
     entries: Vec<String>,
     #[serde(default)]
     compiler: Option<Compiler>,
@@ -67,6 +78,7 @@ pub struct Compilation {
     pub convention: String,
     pub compiler_project: PathBuf,
     pub compiler: Compiler,
+    pub options: serde_json::Value,
 }
 
 /// Immutable data emitted by a selected convention surface without creating a
@@ -187,6 +199,7 @@ pub fn active_instances(root: &Path, candidate: &Candidate) -> anyhow::Result<us
 /// package manifests. The ordinary runtime resolver still owns final admission.
 pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
     let mut recognition = BTreeMap::<String, (String, String, PathBuf, Option<Compiler>)>::new();
+    let mut explicit = BTreeMap::new();
     let mut conventions = BTreeSet::new();
     let mut known_entries = BTreeSet::new();
     for candidate in &report.candidates {
@@ -198,6 +211,23 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
                 .unwrap_or(serde_json::json!([])),
         )?;
         for declaration in declarations {
+            if let Some(owner) = &declaration.owner {
+                crate::identity::classify_existing_plugin_id(owner)?;
+                if owner != &candidate.plugin_id {
+                    continue;
+                }
+            } else if report
+                .candidates
+                .iter()
+                .filter(|other| other.project == candidate.project)
+                .count()
+                > 1
+            {
+                bail!(
+                    "convention {} needs an explicit owner in a multi-Plugin package",
+                    declaration.id
+                );
+            }
             known_entries.extend(declaration.entries.iter().cloned());
             if !adopted {
                 continue;
@@ -209,6 +239,15 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
             if declaration.entries.is_empty() || declaration.entries.len() > 64 {
                 bail!("convention entries must contain 1..64 filenames");
             }
+            explicit.insert(
+                declaration.id.clone(),
+                (
+                    candidate.plugin_id.clone(),
+                    declaration.id.clone(),
+                    candidate.project.clone(),
+                    declaration.compiler.clone(),
+                ),
+            );
             for entry in declaration.entries {
                 if entry.is_empty()
                     || Path::new(&entry).components().count() != 1
@@ -276,6 +315,29 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
         if surfaces.is_empty() && !archive_file {
             discover_entries(&base, &base, &known_entries, &mut surfaces, &mut 0, 0)?;
         }
+        if owners
+            .iter()
+            .filter(|other| other.project == owner.project)
+            .count()
+            > 1
+            && surfaces.iter().any(|surface| surface.owner.is_none())
+        {
+            bail!(
+                "convention surfaces in a multi-Plugin package need an explicit owner: {}",
+                owner.project.display()
+            );
+        }
+        for surface in &surfaces {
+            if let Some(owner) = &surface.owner {
+                crate::identity::classify_existing_plugin_id(owner)?;
+            }
+        }
+        surfaces.retain(|surface| {
+            surface
+                .owner
+                .as_ref()
+                .is_none_or(|selected| selected == &owner.plugin_id)
+        });
         if surfaces.len() > 256 {
             bail!("Plugin accepts at most 256 surfaces");
         }
@@ -303,7 +365,16 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
                 .file_name()
                 .and_then(|s| s.to_str())
                 .context("surface filename must be UTF-8")?;
-            let support = recognition.get(filename);
+            if serde_json::to_vec(&surface.options)?.len() > 8192 {
+                bail!("surface options exceed 8 KiB: {}", entry.display());
+            }
+            let support = match &surface.convention {
+                Some(convention) => {
+                    crate::identity::classify_existing_plugin_id(convention)?;
+                    explicit.get(convention)
+                }
+                None => recognition.get(filename),
+            };
             let active = selected_owner && support.is_some();
             if selected_owner && surface.required && support.is_none() {
                 bail!(
@@ -370,6 +441,7 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
                     convention: support.1.clone(),
                     compiler_project: support.2.clone(),
                     compiler,
+                    options: surface.options,
                 });
             } else if active {
                 let package = inside(
@@ -469,6 +541,9 @@ fn discover_entries(
                     .replace('\\', "/"),
                 project: None,
                 required: false,
+                owner: None,
+                convention: None,
+                options: serde_json::Value::Null,
             });
         } else if kind.is_dir() {
             if child.path().join("package.json").exists()
@@ -597,6 +672,7 @@ fn discover_bare_owners(
             .map(|b| format!("{b:02x}"))
             .collect::<String>();
         owners.push(Candidate {
+            native_link: None,
             plugin_id: format!("local.files-{digest}"),
             release_version: "1.0.0".into(),
             project: fs::canonicalize(directory)?,

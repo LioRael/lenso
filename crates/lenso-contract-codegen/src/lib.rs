@@ -21,11 +21,19 @@ use sha2::{Digest as _, Sha256};
 
 mod browser;
 mod ir;
+mod module_projection;
 mod rust_debug;
 mod source;
 mod wit;
 
 pub use browser::generate_browser_request_client;
+/// Generator cohort recorded by persistent authoring caches.
+pub const GENERATOR_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Source fingerprint also invalidates caches for unpublished local overlays.
+pub const GENERATOR_REVISION: &str = env!("LENSO_GENERATOR_REVISION");
+pub use module_projection::{
+    check_module_projection, generate_module_projection, write_module_projection,
+};
 pub use source::{check_source_snapshot, write_source_snapshot};
 
 use ir::{ContractIr, ErrorVariantIr, FieldIr, ObjectAdditionalIr, OperationIr, TypeIr};

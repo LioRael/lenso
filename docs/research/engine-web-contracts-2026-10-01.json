@@ -1,0 +1,338 @@
+{
+  "completed_utc": "2026-10-01T10:50:59.201452+00:00",
+  "stage": "combined local acceptance complete; candidate MCP authority gap verified; release preparation review checkpoint",
+  "worktree": "/Users/leosouthey/Projects/framework/.worktrees/lenso/feat-multi-plugin-source",
+  "branch": "feat/multi-plugin-source",
+  "base_sha": "119b9af70b82816588c00c8bf812f7c62d1a18b5",
+  "committed": true,
+  "landed": false,
+  "published": false,
+  "deployed": false,
+  "focused_tests": {
+    "contracts": {
+      "passed": 5
+    },
+    "web": {
+      "passed": 4
+    },
+    "native_example": {
+      "passed": 1,
+      "runtime_http": [
+        {
+          "policy": "custom",
+          "binary": "/Users/leosouthey/Projects/framework/lenso-ai-relay/vendor/core/target/debug/lenso-engine-web-example",
+          "binary_sha256": "2309b9cc0653880b1f7c7fa6db2934856ae53acc08d8c8a03da7be0538bdcba0",
+          "observations": [
+            {
+              "path": "/health",
+              "status": 200,
+              "body": "\"ok\""
+            },
+            {
+              "path": "/items/example",
+              "status": 200,
+              "body": "\"example\""
+            },
+            {
+              "path": "/private",
+              "status": 404
+            }
+          ],
+          "shutdown_exit_code": 0
+        },
+        {
+          "policy": "default",
+          "binary": "/Users/leosouthey/Projects/framework/lenso-ai-relay/vendor/core/target/debug/lenso-web-default-fixture",
+          "binary_sha256": "8a71073e0e1973f481b02fe063b074929dc06c2e102889e11fa37d7066611acd",
+          "observations": [
+            {
+              "path": "/health",
+              "status": 200,
+              "body": "\"ok\""
+            },
+            {
+              "path": "/items/example",
+              "status": 200,
+              "body": "\"example\""
+            },
+            {
+              "path": "/private",
+              "status": 404
+            }
+          ],
+          "shutdown_exit_code": 0
+        }
+      ]
+    },
+    "app_contracts": {
+      "passed": 6,
+      "ignored": 1
+    },
+    "explicit_convention": {
+      "passed": 1
+    }
+  },
+  "clippy": {
+    "new_support_all_targets": "passed, warnings denied",
+    "app_authoring_libraries": "passed, warnings denied"
+  },
+  "relay": {
+    "selected_contracts": 29,
+    "projection_sha256_unchanged": {
+      "contracts/reconciliation/runtime.rs": "0488a77f3804c824c57a78545d6ba0fbe6b00b59f8a5652669025ee57ee5624a",
+      "contracts/reconciliation/generated.rs": "f9e4d130c70f14baa424cf9103e441f23673e7f846e078b64e5ee455dd9b7f20",
+      "contracts/reconciliation/generated.ts": "ddea0a21ee2ddd5090eb44cbf84c5e4b546807e4a52c2c097c904614955d190d",
+      "contracts/pricing-store/runtime.rs": "af08e7476d3d5277d5c3d0bfa6c80f29f4c4f25bb7f077aed2bd698342ac2956",
+      "contracts/pricing-store/generated.rs": "7c9519dd1f0495014c846ce2eba8b492a68ffc6122ed4cb9392ef702271ecff3",
+      "contracts/pricing-store/generated.ts": "5f5b16f8e8552cf3324eb0ff91379aad47cbd10ef31e2913444a08d5260efa6d",
+      "contracts/configuration/runtime.rs": "e6874eb0a4022a4f4e6030919e2d92d020573ab85ba06f02846b3254954b83b0",
+      "contracts/configuration/generated.rs": "b248ffc0e4fae1a3786c8b17bf2bdc09ab740e92c5cc28fa8941c8ff93b92e8b",
+      "contracts/configuration/generated.ts": "fd6e37af09ee052ed2e5eb4a2fac97819c441e8bdef59cb686176e51ce71b038",
+      "contracts/ai-execution/runtime.rs": "5cca2c6704c49ef4f5f7c69a2742491579598e5f17adba527a85a64d2612be8e",
+      "contracts/ai-execution/generated.rs": "bbd194ad2af21a3ecfa5043295ff4b482462b88f873482d37e1267f0d6319cdb",
+      "contracts/ai-execution/generated.ts": "586df566e881a3031cc3de5726cc5945b91b19c7aef1174b82ee6911b4d67f78",
+      "contracts/access/runtime.rs": "a471e16c2d425cafe95e08d6d6c3520508b2fc51c5db22e68bcc06bcb6a12a95",
+      "contracts/access/generated.rs": "5d11ada2b98d279461421d1b0709d306ba5f35cef6f2994d9fa57a5f24529978",
+      "contracts/access/generated.ts": "4db02f8036cd706b04f7c4ad7959dcf3382ac521c1dc4763cb9b058ea5471389",
+      "contracts/subscription-store/runtime.rs": "70ddeeba9f08551df946341acaa2f269eb03dcbbb14d9834dc280e9a837684cc",
+      "contracts/subscription-store/generated.rs": "05fefef032a5c68e61136c336f502c381341a31ce0d70adb5b3a116cbef903e7",
+      "contracts/subscription-store/generated.ts": "e868284411d086fae472def8cdc051720160e8944f6afcfb71102057699e0c1d",
+      "contracts/entitlements-store/runtime.rs": "6743ef84cfbd3b4e8d4dbef8753979e395e77fac6387042eb08ffe3f9a496dcb",
+      "contracts/entitlements-store/generated.rs": "1dfd688a1991da73c3d9125075500f3b70588a97622b79b9ac525e48a7654135",
+      "contracts/entitlements-store/generated.ts": "dc9b9a9ba24bc2a059a5c608568798838851072b8a953df15fc34a50e1b05b42",
+      "contracts/wallet-store/runtime.rs": "e7ea47a74b78931e80a30fbf6b88ea7f18b34e838b9b8c26332944d8c8cff169",
+      "contracts/wallet-store/generated.rs": "5c56d323d6aac6295261ec0bf3d513a4dad68cde1b209c08f2753a43a32c9ea1",
+      "contracts/wallet-store/generated.ts": "055a3fa68f3d98760553bbc691ca60deb7a6e59aaa3d040de0b97ad217ee42c0",
+      "contracts/attempts-store/runtime.rs": "59cf5b1fa2cde69a29f6d6af8eccae5113ab4f872eff119e5a2d8386d33117da",
+      "contracts/attempts-store/generated.rs": "d56fa0029c82d7d83a27a4382a0d4ca0b84ecb997a75c7eba7dd9189c8eab866",
+      "contracts/attempts-store/generated.ts": "d77e83f947550afff8958ff44edf533a203c25277de90ecd63f60d647cfb10fe",
+      "contracts/configuration-store/runtime.rs": "d3b52fb472b58bb0417ca7f8148ae253258ac61eb8b7ac3a3254e77e863e5758",
+      "contracts/configuration-store/generated.rs": "667ed25ca820483dfdafa61e2da227f042db2131bf33384293e1b066c29e57d5",
+      "contracts/configuration-store/generated.ts": "66968d8d55070662335806b269041cfa179e6aa3a1829aabf691211e5373322b",
+      "contracts/access-store/runtime.rs": "6ecc466b8c22c79643f9692704c15e68f1325705f22e071e995ed8d85ca90844",
+      "contracts/access-store/generated.rs": "8438eb1cf0da55d7711e26608de30d1a01dd1660c5b6bf84e3935443daef39e1",
+      "contracts/access-store/generated.ts": "c03b4992c117caece4388c231d974d35bd1de760ac6c2481502746ed1a3c396b",
+      "contracts/requests/runtime.rs": "d9f8dd2ee77195be38d467742af7b051f0a6d801bde8d6c8e61a0909d660e7ce",
+      "contracts/requests/generated.rs": "6d44f15f860f6ba0a1d8bd57a9ecc6bc8563a02b96c11b43aa526d9d23f167d7",
+      "contracts/requests/generated.ts": "d8b20e457c2389a0eec347ed59872f19097e0b9cd24b0b6d185b1268691a98e0",
+      "contracts/subscriptions/runtime.rs": "1d9d4c1695fc418b6dcfeeacf423c09b0efd43dd07037f879928d0ecf06a6618",
+      "contracts/subscriptions/generated.rs": "a45aba75be9d3bc5a0aab9861c2a1ee365f526931bb3a5fc8461e78c1068d426",
+      "contracts/subscriptions/generated.ts": "0f1ecf6751b9403892e360af7a95772052723bc029b850dd574315970888b395",
+      "contracts/upstream-store/runtime.rs": "8b332e42d5fb3c29052445cef569cdce72077c527eb9a8f72aea6fc2433849d7",
+      "contracts/upstream-store/generated.rs": "aa5a4c2f18a67961bff244be255cc1423d37019ff0c28cccf8cfb7e8085e67b4",
+      "contracts/upstream-store/generated.ts": "f8d43b0e4f67f27668fadcd906527f8bb2055b63b2d2764014b42d024530fe59",
+      "contracts/entitlements/runtime.rs": "a5497f5a47f4cb009883338a5185c7cf10a33a47b8adddda6033a0a1864faf75",
+      "contracts/entitlements/generated.rs": "e7090b34ffa955badc4605cb472051e1a6cb25837d1b4c3fc0762e560c72582f",
+      "contracts/entitlements/generated.ts": "87621cc9e800febbfce3d11a421215b102d50eddad7887b017c7f4eddcb88d92",
+      "contracts/keys-store/runtime.rs": "d5ae1eab9cfb8169bf49cd8a9eff9db8d71c30edcd154fcb3bf80d7b79e02904",
+      "contracts/keys-store/generated.rs": "73d3d20ecdc62a29c72abaead93d2ecec73272ec035d44f98662259326454456",
+      "contracts/keys-store/generated.ts": "f04b9694053b321410ad183e0125b9033f5415d37a7753e43e871e023b482a96",
+      "contracts/billing-store/runtime.rs": "8e7e1a6a365b41b4721721526a3f42dc64d201948788221582d96cf0eda6accc",
+      "contracts/billing-store/generated.rs": "6e14af082281f2b010ca776f82e587bf031c160d7b8232152a7eff02e6a3e322",
+      "contracts/billing-store/generated.ts": "ecb5c92aaf095147e96124e573a7e6899a087431d2e1018df5f4e3b9bed74d95",
+      "contracts/metering-store/runtime.rs": "f6e033cd705100c6722e109cdcb1f7de56092c7ddb625db641c97b11aef8b9d7",
+      "contracts/metering-store/generated.rs": "f03df0e5f7de7596eccfb87877d7e551403f15a9f0851fe9ac610a2e40240973",
+      "contracts/metering-store/generated.ts": "82d84b5dba08b02e49653528dd7dbe5ae2174557a6793cee0102efe191744310",
+      "contracts/upstreams/runtime.rs": "f86f5c3ea863f7c66d6e2a79ce505bf251e06be86ac093d8924a9b190749d349",
+      "contracts/upstreams/generated.rs": "00749e0df5cec494f3c7c1faf036c959032a64bc0841fe87a24a5eab6a1242ab",
+      "contracts/upstreams/generated.ts": "d45e7fe575c07c9080b094266e685fef15710884451f8f2971cdcaf4e149a389",
+      "contracts/wallet/runtime.rs": "6d1fd50c4e3ffc6b140efe4831501221a94e60e5cccfc665c7b844590deee255",
+      "contracts/wallet/generated.rs": "c384df3f7ffd0a0bf2f026e32b8147d1430a65a9fdb51991f8edfdc9232681cc",
+      "contracts/wallet/generated.ts": "2e2f7cd2db8153d186ac45e7f2b209193b61512222525e9b3782541e378b1fc3",
+      "contracts/keys/runtime.rs": "159d9bd956c5e74f8dbae8a4a090c030665b73271f97f9f0bdd9adf2b9acd0ba",
+      "contracts/keys/generated.rs": "92efa552bb3946f6392287171f7ae3051991f4a718498eca978a751f5ee9b6d6",
+      "contracts/keys/generated.ts": "134d562626c6a5f03dd1d5ddc8c7f64fd56378792afa60b09bab0736fd061188",
+      "contracts/attempts/runtime.rs": "3aa1a1514f2e9ff404e7b05a7b8ad824e7fe0763c70c0bb24ae3af5d6385a9f8",
+      "contracts/attempts/generated.rs": "b21d9c8464cbce67b72bba6b8e610f8fd61f36efca6a09e6833c99e53f9921bd",
+      "contracts/attempts/generated.ts": "b35ccdf848eac0d3c0719f6d84a024fb9d6f9585d96be5b24f7d7eaf2ef831de",
+      "contracts/metering/runtime.rs": "7e02864ebbf3eced10cc3dfe7540d1736e51ae3e49aa708210ce8ef5f93125fc",
+      "contracts/metering/generated.rs": "e9800940875f7acac6e3142c5242dcb840767c12031ecbb1c83dced14cfd1653",
+      "contracts/metering/generated.ts": "8c23be7678fe24257a2ea7040d04fbc0f09f76b4984f0db630a5e71a98dcbb6f",
+      "contracts/reconciliation-store/runtime.rs": "de365aeebe9eb436758e609afa2669b311f0289d10c1efce4af0d18ff848a172",
+      "contracts/reconciliation-store/generated.rs": "ce331606e8ac2f4332443a030957e9beb55ee911f0a2648094fd8beb9c2512f9",
+      "contracts/reconciliation-store/generated.ts": "412e15eae25c552cacbf56c60e5c98d39b64de4242744ec51546d5f18964883f",
+      "contracts/requests-store/runtime.rs": "74b3b8573b449330bbe4c067389420b7a21bb39ca11b263164b523cfef0d2a33",
+      "contracts/requests-store/generated.rs": "51de7bfb0193b27dedd58bd4bb913518ad5d3ef73f04f29ec8fa26386efb4ff7",
+      "contracts/requests-store/generated.ts": "6d26eb49f07860915d31499e124bdd54af349ad3ec3502baa924a83a7734c8bb",
+      "contracts/routing/runtime.rs": "c80f31acf14f3b17d774da848f45646d5549d3eea420dceeb500af1d05201630",
+      "contracts/routing/generated.rs": "8bd428a7699780c5ec65dae7454370f2aae76c4610464848519c0bc3d9929219",
+      "contracts/routing/generated.ts": "7a4b410f28d5c496097a522a3425e67badae8e3f41e455b1837b31470d01cb95",
+      "contracts/pricing/runtime.rs": "8053bd56cd33bf87d26b4255cf5f07b58765ebf5ef9f212595391663a00e4bb0",
+      "contracts/pricing/generated.rs": "88137aab58d2830d5615e553676afec8966bf9221b0e30ded7d71201b1b06e2a",
+      "contracts/pricing/generated.ts": "66f38f9c037bd5ebba181f4df39a266df5356721ecc858c1d5481ec4692fc3d8",
+      "contracts/billing/runtime.rs": "34751b39f037215ddf9da68d57382d9b538a630a7bcfa7e4caeb2f880daf98f1",
+      "contracts/billing/generated.rs": "e4112146c9a5ae1fe900d8ba2ca14f377ed1f4100367692d40d587bb67382434",
+      "contracts/billing/generated.ts": "a961329efa7b16d69d620dfe4a87b0bcbae548d39b1c4081638b96fa4d190eb6",
+      "contracts/credentials/runtime.rs": "f2b247f976a8845375e359148352ed526343cfeb3701aa0c1ab8c8011d0bbc3a",
+      "contracts/credentials/generated.rs": "abefb7ca0fb9a7612cda21cab838878cf5ebbd111d4ec9aa7f19966efc381543",
+      "contracts/credentials/generated.ts": "1fade71c0e9e253d2fc638c8c5134b680dbb204fe1f145454ad9ba487f5bfc7a"
+    },
+    "cargo_check_locked_offline": "passed",
+    "final_consumer_acceptance": {
+      "completed_utc": "2026-10-01T10:43:11.707851+00:00",
+      "consumer_suites": [
+        {
+          "suite": "access_store_boundary",
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "suite": "background_service",
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "suite": "billing_store_boundary",
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "suite": "configuration",
+          "passed": 3,
+          "failed": 0
+        },
+        {
+          "suite": "credential_adapter",
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "suite": "https_transport",
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "suite": "live_configuration",
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "suite": "metering_store_boundary",
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "suite": "multi_upstream",
+          "passed": 2,
+          "failed": 0
+        },
+        {
+          "suite": "paid_relay",
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "suite": "reconciliation",
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "suite": "subscriptions",
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "suite": "wallet_management_boundary",
+          "passed": 1,
+          "failed": 0
+        }
+      ],
+      "passed": 21,
+      "failed": 0,
+      "typescript_check": "passed by tests/run-local-service.sh",
+      "package": "/tmp/lenso-relay-engine-authoring-20261001-final",
+      "build_info": {
+        "built_utc": "2026-10-01T10:40:38.350779+00:00",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+        "bun_version": "1.4.3",
+        "bun_revision": "1.4.3-canary.1+bf80d21c6",
+        "rustc_version": "rustc 1.98.1 (48a229cea 2026-09-01)",
+        "sha256": {
+          "lenso-ai-relay": "65a5f27b1e379aae78d515847f89e29071c8dd34cec467c8b9c340aa8e9ace6f",
+          "relay-mock-upstream": "ef2249c30f01f38ba9864a31f403c2ee77000fb51545a23b0da4585b8d9c7b5b",
+          "pricing.js": "00fbf9b871d10dc66b046cc8bfd4e627f9b013837fe2402a77f5f5436d3f035c",
+          "pricing.sha256": "eeea8bdeefff6fff3e1eb964a9da69a1495764d124183aec8a376a87a6edef43",
+          "subscriptions.js": "7aabe014c89e17eba369dba80e4e71539da9ffc201c499fb3069be046ee78529",
+          "subscriptions.sha256": "c5ba6acf5b84cafa5ed4f7748f455e4ca8797f3fc9b46b49145220db1dc2737d",
+          "plan.demo.json": "9635bdf5f178ca708b2525e415553b5742faf1913bb137aae4b13b30ffdf7870",
+          "sources.json": "c05690f678c8763c68de34064be2273b8653f811ce117398b7af160d7228e1e9",
+          "upstreams.example.json": "96b586576145e49fcc9654e78bcee10454fbcd57246967aeaeb78f39ac5cd1f3",
+          "demo-multi-upstream.py": "88e0b1e8f6c1ffefb116d1729f4afe6cef9c221f0e495277812239ccae5aae67"
+        },
+        "distribution": "local native product Host; no publication"
+      },
+      "prior_package_files_unchanged": 20,
+      "prior_phase1_receipts_restored": [
+        "multi-upstream-receipt.json",
+        "reconciliation-receipt.json",
+        "live-configuration-receipt.json",
+        "background-service-receipt.json",
+        "subscriptions-receipt.json",
+        "https-transport-receipt.json",
+        "receipt.json"
+      ],
+      "approved_config_unchanged": true,
+      "publication": false,
+      "deployment": false,
+      "reviewed_package": "/tmp/lenso-relay-engine-authoring-20261001-reviewed",
+      "reviewed_package_build_info": {
+        "built_utc": "2026-10-01T10:46:35.071409+00:00",
+        "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+        "bun_version": "1.4.3",
+        "bun_revision": "1.4.3-canary.1+bf80d21c6",
+        "rustc_version": "rustc 1.98.1 (48a229cea 2026-09-01)",
+        "sha256": {
+          "lenso-ai-relay": "65a5f27b1e379aae78d515847f89e29071c8dd34cec467c8b9c340aa8e9ace6f",
+          "relay-mock-upstream": "ef2249c30f01f38ba9864a31f403c2ee77000fb51545a23b0da4585b8d9c7b5b",
+          "pricing.js": "00fbf9b871d10dc66b046cc8bfd4e627f9b013837fe2402a77f5f5436d3f035c",
+          "pricing.sha256": "eeea8bdeefff6fff3e1eb964a9da69a1495764d124183aec8a376a87a6edef43",
+          "subscriptions.js": "7aabe014c89e17eba369dba80e4e71539da9ffc201c499fb3069be046ee78529",
+          "subscriptions.sha256": "c5ba6acf5b84cafa5ed4f7748f455e4ca8797f3fc9b46b49145220db1dc2737d",
+          "plan.demo.json": "9635bdf5f178ca708b2525e415553b5742faf1913bb137aae4b13b30ffdf7870",
+          "sources.json": "0c553bbe08cad8c15a8164d8e30ea22fecd2416518f56984d20afa752038f32c",
+          "upstreams.example.json": "96b586576145e49fcc9654e78bcee10454fbcd57246967aeaeb78f39ac5cd1f3",
+          "demo-multi-upstream.py": "88e0b1e8f6c1ffefb116d1729f4afe6cef9c221f0e495277812239ccae5aae67"
+        },
+        "distribution": "local native product Host; no publication"
+      },
+      "reviewed_executable_hashes_match_tested_package": true,
+      "web_http": "passed default/custom; 200 Health/typed path, 404 private; clean shutdown",
+      "candidate_cli_mcp": {
+        "facts_status": "invalid",
+        "discovered_sources": 15,
+        "diagnostic": "LENSO_APP_RESOLUTION_FAILED",
+        "project_check": "failed",
+        "cause": "Custom Host lacks persisted .lenso/host-catalog.json; App check first rejects missing App freshness record",
+        "approved_config_unchanged": true
+      }
+    },
+    "candidate_cli_mcp": "verified: invalid facts, 15 discovered sources, LENSO_APP_RESOLUTION_FAILED; check fails; no Host Catalog/App freshness authority",
+    "overlay_owned_files_sha256": {
+      "crates/lenso-engine-web/Cargo.toml": "27e390afa12741f3c51f7b8972155dbcc09050ae664773e7da7ba924fb48cac2",
+      "crates/lenso-engine-web/tests/authoring.rs": "198146733cc5ab451bee08b45af35b62d627d3f780bbdb98954515a4332b75cb",
+      "crates/lenso-engine-web/src/lib.rs": "a0cf256a19cc164994217594f6cdf0265cd3ff94a928d602d915c4cf6323fab8",
+      "crates/lenso-engine-web/src/source.rs": "2901b27a70e36953be5fa5e6f107abb94329497ae32a9140cc281b4bd2ce5756",
+      "crates/lenso-engine-contracts/Cargo.toml": "a3f0abeceab8b2e206290a66ba661705cec44ba86b1b7285edd7843942c96229",
+      "crates/lenso-engine-contracts/tests/authoring.rs": "d3232a847243d8bee32c51ba1e1e6a478485ad805abcab72214abd338cb41860",
+      "crates/lenso-engine-contracts/src/discovery.rs": "1f371c55bfb588fcd9151a846b2d45c454d5c2f144c31a402842a9ac574f9688",
+      "crates/lenso-engine-contracts/src/lib.rs": "02fa1786834d26ab6830cb56d483a3b98b630b937497624901658ff042a6df2e",
+      "crates/lenso-engine-contracts/src/output.rs": "7006518811e57e9b83d16a1aef95a4526387f76a34f75f589012a1e84d3137bb",
+      "crates/lenso-engine-contracts/src/main.rs": "d976a846afbc8cda885e1bb2fe119851e12418bdc74a3bc9f6be762d0fdee45c",
+      "crates/lenso-contract-codegen/build.rs": "08d95558151c9a899d20b26e7f83b4012d24d5e3ef7aadb4547ca9b5b154f3bc",
+      "crates/lenso-engine-web/README.md": "ab5207a0a3af3c059bb63ab9c083140db3ea6a856007f66f67c503a477e5eb5e",
+      "crates/lenso-engine-contracts/README.md": "8bfefdcfe67034e9d13dfd245d14f0a59cc69fcd2b0c33aacce438e8f025ca95",
+      "crates/lenso-engine-contracts/src/baselines.rs": "6d9829832914757b4c72bb10ee98da0f1c5d0576d2a1d3407c7a9b87e0885fb1",
+      "crates/lenso-engine-contracts/tests/fixtures/profile/capability.json": "cda691c1225d5a29541909797154229ab8221af536a8b4302683676a6c2ee372",
+      "crates/lenso-engine-contracts/tests/fixtures/profile/schemas/common-name.schema.json": "ba3d0e1bf8c7d24fbfb9dcf80b9c9987f8add2aed9772d65cdef598e6c956e12",
+      "crates/lenso-engine-contracts/tests/fixtures/profile/schemas/conformance-value.schema.json": "0afbc7ec94df61c947573c0c9f87677936a1c5672936abe3b5eee92b640d627f",
+      "crates/lenso-engine-contracts/tests/fixtures/profile/schemas/round-trip-error.schema.json": "3174ad3a16d951084fad897c64aad92355a3181fc414c2b22e999284da420f73",
+      "crates/lenso-engine-contracts/tests/fixtures/profile/schemas/round-trip-response.schema.json": "893fe09a7a5a6b9afd93e1dc888562a40769f14cbe5bf0883e3815532ea2ad54",
+      "crates/lenso-engine-contracts/tests/fixtures/profile/schemas/round-trip-request.schema.json": "8f7b244691eb7b84f255c26df0a11d7a52f67790e8a0bf0f2c3d3a7a019eab1a"
+    }
+  },
+  "quota": {
+    "last_supported_remaining_percent": 13,
+    "fresh_lookup": "successful"
+  },
+  "commit_stage": "implementation review snapshot; final versioned release candidate pending"
+}

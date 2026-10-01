@@ -125,8 +125,7 @@ serde = {{ version = "1", features = ["derive"] }}
 schemars = "1.2"
 
 [build-dependencies]
-quote = "1"
-syn = {{ version = "2", features = ["full"] }}
+lenso-engine-web = "=0.1.0"
 
 [dev-dependencies]
 bytes = "1"
@@ -488,7 +487,7 @@ async fn search(
     );
     let golden_path = concat!(
         "# Web Plugin golden path\n\n",
-        "The generated `src/lib.rs` owns the Plugin state and types; `src/routes/*.rs` contains one handler per file. The build script parses only this directory with `syn`, sorts files, and emits one `#[endpoint]` impl. The existing Endpoint macro derives the immutable route table and dispatch, while Web Ingress checks collisions across Plugins before readiness. Add or remove a route file, then rebuild; the built Host never scans source. Route IDs and method/path pairs must be unique. Keep at least one route or remove the Web Plugin itself.\n\nThe starter includes typed JSON, a structured `Problem`, an opt-in strict OpenAPI operation, a small unit test, and `lenso plugin dev` for a real loopback request. It deliberately does not require knowing about generations, drivers, adapter catalogs, or factories.\n\n",
+        "The generated `src/lib.rs` owns the Plugin state and types; `src/routes/*.rs` contains attributed handler functions. The build script selects `lenso-engine-web` with default roots and emits one `#[endpoint]` impl. Customize roots, explicit entries, exclusions, provider type and output path in `build.rs`, or replace the Snapshot reader. The existing Endpoint macro derives the immutable route table and dispatch, while Web Ingress checks collisions across Plugins before readiness. Add or remove a route file, then rebuild; the built Host never scans source. Route IDs and method/path pairs must be unique. Keep at least one route or remove the Web Plugin itself.\n\nThe starter includes typed JSON, a structured `Problem`, an opt-in strict OpenAPI operation, a small unit test, and `lenso plugin dev` for a real loopback request. It deliberately does not require knowing about generations, drivers, adapter catalogs, or factories.\n\n",
         "## Add an authenticated business endpoint\n\n",
         "Authentication at the HTTP edge is a typed Capability dependency, not a middleware global. Add the product-owned Auth and business Capability crates, then make their generated clients explicit dependencies of the endpoint Plugin. The native authoring shape is intentionally small:\n\n",
         "```rust,ignore\n",
@@ -512,7 +511,7 @@ async fn search(
     )
     .to_owned();
     let readme = format!(
-        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`. Each `src/routes/*.rs` file contains one handler; the build script combines selected files into one immutable Endpoint. Add or delete a route file, then rebuild. Duplicate IDs or method/path pairs fail with both filenames.\n\nThe exact Lenso crate versions in `Cargo.toml` must be available on crates.io before installing or building this project. Keep its generated `Cargo.lock`; do not mix framework versions or sources.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations and the real event Ingress without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n\nSee [the Web golden path](WEB_GOLDEN_PATH.md) to add an authenticated business Capability, strict public OpenAPI, a simulated Host test, or a streaming endpoint without making the basic route depend on Runtime internals.\n"
+        "# {plugin_id}\n\nLinked native Rust Web Plugin using `#[lenso::plugin]` and `#[endpoint]`. Each `src/routes/*.rs` file contains attributed handlers; the configurable Engine Web processor combines selected files into one immutable Endpoint. Add or delete a route file, then rebuild. Duplicate IDs or method/path pairs fail with both filenames.\n\nThe exact Lenso crate versions in `Cargo.toml` must be available on crates.io before installing or building this project. Keep its generated `Cargo.lock`; do not mix framework versions or sources.\n\n```sh\ncargo test --locked\nlenso plugin dev\n```\n\nThe generated tests invoke typed Endpoint operations and the real event Ingress without opening a socket. `lenso plugin dev` builds a temporary native Host, mounts this Plugin through the `web` root slot, starts a loopback Web Ingress listener, and prints the real HTTP routes. Add `--watch` to rebuild and restart after source changes.\n\nSee [the Web golden path](WEB_GOLDEN_PATH.md) to add an authenticated business Capability, strict public OpenAPI, a simulated Host test, or a streaming endpoint without making the basic route depend on Runtime internals.\n"
     );
 
     BTreeMap::from([

@@ -1,10 +1,8 @@
 //! Local contract synchronization is authoring work, never runtime discovery.
 use anyhow::{Context, bail, ensure};
 use lenso_app_authoring::discovery::Candidate;
-use lenso_contract_codegen_next::{
-    ProjectionLanguage, generate_projection, lint_compatibility, load_descriptor,
-};
-use serde::Deserialize;
+use lenso_contract_codegen_next::{ProjectionLanguage, lint_compatibility, load_descriptor};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -12,14 +10,21 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+mod freshness;
 pub mod scaffold;
+mod snapshot;
 mod source;
+use freshness::file_digest;
+pub(super) use freshness::{Freshness, check};
+use snapshot::{safe_directory, safe_output, snapshot, snapshot_files};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Projection {
     projection: String,
     output: PathBuf,
+    #[serde(default)]
+    module: Option<String>,
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,17 +37,61 @@ struct Declaration {
     #[serde(default)]
     output: Option<PathBuf>,
     #[serde(default)]
+    module: Option<String>,
+    #[serde(default)]
     projections: Vec<Projection>,
 }
 struct Contract {
     root: PathBuf,
     declaration: Declaration,
     cargo: Option<(Value, Value)>,
+    // Registry/git sources remain read-only. Projections are consumer-local.
+    output_root: Option<PathBuf>,
 }
 
-pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Result<()> {
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct Configuration {
+    roots: Vec<PathBuf>,
+    exclude_paths: Vec<PathBuf>,
+    exclude_packages: Vec<String>,
+    dependency_output: PathBuf,
+    /// Consumer-selected targets override external packages' published targets.
+    dependency_projections: Vec<Projection>,
+}
+impl Default for Configuration {
+    fn default() -> Self {
+        Self {
+            roots: vec!["contracts".into()],
+            exclude_paths: vec![],
+            exclude_packages: vec![],
+            dependency_output: ".lenso/contracts/dependencies".into(),
+            dependency_projections: vec![],
+        }
+    }
+}
+fn configuration(root: &Path) -> anyhow::Result<Configuration> {
+    let path = root.join("lenso.toml");
+    if !path.exists() {
+        return Ok(Configuration::default());
+    }
+    let document: toml::Value = toml::from_str(&fs::read_to_string(path)?)?;
+    document
+        .get("contracts")
+        .cloned()
+        .map(|value| value.try_into().map_err(Into::into))
+        .unwrap_or_else(|| Ok(Configuration::default()))
+}
+
+pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Result<Vec<Freshness>> {
+    let config = configuration(root)?;
     let mut contracts = BTreeMap::new();
     let mut manifests = BTreeSet::new();
+    let exclusions = config
+        .exclude_paths
+        .iter()
+        .map(|path| safe_directory(root, path))
+        .collect::<anyhow::Result<Vec<_>>>()?;
     // Only selected Plugin projects and explicitly owned contracts participate.
     for candidate in candidates {
         match candidate.format.as_str() {
@@ -55,9 +104,18 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
             _ => {}
         }
     }
-    let directory = root.join("contracts");
-    if directory.is_dir() {
-        scan(&directory, &mut manifests, &mut contracts, &mut 0, 0)?;
+    for directory in &config.roots {
+        let directory = safe_directory(root, directory)?;
+        if directory.is_dir() {
+            scan(
+                &directory,
+                &mut manifests,
+                &mut contracts,
+                &mut 0,
+                0,
+                &exclusions,
+            )?;
+        }
     }
     let mut visited_packages = BTreeSet::new();
     for manifest in manifests {
@@ -102,7 +160,10 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
                 .iter()
                 .find(|p| p["id"] == id)
                 .context("Cargo package")?;
-            if !package["source"].is_null() {
+            if config
+                .exclude_packages
+                .contains(&package["name"].as_str().unwrap_or("").to_owned())
+            {
                 continue;
             }
             let Some(value) = package.pointer("/metadata/lenso/contract") else {
@@ -118,14 +179,50 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
             .to_path_buf();
             insert(
                 &mut contracts,
-                package_root,
+                package_root.clone(),
                 value.clone(),
                 Some((package.clone(), metadata.clone())),
             )?;
+            if !package["source"].is_null() {
+                let contract = contracts
+                    .get_mut(&package_root)
+                    .context("dependency contract")?;
+                configure_external(root, package, &config, contract)?;
+            }
         }
     }
+    synchronize_selected(root, contracts)
+}
+fn configure_external(
+    root: &Path,
+    package: &Value,
+    config: &Configuration,
+    contract: &mut Contract,
+) -> anyhow::Result<()> {
+    ensure!(
+        contract
+            .root
+            .join(&contract.declaration.descriptor)
+            .is_file(),
+        "{}: external source-only contracts must publish Descriptor/Schema inputs; dependency code is not executed for extraction",
+        package["id"]
+    );
+    contract.declaration.source = None;
+    let identity = super::local_host::digest_text(package["id"].as_str().context("package ID")?);
+    contract.output_root = Some(safe_directory(root, &config.dependency_output)?.join(identity));
+    if !config.dependency_projections.is_empty() {
+        contract.declaration.projection = None;
+        contract.declaration.output = None;
+        contract.declaration.projections = config.dependency_projections.clone();
+    }
+    Ok(())
+}
+fn synchronize_selected(
+    root: &Path,
+    contracts: BTreeMap<PathBuf, Contract>,
+) -> anyhow::Result<Vec<Freshness>> {
     if contracts.is_empty() {
-        return Ok(());
+        return Ok(vec![]);
     }
     fs::create_dir_all(root.join(".lenso"))?;
     let lock = fs::File::options()
@@ -136,8 +233,14 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
     lock.lock().context("lock local contract generation")?;
     let staging = tempfile::tempdir_in(root.join(".lenso"))?;
     let inputs = contracts
-        .keys()
-        .map(|path| Ok((path.clone(), super::local_host::input_digest(path)?)))
+        .values()
+        .filter(|contract| contract.output_root.is_none())
+        .map(|contract| {
+            Ok((
+                contract.root.clone(),
+                super::local_host::input_digest(&contract.root)?,
+            ))
+        })
         .collect::<anyhow::Result<Vec<_>>>()?;
     let mut external_inputs = BTreeMap::new();
     let mut changes = BTreeMap::<PathBuf, Vec<u8>>::new();
@@ -148,7 +251,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
     let mut staged_sources = BTreeMap::<PathBuf, PathBuf>::new();
     for (index, contract) in ordered.into_iter().enumerate() {
         let declaration = &contract.declaration;
-        let descriptor = normalized(&contract.root.join(&declaration.descriptor));
+        let descriptor = safe_output(&contract.root, &declaration.descriptor)?;
         let stage = staging.path().join(index.to_string());
         fs::create_dir_all(&stage)?;
         let staged_descriptor = stage.join("capability.json");
@@ -172,13 +275,15 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
                 staged_sources.get(&descriptor).unwrap_or(&descriptor),
                 &stage,
             )?;
-            if contract.cargo.as_ref().is_some_and(|(package, _)| {
-                package["dependencies"].as_array().is_some_and(|deps| {
-                    deps.iter().any(|dep| {
-                        dep["kind"] == "build" && dep["name"] == "lenso-contract-codegen"
+            if contract.output_root.is_none()
+                && contract.cargo.as_ref().is_some_and(|(package, _)| {
+                    package["dependencies"].as_array().is_some_and(|deps| {
+                        deps.iter().any(|dep| {
+                            dep["kind"] == "build" && dep["name"] == "lenso-contract-codegen"
+                        })
                     })
                 })
-            }) {
+            {
                 source::extract(root, contract, None, &staged_descriptor)?;
             }
         }
@@ -187,7 +292,11 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
         }
         let next = load_descriptor(&staged_descriptor)
             .map_err(|e| anyhow::anyhow!("{}: {e}", descriptor.display()))?;
-        let key = super::local_host::digest_text(&descriptor.to_string_lossy());
+        let key = if contract.output_root.is_some() {
+            super::local_host::digest_text(&format!("dependency/{}", next.capability_id()))
+        } else {
+            super::local_host::digest_text(&descriptor.to_string_lossy())
+        };
         let baseline = root.join(".lenso/contracts").join(key);
         let previous = if baseline.join("capability.json").is_file() {
             Some(baseline.join("capability.json"))
@@ -207,6 +316,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
             (Some(projection), Some(output)) => projections.push(Projection {
                 projection: projection.clone(),
                 output: output.clone(),
+                module: declaration.module.clone(),
             }),
             (None, None) => {}
             _ => bail!(
@@ -229,7 +339,8 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
                 "wit" => ProjectionLanguage::Wit,
                 value => bail!("unsupported contract projection {value}"),
             };
-            let output = safe_output(&contract.root, &projection.output)?;
+            let output_root = contract.output_root.as_ref().unwrap_or(&contract.root);
+            let output = safe_output(output_root, &projection.output)?;
             if let Ok(existing) = fs::read_to_string(&output)
                 && !existing
                     .lines()
@@ -243,17 +354,6 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
             }
             if !owned.insert(output.clone()) {
                 bail!("generated output has multiple owners: {}", output.display());
-            }
-            // Existing projections from another compatible generator cohort remain
-            // untouched when their exact contract digest has not changed.
-            if !source_owned
-                && !stage
-                    .join(format!("projection-{projection_index}.txt"))
-                    .is_file()
-                && fs::read_to_string(&output)
-                    .is_ok_and(|text| text.contains(next.descriptor_digest()))
-            {
-                continue;
             }
             let extracted = stage.join(format!("projection-{projection_index}.txt"));
             let bytes = if extracted.is_file() {
@@ -271,10 +371,76 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
                         contract.root.display()
                     );
                 }
-                generate_projection(&staged_descriptor, language)
-                    .map_err(|e| anyhow::anyhow!("{e}"))?
-                    .source
-                    .into_bytes()
+                let mut inputs = lenso_engine::Snapshot::default();
+                lenso_engine_contracts::snapshot_contract(
+                    &stage,
+                    "capability.json",
+                    "input/capability.json",
+                    &mut inputs,
+                )?;
+                let mut identity = descriptor.display().to_string();
+                if let Some((package, metadata)) = &contract.cargo {
+                    identity = package["id"]
+                        .as_str()
+                        .context("locked Cargo package ID")?
+                        .to_owned();
+                    let workspace = Path::new(
+                        metadata["workspace_root"]
+                            .as_str()
+                            .context("Cargo workspace")?,
+                    );
+                    let lock = workspace.join("Cargo.lock");
+                    if lock.exists() {
+                        inputs.insert("lock/Cargo.lock".into(), fs::read(lock)?)?;
+                    } else {
+                        ensure!(
+                            contract.output_root.is_none(),
+                            "external contracts require an existing consumer Cargo.lock"
+                        );
+                    }
+                }
+                let kind = match language {
+                    ProjectionLanguage::Rust => lenso_engine_contracts::ProjectionKind::Rust,
+                    ProjectionLanguage::RustRuntime => {
+                        lenso_engine_contracts::ProjectionKind::RustRuntime
+                    }
+                    ProjectionLanguage::RustPlugin => {
+                        lenso_engine_contracts::ProjectionKind::RustPlugin
+                    }
+                    ProjectionLanguage::TypeScript => {
+                        lenso_engine_contracts::ProjectionKind::TypeScript
+                    }
+                    ProjectionLanguage::Wit => lenso_engine_contracts::ProjectionKind::Wit,
+                };
+                lenso_engine_contracts::run(
+                    inputs,
+                    vec![lenso_engine_contracts::ContractInput {
+                        identity,
+                        descriptor: "input/capability.json".into(),
+                        baseline: None,
+                        projections: vec![lenso_engine_contracts::Projection {
+                            kind,
+                            output: "projection.txt".into(),
+                            module: projection.module.clone(),
+                        }],
+                    }],
+                    &stage,
+                    Some(&root.join(".lenso/contracts/cache")),
+                    lenso_engine_contracts::Mode::Generate,
+                )?;
+                let bytes = fs::read(stage.join("projection.txt"))?;
+                // Reuse a matching published dependency projection without ever
+                // writing to its immutable source package.
+                if contract.output_root.is_some()
+                    && fs::read(contract.root.join(&projection.output))
+                        .ok()
+                        .as_ref()
+                        == Some(&bytes)
+                {
+                    fs::read(contract.root.join(&projection.output))?
+                } else {
+                    bytes
+                }
             };
             changes.insert(output, bytes);
         }
@@ -344,7 +510,72 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
         snapshot(&stage.join("capability.json"), &baseline)?;
     }
     eprintln!("Synchronized {} local contract packages", contracts.len());
-    Ok(())
+    let mut evidence = Vec::new();
+    for contract in contracts.values() {
+        let descriptor = contract.root.join(&contract.declaration.descriptor);
+        let mut files = BTreeMap::new();
+        for (relative, _) in snapshot_files(&descriptor)? {
+            let path = if relative == Path::new("capability.json") {
+                descriptor.clone()
+            } else {
+                descriptor
+                    .parent()
+                    .context("descriptor parent")?
+                    .join(relative)
+            };
+            files.insert(path.clone(), file_digest(&path)?);
+        }
+        if let Some((_, metadata)) = &contract.cargo {
+            let path = Path::new(
+                metadata["workspace_root"]
+                    .as_str()
+                    .context("Cargo workspace")?,
+            )
+            .join("Cargo.lock");
+            if path.exists() {
+                files.insert(path.clone(), file_digest(&path)?);
+            }
+        }
+        for filename in ["Cargo.toml", "package.json"] {
+            let path = contract.root.join(filename);
+            if path.exists() {
+                files.insert(path.clone(), file_digest(&path)?);
+            }
+        }
+        for projection in &contract.declaration.projections {
+            let path = contract
+                .output_root
+                .as_ref()
+                .unwrap_or(&contract.root)
+                .join(&projection.output);
+            files.insert(path.clone(), file_digest(&path)?);
+        }
+        if let Some(output) = &contract.declaration.output {
+            let path = contract
+                .output_root
+                .as_ref()
+                .unwrap_or(&contract.root)
+                .join(output);
+            files.insert(path.clone(), file_digest(&path)?);
+        }
+        evidence.push(Freshness {
+            root: contract.root.clone(),
+            files,
+            generator_version: lenso_contract_codegen_next::GENERATOR_VERSION.into(),
+            generator_revision: lenso_contract_codegen_next::GENERATOR_REVISION.into(),
+            configuration: if root.join("lenso.toml").exists() {
+                Some(file_digest(&root.join("lenso.toml"))?)
+            } else {
+                None
+            },
+            source_digest: if contract.declaration.source.is_some() {
+                Some(super::local_host::input_digest(&contract.root)?)
+            } else {
+                None
+            },
+        });
+    }
+    Ok(evidence)
 }
 
 fn targets_legacy_guest(contract: &Contract) -> bool {
@@ -397,6 +628,7 @@ fn insert(
         root,
         declaration,
         cargo,
+        output_root: None,
     });
     Ok(())
 }
@@ -413,7 +645,11 @@ fn scan(
     contracts: &mut BTreeMap<PathBuf, Contract>,
     visited: &mut usize,
     depth: usize,
+    exclusions: &[PathBuf],
 ) -> anyhow::Result<()> {
+    if exclusions.iter().any(|excluded| root.starts_with(excluded)) {
+        return Ok(());
+    }
     *visited += 1;
     if *visited > 5000 || depth > 32 {
         bail!("local contracts exceed traversal limits");
@@ -434,13 +670,26 @@ fn scan(
             && !["target", "node_modules", "dist", "build"]
                 .contains(&name.to_string_lossy().as_ref())
         {
-            scan(&entry.path(), manifests, contracts, visited, depth + 1)?;
+            scan(
+                &entry.path(),
+                manifests,
+                contracts,
+                visited,
+                depth + 1,
+                exclusions,
+            )?;
         }
     }
     Ok(())
 }
 fn cargo_metadata(manifest: &Path) -> anyhow::Result<Value> {
-    let lock_path = manifest.with_file_name("Cargo.lock");
+    let lock_path = manifest
+        .parent()
+        .into_iter()
+        .flat_map(Path::ancestors)
+        .map(|directory| directory.join("Cargo.lock"))
+        .find(|path| path.exists())
+        .unwrap_or_else(|| manifest.with_file_name("Cargo.lock"));
     let lock_before = match fs::symlink_metadata(&lock_path) {
         Ok(metadata) if metadata.is_file() && metadata.len() <= 32 * 1024 * 1024 => {
             Some(fs::read(&lock_path)?)
@@ -455,13 +704,15 @@ fn cargo_metadata(manifest: &Path) -> anyhow::Result<Value> {
     let mut command = super::cargo_command();
     command.args(["metadata", "--format-version=1", "--manifest-path"]);
     command.arg(manifest);
-    if lock_before.is_some() {
-        command.arg("--locked");
-    }
+    command.arg(if lock_before.is_some() {
+        "--locked"
+    } else {
+        "--offline"
+    });
     let output = command.output()?;
-    if let Some(before) = lock_before {
+    if let Some(before) = &lock_before {
         ensure!(
-            fs::read(&lock_path)? == before,
+            fs::read(&lock_path)? == *before,
             "Cargo dependency lock changed during contract discovery: {}",
             lock_path.display()
         );
@@ -472,287 +723,15 @@ fn cargo_metadata(manifest: &Path) -> anyhow::Result<Value> {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    Ok(serde_json::from_slice(&output.stdout)?)
+    let metadata: Value = serde_json::from_slice(&output.stdout)?;
+    ensure!(
+        lock_before.is_some()
+            || metadata["packages"]
+                .as_array()
+                .is_none_or(|packages| packages.iter().all(|package| package["source"].is_null())),
+        "external contract inputs require a preexisting Cargo.lock; prepare locked dependencies before discovery"
+    );
+    Ok(metadata)
 }
-fn safe_output(root: &Path, relative: &Path) -> anyhow::Result<PathBuf> {
-    if relative.as_os_str().is_empty()
-        || !relative
-            .components()
-            .all(|c| matches!(c, Component::Normal(_)))
-    {
-        bail!(
-            "contract output must stay inside its package: {}",
-            relative.display()
-        );
-    }
-    let mut path = root.to_path_buf();
-    for component in relative.components() {
-        path.push(component);
-        if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
-            bail!(
-                "contract output cannot traverse symlinks: {}",
-                path.display()
-            );
-        }
-    }
-    if path.is_dir() {
-        bail!("contract output is a directory: {}", path.display());
-    }
-    Ok(path)
-}
-fn snapshot_files(descriptor: &Path) -> anyhow::Result<BTreeMap<PathBuf, Vec<u8>>> {
-    let bytes = fs::read(descriptor)?;
-    if bytes.len() > 4 * 1024 * 1024 {
-        bail!("contract Descriptor exceeds 4 MiB");
-    }
-    let value: Value = serde_json::from_slice(&bytes)?;
-    let mut files = BTreeMap::from([(PathBuf::from("capability.json"), bytes)]);
-    let operations = value["operations"]
-        .as_array()
-        .context("contract operations")?;
-    if operations.len() > 256 {
-        bail!("contract exceeds 256 Operations");
-    }
-    let mut pending = Vec::new();
-    for operation in operations {
-        for (key, value) in operation.as_object().context("contract Operation")? {
-            if key.ends_with("_schema") {
-                pending.push(PathBuf::from(
-                    value.as_str().context("contract schema path")?,
-                ));
-            }
-        }
-    }
-    let base = descriptor.parent().context("Descriptor parent")?;
-    let mut total = 0;
-    while let Some(relative) = pending.pop() {
-        if files.contains_key(&relative) {
-            continue;
-        }
-        let source = safe_output(base, &relative)?;
-        let bytes = fs::read(&source)?;
-        total += bytes.len();
-        if bytes.len() > 4 * 1024 * 1024 || total > 16 * 1024 * 1024 || files.len() >= 1024 {
-            bail!("contract schemas exceed size/count limits");
-        }
-        let schema: Value = serde_json::from_slice(&bytes)?;
-        let mut references = Vec::new();
-        schema_references(&schema, &mut references);
-        for reference in references {
-            let filename = reference.split('#').next().unwrap_or_default();
-            if filename.is_empty() {
-                continue;
-            }
-            let path = normalized(&relative.parent().unwrap_or(Path::new("")).join(filename));
-            // Parent references are resolved against this schema, but must stay
-            // within the Descriptor's package-local schema closure.
-            let resolved = normalized(&source.parent().context("schema parent")?.join(filename));
-            if !resolved.starts_with(base) {
-                bail!("schema reference escapes contract: {reference}");
-            }
-            pending.push(path);
-        }
-        files.insert(relative, bytes);
-    }
-    Ok(files)
-}
-fn schema_references<'a>(value: &'a Value, references: &mut Vec<&'a str>) {
-    match value {
-        Value::Object(fields) => {
-            if let Some(reference) = fields.get("$ref").and_then(Value::as_str) {
-                references.push(reference);
-            }
-            for value in fields.values() {
-                schema_references(value, references);
-            }
-        }
-        Value::Array(values) => {
-            for value in values {
-                schema_references(value, references);
-            }
-        }
-        _ => {}
-    }
-}
-fn snapshot(descriptor: &Path, destination: &Path) -> anyhow::Result<()> {
-    let changes = snapshot_files(descriptor)?
-        .into_iter()
-        .map(|(relative, bytes)| (destination.join(relative), bytes))
-        .collect();
-    install(&changes)
-}
-
-fn normalized(path: &Path) -> PathBuf {
-    let mut output = PathBuf::new();
-    for part in path.components() {
-        match part {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                output.pop();
-            }
-            _ => output.push(part),
-        }
-    }
-    output
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn descriptor(root: &Path, id: &str) {
-        fs::create_dir_all(root).unwrap();
-        fs::write(root.join("capability.json"), serde_json::to_vec(&json!({
-            "id":id,"version":"1.0.0","portable":true,"cross_lane_transfer":false,
-            "operations":[{"name":"uppercase","interaction":"request","request_schema":"request.json","response_schema":"response.json","domain_error_schema":"error.json"}]
-        })).unwrap()).unwrap();
-        for file in ["request.json", "response.json"] {
-            fs::write(root.join(file), r#"{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["text"],"properties":{"text":{"type":"string"}}}"#).unwrap();
-        }
-        fs::write(root.join("error.json"), r#"{"$schema":"https://json-schema.org/draft/2020-12/schema","oneOf":[{"const":"unavailable"}]}"#).unwrap();
-        fs::write(root.join("package.json"), serde_json::to_vec(&json!({"name":"text-contract","version":"1.0.0","lenso":{"contract":{"descriptor":"capability.json","projection":"typescript","output":"generated/text.ts"}}})).unwrap()).unwrap();
-    }
-
-    #[test]
-    fn descriptor_generation_is_stable_and_rejects_incompatible_changes_before_output() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("contracts/text");
-        descriptor(&root, "example.text@1");
-        synchronize(temp.path(), &[]).unwrap();
-        let generated = root.join("generated/text.ts");
-        let before = fs::read(&generated).unwrap();
-        let modified = fs::metadata(&generated).unwrap().modified().unwrap();
-        assert!(String::from_utf8_lossy(&before).contains("uppercase"));
-        synchronize(temp.path(), &[]).unwrap();
-        assert_eq!(
-            modified,
-            fs::metadata(&generated).unwrap().modified().unwrap()
-        );
-        let schema = root.join("request.json");
-        fs::write(
-            &schema,
-            fs::read_to_string(&schema)
-                .unwrap()
-                .replace("string", "integer"),
-        )
-        .unwrap();
-        let error = synchronize(temp.path(), &[]).unwrap_err().to_string();
-        assert!(error.contains("explicit compatible version"), "{error}");
-        assert_eq!(before, fs::read(&generated).unwrap());
-    }
-
-    #[test]
-    fn all_contracts_validate_before_generated_files_change() {
-        let temp = tempfile::tempdir().unwrap();
-        let first = temp.path().join("contracts/a");
-        descriptor(&first, "example.a@1");
-        let second = temp.path().join("contracts/z");
-        descriptor(&second, "example.z@1");
-        fs::write(second.join("request.json"), "invalid").unwrap();
-        assert!(synchronize(temp.path(), &[]).is_err());
-        assert!(!first.join("generated/text.ts").exists());
-    }
-
-    #[test]
-    fn output_cannot_escape_package_or_overwrite_contract_source() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("contracts/text");
-        descriptor(&root, "example.text@1");
-        let path = root.join("package.json");
-        let mut value: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        value["lenso"]["contract"]["output"] = json!("../outside.ts");
-        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-        assert!(
-            synchronize(temp.path(), &[])
-                .unwrap_err()
-                .to_string()
-                .contains("inside its package")
-        );
-        value["lenso"]["contract"]["output"] = json!("capability.json");
-        fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
-        assert!(
-            synchronize(temp.path(), &[])
-                .unwrap_err()
-                .to_string()
-                .contains("authored file")
-        );
-    }
-
-    #[test]
-    fn unrelated_contract_rs_does_not_claim_descriptor_source_authority() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("contracts/text");
-        descriptor(&root, "example.text@1");
-        fs::remove_file(root.join("package.json")).unwrap();
-        fs::create_dir(root.join("src")).unwrap();
-        fs::write(root.join("src/lib.rs"), "pub mod contract;\n").unwrap();
-        fs::write(root.join("src/contract.rs"), "pub fn unrelated() {}\n").unwrap();
-        fs::write(
-            root.join("Cargo.toml"),
-            "[package]\nname = \"text-contract\"\nversion = \"1.0.0\"\nedition = \"2024\"\n[workspace]\n[package.metadata.lenso.contract]\ndescriptor = \"capability.json\"\nprojection = \"typescript\"\noutput = \"generated/text.ts\"\n",
-        )
-        .unwrap();
-
-        synchronize(temp.path(), &[]).unwrap();
-        assert!(root.join("generated/text.ts").is_file());
-        assert_eq!(
-            fs::read_to_string(root.join("src/contract.rs")).unwrap(),
-            "pub fn unrelated() {}\n"
-        );
-    }
-
-    #[test]
-    #[ignore = "requires Cargo registry access; compiles actual source extraction"]
-    fn clean_room_source_contract_generates_before_a_stale_library_can_compile() {
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().join("contracts/text");
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(
-            root.join("Cargo.toml"),
-            r#"
-[package]
-name = "source-text-contract"
-version = "1.0.0"
-edition = "2024"
-[workspace]
-[package.metadata.lenso.contract]
-descriptor = "capability.json"
-source = "src/contract.rs"
-projection = "typescript"
-output = "generated/text.ts"
-[dependencies]
-schemars = "1.2"
-lenso-contract-authoring = "=0.1.2"
-[build-dependencies]
-lenso-contract-codegen = "=0.10.1"
-"#,
-        )
-        .unwrap();
-        fs::write(
-            root.join("src/lib.rs"),
-            "compile_error!(\"stale consumer must not compile during extraction\");",
-        )
-        .unwrap();
-        fs::write(root.join("src/contract.rs"), r#"
-use lenso_contract_authoring as lenso;
-#[derive(lenso::JsonSchema)]
-#[schemars(deny_unknown_fields)]
-struct Input { text: String }
-#[derive(lenso::DomainError)]
-enum Error { Unavailable }
-#[lenso::capability(id = "example.text", major = 1, version = "1.0.0", portable = true, cross_lane_transfer = false)]
-trait Text {
-    async fn uppercase(&self, context: lenso::Ctx<'_>, request: Input) -> Result<Input, Error>;
-}
-"#).unwrap();
-        synchronize(temp.path(), &[]).unwrap();
-        assert!(root.join("capability.json").is_file());
-        assert!(
-            fs::read_to_string(root.join("generated/text.ts"))
-                .unwrap()
-                .contains("uppercase")
-        );
-        synchronize(temp.path(), &[]).unwrap();
-    }
-}
+mod tests;

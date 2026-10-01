@@ -1,0 +1,156 @@
+[
+  {
+    "package_name": "lenso",
+    "current_version": "0.5.28",
+    "proposed_version": "0.5.29",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-agent-tool-cli-plugin",
+    "current_version": "0.1.1",
+    "proposed_version": "0.1.2",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-capability-configuration-source",
+    "current_version": "0.1.1",
+    "proposed_version": "0.1.2",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-capability-http-client",
+    "current_version": "0.3.3",
+    "proposed_version": "0.3.4",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-capability-http-endpoint",
+    "current_version": "0.3.6",
+    "proposed_version": "0.3.7",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-capability-http-stream-endpoint",
+    "current_version": "0.1.3",
+    "proposed_version": "0.1.4",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-capability-websocket-endpoint",
+    "current_version": "0.1.3",
+    "proposed_version": "0.1.4",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-cli",
+    "current_version": "0.6.6",
+    "proposed_version": "0.7.0",
+    "reason": "library reexports Engine authoring public API",
+    "registry_current_published": false
+  },
+  {
+    "package_name": "lenso-contract-codegen",
+    "current_version": "0.10.1",
+    "proposed_version": "0.10.2",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-engine-app",
+    "current_version": "0.3.3",
+    "proposed_version": "0.3.3",
+    "reason": "new or previously prepared version is still unpublished",
+    "registry_current_published": false
+  },
+  {
+    "package_name": "lenso-engine-authoring",
+    "current_version": "0.2.5",
+    "proposed_version": "0.3.0",
+    "reason": "public struct additions require a pre-1.0 minor",
+    "registry_current_published": false
+  },
+  {
+    "package_name": "lenso-engine-contracts",
+    "current_version": "0.1.0",
+    "proposed_version": "0.1.0",
+    "reason": "new or previously prepared version is still unpublished",
+    "registry_current_published": false
+  },
+  {
+    "package_name": "lenso-engine-host",
+    "current_version": "0.2.3",
+    "proposed_version": "0.2.4",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-engine-runtime",
+    "current_version": "0.2.1",
+    "proposed_version": "0.2.2",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-engine-web",
+    "current_version": "0.1.0",
+    "proposed_version": "0.1.0",
+    "reason": "new or previously prepared version is still unpublished",
+    "registry_current_published": false
+  },
+  {
+    "package_name": "lenso-host-runtime",
+    "current_version": "0.1.10",
+    "proposed_version": "0.1.11",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-http-egress-plugin",
+    "current_version": "0.3.6",
+    "proposed_version": "0.3.7",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-native-adapter",
+    "current_version": "0.3.19",
+    "proposed_version": "0.3.20",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-native-adapter-macros",
+    "current_version": "0.2.8",
+    "proposed_version": "0.2.9",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-openapi-plugin",
+    "current_version": "0.2.6",
+    "proposed_version": "0.2.7",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-web-host",
+    "current_version": "0.2.5",
+    "proposed_version": "0.2.6",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  },
+  {
+    "package_name": "lenso-web-ingress-plugin",
+    "current_version": "0.4.10",
+    "proposed_version": "0.4.11",
+    "reason": "changed implementation or exact-pinned consumer cohort",
+    "registry_current_published": true
+  }
+]

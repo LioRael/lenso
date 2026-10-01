@@ -2009,6 +2009,7 @@ mod tests {
 
     fn native_candidate(plugin_id: &str, version: &str, project: PathBuf) -> Candidate {
         Candidate {
+            native_link: None,
             surface_owner: None,
             composite: None,
             plugin_id: plugin_id.into(),
@@ -2097,6 +2098,7 @@ mod tests {
             entry: app.path().join("app/local.web/page.tsx"),
             plugin_id: "local.web.surface".into(),
             convention: "example.convention".into(),
+            options: serde_json::Value::Null,
             compiler_project: source,
             compiler: lenso_app_authoring::discovery::conventions::Compiler {
                 program: "cargo".into(),
@@ -2116,6 +2118,7 @@ mod tests {
         let root = fs::canonicalize(app.path()).unwrap();
         let source = fs::canonicalize(root.join("vendor/lenso/example.web/0.4.5")).unwrap();
         let candidate = Candidate {
+            native_link: None,
             surface_owner: None,
             composite: None,
             plugin_id: "example.web".into(),

@@ -171,6 +171,7 @@ mod tests {
             "development_host = 'host.json'",
         )?;
         let mut candidate = Candidate {
+            native_link: None,
             surface_owner: None,
             composite: None,
             plugin_id: "example.support".into(),

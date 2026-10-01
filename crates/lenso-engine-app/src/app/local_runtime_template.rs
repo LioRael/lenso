@@ -577,6 +577,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     if args == ["--describe"] {
         let catalog: HostCatalog =
             NativePluginRegistry::host_catalog([], []).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        // LENSO_SELECT_SOURCE_PLUGINS
         // LENSO_DESCRIBE_WEB
         println!("{}", serde_json::to_string(&catalog)?);
         return Ok(());

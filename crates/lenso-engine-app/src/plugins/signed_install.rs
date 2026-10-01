@@ -920,6 +920,7 @@ mod tests {
         )
         .unwrap();
         let candidate = lenso_app_authoring::discovery::Candidate {
+            native_link: None,
             composite: None,
             surface_owner: None,
             plugin_id: id.clone(),

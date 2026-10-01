@@ -15,13 +15,21 @@ Use an explicitly supplied local build when requested.
 
 With a matching source CLI, `lenso app create my-app --lang rust`, `app dev`,
 `app build`, and `app start --from dist` form the default Rust workflow. The
-root Cargo package is the App-owned business Plugin; `app/` remains available
+root Cargo package can be the App-owned business Plugin; `app/` remains available
 for additional local Plugins. `--runtime bun|process|wasm|multi` is the legacy
 nested starter path, not the default Rust project layout. `plugins/` keeps
 Instance intent. Only additional shared directories/globs/bundles need
 `plugin_sources` in `lenso.toml`. These sources are not marketplace endpoints;
 shared candidates require explicit Root selection. App-owned Plugins have
-disableable default Instances. In a source App, use
+disableable default Instances when they use the single-Plugin package metadata
+fallback. Independently source-declared Rust Plugins in public library modules
+are discovered separately and require explicit `plugins/<id>/<instance>.toml`
+selection. Their generated Host links the selected module anchors and retains
+the ordinary configuration and dependency resolver. Existing custom file
+conventions for CLI/Console/Agent remain separate supported sources; default Rust
+discovery does not replace or execute those processors. See
+[multiple Plugins](../../../../examples/multiple-plugins/README.md).
+In a source App, use
 `lenso plugins disable <plugin-id> default --root <source>` or the matching
 `enable` command to change only that App-owned source marker. These commands
 reject shared Plugins and Host defaults;

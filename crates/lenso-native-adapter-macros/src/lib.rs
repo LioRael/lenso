@@ -14,6 +14,8 @@ use syn::{
 
 #[derive(Default)]
 struct PluginAttributes {
+    id: Option<LitStr>,
+    root_slot: Option<LitStr>,
     descriptor: Option<LitStr>,
     configuration_schema: Option<LitStr>,
     configuration_defaults: Option<LitStr>,
@@ -27,11 +29,14 @@ struct PluginAttributes {
 }
 
 impl syn::parse::Parse for PluginAttributes {
+    #[allow(clippy::too_many_lines)]
     fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
         if input.is_empty() {
             return Ok(Self::default());
         }
         let mut descriptor = None;
+        let mut id = None;
+        let mut root_slot = None;
         let mut configuration_schema = None;
         let mut configuration_defaults = None;
         let mut validate = None;
@@ -68,6 +73,8 @@ impl syn::parse::Parse for PluginAttributes {
             }
             input.parse::<Token![=]>()?;
             match name.to_string().as_str() {
+                "id" if id.is_none() => id = Some(input.parse()?),
+                "root_slot" if root_slot.is_none() => root_slot = Some(input.parse()?),
                 "descriptor" if descriptor.is_none() => descriptor = Some(input.parse()?),
                 "configuration_schema" if configuration_schema.is_none() => {
                     configuration_schema = Some(input.parse()?);
@@ -85,7 +92,9 @@ impl syn::parse::Parse for PluginAttributes {
                 "request_max_concurrency" if request_max_concurrency.is_none() => {
                     request_max_concurrency = Some(input.parse()?);
                 }
-                "descriptor"
+                "id"
+                | "root_slot"
+                | "descriptor"
                 | "configuration_schema"
                 | "configuration_defaults"
                 | "validate"
@@ -99,7 +108,7 @@ impl syn::parse::Parse for PluginAttributes {
                 _ => {
                     return Err(syn::Error::new(
                         name.span(),
-                        "expected `descriptor`, `configuration_schema`, `configuration_defaults`, `validate`, `prepare`, `activate`, `deactivate`, `lifecycle`, `consumer`, `request_queue_capacity`, or `request_max_concurrency`",
+                        "expected `id`, `root_slot`, `descriptor`, `configuration_schema`, `configuration_defaults`, `validate`, `prepare`, `activate`, `deactivate`, `lifecycle`, `consumer`, `request_queue_capacity`, or `request_max_concurrency`",
                     ));
                 }
             }
@@ -111,6 +120,8 @@ impl syn::parse::Parse for PluginAttributes {
         let request_admission =
             parse_request_admission(input, request_queue_capacity, request_max_concurrency)?;
         Ok(Self {
+            id,
+            root_slot,
             descriptor,
             configuration_schema,
             configuration_defaults,
@@ -677,7 +688,7 @@ fn expand_plugin_function(
             "struct-level Plugin attributes are unavailable on factory functions",
         ));
     }
-    let (plugin_id, root_slot) = plugin_metadata()?;
+    let (plugin_id, root_slot) = plugin_metadata(attributes)?;
     let descriptor_json = attributes
         .descriptor
         .as_ref()
@@ -864,12 +875,6 @@ fn provided_module(
         return Err(syn::Error::new_spanned(
             implementation,
             "`provides` requires at least one namespace-qualified Capability",
-        ));
-    }
-    if capabilities.len() > 1 && implementation.trait_.is_some() {
-        return Err(syn::Error::new_spanned(
-            implementation,
-            "multiple Capabilities require one inherent impl containing their domain methods",
         ));
     }
     let Type::Path(plugin_type) = implementation.self_ty.as_ref() else {
@@ -1165,7 +1170,7 @@ fn expand_plugin_struct(
             "struct-level Plugins derive their Descriptor; remove `descriptor`",
         ));
     }
-    let (plugin_id, root_slot) = plugin_metadata()?;
+    let (plugin_id, root_slot) = plugin_metadata(attributes)?;
     let package_version = env::var("CARGO_PKG_VERSION").map_err(|_| {
         syn::Error::new_spanned(
             &plugin.ident,
@@ -2828,7 +2833,21 @@ fn complete_plugin_descriptor(
         .expect("generated Plugin Descriptor values must serialize")
 }
 
-fn plugin_metadata() -> syn::Result<(String, String)> {
+fn plugin_metadata(attributes: &PluginAttributes) -> syn::Result<(String, String)> {
+    match (&attributes.id, &attributes.root_slot) {
+        (Some(id), Some(slot)) => {
+            if id.value().is_empty() || slot.value().is_empty() {
+                return Err(metadata_error("Plugin id and root_slot must be non-empty"));
+            }
+            return Ok((id.value(), slot.value()));
+        }
+        (None, None) => {}
+        _ => {
+            return Err(metadata_error(
+                "Plugin id and root_slot must be declared together",
+            ));
+        }
+    }
     let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").ok_or_else(|| {
         syn::Error::new(
             proc_macro2::Span::call_site(),
@@ -2877,6 +2896,23 @@ fn metadata_error(detail: &str) -> syn::Error {
 mod tests {
     use super::*;
     use syn::parse_quote;
+
+    #[test]
+    fn source_identity_is_complete_and_independent_of_cargo_metadata() {
+        let attrs: PluginAttributes = syn::parse_quote!(id = "example.first", root_slot = "tools");
+        assert_eq!(
+            plugin_metadata(&attrs).unwrap(),
+            ("example.first".into(), "tools".into())
+        );
+        let partial: PluginAttributes = syn::parse_quote!(id = "example.first");
+        assert!(
+            plugin_metadata(&partial)
+                .unwrap_err()
+                .to_string()
+                .contains("together")
+        );
+        assert!(syn::parse_str::<PluginAttributes>("id = \"a\", id = \"b\"").is_err());
+    }
 
     #[test]
     fn generated_descriptor_owns_identity_and_execution_defaults() {
@@ -3105,20 +3141,24 @@ mod tests {
     }
 
     #[test]
-    fn multiple_capabilities_reject_trait_impls() {
+    fn multiple_capabilities_share_one_registration_for_trait_implementations() {
         let implementation: ItemImpl = parse_quote! {
             impl fixture::Provider for ExamplePlugin {}
         };
-        let error = expand_provides(
+        let generated = expand_provides(
             &[parse_quote!(fixture::One), parse_quote!(fixture::Two)],
             &implementation,
         )
-        .expect_err("multi-Capability authoring must have one inherent impl");
-
+        .expect("all listed Provider traits are checked by Rust on the shared Plugin type");
         assert!(
-            error
+            generated
                 .to_string()
-                .contains("multiple Capabilities require one inherent impl")
+                .contains("__lenso_native_lower_trait_object_one")
+        );
+        assert!(
+            generated
+                .to_string()
+                .contains("__lenso_native_lower_trait_object_two")
         );
     }
 

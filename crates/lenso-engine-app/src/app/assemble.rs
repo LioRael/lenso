@@ -190,7 +190,7 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
         .filter(|c| precompiled.is_none() || !super::local_host::is_native(c))
         .cloned()
         .collect::<Vec<_>>();
-    super::contracts::synchronize(&root, &source_contracts)?;
+    let mut contract_evidence = super::contracts::synchronize(&root, &source_contracts)?;
     let convention_inputs = convention_plan
         .compilations
         .iter()
@@ -202,7 +202,11 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     if let Some(host) = &precompiled {
         host.admit(&compiled_conventions.candidates)?;
     }
-    super::contracts::synchronize(&root, &compiled_conventions.candidates)?;
+    contract_evidence.extend(super::contracts::synchronize(
+        &root,
+        &compiled_conventions.candidates,
+    )?);
+    contract_evidence.retain(|evidence| !evidence.root.starts_with(generated_sources.path()));
     let generated_resources = compiled_conventions.resources;
     candidates.extend(compiled_conventions.candidates);
     let selectable = candidates
@@ -612,6 +616,12 @@ pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     }
     super::preset::checkpoint()?;
     super::build::publish_new_output(stage.path(), &destination)?;
+    let evidence_root = root.join(".lenso/contracts");
+    fs::create_dir_all(&evidence_root)?;
+    let mut evidence = tempfile::NamedTempFile::new_in(&evidence_root)?;
+    use std::io::Write as _;
+    evidence.write_all(&serde_json::to_vec(&contract_evidence)?)?;
+    evidence.persist(evidence_root.join("freshness.json"))?;
     if args.json {
         println!(
             "{}",
@@ -1121,6 +1131,7 @@ mod tests {
         )
         .unwrap();
         let candidate = Candidate {
+            native_link: None,
             surface_owner: Some("example.owner".to_owned()),
             composite: None,
             plugin_id: "example.generated".to_owned(),
