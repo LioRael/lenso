@@ -134,6 +134,8 @@ private_fixture_edges="$(jq -r '
 
 (cd "$source_root" && cargo fetch --locked) ||
   fail "could not fetch the locked non-cohort dependencies"
+(cd "$source_root" && cargo metadata --locked --offline --format-version 1) >"$scratch/original-resolved-metadata.json" ||
+  fail "could not record the exact locked dependency graph"
 
 source_dependencies() {
   local package="$1"
@@ -322,6 +324,13 @@ if (( ${#registry_dependencies[@]} > 0 )); then
   done
 fi
 
+external_dependencies="$(printf '%s\n' "${registry_dependencies[@]-}" | jq -Rsc 'split("\n") | map(select(length > 0))')"
+# Dependencies are not test roots. Preserve their exact published manifests,
+# but exclude their path overlays from explicit and automatic membership.
+python3 "$SCRIPT_DIR/release-cohort-staging.py" stage "$source_root" \
+  "$scratch/original-resolved-metadata.json" "$external_dependencies" ||
+  fail "could not stage published dependencies outside workspace test roots"
+
 completed_packages=()
 completed_dirs=()
 
@@ -387,47 +396,6 @@ run_cargo_with_completed_patches() {
   fi
 }
 
-verify_fixture_only_lock_change() {
-  local before="$1"
-  local after="$2"
-  local allowed="$3"
-  local expected="$scratch/expected-normalized-Cargo.lock"
-  awk -F '\t' '
-    FNR == NR { removable[$1 SUBSEP $2] = 1; next }
-    /^\[\[package\]\]$/ { owner = ""; in_dependencies = 0 }
-    /^name = "/ && owner == "" {
-      owner = $0
-      sub(/^name = "/, "", owner)
-      sub(/"$/, "", owner)
-    }
-    /^dependencies = \[$/ {
-      in_dependencies = 1
-      dependency_header = $0
-      retained = ""
-      kept = 0
-      removed = 0
-      next
-    }
-    in_dependencies && /^ "[^"]+",$/ {
-      dependency = $0
-      sub(/^ "/, "", dependency)
-      sub(/",$/, "", dependency)
-      if (removable[owner SUBSEP dependency]) { removed++; next }
-      kept++
-      retained = retained $0 ORS
-      next
-    }
-    in_dependencies && /^\]$/ {
-      if (kept || !removed) printf "%s\n%s%s\n", dependency_header, retained, $0
-      in_dependencies = 0
-      next
-    }
-    in_dependencies { kept++; retained = retained $0 ORS; next }
-    { print }
-  ' "$allowed" "$before" >"$expected"
-  ! cmp -s "$before" "$after" && cmp -s "$expected" "$after"
-}
-
 append_omitted_private_fixture_edges() {
   local owner="$1"
   local manifest="$2"
@@ -462,7 +430,7 @@ validate_or_normalize_scratch_lock() {
     append_omitted_private_fixture_edges \
       "${completed_packages[$index]}" "${completed_dirs[$index]}/Cargo.toml" "$allowed"
   done
-  if [[ ! -s "$allowed" ]]; then
+  if [[ ! -s "$allowed" && "$external_dependencies" == '[]' ]]; then
     sed -n '1,30p' "$scratch/locked-metadata.err" >&2
     fail "locked metadata failed without an omitted private dev fixture"
   fi
@@ -473,13 +441,16 @@ validate_or_normalize_scratch_lock() {
   verify_planned_cohort_identities "$resolved_metadata" "$expected" ||
     fail "published requirements did not resolve to the exact planned cohort identities"
   record_legacy_cohort_dependencies "$resolved_metadata"
-  if ! verify_fixture_only_lock_change "$before" "$source_root/Cargo.lock" "$allowed"; then
+  printf '%s\n' "$resolved_metadata" >"$scratch/normalized-resolved-metadata.json"
+  if ! python3 "$SCRIPT_DIR/release-cohort-staging.py" validate \
+    "$before" "$source_root/Cargo.lock" "$scratch/original-resolved-metadata.json" \
+    "$external_dependencies" "$allowed" "$scratch/normalized-resolved-metadata.json"; then
     diff -u "$before" "$source_root/Cargo.lock" >&2 || true
-    fail "scratch lock drift exceeds omitted private path-only dev fixture edges"
+    fail "scratch lock drift exceeds external test-root pruning and omitted private fixtures"
   fi
   (cd "$source_root" && run_cargo_with_completed_patches metadata --locked --offline --format-version 1 >/dev/null) ||
     fail "locked metadata still fails after guarded scratch-only normalization"
-  printf 'Normalized scratch lock only for omitted private dev fixture edges\n'
+  printf 'Normalized scratch lock only for external test-root pruning and omitted private fixture edges\n'
 }
 
 while (( ${#completed_packages[@]} < ${#packages[@]} )); do
@@ -570,7 +541,29 @@ for index in "${!packages[@]}"; do
 done
 (
   cd "$clean_room"
-  cargo "${clean_room_patch_args[@]}" metadata --offline --format-version 1 >/dev/null
+  registry_lock="$source_root/Cargo.lock"
+  if (( ${#registry_dependencies[@]} > 0 )); then
+    registry_lock="$prefetch_root/Cargo.lock"
+  fi
+  python3 "$SCRIPT_DIR/release-cohort-staging.py" clean-room \
+    "$source_root/Cargo.lock" "$registry_lock" "$expected" "$clean_room/Cargo.lock" ||
+    fail "could not project exact locked inputs into the clean-room workspace"
+  cp "$clean_room/Cargo.lock" "$scratch/clean-room-projected-Cargo.lock"
+  if ! clean_metadata="$(cargo "${clean_room_patch_args[@]}" metadata --locked --offline --format-version 1)" \
+    2>"$scratch/clean-room-locked-metadata.err"; then
+    clean_metadata="$(cargo "${clean_room_patch_args[@]}" metadata --offline --format-version 1)" || exit 1
+    printf '%s\n' "$clean_metadata" >"$scratch/clean-room-resolved-metadata.json"
+    python3 "$SCRIPT_DIR/release-cohort-staging.py" optional-pruning \
+      "$scratch/clean-room-projected-Cargo.lock" "$clean_room/Cargo.lock" \
+      "$scratch/clean-room-resolved-metadata.json" ||
+      fail "clean-room lock changed beyond proven inactive optional dependencies"
+    cargo "${clean_room_patch_args[@]}" metadata --locked --offline --format-version 1 >/dev/null || exit 1
+  fi
+  verify_planned_cohort_identities "$clean_metadata" "$expected" ||
+    fail "clean-room requirements did not resolve to the exact planned cohort identities"
+  python3 "$SCRIPT_DIR/release-cohort-staging.py" registry-conversion \
+    "$source_root/Cargo.lock" "$scratch/clean-room-projected-Cargo.lock" "$registry_lock" "$expected" ||
+    fail "clean-room lock changed beyond exact prefetched registry source substitution"
   cargo "${clean_room_patch_args[@]}" check --workspace --locked --all-targets
   cargo "${clean_room_patch_args[@]}" test --workspace --locked --no-run
 ) || fail "the extracted cohort artifacts did not compile in the clean-room workspace"

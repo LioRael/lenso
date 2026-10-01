@@ -11,7 +11,7 @@ else
 fi
 
 mkdir -p "$fixture/.github/scripts" "$fixture/crates/cohort-alpha/src" "$fixture/crates/cohort-beta/src" "$fixture/crates/equivalent/src" "$fixture/crates/fnv/src" "$fixture/crates/test-only-fixture/src" "$fixture/cargo-home"
-cp "$script_dir/release-cohort-preflight.sh" "$script_dir/release-set.sh" "$fixture/.github/scripts/"
+cp "$script_dir/release-cohort-preflight.sh" "$script_dir/release-cohort-staging.py" "$script_dir/release-set.sh" "$fixture/.github/scripts/"
 
 cat >"$fixture/Cargo.toml" <<'EOF'
 [workspace]
@@ -105,7 +105,7 @@ records="$(printf '%s\n' "$output" | sed -n 's/^Cohort artifact preflight comple
 if ! grep -Fxq 'Fetching exact registry package fnv@1.0.7' <<<"$output" ||
   ! grep -Fxq 'Staged exact registry source fnv@1.0.7' <<<"$output" ||
   ! grep -Fxq 'Fetching exact registry package equivalent@1.0.2' <<<"$output" ||
-  ! grep -Fxq 'Normalized scratch lock only for omitted private dev fixture edges' <<<"$output"; then
+  ! grep -Fxq 'Normalized scratch lock only for external test-root pruning and omitted private fixture edges' <<<"$output"; then
   printf 'cohort preflight did not fetch the exact out-of-cohort version:\n%s\n' "$output" >&2
   exit 1
 fi
@@ -119,30 +119,6 @@ if ! jq -e '
 fi
 
 scratch="$fixture"
-source <(sed -n '/^verify_fixture_only_lock_change() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
-lock_before=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\ndependencies = [\n "cohort-alpha",\n "test-only-fixture",\n]'
-lock_allowed=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\ndependencies = [\n "cohort-alpha",\n]'
-lock_bad_version=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.1"\ndependencies = [\n "cohort-alpha",\n]'
-lock_bad_checksum=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\nchecksum = "unexpected"\ndependencies = [\n "cohort-alpha",\n]'
-lock_bad_edge=$'[[package]]\nname = "cohort-beta"\nversion = "0.1.0"\ndependencies = [\n]'
-allowed_edge=$'cohort-beta\ttest-only-fixture'
-printf '%s\n' "$lock_before" >"$fixture/before.lock"
-printf '%s\n' "$lock_allowed" >"$fixture/allowed.lock"
-printf '%s\n' "$allowed_edge" >"$fixture/allowed.tsv"
-if ! verify_fixture_only_lock_change \
-  "$fixture/before.lock" "$fixture/allowed.lock" "$fixture/allowed.tsv"; then
-  printf '%s\n' 'fixture-only lock normalization was rejected' >&2
-  exit 1
-fi
-for unexpected_lock in "$lock_bad_version" "$lock_bad_checksum" "$lock_bad_edge"; do
-  printf '%s\n' "$unexpected_lock" >"$fixture/bad.lock"
-  if verify_fixture_only_lock_change \
-    "$fixture/before.lock" "$fixture/bad.lock" "$fixture/allowed.tsv"; then
-    printf '%s\n' 'lock normalization accepted a non-fixture change' >&2
-    exit 1
-  fi
-done
-
 source <(sed -n '/^published_transitive_workspace_dependencies() {/,/^}/p' "$script_dir/release-cohort-preflight.sh")
 workspace_metadata='{"packages":[{"name":"fnv","version":"1.0.7"},{"name":"equivalent","version":"1.0.2"}]}'
 published_metadata='{"packages":[{"name":"fnv","version":"1.0.7","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.2","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.3","source":"registry+https://github.com/rust-lang/crates.io-index"},{"name":"equivalent","version":"1.0.2","source":"git+https://example.invalid/equivalent"},{"name":"unrelated","version":"1.0.0","source":"registry+https://github.com/rust-lang/crates.io-index"}]}'
@@ -245,3 +221,4 @@ if incompatible_metadata="$(PATH="$cargo_dir:$PATH" CARGO_HOME="$fixture/cargo-h
   exit 1
 fi
 printf '%s\n' 'two-package cohort with published runtime and private dev dependencies passed'
+PATH="$cargo_dir:$PATH" PYTHONDONTWRITEBYTECODE=1 python3 "$script_dir/test-release-cohort-staging.py"
