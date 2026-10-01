@@ -19,7 +19,7 @@ fn crate_archive() -> Vec<u8> {
     )
     .unwrap();
     let manifest = format!(
-        "[package]\nname='example-web-plugin'\nversion='0.4.5'\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.web'\nroot-slot='tools'\n[dependencies]\nlenso={{ version='=0.5.28', path={:?} }}\nlenso-runner={{ version='=0.2.20', path={:?} }}\nlenso-native-adapter={{ version='=0.3.19', path={:?} }}\n",
+        "[package]\nname='example-web-plugin'\nversion='0.4.5'\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.web'\nroot-slot='tools'\n[dependencies]\nlenso={{ version='=0.5.29', path={:?} }}\nlenso-runner={{ version='=0.2.20', path={:?} }}\nlenso-native-adapter={{ version='=0.3.20', path={:?} }}\n",
         crates.join("lenso").display().to_string(),
         crates.join("lenso-runner").display().to_string(),
         crates.join("lenso-native-adapter").display().to_string(),
@@ -223,6 +223,17 @@ fn signed_dual_distribution_cargo_adopts_and_builds_exact_host() {
     assert!(
         root.join("vendor/lenso/example.web/0.4.5/.lenso-linked-source.json")
             .is_file()
+    );
+
+    let prepared = Command::new("cargo")
+        .args(["generate-lockfile", "--manifest-path"])
+        .arg(root.join("vendor/lenso/example.web/0.4.5/Cargo.toml"))
+        .output()
+        .unwrap();
+    assert!(
+        prepared.status.success(),
+        "explicit fixture dependency preparation: {}",
+        String::from_utf8_lossy(&prepared.stderr)
     );
 
     let built = Command::new(cli)

@@ -47,7 +47,7 @@ fn package_archive(root: &std::path::Path) -> std::path::PathBuf {
         writeln!(&mut patches, "{name}={{git='{url}',rev='{revision}'}}").unwrap();
     }
     let manifest = format!(
-        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.linked-web'\nroot-slot='web'\n[dependencies]\nlenso={{version='=0.5.28',git='{url}',rev='{revision}'}}\n[patch.crates-io]\n{patches}"
+        "[package]\nname={package:?}\nversion={version:?}\nedition='2024'\n[package.metadata.lenso]\nplugin-id='example.linked-web'\nroot-slot='web'\n[dependencies]\nlenso={{version='=0.5.29',git='{url}',rev='{revision}'}}\n[patch.crates-io]\n{patches}"
     );
     let source = b"#[lenso::plugin(consumer)]\n#[derive(Clone, Debug, Default)]\nstruct Web { value: std::rc::Rc<std::cell::Cell<u8>> }\npub fn link() { link_plugin(); }\n";
     fs::write(root.join("Cargo.toml"), &manifest).unwrap();
@@ -168,6 +168,16 @@ fn assert_mismatched_contract_fails_build(
         adopted.status.success(),
         "{}",
         String::from_utf8_lossy(&adopted.stderr)
+    );
+    let prepared = Command::new("cargo")
+        .args(["generate-lockfile", "--manifest-path"])
+        .arg(forged_app.join("vendor/lenso/example.linked-web/0.4.5/Cargo.toml"))
+        .output()
+        .unwrap();
+    assert!(
+        prepared.status.success(),
+        "explicit fixture dependency preparation: {}",
+        String::from_utf8_lossy(&prepared.stderr)
     );
     let built = Command::new(env!("CARGO_BIN_EXE_lenso"))
         .current_dir(root)

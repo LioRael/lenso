@@ -118,16 +118,16 @@ mod tests {
         for manifest in [
             "",
             "[workspace]\n",
-            "[package]\nname='wrong'\nversion='0.3.6'\n[features]\nprocess=[]\n",
+            "[package]\nname='wrong'\nversion='0.3.7'\n[features]\nprocess=[]\n",
             "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.2'\n[features]\nprocess=[]\n",
-            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.6'\n",
+            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.7'\n",
         ] {
             fs::write(root.path().join("Cargo.toml"), manifest).unwrap();
             assert!(scaffold(Some(root.path())).is_err());
         }
         fs::write(
             root.path().join("Cargo.toml"),
-            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.6'\n[features]\nprocess=[]\n",
+            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.7'\n[features]\nprocess=[]\n",
         ).unwrap();
         let files = scaffold(Some(root.path())).unwrap();
         let manifest: toml::Value = toml::from_str(&files[0].1).unwrap();
@@ -136,5 +136,13 @@ mod tests {
             root.path().canonicalize().unwrap()
         );
         assert_eq!(files.len(), 4);
+        let candidate_sdk = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join(SDK);
+        assert!(
+            scaffold(Some(&candidate_sdk)).is_ok(),
+            "typed starter must accept the SDK version shipped in this cohort"
+        );
     }
 }

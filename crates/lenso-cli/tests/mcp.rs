@@ -2151,6 +2151,18 @@ fn stdio_observes_ready_web_routes_only_during_the_supervised_process_app_run() 
         "{}",
         String::from_utf8_lossy(&created.stderr)
     );
+    // --no-install leaves resolution to the caller; prepare the owned inputs
+    // before the read-only contract scan performed by app build.
+    let prepared = Command::new("cargo")
+        .args(["generate-lockfile", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .output()
+        .unwrap();
+    assert!(
+        prepared.status.success(),
+        "{}",
+        String::from_utf8_lossy(&prepared.stderr)
+    );
     let built = Command::new(cli)
         .args(["app", "build", "--root"])
         .arg(&root)
