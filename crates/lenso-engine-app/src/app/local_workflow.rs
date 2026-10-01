@@ -250,7 +250,7 @@ pub fn create(args: CreateArgs) -> anyhow::Result<()> {
         "Add Plugin source projects under `app/`."
     };
     let web_routes = if args.web {
-        "The starter Web Plugin keeps one handler per `src/routes/*.rs` file. Add or remove a file and rebuild; duplicate route IDs or method/path pairs fail during compilation. The built Host never scans route source.\n\n"
+        "The starter Web Plugin derives paths from `src/app/**/route.rs` with bare method attributes, and also supports explicit `src/routes/**/*.rs` handlers. The App preset stages bindings without authored build/include glue. Add or remove a route file and rebuild; duplicate IDs or method/path pairs fail during compilation. The built Host never scans route source.\n\n"
     } else if root_package {
         notes::readme(args.http_sdk_source.is_some())
     } else {
@@ -755,11 +755,16 @@ mod tests {
         assert!(!manifest.contains("git ="));
         assert!(plugin.join("tests/simulated_web.rs").is_file());
         assert!(plugin.join("public/index.html").is_file());
-        assert!(plugin.join("src/routes/home.rs").is_file());
+        assert!(plugin.join("src/app/route.rs").is_file());
+        assert!(!plugin.join("build.rs").exists());
+        assert_eq!(
+            parsed["package"]["metadata"]["lenso"]["web"]["preset"].as_str(),
+            Some("v1")
+        );
         assert!(
             fs::read_to_string(destination.join("README.md"))
                 .unwrap()
-                .contains("src/routes/*.rs")
+                .contains("src/app/**/route.rs")
         );
         assert!(
             fs::read_to_string(plugin.join("src/app/route.rs"))
