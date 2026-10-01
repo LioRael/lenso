@@ -11,6 +11,62 @@ use std::{
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/profile")
 }
+
+#[test]
+fn web_and_contract_readers_share_overlapping_directory_acquisition() {
+    use lenso_engine::discovery::DiscoverySession;
+    use lenso_engine_contracts::discover_in;
+    use lenso_engine_web::{WebOptions, read_sources_in};
+    let root = tempfile::tempdir().unwrap();
+    let mut inputs = Snapshot::default();
+    snapshot_contract(
+        &fixture(),
+        "capability.json",
+        "inputs/profile/capability.json",
+        &mut inputs,
+    )
+    .unwrap();
+    for (path, bytes) in inputs.files() {
+        let path = root.path().join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
+    fs::write(
+        root.path().join("inputs/health.rs"),
+        "#[get(\"/health\")] async fn health(&self) {}\n",
+    )
+    .unwrap();
+    let mut session = DiscoverySession::new(root.path()).unwrap();
+    let web = read_sources_in(
+        &mut session,
+        &WebOptions {
+            roots: vec!["inputs".into()],
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let (contracts, _) = discover_in(
+        &mut session,
+        &DiscoveryOptions {
+            roots: vec!["inputs".into()],
+            baseline_root: None,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(session.stats().directory_reads, 3);
+    assert_eq!(
+        session.stats().file_reads,
+        web.files().len() + contracts.files().len()
+    );
+    for path in contracts.files().keys() {
+        session.read(path, 4 * 1024 * 1024).unwrap();
+    }
+    assert_eq!(
+        session.stats().file_reads,
+        web.files().len() + contracts.files().len()
+    );
+}
 fn selected(snapshot: &mut Snapshot, prefix: &str) -> ContractInput {
     let descriptor = format!("{prefix}/capability.json");
     snapshot_contract(&fixture(), "capability.json", &descriptor, snapshot).unwrap();
@@ -238,4 +294,35 @@ fn accepted_baseline_rejects_breaking_generation_without_advancing() {
     assert!(inputs[0].baseline.is_some());
     assert!(run(snapshot, inputs, root.path(), None, Mode::Generate).is_err());
     assert_eq!(fs::read(current).unwrap(), accepted);
+}
+#[test]
+fn shared_discovery_epoch_reuses_descriptor_schema_reads_and_parses() {
+    use lenso_engine::{Snapshot, discovery::DiscoverySession};
+    use lenso_engine_contracts::{DiscoveryOptions, discover_in, snapshot_contract_in};
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut session = DiscoverySession::new(&root).unwrap();
+    let options = DiscoveryOptions {
+        roots: vec!["profile".into(), "profile/schemas".into()],
+        baseline_root: None,
+        ..Default::default()
+    };
+    let (snapshot, inputs) = discover_in(&mut session, &options).unwrap();
+    assert_eq!(inputs.len(), 1);
+    let first = session.stats();
+    assert_eq!(first.file_reads, snapshot.files().len());
+    assert_eq!(first.json_parses, first.file_reads);
+    discover_in(&mut session, &options).unwrap();
+    let mut other = Snapshot::default();
+    snapshot_contract_in(
+        &mut session,
+        "profile/capability.json",
+        "renamed/capability.json",
+        &mut other,
+    )
+    .unwrap();
+    assert_eq!(session.stats(), first);
+    assert_eq!(snapshot.files().len(), other.files().len());
+    session.begin_epoch();
+    discover_in(&mut session, &options).unwrap();
+    assert_eq!(session.stats(), first);
 }

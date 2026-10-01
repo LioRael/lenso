@@ -36,9 +36,21 @@ fn safe_path(root: &Path, relative: &Path, directory: bool) -> anyhow::Result<Pa
     Ok(path)
 }
 pub(super) fn snapshot_files(descriptor: &Path) -> anyhow::Result<BTreeMap<PathBuf, Vec<u8>>> {
+    snapshot_files_in(
+        descriptor,
+        &lenso_engine::discovery::DiscoverySession::new(
+            descriptor.parent().context("descriptor parent")?,
+        )?,
+    )
+}
+
+pub(super) fn snapshot_files_in(
+    descriptor: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<BTreeMap<PathBuf, Vec<u8>>> {
     let mut snapshot = lenso_engine::Snapshot::default();
-    lenso_engine_contracts::snapshot_contract(
-        descriptor.parent().context("descriptor parent")?,
+    lenso_engine_contracts::snapshot_contract_in(
+        &mut inputs.scope(descriptor.parent().context("descriptor parent")?)?,
         descriptor
             .file_name()
             .context("descriptor filename")?
@@ -54,7 +66,21 @@ pub(super) fn snapshot_files(descriptor: &Path) -> anyhow::Result<BTreeMap<PathB
         .collect())
 }
 pub(super) fn snapshot(descriptor: &Path, destination: &Path) -> anyhow::Result<()> {
-    let changes = snapshot_files(descriptor)?
+    snapshot_in(
+        descriptor,
+        destination,
+        &lenso_engine::discovery::DiscoverySession::new(
+            descriptor.parent().context("descriptor parent")?,
+        )?,
+    )
+}
+
+pub(super) fn snapshot_in(
+    descriptor: &Path,
+    destination: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<()> {
+    let changes = snapshot_files_in(descriptor, inputs)?
         .into_iter()
         .map(|(relative, bytes)| (destination.join(relative), bytes))
         .collect();

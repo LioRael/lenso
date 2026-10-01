@@ -1,6 +1,7 @@
 //! Domain-neutral, embeddable processing. Extensions are explicitly registered;
 //! filenames, languages and App composition have no built-in meaning.
 pub mod bootstrap;
+pub mod discovery;
 pub mod external;
 pub mod process;
 pub mod publication;

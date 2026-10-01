@@ -1,19 +1,26 @@
 //! Optional Rust route authoring. Inputs and conventions are configurable;
 //! lowering uses the existing Endpoint macro and HTTP execution stays in WebHost.
+mod routing;
 mod source;
 use anyhow::{Context, ensure};
 use lenso_engine::{ContextView, Plugin, Resource, Snapshot, Step};
 use quote::quote;
 use serde::{Deserialize, Serialize};
-pub use source::{build, read_sources};
+pub use source::{build, read_sources, read_sources_in};
 use std::collections::{BTreeMap, BTreeSet};
-use syn::{Item, LitStr, Token, parse::Parser, punctuated::Punctuated};
+use syn::{Item, LitStr};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct WebOptions {
     pub provider: String,
     pub roots: Vec<String>,
+    /// Opt-in directory routing; only nested route.rs files are selected.
+    pub filesystem_roots: Vec<String>,
+    /// Provider-wide middleware, before directory and handler middleware.
+    pub middleware: Vec<String>,
+    /// Additive physical-directory scopes; outer scopes execute first.
+    pub scopes: BTreeMap<String, Vec<String>>,
     /// Explicit Snapshot paths replace default root/extension discovery.
     pub entries: Vec<String>,
     pub exclude: Vec<String>,
@@ -29,6 +36,9 @@ impl Default for WebOptions {
         Self {
             provider: "Http".into(),
             roots: vec!["src/routes".into()],
+            filesystem_roots: vec![],
+            middleware: vec![],
+            scopes: BTreeMap::new(),
             entries: vec![],
             exclude: vec![],
             output: "web_routes.rs".into(),
@@ -158,6 +168,7 @@ impl WebAuthoring {
         for path in options
             .roots
             .iter()
+            .chain(&options.filesystem_roots)
             .chain(&options.entries)
             .chain(&options.exclude)
         {
@@ -168,6 +179,17 @@ impl WebAuthoring {
             env!("CARGO_PKG_VERSION"),
             serde_json::to_string(&options)?
         );
+        for scope in options.scopes.keys() {
+            Resource::file(scope.clone(), vec![])?;
+        }
+        for method in options
+            .middleware
+            .iter()
+            .chain(options.scopes.values().flatten())
+        {
+            syn::parse_str::<syn::Ident>(method)
+                .context("middleware must name a provider method")?;
+        }
         Ok(Self { options, identity })
     }
 }
@@ -185,11 +207,14 @@ impl Plugin for WebAuthoring {
                 .keys()
                 .filter(|path| {
                     path.ends_with(".rs")
-                        && self
+                        && (self
                             .options
                             .roots
                             .iter()
                             .any(|root| path.starts_with(&format!("{root}/")))
+                            || self.options.filesystem_roots.iter().any(|root| {
+                                path.starts_with(&format!("{root}/")) && path.ends_with("/route.rs")
+                            }))
                 })
                 .cloned()
                 .collect::<Vec<_>>()
@@ -228,7 +253,7 @@ impl Plugin for WebAuthoring {
             let file =
                 syn::parse_file(std::str::from_utf8(bytes)?).with_context(|| (*path).clone())?;
             for item in file.items {
-                let Item::Fn(handler) = item else {
+                let Item::Fn(mut handler) = item else {
                     anyhow::bail!(
                         "{path}: route sources must contain handler functions; keep types/state in their owner module"
                     );
@@ -251,19 +276,50 @@ impl Plugin for WebAuthoring {
                     handler.sig.ident
                 );
                 let (method, attribute) = &attributes[0];
-                let values = Punctuated::<LitStr, Token![,]>::parse_terminated
-                    .parse2(attribute.meta.require_list()?.tokens.clone())?;
-                ensure!(
-                    values.len() == 2,
-                    "{path}: HTTP attribute needs route ID and path"
-                );
-                let mut values = values.iter();
+                let (id, route_path) =
+                    routing::normalize(path, &handler, method, attribute, &options)?;
+                let method = method.clone();
+                let attribute_name = syn::Ident::new(&method, handler.sig.ident.span());
+                let id_literal = LitStr::new(&id, handler.sig.ident.span());
+                let path_literal = LitStr::new(&route_path, handler.sig.ident.span());
+                handler.attrs.retain(|attr| {
+                    !attr.path().is_ident(&method) && !attr.path().is_ident("route_id")
+                });
+                handler
+                    .attrs
+                    .push(syn::parse_quote!(#[#attribute_name(#id_literal, #path_literal)]));
                 routes.routes.push(Route {
-                    id: values.next().unwrap().value(),
+                    id,
                     method: method.to_uppercase(),
-                    path: values.next().unwrap().value(),
+                    path: route_path,
                     source: format!("{path}:{}", handler.sig.ident),
                 });
+                let mut scopes = options
+                    .scopes
+                    .iter()
+                    .filter(|(scope, _)| path.starts_with(&format!("{scope}/")))
+                    .collect::<Vec<_>>();
+                scopes.sort_by_key(|(scope, _)| scope.len());
+                let middleware = scopes
+                    .into_iter()
+                    .flat_map(|(_, methods)| methods)
+                    .map(|name| syn::parse_str::<syn::Ident>(name))
+                    .collect::<syn::Result<Vec<_>>>()?;
+                if !middleware.is_empty() {
+                    handler
+                        .attrs
+                        .insert(0, syn::parse_quote!(#[middleware(#(#middleware),*)]));
+                }
+                if options
+                    .filesystem_roots
+                    .iter()
+                    .any(|root| path.starts_with(&format!("{root}/")))
+                {
+                    handler.sig.ident = syn::Ident::new(
+                        &format!("__lenso_fs_handler_{}", methods.len()),
+                        handler.sig.ident.span(),
+                    );
+                }
                 methods.push(handler);
             }
         }
@@ -273,6 +329,12 @@ impl Plugin for WebAuthoring {
         );
         routes.validate()?;
         let provider: syn::TypePath = syn::parse_str(&options.provider)?;
+        let middleware = options
+            .middleware
+            .iter()
+            .map(|name| syn::parse_str::<syn::Ident>(name))
+            .collect::<syn::Result<Vec<_>>>()?;
+        let middleware = (!middleware.is_empty()).then(|| quote!(#[middleware(#(#middleware),*)]));
         let attribute = if options.register_plugin {
             quote!(#[lenso_capability_http_endpoint::endpoint])
         } else {
@@ -283,7 +345,7 @@ impl Plugin for WebAuthoring {
         } else {
             format!(
                 "// @generated by lenso-engine-web\n{}\n",
-                quote! { #attribute impl #provider { #(#methods)* } }
+                quote! { #attribute #middleware impl #provider { #(#methods)* } }
             )
         };
         Ok(BTreeMap::from([

@@ -117,9 +117,13 @@ pub struct ConventionPlan {
     pub compilations: Vec<Compilation>,
 }
 
-pub(super) fn composite(root: &Path, role: SourceRole) -> anyhow::Result<Candidate> {
+pub(super) fn composite(
+    root: &Path,
+    role: SourceRole,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<Candidate> {
     let manifest = root.join("plugin.json");
-    let composite: Composite = serde_json::from_str(&read_metadata(&manifest)?)?;
+    let composite: Composite = serde_json::from_str(&super::read_metadata_in(&manifest, inputs)?)?;
     if composite.schema != "lenso.plugin-project.v1" {
         bail!("unsupported composite Plugin project schema");
     }
@@ -128,7 +132,7 @@ pub(super) fn composite(root: &Path, role: SourceRole) -> anyhow::Result<Candida
         bail!("composite core must be a nested package");
     }
     let mut candidate =
-        project::read(&core, role)?.context("composite core must declare a Plugin")?;
+        project::read_in(&core, role, inputs)?.context("composite core must declare a Plugin")?;
     candidate.evidence = format!("composite:{}", manifest.display());
     // Keep the compiler project and its metadata unchanged. The separate source
     // root is recovered from this manifest by the selection phase.
@@ -140,7 +144,20 @@ fn metadata(candidate: &Candidate) -> anyhow::Result<serde_json::Value> {
     if candidate.format == "bundle" || candidate.format == "convention-owner" {
         return Ok(serde_json::Value::Null);
     }
-    let document = project::document(&candidate.metadata)?;
+    metadata_in(
+        candidate,
+        &lenso_engine::discovery::DiscoverySession::new(&candidate.project)?,
+    )
+}
+
+fn metadata_in(
+    candidate: &Candidate,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<serde_json::Value> {
+    if candidate.format == "bundle" || candidate.format == "convention-owner" {
+        return Ok(serde_json::Value::Null);
+    }
+    let document = project::document_in(&candidate.metadata, inputs)?;
     Ok(if candidate.format == "cargo" {
         document.pointer("/package/metadata/lenso")
     } else {
@@ -198,13 +215,24 @@ pub fn active_instances(root: &Path, candidate: &Candidate) -> anyhow::Result<us
 /// Select contributions from adopted support packages, without inspecting inactive
 /// package manifests. The ordinary runtime resolver still owns final admission.
 pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
+    plan_in(
+        report,
+        &lenso_engine::discovery::DiscoverySession::new(&report.root)?,
+    )
+}
+
+/// Select conventions from the same acquisition epoch as Plugin discovery.
+pub fn plan_in(
+    report: &DiscoveryReport,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<ConventionPlan> {
     let mut recognition = BTreeMap::<String, (String, String, PathBuf, Option<Compiler>)>::new();
     let mut explicit = BTreeMap::new();
     let mut conventions = BTreeSet::new();
     let mut known_entries = BTreeSet::new();
     for candidate in &report.candidates {
         let adopted = active_instances(&report.root, candidate)? != 0;
-        let meta = metadata(candidate)?;
+        let meta = metadata_in(candidate, inputs)?;
         let declarations: Vec<Convention> = serde_json::from_value(
             meta.get("conventions")
                 .cloned()
@@ -290,17 +318,18 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
     let mut owners = report.candidates.clone();
     let app = report.root.join("app");
     if app.is_dir() {
-        discover_bare_owners(&app, &app, &known_entries, &mut owners, &mut 0, 0)?;
+        discover_bare_owners(&app, &app, &known_entries, &mut owners, &mut 0, 0, inputs)?;
     }
     for owner in &owners {
         let (base, mut surfaces) = if let Some(manifest) = &owner.composite {
-            let composite: Composite = serde_json::from_str(&read_metadata(manifest)?)?;
+            let composite: Composite =
+                serde_json::from_str(&super::read_metadata_in(manifest, inputs)?)?;
             (
                 manifest.parent().context("composite parent")?.to_path_buf(),
                 composite.surfaces,
             )
         } else {
-            let meta = metadata(owner)?;
+            let meta = metadata_in(owner, inputs)?;
             (
                 owner.project.clone(),
                 serde_json::from_value::<Vec<Surface>>(
@@ -313,7 +342,15 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
         let archive_file =
             owner.format == "bundle" && fs::symlink_metadata(&base)?.file_type().is_file();
         if surfaces.is_empty() && !archive_file {
-            discover_entries(&base, &base, &known_entries, &mut surfaces, &mut 0, 0)?;
+            discover_entries(
+                &base,
+                &base,
+                &known_entries,
+                &mut surfaces,
+                &mut 0,
+                0,
+                inputs,
+            )?;
         }
         if owners
             .iter()
@@ -451,7 +488,7 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
                 if package == owner.project || !entry.starts_with(&package) {
                     bail!("surface requires an independent package containing its entry");
                 }
-                let mut candidate = project::read(&package, owner.role)?
+                let mut candidate = project::read_in(&package, owner.role, inputs)?
                     .context("selected surface package must declare a Plugin")?;
                 if candidate.release_version != owner.release_version {
                     bail!("surface release must match its logical owner");
@@ -459,7 +496,7 @@ pub fn plan(report: &DiscoveryReport) -> anyhow::Result<ConventionPlan> {
                 if !ids.insert(candidate.plugin_id.clone()) {
                     bail!("duplicate surface Plugin identity {}", candidate.plugin_id);
                 }
-                let meta = metadata(&candidate)?;
+                let meta = metadata_in(&candidate, inputs)?;
                 if meta.get("conventions").is_some() || meta.get("surfaces").is_some() {
                     bail!("surface packages cannot recursively activate conventions or surfaces");
                 }
@@ -510,22 +547,23 @@ fn discover_entries(
     surfaces: &mut Vec<Surface>,
     count: &mut usize,
     depth: usize,
+    inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<()> {
     if depth > 32 {
         bail!("convention discovery exceeds 32 levels");
     }
-    let mut children = fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
-    children.sort_by_key(fs::DirEntry::file_name);
+    let children = inputs.scope(directory)?.directory("")?;
     for child in children {
         *count += 1;
         if *count > 10000 {
             bail!("convention discovery exceeds 10000 entries");
         }
-        let name = child.file_name().to_string_lossy().into_owned();
+        let name = child.path.clone();
+        let path = directory.join(&child.path);
         if name.starts_with('.') || super::EXCLUDED.contains(&name.as_str()) {
             continue;
         }
-        let kind = child.file_type()?;
+        let kind = child.kind;
         if kind.is_symlink() {
             continue;
         }
@@ -533,8 +571,7 @@ fn discover_entries(
         // nested routes/files and private manifests, including dependency setup.
         if (kind.is_file() || kind.is_dir()) && names.contains(&name) {
             surfaces.push(Surface {
-                entry: child
-                    .path()
+                entry: path
                     .strip_prefix(root)?
                     .to_str()
                     .context("entry path must be UTF-8")?
@@ -546,13 +583,13 @@ fn discover_entries(
                 options: serde_json::Value::Null,
             });
         } else if kind.is_dir() {
-            if child.path().join("package.json").exists()
-                || child.path().join("Cargo.toml").exists()
-                || child.path().join("plugin.json").exists()
+            if path.join("package.json").exists()
+                || path.join("Cargo.toml").exists()
+                || path.join("plugin.json").exists()
             {
                 continue;
             }
-            discover_entries(root, &child.path(), names, surfaces, count, depth + 1)?;
+            discover_entries(root, &path, names, surfaces, count, depth + 1, inputs)?;
         }
     }
     Ok(())
@@ -636,6 +673,7 @@ fn discover_bare_owners(
     owners: &mut Vec<Candidate>,
     count: &mut usize,
     depth: usize,
+    inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<()> {
     if depth > 32 {
         bail!("bare entry discovery exceeds 32 levels");
@@ -646,17 +684,14 @@ fn discover_bare_owners(
     {
         return Ok(());
     }
-    let mut children = fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
-    children.sort_by_key(fs::DirEntry::file_name);
+    let children = inputs.scope(directory)?.directory("")?;
     let mut found = false;
     for child in &children {
         *count += 1;
         if *count > 10000 {
             bail!("bare entry discovery exceeds 10000 entries");
         }
-        if (child.file_type()?.is_file() || child.file_type()?.is_dir())
-            && names.contains(&child.file_name().to_string_lossy().into_owned())
-        {
+        if (child.kind.is_file() || child.kind.is_dir()) && names.contains(&child.path) {
             found = true;
         }
     }
@@ -688,12 +723,20 @@ fn discover_bare_owners(
         return Ok(());
     }
     for child in children {
-        let name = child.file_name().to_string_lossy().into_owned();
-        if child.file_type()?.is_dir()
+        let name = child.path.clone();
+        if child.kind.is_dir()
             && !name.starts_with('.')
             && !super::EXCLUDED.contains(&name.as_str())
         {
-            discover_bare_owners(root, &child.path(), names, owners, count, depth + 1)?;
+            discover_bare_owners(
+                root,
+                &directory.join(&child.path),
+                names,
+                owners,
+                count,
+                depth + 1,
+                inputs,
+            )?;
         }
     }
     Ok(())

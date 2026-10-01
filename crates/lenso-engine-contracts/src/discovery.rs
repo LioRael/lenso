@@ -1,6 +1,6 @@
 use crate::{ContractInput, Projection, ProjectionKind, relative};
 use anyhow::{Context, ensure};
-use lenso_engine::Snapshot;
+use lenso_engine::{Snapshot, discovery::DiscoverySession};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, path::Path};
 
@@ -54,6 +54,14 @@ pub fn discover(
     root: &Path,
     options: &DiscoveryOptions,
 ) -> anyhow::Result<(Snapshot, Vec<ContractInput>)> {
+    discover_in(&mut DiscoverySession::new(root)?, options)
+}
+
+/// Select contracts using a caller-owned acquisition epoch.
+pub fn discover_in(
+    session: &mut DiscoverySession,
+    options: &DiscoveryOptions,
+) -> anyhow::Result<(Snapshot, Vec<ContractInput>)> {
     ensure!(
         Path::new(&options.descriptor_filename).components().count() == 1,
         "descriptor_filename must be a filename"
@@ -66,8 +74,8 @@ pub fn discover(
     let mut visited = 0;
     for source in &options.roots {
         relative(source)?;
-        contained(root, source)?;
-        walk(root, source, options, &mut selected, &mut visited, 0)?;
+        contained(session.root(), source)?;
+        walk(session, source, options, &mut selected, &mut visited, 0)?;
     }
     selected.sort();
     selected.dedup();
@@ -105,7 +113,7 @@ pub fn discover(
                 }),
             })
             .collect();
-        snapshot_contract(root, &descriptor, &descriptor, &mut snapshot)?;
+        snapshot_contract_in(session, &descriptor, &descriptor, &mut snapshot)?;
         inputs.push(ContractInput {
             identity: descriptor.clone(),
             descriptor,
@@ -114,13 +122,13 @@ pub fn discover(
         });
     }
     if let Some(baselines) = &options.baseline_root {
-        crate::baselines::attach(root, baselines, &mut snapshot, &mut inputs)?;
+        crate::baselines::attach(session.root(), baselines, &mut snapshot, &mut inputs)?;
     }
     Ok((snapshot, inputs))
 }
 
 fn walk(
-    root: &Path,
+    session: &mut DiscoverySession,
     relative_path: &str,
     options: &DiscoveryOptions,
     selected: &mut Vec<String>,
@@ -135,15 +143,15 @@ fn walk(
     {
         return Ok(());
     }
-    for entry in fs::read_dir(root.join(relative_path))? {
-        let entry = entry?;
+    for entry in session.directory(relative_path)? {
         *visited += 1;
         ensure!(*visited <= 4096, "contract discovery exceeds 4096 entries");
-        let name = entry
+        let path = entry.path;
+        let name = Path::new(&path)
             .file_name()
-            .into_string()
-            .map_err(|_| anyhow::anyhow!("non-UTF8 contract path"))?;
-        let path = format!("{relative_path}/{name}");
+            .context("contract filename")?
+            .to_str()
+            .context("UTF8 filename")?;
         if options
             .exclude
             .iter()
@@ -151,13 +159,13 @@ fn walk(
         {
             continue;
         }
-        let kind = entry.file_type()?;
+        let kind = entry.kind;
         ensure!(
             !kind.is_symlink() && (kind.is_file() || kind.is_dir()),
             "contract input contains symlink/special file: {path}"
         );
         if kind.is_dir() {
-            walk(root, &path, options, selected, visited, depth + 1)?;
+            walk(session, &path, options, selected, visited, depth + 1)?;
         } else if name == options.descriptor_filename {
             selected.push(path);
         }
@@ -174,7 +182,21 @@ pub fn snapshot_contract(
     snapshot_descriptor: &str,
     snapshot: &mut Snapshot,
 ) -> anyhow::Result<()> {
-    contained(source_root, descriptor)?;
+    snapshot_contract_in(
+        &mut DiscoverySession::new(source_root)?,
+        descriptor,
+        snapshot_descriptor,
+        snapshot,
+    )
+}
+
+/// Extend an epoch with a descriptor's mandatory schema closure.
+pub fn snapshot_contract_in(
+    session: &mut DiscoverySession,
+    descriptor: &str,
+    snapshot_descriptor: &str,
+    snapshot: &mut Snapshot,
+) -> anyhow::Result<()> {
     relative(snapshot_descriptor)?;
     let source_base = Path::new(descriptor)
         .parent()
@@ -182,8 +204,8 @@ pub fn snapshot_contract(
     let target_base = Path::new(snapshot_descriptor)
         .parent()
         .context("snapshot parent")?;
-    let bytes = bounded_json(source_root, descriptor)?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+    let bytes = session.read(descriptor, 4 * 1024 * 1024)?.to_vec();
+    let value = session.json(descriptor, 4 * 1024 * 1024)?;
     let mut pending = Vec::new();
     for operation in value["operations"]
         .as_array()
@@ -204,8 +226,9 @@ pub fn snapshot_contract(
         }
         ensure!(seen.len() <= 1024, "contract exceeds 1024 schema inputs");
         let source = source_base.join(&path);
-        let bytes = bounded_json(source_root, source.to_str().context("UTF8 schema path")?)?;
-        let schema: serde_json::Value = serde_json::from_slice(&bytes)?;
+        let source = source.to_str().context("UTF8 schema path")?;
+        let bytes = session.read(source, 4 * 1024 * 1024)?.to_vec();
+        let schema = session.json(source, 4 * 1024 * 1024)?;
         let mut refs = Vec::new();
         references(&schema, &mut refs);
         for reference in refs {
@@ -252,25 +275,6 @@ fn insert(snapshot: &mut Snapshot, path: String, bytes: Vec<u8>) -> anyhow::Resu
         snapshot.insert(path, bytes)?;
     }
     Ok(())
-}
-fn bounded_json(root: &Path, path: &str) -> anyhow::Result<Vec<u8>> {
-    contained(root, path)?;
-    let source = root.join(path);
-    let metadata = fs::symlink_metadata(&source)?;
-    ensure!(
-        metadata.is_file() && metadata.len() <= 4 * 1024 * 1024,
-        "contract input must be a bounded regular file: {path}"
-    );
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    fs::File::open(source)?
-        .take(4 * 1024 * 1024 + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(
-        bytes.len() <= 4 * 1024 * 1024,
-        "contract input exceeds byte budget"
-    );
-    Ok(bytes)
 }
 fn references<'a>(value: &'a serde_json::Value, refs: &mut Vec<&'a str>) {
     match value {

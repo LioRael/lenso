@@ -3,6 +3,155 @@ use lenso_engine_web::{Route, RouteSet, WebOptions, build, compile, read_sources
 use std::fs;
 
 #[test]
+fn filesystem_and_explicit_styles_lower_together_with_scoped_middleware() {
+    let mut snapshot = Snapshot::default();
+    snapshot.insert("src/app/(api)/orders/[id]/route.rs".into(), b"#[get] #[route_id(\"orders.read\")] #[middleware(local)] async fn read(&self, Path(path): Path<OrderPath>) -> Json<String> { Json(path.id) }".to_vec()).unwrap();
+    snapshot
+        .insert(
+            "src/app/route.rs".into(),
+            b"#[get] async fn home(&self) {}".to_vec(),
+        )
+        .unwrap();
+    snapshot
+        .insert(
+            "src/app/files/[...rest]/route.rs".into(),
+            b"#[post] async fn files(&self) {}".to_vec(),
+        )
+        .unwrap();
+    snapshot
+        .insert(
+            "src/routes/health.rs".into(),
+            b"#[get(\"/health\")] async fn health(&self) {}".to_vec(),
+        )
+        .unwrap();
+    let generation = compile(
+        snapshot,
+        WebOptions {
+            filesystem_roots: vec!["src/app".into()],
+            middleware: vec!["global".into()],
+            scopes: std::collections::BTreeMap::from([
+                ("src/app".into(), vec!["outer".into()]),
+                ("src/app/(api)".into(), vec!["inner".into()]),
+            ]),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let routes: RouteSet =
+        serde_json::from_value(generation.outputs["web/routes"]["routes"].value.clone()).unwrap();
+    assert!(
+        routes
+            .routes
+            .iter()
+            .any(|route| route.id == "orders.read" && route.path == "/orders/{id}")
+    );
+    assert!(routes.routes.iter().any(|route| route.path == "/"));
+    assert!(
+        routes
+            .routes
+            .iter()
+            .any(|route| route.path == "/files/{*rest}" && route.method == "POST")
+    );
+    let output: lenso_engine::publication::FileResource =
+        serde_json::from_value(generation.outputs["web/routes"]["bindings"].value.clone()).unwrap();
+    let source = String::from_utf8(output.bytes).unwrap();
+    assert!(source.contains("middleware (global)"));
+    assert!(source.contains("middleware (outer , inner)"));
+    assert!(source.contains("middleware (local)"));
+    assert!(source.contains("Path < OrderPath >"));
+}
+
+#[test]
+fn mixed_style_collisions_and_ambiguous_filesystem_paths_fail_with_sources() {
+    let options = WebOptions {
+        filesystem_roots: vec!["src/app".into()],
+        ..Default::default()
+    };
+    for path in [
+        "src/app/[[...all]]/route.rs",
+        "src/app/[...all]/more/route.rs",
+        "src/app/[id]/[id]/route.rs",
+        "src/app/(bad(group)/route.rs",
+    ] {
+        let mut snapshot = Snapshot::default();
+        snapshot
+            .insert(path.into(), b"#[get] async fn invalid(&self) {}".to_vec())
+            .unwrap();
+        assert!(compile(snapshot, options.clone()).is_err(), "{path}");
+    }
+    let mut snapshot = Snapshot::default();
+    snapshot
+        .insert(
+            "src/app/orders/[id]/route.rs".into(),
+            b"#[get] async fn read(&self) {}".to_vec(),
+        )
+        .unwrap();
+    snapshot
+        .insert(
+            "src/routes/read.rs".into(),
+            b"#[get(\"explicit\", \"/orders/{name}\")] async fn other(&self) {}".to_vec(),
+        )
+        .unwrap();
+    let error = format!("{:#}", compile(snapshot, options).unwrap_err());
+    assert!(
+        error.contains("src/app/orders/[id]/route.rs") && error.contains("src/routes/read.rs"),
+        "{error}"
+    );
+}
+
+#[test]
+fn shared_epoch_deduplicates_overlapping_selection_and_refreshes_membership() {
+    use lenso_engine::discovery::DiscoverySession;
+    use lenso_engine_web::read_sources_in;
+    let root = tempfile::tempdir().unwrap();
+    fs::create_dir_all(root.path().join("src/routes/nested")).unwrap();
+    fs::write(
+        root.path().join("src/routes/nested/a.rs"),
+        "#[get(\"a\", \"/a\")] async fn a(&self) {}",
+    )
+    .unwrap();
+    let mut session = DiscoverySession::new(root.path()).unwrap();
+    let options = WebOptions {
+        roots: vec!["src/routes".into(), "src/routes/nested".into()],
+        ..Default::default()
+    };
+    assert_eq!(
+        read_sources_in(&mut session, &options)
+            .unwrap()
+            .files()
+            .len(),
+        1
+    );
+    read_sources_in(&mut session, &options).unwrap();
+    assert_eq!(session.stats().directory_reads, 2);
+    assert_eq!(session.stats().file_reads, 1);
+    fs::write(
+        root.path().join("src/routes/nested/b.rs"),
+        "#[get(\"b\", \"/b\")] async fn b(&self) {}",
+    )
+    .unwrap();
+    session.invalidate("src/routes/nested/b.rs").unwrap();
+    assert_eq!(
+        read_sources_in(&mut session, &options)
+            .unwrap()
+            .files()
+            .len(),
+        2
+    );
+    assert_eq!(session.stats().file_reads, 2);
+    let options = WebOptions {
+        exclude: vec!["src/routes/nested".into()],
+        ..options
+    };
+    assert!(
+        read_sources_in(&mut session, &options)
+            .unwrap()
+            .files()
+            .is_empty()
+    );
+}
+
+#[test]
 fn custom_roots_multiple_handlers_exclusion_and_provider_lower_through_endpoint() {
     let root = tempfile::tempdir().unwrap();
     let output = tempfile::tempdir().unwrap();

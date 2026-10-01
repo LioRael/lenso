@@ -84,7 +84,20 @@ fn configuration(root: &Path) -> anyhow::Result<Configuration> {
         .unwrap_or_else(|| Ok(Configuration::default()))
 }
 
+#[cfg(test)]
 pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Result<Vec<Freshness>> {
+    synchronize_in(
+        root,
+        candidates,
+        &lenso_engine::discovery::DiscoverySession::new(root)?,
+    )
+}
+
+pub(super) fn synchronize_in(
+    root: &Path,
+    candidates: &[Candidate],
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<Vec<Freshness>> {
     let config = configuration(root)?;
     let mut contracts = BTreeMap::new();
     let mut manifests = BTreeSet::new();
@@ -100,7 +113,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
                 manifests.insert(candidate.project.join("Cargo.toml"));
             }
             "bun" => {
-                read_npm(&candidate.project, &mut contracts)?;
+                read_npm_in(&candidate.project, &mut contracts, inputs)?;
             }
             _ => {}
         }
@@ -115,6 +128,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
                 &mut 0,
                 0,
                 &exclusions,
+                inputs,
             )?;
         }
     }
@@ -199,7 +213,7 @@ pub(super) fn synchronize(root: &Path, candidates: &[Candidate]) -> anyhow::Resu
             }
         }
     }
-    synchronize_selected(root, contracts)
+    synchronize_selected_in(root, contracts, inputs)
 }
 fn configure_external(
     root: &Path,
@@ -236,9 +250,21 @@ fn configure_external(
     }
     Ok(())
 }
+#[cfg(test)]
 fn synchronize_selected(
     root: &Path,
     contracts: BTreeMap<PathBuf, Contract>,
+) -> anyhow::Result<Vec<Freshness>> {
+    synchronize_selected_in(
+        root,
+        contracts,
+        &lenso_engine::discovery::DiscoverySession::new(root)?,
+    )
+}
+fn synchronize_selected_in(
+    root: &Path,
+    contracts: BTreeMap<PathBuf, Contract>,
+    acquired: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<Vec<Freshness>> {
     if contracts.is_empty() {
         return Ok(vec![]);
@@ -277,7 +303,7 @@ fn synchronize_selected(
         let source_path = declaration.source.clone();
         let source_owned = source_path.is_some();
         if !source_owned && descriptor.is_file() {
-            for (relative, bytes) in snapshot_files(&descriptor)? {
+            for (relative, bytes) in snapshot::snapshot_files_in(&descriptor, acquired)? {
                 let path = if relative == Path::new("capability.json") {
                     descriptor.clone()
                 } else {
@@ -290,9 +316,10 @@ fn synchronize_selected(
             let source_path = safe_output(&contract.root, &source_path)?;
             source::extract(root, contract, Some(&source_path), &staged_descriptor)?;
         } else {
-            snapshot(
+            snapshot::snapshot_in(
                 staged_sources.get(&descriptor).unwrap_or(&descriptor),
                 &stage,
+                acquired,
             )?;
             if contract.output_root.is_none()
                 && contract.cargo.as_ref().is_some_and(|(package, _)| {
@@ -349,6 +376,7 @@ fn synchronize_selected(
                 contract.root.display()
             );
         }
+        let mut acquisition = acquired.scope(&stage)?;
         for (projection_index, projection) in projections.into_iter().enumerate() {
             let language = match projection.projection.as_str() {
                 "rust" => ProjectionLanguage::Rust,
@@ -408,8 +436,8 @@ fn synchronize_selected(
                     );
                 }
                 let mut inputs = lenso_engine::Snapshot::default();
-                lenso_engine_contracts::snapshot_contract(
-                    &stage,
+                lenso_engine_contracts::snapshot_contract_in(
+                    &mut acquisition,
                     "capability.json",
                     "input/capability.json",
                     &mut inputs,
@@ -481,7 +509,7 @@ fn synchronize_selected(
             changes.insert(output, bytes);
         }
         if source_owned {
-            for (relative, bytes) in snapshot_files(&staged_descriptor)? {
+            for (relative, bytes) in snapshot::snapshot_files_in(&staged_descriptor, acquired)? {
                 let target = if relative == Path::new("capability.json") {
                     safe_output(&contract.root, &declaration.descriptor)?
                 } else {
@@ -540,6 +568,19 @@ fn synchronize_selected(
             }
         }
         return Err(error);
+    }
+    // Projection installation is a known input event for later readers in this
+    // App epoch. Retain unrelated acquisition while refreshing changed bytes
+    // and ancestor listings (including previously absent generated modules).
+    for (path, previous) in &backups {
+        if previous.as_ref() != changes.get(path) {
+            let parent = path.parent().context("generated output parent")?;
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .context("generated output filename")?;
+            acquired.scope(parent)?.invalidate(name)?;
+        }
     }
     for (baseline, stage) in baselines {
         fs::create_dir_all(&baseline)?;
@@ -711,8 +752,12 @@ fn insert(
     });
     Ok(())
 }
-fn read_npm(root: &Path, contracts: &mut BTreeMap<PathBuf, Contract>) -> anyhow::Result<()> {
-    let document: Value = serde_json::from_slice(&fs::read(root.join("package.json"))?)?;
+fn read_npm_in(
+    root: &Path,
+    contracts: &mut BTreeMap<PathBuf, Contract>,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<()> {
+    let document = inputs.scope(root)?.json("package.json", 4 * 1024 * 1024)?;
     if let Some(value) = document.pointer("/lenso/contract") {
         insert(contracts, fs::canonicalize(root)?, value.clone(), None)?;
     }
@@ -725,6 +770,7 @@ fn scan(
     visited: &mut usize,
     depth: usize,
     exclusions: &[PathBuf],
+    inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<()> {
     if exclusions.iter().any(|excluded| root.starts_with(excluded)) {
         return Ok(());
@@ -738,24 +784,23 @@ fn scan(
         return Ok(());
     }
     if root.join("package.json").is_file() {
-        read_npm(root, contracts)?;
+        read_npm_in(root, contracts, inputs)?;
         return Ok(());
     }
-    for entry in fs::read_dir(root)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if entry.file_type()?.is_dir()
-            && !name.to_string_lossy().starts_with('.')
-            && !["target", "node_modules", "dist", "build"]
-                .contains(&name.to_string_lossy().as_ref())
+    for entry in inputs.scope(root)?.directory("")? {
+        let name = &entry.path;
+        if entry.kind.is_dir()
+            && !name.starts_with('.')
+            && !["target", "node_modules", "dist", "build"].contains(&name.as_str())
         {
             scan(
-                &entry.path(),
+                &root.join(&entry.path),
                 manifests,
                 contracts,
                 visited,
                 depth + 1,
                 exclusions,
+                inputs,
             )?;
         }
     }

@@ -118,7 +118,8 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
             runtime_executable: std::env::current_exe()?,
             trust_linked_build: args.trust_linked_build,
             portable_implementations: args.portable_implementations,
-        },
+        }
+        .prepare()?,
     ))?;
     let plan = engine.plan(lenso_engine::Snapshot::default())?;
     engine.execute(
@@ -406,14 +407,63 @@ fn start_with_host_command(args: StartArgs, agent_tool_cli: bool) -> anyhow::Res
 }
 
 fn prepare_web_starter(root: &std::path::Path, no_install: bool) -> anyhow::Result<()> {
+    let manifest_path = root.join("Cargo.toml");
+    let mut manifest: toml::Value = toml::from_str(&fs::read_to_string(&manifest_path)?)?;
+    let package = manifest
+        .get_mut("package")
+        .and_then(toml::Value::as_table_mut)
+        .context("starter package")?;
+    let metadata = package
+        .entry("metadata")
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()))
+        .as_table_mut()
+        .context("starter metadata")?;
+    let lenso = metadata
+        .entry("lenso")
+        .or_insert_with(|| toml::Value::Table(toml::map::Map::new()))
+        .as_table_mut()
+        .context("starter Lenso metadata")?;
+    lenso.insert(
+        "web".into(),
+        toml::Value::try_from(serde_json::json!({"preset":"v1"}))?,
+    );
+    if let Some(dependencies) = manifest
+        .get_mut("build-dependencies")
+        .and_then(toml::Value::as_table_mut)
+    {
+        dependencies.remove("lenso-engine-web");
+    }
+    fs::write(&manifest_path, toml::to_string(&manifest)?)?;
+    if root.join("build.rs").exists() {
+        fs::remove_file(root.join("build.rs"))?;
+    }
     let source = root.join("src/lib.rs");
     let code = fs::read_to_string(&source)?
-        .replace("pub const fn link() {}", "pub fn link() { link_plugin(); }");
+        .replace("pub const fn link() {}", "")
+        .replace(
+            "include!(concat!(env!(\"OUT_DIR\"), \"/web_routes.rs\"));",
+            "",
+        );
     fs::write(source, code)?;
-    fs::create_dir_all(root.join("src/routes"))?;
     fs::write(
-        root.join("src/routes/home.rs"),
-        r#"#[get("local.home", "/")]
+        root.join("README.md"),
+        "# Local Web App\n\nThe versioned App Web preset stages Endpoint bindings from `src/routes/**/*.rs` and `src/app/**/route.rs`. The authored project needs no processor list, build script or generated include. A bare `#[get]` derives its URL from the route directory; explicit handlers retain `#[get(id, path)]` and also support `#[get(path)]`.\n\nRun `lenso app dev` or `lenso app build`, then `lenso app check` on the distribution. Plain Cargo on the authored source does not perform App lowering. Use `lenso plugin dev` for a standalone development Host. Exact framework dependencies must be available before installing; keep the generated Cargo lock.\n",
+    )?;
+    let golden = root.join("WEB_GOLDEN_PATH.md");
+    if golden.exists() {
+        fs::write(
+            &golden,
+            format!(
+                "# App preset execution\n\nUse App build/dev or Plugin dev to lower the versioned Web preset before compiling. The standalone Cargo/build-script commands below describe the explicit custom authoring path.\n\n{}",
+                fs::read_to_string(&golden)?
+            ),
+        )?;
+    }
+    fs::create_dir_all(root.join("src/app"))?;
+    fs::write(
+        root.join("src/app/route.rs"),
+        r#"#[get]
+#[route_id("local.home")]
 async fn home(&self) -> Result<HandleResponse, Problem> {
     let mut response = lenso_capability_http_endpoint::response::text(
         StatusCode::OK, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/public/index.html")));
@@ -463,14 +513,17 @@ fn serves_the_homepage_through_ingress() {
 <script>document.querySelector('form').onsubmit=async(event)=>{event.preventDefault();const response=await fetch('/greetings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:new FormData(event.target).get('name')})});const body=await response.json();document.querySelector('output').textContent=body.message||body.detail||'Request failed';};</script></html>
 "#,
     )?;
-    if !no_install
-        && !super::cargo_command()
+    if !no_install {
+        let staging = tempfile::tempdir().context("stage default Web authoring")?;
+        let prepared = super::prepare_web_source(root, staging.path())?;
+        if !super::cargo_command()
             .args(["check", "--manifest-path"])
-            .arg(root.join("Cargo.toml"))
+            .arg(prepared.join("Cargo.toml"))
             .status()?
             .success()
-    {
-        bail!("Web starter compile check failed");
+        {
+            bail!("Web starter compile check failed");
+        }
     }
     Ok(())
 }
@@ -489,7 +542,8 @@ pub fn build_local(
             runtime_executable,
             trust_linked_build: Vec::new(),
             portable_implementations: Vec::new(),
-        },
+        }
+        .prepare()?,
     ))?;
     let plan = engine.plan(lenso_engine::Snapshot::default())?;
     engine.execute(
@@ -708,9 +762,9 @@ mod tests {
                 .contains("src/routes/*.rs")
         );
         assert!(
-            fs::read_to_string(plugin.join("src/routes/home.rs"))
+            fs::read_to_string(plugin.join("src/app/route.rs"))
                 .unwrap()
-                .contains("#[get(\"local.home\", \"/\")]")
+                .contains("#[route_id(\"local.home\")]")
         );
     }
 
@@ -826,7 +880,11 @@ lenso-capability-http-endpoint = { version = "0.3.4", git = "https://github.com/
         prepare_web_starter(root.path(), true).unwrap();
 
         let manifest = fs::read_to_string(root.path().join("Cargo.toml")).unwrap();
-        assert!(manifest.contains("lenso = { version = \"=0.5.26\""));
+        let document: toml::Value = toml::from_str(&manifest).unwrap();
+        assert_eq!(
+            document["dependencies"]["lenso"]["version"].as_str(),
+            Some("=0.5.26")
+        );
         assert!(manifest.contains("https://github.com/LioRael/lenso"));
         assert!(manifest.contains("runtime-pin"));
         assert!(manifest.contains("lenso-capability-http-endpoint"));

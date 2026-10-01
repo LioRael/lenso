@@ -15,6 +15,7 @@ use std::{
 mod business_snapshot;
 pub(crate) mod facilities;
 mod root_linking;
+pub(super) mod web_authoring;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct AdapterSet {
@@ -97,11 +98,12 @@ fn contract_dependency_alias(
     Ok(format!("local_contract_{index}"))
 }
 
-pub(super) fn generate(
+pub(super) fn generate_in(
     stage: &Path,
     cache: &Path,
     candidates: &[Candidate],
     adapters: AdapterSet,
+    inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<Vec<PluginDescriptor>> {
     fs::create_dir_all(cache)?;
     let lock = fs::File::options()
@@ -231,9 +233,18 @@ pub(super) fn generate(
                 .entry(manifest.clone())
                 .or_insert_with(|| format!("local_plugin_{index}"))
                 .clone();
-            dependencies
-                .entry(alias.clone())
-                .or_insert(dependency(package)?);
+            if !dependencies.contains_key(&alias) {
+                let selected = match web_authoring::stage_in(
+                    package,
+                    &metadata,
+                    &generated.join("plugins").join(&alias),
+                    inputs,
+                )? {
+                    Some(path) => json!({"package":package["name"],"path":path}),
+                    None => dependency(package)?,
+                };
+                dependencies.insert(alias.clone(), selected);
+            }
             let link = candidate.native_link.as_deref().unwrap_or("link_plugin");
             linked.push_str(&format!("{alias}::{link}();\n"));
             business_snapshot.select(&alias, package)?;

@@ -1,6 +1,6 @@
 use crate::{RouteSet, WebOptions, compile};
 use anyhow::{Context, ensure};
-use lenso_engine::{Snapshot, publication::FileResource};
+use lenso_engine::{Snapshot, discovery::DiscoverySession, publication::FileResource};
 use std::{fs, path::Path};
 
 fn selected(options: &WebOptions, path: &str) -> bool {
@@ -33,23 +33,37 @@ fn contained(root: &Path, path: &str) -> anyhow::Result<()> {
 /// Default bounded filesystem reader. Custom discovery can construct Snapshot
 /// directly and use compile(), including inputs from formats or roots of its own.
 pub fn read_sources(root: &Path, options: &WebOptions) -> anyhow::Result<Snapshot> {
+    read_sources_in(&mut DiscoverySession::new(root)?, options)
+}
+
+/// Share acquisition with other readers while retaining this selection policy.
+pub fn read_sources_in(
+    session: &mut DiscoverySession,
+    options: &WebOptions,
+) -> anyhow::Result<Snapshot> {
     let mut snapshot = Snapshot::default();
     let mut visited = 0;
+    let roots = options
+        .roots
+        .iter()
+        .chain(&options.filesystem_roots)
+        .cloned()
+        .collect::<Vec<_>>();
     for path in if options.entries.is_empty() {
-        &options.roots
+        &roots
     } else {
         &options.entries
     } {
         if !selected(options, path) {
             continue;
         }
-        contained(root, path)?;
-        read(root, path, options, &mut snapshot, &mut visited, 0)?;
+        contained(session.root(), path)?;
+        read(session, path, options, &mut snapshot, &mut visited, 0)?;
     }
     Ok(snapshot)
 }
 fn read(
-    root: &Path,
+    session: &mut DiscoverySession,
     path: &str,
     options: &WebOptions,
     snapshot: &mut Snapshot,
@@ -64,25 +78,14 @@ fn read(
         *visited <= 4096 && depth <= 32,
         "Web source traversal exceeds budget"
     );
-    let metadata = fs::symlink_metadata(root.join(path))?;
+    let metadata = fs::symlink_metadata(session.root().join(path))?;
     ensure!(
         !metadata.file_type().is_symlink(),
         "Web source symlink: {path}"
     );
     if metadata.is_dir() {
-        for entry in fs::read_dir(root.join(path))? {
-            let name = entry?
-                .file_name()
-                .into_string()
-                .map_err(|_| anyhow::anyhow!("non-UTF8 Web input"))?;
-            read(
-                root,
-                &format!("{path}/{name}"),
-                options,
-                snapshot,
-                visited,
-                depth + 1,
-            )?;
+        for entry in session.directory(path)? {
+            read(session, &entry.path, options, snapshot, visited, depth + 1)?;
         }
     } else {
         ensure!(
@@ -93,7 +96,7 @@ fn read(
             && !snapshot.files().contains_key(path)
         {
             ensure!(metadata.len() <= 1024 * 1024, "route file exceeds 1 MiB");
-            snapshot.insert(path.into(), fs::read(root.join(path))?)?;
+            snapshot.insert(path.into(), session.read(path, 1024 * 1024)?.to_vec())?;
         }
     }
     Ok(())

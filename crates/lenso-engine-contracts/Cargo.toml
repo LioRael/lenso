@@ -17,3 +17,4 @@ sha2 = "0.11"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+lenso-engine-web = { path = "../lenso-engine-web", version = "0.1.0" }
