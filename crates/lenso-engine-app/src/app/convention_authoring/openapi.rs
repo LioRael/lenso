@@ -48,7 +48,7 @@ pub(super) fn add(root: &Path, no_install: bool) -> anyhow::Result<()> {
         "Cargo.toml",
         r#"[package]
 name = "app-openapi-link"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2024"
 publish = false
 
@@ -162,6 +162,9 @@ mod tests {
                 .contains("support/lenso-openapi")
         );
         let manifest = fs::read_to_string(candidate.project.join("Cargo.toml")).unwrap();
+        let parsed: toml::Value = toml::from_str(&manifest).unwrap();
+        assert_eq!(parsed["package"]["version"].as_str(), Some("0.2.7"));
+        assert_eq!(candidate.release_version, "0.2.7");
         assert!(manifest.contains("lenso = \"=0.5.29\""));
         assert!(manifest.contains("lenso-openapi-plugin = \"=0.2.7\""));
         assert!(!manifest.contains("git ="));

@@ -167,6 +167,56 @@ fn use_candidate_crates(root: &Path, packages: &[&str]) {
     .unwrap();
 }
 
+fn prepare_cargo_dependencies(source: &Path, cwd: &Path) {
+    let output = Command::new("cargo")
+        .args(["generate-lockfile", "--manifest-path"])
+        .arg(source.join("app/local.starter/Cargo.toml"))
+        .current_dir(cwd)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "explicit fixture dependency preparation: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(source.join("app/local.starter/Cargo.lock").is_file());
+}
+
+#[test]
+fn fresh_no_install_app_requires_explicit_dependency_preparation_without_creating_a_lock() {
+    let temporary = tempfile::tempdir().unwrap();
+    let source = temporary.path().join("source");
+    let cli = env!("CARGO_BIN_EXE_lenso");
+    let created = Command::new(cli)
+        .args(["app", "create"])
+        .arg(&source)
+        .args(["--web", "--no-install"])
+        .output()
+        .unwrap();
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let project = source.join("app/local.starter");
+    let before = fs::read(project.join("Cargo.toml")).unwrap();
+    assert!(!project.join("Cargo.lock").exists());
+    let built = Command::new(cli)
+        .args(["app", "build", "--root"])
+        .arg(&source)
+        .output()
+        .unwrap();
+    assert!(!built.status.success());
+    let diagnostic = String::from_utf8_lossy(&built.stderr);
+    assert!(
+        diagnostic.contains("Cargo dependencies are not prepared"),
+        "{diagnostic}"
+    );
+    assert!(diagnostic.contains("cargo generate-lockfile --manifest-path"));
+    assert!(!project.join("Cargo.lock").exists());
+    assert_eq!(fs::read(project.join("Cargo.toml")).unwrap(), before);
+}
+
 fn use_candidate_web_endpoint(source: &Path) {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let candidate: toml::Value = toml::from_str(
@@ -192,9 +242,19 @@ fn recent_cargo_diagnostics(log: &str) -> Vec<&str> {
                 || line.contains("Error:")
                 || line.contains("failed")
                 || line.contains("candidate versions")
+                || line.trim() == "Caused by:"
+                || line.starts_with("    ")
         })
         .take(12)
         .collect()
+}
+
+fn listener_starts(log: &Path) -> usize {
+    fs::read_to_string(log)
+        .unwrap()
+        .lines()
+        .filter(|line| line.starts_with("Listening on http://"))
+        .count()
 }
 
 fn openapi_title(log: &Path) -> String {
@@ -452,6 +512,9 @@ fn real_process_host_recovers_missing_file_source_and_activates_new_revision() {
     let mut manifest = toml::to_string(&manifest).unwrap();
     manifest.push_str(&candidate_crate_patches(&["lenso-plugin-sdk"]));
     fs::write(&guest_manifest, manifest).unwrap();
+    // --no-install deliberately skipped resolution; prepare the owned inputs
+    // before read-only, locked contract discovery and the lifecycle under test.
+    prepare_cargo_dependencies(&source, temporary.path());
     let snapshot = temporary.path().join("snapshot.json");
     let policy = temporary.path().join("policy.json");
     let log = temporary.path().join("dev.log");
@@ -576,6 +639,7 @@ fn external_configuration_changes_openapi_title_after_supervised_restart() {
             "lenso-runner",
             "lenso-capability-http-endpoint",
             "lenso-web-host",
+            "lenso-engine-web",
             "lenso-test",
             "lenso-kernel",
         ],
@@ -584,7 +648,7 @@ fn external_configuration_changes_openapi_title_after_supervised_restart() {
         .current_dir(temporary.path())
         .args(["app", "create"])
         .arg(&source)
-        .args(["--web", "--no-install"])
+        .args(["--web"])
         .output()
         .unwrap();
     assert!(
@@ -605,6 +669,7 @@ fn external_configuration_changes_openapi_title_after_supervised_restart() {
         String::from_utf8_lossy(&added.stderr)
     );
 
+    prepare_cargo_dependencies(&source, temporary.path());
     let snapshot = temporary.path().join("snapshot.json");
     let policy = temporary.path().join("policy.json");
     let log = temporary.path().join("dev.log");
@@ -626,10 +691,19 @@ fn external_configuration_changes_openapi_title_after_supervised_restart() {
 
     let first = await_revision(&source, &mut dev.0, 1, &log);
     assert_eq!(openapi_title(&log), "First API");
+    let first_listeners = listener_starts(&log);
 
     write_openapi_snapshot(&snapshot, 2, "title = 'Second API'\n");
     let second = await_revision(&source, &mut dev.0, 2, &log);
-    assert_ne!(second, first, "changed Root needs a new built Generation");
+    assert_eq!(
+        second, first,
+        "configuration-only restart reuses the built Generation"
+    );
+    let restarted_listeners = listener_starts(&log);
+    assert!(
+        restarted_listeners > first_listeners,
+        "changed Root must restart the supervised Host"
+    );
     assert_eq!(openapi_title(&log), "Second API");
     // Ready/activation is published before the supervisor removes the retired
     // distribution. Require that separate cleanup to complete as well.

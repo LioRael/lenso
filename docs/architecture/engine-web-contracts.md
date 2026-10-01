@@ -118,6 +118,11 @@ locked artifact validation; production startup runs no generator.
 Selected Cargo normal/build dependency closures include registry and git
 contracts with published descriptor/schema inputs. External inputs require a
 preexisting lock; dependency acquisition/preparation is separate from scanning.
+Normal starter installation prepares that lock before discovery. `--no-install`
+leaves dependency preparation to the caller; discovery diagnoses a missing lock
+without resolving dependencies or creating one. A non-resolving Cargo probe
+identifies the actual workspace owner, so an unrelated ancestor lock is never
+borrowed. Dependency-free local descriptor packages need no lock.
 Published descriptor snapshots are consumed even if package metadata also names
 Rust authoring source. Scanning/extraction never executes dependency build scripts
 or source exporters. A source-only external package must publish its snapshot.
@@ -129,6 +134,11 @@ projection/module/output policy, support version, generator version and generato
 source fingerprint. An already materialized locked dependency and cache work
 offline; missing input materialization remains an actionable prerequisite.
 Source directories in Cargo registry/git caches are never output destinations.
+Published prebuilt projections are reused when their declared target/module,
+generated marker and resolved contract digest match. Their source bytes join
+the input-change and freshness checks; older compatible generator cohorts can
+be copied into consumer outputs without regeneration. Missing or mismatched
+targets retain the official generation and runtime-cohort safeguards.
 Custom input providers must supply their own locked provenance and tool inputs.
 
 A custom Host can use these processors directly and run its own `Mode::Check`
