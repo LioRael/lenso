@@ -1,0 +1,116 @@
+Cargo.lock
+  h_9d56aba080c170 1012,1959,1976,2102,2105,2118,2121,2133,2140,2165,2168,2178,2181,2191,2266,2337,2376,2408,2418,2441,2446,2502,2543,2571,2640,2655,2684,2808,3034,3077,3424,3860,4284,4343,4364,4843,4846,5790
+Cargo.toml
+  h_9d56aba080c170 37,42-43
+crates/lenso-agent-tool-cli-plugin/Cargo.toml
+  h_9d56aba080c170 3,14
+crates/lenso-bun-adapter/Cargo.toml
+  h_9d56aba080c170 39
+crates/lenso-capability-configuration-source/Cargo.toml
+  h_9d56aba080c170 3,28
+crates/lenso-capability-http-client/Cargo.toml
+  h_9d56aba080c170 3,27
+crates/lenso-capability-http-endpoint/Cargo.toml
+  h_9d56aba080c170 3,43
+crates/lenso-capability-http-stream-endpoint/Cargo.toml
+  h_9d56aba080c170 3,25
+crates/lenso-capability-websocket-endpoint/Cargo.toml
+  h_9d56aba080c170 3,25
+crates/lenso-cli/Cargo.toml
+  h_9d56aba080c170 3,60,64
+crates/lenso-contract-codegen/Cargo.toml
+  h_9d56aba080c170 3
+crates/lenso-engine-app/Cargo.toml
+  h_9d56aba080c170 11,19,22-23,25,30,42,59
+crates/lenso-engine-app/src/app/contracts/freshness.rs
+  h_9d56aba080c170 15-32
+crates/lenso-engine-app/src/app/contracts/scaffold.rs
+  h_9d56aba080c170 102
+crates/lenso-engine-app/src/app/contracts/tests.rs
+  h_9d56aba080c170 37-61,248
+crates/lenso-engine-app/src/app/convention_authoring.rs
+  h_9d56aba080c170 578
+crates/lenso-engine-app/src/app/convention_authoring/openapi.rs
+  h_9d56aba080c170 60-61,165-166
+crates/lenso-engine-app/src/app/local_host.rs
+  h_9d56aba080c170 132,1237,1244,2810,2819,2829
+crates/lenso-engine-app/src/plugin/scaffold.rs
+  h_9d56aba080c170 13,122,137,508
+crates/lenso-engine-app/src/plugin/tests.rs
+  h_9d56aba080c170 166-167,171,183-186,189
+crates/lenso-engine-app/src/plugin/web_dev.rs
+  h_9d56aba080c170 389,392,396-399,429-430,456-457,573,576,621,673,678,706,709,760-762,769
+crates/lenso-engine-authoring/Cargo.toml
+  h_9d56aba080c170 3
+crates/lenso-engine-authoring/src/lib.rs
+  h_9d56aba080c170 115-124
+crates/lenso-engine-contracts/Cargo.toml
+  h_9d56aba080c170 14
+crates/lenso-engine-host/Cargo.toml
+  h_9d56aba080c170 3,10-11
+crates/lenso-engine-runtime/Cargo.toml
+  h_9d56aba080c170 3,14,27
+crates/lenso-host-runtime/Cargo.toml
+  h_9d56aba080c170 3,11
+crates/lenso-http-auth/Cargo.toml
+  h_9d56aba080c170 14
+crates/lenso-http-egress-plugin/Cargo.toml
+  h_9d56aba080c170 3,27
+crates/lenso-native-adapter-macros/Cargo.toml
+  h_9d56aba080c170 3
+crates/lenso-native-adapter/Cargo.toml
+  h_9d56aba080c170 3,19
+crates/lenso-openapi-plugin/Cargo.toml
+  h_9d56aba080c170 3,18,27
+crates/lenso-plugin-control-plane/Cargo.toml
+  h_9d56aba080c170 31
+crates/lenso-process-adapter/Cargo.toml
+  h_9d56aba080c170 27
+crates/lenso-runner/Cargo.toml
+  h_9d56aba080c170 34
+crates/lenso-test/Cargo.toml
+  h_9d56aba080c170 20
+crates/lenso-web-host/Cargo.toml
+  h_9d56aba080c170 3,18-20,24,34
+crates/lenso-web-host/src/lib.rs
+  h_9d56aba080c170 530-539,548-557,572,579-580,1103,1112-1132,1230
+crates/lenso-web-host/tests/repository_web_host.rs
+  h_9d56aba080c170 47-59
+crates/lenso-web-ingress-plugin/Cargo.toml
+  h_9d56aba080c170 3,39-41
+crates/lenso/Cargo.toml
+  h_9d56aba080c170 3,20
+docs/research/engine-authoring-release-notes-2026-10-01.md
+  h_9d56aba080c170 1-35
+docs/research/engine-authoring-release-review-2026-10-01.md
+  h_9d56aba080c170 1-88
+examples/greetings-http-plugin/Cargo.toml
+  h_9d56aba080c170 13
+examples/greetings-web-app/Cargo.toml
+  h_9d56aba080c170 13
+examples/observe-sample-web-app/Cargo.toml
+  h_9d56aba080c170 11,16
+spec/fixtures/event-contract/rust/Cargo.toml
+  h_9d56aba080c170 18
+spec/fixtures/portable-contract/rust/Cargo.toml
+  h_9d56aba080c170 18
+tests/fixtures/bootstrap-file-source/Cargo.toml
+  h_9d56aba080c170 18-19
+tests/fixtures/http-parity-plugin/Cargo.toml
+  h_9d56aba080c170 10
+tests/fixtures/portable-http-endpoint/Cargo.toml
+  h_9d56aba080c170 16
+tests/fixtures/query-endpoint-plugin/Cargo.toml
+  h_9d56aba080c170 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d74172f8fc5e27b6857a7875b0bf75f2af4246e",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
