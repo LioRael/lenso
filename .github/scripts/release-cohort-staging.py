@@ -95,12 +95,14 @@ def stage(root, metadata, external):
     manifest.write_text(updated)
 
 
-def validate(before, after, metadata, external, fixtures, resolved=None, registry_optional=False):
+def validate(before, after, metadata, external, fixtures, resolved=None):
     """Allow only dev-edge removal and its resulting unreachable package pruning.
 
     All surviving versions, sources, checksums, fields and active runtime edges
     remain identical. External roots also cease locking their inactive optional
-    features. Cargo may mark an unreachable exact path patch as unused.
+    features; their registry dependencies can lose optional features too.
+    Such edges require both a declaration and independent resolved metadata
+    proving they are inactive. Cargo may mark an unreachable patch as unused.
     """
     old = packages(before)
     expected = copy.deepcopy(before)
@@ -115,16 +117,19 @@ def validate(before, after, metadata, external, fixtures, resolved=None, registr
     for key, package in graph.items():
         removable = {dependency for owner, dependency in fixtures
                      if owner == key[0] and key[2] is None}
-        if key[0] in external and (key[2] is None or registry_optional) and key in declarations:
+        external_path = key[0] in external and key[2] is None
+        registry_dependency = key[2] == "registry+https://github.com/rust-lang/crates.io-index"
+        if (external_path or registry_dependency) and key in declarations:
             declared = declarations[key]["dependencies"]
             dev = {d["name"] for d in declared if d["kind"] == "dev"}
             production = {d["name"] for d in declared if d["kind"] != "dev"}
-            if key[2] is None:
+            required = {d["name"] for d in declared if d["kind"] != "dev" and not d["optional"]}
+            if external_path:
                 removable |= dev - production
             remaining = {dependency_identity(value, actual)[0]
                          for value in actual.get(key, {}).get("dependencies", [])}
             removable |= {d["name"] for d in declared if d["kind"] != "dev"
-                          and d["optional"] and resolved and key in active
+                          and d["optional"] and d["name"] not in required and resolved and key in active
                           and d["name"] not in active[key] and d["name"] not in remaining}
         if "dependencies" in package:
             package["dependencies"] = [value for value in package["dependencies"]
@@ -285,7 +290,7 @@ def main():
         roots = {p["name"] for p in metadata["packages"] if p["id"] in metadata["workspace_members"]}
         external = {p["name"] for p in metadata["packages"] if p["name"] not in roots}
         validate(tomllib.loads(Path(before).read_text()), tomllib.loads(Path(after).read_text()),
-                 metadata, external, [], metadata, registry_optional=True)
+                 metadata, external, [], metadata)
     elif mode == "merge-prefetch":
         print(json.dumps(merge_prefetch(Path(args[0]))))
     else:

@@ -138,12 +138,12 @@ edition = "2024"
         optional_metadata["resolve"]["nodes"].append({"id": package["name"],
             "deps": [{"pkg": d} for d in package.get("dependencies", [])]})
     staging.validate(optional_before, projected, optional_metadata,
-                     {"published-bun", "runtime-dep"}, [], optional_metadata, registry_optional=True)
+                     {"published-bun", "runtime-dep"}, [], optional_metadata)
     malicious = copy.deepcopy(projected)
     next(p for p in malicious["package"] if p["name"] == "published-bun").pop("dependencies")
     try:
         staging.validate(optional_before, malicious, optional_metadata,
-                         {"published-bun", "runtime-dep"}, [], optional_metadata, registry_optional=True)
+                         {"published-bun", "runtime-dep"}, [], optional_metadata)
     except ValueError:
         pass
     else:
@@ -215,4 +215,58 @@ with tempfile.TemporaryDirectory(prefix="lenso-resumed-prefetch-") as directory:
     else:
         raise AssertionError("inconsistent registry checksum accepted")
 
-print("external dev roots, resumed registry inputs, immutable manifests and strict drift rejection passed")
+# The nine-Engine cohort excludes previously published workspace test roots.
+# Feature unification then prunes optional edges of *registry transitive* tower
+# and tower-http, which are not in the external workspace-package name list.
+registry = "registry+https://github.com/rust-lang/crates.io-index"
+before = {"version": 4, "package": [
+    {"name": "engine-app", "version": "0.3.4", "dependencies": ["tower-http"]},
+    {"name": "tower-http", "version": "0.6.11", "source": registry,
+     "checksum": "1" * 64, "dependencies": ["tower", "http-body-util", "uuid"]},
+    {"name": "tower", "version": "0.5.3", "source": registry,
+     "checksum": "2" * 64, "dependencies": ["tracing", "tokio-util"]},
+    *[{"name": name, "version": "1.0.0", "source": registry, "checksum": "3" * 64}
+      for name in ("tracing", "tokio-util", "http-body-util", "uuid")],
+]}
+after = copy.deepcopy(before)
+after["package"][1]["dependencies"] = ["tower"]
+after["package"][2]["dependencies"] = ["tracing"]
+after["package"] = [p for p in after["package"]
+                    if p["name"] not in {"tokio-util", "http-body-util", "uuid"}]
+optional = {"tower": {"tokio-util"}, "tower-http": {"http-body-util", "uuid"}}
+metadata = {"packages": [], "workspace_members": ["engine-app"]}
+resolved = {"packages": [], "workspace_members": ["engine-app"], "resolve": {"nodes": []}}
+for p in before["package"]:
+    record = {**p, "id": p["name"], "dependencies": [
+        {"name": name, "kind": None, "optional": name in optional.get(p["name"], set())}
+        for name in p.get("dependencies", [])]}
+    metadata["packages"].append(record)
+    if p["name"] in {a["name"] for a in after["package"]}:
+        resolved["packages"].append(record)
+        remaining = next(a for a in after["package"] if a["name"] == p["name"])
+        resolved["resolve"]["nodes"].append({"id": p["name"],
+            "deps": [{"pkg": name} for name in remaining.get("dependencies", [])]})
+staging.validate(before, after, metadata, set(), [], resolved)
+for mutation in ("active", "ordinary", "missing-proof", "version", "source", "checksum"):
+    candidate = copy.deepcopy(after)
+    declarations = copy.deepcopy(metadata)
+    proof = copy.deepcopy(resolved)
+    tower = next(p for p in candidate["package"] if p["name"] == "tower")
+    if mutation == "active":
+        tower.pop("dependencies")
+    elif mutation == "ordinary":
+        record = next(p for p in declarations["packages"] if p["name"] == "tower")
+        next(d for d in record["dependencies"] if d["name"] == "tokio-util")["optional"] = False
+    elif mutation == "missing-proof":
+        proof = None
+    else:
+        tower[mutation] = {"version": "0.5.4", "source": "git+https://example.invalid/tower",
+                           "checksum": "4" * 64}[mutation]
+    try:
+        staging.validate(before, candidate, declarations, set(), [], proof)
+    except (ValueError, KeyError):
+        pass
+    else:
+        raise AssertionError(f"registry transitive pruning accepted {mutation} drift")
+
+print("external dev roots, resumed registry inputs, transitive optional pruning and strict drift rejection passed")
