@@ -1,0 +1,14 @@
+crates/lenso-cli/tests/local_assembly.rs
+  h_9d56aba080c170 71-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "993ca81a5d17e5e2e8bbaa03cbc9754a64f3212b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
