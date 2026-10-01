@@ -1,0 +1,38 @@
+crates/lenso-engine-app/src/app.rs
+  h_9d56aba080c170 48-49
+crates/lenso-engine-app/src/app/assemble.rs
+  h_9d56aba080c170 7,209,229-234,237,239,278,294,620-622,630,635-637
+crates/lenso-engine-app/src/app/contracts.rs
+  h_9d56aba080c170 286,529,531,656-659
+crates/lenso-engine-app/src/app/convention_build.rs
+  h_9d56aba080c170 21-25,53-55,73-77
+crates/lenso-engine-app/src/app/local_host.rs
+  h_9d56aba080c170 481,609-611,719,721,1436-1447,1450-1491,1498-1505,1512
+crates/lenso-engine-app/src/app/local_host/web_authoring.rs
+  h_9d56aba080c170 40,202-205,207-208,212,406-411,463-506
+crates/lenso-engine-app/src/app/local_workflow.rs
+  h_9d56aba080c170 409
+crates/lenso-engine-app/src/app/precompiled.rs
+  h_9d56aba080c170 75,77-92,100-101,115,117
+crates/lenso-engine-app/src/app/preset.rs
+  h_9d56aba080c170 49-52,55-58,93,95,216-255
+crates/lenso-engine-app/src/plugin/web_dev.rs
+  h_9d56aba080c170 149-152,229-233,289-309,591-671
+crates/lenso-engine/src/discovery.rs
+  h_9d56aba080c170 33
+docs/architecture/engine-web-contracts.md
+  h_9d56aba080c170 9-25
+skills/lenso-runtime-extension/references/engine.md
+  h_9d56aba080c170 27-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "526ef51cb1c1c984390377c4ff82486519b5ef8c",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
