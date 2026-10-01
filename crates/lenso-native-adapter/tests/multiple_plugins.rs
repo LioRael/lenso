@@ -62,9 +62,8 @@ fn kernel_instantiates_only_selected_identity_and_rejects_ambiguous_factories() 
     let duplicate = NativePluginRegistry::new()
         .with_factory(ConfiguredPluginFactory::<first::Plugin, _>::new(|_| Ok(())))
         .with_factory(ConfiguredPluginFactory::<first::Plugin, _>::new(|_| Ok(())));
-    let error = driver
-        .run(Kernel::start_native(plan(), driver.clone(), duplicate))
-        .err()
-        .expect("duplicate identity must fail");
+    let Err(error) = driver.run(Kernel::start_native(plan(), driver.clone(), duplicate)) else {
+        panic!("duplicate identity must fail");
+    };
     assert!(format!("{error:?}").contains("multiple statically linked factories"));
 }
