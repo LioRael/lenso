@@ -18,7 +18,11 @@ pub(super) struct CompiledConventions {
     pub resources: Vec<GeneratedResourceContribution>,
 }
 
-pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<CompiledConventions> {
+pub(super) fn compile(
+    plan: &ConventionPlan,
+    output: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<CompiledConventions> {
     let compiler_group = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
     let mut candidates = Vec::new();
     let mut resources = Vec::new();
@@ -46,8 +50,9 @@ pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Co
         if !compilation.options.is_null() {
             request["options"] = compilation.options.clone();
         }
-        let source_before = super::local_host::input_digest(&compilation.owner_project)?;
-        let compiler_before = super::local_host::input_digest(&compilation.compiler_project)?;
+        let source_before = super::local_host::input_digest_in(&compilation.owner_project, inputs)?;
+        let compiler_before =
+            super::local_host::input_digest_in(&compilation.compiler_project, inputs)?;
         let mut engine = lenso_engine::Engine::default();
         engine.register(lenso_engine_runtime::RuntimeProcessor::new(
             crate::ConventionCompiler {
@@ -65,8 +70,11 @@ pub(super) fn compile(plan: &ConventionPlan, output: &Path) -> anyhow::Result<Co
         let processing = engine.plan(lenso_engine::Snapshot::default())?;
         engine.execute(&processing, &super::preset::cancellation())?;
         validate_tree(&project, &mut 0, &mut 0, 0)?;
-        if source_before != super::local_host::input_digest(&compilation.owner_project)?
-            || compiler_before != super::local_host::input_digest(&compilation.compiler_project)?
+        let verification = lenso_engine::discovery::DiscoverySession::new(inputs.root())?;
+        if source_before
+            != super::local_host::input_digest_in(&compilation.owner_project, &verification)?
+            || compiler_before
+                != super::local_host::input_digest_in(&compilation.compiler_project, &verification)?
         {
             bail!("convention inputs changed during compilation; retry");
         }

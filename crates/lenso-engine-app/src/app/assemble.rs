@@ -4,7 +4,7 @@ use anyhow::{Context, bail, ensure};
 use clap::Args;
 use lenso_app_authoring::{
     discovery::conventions::GeneratedResourceContribution,
-    discovery::{PublishedResource, SourceRole, discover},
+    discovery::{PublishedResource, SourceRole},
     host_authoring::{GeneratedHostBuild, LocalManySlotBinding, LocalPluginInput},
 };
 use lenso_plugin_bundle::{ImplementationPolicy, read_bundle_manifest, verify_bundle_directory};
@@ -206,7 +206,7 @@ pub(super) fn assemble_in(
         .collect::<Vec<_>>();
     let precompiled = super::precompiled::Host::load(&root)?;
     if let Some(host) = &precompiled {
-        host.admit(&candidates)?;
+        host.admit_in(&candidates, &acquired)?;
     }
     super::convention_authoring::linked_catalog::require_linked_build_trust(
         &root,
@@ -226,12 +226,17 @@ pub(super) fn assemble_in(
         .compilations
         .iter()
         .flat_map(|compilation| [&compilation.owner_project, &compilation.compiler_project])
-        .map(|path| Ok((path.clone(), super::local_host::input_digest(path)?)))
+        .map(|path| {
+            Ok((
+                path.clone(),
+                super::local_host::input_digest_in(path, &acquired)?,
+            ))
+        })
         .collect::<anyhow::Result<std::collections::BTreeMap<_, _>>>()?;
     let compiled_conventions =
-        super::convention_build::compile(&convention_plan, generated_sources.path())?;
+        super::convention_build::compile(&convention_plan, generated_sources.path(), &acquired)?;
     if let Some(host) = &precompiled {
-        host.admit(&compiled_conventions.candidates)?;
+        host.admit_in(&compiled_conventions.candidates, &acquired)?;
     }
     contract_evidence.extend(super::contracts::synchronize_in(
         &root,
@@ -270,7 +275,7 @@ pub(super) fn assemble_in(
         .map(|candidate| {
             Ok((
                 candidate.plugin_id.clone(),
-                super::local_host::input_digest(&candidate.project)?,
+                super::local_host::input_digest_in(&candidate.project, &acquired)?,
             ))
         })
         .collect::<anyhow::Result<std::collections::BTreeMap<_, _>>>()?;
@@ -286,7 +291,7 @@ pub(super) fn assemble_in(
         };
     let native = if candidates.iter().any(super::local_host::is_native) {
         if let Some(host) = &precompiled {
-            host.install(stage.path(), &candidates)?
+            host.install(stage.path(), &candidates, &acquired)?
         } else {
             super::local_host::generate_in(
                 stage.path(),
@@ -612,7 +617,9 @@ pub(super) fn assemble_in(
             "resources": &published_resources,
         }))?,
     )?;
-    let fresh = lenso_app_authoring::discovery::conventions::plan(&discover(&root)?)?;
+    let verification = lenso_engine::discovery::DiscoverySession::new(&root)?;
+    let fresh_report = lenso_app_authoring::discovery::discover_in(&root, &verification)?;
+    let fresh = lenso_app_authoring::discovery::conventions::plan_in(&fresh_report, &verification)?;
     if serde_json::to_vec(&fresh)? != selection_bytes {
         bail!("local convention selection changed during build; retry");
     }
@@ -620,12 +627,14 @@ pub(super) fn assemble_in(
         .context("resolve local Host with Plugin Root intent")?;
     super::target_closure::admit(&resolved, &inventory)?;
     for (path, digest) in &convention_inputs {
-        if *digest != super::local_host::input_digest(path)? {
+        if *digest != super::local_host::input_digest_in(path, &verification)? {
             bail!("convention source changed during build; retry");
         }
     }
     for source in &sources {
-        if source_digests[&source.plugin_id] != super::local_host::input_digest(&source.project)? {
+        if source_digests[&source.plugin_id]
+            != super::local_host::input_digest_in(&source.project, &verification)?
+        {
             bail!(
                 "source changed during build: {}; retry after edits settle",
                 source.project.display()

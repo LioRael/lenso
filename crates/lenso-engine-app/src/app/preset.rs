@@ -46,10 +46,16 @@ impl AppProject {
         // Domain-specific source inspection belongs to this optional preset.
         let conventions = lenso_app_authoring::discovery::conventions::plan_in(&report, inputs)?;
         let mut fingerprints = BTreeMap::new();
-        fingerprints.insert(root.clone(), super::local_host::input_digest(root)?);
+        fingerprints.insert(
+            root.clone(),
+            super::local_host::input_digest_in(root, inputs)?,
+        );
         for compilation in &conventions.compilations {
             for root in [&compilation.owner_project, &compilation.compiler_project] {
-                fingerprints.insert(root.clone(), super::local_host::input_digest(root)?);
+                fingerprints.insert(
+                    root.clone(),
+                    super::local_host::input_digest_in(root, inputs)?,
+                );
             }
         }
         let dependency_locks = super::local_host::dependency_lock_digests(
@@ -84,8 +90,9 @@ impl AppProject {
         }
         let fingerprints: BTreeMap<PathBuf, String> =
             serde_json::from_value(context.step.options["fingerprints"].clone())?;
+        let verification = lenso_engine::discovery::DiscoverySession::new(&self.root)?;
         for (root, expected) in fingerprints {
-            if super::local_host::input_digest(&root)? != expected {
+            if super::local_host::input_digest_in(&root, &verification)? != expected {
                 anyhow::bail!("App inputs changed after planning; replan before execution");
             }
         }
@@ -205,4 +212,44 @@ pub(super) fn runtime_executable() -> anyhow::Result<PathBuf> {
     RUNTIME
         .with(|slot| slot.borrow().clone())
         .map_or_else(|| Ok(std::env::current_exe()?), Ok)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn process_rejects_body_change_after_acquisition_before_fingerprint() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("src")).unwrap();
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[package]\nname='race-fixture'\nversion='0.1.0'\nedition='2024'\n",
+        )
+        .unwrap();
+        let source = "#[lenso::plugin(id=\"race.fixture\",root_slot=\"web\")]pub struct Http {} fn body()->u8{1}";
+        std::fs::write(root.path().join("src/lib.rs"), source).unwrap();
+        let inputs = lenso_engine::discovery::DiscoverySession::new(root.path()).unwrap();
+        lenso_app_authoring::discovery::discover_in(root.path(), &inputs).unwrap();
+        std::fs::write(root.path().join("src/lib.rs"), source.replace("{1}", "{2}")).unwrap();
+        let project = AppProject {
+            root: root.path().into(),
+            output: root.path().join("dist"),
+            runtime_executable: root.path().join("must-not-execute"),
+            trust_linked_build: vec![],
+            portable_implementations: vec![],
+        };
+        let steps = project.plan_in(&inputs).unwrap();
+        let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let context = ContextView {
+            step: &steps[0],
+            files: BTreeMap::new(),
+            dependencies: BTreeMap::new(),
+            cancelled: &cancelled,
+        };
+        let error = project.process_in(&context, &inputs).unwrap_err();
+        assert!(
+            error.to_string().contains("inputs changed after planning"),
+            "{error:#}"
+        );
+    }
 }

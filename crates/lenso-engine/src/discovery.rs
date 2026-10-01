@@ -30,7 +30,7 @@ impl Default for DiscoveryLimits {
             entries: 50_000,
             files: 50_000,
             bytes: 256 * 1024 * 1024,
-            file_bytes: 16 * 1024 * 1024,
+            file_bytes: 256 * 1024 * 1024,
         }
     }
 }
