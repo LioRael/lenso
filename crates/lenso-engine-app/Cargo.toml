@@ -1,6 +1,6 @@
 [package]
 name = "lenso-engine-app"
-version = "0.3.3"
+version = "0.3.4"
 publish = true
 edition = "2024"
 license = "MIT"
@@ -9,9 +9,9 @@ include = ["/src/**", "/assets/**", "/examples/**", "/tests/**", "/build.rs", "/
 
 [dependencies]
 lenso-engine-runtime = { path = "../lenso-engine-runtime", version = "0.2.2" }
-lenso-engine = { path = "../lenso-engine", version = "0.2.0" }
-lenso-engine-contracts = { path = "../lenso-engine-contracts", version = "0.1.0" }
-lenso-engine-web = { path = "../lenso-engine-web", version = "0.1.0" }
+lenso-engine = { path = "../lenso-engine", version = "0.2.1" }
+lenso-engine-contracts = { path = "../lenso-engine-contracts", version = "0.1.1" }
+lenso-engine-web = { path = "../lenso-engine-web", version = "0.2.0" }
 syn = { workspace = true }
 anyhow = "1.0"
 futures = { version = "0.3" }
@@ -21,7 +21,7 @@ lenso-app-plan = { path = "../lenso-app-plan", version = "=0.4.6" }
 lenso-agent-tool-cli-plugin = { path = "../lenso-agent-tool-cli-plugin", version = "=0.1.2" }
 lenso-bun-adapter = { path = "../lenso-bun-adapter", version = "=0.1.17" }
 lenso-capability-agent-tool-provider = "=0.2.2"
-lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "=0.3.7" }
+lenso-capability-http-endpoint = { path = "../lenso-capability-http-endpoint", version = "=0.3.8" }
 lenso-capability-configuration-source = { path = "../lenso-capability-configuration-source", version = "0.1.2" }
 lenso-contract-authoring-next = { package = "lenso-contract-authoring", path = "../lenso-contract-authoring", version = "0.1.2" }
 lenso-contract-codegen-next = { package = "lenso-contract-codegen", path = "../lenso-contract-codegen", version = "0.10.2" }
@@ -58,7 +58,7 @@ url = "2.5"
 zip = { version = "8.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 jsonschema = { version = "0.51", default-features = false }
 glob = "0.3.3"
-lenso_app_authoring = { package = "lenso-engine-authoring", version = "=0.3.0", path = "../lenso-engine-authoring" }
+lenso_app_authoring = { package = "lenso-engine-authoring", version = "=0.3.1", path = "../lenso-engine-authoring" }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.30", features = ["signal"] }

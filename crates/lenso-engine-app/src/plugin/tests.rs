@@ -164,7 +164,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     let parsed: toml::Value = toml::from_str(manifest).unwrap();
     for (name, version) in [
         ("lenso", "=0.5.29"),
-        ("lenso-capability-http-endpoint", "=0.3.7"),
+        ("lenso-capability-http-endpoint", "=0.3.8"),
         ("lenso-app-plan", "=0.4.6"),
         ("lenso-kernel", "=0.3.12"),
         ("lenso-test", "=0.1.3"),
@@ -182,7 +182,7 @@ fn web_plugin_scaffold_uses_canonical_endpoint_authoring() {
     assert!(manifest.contains("schemars = \"1.2\""));
     assert_eq!(
         parsed["build-dependencies"]["lenso-engine-web"].as_str(),
-        Some("=0.1.0")
+        Some("=0.2.0")
     );
     assert!(source.contains("#[lenso::plugin]"));
     assert!(source.contains("include!(concat!(env!(\"OUT_DIR\"), \"/web_routes.rs\"))"));

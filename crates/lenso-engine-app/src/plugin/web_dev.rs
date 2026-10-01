@@ -727,7 +727,7 @@ mod tests {
         let manifest = format!(
             r#"[dependencies]
 lenso = {{ version = "=0.5.25", git = "{git}", rev = "{rev}" }}
-lenso-capability-http-endpoint = {{ version = "0.3.7", git = "{git}", rev = "{rev}" }}
+lenso-capability-http-endpoint = {{ version = "0.3.8", git = "{git}", rev = "{rev}" }}
 
 [patch.crates-io]
 lenso = {{ git = "{git}", rev = "{rev}" }}
@@ -784,7 +784,7 @@ lenso-kernel = {{ git = "{git}", rev = "{rev}" }}
             source(registry)
                 .unwrap_err()
                 .to_string()
-                .contains("lenso-capability-http-endpoint@0.3.7")
+                .contains("lenso-capability-http-endpoint@0.3.8")
         );
         let rev = "2039cee33d8570e8cf202714a9b87c10fb55548b";
         let manifest = format!(
@@ -815,7 +815,7 @@ lenso-capability-http-endpoint = {{ version = "=0.3.5", git = "https://github.co
                 .contains("lenso@0.5.29")
         );
 
-        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.7\"\n");
+        let mixed = format!("[dependencies]\n{git}\nlenso-capability-http-endpoint = \"=0.3.8\"\n");
         assert!(
             source(&mixed)
                 .unwrap_err()

@@ -2130,7 +2130,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint"
-version = "0.3.7"
+version = "0.3.8"
 dependencies = [
  "futures",
  "http",
@@ -2152,7 +2152,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-capability-http-endpoint-macros"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-cli"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2304,7 +2304,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "glob",
@@ -2317,7 +2317,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-app"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -2375,7 +2375,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-authoring"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "flate2",
@@ -2405,7 +2405,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-contracts"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "lenso-contract-codegen 0.10.2",
@@ -2419,7 +2419,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-host"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "clap",
@@ -2463,7 +2463,7 @@ dependencies = [
 
 [[package]]
 name = "lenso-engine-web"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "lenso-engine",

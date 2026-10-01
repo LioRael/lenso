@@ -1,13 +1,13 @@
 [package]
 name = "lenso-engine-authoring"
-version = "0.3.0"
+version = "0.3.1"
 publish = true
 edition = "2024"
 license = "MIT"
 description = "Lenso App discovery, composition and authoring authority"
 
 [dependencies]
-lenso-engine = { path = "../lenso-engine", version = "0.2.0" }
+lenso-engine = { path = "../lenso-engine", version = "0.2.1" }
 anyhow = "1.0"
 flate2 = "1"
 tar = "0.4"
