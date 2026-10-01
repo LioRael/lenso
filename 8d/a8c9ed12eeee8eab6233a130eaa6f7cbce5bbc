@@ -1,0 +1,166 @@
+Cargo.lock
+  h_9d56aba080c170 2269,2274,2341,2392,2403-2415,2460-2485,2627-2637
+Cargo.toml
+  h_9d56aba080c170 8-9
+crates/lenso-contract-codegen/Cargo.toml
+  h_9d56aba080c170 16-17,23-25
+crates/lenso-contract-codegen/build.rs
+  h_9d56aba080c170 1-17
+crates/lenso-contract-codegen/src/lib.rs
+  h_9d56aba080c170 24,30-36
+crates/lenso-contract-codegen/src/main.rs
+  h_9d56aba080c170 14,44-64
+crates/lenso-contract-codegen/src/module_projection.rs
+  h_9d56aba080c170 1-129
+crates/lenso-contract-codegen/tests/codegen.rs
+  h_9d56aba080c170 21-110
+crates/lenso-engine-app/Cargo.toml
+  h_9d56aba080c170 13
+crates/lenso-engine-app/src/app.rs
+  h_9d56aba080c170 116
+crates/lenso-engine-app/src/app/assemble.rs
+  h_9d56aba080c170 193,205-209,619-624,1134
+crates/lenso-engine-app/src/app/contracts.rs
+  h_9d56aba080c170 4-5,13,15,17-19,26-27,40-41,48-83,86-87,90-94,107-118,163-166,182,186-191,194-223,225,236-243,254,278-283,286,295-299,319,342-343,374-443,513-578,631,648,650-652,673-680,686-692,707-711,713,715,726-734,737
+crates/lenso-engine-app/src/app/contracts/freshness.rs
+  h_9d56aba080c170 1-66
+crates/lenso-engine-app/src/app/contracts/snapshot.rs
+  h_9d56aba080c170 1-62
+crates/lenso-engine-app/src/app/contracts/source.rs
+  h_9d56aba080c170 69,72,75,84-92
+crates/lenso-engine-app/src/app/contracts/tests.rs
+  h_9d56aba080c170 1-252
+crates/lenso-engine-app/src/app/convention_authoring/linked_catalog.rs
+  h_9d56aba080c170 2012,2101,2121
+crates/lenso-engine-app/src/app/convention_build.rs
+  h_9d56aba080c170 40,46-48
+crates/lenso-engine-app/src/app/local_host.rs
+  h_9d56aba080c170 150,230-238,586-615
+crates/lenso-engine-app/src/app/local_runtime_template.rs
+  h_9d56aba080c170 580
+crates/lenso-engine-app/src/app/precompiled.rs
+  h_9d56aba080c170 174
+crates/lenso-engine-app/src/plugin/assets/web_routes_build.rs
+  h_9d56aba080c170 1,3-5,7-12
+crates/lenso-engine-app/src/plugin/scaffold.rs
+  h_9d56aba080c170 128,490,514
+crates/lenso-engine-app/src/plugins/signed_install.rs
+  h_9d56aba080c170 923
+crates/lenso-engine-authoring/Cargo.toml
+  h_9d56aba080c170 29
+crates/lenso-engine-authoring/src/discovery.rs
+  h_9d56aba080c170 37-39,60-62,124-125,206-208,210-212
+crates/lenso-engine-authoring/src/discovery/conventions.rs
+  h_9d56aba080c170 31-39,50-51,81,202,214-230,242-250,318-340,368-377,444,544-546,675
+crates/lenso-engine-authoring/src/discovery/project.rs
+  h_9d56aba080c170 95-104,179,572
+crates/lenso-engine-authoring/src/discovery/project/rust_source.rs
+  h_9d56aba080c170 1-215
+crates/lenso-engine-authoring/src/discovery/tests.rs
+  h_9d56aba080c170 3-100,413,572-600,762,813
+crates/lenso-engine-contracts/Cargo.toml
+  h_9d56aba080c170 1-19
+crates/lenso-engine-contracts/README.md
+  h_9d56aba080c170 1-26
+crates/lenso-engine-contracts/src/baselines.rs
+  h_9d56aba080c170 1-114
+crates/lenso-engine-contracts/src/discovery.rs
+  h_9d56aba080c170 1-314
+crates/lenso-engine-contracts/src/lib.rs
+  h_9d56aba080c170 1-215
+crates/lenso-engine-contracts/src/main.rs
+  h_9d56aba080c170 1-58
+crates/lenso-engine-contracts/src/output.rs
+  h_9d56aba080c170 1-159
+crates/lenso-engine-contracts/tests/authoring.rs
+  h_9d56aba080c170 1-241
+crates/lenso-engine-contracts/tests/fixtures/profile/capability.json
+  h_9d56aba080c170 1-19
+crates/lenso-engine-contracts/tests/fixtures/profile/schemas/common-name.schema.json
+  h_9d56aba080c170 1
+crates/lenso-engine-contracts/tests/fixtures/profile/schemas/conformance-value.schema.json
+  h_9d56aba080c170 1-11
+crates/lenso-engine-contracts/tests/fixtures/profile/schemas/round-trip-error.schema.json
+  h_9d56aba080c170 1-29
+crates/lenso-engine-contracts/tests/fixtures/profile/schemas/round-trip-request.schema.json
+  h_9d56aba080c170 1-23
+crates/lenso-engine-contracts/tests/fixtures/profile/schemas/round-trip-response.schema.json
+  h_9d56aba080c170 1-10
+crates/lenso-engine-web/Cargo.toml
+  h_9d56aba080c170 1-19
+crates/lenso-engine-web/README.md
+  h_9d56aba080c170 1-14
+crates/lenso-engine-web/src/lib.rs
+  h_9d56aba080c170 1-318
+crates/lenso-engine-web/src/source.rs
+  h_9d56aba080c170 1-125
+crates/lenso-engine-web/tests/authoring.rs
+  h_9d56aba080c170 1-97
+crates/lenso-native-adapter-macros/src/lib.rs
+  h_9d56aba080c170 17-18,32,38-39,76-77,95-97,111,123-124,691,1173,2836-2850,2900-2916,3144,3148,3152-3157,3159,3161
+crates/lenso-native-adapter/tests/multiple_plugins.rs
+  h_9d56aba080c170 1-70
+crates/lenso-native-adapter/tests/named_dependency_authoring.rs
+  h_9d56aba080c170 73
+docs/architecture/engine-web-contracts.md
+  h_9d56aba080c170 1-154
+docs/research/engine-authoring-proposed-release-set-2026-10-01.json
+  h_9d56aba080c170 1-90
+docs/research/engine-authoring-release-review-2026-10-01.md
+  h_9d56aba080c170 1-127
+docs/research/engine-authoring-version-plan-2026-10-01.json
+  h_9d56aba080c170 1-156
+docs/research/engine-web-contracts-2026-10-01.json
+  h_9d56aba080c170 1-338
+docs/research/engine-web-contracts-2026-10-01.md
+  h_9d56aba080c170 1-122
+docs/research/multi-plugin-source-2026-10-01.md
+  h_9d56aba080c170 1-51
+docs/research/multi-plugin-source-2026-10-01/http.json
+  h_9d56aba080c170 1-26
+examples/engine-web/Cargo.toml
+  h_9d56aba080c170 1-18
+examples/engine-web/README.md
+  h_9d56aba080c170 1-17
+examples/engine-web/build.rs
+  h_9d56aba080c170 1-11
+examples/engine-web/endpoints/private/excluded.rs
+  h_9d56aba080c170 1
+examples/engine-web/endpoints/public.rs
+  h_9d56aba080c170 1-11
+examples/engine-web/src/lib.rs
+  h_9d56aba080c170 1-22
+examples/engine-web/src/main.rs
+  h_9d56aba080c170 1-8
+examples/multiple-plugins/Cargo.toml
+  h_9d56aba080c170 1-15
+examples/multiple-plugins/README.md
+  h_9d56aba080c170 1-27
+examples/multiple-plugins/plugins/example.health/default.toml
+  h_9d56aba080c170 1
+examples/multiple-plugins/src/greeting.rs
+  h_9d56aba080c170 1-26
+examples/multiple-plugins/src/health.rs
+  h_9d56aba080c170 1-16
+examples/multiple-plugins/src/lib.rs
+  h_9d56aba080c170 1-3
+examples/multiple-plugins/src/main.rs
+  h_9d56aba080c170 1-10
+skills/lenso-app-configuration/references/local-development.md
+  h_9d56aba080c170 18,24-32
+skills/lenso-plugin-authoring/references/paths/linked-rust.md
+  h_9d56aba080c170 7-11,22-57
+skills/lenso-runtime-extension/references/engine.md
+  h_9d56aba080c170 13-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8da8c9ed12eeee8eab6233a130eaa6f7cbce5bbc",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
