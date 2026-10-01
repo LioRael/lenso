@@ -691,7 +691,7 @@ mod tests {
         let parsed: toml::Value = toml::from_str(&manifest).unwrap();
         assert_eq!(
             parsed["dev-dependencies"]["lenso-web-host"].as_str(),
-            Some("=0.2.5")
+            Some("=0.2.6")
         );
         assert_eq!(
             parsed["dev-dependencies"]["lenso-test"].as_str(),
