@@ -118,16 +118,16 @@ mod tests {
         for manifest in [
             "",
             "[workspace]\n",
-            "[package]\nname='wrong'\nversion='0.3.7'\n[features]\nprocess=[]\n",
+            "[package]\nname='wrong'\nversion='0.3.8'\n[features]\nprocess=[]\n",
             "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.2'\n[features]\nprocess=[]\n",
-            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.7'\n",
+            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.8'\n",
         ] {
             fs::write(root.path().join("Cargo.toml"), manifest).unwrap();
             assert!(scaffold(Some(root.path())).is_err());
         }
         fs::write(
             root.path().join("Cargo.toml"),
-            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.7'\n[features]\nprocess=[]\n",
+            "[package]\nname='lenso-capability-http-endpoint'\nversion='0.3.8'\n[features]\nprocess=[]\n",
         ).unwrap();
         let files = scaffold(Some(root.path())).unwrap();
         let manifest: toml::Value = toml::from_str(&files[0].1).unwrap();

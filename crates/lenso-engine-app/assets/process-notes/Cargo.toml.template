@@ -12,7 +12,7 @@ root-slot = "web"
 runtime = "process"
 
 [dependencies]
-lenso-capability-http-endpoint = { version = "=0.3.7", features = ["process"] }
+lenso-capability-http-endpoint = { version = "=0.3.8", features = ["process"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
