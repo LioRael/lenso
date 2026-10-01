@@ -1,0 +1,20 @@
+crates/lenso-engine-app/src/app/contracts.rs
+  h_9d56aba080c170 359-370
+crates/lenso-engine-app/src/app/contracts/tests.rs
+  h_9d56aba080c170 4-54
+crates/lenso-engine-authoring/src/discovery/project/rust_source.rs
+  h_9d56aba080c170 25,56-61,66,73,76-77,79,92-94,102
+crates/lenso-engine-authoring/src/discovery/tests.rs
+  h_9d56aba080c170 3-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "84c6840234e7c2a768c75aaa867320297e1a2b0b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
