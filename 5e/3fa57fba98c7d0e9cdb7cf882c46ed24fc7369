@@ -1,0 +1,21 @@
+crates/lenso-engine-app/src/app/contracts.rs
+  s_f24ec9a17597d4::t_176528e768930a 50,142-151,218-228,392-396,509-510,575-580,623-658,710,764-773,775-797,809-821,823-828
+crates/lenso-engine-app/src/app/contracts/tests.rs
+  s_f24ec9a17597d4::t_ac69ab571a2949 4-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e3fa57fba98c7d0e9cdb7cf882c46ed24fc7369",
+  "prompts": {},
+  "sessions": {
+    "s_f24ec9a17597d4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0f748-4186-76d3-a2d5-51e6339d7793",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
