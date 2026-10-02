@@ -1,0 +1,24 @@
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 550-557
+docs/performance/web-audit-native-gap-20261002.json
+  h_9d56aba080c170 1-432
+docs/performance/web-audit-next-measurements-20261002.md
+  h_9d56aba080c170 1-130
+docs/performance/workers-glue-review-20261002.json
+  h_9d56aba080c170 1-21
+docs/performance/workers-glue-review-20261002.md
+  h_9d56aba080c170 1-156
+docs/performance/workers-glue-review-20261002.patch
+  h_9d56aba080c170 1-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc772dbcd656ebaee9c8ed0583a4c5d855477b71",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
