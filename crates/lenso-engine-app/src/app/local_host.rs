@@ -14,6 +14,9 @@ use std::{
 
 mod business_snapshot;
 pub(crate) mod facilities;
+#[cfg(test)]
+mod generated_host_tests;
+mod linked_aliases;
 mod root_linking;
 pub(super) mod web_authoring;
 
@@ -115,6 +118,7 @@ pub(super) fn generate_in(
     let generated = cache.join("source");
     fs::create_dir_all(generated.join("src"))?;
     let mut dependencies = BTreeMap::<String, Value>::new();
+    let mut alias_identities = BTreeMap::new();
     // Native Plugins can be authored against an in-progress local Lenso
     // checkout. The generated Host must use the same package identities for
     // Kernel, Adapter, and codec types; a Cargo version string alone would
@@ -298,6 +302,15 @@ pub(super) fn generate_in(
             if !graph_seen.insert(id.clone()) {
                 continue;
             }
+            let package = packages
+                .iter()
+                .find(|package| package["id"] == id)
+                .context("reachable Cargo package")?;
+            // A proc-macro's normal children are host build dependencies,
+            // not target runtime Plugins or typed contracts.
+            if linked_aliases::is_proc_macro(package) {
+                continue;
+            }
             let node = nodes
                 .iter()
                 .find(|node| node["id"] == id)
@@ -393,6 +406,13 @@ pub(super) fn generate_in(
     let cohort = codec_cohorts.first().map_or("0.4", String::as_str);
     for (index, (plugin_id, package)) in root_linked.packages().enumerate() {
         let alias = format!("root_plugin_{index}");
+        alias_identities.insert(
+            alias.clone(),
+            package["id"]
+                .as_str()
+                .context("Root-linked Cargo ID")?
+                .to_owned(),
+        );
         dependencies.insert(alias.clone(), root_linked.dependency(plugin_id)?);
         linked.push_str(&format!("{alias}::link_plugin();\n"));
         business_snapshot.select(&alias, package)?;
@@ -701,9 +721,12 @@ pub(super) fn generate_in(
     let build_script = generated_host_build_script(adapters, cohort);
     write_generated_host_file(&generated.join("build.rs"), build_script.as_bytes())?;
 
+    linked_aliases::resolve(&generated.join("Cargo.toml"), &alias_identities)?;
+
     let output = super::cargo_command()
         .args([
             "build",
+            "--locked",
             "--release",
             "--message-format=json-render-diagnostics",
             "--manifest-path",

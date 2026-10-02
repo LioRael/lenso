@@ -16,7 +16,6 @@ pub(super) struct Sources {
 
 struct SelectedSource {
     package: Value,
-    features: BTreeSet<String>,
 }
 
 impl Sources {
@@ -56,13 +55,12 @@ impl Sources {
                         .any(|kind| kind == "lib" || kind == "rlib")))),
             "Root-selected linked Plugin `{id}` needs a Rust library target"
         );
-        let features = resolved_features(package, node)?;
-        if let Some(previous) = self.selected.get_mut(id) {
+        validate_resolved_features(package, node)?;
+        if let Some(previous) = self.selected.get(id) {
             ensure!(
                 previous.package["id"] == package["id"],
                 "Root-selected linked Plugin `{id}` has competing Cargo package identities"
             );
-            previous.features.extend(features);
         } else {
             ensure!(
                 self.selected.len() < 256,
@@ -72,7 +70,6 @@ impl Sources {
                 id.to_owned(),
                 SelectedSource {
                     package: package.clone(),
-                    features,
                 },
             );
         }
@@ -92,7 +89,11 @@ impl Sources {
             .context("selected linked Cargo source")?;
         let mut dependency = super::dependency(&source.package)?;
         dependency["default-features"] = json!(false);
-        dependency["features"] = json!(source.features);
+        // Retained native roots request the target-normal features. Metadata
+        // also aggregates build, dev and inactive-target features, so replaying
+        // that union here would change the runtime compilation. The generated
+        // graph must retain the selected identity through those native roots.
+        dependency["features"] = json!([]);
         Ok(dependency)
     }
 
@@ -135,7 +136,7 @@ fn has_root_intent(root: &Path, id: &str) -> anyhow::Result<bool> {
     })
 }
 
-fn resolved_features(package: &Value, node: &Value) -> anyhow::Result<BTreeSet<String>> {
+fn validate_resolved_features(package: &Value, node: &Value) -> anyhow::Result<()> {
     ensure!(
         node["id"] == package["id"],
         "linked Cargo feature identity differs"
@@ -144,7 +145,7 @@ fn resolved_features(package: &Value, node: &Value) -> anyhow::Result<BTreeSet<S
         .as_array()
         .context("linked Cargo resolved features")?
         .iter()
-        .map(|feature| {
+        .try_for_each(|feature| {
             let feature = feature.as_str().context("linked Cargo feature name")?;
             ensure!(
                 package["features"]
@@ -152,9 +153,8 @@ fn resolved_features(package: &Value, node: &Value) -> anyhow::Result<BTreeSet<S
                     .is_some_and(|declared| declared.contains_key(feature)),
                 "linked Cargo resolved feature is not declared by its package"
             );
-            Ok(feature.to_owned())
+            Ok(())
         })
-        .collect()
 }
 
 #[cfg(test)]
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(dependency["rev"], "a".repeat(40));
         assert!(dependency.get("path").is_none());
         assert_eq!(dependency["default-features"], false);
-        assert_eq!(dependency["features"], json!(["workers"]));
+        assert_eq!(dependency["features"], json!([]));
     }
 
     #[test]
