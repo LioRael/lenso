@@ -1,0 +1,24 @@
+crates/lenso-web-ingress-plugin/Cargo.toml
+  h_9d56aba080c170 93-100
+crates/lenso-web-ingress-plugin/benches/http_stream_event.rs
+  h_9d56aba080c170 1-245
+crates/lenso-web-ingress-plugin/benches/http_stream_fixture/mod.rs
+  h_9d56aba080c170 1-316
+crates/lenso-web-ingress-plugin/benches/http_stream_socket.rs
+  h_9d56aba080c170 1-355
+docs/performance/web-audit-stream-fixture-preparation-20261002.json
+  h_9d56aba080c170 1-49
+docs/performance/web-audit-stream-fixture-preparation-20261002.md
+  h_9d56aba080c170 1-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "026696d9b2ab287fd80f43f29b987a21d0f6b342",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
