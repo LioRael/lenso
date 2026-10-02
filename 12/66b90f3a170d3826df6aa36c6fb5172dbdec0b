@@ -1,0 +1,14 @@
+crates/lenso-web-ingress-plugin/benches/http_stream_tcp_paired.py
+  h_9d56aba080c170 1-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1266b90f3a170d3826df6aa36c6fb5172dbdec0b",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
