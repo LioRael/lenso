@@ -1,0 +1,18 @@
+crates/lenso-web-ingress-plugin/benches/http_ingress_paired.py
+  h_9d56aba080c170 1-116
+docs/performance/web-audit-20261002-results.json
+  h_9d56aba080c170 1-3726
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 3-6,100-101,166-348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5a426eb057526dc4b62dd4a6ebb27be8b2395b65",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
