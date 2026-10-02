@@ -1,0 +1,30 @@
+crates/lenso-web-ingress-plugin/Cargo.toml
+  h_9d56aba080c170 101-104
+crates/lenso-web-ingress-plugin/benches/http_portable_paired.py
+  h_9d56aba080c170 1-145
+crates/lenso-web-ingress-plugin/benches/http_portable_process.rs
+  h_9d56aba080c170 1-368
+crates/lenso-web-ingress-plugin/tests/portable_http_component.rs
+  h_9d56aba080c170 1-2
+docs/performance/web-audit-delivery-20261002.md
+  h_9d56aba080c170 79-85
+docs/performance/web-audit-host-evidence-reuse-20261002.md
+  h_9d56aba080c170 29-33
+docs/performance/web-audit-portable-fixture-preparation-20261002.md
+  h_9d56aba080c170 1-101
+docs/performance/web-audit-remaining-artifact-readiness-20261002.md
+  h_9d56aba080c170 64-70
+docs/performance/web-audit-workers-sdk-input-20261002.json
+  h_9d56aba080c170 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b58d64a0e37bc9c01d0b7c1dcaf64d4fdd4516aa",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
