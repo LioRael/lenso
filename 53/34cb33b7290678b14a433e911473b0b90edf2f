@@ -1,0 +1,18 @@
+crates/lenso-web-ingress-plugin/benches/http_ingress.rs
+  h_9d56aba080c170 141-146,149,163-171,417,425,433-442,452-460,467-468,472,479,497,506-579
+crates/lenso-web-ingress-plugin/benches/http_ingress_paired.py
+  h_9d56aba080c170 44-46,57,68-77,112
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 112-117,404-409
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5334cb33b7290678b14a433e911473b0b90edf2f",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
