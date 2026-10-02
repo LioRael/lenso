@@ -12,9 +12,11 @@ Rust 1.94.0, Python 3.11 or later, and a Linux or macOS shell are required.
 | [Metadata pipeline](metadata-pipeline/README.md) | Process synthetic file metadata | Two Plugins, a typed Capability and missing-provider rejection |
 
 No example uploads a file, sends an external notification, or requires real
-credentials. Listeners bind to loopback on an automatically chosen port. State
-is held in memory and is reset at restart; durable queues and storage are
-outside these examples.
+credentials. Listeners bind to loopback on an automatically chosen port. By
+default, state is held in memory and resets at restart. Background jobs also
+offer an optional single-App snapshot for orderly restart and recovery; see its
+README for the limits. Multi-writer storage, durable external queues and
+power-loss recovery remain outside these examples.
 
 ## Run all three
 
