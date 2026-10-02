@@ -1,0 +1,16 @@
+crates/lenso-web-ingress-plugin/src/server.rs
+  h_9d56aba080c170 257,269-272,274
+docs/performance/web-audit-tcp-nodelay-experiment-20261002.md
+  h_9d56aba080c170 1-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf8e067a214cb816736d182b5b7f9d100f7e2634",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
