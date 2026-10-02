@@ -11,7 +11,13 @@ lenso-native-adapter = { path = "../../../crates/lenso-native-adapter" }
 lenso-web-host = { path = "../../../crates/lenso-web-host" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "signal", "time"] }
 
+[dev-dependencies]
+bytes.workspace = true
+http.workspace = true
+lenso-kernel.workspace = true
+lenso-test = { path = "../../../crates/lenso-test" }
 [lints]
 workspace = true

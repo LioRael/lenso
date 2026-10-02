@@ -2693,12 +2693,17 @@ dependencies = [
 name = "lenso-onboarding-background-jobs"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "http",
  "lenso",
  "lenso-capability-http-endpoint",
+ "lenso-kernel",
  "lenso-native-adapter",
+ "lenso-test",
  "lenso-web-host",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
