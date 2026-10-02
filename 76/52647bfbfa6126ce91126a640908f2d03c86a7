@@ -1,0 +1,18 @@
+crates/lenso-web-ingress-plugin/benches/http_stream_samples.py
+  h_9d56aba080c170 1-144
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 565-574
+docs/performance/web-audit-stream-fixture-preparation-20261002.md
+  h_9d56aba080c170 72-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7652647bfbfa6126ce91126a640908f2d03c86a7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
