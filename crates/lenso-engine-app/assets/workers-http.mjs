@@ -72,8 +72,7 @@ function selectedRoutes(component) {
   return routes;
 }
 
-function matchPath(route, path) {
-  const actual = path === "/" ? [] : path.slice(1).split("/");
+function matchPath(route, actual) {
   if (actual.length !== route.segments.length) return null;
   const parameters = [];
   for (let index = 0; index < actual.length; index++) {
@@ -158,7 +157,9 @@ function decodeBody(value) {
   }
   const binary = atob(value);
   if (binary.length > MAX_BODY || btoa(binary) !== value) throw new TypeError("noncanonical Endpoint body");
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
 
 function endpointResponse(result, requestId) {
@@ -196,13 +197,22 @@ export function createWorkersHttpHandler(component) {
     if (url.pathname.includes("%")) return failure(400, "unsupported_path_encoding", requestId);
     if (request.method === "CONNECT" || request.headers.has("upgrade") || request.headers.has("cookie"))
       return failure(400, "unsupported_transport", requestId);
-    const pathMatches = routes.map((route) => ({ route, parameters: matchPath(route, url.pathname) }))
-      .filter((match) => match.parameters !== null);
-    if (!pathMatches.length) return failure(404, "not_found", requestId);
-    const match = pathMatches.find(({ route }) => route.method === method);
+    const actual = url.pathname === "/" ? [] : url.pathname.slice(1).split("/");
+    const allowed = new Set();
+    let match;
+    for (const route of routes) {
+      const parameters = matchPath(route, actual);
+      if (parameters === null) continue;
+      if (route.method === method) {
+        match = { route, parameters };
+        break;
+      }
+      allowed.add(route.method);
+    }
     if (!match) {
+      if (!allowed.size) return failure(404, "not_found", requestId);
       const response = failure(405, "method_not_allowed", requestId);
-      response.headers.set("allow", [...new Set(pathMatches.map(({ route }) => route.method))].sort().join(", "));
+      response.headers.set("allow", [...allowed].sort().join(", "));
       return response;
     }
     let credential;

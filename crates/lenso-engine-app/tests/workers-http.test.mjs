@@ -137,3 +137,86 @@ test("fails closed on overlapping or unsupported Guest route descriptions", () =
     }), TypeError);
   }
 });
+
+test("selects the requested method across overlapping paths and reports every allowed method", async () => {
+  const calls = [];
+  const fetch = createWorkersHttpHandler({
+    invoke(_capability, operation, input) {
+      if (operation === "describe") return JSON.stringify({ routes: [
+        { route_id: "read", method: "GET", path: "/teams/{team}/items/{item}" },
+        { route_id: "write", method: "POST", path: "/teams/{owner}/items/{id}" },
+        { route_id: "literal", method: "DELETE", path: "/teams/a/items/b" },
+        { route_id: "root", method: "GET", path: "/" },
+      ] });
+      calls.push(JSON.parse(input));
+      return JSON.stringify({ status: 200, headers: [], body: "" });
+    },
+  });
+  for (const [method, routeId, names] of [
+    ["GET", "read", ["team", "item"]],
+    ["POST", "write", ["owner", "id"]],
+    ["DELETE", "literal", []],
+  ]) {
+    const response = await fetch(new Request("http://fixture.invalid/teams/a/items/b", { method }));
+    assert.equal(response.status, 200);
+    const selected = calls.at(-1);
+    assert.equal(selected.route_id, routeId);
+    assert.deepEqual(selected.path_parameters.map(({ name }) => name), names);
+    assert.deepEqual(selected.path_parameters.map(({ value }) => value), names.length ? ["a", "b"] : []);
+  }
+  for (const [path, allow] of [
+    ["/teams/a/items/b", "DELETE, GET, POST"],
+    ["/teams/c/items/d", "GET, POST"],
+    ["/", "GET"],
+  ]) {
+    const response = await fetch(new Request(`http://fixture.invalid${path}`, { method: "PUT" }));
+    assert.equal(response.status, 405);
+    assert.equal(response.headers.get("allow"), allow);
+  }
+  assert.equal((await fetch(new Request("http://fixture.invalid/"))).status, 200);
+  assert.deepEqual(calls.at(-1).path_parameters, []);
+  const invoked = calls.length;
+  for (const path of ["/teams/a/items/b/", "/teams//items/b", "/absent"]) {
+    assert.equal((await fetch(new Request(`http://fixture.invalid${path}`))).status, 404);
+  }
+  assert.equal(calls.length, invoked);
+});
+
+test("routes a maximum-size manifest and preserves late-match parameters", async () => {
+  const calls = [];
+  const fetch = createWorkersHttpHandler({
+    invoke(_capability, operation, input) {
+      if (operation === "describe") return JSON.stringify({ routes: Array.from({ length: 256 }, (_, index) =>
+        ({ route_id: `r${index}`, method: "GET", path: `/r${index}/{id}` })) });
+      calls.push(JSON.parse(input));
+      return JSON.stringify({ status: 200, headers: [], body: "" });
+    },
+  });
+  for (const index of [0, 128, 255]) {
+    assert.equal((await fetch(new Request(`http://fixture.invalid/r${index}/value?mode=raw`))).status, 200);
+    assert.equal(calls.at(-1).route_id, `r${index}`);
+    assert.deepEqual(calls.at(-1).path_parameters, [{ name: "id", value: "value" }]);
+    assert.equal(calls.at(-1).query, "mode=raw");
+  }
+  const rejected = await fetch(new Request("http://fixture.invalid/r255/value", { method: "POST" }));
+  assert.equal(rejected.status, 405);
+  assert.equal(rejected.headers.get("allow"), "GET");
+  assert.equal(calls.length, 3);
+});
+
+test("preserves every byte at the body limit and rejects noncanonical or oversized response encodings", async () => {
+  const bytes = Uint8Array.from({ length: 65_536 }, (_, index) => index % 256);
+  const response = await handler()(new Request("http://fixture.invalid/bytes", { method: "POST", body: bytes }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(new Uint8Array(await response.arrayBuffer()), bytes);
+  for (const body of ["AA=", "AB==", "AA==\n", btoa("x".repeat(65_537))]) {
+    const invalid = createWorkersHttpHandler({
+      invoke(_capability, operation) {
+        return operation === "describe" ? JSON.stringify({ routes }) : JSON.stringify({ status: 200, headers: [], body });
+      },
+    });
+    const rejected = await invalid(new Request("http://fixture.invalid/items/42"));
+    assert.equal(rejected.status, 502);
+    assert.deepEqual(await rejected.json(), { error: "invalid_endpoint_response" });
+  }
+});
