@@ -1,0 +1,18 @@
+docs/performance/web-audit-20261002-native-allocations.json
+  h_9d56aba080c170 1-176
+docs/performance/web-audit-20261002-native-results.json
+  h_9d56aba080c170 1-5263
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 4-7,57,59,177,329,399-400,419-549
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f7110b92f9132942fe0df9439669d0a1048a6abc",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
