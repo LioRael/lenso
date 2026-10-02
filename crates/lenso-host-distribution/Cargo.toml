@@ -11,6 +11,7 @@ description = "Verified prepared-distribution assembly for Lenso Hosts."
 lenso-app-plan.workspace = true
 lenso-plugin-control-plane = { version = "0.4.25", path = "../lenso-plugin-control-plane" }
 lenso-runtime-codec = { version = "0.4.3", path = "../lenso-runtime-codec" }
+lenso-process-protocol = { version = "0.2.3", path = "../lenso-process-protocol" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

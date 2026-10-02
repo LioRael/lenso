@@ -464,7 +464,7 @@ impl JsonRequestTransport for BunGenerationV2 {
                         cancelled = futures::future::pending().boxed_local().fuse();
                     }
                 }
-                if let (Some(outcome), Some(state)) = (outcome.take(), settled) {
+                if let Some((outcome, state)) = take_settled_outcome(&mut outcome, settled) {
                     self.retire_invocation(&correlation_id, &scope.scope_id);
                     if cancellation_sent && state != SettlementState::Completed {
                         return Err(RuntimeFailure::Cancelled {
@@ -667,7 +667,7 @@ impl JsonStreamTransport for BunGenerationV2 {
                         cancelled = futures::future::pending().boxed_local().fuse();
                     }
                 }
-                let (Some(outcome), Some(state)) = (outcome.take(), settled) else {
+                let Some((outcome, state)) = take_settled_outcome(&mut outcome, settled) else {
                     continue;
                 };
                 if cancellation_sent && state != SettlementState::Completed {
@@ -1936,6 +1936,44 @@ fn protocol(detail: impl Into<String>) -> RuntimeFailure {
 fn unavailable() -> RuntimeFailure {
     RuntimeFailure::PluginFailure {
         detail: "Bun Authoring V2 Plugin is unavailable".to_owned(),
+    }
+}
+
+// RPC replies and execution settlements travel on different channels. Keep a
+// reply until settlement arrives, regardless of which future wins the select.
+fn take_settled_outcome<T>(
+    outcome: &mut Option<T>,
+    settled: Option<SettlementState>,
+) -> Option<(T, SettlementState)> {
+    let state = settled?;
+    outcome.take().map(|outcome| (outcome, state))
+}
+
+#[cfg(test)]
+mod settlement_tests {
+    use super::*;
+
+    #[test]
+    fn replies_survive_either_settlement_order() {
+        let mut reply = Some("response first");
+        assert_eq!(take_settled_outcome(&mut reply, None), None);
+        assert_eq!(reply, Some("response first"));
+        assert_eq!(
+            take_settled_outcome(&mut reply, Some(SettlementState::Completed)),
+            Some(("response first", SettlementState::Completed))
+        );
+        assert!(reply.is_none());
+
+        let mut reply = None;
+        assert_eq!(
+            take_settled_outcome(&mut reply, Some(SettlementState::Completed)),
+            None
+        );
+        reply = Some("settlement first");
+        assert_eq!(
+            take_settled_outcome(&mut reply, Some(SettlementState::Completed)),
+            Some(("settlement first", SettlementState::Completed))
+        );
     }
 }
 

@@ -186,7 +186,7 @@ fn workers_required_bundle(root: &std::path::Path) -> PathBuf {
 }
 
 #[test]
-fn host_build_rejects_stream_profile_and_does_not_replace_a_racing_output() {
+fn host_build_admits_stream_and_does_not_replace_a_racing_output() {
     let root = tempfile::tempdir().unwrap();
     let bundle = bundle_with_endpoint(
         root.path(),
@@ -198,16 +198,20 @@ fn host_build_rejects_stream_profile_and_does_not_replace_a_racing_output() {
         target: "javascript-bun".into(),
         out: root.path().join("output"),
     };
-    let error = materialize(declaration(bundle), &args).unwrap_err();
-    let message = format!("{error:#}");
-    assert!(
-        message.contains("missing_target_capabilities")
-            || message.contains("Request Capabilities only")
+    materialize(declaration(bundle), &args).unwrap();
+    let inventory: serde_json::Value =
+        serde_json::from_slice(&fs::read(args.out.join("bundles.json")).unwrap()).unwrap();
+    assert_eq!(
+        inventory[0]["target_capability_profile"],
+        serde_json::to_value(
+            crate::target_profile::bun_admission()
+                .unwrap()
+                .capability_profile()
+        )
+        .unwrap()
     );
-    assert!(!args.out.exists());
     let stage = root.path().join("stage");
     fs::create_dir(&stage).unwrap();
-    fs::create_dir(&args.out).unwrap();
     assert!(publish_new_output(&stage, &args.out).is_err());
     assert!(stage.is_dir());
     assert!(args.out.is_dir());

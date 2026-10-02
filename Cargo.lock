@@ -2538,6 +2538,7 @@ version = "0.1.24"
 dependencies = [
  "lenso-app-plan",
  "lenso-plugin-control-plane",
+ "lenso-process-protocol",
  "lenso-runtime-codec 0.4.4",
  "serde",
  "serde_json",

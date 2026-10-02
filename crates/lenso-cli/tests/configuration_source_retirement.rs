@@ -62,11 +62,10 @@ fn managed_host_helper() {
             }
         }
         event(&root, &format!("ready {pid} {token}"));
-        fs::write(
-            std::env::var_os("LENSO_RETIREMENT_READY").unwrap(),
-            b"lenso.local-host-ready.v1\n",
-        )
-        .unwrap();
+        let ready = PathBuf::from(std::env::var_os("LENSO_RETIREMENT_READY").unwrap());
+        let pending = ready.with_extension("pending");
+        fs::write(&pending, b"lenso.local-host-ready.v1\n").unwrap();
+        fs::rename(pending, ready).unwrap();
         termination.recv().await.unwrap();
         // This event represents completed managed teardown, not signal receipt.
         event(&root, &format!("stopped {pid}"));

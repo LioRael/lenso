@@ -328,6 +328,7 @@ impl RequestCapability for Store {
 #[derive(Debug)]
 struct StoreEndpoint {
     calls: Arc<AtomicUsize>,
+    request_ids: Arc<Mutex<Vec<u64>>>,
 }
 
 impl NativeRequestEndpoint for StoreEndpoint {
@@ -347,12 +348,13 @@ impl NativeRequestEndpoint for StoreEndpoint {
         &self,
         operation: &str,
         request: Box<dyn Any>,
-        _context: InvocationContext,
+        context: InvocationContext,
     ) -> futures::future::LocalBoxFuture<
         'static,
         Result<Result<Box<dyn Any>, Box<dyn Any>>, RuntimeFailure>,
     > {
         let calls = self.calls.clone();
+        let request_ids = self.request_ids.clone();
         let operation = operation.to_owned();
         Box::pin(async move {
             if operation != "read" {
@@ -367,6 +369,7 @@ impl NativeRequestEndpoint for StoreEndpoint {
                 }
             })?;
             calls.fetch_add(1, Ordering::Relaxed);
+            request_ids.lock().unwrap().push(context.request_id());
             Ok(Ok(Box::new(*request) as Box<dyn Any>))
         })
     }
@@ -375,6 +378,7 @@ impl NativeRequestEndpoint for StoreEndpoint {
 #[derive(Debug)]
 struct StoreFactory {
     calls: Arc<AtomicUsize>,
+    request_ids: Arc<Mutex<Vec<u64>>>,
 }
 
 impl NativePluginFactory for StoreFactory {
@@ -388,6 +392,7 @@ impl NativePluginFactory for StoreFactory {
     ) -> Result<NativePluginInstance, RuntimeFailure> {
         Ok(NativePluginInstance::new(vec![Rc::new(StoreEndpoint {
             calls: self.calls.clone(),
+            request_ids: self.request_ids.clone(),
         })]))
     }
 }
@@ -653,9 +658,27 @@ impl NativePluginFactory for NativeChannelFactory {
 }
 
 #[test]
-fn create_and_stop_can_call_named_dependencies() {
-    let source = fixture("v2-lifecycle-child.ts");
+fn repeated_lifecycle_requests_receive_distinct_child_correlation_ids() {
+    let fixture_source = fixture("v2-lifecycle-child.ts");
     let bundle = tempfile::tempdir().unwrap();
+    // Use an isolated copy: the upstream JS checkout belongs to another writer.
+    let source = bundle.path().join("lifecycle.ts");
+    let imports = fixture_source
+        .parent()
+        .unwrap()
+        .join("../../src/index.ts")
+        .canonicalize()
+        .unwrap();
+    let original = fs::read_to_string(&fixture_source).unwrap();
+    let modified = original
+        .replace("../../src/index.ts", imports.to_str().unwrap())
+        .replace(
+            r#"await dependencies.source.read(lifecycle, { document: "create" });"#,
+            r#"await dependencies.source.read(lifecycle, { document: "create" });
+    await dependencies.source.read(lifecycle, { document: "create-again" });"#,
+        );
+    assert_ne!(modified, original);
+    fs::write(&source, modified).unwrap();
     let entrypoint = bundle.path().join("plugin.js");
     assert!(
         Command::new(bun_binary())
@@ -676,9 +699,11 @@ fn create_and_stop_can_call_named_dependencies() {
         .with_artifact("lifecycle", artifact)
         .unwrap();
     let calls = Arc::new(AtomicUsize::new(0));
+    let request_ids = Arc::new(Mutex::new(Vec::new()));
     let adapters = ExecutionAdapterCatalog::new()
         .with_adapter(NativePluginRegistry::new().with_factory(StoreFactory {
             calls: calls.clone(),
+            request_ids: request_ids.clone(),
         }))
         .unwrap()
         .with_adapter(
@@ -710,12 +735,23 @@ fn create_and_stop_can_call_named_dependencies() {
     let app = driver
         .run(Kernel::start(plan, driver.clone(), adapters))
         .expect("create dependency should complete through the lifecycle callback pump");
-    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
     assert!(matches!(
         driver.run(app.shutdown(Duration::from_secs(1))),
         lenso_kernel::ShutdownOutcome::Clean
     ));
-    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert_eq!(calls.load(Ordering::Relaxed), 3);
+    let ids = request_ids.lock().unwrap();
+    assert_eq!(ids.len(), 3);
+    let distinct = ids
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        distinct.len(),
+        3,
+        "each dependency Request must fork its parent lifecycle context"
+    );
 }
 
 #[test]

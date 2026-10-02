@@ -82,8 +82,8 @@ pub(crate) fn request_wasm_component_admission(
 }
 
 /// The TypeScript Host uses the Bun Adapter's owned profile identity while
-/// declaring the two mechanisms it actually wires: Request dispatch and the
-/// trusted Bun child-process lifecycle. It does not advertise other Adapter
+/// declaring Request, typed Stream dispatch and the trusted Bun child-process
+/// lifecycle. It does not advertise other Adapter
 /// facilities until this Host owns and qualifies them end to end.
 pub(crate) fn bun_admission() -> anyhow::Result<RuntimeAdmission> {
     let adapter_profile = lenso_bun_adapter::bun_authoring_target_capability_profile();
@@ -93,13 +93,21 @@ pub(crate) fn bun_admission() -> anyhow::Result<RuntimeAdmission> {
         .context("validate Bun Adapter target capability profile")?;
     if adapter_profile.target_profile != lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE
         || !adapter_profile.supports(ExecutionTargetCapability::Request)
+        || !adapter_profile.supports(ExecutionTargetCapability::Stream)
         || !adapter_profile.supports(ExecutionTargetCapability::NativeProcess)
     {
-        bail!("Bun Adapter did not expose its required Request and NativeProcess target profile");
+        bail!(
+            "Bun Adapter did not expose its required Request, Stream and NativeProcess target profile"
+        );
     }
-    Ok(request_native_process_admission(
+    Ok(RuntimeAdmission::new(
         ExecutionClassId::bun_child_process(),
         adapter_profile.target_profile,
+        ExecutionTargetCapabilities::new([
+            ExecutionTargetCapability::Request,
+            ExecutionTargetCapability::Stream,
+            ExecutionTargetCapability::NativeProcess,
+        ]),
     ))
 }
 
