@@ -1,0 +1,32 @@
+crates/lenso-web-ingress-plugin/Cargo.toml
+  h_9d56aba080c170 89-92
+crates/lenso-web-ingress-plugin/benches/http_auth_process.rs
+  h_9d56aba080c170 1-317
+crates/lenso-web-ingress-plugin/benches/http_ingress_samples.py
+  h_9d56aba080c170 1-99
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 558-567
+docs/performance/web-audit-attribution-window-20261002.md
+  h_9d56aba080c170 3-8
+docs/performance/web-audit-auth-fixture-preparation-20261002.json
+  h_9d56aba080c170 1-39
+docs/performance/web-audit-auth-fixture-preparation-20261002.md
+  h_9d56aba080c170 1-84
+docs/performance/web-audit-native-attribution-20261002.json
+  h_9d56aba080c170 1-742
+docs/performance/web-audit-native-attribution-20261002.md
+  h_9d56aba080c170 1-112
+docs/performance/web-audit-next-measurements-20261002.md
+  h_9d56aba080c170 101-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "63872035741d15083be78bf8bdac578921aeab44",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
