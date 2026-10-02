@@ -1,0 +1,16 @@
+crates/lenso-kernel/src/request_handle.rs
+  h_9d56aba080c170 345-347
+crates/lenso-kernel/tests/many_invocation_context.rs
+  h_9d56aba080c170 1-200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5322f614777639539b4104ba079bd118a61482f8",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
