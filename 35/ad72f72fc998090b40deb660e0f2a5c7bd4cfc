@@ -1,0 +1,54 @@
+Cargo.lock
+  h_9d56aba080c170 2541
+crates/lenso-bun-adapter/src/adapter.rs
+  h_9d56aba080c170 246-253
+crates/lenso-bun-adapter/src/adapter_v2.rs
+  h_9d56aba080c170 467,670,1942-1979
+crates/lenso-bun-adapter/src/transport/mod.rs
+  h_9d56aba080c170 1249
+crates/lenso-bun-adapter/tests/authoring_v2.rs
+  h_9d56aba080c170 331,351,357,372,381,395,661-662,664-681,702,706,738,743-754
+crates/lenso-cli/tests/configuration_source_retirement.rs
+  h_9d56aba080c170 65-68
+crates/lenso-engine-app/src/app/build.rs
+  h_9d56aba080c170 89,290,292
+crates/lenso-engine-app/src/app/build/tests.rs
+  h_9d56aba080c170 189,201-211
+crates/lenso-engine-app/src/app/prepare/tests.rs
+  h_9d56aba080c170 103
+crates/lenso-engine-app/src/app/target_closure/tests.rs
+  h_9d56aba080c170 75,108-111,129-179
+crates/lenso-engine-app/src/target_profile.rs
+  h_9d56aba080c170 85-86,96,99-101,103,106-110
+crates/lenso-host-distribution/Cargo.toml
+  h_9d56aba080c170 14
+crates/lenso-host-distribution/src/lib.rs
+  h_9d56aba080c170 23,241-246,256-277,466,474,533-573
+crates/lenso-host-distribution/src/tests.rs
+  h_9d56aba080c170 9-55
+crates/lenso-host-runtime/Cargo.toml
+  h_9d56aba080c170 11
+crates/lenso-host-runtime/src/codecs.rs
+  h_9d56aba080c170 1-177
+crates/lenso-host-runtime/src/lib.rs
+  h_9d56aba080c170 1-726
+crates/lenso-host-runtime/src/main.rs
+  h_9d56aba080c170 2
+crates/lenso-kernel/src/request.rs
+  h_9d56aba080c170 402-417
+crates/lenso-runtime-codec/src/lib.rs
+  h_9d56aba080c170 1121-1124
+docs/components/runtime.md
+  h_9d56aba080c170 69-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35ad72f72fc998090b40deb660e0f2a5c7bd4cfc",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
