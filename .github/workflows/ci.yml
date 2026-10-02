@@ -25,12 +25,12 @@ jobs:
           toolchain: 1.94.0
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown,wasm32-wasip2
-      - name: Check formatting
-        run: cargo fmt --all -- --check
       - uses: Swatinem/rust-cache@v2
         with:
           # Seed via workflow_dispatch on main; sibling candidates cannot share caches.
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Check prepared inputs and fast gates
+        run: bash .github/scripts/check.sh preflight
       - name: Restore Wasm fixture builds
         id: wasm-fixtures
         uses: actions/cache/restore@v4
@@ -39,22 +39,10 @@ jobs:
           key: wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.toml', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.lock', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.toml', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.lock', 'tests/fixtures/portable-http-endpoint/guest/Cargo.toml', 'tests/fixtures/portable-http-endpoint/guest/Cargo.lock') }}
           restore-keys: |
             wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-
-      - name: Test release cohort packaging
-        run: bash .github/scripts/test-release-cohort-preflight.sh
-      - name: Test staged release gate and package selection
-        run: bash .github/scripts/test-release-scripts.sh
-      - name: Lint the workspace
-        run: cargo clippy --locked --workspace --all-targets --timings -- -D warnings
-      - name: Compile workspace tests
-        run: cargo test --locked --workspace --no-run --timings
-      - name: Test the workspace
-        run: cargo test --locked --workspace
+      - name: Run shared native gates
+        run: bash .github/scripts/check.sh native
       - name: Compile portable core and Workers HTTP Host for WebAssembly
-        run: |
-          cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-unknown-unknown
-          cargo check --locked --timings -p lenso-workers-http-parity-host --target wasm32-unknown-unknown
-          cargo check --locked --timings -p lenso-http-egress-plugin --no-default-features --features workers --target wasm32-unknown-unknown
-          cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2
+        run: bash .github/scripts/check.sh wasm
       - name: Save Wasm fixture builds on main
         if: ${{ github.ref == 'refs/heads/main' && steps.wasm-fixtures.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
@@ -93,20 +81,13 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: lenso
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: Build JavaScript fixtures
-        working-directory: lenso-js
-        run: |
-          bun install --frozen-lockfile
-          bun run build
-      - name: Test Rust and Bun protocol conformance
-        run: >-
-          cargo test --locked --manifest-path lenso/Cargo.toml
-          -p lenso-bun-adapter --features js-integration
-          --test authoring_v2 --test bun_cross_runtime --test process_v1_bootstrap
-          -- --include-ignored --test-threads=1
-      - name: Test plugin build symbol classification
-        run: node --test lenso/crates/lenso-engine-app/tests/plugin-build-symbols.test.mjs
+      - name: Run shared Bun conformance gates
+        working-directory: lenso
+        run: bash .github/scripts/check.sh bun
