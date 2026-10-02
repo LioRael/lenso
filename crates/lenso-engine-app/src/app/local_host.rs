@@ -15,6 +15,7 @@ use std::{
 mod business_snapshot;
 mod contract_alias;
 pub(crate) mod facilities;
+mod generated_files;
 #[cfg(test)]
 mod generated_host_tests;
 mod linked_aliases;
@@ -78,11 +79,7 @@ fn write_generated_host_file(path: &Path, contents: &[u8]) -> anyhow::Result<()>
 }
 
 fn copy_generated_host_provenance(generated: &Path, provenance: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(provenance.join("src"))?;
-    for file in ["Cargo.toml", "Cargo.lock", "src/main.rs", "build.rs"] {
-        fs::copy(generated.join(file), provenance.join(file))?;
-    }
-    Ok(())
+    generated_files::copy(generated, provenance)
 }
 
 fn contract_dependency_alias(
@@ -118,6 +115,7 @@ pub(super) fn generate_in(
     lock.lock().context("lock generated Host build cache")?;
     let generated = cache.join("source");
     fs::create_dir_all(generated.join("src"))?;
+    generated_files::clear_terminal(&generated)?;
     let mut dependencies = BTreeMap::<String, Value>::new();
     let mut alias_identities = BTreeMap::new();
     // Native Plugins can be authored against an in-progress local Lenso
@@ -1344,6 +1342,9 @@ fn distribution_file_paths(stage: &Path, runtime_artifacts: &[Value]) -> Vec<Str
     .into_iter()
     .map(str::to_owned)
     .collect::<Vec<_>>();
+    files.extend(
+        generated_files::TERMINAL_FILES.map(|path| format!(".lenso/generated-host/{path}")),
+    );
     if stage.join("runtime/bun").exists() {
         files.push("runtime/bun".into());
     }
