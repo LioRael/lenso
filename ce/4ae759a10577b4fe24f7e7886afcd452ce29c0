@@ -1,0 +1,16 @@
+docs/performance/web-audit-stream-results-20261002.json
+  h_9d56aba080c170 1-3502
+docs/performance/web-audit-stream-results-20261002.md
+  h_9d56aba080c170 1-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ce4ae759a10577b4fe24f7e7886afcd452ce29c0",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
