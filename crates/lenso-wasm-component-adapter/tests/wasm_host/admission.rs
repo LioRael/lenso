@@ -164,8 +164,7 @@ fn concurrent_import_plan() -> ResolvedAppPlan {
     AppComposition::new(instances, bindings).resolve().unwrap()
 }
 
-#[test]
-fn full_queue_rejection_preserves_running_component_and_queued_call() {
+fn qualification_component() -> Vec<u8> {
     // A control build may live in another worktree. Loading one prebuilt fixture
     // keeps its guest bytes identical while only the host guard changes.
     let guest = std::env::var_os("LENSO_WASM_QUALIFICATION_GUEST").map_or_else(
@@ -178,14 +177,21 @@ fn full_queue_rejection_preserves_running_component_and_queued_call() {
         .validate(true)
         .encode()
         .unwrap();
+    eprintln!(
+        "qualification pid={} guest={} component={}",
+        std::process::id(),
+        sha256_digest(&guest),
+        sha256_digest(&component)
+    );
+    component
+}
+
+#[test]
+fn full_queue_rejection_preserves_running_component_and_queued_call() {
+    let component = qualification_component();
     let artifact_file = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(artifact_file.path(), &component).unwrap();
     let digest = sha256_digest(&component);
-    eprintln!(
-        "qualification pid={} guest={} component={digest}",
-        std::process::id(),
-        sha256_digest(&guest)
-    );
     let artifact =
         ArtifactHandle::open(artifact_file.path(), &digest, component.len() as u64).unwrap();
     let (entered_a, entered) = oneshot::channel();
