@@ -1,0 +1,18 @@
+.github/scripts/check.sh
+  h_9d56aba080c170 34,39-43,55-68
+.github/scripts/test-check-bun.py
+  h_9d56aba080c170 1-77
+CONTRIBUTING.md
+  h_9d56aba080c170 141-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73417e9f85a21f5e0d4b9658de45db2434391ce8",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
