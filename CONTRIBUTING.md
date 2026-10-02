@@ -1,4 +1,6 @@
-# Contributing to Lenso vNext
+<a id="contributing-to-lenso-vnext"></a>
+
+# Contributing to Lenso
 
 Lenso is a local-first runtime built from replaceable Plugins, typed
 Capabilities, Runtime Drivers, and Execution Adapters. Read [`CONTEXT.md`](CONTEXT.md)
@@ -194,7 +196,7 @@ the approved set and preflight receipt before separately authorizing publish.
 
 Do not restore v0.3.x Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, migration, or TypeScript Service Kit code to this branch. If a
-feature needs one of those concepts, express it first as a vNext Capability,
+feature needs one of those concepts, express it first as a Capability,
 ordinary Plugin, Execution Adapter, authoring tool, or separate repository.
 
 Use Conventional Commits:

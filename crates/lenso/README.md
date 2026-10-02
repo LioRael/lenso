@@ -1,6 +1,6 @@
 # `lenso`
 
-The stable Rust authoring facade for Lenso vNext Plugins.
+The stable Rust authoring facade for Lenso Plugins.
 
 The `host` feature exposes both `CoreExecutionCatalogFactory` and
 `MultiExecutionCatalogFactory`. The core factory composes native/base, Process,

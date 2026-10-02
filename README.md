@@ -80,7 +80,7 @@ choices, and policy inputs. The Kernel validates and runs that Plan; it does
 not discover packages, choose versions, or rewrite the application graph while
 booting.
 
-The `main` branch contains the vNext runtime and its design evidence. The final
+The `main` branch contains the Lenso runtime and its design evidence. The final
 v0.3.x source remains available from the `lenso@0.3.47` tag and Git history.
 
 ## Workspace
@@ -115,12 +115,12 @@ them here. See ADR 0077.
 The Kernel has no Service, Provider, System Plane, Console, Story, Auth,
 PostgreSQL, Outbox, Workflow, migration, release, or discovery implementation.
 Those concerns can return only as ordinary Plugins, Execution Adapters,
-authoring tools, or separate repositories when a vNext decision assigns them an
-owner.
+authoring tools, or separate repositories when an architecture decision assigns
+them an owner.
 
 ## Agent skills
 
-The [project skill pack](skills/README.md) turns the vNext architecture into
+The [project skill pack](skills/README.md) turns the Lenso architecture into
 cross-repository planning, Capability, Plugin, App configuration, and runtime
 workflows without relocating implementation ownership. List the six workflows
 with:
@@ -161,7 +161,7 @@ checks; external products separately validate packaged framework releases.
 
 ## Branches
 
-`main` is the vNext integration and release line. Work starts from
+`main` is the integration and release line. Work starts from
 `origin/main`; maintainers validate an immutable candidate and fast-forward that
 exact revision. Landing, CI, package publication, and deployment remain
 separate operations.

@@ -1,11 +1,15 @@
-# Lenso vNext architecture
+<a id="lenso-vnext-architecture"></a>
+
+# Lenso architecture
 
 ## Status
 
-This document describes the vNext target and the implementation boundary that
-started in the minimal vNext workspace. Accepted ADRs from 0030 onward are the
-authoritative decisions; this overview routes readers through them without
-repeating every detailed invariant. The final v0.3.x source is retained by the
+This document describes the current Lenso architecture and its implementation
+boundaries. Accepted ADRs from 0030 onward are the authoritative decisions; this
+overview routes readers through them without repeating every detailed invariant.
+Implementation, package publication, and target qualification remain separate
+facts; an accepted architecture decision alone does not establish delivery.
+The final v0.3.x source is retained by the
 `lenso@0.3.47` tag and Git history.
 
 ## Shape
