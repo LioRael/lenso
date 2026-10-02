@@ -1,0 +1,22 @@
+crates/lenso-engine-app/benches/workers-http-paired.mjs
+  h_9d56aba080c170 1-87
+crates/lenso-engine-app/benches/workers-http.mjs
+  h_9d56aba080c170 1-134
+crates/lenso-engine-app/tests/workers-http.test.mjs
+  h_9d56aba080c170 140-205
+crates/lenso-web-ingress-plugin/benches/http_ingress.rs
+  h_9d56aba080c170 144,160-162,191,368-369,372-375,377-378,380-386,388,395,397-402,436,439-442,444-445,447,449,465,468,470-472,476-493,854,877,884,890,892-896,941-945
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 1-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "459e54f9f5a3f7cddca627b41014d1da13439c65",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
