@@ -6,7 +6,7 @@
 
 use std::{cell::RefCell, future::Future, rc::Rc, time::Duration};
 
-use futures::{channel::oneshot, task::SpawnError};
+use futures::{channel::oneshot, future::LocalBoxFuture, task::SpawnError};
 use lenso_kernel::{DeterministicDriver, DriverTask, RuntimeDriver};
 
 use crate::FaultInjector;
@@ -88,6 +88,17 @@ impl TestSimulator {
     /// Returns the current virtual monotonic instant.
     pub fn now(&self) -> Duration {
         self.driver.now()
+    }
+
+    /// Waits until a virtual monotonic instant on this Simulator's Driver.
+    ///
+    /// Deadlines use the same time origin as [`Self::now`]. An elapsed deadline
+    /// completes immediately; a future deadline requires [`Self::advance`] and
+    /// polling the waiting work, for example with [`Self::pump`]. Sleeping never
+    /// advances time automatically. The returned future owns its wait and can
+    /// be moved into a Plugin or a spawned task without borrowing the Simulator.
+    pub fn sleep_until(&self, deadline: Duration) -> LocalBoxFuture<'static, ()> {
+        self.driver.sleep_until(deadline)
     }
 
     pub(crate) fn driver(&self) -> DeterministicDriver {
@@ -279,6 +290,7 @@ impl SimulatorGate {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
+    use futures::FutureExt;
     use lenso_kernel::TaskOutcome;
 
     use super::*;
@@ -384,12 +396,12 @@ mod tests {
     fn advancing_virtual_time_wakes_elapsed_work_when_the_test_pumps() {
         let simulator = TestSimulator::new();
         let completed = Rc::new(RefCell::new(false));
-        let driver = simulator.driver();
+        let sleep = simulator.sleep_until(Duration::from_millis(5));
         let task = simulator
             .spawn({
                 let completed = completed.clone();
                 async move {
-                    driver.sleep_until(Duration::from_millis(5)).await;
+                    sleep.await;
                     *completed.borrow_mut() = true;
                 }
             })
@@ -397,10 +409,66 @@ mod tests {
 
         simulator.pump();
         assert!(!*completed.borrow());
-        simulator.advance(Duration::from_millis(5));
+        simulator.advance(Duration::from_millis(4));
+        simulator.pump();
+        assert!(!*completed.borrow());
+        simulator.advance(Duration::from_millis(1));
+        assert_eq!(simulator.now(), Duration::from_millis(5));
+        assert!(!*completed.borrow());
         simulator.pump();
         assert!(*completed.borrow());
         assert_eq!(simulator.run(task), TaskOutcome::Completed);
+    }
+
+    #[test]
+    fn sleeping_at_or_before_now_completes_without_advancing_time() {
+        let simulator = TestSimulator::new();
+        simulator.advance(Duration::from_millis(5));
+
+        for deadline in [Duration::from_millis(4), simulator.now()] {
+            assert_eq!(simulator.sleep_until(deadline).now_or_never(), Some(()));
+        }
+        assert_eq!(simulator.now(), Duration::from_millis(5));
+    }
+
+    #[test]
+    fn dropping_and_cancelling_sleepers_does_not_complete_peer_work() {
+        let simulator = TestSimulator::new();
+        let completed = Rc::new(RefCell::new(Vec::new()));
+        let deadline = Duration::from_millis(5);
+        drop(simulator.sleep_until(deadline));
+
+        let cancelled = simulator
+            .spawn({
+                let sleep = simulator.sleep_until(deadline);
+                let completed = completed.clone();
+                async move {
+                    sleep.await;
+                    completed.borrow_mut().push("cancelled");
+                }
+            })
+            .unwrap();
+        let peer = simulator
+            .spawn({
+                let sleep = simulator.sleep_until(deadline);
+                let completed = completed.clone();
+                async move {
+                    sleep.await;
+                    completed.borrow_mut().push("peer");
+                }
+            })
+            .unwrap();
+
+        simulator.pump();
+        cancelled.cancel();
+        assert_eq!(simulator.run(cancelled), TaskOutcome::Cancelled);
+        simulator.advance(Duration::from_millis(4));
+        simulator.pump();
+        assert!(completed.borrow().is_empty());
+
+        simulator.advance(Duration::from_millis(1));
+        assert_eq!(simulator.run(peer), TaskOutcome::Completed);
+        assert_eq!(&*completed.borrow(), &["peer"]);
     }
 
     #[test]
