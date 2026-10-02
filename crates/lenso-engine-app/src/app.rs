@@ -65,7 +65,9 @@ pub(crate) fn cargo_command() -> Command {
 }
 
 /// Create a build-phase command with only the toolchain environment allowlist.
-/// This removes ambient business credentials but is not a filesystem sandbox.
+/// This includes configured network proxies (and their authentication, if any)
+/// for build tools. It removes ambient business credentials, not build-network
+/// credentials, and is not a filesystem sandbox or a runtime environment.
 pub fn build_command(program: impl AsRef<OsStr>) -> Command {
     let mut command = Command::new(program);
     command.env_clear();
@@ -85,6 +87,16 @@ pub fn build_command(program: impl AsRef<OsStr>) -> Command {
         "CARGO_HOME",
         "CARGO_TARGET_DIR",
         "CARGO_NET_OFFLINE",
+        "CARGO_BUILD_JOBS",
+        "CARGO_HTTP_PROXY",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
         "RUSTUP_HOME",
         "RUSTUP_TOOLCHAIN",
         "RUSTC",
