@@ -1,0 +1,27 @@
+crates/lenso-browser-driver/Cargo.toml
+  s_973ebcd4426bd6::t_6bbb61867d758a 8
+crates/lenso-bun-adapter/Cargo.toml
+  s_973ebcd4426bd6::t_173f236cd053d1 8
+crates/lenso-native-adapter/Cargo.toml
+  s_973ebcd4426bd6::t_31c264f0fe5b35 8
+crates/lenso-runner/Cargo.toml
+  s_973ebcd4426bd6::t_f8952fa3534437 8
+crates/lenso/README.md
+  s_973ebcd4426bd6::t_e7bad848529393 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9911e4979bb4bb97700f51bc277ba62d752ceb07",
+  "prompts": {},
+  "sessions": {
+    "s_973ebcd4426bd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0fa09-26d3-7e61-985f-e1545172753d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
