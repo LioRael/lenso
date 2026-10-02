@@ -1,0 +1,22 @@
+crates/lenso-web-ingress-plugin/benches/http_ingress_attribution.py
+  h_9d56aba080c170 1-202
+docs/performance/web-audit-attribution-preflight-20261002.json
+  h_9d56aba080c170 1-97
+docs/performance/web-audit-attribution-window-20261002.md
+  h_9d56aba080c170 1-94
+docs/performance/workers-glue-independent-review-20261002.md
+  h_9d56aba080c170 1-55
+docs/performance/workers-glue-review-20261002.md
+  h_9d56aba080c170 4-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e55aa64b856a76871a61fcec6476cffc02f3e331",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
