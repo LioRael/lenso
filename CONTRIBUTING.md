@@ -138,6 +138,12 @@ required. For Bun, provide `LENSO_JS_ROOT` at the exact revision checked by the
 script and install Bun 1.4.2 and Node 24.18.0. macOS evidence does not replace
 Linux CI.
 
+The Bun phase also runs a small real-command regression: frozen installation of
+a zero-dependency temporary project, propagation of its deliberately failed
+build before Cargo, and a bounded negative fixture for shell-function recursion.
+Run `python3 .github/scripts/test-check-bun.py` with an installed Bun for this
+focused proof. It does not compile Rust or replace the pinned conformance gate.
+
 Prepared standalone fixture locks and Web scaffold/development Host cohort
 versions are checked before compilation. The independent Rust contract
 assertions remain in place. Missing cached dependencies can require network

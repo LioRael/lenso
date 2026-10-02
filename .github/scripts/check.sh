@@ -4,12 +4,6 @@ root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 cd "$root"
 export RUSTUP_TOOLCHAIN=1.94.0
 export PYTHONDONTWRITEBYTECODE=1
-phase="${1:-all}"
-case "$phase" in all|preflight|native|wasm|bun|distribution) ;; *) echo "Unknown check phase: $phase" >&2; exit 2 ;; esac
-printf 'Lenso check: sha=%s phase=%s os=%s\n' "$(git rev-parse HEAD)" "$phase" "$(uname -sm)"
-git status --short
-rustc --version
-cargo --version
 run() { printf '+ '; printf '%q ' "$@"; printf '\n'; "$@"; }
 preflight() {
   run python3 .github/scripts/check-fixture-inputs.py
@@ -37,11 +31,15 @@ bun_inputs() {
   test "$(node --version)" = v24.18.0
   test "$(git -C "$LENSO_JS_ROOT" rev-parse HEAD)" = 18e3cfb2837c8dfe5d5b907e39fe95ae15dc0a65
 }
-bun() {
-  bun_inputs
+bun_commands() {
   (cd "$LENSO_JS_ROOT"; run bun install --frozen-lockfile; run bun run build)
   run cargo test --locked -p lenso-bun-adapter --features js-integration --test authoring_v2 --test bun_cross_runtime --test process_v1_bootstrap -- --include-ignored --test-threads=1
   run node --test crates/lenso-engine-app/tests/plugin-build-symbols.test.mjs
+}
+check_bun() {
+  bun_inputs
+  run python3 .github/scripts/test-check-bun.py
+  bun_commands
 }
 distribution() (
   : "${EXPECTED_RELEASE_SET:?Supply the exact approved package_name/version JSON release set}"
@@ -54,4 +52,17 @@ distribution() (
   run env HOME="$distribution_root/home" CARGO_HOME="$distribution_root/cargo-home" \
     RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" bash .github/scripts/release-cohort-preflight.sh
 )
-if [[ "$phase" == all ]]; then bun_inputs; preflight; native; wasm; bun; else "$phase"; fi
+main() {
+  local phase="${1:-all}"
+  case "$phase" in all|preflight|native|wasm|bun|distribution) ;; *) echo "Unknown check phase: $phase" >&2; return 2 ;; esac
+  printf 'Lenso check: sha=%s phase=%s os=%s\n' "$(git rev-parse HEAD)" "$phase" "$(uname -sm)"
+  git status --short
+  rustc --version
+  cargo --version
+  case "$phase" in
+    all) bun_inputs; preflight; native; wasm; check_bun ;;
+    bun) check_bun ;;
+    *) "$phase" ;;
+  esac
+}
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; fi
