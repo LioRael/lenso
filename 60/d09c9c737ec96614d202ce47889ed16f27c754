@@ -1,0 +1,16 @@
+crates/lenso-web-ingress-plugin/benches/http_auth_process.py
+  h_9d56aba080c170 1-137
+docs/performance/web-audit-auth-fixture-preparation-20261002.md
+  h_9d56aba080c170 64-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60d09c9c737ec96614d202ce47889ed16f27c754",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
