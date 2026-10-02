@@ -36,6 +36,9 @@ use lenso_wasm_component_adapter::{EXECUTION_CLASS, WasmComponentAdapter, WasmCo
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+#[path = "wasm_host/admission.rs"]
+mod admission;
+
 static RUST_GUEST: OnceLock<Vec<u8>> = OnceLock::new();
 static RUST_HOST_IMPORT_GUEST: OnceLock<Vec<u8>> = OnceLock::new();
 static RUST_STREAM_GUEST: OnceLock<Vec<u8>> = OnceLock::new();
