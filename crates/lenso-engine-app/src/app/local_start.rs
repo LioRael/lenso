@@ -524,7 +524,7 @@ mod tests {
         let host = root.join(".lenso/host");
         fs::write(
             &host,
-            b"#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname \"$0\")/..\" && pwd)\nready=\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --ready-file) ready=$2; shift 2 ;;\n    --defer-activation) shift ;;\n    --) break ;;\n    *) exit 2 ;;\n  esac\ndone\nif [ -f \"$root/previous-pid\" ] && kill -0 \"$(cat \"$root/previous-pid\")\" 2>/dev/null; then\n  : > \"$root/overlap\"\nfi\nprintf '%s' \"$$\" > \"$root/previous-pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$ready\"\nexec sleep 60\n",
+            b"#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname \"$0\")/..\" && pwd)\nready=\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --ready-file) ready=$2; shift 2 ;;\n    --defer-activation) shift ;;\n    --) break ;;\n    *) exit 2 ;;\n  esac\ndone\nif [ -f \"$root/previous-pid\" ] && kill -0 \"$(cat \"$root/previous-pid\")\" 2>/dev/null; then\n  : > \"$root/overlap\"\nfi\nprintf '%s' \"$$\" > \"$root/previous-pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$ready.pending\"\nmv \"$ready.pending\" \"$ready\"\nexec sleep 60\n",
         )
         .unwrap();
         fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
@@ -792,7 +792,7 @@ mod tests {
         let host = root.join(".lenso/host");
         fs::write(
             &host,
-            b"#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname \"$0\")/..\" && pwd)\ntrap 'exit 0' TERM\nwhile [ \"$1\" != --ready-file ]; do shift; done\nprintf '%s' \"$$\" > \"$root/previous-pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\nwhile :; do sleep 0.1; done\n",
+            b"#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname \"$0\")/..\" && pwd)\ntrap 'exit 0' TERM\nwhile [ \"$1\" != --ready-file ]; do shift; done\nprintf '%s' \"$$\" > \"$root/previous-pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$2.pending\"\nmv \"$2.pending\" \"$2\"\nwhile :; do sleep 0.1; done\n",
         )
         .unwrap();
         fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
@@ -836,6 +836,34 @@ mod tests {
         assert!(!root.join(".lenso/supervised-start.uncertain").exists());
     }
 
+    #[tokio::test]
+    async fn partially_published_host_readiness_is_rejected_before_activation() {
+        let (temporary, _snapshot, policy) = fixture();
+        let root = temporary.path().to_path_buf();
+        let host = root.join(".lenso/host");
+        // Reproduce the publication gap deterministically: expose the final
+        // pathname before its contents, just as shell redirection does.
+        fs::write(
+            &host,
+            b"#!/bin/sh\nset -eu\nwhile [ \"$1\" != --ready-file ]; do shift; done\n: > \"$2\"\nexec sleep 60\n",
+        ).unwrap();
+        fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
+        let error = tokio::time::timeout(Duration::from_secs(3), run(root.clone(), policy, None))
+            .await
+            .expect("a visible incomplete receipt must fail, not wait for activation")
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("invalid readiness receipt"),
+            "{error:#}"
+        );
+        assert_eq!(
+            configuration_source::inspect_status(&root)
+                .unwrap()
+                .last_activated_revision,
+            None,
+        );
+    }
+
     #[test]
     fn detached_descendant_helper() {
         let Some(pid_file) = std::env::var_os("LENSO_TEST_DETACHED_PID_FILE") else {
@@ -857,16 +885,19 @@ mod tests {
         let quoted_binary = test_binary.to_string_lossy().replace('\'', "'\\''");
         let host = root.join(".lenso/host");
         let script = format!(
-            "#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname \"$0\")/..\" && pwd)\ntrap 'exit 0' TERM\nif [ ! -f \"$root/previous-pid\" ]; then\n  LENSO_TEST_DETACHED_PID_FILE=\"$root/detached-pid\" '{quoted_binary}' --exact app::local_start::tests::detached_descendant_helper >/dev/null 2>&1 &\n  tries=0\n  while [ ! -s \"$root/detached-pid\" ]; do\n    tries=$((tries + 1))\n    [ \"$tries\" -lt 200 ] || exit 1\n    sleep 0.01\n  done\nfi\nwhile [ \"$1\" != --ready-file ]; do shift; done\nprintf '%s' \"$$\" > \"$root/previous-pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$2\"\nwhile :; do sleep 0.1; done\n"
+            "#!/bin/sh\nset -eu\nroot=$(CDPATH= cd -- \"$(dirname \"$0\")/..\" && pwd)\ntrap 'exit 0' TERM\nif [ ! -f \"$root/previous-pid\" ]; then\n  LENSO_TEST_DETACHED_PID_FILE=\"$root/detached-pid\" '{quoted_binary}' --exact app::local_start::tests::detached_descendant_helper >/dev/null 2>&1 &\n  tries=0\n  while [ ! -s \"$root/detached-pid\" ]; do\n    tries=$((tries + 1))\n    [ \"$tries\" -lt 200 ] || exit 1\n    sleep 0.01\n  done\nfi\nwhile [ \"$1\" != --ready-file ]; do shift; done\nprintf '%s' \"$$\" > \"$root/previous-pid\"\nprintf 'lenso.local-host-ready.v1\\n' > \"$2.pending\"\nmv \"$2.pending\" \"$2\"\nwhile :; do sleep 0.1; done\n"
         );
         fs::write(&host, script).unwrap();
         fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
         let detached_guard = DetachedTestChild(root.join("detached-pid"));
         let ready = root.join("supervisor-ready");
-        let supervised = tokio::spawn(run(root.clone(), policy.clone(), Some(ready.clone())));
+        let mut supervised = tokio::spawn(run(root.clone(), policy.clone(), Some(ready.clone())));
         tokio::time::timeout(Duration::from_secs(5), async {
             while !ready.is_file() {
-                tokio::time::sleep(Duration::from_millis(25)).await;
+                tokio::select! {
+                    outcome = &mut supervised => panic!("supervisor exited before readiness: {outcome:?}"),
+                    _ = tokio::time::sleep(Duration::from_millis(25)) => {}
+                }
             }
         })
         .await
@@ -978,7 +1009,7 @@ mod tests {
         let host = root.join(".lenso/host");
         fs::write(
             &host,
-            b"#!/bin/sh\nset -eu\nsleep 2\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --ready-file) ready=$2; shift 2 ;;\n    *) shift ;;\n  esac\ndone\nprintf 'lenso.local-host-ready.v1\\n' > \"$ready\"\nexec sleep 60\n",
+            b"#!/bin/sh\nset -eu\nsleep 2\nwhile [ \"$#\" -gt 0 ]; do\n  case \"$1\" in\n    --ready-file) ready=$2; shift 2 ;;\n    *) shift ;;\n  esac\ndone\nprintf 'lenso.local-host-ready.v1\\n' > \"$ready.pending\"\nmv \"$ready.pending\" \"$ready\"\nexec sleep 60\n",
         )
         .unwrap();
         fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).unwrap();
