@@ -14,12 +14,14 @@ mod clock;
 mod entropy;
 mod faults;
 mod receipt;
+mod receipt_diagnostics;
 mod simulator;
 
 pub use clock::TestWallClock;
 pub use entropy::TestEntropy;
 pub use faults::{FaultInjector, FaultPointError, ScenarioBoundary, SimulatorFault};
 pub use receipt::{ScenarioReceipt, ScenarioReceiptEvent, ScenarioTerminal, ScenarioTransition};
+pub use receipt_diagnostics::{ReceiptDifference, first_receipt_difference};
 pub use simulator::{SimulatorGate, SimulatorResource, TestSimulator};
 
 /// Builder for one deterministic native Test App.
