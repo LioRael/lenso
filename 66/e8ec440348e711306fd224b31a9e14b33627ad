@@ -1,0 +1,20 @@
+docs/performance/web-audit-tcp-nodelay-candidate-20261002.patch
+  h_9d56aba080c170 1-26
+docs/performance/web-audit-tcp-nodelay-experiment-20261002.md
+  h_9d56aba080c170 3-9
+docs/performance/web-audit-tcp-nodelay-results-20261002.json
+  h_9d56aba080c170 1-9058
+docs/performance/web-audit-tcp-nodelay-results-20261002.md
+  h_9d56aba080c170 1-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "66e8ec440348e711306fd224b31a9e14b33627ad",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
