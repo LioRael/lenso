@@ -25,20 +25,31 @@ wasm() {
   run cargo check --locked --timings -p lenso-http-egress-plugin --no-default-features --features workers --target wasm32-unknown-unknown
   run cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2
 }
-bun_inputs() {
+verify_js_revision() {
   : "${LENSO_JS_ROOT:?Set LENSO_JS_ROOT to the pinned lenso-js fixture checkout}"
+  local expected_js_revision=f0ea1bd4254dfecd68dbbe7a4c108e7ef81e3e2a
+  local actual_js_revision
+  actual_js_revision="$(git -C "$LENSO_JS_ROOT" rev-parse HEAD)" || return
+  if [[ "$actual_js_revision" != "$expected_js_revision" ]]; then
+    echo "Expected lenso-js $expected_js_revision, got $actual_js_revision" >&2
+    return 1
+  fi
+}
+bun_inputs() {
   test "$(bun --version)" = 1.4.2
   test "$(node --version)" = v24.18.0
-  test "$(git -C "$LENSO_JS_ROOT" rev-parse HEAD)" = 18e3cfb2837c8dfe5d5b907e39fe95ae15dc0a65
+  verify_js_revision
 }
 bun_commands() {
   (cd "$LENSO_JS_ROOT"; run bun install --frozen-lockfile; run bun run build)
   run cargo test --locked -p lenso-bun-adapter --features js-integration --test authoring_v2 --test bun_cross_runtime --test process_v1_bootstrap -- --include-ignored --test-threads=1
+  run cargo test --locked -p lenso-engine-app --lib app::local_workflow::workers::linked::runtime_tests -- --ignored
   run node --test crates/lenso-engine-app/tests/plugin-build-symbols.test.mjs
 }
 check_bun() {
   bun_inputs
   run python3 .github/scripts/test-check-bun.py
+  run python3 .github/scripts/test-check-js-pin.py
   bun_commands
 }
 distribution() (
