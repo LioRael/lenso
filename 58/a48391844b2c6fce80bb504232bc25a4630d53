@@ -1,0 +1,152 @@
+docs/performance/web-audit-portable-source3-20261002-hashes.json
+  h_9d56aba080c170 1-347
+docs/performance/web-audit-portable-source3-20261002-raw/allocation.json
+  h_9d56aba080c170 1-61
+docs/performance/web-audit-portable-source3-20261002-raw/analysis.json
+  h_9d56aba080c170 1-265
+docs/performance/web-audit-portable-source3-20261002-raw/build-smokes-receipt.json
+  h_9d56aba080c170 1-401
+docs/performance/web-audit-portable-source3-20261002-raw/runner.stdout
+  h_9d56aba080c170 1-10
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-0-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-0-native.process.json
+  h_9d56aba080c170 1-349
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-0-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-0-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-0-wasmtime.process.json
+  h_9d56aba080c170 1-741
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-0-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-1-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-1-native.process.json
+  h_9d56aba080c170 1-357
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-1-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-1-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-1-wasmtime.process.json
+  h_9d56aba080c170 1-837
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-1-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-2-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-2-native.process.json
+  h_9d56aba080c170 1-357
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-2-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-2-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-2-wasmtime.process.json
+  h_9d56aba080c170 1-805
+docs/performance/web-audit-portable-source3-20261002-raw/runs/resources-2-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/status.json
+  h_9d56aba080c170 1-6378
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-0-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-0-native.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-0-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-0-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-0-wasmtime.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-0-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-1-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-1-native.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-1-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-1-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-1-wasmtime.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-1-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-2-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-2-native.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-2-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-2-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-2-wasmtime.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-2-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-3-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-3-native.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-3-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-3-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-3-wasmtime.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-3-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-4-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-4-native.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-4-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-4-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-4-wasmtime.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-4-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-5-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-5-native.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-5-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-5-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-5-wasmtime.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-5-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-6-native.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-6-native.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-6-native.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-6-wasmtime.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-6-wasmtime.process.json
+  h_9d56aba080c170 1-208
+docs/performance/web-audit-portable-source3-20261002-raw/runs/timing-6-wasmtime.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-portable-source3-20261002-raw/source-receipt.json
+  h_9d56aba080c170 1-64
+docs/performance/web-audit-portable-source3-results-20261002.md
+  h_9d56aba080c170 1-26
+docs/performance/web-audit-workerd-setup-next-window-20261002.json
+  h_9d56aba080c170 1-100
+docs/performance/web-audit-workerd-setup-next-window-20261002.md
+  h_9d56aba080c170 1-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58a48391844b2c6fce80bb504232bc25a4630d53",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
