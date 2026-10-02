@@ -128,10 +128,13 @@ Rust target installed.
 Use the first failing tool's diagnostic to distinguish a missing toolchain,
 registry access failure, unavailable pinned release, or compilation error.
 The CLI clears ambient environment variables for build subprocesses, retaining
-a toolchain allowlist. A dependency command can therefore succeed directly in
-your shell while failing inside the CLI in an environment that requires a
-proxy. Complete dependency installation in the generated project with your
-normal language tools. If the Cargo dependencies needed by the development Host
+a toolchain allowlist that includes `CARGO_BUILD_JOBS`, `CARGO_HTTP_PROXY`, and
+the common uppercase and lowercase HTTP, HTTPS, ALL and NO proxy variables.
+Proxy authentication is build-network configuration and is inherited; ambient
+business credentials are not. Other shell-only settings can still make a
+dependency command behave differently inside the CLI. Complete dependency
+installation in the generated project with your normal language tools. If the
+Cargo dependencies needed by the development Host
 are already cached, retry with `CARGO_NET_OFFLINE=true lenso plugin dev`; an
 offline cache miss still requires explicitly fetching the missing dependencies.
 Do not replace exact dependency
