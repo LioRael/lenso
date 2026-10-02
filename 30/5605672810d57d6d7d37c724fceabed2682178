@@ -1,0 +1,20 @@
+docs/performance/web-audit-delivery-20261002.md
+  h_9d56aba080c170 86-92
+docs/performance/web-audit-portable-fixture-preparation-20261002.md
+  h_9d56aba080c170 3-7
+docs/performance/web-audit-portable-setup-results-20261002.json
+  h_9d56aba080c170 1-141
+docs/performance/web-audit-portable-setup-results-20261002.md
+  h_9d56aba080c170 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "305605672810d57d6d7d37c724fceabed2682178",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
