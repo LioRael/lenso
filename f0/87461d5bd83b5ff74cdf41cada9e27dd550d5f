@@ -1,0 +1,16 @@
+docs/performance/web-audit-remaining-artifact-readiness-20261002.json
+  h_9d56aba080c170 1-143
+docs/performance/web-audit-remaining-artifact-readiness-20261002.md
+  h_9d56aba080c170 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f087461d5bd83b5ff74cdf41cada9e27dd550d5f",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
