@@ -1,0 +1,14 @@
+docs/performance/web-audit-20261002.md
+  h_9d56aba080c170 137-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7bd2c4aef2a180677a3d5115cc796835242c742d",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
