@@ -1,0 +1,16 @@
+crates/lenso-engine-app/assets/workers-http.mjs
+  h_9d56aba080c170 75,160-162,200-211,213,215
+crates/lenso-engine-app/tests/workers-http.test.mjs
+  h_9d56aba080c170 140-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4d696abacd0edb3918bcaff6e2ef629e402e2d14",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
