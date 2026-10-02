@@ -1,0 +1,16 @@
+docs/performance/web-audit-portable-next-window-20261002.json
+  h_9d56aba080c170 1-184
+docs/performance/web-audit-portable-next-window-20261002.md
+  h_9d56aba080c170 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea52e18b613c0674721bf6496df7d9e7ac652fbd",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
