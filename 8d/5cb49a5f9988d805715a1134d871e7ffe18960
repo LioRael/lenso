@@ -1,0 +1,14 @@
+crates/lenso-web-ingress-plugin/src/server.rs
+  h_9d56aba080c170 257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8d5cb49a5f9988d805715a1134d871e7ffe18960",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
