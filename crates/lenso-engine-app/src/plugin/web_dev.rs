@@ -2,6 +2,7 @@ use std::{
     env,
     fmt::Write as _,
     fs,
+    future::Future,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -18,6 +19,9 @@ use super::{
     CargoPackage, DevImplementationArg, PluginDevArgs, cargo_target_directory, project_root,
     read_package,
 };
+
+mod build_process;
+mod diagnostics;
 
 const HOST_SOURCE: &str = r#"
 use lenso_kernel::RuntimeFailure;
@@ -144,33 +148,84 @@ pub(super) async fn run(args: PluginDevArgs) -> anyhow::Result<()> {
     validate_args(&args)?;
     let root = project_root(args.repo_root.clone())?;
     let mut watcher = args.watch.then(|| SourceWatcher::new(&root)).transpose()?;
+    let mut shutdown = Box::pin(tokio::signal::ctrl_c());
+    // Register before staging or starting Cargo; keep the same listener across
+    // build, failure and serving states so signals between states are retained.
+    if let std::task::Poll::Ready(result) = futures::poll!(&mut shutdown) {
+        result.context("listen for Ctrl-C")?;
+        return Ok(());
+    }
 
     loop {
         // A preset stages immutable source. Reprepare after a watch event so
         // the next Host points to the new generation and rechecks its cohort.
-        let package = read_package(&root.join("Cargo.toml"))?;
-        let host = DevHost::prepare(&root, &package)?;
-        host.build()?;
-        let mut child = host.spawn(args.json)?;
+        let attempt = async {
+            let package = read_package(&root.join("Cargo.toml"))?;
+            let Some(target_directory) =
+                build_process::target_directory(&root, &mut shutdown).await?
+            else {
+                return Ok(None);
+            };
+            let host = DevHost::stage(&root, &package, target_directory)?;
+            let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+            let mut lock = crate::app::build_command(cargo);
+            lock.arg("generate-lockfile")
+                .env("CARGO_TARGET_DIR", &host.target_directory)
+                .current_dir(host.project.path());
+            if !build_process::run(lock, "lock Web development Host", &mut shutdown, |line| {
+                eprintln!("{line}");
+            })
+            .await?
+                || !diagnostics::build_for_dev(
+                    host.project.path(),
+                    &host.target_directory,
+                    &host.project_root,
+                    &host.plugin_manifest,
+                    &mut shutdown,
+                )
+                .await?
+            {
+                return Ok(None);
+            }
+            let child = host.spawn(args.json)?;
+            Ok::<_, anyhow::Error>(Some((host, child)))
+        }
+        .await;
+        let (_host, mut child) = match attempt {
+            Ok(Some(running)) => running,
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                let Some(watcher) = watcher.as_mut() else {
+                    return Err(error);
+                };
+                if wait_after_failure(watcher, &error, &mut shutdown).await? {
+                    continue;
+                }
+                return Ok(());
+            }
+        };
         if let Some(watcher) = watcher.as_mut() {
             tokio::select! {
                 result = child.wait() => {
                     let status = result.context("wait for Web development Host")?;
                     if !status.success() {
-                        bail!("Web development Host exited with {status}");
+                        let error = anyhow::anyhow!("Web development Host exited with {status}");
+                        if wait_after_failure(watcher, &error, &mut shutdown).await? {
+                            continue;
+                        }
                     }
                     return Ok(());
                 }
                 result = watcher.changed() => {
-                    result?;
                     stop(&mut child).await;
+                    result?;
                     if !args.json {
                         println!("Rebuilding Web Plugin after source changes.");
                     }
                 }
-                result = tokio::signal::ctrl_c() => {
+                result = &mut shutdown => {
                     result.context("listen for Ctrl-C")?;
-                    wait_for_signal_shutdown(&mut child).await;
+                    stop(&mut child).await;
                     return Ok(());
                 }
             }
@@ -183,12 +238,32 @@ pub(super) async fn run(args: PluginDevArgs) -> anyhow::Result<()> {
                     }
                     return Ok(());
                 }
-                result = tokio::signal::ctrl_c() => {
+                result = &mut shutdown => {
                     result.context("listen for Ctrl-C")?;
-                    wait_for_signal_shutdown(&mut child).await;
+                    stop(&mut child).await;
                     return Ok(());
                 }
             }
+        }
+    }
+}
+
+async fn wait_after_failure(
+    watcher: &mut SourceWatcher,
+    error: &anyhow::Error,
+    shutdown: &mut (impl Future<Output = std::io::Result<()>> + Unpin),
+) -> anyhow::Result<bool> {
+    eprintln!(
+        "Web Plugin development failed: {error:#}\nWaiting for source changes; press Ctrl-C to stop."
+    );
+    tokio::select! {
+        result = watcher.changed() => {
+            result?;
+            Ok(true)
+        }
+        result = shutdown => {
+            result.context("listen for Ctrl-C")?;
+            Ok(false)
         }
     }
 }
@@ -210,14 +285,29 @@ pub(super) struct DevHost {
     project: TempDir,
     executable: PathBuf,
     project_root: PathBuf,
+    plugin_manifest: PathBuf,
     target_directory: PathBuf,
 }
 
 impl DevHost {
     pub(super) fn prepare(root: &Path, package: &CargoPackage) -> anyhow::Result<Self> {
+        let host = Self::stage(root, package, cargo_target_directory(root)?)?;
+        run_cargo(
+            host.project.path(),
+            &host.target_directory,
+            ["generate-lockfile"],
+            "lock Web development Host",
+        )?;
+        Ok(host)
+    }
+
+    fn stage(
+        root: &Path,
+        package: &CargoPackage,
+        target_directory: PathBuf,
+    ) -> anyhow::Result<Self> {
         let framework = framework_source(root)?;
         let project = tempfile::tempdir().context("create Web development Host directory")?;
-        let target_directory = cargo_target_directory(root)?;
         let package_name = host_package_name(root, &package.name);
         let prepared_source =
             crate::app::prepare_web_source(root, &project.path().join("plugin-source"))?;
@@ -231,12 +321,6 @@ impl DevHost {
             host_source(root, &prepared_source)?,
         )
         .context("write Web development Host source")?;
-        run_cargo(
-            project.path(),
-            &target_directory,
-            ["generate-lockfile"],
-            "lock Web development Host",
-        )?;
         let executable = target_directory.join("debug").join(if cfg!(windows) {
             format!("{package_name}.exe")
         } else {
@@ -246,16 +330,18 @@ impl DevHost {
             project,
             executable,
             project_root: root.to_path_buf(),
+            plugin_manifest: fs::canonicalize(prepared_source.join("Cargo.toml"))
+                .context("resolve built Web Plugin manifest")?,
             target_directory,
         })
     }
 
     pub(super) fn build(&self) -> anyhow::Result<()> {
-        run_cargo(
+        diagnostics::build(
             self.project.path(),
             &self.target_directory,
-            ["build", "--locked"],
-            "build Web development Host",
+            &self.project_root,
+            &self.plugin_manifest,
         )
     }
 
@@ -529,15 +615,6 @@ fn run_cargo<const N: usize>(
         bail!("{action} failed with {status}");
     }
     Ok(())
-}
-
-async fn wait_for_signal_shutdown(child: &mut Child) {
-    if tokio::time::timeout(Duration::from_secs(4), child.wait())
-        .await
-        .is_err()
-    {
-        stop(child).await;
-    }
 }
 
 async fn stop(child: &mut Child) {

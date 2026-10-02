@@ -84,8 +84,8 @@ lenso plugin dev
 ```
 
 This path generates a linked native Rust Plugin with `#[lenso::plugin]` and a
-typed `#[endpoint]` implementation. Its starter operations demonstrate both
-`#[post]` and body-carrying `#[query]` requests, typed success responses, and
+typed `#[endpoint]` implementation. Its starter operations demonstrate JSON-body
+`#[post]` requests for creation and search, typed success responses, and
 RFC 9457 Problem responses. The generated test uses `EndpointTest`, so the
 Plugin is exercised without opening a socket.
 
@@ -104,6 +104,54 @@ Bundle directories. A
 receiving Host independently validates those bytes again during installation.
 `check` and `dev` use development artifacts; `pack` is the
 release-profile proof and remains the only distribution build.
+
+### Resume after scaffold installation fails
+
+`plugin new` writes the project before installing dependencies and checking it.
+An installation or compile failure leaves those files in place. Repeating
+`plugin new` rejects the existing directory; preserve your source and resume
+inside it. For the Web starter above:
+
+```sh
+cd company.greetings-http
+cargo generate-lockfile
+cargo test --locked
+lenso plugin dev
+```
+
+`--no-install` also leaves lockfile generation and the initial check to you.
+For a Bun project, resume with `bun install` and `bun run check`, then use
+`lenso plugin check`. For a Rust Process project, generate its lockfile before
+`lenso plugin check`. Wasm and multi-output projects also need the scaffold's
+Rust target installed.
+
+Use the first failing tool's diagnostic to distinguish a missing toolchain,
+registry access failure, unavailable pinned release, or compilation error.
+The CLI clears ambient environment variables for build subprocesses, retaining
+a toolchain allowlist. A dependency command can therefore succeed directly in
+your shell while failing inside the CLI in an environment that requires a
+proxy. Complete dependency installation in the generated project with your
+normal language tools. If the Cargo dependencies needed by the development Host
+are already cached, retry with `CARGO_NET_OFFLINE=true lenso plugin dev`; an
+offline cache miss still requires explicitly fetching the missing dependencies.
+Do not replace exact dependency
+pins with private source paths to treat an unpublished or incompatible cohort
+as a successful registry installation. A generated directory alone is not
+evidence that the Plugin compiles or that a Host can consume it.
+
+For the linked Web path, `plugin dev --watch` stops the previous Host before
+rebuilding. A failed initial build or rebuild prints its diagnostic and keeps
+watching; fixing the source starts a fresh Host and prints its listener address.
+Ctrl-C stops both the watcher and its current Host. For the generated `--web`
+project, it also cancels the current Cargo metadata, lockfile, or build command.
+This path does not preserve the previous listener while rebuilding.
+
+Rust errors in generated `OUT_DIR/web_routes.rs` can originate in your authored
+handlers. The CLI retains the compiler diagnostic and, for the exact Plugin
+being built, when a generated body uniquely matches a handler under `src/`, adds
+that handler's source file, line, and name. Dependency errors and ambiguous
+matches retain the compiler location. Edit the authored handler rather than the
+generated file.
 
 New Plugins and catalog Releases use the canonical namespaced Plugin ID v1
 grammar (`company.uppercase`) and exact Semantic Versions. Existing

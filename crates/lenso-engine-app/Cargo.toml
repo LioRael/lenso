@@ -13,6 +13,8 @@ lenso-engine = { path = "../lenso-engine", version = "0.2.1" }
 lenso-engine-contracts = { path = "../lenso-engine-contracts", version = "0.1.1" }
 lenso-engine-web = { path = "../lenso-engine-web", version = "0.2.0" }
 syn = { workspace = true }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
 anyhow = "1.0"
 futures = { version = "0.3" }
 shell-words = { version = "1.1" }

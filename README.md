@@ -57,9 +57,10 @@ cd example.echo
 "$LENSO_CLI" plugin pack
 ```
 
-The generated Rust project produces portable Wasm and trusted Process
-implementations from the same source. `plugin dev` selects the fastest local
-implementation; `plugin pack` builds and verifies the distributable
+The default Rust project produces a trusted Process implementation. Select
+`--runtime multi` when creating the project to produce both portable Wasm and
+Process implementations from the same source. `plugin dev` selects the fastest
+local implementation; `plugin pack` builds and verifies the distributable
 `.lenso-plugin` Release. A Bun / TypeScript path is also available with
 `lenso plugin new example.echo --runtime bun`.
 

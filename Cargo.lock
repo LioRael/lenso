@@ -2355,6 +2355,8 @@ dependencies = [
  "lenso-web-ingress-plugin",
  "nix 0.30.1",
  "notify",
+ "proc-macro2",
+ "quote",
  "rustix",
  "serde",
  "serde_json",

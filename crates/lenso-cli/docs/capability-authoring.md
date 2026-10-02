@@ -12,14 +12,27 @@ cd my-app
 lenso app contract new example.text
 # Or author the contract as a Rust trait:
 lenso app contract new example.search --source rust
+cargo generate-lockfile --manifest-path contracts/example.search/Cargo.toml
+cargo fetch --locked --manifest-path contracts/example.search/Cargo.toml
 lenso app build
 ```
 
 The default creates a Descriptor/JSON Schema package under
 `contracts/example.text/`, with a generated TypeScript projection. This path needs
-no Cargo. Rust source creates `src/contract.rs`, a regular Cargo package, and a
+no Cargo; omit the Rust-specific commands when selecting only this path. Rust
+source creates `src/contract.rs`, a regular Cargo package, and a
 Rust runtime projection; Cargo is needed during authoring. Neither requires an
 App configuration file. Edit the initial `execute` Operation to match the domain.
+
+Prepare Rust dependencies explicitly before the first App build. Contract
+discovery requires the package's lockfile and does not install dependencies.
+After generation, run `cargo check --locked --manifest-path
+contracts/example.search/Cargo.toml` to check the generated Rust consumer surface;
+an empty App build by itself does not compile that library.
+
+Build outputs are immutable directories. For a subsequent build, select a new
+output with `lenso app build --out dist-next`, then use `lenso app start --from
+dist-next --check`. Keep the prior output until the new build is verified.
 
 Each Capability has one authority. For Rust packages, a small extractor compiles
 only the contract source module with the package's resolved build-dependencies;
@@ -46,7 +59,7 @@ owning package. Rust source modules need the build-dependencies they normally us
 including `lenso-contract-codegen`; dependency identity and enabled features are
 preserved. No arbitrary regeneration script is inferred or executed.
 
-A Bun consumer/provider can generate its own projection from the same authority:
+A Bun Plugin that owns a Descriptor and its schemas can declare its projection:
 
 ```json
 {
@@ -54,7 +67,7 @@ A Bun consumer/provider can generate its own projection from the same authority:
     "pluginId": "example.uppercase",
     "runtime": "bun",
     "contract": {
-      "descriptor": "../../contracts/text/capability.json",
+      "descriptor": "contracts/text/capability.json",
       "projection": "typescript",
       "output": "generated/text.ts"
     }
@@ -65,6 +78,14 @@ A Bun consumer/provider can generate its own projection from the same authority:
 This is package tooling metadata, not another Contract or App manifest. The
 existing Plugin identity/runtime fields and normal package dependencies remain.
 Contract-only npm packages are not discovered as business Plugins.
+
+The current synchronizer requires the Descriptor, schemas, source, and output to
+stay inside the declaring package. A sibling input such as
+`../../contracts/text/capability.json` is rejected by the path guard, whose
+diagnostic currently calls it a contract output. It does not generate a
+consumer-local projection from that sibling package. App-owned `contracts/`
+packages generate their projections in their own directory; do not duplicate a
+shared contract authority to bypass this boundary.
 
 Only App-owned `contracts/`, selected Plugin package declarations, and local Cargo
 dependency closures participate. Unadopted shared Plugin candidates do not trigger
