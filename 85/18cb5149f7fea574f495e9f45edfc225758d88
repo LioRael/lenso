@@ -1,0 +1,16 @@
+crates/lenso-web-ingress-plugin/benches/http_portable_paired.py
+  h_9d56aba080c170 81-91,97-101,103-106
+crates/lenso-web-ingress-plugin/benches/http_portable_process.rs
+  h_9d56aba080c170 7,24-84,230-233,237,244,246-249,252-256,263,266-267,270-273,293,296,300-302,316,322-324,336-337,344-378,391,395,401,432-434,467-496
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8518cb5149f7fea574f495e9f45edfc225758d88",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
