@@ -1,0 +1,20 @@
+docs/performance/web-audit-auth-fixture-preparation-20261002.md
+  h_9d56aba080c170 3-7
+docs/performance/web-audit-auth-results-20261002.json
+  h_9d56aba080c170 1-1163
+docs/performance/web-audit-auth-results-20261002.md
+  h_9d56aba080c170 1-98
+docs/performance/web-audit-next-measurements-20261002.md
+  h_9d56aba080c170 121-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "825966ec1038c4bd4d23521ea5b2888869cdc183",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
