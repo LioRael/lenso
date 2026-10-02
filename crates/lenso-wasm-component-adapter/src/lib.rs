@@ -34,6 +34,9 @@ use wasmtime::{Config, Engine, Store};
 mod limits;
 use limits::GuestLinearMemoryBudget;
 
+#[cfg(test)]
+mod admission_tests;
+
 mod request_abi {
     wasmtime::component::bindgen!({
         inline: r#"
@@ -646,13 +649,12 @@ impl WasmGeneration {
             Arc::new(AtomicBool::new(false)),
         )
         .map_err(wasm_failure)?;
-        let mut abandonment = WasmAbandonmentGuard::new(abandoned.clone(), self.engine.clone());
         let (outcome, response) = futures::channel::oneshot::channel();
         let (imports, import_receiver) = futures_mpsc::channel(1);
         self.commands
             .try_send(WorkerCommand::Call(GuestCommand {
                 call,
-                abandoned,
+                abandoned: abandoned.clone(),
                 turn: turn.clone(),
                 imports,
                 outcome,
@@ -661,6 +663,8 @@ impl WasmGeneration {
                 capability: "lenso.wasm-component@1",
                 operation: operation_name.to_owned(),
             })?;
+        // Only admitted work owns the right to interrupt this generation.
+        let mut abandonment = WasmAbandonmentGuard::new(abandoned, self.engine.clone());
         let cancellation = context.cancellation();
         let mut response = response.fuse();
         let mut import_receiver = import_receiver.fuse();
