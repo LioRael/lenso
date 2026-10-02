@@ -1,0 +1,14 @@
+crates/lenso-web-ingress-plugin/benches/http_stream_fixture/mod.rs
+  h_9d56aba080c170 42-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80871eb6757fd28671159734fdac2cf659801f50",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
