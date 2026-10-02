@@ -138,6 +138,15 @@ required. For Bun, provide `LENSO_JS_ROOT` at the exact revision checked by the
 script and install Bun 1.4.2 and Node 24.18.0. macOS evidence does not replace
 Linux CI.
 
+The linked Workers builder accepts only the qualified `@lenso/workers-runtime`
+`0.1.6` candidate selected by that immutable JavaScript revision. This source
+repair did not publish a new npm version: the exact module digests distinguish
+it from earlier `0.1.6` bytes. Old `0.1.6` modules and `0.1.5` are rejected;
+do not substitute an installed package by version alone. The Bun gate tests
+the checked-out runtime, old cleanup bytes, modified bytes and the exact CI
+pin. The build receipt retains every consumed module digest. Updating package
+versions or publishing is a separate authorized release/cohort operation.
+
 The Bun phase also runs a small real-command regression: frozen installation of
 a zero-dependency temporary project, propagation of its deliberately failed
 build before Cargo, and a bounded negative fixture for shell-function recursion.

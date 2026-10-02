@@ -28,7 +28,7 @@ const RUNTIME_FILES: &[(&str, &str)] = &[
     ),
     (
         "scope.mjs",
-        "450241c47c4468a37ef932dd24d610c49318d9afc9dc369bf051acac86f38a74",
+        "880ac5f58793020ea95d41c72e51057d5d3d31ddcb7d5321aec21ba787271e43",
     ),
     (
         "clock.mjs",
@@ -477,14 +477,11 @@ fn load_runtime(package: &Path, facilities: bool) -> anyhow::Result<LoadedRuntim
     let manifest: Value =
         serde_json::from_slice(&super::runtime::read_file(&package.join("package.json"))?)?;
     ensure!(
-        manifest["name"] == "@lenso/workers-runtime"
-            && (manifest["version"] == "0.1.5" || manifest["version"] == "0.1.6"),
-        "linked Workers requires exact @lenso/workers-runtime 0.1.5 or 0.1.6 candidate"
+        manifest["name"] == "@lenso/workers-runtime" && manifest["version"] == "0.1.6",
+        "linked Workers requires the qualified @lenso/workers-runtime 0.1.6 candidate with pinned module bytes"
     );
-    ensure!(
-        !facilities || manifest["version"] == "0.1.6",
-        "Workers facilities require @lenso/workers-runtime 0.1.6 candidate"
-    );
+    // The repaired source candidate retains 0.1.6. Version alone cannot
+    // distinguish it from the old cleanup implementation; admit exact bytes.
     let mut files = RUNTIME_FILES.to_vec();
     if facilities {
         files.push((
@@ -511,6 +508,9 @@ fn load_runtime(package: &Path, facilities: bool) -> anyhow::Result<LoadedRuntim
         modules,
     })
 }
+
+#[cfg(test)]
+mod runtime_tests;
 
 #[cfg(test)]
 mod tests {
