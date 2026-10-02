@@ -399,6 +399,22 @@ impl PluginStreamDependencyHandle {
 }
 
 impl PluginDependencyHandle {
+    /// Derives a uniquely identified child Request whose cancellation observes
+    /// its parent without allowing the child to cancel that parent.
+    pub fn child_context(
+        &self,
+        context: InvocationContext,
+    ) -> Result<InvocationContext, RuntimeFailure> {
+        let runtime = self
+            .runtime
+            .borrow()
+            .upgrade()
+            .ok_or(RuntimeFailure::AdmissionClosed)?;
+        let request_id = runtime.request_ids.get();
+        runtime.request_ids.set(request_id.saturating_add(1));
+        Ok(context.for_child_request(request_id))
+    }
+
     /// Returns the Capability implemented by this handle.
     pub fn capability_id(&self) -> &'static str {
         self.binding.state.capability_id

@@ -243,6 +243,14 @@ impl BunAdapter {
         self
     }
 
+    /// Installs a Host-owned shared generated codec for Authoring V2 endpoints.
+    #[must_use]
+    pub fn with_shared_authoring_codec(mut self, codec: Rc<dyn JsonCapabilityCodec>) -> Self {
+        self.authoring_codecs
+            .insert(codec.capability_id().to_owned(), codec);
+        self
+    }
+
     /// Returns the selected wire implementation.
     pub const fn wire(&self) -> BunWire {
         self.config.wire

@@ -66,7 +66,40 @@ receipts and are not duplicated in the source tree.
 - The WASIp2 Driver (`wasm32-wasip2`) executes its Kernel lifecycle smoke suite
   as a component in Wasmtime.
 - Native fallback implementations keep host-independent development tests fast.
-  Passing a fallback test is not target-host evidence.
+Passing a fallback test is not target-host evidence.
+
+## Engine App Host interaction support
+
+The Engine's Bun admission is the concrete Adapter's
+Request/Stream/NativeProcess subset. Event, Host Imports, Workers, Browser, and
+WebSocket are not admitted by this App Host profile. An existing inventory or
+prepared lock retains its original profile; rebuild and prepare to obtain the
+new admission evidence.
+
+| Host and selected target | Request | Stream | Event | Codec requirement |
+| --- | --- | --- | --- | --- |
+| Generated native App Host, Bun Authoring V2 | supported | supported | rejected | Discovered generated typed Capability codecs. |
+| TypeScript App Host using `lenso_host_runtime::run_with_codecs`, Bun Authoring V2 | supported | supported | rejected | Product Host explicitly links generated `JsonCapabilityCodec` values. |
+| Stock `lenso-host-runtime` binary, legacy Bun Request profile | supported | rejected | rejected | Legacy Request JSON fallback only. |
+| TypeScript App Host, Process target | supported | rejected | rejected | Request codecs; target admission remains Request/NativeProcess only. |
+
+The stock binary has no linked product contracts and rejects Bun V2 endpoints
+before readiness. A product runtime calls `run_with_codecs` with an explicit
+`Vec<Rc<dyn JsonCapabilityCodec>>`; there is no CLI flag, ambient codec registry,
+or permission added by registration. Each resolved Generation is checked
+against that immutable codec set before catalog assembly. Missing codecs,
+duplicate identities, different versions or operation tables, and invalid
+Descriptor digests fail closed. The Bun adapter also checks the generated
+Descriptor digest against the exact admitted endpoint during its handshake.
+
+Typed Host imports use the existing Plan-bound Kernel handles and the existing
+Bun V2 stream transport. Admission, Host resource grants, invocation scopes,
+cancellation, stream permits, bounded transport, and provider policy continue
+to govern calls. Codec registration does not authorize a caller or expose a
+service through a Workspace mount. WorkspaceService keeps its Stream operation.
+
+These are source support facts. Local fixture receipts, remote CI, landing,
+and publication remain separate evidence.
 
 ## Byte-oriented guest ABI
 

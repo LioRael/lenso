@@ -72,7 +72,7 @@ fn inventory() -> Vec<Value> {
             "plugin_id":"example.root", "execution_class":"lenso.bun-process@1",
             "artifact_digest":artifact_digest,
             "runtime_profile":"lenso.bun-authoring@2",
-            "target_capability_profile":profile("lenso.bun-authoring@2"),
+            "target_capability_profile":crate::target_profile::bun_admission().unwrap().capability_profile(),
         }),
         json!({
             "plugin_id":"example.middle", "execution_class":"lenso.process@1",
@@ -105,7 +105,10 @@ fn transitive_stream_and_event_requirements_reject_the_consumer_target_with_path
     ] {
         let error = admit(&resolved(kind), &inventory()).unwrap_err();
         let message = format!("{error:#}");
-        assert!(message.contains("example.root/default --middle--> example.middle/default --leaf--> example.leaf/default"), "{message}");
+        assert!(
+            message.contains("example.middle/default --leaf--> example.leaf/default"),
+            "{message}"
+        );
         assert!(
             message.contains(&format!("does not admit `{feature}`")),
             "{message}"
@@ -121,6 +124,57 @@ fn transitive_stream_and_event_requirements_reject_the_consumer_target_with_path
 #[test]
 fn request_only_dependency_closure_is_admitted() {
     admit(&resolved(CapabilityOperationKind::Request), &inventory()).unwrap();
+}
+
+#[test]
+fn bun_consumer_admits_native_stream_but_keeps_event_and_extra_features_closed() {
+    let descriptors = descriptors(CapabilityOperationKind::Stream);
+    let mut descriptors = descriptors;
+    // The middle consumer uses Bun rather than the Request-only Process target.
+    let middle = descriptors.remove(1);
+    let revision = format!("sha256:{}", "a".repeat(64));
+    descriptors.push(
+        middle.contract().resolve(
+            &PluginImplementation::new(
+                "example.middle",
+                &revision,
+                "plugin",
+                ExecutionClassId::bun_child_process(),
+            )
+            .with_runtime_profile(lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE),
+        ),
+    );
+    let host = HostCatalog::new(
+        [HostSlot::many("tools")],
+        descriptors.into_iter().map(HostPluginRelease::new),
+        [
+            HostDefaultPlugin::new("example.root", "default"),
+            HostDefaultPlugin::new("example.middle", "default"),
+            HostDefaultPlugin::new("example.leaf", "default"),
+        ],
+    );
+    let resolved = resolve_plugin_root(&host, &PluginRootSnapshot::default()).unwrap();
+    let mut inventory = inventory();
+    inventory[1]["execution_class"] = json!("lenso.bun-process@1");
+    inventory[1]["runtime_profile"] = json!(lenso_bun_adapter::BUN_AUTHORING_RUNTIME_PROFILE);
+    inventory[1]["target_capability_profile"] = serde_json::to_value(
+        crate::target_profile::bun_admission()
+            .unwrap()
+            .capability_profile(),
+    )
+    .unwrap();
+    admit(&resolved, &inventory).unwrap();
+    for feature in ["event", "host-imports", "workers", "websocket"] {
+        let mut forged = inventory.clone();
+        forged[1]["target_capability_profile"]["capabilities"] =
+            json!(["native-process", "request", "stream", feature]);
+        assert!(admit(&resolved, &forged).is_err());
+    }
+    // Old prepared inventories require rebuilding; their locked profile is not
+    // silently upgraded during admission.
+    inventory[1]["target_capability_profile"]["capabilities"] =
+        json!(["native-process", "request"]);
+    assert!(admit(&resolved, &inventory).is_err());
 }
 
 #[test]
