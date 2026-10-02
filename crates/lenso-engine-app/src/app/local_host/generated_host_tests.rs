@@ -23,6 +23,39 @@ fn generated_host_preserves_normal_features_and_excludes_host_only_plugins() {
         .canonicalize()
         .unwrap();
     package(
+        &root.join("contract"),
+        "fixture-contract",
+        &format!(
+            r#"
+[package.metadata.lenso.contract]
+descriptor="capability.json"
+projection="rust-runtime"
+[features]
+default=["unrequested"]
+unrequested=[]
+normal=[]
+[dependencies]
+lenso-runtime-codec={{path={:?}}}
+"#,
+            facade
+                .parent()
+                .unwrap()
+                .join("lenso-runtime-codec")
+                .to_str()
+                .unwrap()
+        ),
+        r#"
+pub struct Token;
+pub const NORMAL: bool = cfg!(feature="normal");
+pub const UNREQUESTED: bool = cfg!(feature="unrequested");
+"#,
+    );
+    fs::write(
+        root.join("contract/capability.json"),
+        r#"{"id":"example.echo@1"}"#,
+    )
+    .unwrap();
+    package(
         &root.join("owner"),
         "fixture-owner",
         &format!(
@@ -39,6 +72,7 @@ dev-only=[]
 inactive=[]
 [dependencies]
 lenso={{path={:?}}}
+contract={{package="fixture-contract",path="../contract",default-features=false,features=["normal"]}}
 "#,
             facade.to_str().unwrap()
         ),
@@ -48,8 +82,9 @@ mod authoring {
     #[derive(Debug)]
     pub struct Plugin {}
 }
-pub struct Token;
+pub use contract::Token;
 pub fn link_plugin() {
+    assert!(contract::NORMAL && !contract::UNREQUESTED);
     assert!(cfg!(feature="normal"));
     assert!(cfg!(feature="current"));
     assert!(!cfg!(feature="unrequested"));
@@ -117,7 +152,12 @@ owner={{package="fixture-owner",path="../owner",default-features=false,features=
 owner={{package="fixture-owner",path="../owner",default-features=false,features=["inactive"]}}
 "#,
             facade.to_str().unwrap(),
-            facade.parent().unwrap().join("lenso-runner").to_str().unwrap()
+            facade
+                .parent()
+                .unwrap()
+                .join("lenso-runner")
+                .to_str()
+                .unwrap()
         ),
         r#"
 mod authoring {

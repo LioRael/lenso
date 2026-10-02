@@ -13,6 +13,7 @@ use std::{
 };
 
 mod business_snapshot;
+mod contract_alias;
 pub(crate) mod facilities;
 #[cfg(test)]
 mod generated_host_tests;
@@ -158,6 +159,7 @@ pub(super) fn generate_in(
     let mut seen_packages = BTreeSet::new();
     let mut codec_cohorts = BTreeSet::new();
     let mut web_contract = None;
+    let mut web_contract_id = None;
     let mut business_snapshot = business_snapshot::HostBinding::default();
     let mut facilities = facilities::Sources::default();
     let mut facility_graphs = Vec::new();
@@ -348,6 +350,7 @@ pub(super) fn generate_in(
                     bail!("Web endpoints use different Cargo contract identities");
                 }
                 web_contract = Some(dependency);
+                web_contract_id = Some(id.clone());
             }
             let Some(contract) = package.pointer("/metadata/lenso/contract") else {
                 continue;
@@ -513,10 +516,11 @@ pub(super) fn generate_in(
     }
     let mut terminal_aliases = BTreeMap::new();
     let mut register = format!("let typed = std::collections::BTreeSet::<&str>::from([{ids}]);\n");
-    for (index, (capability, (_, dependency))) in codecs.into_iter().enumerate() {
+    for (index, (capability, (id, dependency))) in codecs.into_iter().enumerate() {
         let alias =
             contract_dependency_alias(&capability, index, &dependency, web_contract.as_ref())?;
-        dependencies.insert(alias.clone(), dependency);
+        alias_identities.insert(alias.clone(), id);
+        dependencies.insert(alias.clone(), contract_alias::dependency(dependency)?);
         if capability == "lenso.terminal.command@1"
             || capability == "lenso.terminal.command-provider@1"
         {
@@ -597,6 +601,11 @@ pub(super) fn generate_in(
     }
     let web = web_contract.is_some();
     if let Some(contract) = web_contract {
+        alias_identities.insert(
+            "local_web_contract".into(),
+            web_contract_id.context("Web Endpoint Cargo identity")?,
+        );
+        let contract = contract_alias::dependency(contract)?;
         if let Some(previous) = dependencies.insert("local_web_contract".into(), contract.clone())
             && previous != contract
         {
