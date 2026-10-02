@@ -1,0 +1,13 @@
+{
+  "id": "example.metadata@1",
+  "version": "1.0.0",
+  "portable": true,
+  "cross_lane_transfer": true,
+  "operations": [{
+    "name": "normalize",
+    "interaction": "request",
+    "request_schema": "schemas/normalize-request.json",
+    "response_schema": "schemas/normalize-response.json",
+    "domain_error_schema": "schemas/normalize-error.json"
+  }]
+}

@@ -7,6 +7,9 @@ members = [
     "examples/observe-sample-web-app",
     "examples/multiple-plugins",
     "examples/engine-web",
+    "examples/onboarding/todo-http",
+    "examples/onboarding/background-jobs",
+    "examples/onboarding/metadata-pipeline",
     "spec/fixtures/*/rust",
     "tests/fixtures/*",
 ]

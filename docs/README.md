@@ -15,6 +15,9 @@ documentation for the Rust workspace.
   with Apps and Hosts. [`components/`](components/) also documents the Runtime,
   protocols, and Web packages built in this workspace.
 - [`agents/skills.md`](agents/skills.md) documents the public skill pack.
+- [`../examples/onboarding/README.md`](../examples/onboarding/README.md) walks
+  through small HTTP CRUD, background work, and Plugin composition Apps with
+  one bounded smoke command.
 
 Current validation belongs in Cargo tests and CI. Release receipts, temporary
 qualification ledgers, implementation status reports, work plans, and research

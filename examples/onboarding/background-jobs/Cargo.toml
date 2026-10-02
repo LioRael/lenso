@@ -1,0 +1,17 @@
+[package]
+name = "lenso-onboarding-background-jobs"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+lenso = { path = "../../../crates/lenso" }
+lenso-capability-http-endpoint = { path = "../../../crates/lenso-capability-http-endpoint" }
+lenso-native-adapter = { path = "../../../crates/lenso-native-adapter" }
+lenso-web-host = { path = "../../../crates/lenso-web-host" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "signal", "time"] }
+
+[lints]
+workspace = true

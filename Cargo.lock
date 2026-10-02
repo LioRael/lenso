@@ -2690,6 +2690,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "lenso-onboarding-background-jobs"
+version = "0.1.0"
+dependencies = [
+ "lenso",
+ "lenso-capability-http-endpoint",
+ "lenso-native-adapter",
+ "lenso-web-host",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "lenso-onboarding-metadata-contract"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lenso-contract-codegen 0.10.2",
+ "lenso-contract-runtime",
+ "lenso-guest-sdk 0.5.1",
+ "lenso-kernel",
+ "lenso-plugin-authoring",
+ "lenso-runtime-codec 0.4.4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lenso-onboarding-metadata-pipeline"
+version = "0.1.0"
+dependencies = [
+ "lenso",
+ "lenso-capability-http-endpoint",
+ "lenso-kernel",
+ "lenso-onboarding-metadata-contract",
+ "lenso-web-host",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "lenso-onboarding-todo-http"
+version = "0.1.0"
+dependencies = [
+ "lenso",
+ "lenso-capability-http-endpoint",
+ "lenso-web-host",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "lenso-openapi-plugin"
 version = "0.2.7"
 dependencies = [

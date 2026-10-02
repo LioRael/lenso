@@ -67,6 +67,11 @@ local implementation; `plugin pack` builds and verifies the distributable
 Read the [complete quickstart](https://lenso.dev/docs/quickstart/) to understand
 how the verified Bundle connects to a compatible product Host.
 
+For small applications built from this checkout, run the
+[three application examples](examples/onboarding/README.md): task CRUD,
+background jobs with local notifications, and a typed metadata pipeline.
+Their automated smokes exercise real HTTP and Plugin lifecycle behavior.
+
 ## How it works
 
 ```text

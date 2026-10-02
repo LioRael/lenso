@@ -1,0 +1,18 @@
+[package]
+name = "lenso-onboarding-metadata-pipeline"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+lenso.workspace = true
+lenso-kernel.workspace = true
+metadata-contract = { package = "lenso-onboarding-metadata-contract", path = "contracts/metadata" }
+lenso-capability-http-endpoint = { path = "../../../crates/lenso-capability-http-endpoint" }
+lenso-web-host = { path = "../../../crates/lenso-web-host" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
