@@ -26,15 +26,15 @@ pub(super) struct ExecutionLedger {
     reason = "request execution carries explicit admission and generation context"
 )]
 pub(super) async fn request<T: 'static>(
-    runtime: &super::NativeAppRuntime,
+    runtime: &Rc<super::NativeAppRuntime>,
     provider: &str,
     operation: &str,
     context: &InvocationContext,
     generation: CancellationToken,
     capability: &'static str,
     permit: RequestPermit,
-    invoke: impl FnOnce(InvocationContext) -> LocalBoxFuture<'static, T>,
-) -> Result<T, RuntimeFailure> {
+    invoke: impl FnOnce(InvocationContext) -> LocalBoxFuture<'static, Result<T, RuntimeFailure>>,
+) -> Result<Result<T, RuntimeFailure>, RuntimeFailure> {
     let instance = runtime
         .plan
         .plugin_instance(provider)
@@ -44,15 +44,18 @@ pub(super) async fn request<T: 'static>(
         .and_then(|caller| runtime.plan.plugin_instance(caller))
         .is_some_and(|caller| caller.authoring_version() == 2);
     if instance.authoring_version() == 1 && !named_caller {
-        let _permit = permit;
-        return super::await_with_generation_context(
+        let output = super::await_with_generation_context(
             &runtime.driver,
             context,
             generation,
             capability,
             invoke(context.clone()),
         )
-        .await;
+        .await?;
+        drop(permit);
+        return Ok(output.map_err(|error| {
+            super::schedule_plugin_supervision_after_failure(runtime, provider, error)
+        }));
     }
     let limits = instance
         .provided_capabilities()
@@ -75,15 +78,19 @@ pub(super) async fn request<T: 'static>(
         .acquire(capability, operation, context, &runtime.driver)
         .await?;
     if instance.authoring_version() == 1 {
-        let _permits = (permit, provider_permit);
-        return super::await_with_generation_context(
+        let permits = (permit, provider_permit);
+        let output = super::await_with_generation_context(
             &runtime.driver,
             context,
             generation,
             capability,
             invoke(context.clone()),
         )
-        .await;
+        .await?;
+        drop(permits);
+        return Ok(output.map_err(|error| {
+            super::schedule_plugin_supervision_after_failure(runtime, provider, error)
+        }));
     }
     execute(
         runtime.executions.clone(),
@@ -94,6 +101,7 @@ pub(super) async fn request<T: 'static>(
         capability,
         vec![permit, provider_permit],
         invoke,
+        failure_observer(runtime, provider),
     )
     .await
 }
@@ -101,26 +109,29 @@ pub(super) async fn request<T: 'static>(
 /// Executes one non-request Adapter operation under the same Driver-owned
 /// settlement rules as authoring-version-2 requests.
 pub(super) async fn operation<T: 'static>(
-    runtime: &super::NativeAppRuntime,
+    runtime: &Rc<super::NativeAppRuntime>,
     provider: &str,
     context: &InvocationContext,
     generation: CancellationToken,
     capability: &'static str,
-    invoke: impl FnOnce(InvocationContext) -> LocalBoxFuture<'static, T>,
-) -> Result<T, RuntimeFailure> {
+    invoke: impl FnOnce(InvocationContext) -> LocalBoxFuture<'static, Result<T, RuntimeFailure>>,
+) -> Result<Result<T, RuntimeFailure>, RuntimeFailure> {
     let instance = runtime
         .plan
         .plugin_instance(provider)
         .expect("prepared endpoint has a planned provider");
     if instance.authoring_version() == 1 {
-        return super::await_with_generation_context(
+        let output = super::await_with_generation_context(
             &runtime.driver,
             context,
             generation,
             capability,
             invoke(context.clone()),
         )
-        .await;
+        .await?;
+        return Ok(output.map_err(|error| {
+            super::schedule_plugin_supervision_after_failure(runtime, provider, error)
+        }));
     }
     execute(
         runtime.executions.clone(),
@@ -131,8 +142,33 @@ pub(super) async fn operation<T: 'static>(
         capability,
         vec![],
         invoke,
+        failure_observer(runtime, provider),
     )
     .await
+}
+
+fn failure_observer<T>(
+    runtime: &Rc<super::NativeAppRuntime>,
+    provider: &str,
+) -> impl FnOnce(&mut Result<T, RuntimeFailure>) + 'static {
+    let generation = runtime.supervision.borrow()[provider].generation;
+    let runtime = Rc::downgrade(runtime);
+    let provider = provider.to_owned();
+    move |output| {
+        let Err(error) = output else { return };
+        let Some(runtime) = runtime.upgrade() else {
+            return;
+        };
+        // The execution owner observes once, for the generation it dispatched to.
+        // A caller polling its accepted result later must not supervise again.
+        if runtime.supervision.borrow()[&provider].generation == generation {
+            *error = super::schedule_plugin_supervision_after_failure(
+                &runtime,
+                &provider,
+                error.clone(),
+            );
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -240,6 +276,7 @@ pub(super) async fn execute<T: 'static>(
     capability: &'static str,
     permits: Vec<RequestPermit>,
     invoke: impl FnOnce(InvocationContext) -> LocalBoxFuture<'static, T>,
+    observe: impl FnOnce(&mut T) + 'static,
 ) -> Result<T, RuntimeFailure> {
     ensure_context_active(driver, context)?;
     if generation.is_cancelled() {
@@ -262,26 +299,27 @@ pub(super) async fn execute<T: 'static>(
         })
     })
     .await;
-    if let Some(output) = ready {
+    if let Some(mut output) = ready {
+        let accepted = completion_status(driver, context, &generation, capability);
+        observe(&mut output);
         ledger.settle(id);
-        ensure_context_active(driver, context)?;
-        if generation.is_cancelled() {
-            return Err(RuntimeFailure::Unavailable { capability });
-        }
-        return Ok(output);
+        return accepted.map(|()| output);
     }
     let (sender, mut receiver) = oneshot::channel();
     let execution_driver = driver.clone();
     let execution_generation = generation.clone();
     (driver.spawn_local)(Box::pin(async move {
-        let output = future.await;
-        let result = ensure_context_active(&execution_driver, &execution_context).and_then(|()| {
-            if execution_generation.is_cancelled() {
-                Err(RuntimeFailure::Unavailable { capability })
-            } else {
-                Ok(output)
-            }
-        });
+        let mut output = future.await;
+        // Freeze caller delivery before supervision cancels this generation, but
+        // observe the original provider result even if the caller has cancelled.
+        let accepted = completion_status(
+            &execution_driver,
+            &execution_context,
+            &execution_generation,
+            capability,
+        );
+        observe(&mut output);
+        let result = accepted.map(|()| output);
         ledger.settle(id);
         // A result accepted here remains final even if the waiter is polled later.
         let _ = sender.send(result);
@@ -317,6 +355,19 @@ pub(super) async fn execute<T: 'static>(
     .await
 }
 
+fn completion_status(
+    driver: &DriverControl,
+    context: &InvocationContext,
+    generation: &CancellationToken,
+    capability: &'static str,
+) -> Result<(), RuntimeFailure> {
+    ensure_context_active(driver, context)?;
+    if generation.is_cancelled() {
+        return Err(RuntimeFailure::Unavailable { capability });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,6 +395,7 @@ mod tests {
             "test",
             vec![permit],
             |_| work.boxed_local(),
+            |_| {},
         );
         driver.run(async {
             futures::pin_mut!(execution);
@@ -389,7 +441,8 @@ mod tests {
                 CancellationToken::new(),
                 "test",
                 vec![],
-                |_| work.boxed_local()
+                |_| work.boxed_local(),
+                |_| {},
             )
             .now_or_never()
             .is_none()
@@ -426,6 +479,7 @@ mod tests {
                 "test",
                 vec![],
                 |_| work,
+                |_| {},
             ));
             assert_eq!(
                 result,
@@ -456,6 +510,7 @@ mod tests {
                 "test",
                 vec![],
                 |context| futures::future::ready(context.remaining_budget()).boxed_local(),
+                |_| {},
             ))
             .unwrap();
 
@@ -479,6 +534,7 @@ mod tests {
             "test",
             vec![],
             |_| work.boxed_local(),
+            |_| {},
         );
         futures::pin_mut!(execution);
         assert!(execution.as_mut().now_or_never().is_none());

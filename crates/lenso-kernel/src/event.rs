@@ -474,15 +474,17 @@ impl<C: EventCapability> NativeEventHandle<C> {
                     .endpoint
                     .publish(operation, Box::new(event), context.clone())
                     .await
+                    .map_err(|error| {
+                        schedule_plugin_supervision_after_failure(
+                            &self.runtime,
+                            &endpoint.plugin_instance,
+                            error,
+                        )
+                    })
             };
             return match result {
                 Ok(()) => EventPublishResult::new(subscriber, EventAdmission::Accepted),
                 Err(error) => {
-                    let error = schedule_plugin_supervision_after_failure(
-                        &self.runtime,
-                        &endpoint.plugin_instance,
-                        error,
-                    );
                     self.runtime.diagnostics.emit_runtime_failure(
                         (self.runtime.driver.now)(),
                         Some(&endpoint.plugin_instance),
@@ -570,8 +572,6 @@ async fn drain_event_queue(
                     Some(&plugin_instance),
                     &error,
                 );
-                let _ =
-                    schedule_plugin_supervision_after_failure(&runtime, &plugin_instance, error);
             }
             Err(_) => {
                 let error = RuntimeFailure::PluginFailure {

@@ -4,7 +4,7 @@ use super::{
     CancellationToken, DiagnosticAdmission, DiagnosticEvent, DiagnosticOutcome, DiagnosticSource,
     ErasedDomainResult, InvocationContext, NativeAppRuntime, NativeEndpointBinding,
     RequestCapability, RequestId, RuntimeFailure, diagnostics::diagnostic_operation,
-    ensure_context_active, schedule_plugin_supervision_after_failure,
+    ensure_context_active,
 };
 
 pub(crate) fn invoke_erased_dependency(
@@ -59,13 +59,7 @@ pub(crate) fn invoke_erased_dependency(
             permit,
             |context| snapshot.endpoint.invoke(&operation, request, context),
         )
-        .await
-        .map_err(|error| {
-            schedule_plugin_supervision_after_failure(&runtime, &endpoint.plugin_instance, error)
-        })?
-        .map_err(|error| {
-            schedule_plugin_supervision_after_failure(&runtime, &endpoint.plugin_instance, error)
-        })
+        .await?
     })
 }
 
@@ -300,21 +294,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                 )
             },
         )
-        .await
-        .map_err(|error| {
-            schedule_plugin_supervision_after_failure(
-                &self.runtime,
-                &endpoint.plugin_instance,
-                error,
-            )
-        })?
-        .map_err(|error| {
-            schedule_plugin_supervision_after_failure(
-                &self.runtime,
-                &endpoint.plugin_instance,
-                error,
-            )
-        })?;
+        .await??;
         Ok(outcome)
     }
 
@@ -479,21 +459,7 @@ impl<C: RequestCapability> NativeRequestHandle<C> {
                     )
                 },
             )
-            .await
-            .map_err(|error| {
-                schedule_plugin_supervision_after_failure(
-                    &self.runtime,
-                    &endpoint.plugin_instance,
-                    error,
-                )
-            })?
-            .map_err(|error| {
-                schedule_plugin_supervision_after_failure(
-                    &self.runtime,
-                    &endpoint.plugin_instance,
-                    error,
-                )
-            })?;
+            .await??;
             outcomes.push(outcome);
         }
         Ok(outcomes)

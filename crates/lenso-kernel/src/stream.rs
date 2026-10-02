@@ -5,7 +5,6 @@ use futures::{FutureExt, future::LocalBoxFuture};
 use super::{
     DiagnosticEvent, DiagnosticOutcome, DiagnosticSource, InvocationContext, NativeAppRuntime,
     NativeStreamEndpointBinding, RequestPermit, RuntimeFailure, diagnostics::diagnostic_operation,
-    schedule_plugin_supervision_after_failure,
 };
 
 /// Static identity and Rust value types generated for one stream Capability.
@@ -265,31 +264,15 @@ impl<C: StreamCapability> NativeStreamHandle<C> {
             C::ID,
             move |execution_context| {
                 async move {
-                    (
-                        endpoint_impl
-                            .open(&operation_name, Box::new(request), execution_context)
-                            .await,
-                        permit,
-                    )
+                    let outcome = endpoint_impl
+                        .open(&operation_name, Box::new(request), execution_context)
+                        .await;
+                    outcome.map(|outcome| (outcome, permit))
                 }
                 .boxed_local()
             },
         )
-        .await
-        .map_err(|error| {
-            schedule_plugin_supervision_after_failure(
-                &self.runtime,
-                &endpoint.plugin_instance,
-                error,
-            )
-        })?;
-        let outcome = outcome.map_err(|error| {
-            schedule_plugin_supervision_after_failure(
-                &self.runtime,
-                &endpoint.plugin_instance,
-                error,
-            )
-        })?;
+        .await??;
         match outcome {
             Ok(session) => Ok(Ok(NativeStream::new(
                 session,
@@ -496,12 +479,7 @@ impl<C: StreamCapability> NativeStream<C> {
         }
     }
 
-    fn schedule_failure(&self, error: RuntimeFailure) -> RuntimeFailure {
-        schedule_plugin_supervision_after_failure(&self.runtime, &self.plugin_instance, error)
-    }
-
     fn finish_with_error(&self, error: RuntimeFailure) -> RuntimeFailure {
-        let error = self.schedule_failure(error);
         self.runtime.diagnostics.emit_runtime_failure(
             (self.runtime.driver.now)(),
             Some(&self.plugin_instance),
