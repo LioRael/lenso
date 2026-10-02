@@ -1118,6 +1118,10 @@ impl JsonHostImports {
                 },
             )));
         };
+        let context = match dependency.child_context(context) {
+            Ok(context) => context,
+            Err(error) => return Box::pin(futures::future::ready(Err(error))),
+        };
         binding
             .codec
             .invoke_host_request(dependency, operation, request, context)

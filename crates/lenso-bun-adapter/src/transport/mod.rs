@@ -1245,9 +1245,8 @@ mod tests {
         let process = spawn_process(command, "example.greeting@1").expect("process should start");
         process.start_monitor();
         let waiter = process.subscribe_exit();
-        std::thread::sleep(Duration::from_millis(20));
-        assert!(!process.alive.load(Ordering::Acquire));
         futures::executor::block_on(waiter).expect("exit should wake the waiter");
+        assert!(!process.alive.load(Ordering::Acquire));
         assert!(matches!(
             process.failure(),
             Some(RuntimeFailure::PluginFailure { .. })

@@ -6,6 +6,53 @@ use sha2::{Digest, Sha256};
 
 use super::VerifiedDistribution;
 
+#[test]
+fn inventory_preserves_and_checks_current_target_profiles() {
+    use lenso_process_protocol::{
+        EXECUTION_TARGET_CAPABILITY_PROFILE, ExecutionTargetCapability,
+        ExecutionTargetCapabilityProfile,
+    };
+    let mut item: super::BundleInventory = serde_json::from_value(json!({
+        "path":"bundles/0.lenso-plugin", "plugin_id":"example.provider", "release_version":"1.0.0",
+        "manifest_digest":digest(b"manifest"), "execution_class":"lenso.bun-process@1",
+        "target":"aarch64-apple-darwin", "implementation_id":"bun", "artifact_path":"provider.js",
+        "artifact_digest":digest(b"artifact"), "artifact_size":1, "artifact_media_type":"application/javascript",
+        "artifact_target":"bun"
+    })).unwrap();
+    let runtime = "lenso.bun-authoring@2";
+    assert!(super::validate_inventory_profile(&item, runtime).is_ok());
+    item.runtime_profile = Some(runtime.to_owned());
+    assert!(super::validate_inventory_profile(&item, runtime).is_err());
+    item.target_capability_profile = Some(ExecutionTargetCapabilityProfile {
+        profile: EXECUTION_TARGET_CAPABILITY_PROFILE.to_owned(),
+        target_profile: runtime.to_owned(),
+        capabilities: vec![
+            ExecutionTargetCapability::NativeProcess,
+            ExecutionTargetCapability::Request,
+            ExecutionTargetCapability::Stream,
+        ],
+    });
+    assert!(super::validate_inventory_profile(&item, runtime).is_ok());
+    item.selection = Some(
+        serde_json::from_value(json!({"selected": {
+            "implementation_id": "bun", "execution_class": "lenso.bun-process@1",
+            "runtime_profile": runtime
+        }}))
+        .unwrap(),
+    );
+    assert!(super::validate_inventory_profile(&item, runtime).is_ok());
+    item.selection.as_mut().unwrap().selected.implementation_id = "forged".to_owned();
+    assert!(super::validate_inventory_profile(&item, runtime).is_err());
+    item.selection.as_mut().unwrap().selected.implementation_id = "bun".to_owned();
+    assert!(super::validate_inventory_profile(&item, "another-runtime@1").is_err());
+    item.target_capability_profile
+        .as_mut()
+        .unwrap()
+        .capabilities
+        .push(ExecutionTargetCapability::Stream);
+    assert!(super::validate_inventory_profile(&item, runtime).is_err());
+}
+
 fn digest(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }

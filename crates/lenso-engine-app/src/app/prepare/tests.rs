@@ -100,7 +100,7 @@ fn authoring(root: &Path) -> PathBuf {
             "target_capability_profile": {
                 "profile": "lenso.execution-target-capability-profile@1",
                 "target_profile": "lenso.bun-authoring@2",
-                "capabilities": ["native-process", "request"]
+                "capabilities": ["native-process", "request", "stream"]
             },
             "selection": {
                 "selected": {

@@ -20,6 +20,7 @@ use lenso_plugin_control_plane::{
     AdapterProfile, CanonicalDocument, HostBuildManifest, HostExecutionPolicy, PlanArtifact,
     PlanGenerationInput, ResolvedGeneration, resolve_plan_generation, strict_json,
 };
+use lenso_process_protocol::ExecutionTargetCapabilityProfile;
 use lenso_runtime_codec::{ArtifactHandle, InstanceResourceCatalog};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -237,6 +238,12 @@ struct BundleInventory {
     release_version: String,
     manifest_digest: String,
     execution_class: String,
+    #[serde(default)]
+    runtime_profile: Option<String>,
+    #[serde(default)]
+    target_capability_profile: Option<ExecutionTargetCapabilityProfile>,
+    #[serde(default)]
+    selection: Option<SelectionEvidence>,
     target: String,
     implementation_id: String,
     artifact_path: String,
@@ -244,6 +251,28 @@ struct BundleInventory {
     artifact_size: u64,
     artifact_media_type: String,
     artifact_target: String,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct SelectionEvidence {
+    selected: SelectedImplementation,
+    // Rejections are bounded, locked diagnostic data from the one resolver.
+    // They never select an Artifact or grant execution authority here.
+    #[serde(default)]
+    rejected: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct SelectedImplementation {
+    implementation_id: String,
+    #[serde(default)]
+    variant_id: Option<String>,
+    execution_class: String,
+    runtime_profile: String,
+    #[serde(default)]
+    enforced_wasm_memory_ceiling_bytes: Option<u64>,
 }
 
 fn validate_lock_identity(lock: &DistributionLock) -> Result<(), DistributionError> {
@@ -434,7 +463,7 @@ fn resolve_artifacts(
         if candidates
             .iter()
             .skip(1)
-            .any(|(_, item)| artifact_identity(item) != artifact_identity(selected))
+            .any(|(_, item)| !same_artifact_identity(item, selected))
         {
             return Err(invalid(format!(
                 "ambiguous distribution Artifact for Plugin Instance `{}`",
@@ -442,6 +471,7 @@ fn resolve_artifacts(
             )));
         }
         validate_digest(&selected.manifest_digest)?;
+        validate_inventory_profile(selected, instance.runtime_profile())?;
         validate_digest(&selected.artifact_digest)?;
         validate_relative(&selected.path)?;
         validate_relative(&selected.artifact_path)?;
@@ -500,16 +530,47 @@ fn resolve_artifacts(
     Ok(result)
 }
 
-fn artifact_identity(item: &BundleInventory) -> (&str, &str, &str, u64, &str, &str, &str) {
-    (
-        &item.release_version,
-        &item.implementation_id,
-        &item.artifact_digest,
-        item.artifact_size,
-        &item.artifact_media_type,
-        &item.artifact_target,
-        &item.artifact_path,
-    )
+fn same_artifact_identity(left: &BundleInventory, right: &BundleInventory) -> bool {
+    left.release_version == right.release_version
+        && left.implementation_id == right.implementation_id
+        && left.artifact_digest == right.artifact_digest
+        && left.artifact_size == right.artifact_size
+        && left.artifact_media_type == right.artifact_media_type
+        && left.artifact_target == right.artifact_target
+        && left.artifact_path == right.artifact_path
+        && left.runtime_profile == right.runtime_profile
+        && left.target_capability_profile == right.target_capability_profile
+        && left.selection == right.selection
+}
+
+fn validate_inventory_profile(
+    item: &BundleInventory,
+    runtime_profile: &str,
+) -> Result<(), DistributionError> {
+    if let Some(selection) = &item.selection
+        && (selection.selected.implementation_id != item.implementation_id
+            || selection.selected.execution_class != item.execution_class
+            || item.runtime_profile.as_deref() != Some(selection.selected.runtime_profile.as_str()))
+    {
+        return Err(invalid(
+            "inventory selection differs from its locked Artifact identity",
+        ));
+    }
+    match (&item.runtime_profile, &item.target_capability_profile) {
+        // Older locked inventories did not carry these fields. Their resolver
+        // and Adapter still own admission; do not rewrite them on consumption.
+        (None, None) => Ok(()),
+        (Some(runtime), Some(profile))
+            if runtime == runtime_profile && profile.target_profile == *runtime =>
+        {
+            profile
+                .validate()
+                .map_err(|error| invalid(format!("invalid inventory target profile: {error}")))
+        }
+        _ => Err(invalid(
+            "inventory target profile differs from the resolved runtime",
+        )),
+    }
 }
 
 fn generation_authority(

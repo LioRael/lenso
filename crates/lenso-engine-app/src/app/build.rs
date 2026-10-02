@@ -86,7 +86,7 @@ impl Execution {
 
     fn admissions(self) -> anyhow::Result<Vec<RuntimeAdmission>> {
         match self {
-            // The TypeScript Host installs Request codecs/endpoints and owns
+            // The TypeScript Host installs typed Request/Stream codecs and owns
             // the trusted Bun child process. Its admission takes the profile
             // identity from the concrete Adapter rather than a CLI-owned
             // string, without claiming unrelated Adapter facilities.
@@ -287,12 +287,9 @@ fn materialize(declaration: Declaration, args: &HostBuildArgs) -> anyhow::Result
                     .descriptor
                     .provided_capabilities()
                     .iter()
-                    .any(|endpoint| {
-                        !endpoint.stream_operations().is_empty()
-                            || !endpoint.event_operations().is_empty()
-                    })
+                    .any(|endpoint| !endpoint.event_operations().is_empty())
                 {
-                    bail!("first TS Host authoring profile supports Request Capabilities only");
+                    bail!("TS Host authoring profile does not admit Event Capabilities");
                 }
                 Ok((verified, selected))
             })
