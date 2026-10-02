@@ -1,0 +1,14 @@
+docs/performance/web-audit-host-evidence-reuse-20261002.md
+  h_9d56aba080c170 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "745f9c0a47e601f5a8f3e0b296c7b99fc6bf8b62",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
