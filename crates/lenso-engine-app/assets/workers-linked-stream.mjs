@@ -22,7 +22,13 @@ const chunkBytes = limits.maxResponseChunkBytes ?? 65536;
 export default {
   fetch(request, env, ctx) {
     const handler = createStreamingHttpHandler({
-      open: runner.open,
+      async open(operation, options) {
+        const session = await runner.open(operation, options);
+        // Response-body errors and disconnects can end the transport context
+        // before its request App and native facilities finish cleanup.
+        ctx?.waitUntil?.(session.closed.catch(() => {}));
+        return session;
+      },
       ...pick(["maxRequestBodyBytes", "maxRequestHeadBytes", "maxResponseBodyBytes", "maxResponseChunkBytes", "bodyReadTimeoutMs"]),
       createScope: () => typeof createScope === "function"
         ? createScope(request, env, ctx)

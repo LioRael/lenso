@@ -251,3 +251,8 @@ there is no business-specific fallback.
 A build receipt proves neither deployment nor infrastructure availability.
 Refer to the exact Environment-plus-Infrastructure test result, not merely
 the target name.
+
+Known stream failures still reject response reads. A clean shutdown receipt marks
+them as a failed terminal without retiring unrelated request Apps. Unconfirmed
+cleanup rejects the session receipt and retires the Wasm generation. The generated
+Host retains the full runner cleanup Promise in the Workers execution context.
