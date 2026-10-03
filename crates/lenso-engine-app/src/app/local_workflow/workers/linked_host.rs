@@ -1,17 +1,20 @@
 use bytes::Bytes;
 use http::{HeaderName, HeaderValue, Request};
 use lenso_app_plan::ResolvedAppPlan;
-use lenso_kernel::{CancellationToken, Kernel, RuntimeDriver, ShutdownOutcome};
+use lenso_kernel::{CancellationToken, Kernel, ShutdownOutcome};
 use lenso_native_adapter::NativePluginRegistry;
-use lenso_web_ingress_plugin::WebIngressEventFactory;
+use lenso_web_ingress_plugin::{WebIngressEventBody, WebIngressEventFactory};
 use lenso_workers_driver::WorkersDriver;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 const BODY_LIMIT: usize = 1_048_576;
 const HEAD_LIMIT: usize = 16_384;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(250);
+
+mod response_session;
+use response_session::ResponseSession;
 
 #[wasm_bindgen(raw_module = "@lenso/workers-runtime/http")]
 extern "C" {
@@ -30,7 +33,10 @@ impl CancellationGuard {
     fn new(scope: JsValue, token: CancellationToken) -> Self {
         let callback = Closure::new(move || token.cancel());
         set_cancellation(&scope, callback.as_ref());
-        Self { scope, _callback: callback }
+        Self {
+            scope,
+            _callback: callback,
+        }
     }
 }
 
@@ -55,16 +61,6 @@ struct HttpInput {
     uri: String,
     headers: Vec<(String, String)>,
     body: Vec<u8>,
-}
-
-#[derive(Serialize)]
-struct HttpReceipt {
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-    ready: bool,
-    shutdown: &'static str,
-    cancelled: bool,
 }
 
 fn error(value: impl std::fmt::Debug) -> JsValue {
@@ -99,40 +95,87 @@ fn request(input: &str) -> Result<Request<Bytes>, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn handle_http(input: String, scope: JsValue) -> Result<String, JsValue> {
+pub async fn open_http(input: String, scope: JsValue) -> Result<ResponseSession, JsValue> {
     // LENSO_LINK_PLUGINS
     let request = request(&input)?;
     let plan: ResolvedAppPlan = serde_json::from_str(include_str!("plan.json")).map_err(error)?;
     let ingress = WebIngressEventFactory::new();
     let driver = WorkersDriver::new();
-    let _event = EventGuard(driver.clone());
+    let event = EventGuard(driver.clone());
     let cancellation = CancellationToken::new();
-    let _cancellation = CancellationGuard::new(scope.clone(), cancellation.clone());
+    let cancel_guard = CancellationGuard::new(scope.clone(), cancellation.clone());
     // LENSO_WORKERS_FACILITY_PREPARE
     let registry = NativePluginRegistry::new()
         .with_linked_factories()
         .with_factory(ingress.clone());
     // LENSO_WORKERS_FACILITY_BIND
-    let app = Kernel::start_native(plan, driver, registry).await.map_err(error)?;
+    let app = Kernel::start_native(plan, driver, registry)
+        .await
+        .map_err(error)?;
     let ready = app.is_ready() && app.is_accepting();
     if !ready {
         let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
         return Err(error(("Workers App is not ready", shutdown)));
     }
-    let response = ingress.handle(request, cancellation.clone()).await;
-    let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
-    if shutdown != ShutdownOutcome::Clean {
-        return Err(error(shutdown));
-    }
-    let (parts, body) = response.map_err(error)?.into_parts();
-    if body.len() > BODY_LIMIT {
-        return Err(error("response body exceeds bound"));
-    }
-    let headers = parts.headers.iter().map(|(name, value)| {
-        Ok((name.as_str().to_owned(), value.to_str().map_err(error)?.to_owned()))
-    }).collect::<Result<Vec<_>, JsValue>>()?;
-    serde_json::to_string(&HttpReceipt {
-        status: parts.status.as_u16(), headers, body: body.to_vec(), ready,
-        shutdown: "clean", cancelled: cancellation.is_cancelled(),
-    }).map_err(error)
+    let response = match ingress.handle_response(request, cancellation.clone()).await {
+        Ok(response) => response,
+        Err(failure) => {
+            let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
+            return Err(error((failure, shutdown)));
+        }
+    };
+    let (parts, body) = response.into_parts();
+    let head = (|| {
+        match &body {
+            WebIngressEventBody::Buffered(bytes) if bytes.len() > BODY_LIMIT => {
+                return Err(error("buffered response body exceeds bound"));
+            }
+            WebIngressEventBody::WebSocket(_) => {
+                return Err(error("linked Workers does not admit WebSocket upgrades"));
+            }
+            _ => {}
+        }
+        let headers = parts
+            .headers
+            .iter()
+            .map(|(name, value)| Ok((name.as_str(), value.to_str().map_err(error)?)))
+            .collect::<Result<Vec<_>, JsValue>>()?;
+        serde_json::to_string(&headers).map_err(error)
+    })();
+    let headers = match head {
+        Ok(headers) => headers,
+        Err(failure) => {
+            drop(body);
+            let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
+            return Err(error((failure, shutdown)));
+        }
+    };
+    let (session, finished, failed) =
+        ResponseSession::new(parts.status.as_u16(), headers, body, cancellation.clone());
+    let lifetime_body = session.body.clone();
+    let closed = wasm_bindgen_futures::future_to_promise(async move {
+        // This profile creates one independent App per HTTP request. These
+        // guards belong to its session, never a shared isolate-wide App.
+        let _event = event;
+        let _cancel = cancel_guard;
+        let cancelled = cancellation.cancelled();
+        futures::pin_mut!(cancelled, finished);
+        let (terminal, cancelled) = match futures::future::select(cancelled, finished).await {
+            futures::future::Either::Left(_) => (true, true),
+            futures::future::Either::Right((outcome, _)) => {
+                (outcome.unwrap_or(false), cancellation.is_cancelled())
+            }
+        };
+        lifetime_body.cancel();
+        let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
+        if shutdown != ShutdownOutcome::Clean || !terminal || failed.get() {
+            return Err(error(("response session failed", shutdown)));
+        }
+        js_sys::JSON::parse(if cancelled {
+            "{\"shutdown\":\"clean\",\"terminal\":\"cancelled\"}"
+        } else {
+            "{\"shutdown\":\"clean\",\"terminal\":\"success\"}"
+        })
+    });
+    Ok(session.with_closed(closed))
 }

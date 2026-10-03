@@ -1,6 +1,6 @@
 //! Generate a native Host using normal Cargo package identities for linked
 //! Plugins and their typed contract projections. Never regenerate native types.
-use anyhow::{Context, bail};
+use anyhow::{Context, bail, ensure};
 use lenso_app_authoring::discovery::Candidate;
 use lenso_app_plan::authoring::{HostCatalog, PluginDescriptor};
 use serde_json::{Value, json};
@@ -158,6 +158,7 @@ pub(super) fn generate_in(
     let mut codec_cohorts = BTreeSet::new();
     let mut web_contract = None;
     let mut web_contract_id = None;
+    let mut web_stream_contract = None;
     let mut business_snapshot = business_snapshot::HostBinding::default();
     let mut facilities = facilities::Sources::default();
     let mut facility_graphs = Vec::new();
@@ -350,6 +351,16 @@ pub(super) fn generate_in(
                 web_contract = Some(dependency);
                 web_contract_id = Some(id.clone());
             }
+            if native && package["name"] == "lenso-capability-http-stream-endpoint" {
+                let dependency = dependency(package)?;
+                if web_stream_contract
+                    .as_ref()
+                    .is_some_and(|previous| previous != &dependency)
+                {
+                    bail!("Web stream endpoints use different Cargo contract identities");
+                }
+                web_stream_contract = Some(dependency);
+            }
             let Some(contract) = package.pointer("/metadata/lenso/contract") else {
                 continue;
             };
@@ -485,8 +496,15 @@ pub(super) fn generate_in(
     }
     let web_ingress = web_contract
         .as_ref()
+        .or(web_stream_contract.as_ref())
         .map(web_ingress_dependency)
         .transpose()?;
+    if let (Some(buffered), Some(stream)) = (&web_contract, &web_stream_contract) {
+        ensure!(
+            web_ingress_dependency(buffered)? == web_ingress_dependency(stream)?,
+            "buffered and streaming Web endpoints use different Ingress Cargo identities"
+        );
+    }
     if let Some(path) = web_ingress
         .as_ref()
         .and_then(|ingress| ingress["path"].as_str())
@@ -597,7 +615,7 @@ pub(super) fn generate_in(
             include_str!("terminal/parser.rs"),
         )?;
     }
-    let web = web_contract.is_some();
+    let web = web_ingress.is_some();
     if let Some(contract) = web_contract {
         alias_identities.insert(
             "local_web_contract".into(),
@@ -612,10 +630,9 @@ pub(super) fn generate_in(
         // A Git-pinned Endpoint contract must bring the matching Ingress from
         // that exact Web source too. Otherwise Cargo may select a registry
         // Ingress with incompatible Host/Kernel identities.
-        dependencies.insert(
-            "lenso-web-ingress-plugin".into(),
-            web_ingress.context("Web Endpoint needs a matching Ingress")?,
-        );
+    }
+    if let Some(web_ingress) = web_ingress {
+        dependencies.insert("lenso-web-ingress-plugin".into(), web_ingress);
     }
     let mut source = (include_str!("local_runtime_template.rs").to_owned()
         + include_str!("local_json_template.rs"))
@@ -670,7 +687,7 @@ pub(super) fn generate_in(
     facilities.write(stage)?;
     source = source.replace("// LENSO_DESCRIBE_WEB", if web { r#"
         let mut releases = catalog.plugins().to_vec();
-        if releases.iter().any(|r| r.descriptor().provided_capabilities().iter().any(|c| c.capability_id() == local_web_contract::CAPABILITY_ID)) {
+        if releases.iter().any(|r| r.descriptor().provided_capabilities().iter().any(|c| matches!(c.capability_id(), "lenso.http.endpoint@1" | "lenso.http.stream-endpoint@1"))) {
             releases.push(lenso_app_plan::authoring::HostPluginRelease::new(lenso_web_ingress_plugin::WebIngressFactory::plugin_descriptor()));
         }
         let catalog = HostCatalog::new([], releases, []);
@@ -1268,12 +1285,12 @@ fn web_ingress_dependency(contract: &Value) -> anyhow::Result<Value> {
     }
     if let Some(path) = fields.get("path").and_then(Value::as_str) {
         let path = Path::new(path);
-        if path
-            .file_name()
-            .is_some_and(|name| name == "lenso-capability-http-endpoint")
-            && path
-                .parent()
-                .is_some_and(|parent| parent.file_name().is_some_and(|name| name == "crates"))
+        if path.file_name().is_some_and(|name| {
+            name == "lenso-capability-http-endpoint"
+                || name == "lenso-capability-http-stream-endpoint"
+        }) && path
+            .parent()
+            .is_some_and(|parent| parent.file_name().is_some_and(|name| name == "crates"))
         {
             let (dependency, _) = local_framework_dependency(
                 path.parent().context("Endpoint crates directory")?,

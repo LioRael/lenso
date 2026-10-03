@@ -9,7 +9,7 @@ use anyhow::{Context as _, ensure};
 use lenso_app_plan::{CapabilityOperationKind, ResolvedAppPlan, RestartPolicy};
 use serde_json::{Value, json};
 
-const PROFILE: &str = "lenso.linked-rust-workers@1";
+const PROFILE: &str = "lenso.linked-rust-workers@2";
 const BINDGEN_VERSION: &str = "wasm-bindgen 0.2.127";
 const WORKERS_DRIVER_REQUIREMENT: &str = "=0.1.2";
 mod limits;
@@ -197,6 +197,10 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
         toml::to_string_pretty(&manifest)?,
     )?;
     fs::write(generated.join("src/lib.rs"), host_source)?;
+    fs::write(
+        generated.join("src/response_session.rs"),
+        include_str!("linked_response_session.rs"),
+    )?;
     let plan = serde_json::to_vec(resolved.plan())?;
     fs::write(generated.join("src/plan.json"), &plan)?;
     let status = crate::app::cargo_command()
@@ -266,15 +270,12 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
     }
     fs::write(
         stage.path().join("worker.mjs"),
-        format!(
-            "import * as bindings from './host.js';\nimport wasmModule from './host_bg.wasm';\nimport {{ createWorkersHttpHost }} from './runtime/host.mjs';\n{worker_scope}export default createWorkersHttpHost({{ bindings, wasmModule, limits:{}{} }});\n",
-            serde_json::to_string(&event_limits)?,
-            if args.facilities.is_some() {
-                ", createScope"
-            } else {
-                ""
-            }
-        ),
+        include_str!("../../../../assets/workers-linked-stream.mjs")
+            .replace("// LENSO_SCOPE", &worker_scope)
+            .replace(
+                "/* LENSO_LIMITS */ {}",
+                &serde_json::to_string(&event_limits)?,
+            ),
     )?;
     fs::write(
         stage.path().join("wrangler.jsonc"),
@@ -282,7 +283,7 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
     )?;
     fs::write(
         stage.path().join("README.md"),
-        "Static linked Rust Workers candidate. Run `wrangler dev --local --config wrangler.jsonc`. The exact resolved graph uses the Workers Driver and Kernel for every HTTP event. Only request Capabilities and one main lane are admitted. Plugin memory is recreated per event; this does not prove durable state, D1, PostgreSQL, deployed Workers, dynamic loading, stream or event support.\n",
+        "Static linked Rust Workers candidate. Run `wrangler dev --local --config wrangler.jsonc`. The exact resolved graph uses the Workers Driver and Kernel for every HTTP event. Request and Stream Capabilities and one main lane are admitted. HTTP response chunks are pulled incrementally; successful EOF follows the stream terminal and clean shutdown of that request's independent App. Cancellation and session limits retain the event generation until cleanup. Plugin memory is recreated per event; this does not prove durable state, D1, PostgreSQL, deployed Workers, dynamic loading or Event Capability support.\n",
     )?;
     for name in [".lenso/host-build.json", "local-sources.json"] {
         fs::copy(native.join(name), stage.path().join(name))
@@ -373,17 +374,23 @@ fn admit(plan: &ResolvedAppPlan) -> anyhow::Result<()> {
         );
         for capability in instance.provided_capabilities() {
             ensure!(
-                capability
-                    .operations()
-                    .iter()
-                    .all(|operation| capability.operation_kind(operation)
-                        == Some(CapabilityOperationKind::Request)),
-                "linked Workers rejects non-request Capability {} on {}",
+                capability.operations().iter().all(|operation| matches!(
+                    capability.operation_kind(operation),
+                    Some(CapabilityOperationKind::Request | CapabilityOperationKind::Stream)
+                )),
+                "linked Workers rejects Event Capability {} on {}",
                 capability.capability_id(),
                 instance.instance_key()
             );
         }
     }
+    ensure!(
+        !plan.plugin_instances().iter().any(|instance| instance
+            .provided_capabilities()
+            .iter()
+            .any(|capability| capability.capability_id() == "lenso.websocket.endpoint@1")),
+        "linked Workers does not admit WebSocket Endpoint providers"
+    );
     Ok(())
 }
 
@@ -437,6 +444,7 @@ fn wasm_manifest(mut manifest: Value) -> anyhow::Result<(Value, String)> {
         ("http", "1"),
         ("wasm-bindgen", "=0.2.127"),
         ("wasm-bindgen-futures", "=0.4.77"),
+        ("js-sys", "=0.3.104"),
     ] {
         dependencies.insert(name.into(), json!(version));
     }
@@ -588,7 +596,7 @@ mod tests {
     }
 
     #[test]
-    fn request_only_profile_rejects_stream_and_non_http_graphs() {
+    fn linked_profile_admits_streams_but_rejects_events_and_non_http_graphs() {
         let endpoint = PluginInstancePlan::new("endpoint", "example.http")
             .with_capability(CapabilityEndpointPlan::new("example.http@1", "1", ["read"]));
         let no_ingress = AppComposition::new(vec![endpoint.clone()], vec![])
@@ -612,11 +620,29 @@ mod tests {
         let plan = AppComposition::new(vec![stream, ingress], vec![])
             .resolve()
             .unwrap();
+        assert!(admit(&plan).is_ok());
+        let event = PluginInstancePlan::new("event", "example.event").with_capability(
+            CapabilityEndpointPlan::new("example.event@1", "1", ["publish"])
+                .with_operation_kind("publish", CapabilityOperationKind::Event),
+        );
+        let ingress = PluginInstancePlan::new("ingress", "lenso.web-ingress");
+        let plan = AppComposition::new(vec![event, ingress], vec![])
+            .resolve()
+            .unwrap();
         assert!(
             admit(&plan)
                 .unwrap_err()
                 .to_string()
-                .contains("non-request")
+                .contains("Event Capability")
         );
+        let websocket = PluginInstancePlan::new("websocket", "example.websocket").with_capability(
+            CapabilityEndpointPlan::new("lenso.websocket.endpoint@1", "1", ["connect"])
+                .with_operation_kind("connect", CapabilityOperationKind::Stream),
+        );
+        let ingress = PluginInstancePlan::new("ingress", "lenso.web-ingress");
+        let plan = AppComposition::new(vec![websocket, ingress], vec![])
+            .resolve()
+            .unwrap();
+        assert!(admit(&plan).unwrap_err().to_string().contains("WebSocket"));
     }
 }

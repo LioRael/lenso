@@ -32,7 +32,9 @@ fn validate(limits: &Value) -> anyhow::Result<()> {
             | "cleanupTimeoutMs" => 2_147_483_647,
             "maxConcurrent" => 32,
             "retirementAdmissionLimit" => 96,
-            "maxRequestBodyBytes" | "maxResponseBodyBytes" => 1_048_576,
+            "maxRequestBodyBytes" => 1_048_576,
+            "maxResponseBodyBytes" => 67_108_864,
+            "maxResponseChunkBytes" => 65_536,
             "maxRequestHeadBytes" => 16_384,
             "maxOperations" => 128,
             _ => anyhow::bail!("unsupported Workers Host limit `{name}`"),
@@ -78,8 +80,11 @@ mod tests {
             json!({"maxConcurrent":33}),
             json!({"eventLimitMs":1.5}),
             json!({"unknown":10000}),
+            json!({"maxResponseChunkBytes":65537}),
+            json!({"maxResponseBodyBytes":67108865}),
         ] {
             assert!(validate(&invalid).is_err());
         }
+        validate(&json!({"maxResponseChunkBytes":65536,"maxResponseBodyBytes":67108864})).unwrap();
     }
 }

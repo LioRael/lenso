@@ -128,7 +128,10 @@ pub(super) fn workers(root: &Path, profile: Option<&Path>) -> anyhow::Result<Val
     let receipt: Value = serde_json::from_slice(&fs::read(root.join("workers-build.json"))?)?;
     ensure!(
         receipt["schema"] == "lenso.workers-app-build.v1"
-            && receipt["profile"] == "lenso.linked-rust-workers@1",
+            && matches!(
+                receipt["profile"].as_str(),
+                Some("lenso.linked-rust-workers@1" | "lenso.linked-rust-workers@2")
+            ),
         "unsupported Workers explanation profile"
     );
     for (path, field) in [
