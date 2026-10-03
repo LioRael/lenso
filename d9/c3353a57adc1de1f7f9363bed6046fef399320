@@ -1,0 +1,16 @@
+crates/lenso-cli/docs/workers-host-integrations.md
+  h_9d56aba080c170 44-46,48-49,55-67
+crates/lenso-engine-app/tests/fixtures/linked-stream-app/README.md
+  h_9d56aba080c170 33-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9c3353a57adc1de1f7f9363bed6046fef399320",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
