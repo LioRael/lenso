@@ -1,0 +1,38 @@
+crates/lenso-cli/docs/execution-target-preflight.md
+  h_9d56aba080c170 98-99,104-105
+crates/lenso-cli/docs/workers-host-integrations.md
+  h_9d56aba080c170 19-20,24,42-52,146-152
+crates/lenso-engine-app/assets/workers-linked-stream.mjs
+  h_9d56aba080c170 1-48
+crates/lenso-engine-app/src/app/facility_inspection.rs
+  h_9d56aba080c170 131-134
+crates/lenso-engine-app/src/app/local_host.rs
+  h_9d56aba080c170 3,161,354-363,499,502-507,618,633-635,690,1288-1293
+crates/lenso-engine-app/src/app/local_workflow/workers/linked.rs
+  h_9d56aba080c170 12,200-203,273-278,286,377-381,387-393,447,599,623-631,636-640,642-646
+crates/lenso-engine-app/src/app/local_workflow/workers/linked/limits.rs
+  h_9d56aba080c170 35-37,83-84,88
+crates/lenso-engine-app/src/app/local_workflow/workers/linked_host.rs
+  h_9d56aba080c170 4,6,8,16-18,36-39,98,104,106,112-114,120-180
+crates/lenso-engine-app/src/app/local_workflow/workers/linked_response_session.rs
+  h_9d56aba080c170 1-164
+crates/lenso-engine-app/tests/fixtures/linked-stream-app/README.md
+  h_9d56aba080c170 1-27
+crates/lenso-engine-app/tests/fixtures/linked-stream-app/lib.rs
+  h_9d56aba080c170 1-112
+crates/lenso-engine-app/tests/fixtures/linked-stream-app/probe.mjs
+  h_9d56aba080c170 1-60
+crates/lenso-engine-app/tests/linked-stream-smoke.py
+  h_9d56aba080c170 1-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5427812aaf2cc94506e61d368e7d73032b5e2c3d",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
