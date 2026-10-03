@@ -50,16 +50,20 @@ pub(super) fn extract(
     }
     let generator = generator
         .context("source contract requires lenso-contract-codegen in build-dependencies")?;
-    let cache = app
-        .join(".lenso/contract-source")
-        .join(super::super::local_host::digest_text(
-            &contract.root.to_string_lossy(),
-        ));
+    let identity = super::super::local_host::digest_text(&contract.root.to_string_lossy());
+    let cache = app.join(".lenso/contract-source").join(&identity);
+    let package_name = format!(
+        "lenso-contract-source-extractor-{}",
+        super::super::local_host::digest_text(&cache.to_string_lossy())
+    );
     fs::create_dir_all(cache.join("src"))?;
     write_changed(
         cache.join("Cargo.toml"),
         toml::to_string_pretty(
-            &json!({"package":{"name":"lenso-contract-source-extractor","version":"0.0.0","edition":"2024"},"workspace":{},"dependencies":dependencies}),
+            // Shared Cargo targets have one executable path per package name.
+            // A fresh fingerprint for this source must not run another
+            // contract's cached extractor (possibly a different projection).
+            &json!({"package":{"name":package_name,"version":"0.0.0","edition":"2024"},"workspace":{},"dependencies":dependencies}),
         )?,
     )?;
     let mut languages = contract
