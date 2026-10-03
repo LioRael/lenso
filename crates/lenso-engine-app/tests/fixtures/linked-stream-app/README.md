@@ -25,3 +25,8 @@ not successful EOF. The separate holding case proves first chunk before terminal
 `probe.mjs` is a test observer around the generated `worker.mjs`; it is never
 copied into a production generated App by the builder. No durable data, finance,
 external proof authority, deployed Workers, or attack tests are involved.
+
+For a Workers-only correction after a recorded Native corpus pass, use
+`workers-smoke` to reuse its generated Plan and fixture identity without repeating
+Native execution. Preserve that prior pass evidence; this stage reports reuse
+explicitly and still requires every strict Workers assertion.
