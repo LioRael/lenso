@@ -127,6 +127,9 @@ def main():
             assert result["feedback"]["host_build_invoked"] is False
             assert result["feedback"]["packaged_plugins"] == ["example.bun-a"]
             assert len(result["packaging_lines"]) == 1
+            if "affected_instances" in result["feedback"]:
+                assert result["feedback"]["affected_instances"] == ["example.bun-a/default"]
+                assert result["feedback"]["activation_scope"] == "host_generation"
     finally:
         child.send_signal(signal.SIGINT)
         try:

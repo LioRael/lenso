@@ -377,12 +377,14 @@ Instance membership and resources are unchanged and no selected convention
 compiler consumes configuration. Resolution and readiness still precede a fresh
 Host generation; configuration is not patched into live native factories.
 Invalid configuration keeps the previous preview. Structural, contract,
-dependency and resource edits use the normal build path. TS implementation
-events are classified separately, but still use source build/restart until a
-targeted execution-packaging path is available.
+dependency and resource edits use the normal build path. Compatible local Bun
+implementation edits repackage only the changed Plugins against retained
+contract, codec and target evidence, then activate a fresh checked Host
+Generation. This does not yet keep unrelated live Instances running.
 
 The read-only MCP `project_dev_feedback` tool returns the most recent dev change,
-build invocation, outcome and measured elapsed time. `delegated` means the
+build invocation, packaged Plugins, affected Instances, actual activation scope,
+outcome and measured elapsed time. `delegated` means the
 explicit frontend server owns reload, not that browser HMR was measured. See
 the [two-package dev example](../../../examples/incremental-dev/README.md) for a
 real HTTP timing probe and unaffected artifact evidence.
