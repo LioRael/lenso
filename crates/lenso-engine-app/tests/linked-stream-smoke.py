@@ -185,7 +185,7 @@ def smoke(args, targets=("native", "workers")):
         if "native" in results:
             assert results["native"]["cases"] == results["workers"]["cases"]
         else:
-            results["native_corpus"] = "reused separately recorded prior pass; no Native code change"
+            results["native_corpus"] = "not rerun; prior Native qualification is external evidence"
             assert results["workers"]["cases"] == [
                 "success", "half-close", "first chunk before terminal + disconnect",
                 "domain", "fail"]
