@@ -16,12 +16,12 @@ lenso app build --target workers --root ./app --out ./dist-workers \
 lenso app explain --root ./dist-workers --json
 ```
 
-The profile is `lenso.linked-rust-workers@1`. It requires wasm-bindgen 0.2.127,
-`wasm32-unknown-unknown`, linked Cargo Plugins, one main execution lane, request
+The profile is `lenso.linked-rust-workers@2`. It requires wasm-bindgen 0.2.127,
+`wasm32-unknown-unknown`, linked Cargo Plugins, one main execution lane, Request and Stream
 Capabilities, and the selected Web Ingress. It admits nonempty configuration,
 multiple Instances and exact named Port bindings from the same resolved App
 Plan used by the Native build. Requests invoke typed providers through the
-Kernel. Unsupported streams/events, convention compilers, published-resource
+Kernel. Unsupported Event Capabilities, WebSocket upgrades, convention compilers, published-resource
 loading, dynamic loading and restart supervision fail before publication.
 
 The linked profile emits compatibility date `2026-09-26`, paired locally with
@@ -38,6 +38,17 @@ Each HTTP event constructs its own Kernel App and typed Plugin Instances.
 Configuration and bindings are static; Plugin memory is recreated for each
 event. Persist state through an explicitly selected owner backend. An in-memory
 backend does not supply cross-request CAS or restart persistence.
+
+The generated Workers Host uses the same Stream Endpoint contract and Web
+Ingress routing as Native. Response headers and each chunk leave incrementally,
+with one receive per transport pull. A successful HTTP EOF requires the provider's
+successful terminal and clean shutdown of that request's independent App.
+Cancellation, deadlines and failed terminals release the same request-owned
+resources; a failed terminal cannot become successful EOF. The shared Wasm
+generation stays leased until session cleanup completes. Applications supply
+one Plugin source tree for both targets, without maintaining a Workers Host or
+copying framework source. Provider-owned D1/PG differences remain in that
+provider's infrastructure adapter, not in generated Host code.
 
 ## Owner facilities
 
@@ -131,6 +142,13 @@ preserves the runtime defaults, including the 1000 ms event deadline and 250 ms
 cleanup budget. Size budgets using observed infrastructure latency. A deadline
 does not establish rollback; an unconfirmed write requires owner reconciliation
 and is never automatically replayed.
+
+Response transport defaults to a 64 KiB chunk bound and a 64 MiB cumulative
+body bound. Configure `maxResponseChunkBytes` up to 65536 and
+`maxResponseBodyBytes` up to 67108864. Buffered Endpoint responses retain the
+1 MiB Wasm bound and are sliced into transport chunks. Session duration and
+cancellation cleanup have separate runner budgets; slow or abandoned readers
+cannot retain an event indefinitely.
 
 Contract source can set `request_queue_capacity` and `request_max_concurrency`
 together on `#[capability(...)]`. A Root can set those same fields on
