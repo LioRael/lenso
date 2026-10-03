@@ -23,9 +23,9 @@ for provider in postgres d1; do
     timeout --kill-after=5s 90s "$test_binary" --ignored --exact real_provider_store_corpus --nocapture \
     | tee "$evidence/$provider.txt"
   # An accidental zero-test exact filter must never turn this into a green gate.
-  rg -q '^test real_provider_store_corpus \.\.\. ok$' "$evidence/$provider.txt"
+  grep -Fxq 'test real_provider_store_corpus ... ok' "$evidence/$provider.txt"
 done
 LENSO_STORE_TRANSCRIPT_DIR="$evidence" \
   timeout --kill-after=5s 90s "$test_binary" --exact replay_provider_store_corpus --nocapture \
   | tee "$evidence/replay.txt"
-rg -q '^test replay_provider_store_corpus \.\.\. ok$' "$evidence/replay.txt"
+grep -Fxq 'test replay_provider_store_corpus ... ok' "$evidence/replay.txt"
