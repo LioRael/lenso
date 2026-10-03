@@ -1,0 +1,43 @@
+{
+  "smoke": "/workspace/lenso-sim-ci-baseline/examples/onboarding/background-jobs/smoke.py",
+  "binary": "/tmp/lenso-simulator-benchmark-02/baseline/debug/lenso-onboarding-background-jobs",
+  "seconds": 1.6110747310000306,
+  "phases": [
+    {
+      "phase": "process spawn through listening readiness",
+      "seconds": 0.00956291699992562
+    },
+    {
+      "phase": "poll job 1 until completed",
+      "seconds": 1.506429034000007
+    },
+    {
+      "phase": "poll job 2 until failed",
+      "seconds": 0.06345533600006092
+    },
+    {
+      "phase": "poll job 3 until running",
+      "seconds": 0.0004653099999814003
+    },
+    {
+      "phase": "SIGINT through process exit and output drain",
+      "seconds": 0.0011621090000062395
+    },
+    {
+      "phase": "process spawn through listening readiness",
+      "seconds": 0.008403803999954107
+    },
+    {
+      "phase": "SIGINT through process exit and output drain",
+      "seconds": 0.0011285279999810882
+    },
+    {
+      "phase": "process spawn through listening readiness",
+      "seconds": 0.00811757300004956
+    },
+    {
+      "phase": "SIGINT through process exit and output drain",
+      "seconds": 0.0011188229999561372
+    }
+  ]
+}

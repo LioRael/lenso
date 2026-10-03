@@ -1,0 +1,48 @@
+{
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "build_jobs": 2,
+  "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+  "cache_boundary": "empty target per checkout; registry sources pre-fetched; no wrapper environment variables",
+  "cases": {
+    "baseline": {
+      "checkout_sha": "75ff83c6150cc7ce38d00933925912a0d2ec0788",
+      "dirty_files": [],
+      "cold_build_seconds": 43.260123512000064,
+      "warm_build_seconds": 0.21477092199995695,
+      "first_process_seconds": 1.6802433640000345,
+      "repeated_process_seconds": [
+        1.6677789169999642,
+        1.6583844020000242,
+        1.6618668950000028
+      ],
+      "command": [
+        "python3",
+        "examples/onboarding/background-jobs/smoke.py",
+        "/tmp/lenso-simulator-benchmark-02/baseline/debug/lenso-onboarding-background-jobs"
+      ]
+    },
+    "candidate": {
+      "checkout_sha": "8457308b867ececa877197fd13b3d152eb3f5234",
+      "dirty_files": [
+        "?? docs/performance/simulator-ci-log-extract.txt",
+        "?? docs/performance/simulator-smoke-final-raw/",
+        "?? docs/performance/simulator-smoke-raw/"
+      ],
+      "cold_build_seconds": 43.10154329699992,
+      "warm_build_seconds": 0.21079760999998598,
+      "first_process_seconds": 0.012404932999970697,
+      "repeated_process_seconds": [
+        0.013725883999995858,
+        0.01211554700000761,
+        0.012604793000036807
+      ],
+      "command": [
+        "/tmp/lenso-simulator-benchmark-02/candidate/debug/deps/simulator-79cf87f2004d585b",
+        "smoke_corpus_replays_without_wall_clock_waits",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "real_sentinel_seconds": 1.6817319609999686
+    }
+  }
+}

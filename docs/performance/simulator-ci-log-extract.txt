@@ -1,0 +1,25 @@
+2026-09-28T10:45:36.7302884Z ##[group]Run cargo fmt --all -- --check
+2026-09-28T10:45:39.7376425Z No cache found.
+2026-09-28T10:45:40.7655754Z ##[group]Run cargo clippy --locked --workspace --all-targets --timings -- -D warnings
+2026-09-28T10:48:03.6052006Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 2m 22s
+2026-09-28T10:48:03.7837930Z ##[group]Run cargo test --locked --workspace --no-run --timings
+2026-09-28T10:52:29.3649083Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 25s
+2026-09-28T10:52:29.5110413Z ##[group]Run cargo test --locked --workspace
+2026-09-28T10:52:30.6166501Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.00s
+2026-09-28T10:52:32.4606259Z      Running tests/configuration_source_dev.rs (target/debug/deps/configuration_source_dev-87b5959260e7646c)
+2026-09-28T11:04:48.5525164Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 736.09s
+2026-09-28T11:11:31.1971831Z      Running tests/runtime_control.rs (target/debug/deps/runtime_control-7396dee5349da9c6)
+2026-09-28T11:12:00.5465088Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 29.34s
+2026-09-28T11:12:00.6780173Z test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+2026-09-28T11:12:00.6793574Z      Running tests/http_egress.rs (target/debug/deps/http_egress-8b99f26fa7b6862c)
+2026-09-28T11:12:00.8125231Z test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+2026-09-28T11:12:33.1404749Z     Finished `release` profile [optimized] target(s) in 32.29s
+2026-09-28T11:13:14.5898251Z     Finished `release` profile [optimized] target(s) in 15.89s
+2026-09-28T11:13:15.3660434Z     Finished `release` profile [optimized] target(s) in 16.67s
+2026-09-28T11:13:19.6116133Z     Finished `release` profile [optimized] target(s) in 0.51s
+2026-09-28T11:13:50.7961529Z     Finished `release` profile [optimized] target(s) in 15.83s
+2026-09-28T11:14:02.0525082Z ##[group]Run cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-unknown-unknown
+2026-09-28T11:14:10.9002069Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.76s
+2026-09-28T11:14:42.8315633Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 31.90s
+2026-09-28T11:14:46.0183635Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.15s
+2026-09-28T11:14:50.6788158Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.62s
