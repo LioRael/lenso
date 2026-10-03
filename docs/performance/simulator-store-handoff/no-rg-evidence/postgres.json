@@ -1,0 +1,506 @@
+{
+  "format": 1,
+  "provider": "postgres",
+  "corpus_sha256": "329a95dde1f9fba27609c5d041dff820c02f54ecbf5d8cff357004f18ca2706e",
+  "completions": [
+    {
+      "request": {
+        "action": "version"
+      },
+      "response": {
+        "version": "17.6"
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "success-'?-binding",
+        "amount": 7,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "success-'?-binding",
+          "amount": 7
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "success-'?-binding"
+      },
+      "response": {
+        "receipt": {
+          "id": "success-'?-binding",
+          "amount": 7
+        },
+        "effect": {
+          "id": "success-'?-binding",
+          "amount": 7
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "success-'?-binding",
+        "amount": 107,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "success-'?-binding",
+          "amount": 7
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "success-'?-binding"
+      },
+      "response": {
+        "receipt": {
+          "id": "success-'?-binding",
+          "amount": 7
+        },
+        "effect": {
+          "id": "success-'?-binding",
+          "amount": 7
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "not-dispatched"
+      },
+      "response": {
+        "receipt": null,
+        "effect": null
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "not-dispatched",
+        "amount": 111,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "not-dispatched",
+          "amount": 111
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "not-dispatched"
+      },
+      "response": {
+        "receipt": {
+          "id": "not-dispatched",
+          "amount": 111
+        },
+        "effect": {
+          "id": "not-dispatched",
+          "amount": 111
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "confirmed-rollback",
+        "amount": 13,
+        "rollback": true
+      },
+      "response": {
+        "kind": "rolled_back",
+        "error": "constraint"
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "confirmed-rollback"
+      },
+      "response": {
+        "receipt": null,
+        "effect": null
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "confirmed-rollback",
+        "amount": 113,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "confirmed-rollback",
+          "amount": 113
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "confirmed-rollback"
+      },
+      "response": {
+        "receipt": {
+          "id": "confirmed-rollback",
+          "amount": 113
+        },
+        "effect": {
+          "id": "confirmed-rollback",
+          "amount": 113
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "committed-ack-lost",
+        "amount": 17,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "committed-ack-lost"
+      },
+      "response": {
+        "receipt": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        },
+        "effect": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "committed-ack-lost",
+        "amount": 117,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "committed-ack-lost"
+      },
+      "response": {
+        "receipt": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        },
+        "effect": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "unknown-committed",
+        "amount": 19,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "unknown-committed",
+          "amount": 19
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "unknown-committed"
+      },
+      "response": {
+        "receipt": {
+          "id": "unknown-committed",
+          "amount": 19
+        },
+        "effect": {
+          "id": "unknown-committed",
+          "amount": 19
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "unknown-committed",
+        "amount": 119,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "unknown-committed",
+          "amount": 19
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "unknown-committed"
+      },
+      "response": {
+        "receipt": {
+          "id": "unknown-committed",
+          "amount": 19
+        },
+        "effect": {
+          "id": "unknown-committed",
+          "amount": 19
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "unknown-rolled-back",
+        "amount": 23,
+        "rollback": true
+      },
+      "response": {
+        "kind": "rolled_back",
+        "error": "constraint"
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "unknown-rolled-back"
+      },
+      "response": {
+        "receipt": null,
+        "effect": null
+      }
+    },
+    {
+      "request": {
+        "action": "apply",
+        "id": "unknown-rolled-back",
+        "amount": 123,
+        "rollback": false
+      },
+      "response": {
+        "kind": "committed",
+        "value": {
+          "id": "unknown-rolled-back",
+          "amount": 123
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "unknown-rolled-back"
+      },
+      "response": {
+        "receipt": {
+          "id": "unknown-rolled-back",
+          "amount": 123
+        },
+        "effect": {
+          "id": "unknown-rolled-back",
+          "amount": 123
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "race",
+        "id": "concurrent-dedup",
+        "amounts": [
+          7,
+          11
+        ]
+      },
+      "response": {
+        "receipts": [
+          {
+            "id": "concurrent-dedup",
+            "amount": 7
+          },
+          {
+            "id": "concurrent-dedup",
+            "amount": 7
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "concurrent-dedup"
+      },
+      "response": {
+        "receipt": {
+          "id": "concurrent-dedup",
+          "amount": 7
+        },
+        "effect": {
+          "id": "concurrent-dedup",
+          "amount": 7
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "restart"
+      },
+      "response": {
+        "ready": true
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "success-'?-binding"
+      },
+      "response": {
+        "receipt": {
+          "id": "success-'?-binding",
+          "amount": 7
+        },
+        "effect": {
+          "id": "success-'?-binding",
+          "amount": 7
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "not-dispatched"
+      },
+      "response": {
+        "receipt": {
+          "id": "not-dispatched",
+          "amount": 111
+        },
+        "effect": {
+          "id": "not-dispatched",
+          "amount": 111
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "confirmed-rollback"
+      },
+      "response": {
+        "receipt": {
+          "id": "confirmed-rollback",
+          "amount": 113
+        },
+        "effect": {
+          "id": "confirmed-rollback",
+          "amount": 113
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "committed-ack-lost"
+      },
+      "response": {
+        "receipt": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        },
+        "effect": {
+          "id": "committed-ack-lost",
+          "amount": 17
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "unknown-committed"
+      },
+      "response": {
+        "receipt": {
+          "id": "unknown-committed",
+          "amount": 19
+        },
+        "effect": {
+          "id": "unknown-committed",
+          "amount": 19
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "unknown-rolled-back"
+      },
+      "response": {
+        "receipt": {
+          "id": "unknown-rolled-back",
+          "amount": 123
+        },
+        "effect": {
+          "id": "unknown-rolled-back",
+          "amount": 123
+        }
+      }
+    },
+    {
+      "request": {
+        "action": "read",
+        "id": "concurrent-dedup"
+      },
+      "response": {
+        "receipt": {
+          "id": "concurrent-dedup",
+          "amount": 7
+        },
+        "effect": {
+          "id": "concurrent-dedup",
+          "amount": 7
+        }
+      }
+    }
+  ]
+}
