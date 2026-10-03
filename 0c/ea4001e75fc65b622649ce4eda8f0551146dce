@@ -1,0 +1,16 @@
+crates/lenso-engine-app/tests/fixtures/linked-stream-app/README.md
+  h_9d56aba080c170 28-32
+crates/lenso-engine-app/tests/linked-stream-smoke.py
+  h_9d56aba080c170 146,163-164,185-191,214,225-226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0cea4001e75fc65b622649ce4eda8f0551146dce",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
