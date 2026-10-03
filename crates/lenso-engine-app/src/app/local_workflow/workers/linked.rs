@@ -132,6 +132,7 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
         executable: true,
         trust_linked_build: args.trust_linked_build,
         portable_implementations: Vec::new(),
+        host_many_slots: args.host_many_slots,
     })?;
     let resolved = lenso_app_authoring::load_resolved_app(&native)?;
     admit(resolved.plan())?;
