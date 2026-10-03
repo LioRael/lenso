@@ -40,5 +40,5 @@ translation of the same portable Interface, use a runtime seam.
   product-neutral conformance rather than a convenience gap in one Host.
 
 The Core path is complete when one owner controls the next artifact, its exact
-source is located, and success, honest failure, inspection, and removal or
-replacement evidence are defined.
+source is located, and affected success, honest failure and inspection evidence
+are defined. Add removal/replacement proof when that boundary changes or is claimed.

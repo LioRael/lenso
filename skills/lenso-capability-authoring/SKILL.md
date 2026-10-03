@@ -8,6 +8,11 @@ description: Create or evolve a Lenso Capability role contract, Descriptor, JSON
 Author one deep role Interface that consumers depend on without knowing a
 provider's package, storage, process, or concrete type.
 
+Use this workflow only for a real collaboration contract. Internal helper
+types and ordinary same-language calls do not need a new Capability. Cross a
+language boundary at a coarse-grained role when required; keep same-language
+optimizations and generate only the languages the contract actually publishes.
+
 ## Workflow
 
 For source-App contract scaffolding and automatic regeneration, read
@@ -41,8 +46,8 @@ and generated-projection rules below as the contract authority.
    Descriptor and package-local Schemas contain the entire portable contract.
 5. **Generate and integrate.** Run the installed
    `lenso-contract-codegen --help`, then its generate and check workflows.
-   Compile/typecheck both generated targets that the contract publishes. A
-   provider implements the generated Provider Interface; a consumer uses the
+   Compile/typecheck affected generated targets that the contract publishes.
+   A provider implements the generated Provider Interface; a consumer uses the
    generated Client/handle. For guest execution, use the generator's plan-bound
    host-import bridge output when the selected Adapter supports it; do not
    handwrite a second guest dispatch table. Custom behavior stays outside
@@ -56,12 +61,13 @@ and generated-projection rules below as the contract authority.
    consumer-provider path. Finish when the version decision, generated diff,
    known/unknown Domain Errors, Runtime Failure path, and cross-runtime vectors
    are observable where applicable.
-7. **Hand off ownership.** Route provider/consumer behavior and requirement
-   cardinality to `lenso-plugin-authoring`; route Plugin Instance configuration
+7. **Continue with the consuming change.** Route provider/consumer behavior
+   and requirement cardinality to `lenso-plugin-authoring`; route Plugin Instance configuration
    to `lenso-app-configuration`; route root Slot or implementation-selection
    policy to the product Host. Finish when the Capability package contains no
    provider choice and no contract decision is hidden in a Plan edit.
 
-Return the role, identity and version, Operations, portability choice, contract
-and Schema paths, generator/freshness commands, compatibility result, consumers
-and providers exercised, and remaining handoffs.
+Return the changed contract and version decision, generated paths, compatibility
+and affected-language evidence, and blockers. A separate handoff/report is
+needed only when another owner must act. Keep the final repository gate at
+delivery; do not repeat all contract/language suites after every edit.

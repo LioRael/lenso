@@ -10,12 +10,14 @@ cd company.uppercase
 lenso plugin check
 lenso plugin dev --operation execute \
   --request-json '{"name":"company.uppercase","arguments_json":"{\"text\":\"hello\"}"}'
+# Only when delivering a portable archive:
 lenso plugin pack
 ```
 
-The default `--runtime multi` path produces a V3 `.lenso-plugin` Release with
-portable Wasm and trusted Process implementations of one Plugin Contract.
-`--runtime wasm` and `--runtime process` narrow the output when current help
+The default path builds one trusted Process implementation. Select
+`--runtime multi` only when both Wasm and Process are needed; it produces a
+V4 `.lenso-plugin` Release with both implementations of one Plugin Contract.
+`--runtime wasm` and `--runtime process` select one output when current help
 confirms them. The generated source uses `lenso-plugin-sdk::AgentTool` and
 `export_agent_tool!`.
 
@@ -28,7 +30,7 @@ must cross the real selected Adapter. `pack` builds, validates, and reopens the
 exact Bundle it writes; a receiving Host validates it again during `plugins
 add`.
 
-This path is complete when the supported implementations are explicit, the
-real `dev` invocation preserves success and honest failure, the V3 Release
-reopens successfully, and every published implementation passes the same
-Contract vectors without runtime fallback.
+This path is complete when the selected implementation's real `dev` invocation
+preserves changed success and rejection behavior. Archive delivery additionally
+requires reopening the packed bytes; multiple published implementations need
+the affected common Contract vectors without runtime fallback.

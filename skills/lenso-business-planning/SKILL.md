@@ -6,8 +6,14 @@ description: Turn an unclear product outcome into vertical Lenso Plugin cards, C
 # Lenso Plugin-first Planning
 
 Turn a product outcome into the smallest set of Plugins whose removal also
-removes their product complexity. Planning ends with artifact-level handoffs,
-not a framework diagram.
+removes their product complexity. Planning ends with an executable slice or an
+artifact-level handoff when another owner must act.
+
+Use planning only while ownership or the desired result is unclear. A concrete
+authorized request may proceed directly to implementation; do not require a
+card or handoff for every internal helper. Keep one Plugin while its ownership
+and lifecycle align, with ordinary internal modules. Add a Capability only for
+a real collaboration boundary and only the target/storage required now.
 
 ## Workflow
 
@@ -41,12 +47,14 @@ not a framework diagram.
    roles that deliver one useful transition, its authorization, one honest
    failure, and observable evidence. Finish when removing any selected piece
    makes the slice unusable or unprovable.
-6. **Check against a worked handoff.** Read the
-   [support-ticket example](references/worked-example.md) for the required
+6. **Check specificity when needed.** Read the
+   [support-ticket example](references/worked-example.md) for the expected
    specificity. Mark later Operations, UI, scale, deployment, and durable
    guarantees explicitly rather than designing them into the first slice.
    Finish when the slice names concrete Instances, edges, artifacts, and tests.
-7. **Hand off.** Use [planning output](references/planning-output.md). Route
+7. **Continue to implementation.** Use [planning output](references/planning-output.md)
+   when another owner needs a handoff; otherwise implement the selected slice
+   in the same task. Route
    contract work to `lenso-capability-authoring`, behavior to
    `lenso-plugin-authoring`, Plugin Root differences to
    `lenso-app-configuration`, and host mechanics to

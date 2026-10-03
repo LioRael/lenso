@@ -28,7 +28,7 @@ selection. Their generated Host links the selected module anchors and retains
 the ordinary configuration and dependency resolver. Existing custom file
 conventions for CLI/Console/Agent remain separate supported sources; default Rust
 discovery does not replace or execute those processors. See
-[multiple Plugins](../../../../examples/multiple-plugins/README.md).
+[multiple Plugins](https://github.com/LioRael/lenso/blob/main/examples/multiple-plugins/README.md).
 In a source App, use
 `lenso plugins disable <plugin-id> default --root <source>` or the matching
 `enable` command to change only that App-owned source marker. These commands
@@ -59,7 +59,7 @@ bindings before native Host compilation. The default source needs no authored
 processor list, build script or generated include. Use App build/dev (or Plugin
 dev) to lower it; plain Cargo on its authored package does not run App lowering.
 Keep legacy build-script projects on their existing explicit path. See the
-[Web/Contracts APIs](../../../docs/architecture/engine-web-contracts.md) for
+[Web/Contracts APIs](https://github.com/LioRael/lenso/blob/main/docs/architecture/engine-web-contracts.md) for
 method attributes, stable IDs, additive middleware scopes and overrides.
 
 Select support before expecting its files to have meaning. For CLI support use
@@ -78,8 +78,9 @@ the built runtime distribution must run without source/toolchain downloads.
 
 ## Completion
 
-Prove source discovery, a real build/start and one observable operation. Disable
-support and verify its contributions and private compilation disappear. A failed
+Prove source discovery, a real build/start and one observable operation. When
+optional support selection/removal changes or is claimed, disable it and verify
+its behavior and private compilation disappear. A failed
 development build keeps the previous generation; successful builds restart the
 Host, potentially on a new dynamic port. This is not React Fast Refresh or a
 zero-downtime promise. The Console kit has native macOS ARM64 and Linux x64

@@ -38,8 +38,9 @@ are distinct from cross-Session product Memory.
 4. Verify tool grants, context provenance, Session durability, cancellation,
    and child authority where affected.
 5. Restart or reopen the maintained Host when durability is claimed.
-6. Disable or remove the optional behavior and prove the remaining Agent still
-   starts with the expected inventory.
+6. When inventory, selection or optional support changes or removal is claimed,
+   disable/remove it and prove the remaining Agent starts with the expected
+   inventory. Do not repeat removal for unrelated presentation edits.
 
 The Agent path is complete when a real Turn provides inspectable Session and
 Tool/Context evidence, and the change can be removed without leaving hidden

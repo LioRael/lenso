@@ -11,6 +11,7 @@ their owning repositories.
 | [`issue-tracker.md`](issue-tracker.md) | Work with GitHub issues and the vNext delivery lane. |
 | [`triage-labels.md`](triage-labels.md) | Translate canonical agent-triage roles into repository labels. |
 | [`skills.md`](skills.md) | Discover, invoke, install, test, and maintain the canonical Lenso skill pack. |
+| [`development-loop.md`](development-loop.md) | Implement a concrete request through existing CLI/library/MCP operations and risk-based checks. |
 
 ## Authority order
 

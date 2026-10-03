@@ -48,7 +48,8 @@ App source discovery is not arbitrary live Kernel graph mutation.
 
 ## Proof
 
-Exercise the selected consumer, then remove support and repeat. Console needs
+Exercise the affected consumer; remove support and repeat when support selection
+or removal changes or is claimed. Console behavior needs
 a real App with no Agent, route rendering, authorized/denied service requests
 and server-source exclusion. Agent needs an actual Turn with allowed execution,
 an out-of-scope call rejected before execution, and removal from the catalog;

@@ -1,6 +1,6 @@
 ---
 name: lenso-plugin-authoring
-description: Implement removable Lenso behavior through linked Rust, portable Rust, Bun, or selected file conventions for CLI commands, App Console pages/services and Agent Tools. Own Plugin contracts, lifecycle, packaging and deletion proof; route App configuration and generic Engine/Host mechanics elsewhere.
+description: Implement Lenso behavior through linked Rust, portable Rust, Bun, or selected file conventions. Start with one required implementation and prove affected behavior; add contract, lifecycle, packaging and removal checks when changed or claimed.
 ---
 
 # Lenso Plugin Authoring
@@ -12,16 +12,23 @@ a Host mechanism, not a second product type.
 
 ## Workflow
 
+For a stateless local handler: inspect current help/source, edit through the
+existing macros, run affected tests and a real `dev`/Host request, then report
+the result. The rules below explain conditional ownership boundaries, not
+eight mandatory checkpoints. Do not add unused lifecycle, targets or languages.
+
 1. **Map ownership and support.** Locate repository instructions, exact package
    versions and locks, Capability sources/generated projections, Plugin
    Contract, implementation targets, target Adapters, Host Catalog or Plugin
    Root fixture, and repository gates. Run the installed `lenso plugin --help`
    or owner-package help before selecting a workflow. Finish when every API and
    command comes from current source rather than an architecture target.
-2. **Write the Plugin card.** Record deletion boundary, owned facts, lifecycle,
-   final authorization, provided and required Capabilities, configuration,
-   resources, and first observable behavior. Use `lenso-business-planning` if
-   any fact still has two plausible owners.
+2. **Identify the behavior owner.** For a small, clear request, use a short
+   statement of the owning Plugin, required target and observable result and
+   proceed to code. Ordinary helper modules need no Plugin identity. Write a
+   Plugin card or use `lenso-business-planning` only when facts, lifecycle or
+   authorization still have competing owners. Introduce Capability authoring
+   only for a real collaboration edge.
 3. **Choose one available authoring path.** Read exactly one path first:
    - [optional file conventions](references/paths/conventions.md) for CLI
      commands, App Console pages/services, or Agent Tool source entries;
@@ -53,13 +60,13 @@ a Host mechanism, not a second product type.
    Plugin available in the Host Catalog; App configuration determines whether
    an Instance differs from Host defaults. External packages are added under
    `plugins/<plugin-id>/plugin.lenso-plugin/`.
-8. **Prove the complete path.** Follow [verification](references/verification.md):
-   check, exercise success and honest failures, package when supported, add and
-   run through a real consumer, prove cross-implementation equivalence for
-   every published implementation, then remove the Plugin and resolve again.
+8. **Prove the affected path.** Follow [verification](references/verification.md):
+   run affected checks and a real consumer/request. Add lifecycle, removal,
+   packaging and cross-implementation proof only when changed or claimed.
+   Local source does not require `pack` or a frozen release. Implement only the
+   target/storage needed now, using existing macros and lowering. Preserve
+   per-target support validation and resource binding with shared App semantics.
 
-Return the Plugin owner and deletion boundary, provided/required Capabilities,
-Contract path, implementation matrix, package/factory/entrypoint paths,
-lifecycle and state choices, Host Catalog or Plugin Root changes, generated
-artifacts, exact checks, behavior and cross-implementation proof, removal proof,
-unsupported prerequisites, and delivery state.
+Return the implemented result, changed paths, actual checks and behavior,
+remaining blockers and delivery state. Include lifecycle, contracts or
+implementation matrices only when they help assess this change.

@@ -1,4 +1,4 @@
 interface:
   display_name: "Lenso Plugin Authoring"
   short_description: "Author Plugins and optional file conventions."
-  default_prompt: "Use $lenso-plugin-authoring to implement this removable behavior through an available SDK or selected convention, distinguish local tooling from releases, and prove execution and deletion."
+  default_prompt: "Use $lenso-plugin-authoring to implement this behavior through the existing SDK or convention, distinguish local source from releases, and prove affected behavior according to risk."

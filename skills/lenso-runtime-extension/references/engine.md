@@ -11,7 +11,7 @@ sessions, and publishes resources. App composition lives in optional
 Do not move a CLI compiler switch or domain payload schema into the core.
 
 For optional configurable Web routes and Capability projections, read
-[Engine Web/Contracts](../../../docs/architecture/engine-web-contracts.md).
+[Engine Web/Contracts](https://github.com/LioRael/lenso/blob/main/docs/architecture/engine-web-contracts.md).
 These processors reuse `Plugin::plan/process` and Snapshot; explicit inputs and
 configuration replace their default readers. HTTP execution remains in WebHost.
 

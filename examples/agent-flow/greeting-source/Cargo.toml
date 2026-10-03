@@ -1,0 +1,20 @@
+[package]
+name = "lenso-agent-greeting-source"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# An independent source App, built against this checkout rather than a registry.
+[workspace]
+
+[package.metadata.lenso]
+plugin-id = "example.agent-greeting"
+root-slot = "web"
+
+[dependencies]
+lenso = { path = "../../../crates/lenso" }
+lenso-capability-http-endpoint = { path = "../../../crates/lenso-capability-http-endpoint" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

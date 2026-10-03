@@ -38,6 +38,13 @@ one primary owner
 Invoke `$lenso-start` when the owner or sequence is unclear. Its three task maps
 define the observable journey and then route each artifact to one owner.
 
+For a concrete request, proceed through that owner to implementation in the
+same task. Follow the [development loop](lenso-start/references/development-loop.md)
+for progressive authoring and risk-based checks. Planning cards, packaging,
+handoffs and reports are conditional; the final repository gate still applies
+once at delivery. CLI/library functions own capabilities, MCP projects them,
+and Skills guide use without a new control plane.
+
 ## Owner Skills
 
 | Skill | Interface |
@@ -113,10 +120,11 @@ From the repository root:
 ```sh
 python3 skills/scripts/validate-pack.py
 python3 -m unittest skills/scripts/test_validate_pack.py
-npx skills add . --list
+npx skills add ./skills --list
 ```
 
-For each changed Skill, also run the active runtime's official validator. Use
+If the active runtime exposes an official Skill validator, run it for changed
+Skills. The pack validator alone does not establish runtime discovery. Use
 `--installed-root` to compare every canonical payload file with an installed
 copy:
 
@@ -126,7 +134,10 @@ python3 skills/scripts/validate-pack.py \
 ```
 
 Structural validation proves packaging and routing invariants, not usefulness.
+Canonical pack discovery from `./skills` lists six Skills. Repository-root
+discovery may additionally list the repository-local `lenso-land` delivery Skill;
+it is not a seventh authoring stage.
 Run the independent prompts in [behavioral scenarios](validation/scenarios.md)
 after a substantial change. A scenario passes only when the Agent selects the
-right owner, produces the requested artifacts, and records observable success,
-honest failure, and removal or replacement evidence.
+right owner, produces the requested artifacts, and records relevant observable
+evidence. Removal/replacement is required when changed, claimed or requested.

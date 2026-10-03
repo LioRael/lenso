@@ -8,6 +8,11 @@ description: Route a Lenso task through the Core, Web, or Agent path to one prim
 Start from the result, then choose the product path and owner. This Skill is the
 human-invoked index; it coordinates the work without becoming another owner.
 
+For a concrete, authorized request, select the owner and continue implementing
+in the same task. Routing is not a mandatory planning, freeze, handoff, review,
+or report stage. Use the [development loop](references/development-loop.md) to
+choose evidence by changed behavior and risk.
+
 ## Route
 
 1. **State the result.** Describe what a person or another Plugin can observe,
@@ -37,5 +42,5 @@ supervision, and diagnostic semantics are not a sixth owner workflow. Route
 those changes through the core repository's `CONTEXT.md`, relevant ADR, and
 product-neutral conformance.
 
-Return the selected task map, primary Skill, owner repository, first artifact,
-observable completion state, later handoffs, and any missing prerequisite.
+Report the result, changed artifacts, relevant checks and real behavior, and
+remaining blockers. Name a handoff only when another owner must actually act.
