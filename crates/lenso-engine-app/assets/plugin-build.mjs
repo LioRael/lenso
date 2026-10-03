@@ -370,7 +370,7 @@ for (const [index, provider] of loweredProviders.entries()) {
     operations: [...provider.request_operations, ...(provider.stream_operations ?? [])],
     stream_operations: provider.stream_operations ?? [],
     event_operations: [],
-  })}, bind: binder${index} }`);
+  })}, streamLifecycleProfile: definition.providers.find(value => value.descriptor.capability_id === ${JSON.stringify(provider.capability_id)})?.streamLifecycleProfile, bind: binder${index} }`);
 }
 const wrapper = path.join(stage, "entry.ts");
 fs.writeFileSync(wrapper, [
@@ -412,13 +412,22 @@ const linker = {
     });
   },
 };
+// Source SDKs expose target packaging as an additive feature. Installed older
+// Native SDKs retain their existing build path; no unrelated API is shimmed.
+const targetCompilerPackage = packageForFile(resolveFromPlugin("@lenso/bun-plugin"));
+const targetPackaging = targetCompilerPackage.manifest.exports?.["./targets"]
+  ? (await importFromPlugin("@lenso/bun-plugin/targets")).createPluginTargetBuildPlugin("native-bun")
+  : undefined;
+if (targetPackaging) {
+  lockedPackages.set(identityKey(targetCompilerPackage.identity), targetCompilerPackage.identity);
+}
 const result = await Bun.build({
   entrypoints: [wrapper],
   target: "bun",
   format: "esm",
   minify: profile === "release",
   external: ["bun", "node:*"],
-  plugins: [linker],
+  plugins: [linker, ...(targetPackaging ? [targetPackaging] : [])],
 });
 if (!result.success || result.outputs.length !== 1) {
   throw new Error(`Bun Plugin build failed: ${result.logs.map(String).join("\n")}`);
