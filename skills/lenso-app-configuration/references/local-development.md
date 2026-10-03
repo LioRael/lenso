@@ -85,7 +85,7 @@ through a fresh checked Host generation. A selected convention compiler keeps
 its build semantics. An explicitly configured frontend keeps its own reload
 loop. Agents may read the existing MCP entry's `project_dev_feedback` tool for
 the last classification and measured result; no generated snapshot inspection
-is required. See [the small dev App](../../../../examples/incremental-dev/README.md).
+is required. See [the small dev App](https://github.com/LioRael/lenso/blob/main/examples/incremental-dev/README.md).
 
 Prove source discovery, a real build/start and one observable operation. When
 optional support selection/removal changes or is claimed, disable it and verify
