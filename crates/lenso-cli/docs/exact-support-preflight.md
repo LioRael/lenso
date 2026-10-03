@@ -1,7 +1,7 @@
 # Exact support before compilation
 
 `lenso app check --target native|workers` uses existing generated Host authority
-and the existing Plugin Root resolver. It checks the selected Instances,
+and the existing Plugin Root resolver when contracts are available. It checks the selected Instances,
 Capability closure, execution profile, complete named-resource combination,
 source entry and selected tools without running a compiler, package hook,
 factory, secret provider or database query.
@@ -19,11 +19,35 @@ Root configuration and named dependency choices are resolved afresh through
 the same resolver. A built/initialized App with its own Host authority omits
 `--from`. `app check` without `--target` retains its existing behavior.
 
-There is no speculative source-to-contract interpreter. When generated
-contracts are unavailable or stale, the check rejects the candidate and starts
-no build. Generating the owning contract remains a separate authoring step.
-This slice does not implement first-build source contract extraction. Local
-source does not require a Bundle, packing, freezing or installation.
+For a first source project, omit `--from`. With no Host authority, the same
+command performs static discovery, validates authored Instance selection,
+resource references and exact support candidates, checks entry files and local
+tool/dependency inputs, and returns `static_passed_contract_pending`. It never
+imports a TS module, fabricates a descriptor, or invokes Cargo/Bun. The report
+lists deferred execution selection, Capability closure, semantic exports,
+resource factories, owner schema and whole-Plan restrictions. Exit success
+means these static checks passed, not that a complete target Plan was admitted.
+Stale explicit generated authority still fails instead of invoking extraction.
+Local source does not require a Bundle, packing, freezing or installation.
+
+The build gate accepts this pending result so a first project can reach the
+existing owning-contract pipeline. Rust/TS descriptor export and the existing
+semantic resolver remain responsible for the deferred checks. Static preflight
+does not establish registry dependency availability or live resource readiness.
+
+Assembly has two crate-local entry points in `app::target_check`:
+
+```rust,ignore
+inspect_sources(source_root, target, facilities)?; // static, no execution
+inspect_resolved(source_root, authority_root, target, &resolved_app, facilities)?;
+```
+
+The second receives the existing `ResolvedApp` after the owning Rust/TS
+descriptor export and shared semantic resolution, plus the stage that owns the
+selected facility inventory. It uses the same complete tuple/Capability and
+Workers admission code as generated-Host checking. There is no second source
+descriptor format; the existing TS `describePortablePlugin` export remains
+owned by the TS/assembly path. The bridge does not invoke that export itself.
 
 ## Declare whole combinations
 
@@ -113,12 +137,17 @@ lenso app build --root ./app --check-from ./previous-dist \
   --host-facilities ./native-references.json
 ```
 
-This is offline declaration/identity admission. The JSON reports
+With resolved contracts this is offline declaration/identity admission. The JSON reports
 `support: "declared"`, `qualification: "not_assessed"`,
 `resource_readiness: "not_run"`, `build_started: false` and
 `secret_values_read: false`. Evidence references do not become verified
 receipts. Passing the check establishes neither database readiness nor a
 Native/Workers deployment qualification.
+
+Source-first JSON also reports `contract_resolution: "pending"`,
+`requires_follow_up: true`, and explicit `verified`/`deferred` lists. Resolved
+checking reports `contract_resolution: "resolved"` and
+`requires_follow_up: false`; qualification remains `not_assessed`.
 
 The focused CLI corpus uses syntactically valid source containing
 `compile_error!` plus poisoned Cargo/rustc/Bun/wasm-bindgen/Jco executables.

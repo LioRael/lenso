@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 mod source;
+mod static_preflight;
 
 /// Build calls this before any compiler, extractor, package hook or tool probe.
 /// Existing Apps with no exact-support declaration retain their simple path.
@@ -102,6 +103,10 @@ pub fn run(args: CheckArgs) -> anyhow::Result<()> {
     )?;
     if args.json {
         println!("{}", serde_json::to_string_pretty(&report)?);
+    } else if report["contract_resolution"] == "pending" {
+        println!(
+            "App static target preflight passed for {target}: contract resolution pending; qualification not assessed; no build started."
+        );
     } else {
         println!(
             "App target check passed for {target}: {} Instance(s); qualification not assessed; no build started.",
@@ -122,6 +127,12 @@ pub(super) fn inspect(
         "unsupported check target `{target}`; available: native, workers"
     );
     let contract_root = from.unwrap_or(root);
+    if from.is_none()
+        && !contract_root.join(".lenso/host-build.json").exists()
+        && !contract_root.join(".lenso/host-catalog.json").exists()
+    {
+        return inspect_sources(root, target, facilities);
+    }
     // The legacy freshness fallback may invoke source extraction. Offline
     // preflight requires generated evidence instead of running that fallback.
     ensure!(
@@ -133,6 +144,59 @@ pub(super) fn inspect(
     );
     super::contracts::check(contract_root)?;
     let (resolved, declarations) = source::resolve(root, from)?;
+    if !contract_root.join("local-sources.json").exists() {
+        inspect_resolved(root, contract_root, target, &resolved, facilities)
+    } else {
+        inspect_plan(contract_root, target, &resolved, &declarations, facilities)
+    }
+}
+
+/// Assembly bridge after existing Rust/TS descriptor export and semantic
+/// resolution. Receives the existing ResolvedApp, never another descriptor
+/// schema; `authority_root` owns the selected facility inventory.
+pub(super) fn inspect_resolved(
+    source_root: &Path,
+    authority_root: &Path,
+    target: &str,
+    resolved: &ResolvedApp,
+    facilities: Option<&Path>,
+) -> anyhow::Result<Value> {
+    let discovered = lenso_app_authoring::discovery::discover(source_root)?;
+    let mut declarations = BTreeMap::new();
+    for candidate in &discovered.candidates {
+        for instance in resolved
+            .instances()
+            .iter()
+            .filter(|instance| instance.id().plugin_id() == candidate.plugin_id)
+        {
+            let selected = resolved
+                .plan()
+                .plugin_instance(instance.plan_key())
+                .context("resolved source Instance missing from Plan")?;
+            source::check_inputs(
+                candidate,
+                &instance.id().to_string(),
+                selected.execution_class().as_str(),
+            )?;
+            if let Some(declaration) = source::declaration(candidate)? {
+                declarations.insert(candidate.plugin_id.clone(), declaration);
+            }
+        }
+    }
+    inspect_plan(authority_root, target, resolved, &declarations, facilities)
+}
+
+fn inspect_plan(
+    authority_root: &Path,
+    target: &str,
+    resolved: &ResolvedApp,
+    declarations: &BTreeMap<String, Declaration>,
+    facilities: Option<&Path>,
+) -> anyhow::Result<Value> {
+    ensure!(
+        matches!(target, "native" | "workers"),
+        "unsupported check target `{target}`; available: native, workers"
+    );
     let grants = facilities
         .map(read_grants)
         .transpose()?
@@ -140,13 +204,9 @@ pub(super) fn inspect(
             schema: "lenso.host-facilities.v1".into(),
             instances: BTreeMap::new(),
         });
-    let reports = admit(&resolved, target, &declarations, &grants)?;
-    let facility_report = super::facility_inspection::report(
-        from.unwrap_or(root),
-        resolved.plan(),
-        target,
-        facilities,
-    )?;
+    let reports = admit(resolved, target, declarations, &grants)?;
+    let facility_report =
+        super::facility_inspection::report(authority_root, resolved.plan(), target, facilities)?;
     if let Some(rejected) = facility_report["bindings"].as_array().and_then(|bindings| {
         bindings
             .iter()
@@ -168,8 +228,21 @@ pub(super) fn inspect(
         json!({"schema_version":1,"kind":"lenso.app-target-check","status":"passed","target":target,
         "plugin_instances":resolved.instances().len(),"capability_bindings":resolved.plan().capability_bindings().len(),
         "instances":reports,"host_facilities":facility_report,"qualification":"not_assessed","resource_readiness":"not_run",
+        "contract_resolution":"resolved","requires_follow_up":false,
         "build_started":false,"secret_values_read":false}),
     )
+}
+
+/// Source-first static admission for assembly before descriptor extraction.
+/// A pending report is not a resolved Plan or full target admission. Assembly
+/// keeps its existing descriptor export/resolver path and calls `inspect` with
+/// that generated authority when the owning contracts become available.
+pub(super) fn inspect_sources(
+    root: &Path,
+    target: &str,
+    facilities: Option<&Path>,
+) -> anyhow::Result<Value> {
+    static_preflight::inspect(root, target, facilities)
 }
 
 fn read_grants(path: &Path) -> anyhow::Result<Grants> {

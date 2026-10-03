@@ -293,3 +293,30 @@ fn source_check_reuses_generated_contract_and_rejects_changed_source() {
     assert!(!source.path().join("target").exists());
     assert!(!source.path().join(".lenso").exists());
 }
+
+#[test]
+fn assembly_bridge_runs_full_target_admission_after_existing_resolution() {
+    let root = tempfile::tempdir().unwrap();
+    let app = resolved(PluginDescriptor::new("example.tools", "1.0.0", "tools"));
+    let report = inspect_resolved(root.path(), root.path(), "native", &app, None).unwrap();
+    assert_eq!(report["contract_resolution"], "resolved");
+    assert_eq!(report["requires_follow_up"], false);
+    let app = resolved(
+        PluginDescriptor::new("example.tools", "1.0.0", "tools")
+            .with_execution_class(ExecutionClassId::new("lenso.process@1"))
+            .with_authoring(2, lenso_process_adapter::RUNTIME_PROFILE_V2)
+            .with_capability(
+                CapabilityEndpointPlan::new("example.tools@1", "1", ["open"])
+                    .with_operation_kind("open", CapabilityOperationKind::Stream),
+            ),
+    );
+    let error = inspect_resolved(root.path(), root.path(), "native", &app, None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("example.tools/default")
+            && error.contains("Stream")
+            && error.contains("available"),
+        "{error}"
+    );
+}

@@ -129,7 +129,7 @@ pub(super) fn resolve(
     Ok((resolved, declarations))
 }
 
-fn declaration(candidate: &Candidate) -> anyhow::Result<Option<Declaration>> {
+pub(super) fn declaration(candidate: &Candidate) -> anyhow::Result<Option<Declaration>> {
     if !matches!(candidate.format.as_str(), "cargo" | "bun") {
         return Ok(None);
     }
@@ -166,7 +166,11 @@ fn declaration(candidate: &Candidate) -> anyhow::Result<Option<Declaration>> {
     }).transpose()
 }
 
-fn check_inputs(candidate: &Candidate, instance: &str, execution: &str) -> anyhow::Result<()> {
+pub(super) fn check_inputs(
+    candidate: &Candidate,
+    instance: &str,
+    execution: &str,
+) -> anyhow::Result<()> {
     if candidate.format == "bundle" {
         return Ok(());
     }
