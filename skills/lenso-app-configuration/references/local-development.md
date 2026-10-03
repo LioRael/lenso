@@ -90,7 +90,8 @@ live Instance in place. Selected page-only Console edits have a distinct
 remains owned by its convention compiler. New routes/layers, services, dependency
 or mixed edits retain the structural path. An explicitly configured frontend
 keeps its own reload loop. Agents may read the existing MCP entry's `project_dev_feedback` tool for
-the last classification and measured result; no generated snapshot inspection
+the last classification, affected Instances, actual activation scope and measured
+result; no generated snapshot inspection
 is required. See [the small dev App](https://github.com/LioRael/lenso/blob/main/examples/incremental-dev/README.md)
 and [the Bun implementation example](https://github.com/LioRael/lenso/blob/main/examples/incremental-bun/README.md).
 

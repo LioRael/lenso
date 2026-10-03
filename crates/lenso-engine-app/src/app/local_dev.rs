@@ -150,7 +150,11 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         {
             batch.report(&root, changes::Work::TypeScript, "building", revision, true, "checking targeted Plugin packaging against retained Host")?;
             match typescript::candidate(&root, current, &output, inputs, &args.trust_linked_build, frontend_enabled, interrupt.as_mut()).await {
-                Ok(typescript::Outcome::Packaged(plugins)) => { reused = true; packaged_plugins = plugins; }
+                Ok(typescript::Outcome::Packaged { plugins, instances }) => {
+                    reused = true;
+                    packaged_plugins = plugins;
+                    if let Some(batch) = &mut pending_change { batch.affected_instances = instances; }
+                }
                 Ok(typescript::Outcome::Unavailable(reason)) => {
                     if let Some(batch) = &mut pending_change {
                         batch.classification = Some(changes::Work::Generation);

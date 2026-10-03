@@ -11,7 +11,10 @@ use super::changes::Inputs;
 
 pub(super) enum Outcome {
     Unavailable(&'static str),
-    Packaged(Vec<String>),
+    Packaged {
+        plugins: Vec<String>,
+        instances: Vec<String>,
+    },
     Interrupted,
 }
 
@@ -174,7 +177,30 @@ pub(super) async fn candidate(
         "configuration changed during targeted packaging"
     );
     relock(output, &packaged)?;
-    Ok(Outcome::Packaged(packaged))
+    let instances = affected_instances(before.plan().plugin_instances(), &packaged);
+    Ok(Outcome::Packaged {
+        plugins: packaged,
+        instances,
+    })
+}
+
+// The Kernel owns replacement and stable endpoint handles. The supervisor only
+// selects every live Instance of the changed Bun implementations from the exact
+// resolved Plan; it does not restart consumers or infer a replacement graph.
+fn affected_instances(
+    instances: &[lenso_app_plan::PluginInstancePlan],
+    plugins: &[String],
+) -> Vec<String> {
+    instances
+        .iter()
+        .filter(|instance| {
+            instance.execution_class().as_str() == "lenso.bun-process@1"
+                && plugins.iter().any(|plugin| plugin == instance.package_id())
+        })
+        .map(|instance| instance.instance_key().to_owned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn replace(
@@ -401,6 +427,25 @@ fn normalize_implementation_revision(value: &mut Value, plugins: &[String]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn changed_bun_plugin_selects_all_its_instances_without_selecting_consumers() {
+        use lenso_app_plan::{ExecutionClassId, PluginInstancePlan};
+        let bun = |key: &str, package: &str| {
+            PluginInstancePlan::new(key, package)
+                .with_execution_class(ExecutionClassId::new("lenso.bun-process@1"))
+        };
+        let instances = vec![
+            bun("example.bun-a/right", "example.bun-a"),
+            bun("example.bun-a/left", "example.bun-a"),
+            bun("example.bun-b/default", "example.bun-b"),
+            PluginInstancePlan::new("example.consumer/default", "example.consumer"),
+        ];
+        assert_eq!(
+            affected_instances(&instances, &["example.bun-a".into()]),
+            vec!["example.bun-a/left", "example.bun-a/right"]
+        );
+    }
 
     #[test]
     fn implementation_revision_does_not_mask_configuration_or_other_packages() {

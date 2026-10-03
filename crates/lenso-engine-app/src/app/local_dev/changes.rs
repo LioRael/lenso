@@ -29,6 +29,7 @@ pub(super) struct Batch {
     pub invalidation_reason: Option<String>,
     pub host_build_invoked: bool,
     pub packaged_plugins: Vec<String>,
+    pub affected_instances: Vec<String>,
 }
 
 impl Batch {
@@ -44,6 +45,7 @@ impl Batch {
             invalidation_reason: None,
             host_build_invoked: false,
             packaged_plugins: Vec::new(),
+            affected_instances: Vec::new(),
         }
     }
 
@@ -113,6 +115,8 @@ impl Batch {
             "generation":revision, "build_invoked":compiled, "elapsed_ms":self.observed.elapsed().as_millis(), "dev_process_id":std::process::id(),
             "reason":reason, "paths":self.paths,
             "host_build_invoked":self.host_build_invoked, "packaged_plugins":self.packaged_plugins,
+            "affected_instances":self.affected_instances,
+            "activation_scope":if work == Work::Frontend { "frontend_reload" } else { "host_generation" },
             "invalidation_reason":self.invalidation_reason,
         });
         let mut temporary = tempfile::NamedTempFile::new_in(root.join(".lenso"))?;

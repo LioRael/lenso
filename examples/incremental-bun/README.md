@@ -52,6 +52,12 @@ The consumers use existing `consumer` and `plugin_impl` create/stop hooks, with
 named Dependencies. Legacy `Lifecycle` authoring uses its older requirement
 identity rules and cannot be mixed with these named choices.
 
+Development feedback reports all `affected_instances` of the repackaged Bun
+Plugin and the actual `activation_scope`. The current scope is
+`host_generation`; instance selection alone does not claim a hot Transition.
+Kernel activation must apply a validated transition between complete immutable
+Plans before this path can keep unrelated running Instances.
+
 One same-environment warm edit sample took 6.092 s with the previous dev-loop
 and 2.217 s with targeted packaging. The latter packaged only Bun A, invoked
 no Host build, preserved all native hash/mtime evidence and Bun B bytes, and
