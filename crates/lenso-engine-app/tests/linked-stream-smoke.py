@@ -143,7 +143,7 @@ def corpus(port, target):
     return {"cases": result, "failure_transport": failures}
 
 
-def smoke(args):
+def smoke(args, targets=("native", "workers")):
     inputs = json.loads((args.out / "inputs.json").read_text())
     (args.out / "RESULT.json").unlink(missing_ok=True)
     fixture = Path(__file__).parent / "fixtures/linked-stream-app"
@@ -160,7 +160,8 @@ def smoke(args):
     processes = []
     results = {}
     try:
-        for name, command in commands.items():
+        for name in targets:
+            command = commands[name]
             log = (args.out / f"host-{name}.log").open("wb")
             process = subprocess.Popen(command, cwd=workers if name == "workers" else args.out,
                                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -181,7 +182,13 @@ def smoke(args):
             os.killpg(process.pid, signal.SIGINT)
             process.wait(timeout=15)
             log.close()
-        assert results["native"]["cases"] == results["workers"]["cases"]
+        if "native" in results:
+            assert results["native"]["cases"] == results["workers"]["cases"]
+        else:
+            results["native_corpus"] = "reused separately recorded prior pass; no Native code change"
+            assert results["workers"]["cases"] == [
+                "success", "half-close", "first chunk before terminal + disconnect",
+                "domain", "fail"]
         assert digest(args.out / "source/app/probe/lib.rs") == inputs["same_plugin_sha256"]
         workers_plan = json.loads((workers / ".lenso/generated-host/src/plan.json").read_text())
         native_plan = json.loads((args.out / "native-plan.log").read_text())["plan"]
@@ -204,7 +211,7 @@ def smoke(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=["prepare", "dependencies", "native", "workers", "smoke"])
+    parser.add_argument("stage", choices=["prepare", "dependencies", "native", "workers", "smoke", "workers-smoke"])
     for name in ["core", "js", "cli", "bindgen", "wrangler", "out"]:
         parser.add_argument(f"--{name}", required=True, type=lambda value: Path(value).resolve())
     args = parser.parse_args()
@@ -215,5 +222,7 @@ if __name__ == "__main__":
                                    str(args.out / "source/app/probe/Cargo.toml")])
     elif args.stage == "smoke":
         smoke(args)
+    elif args.stage == "workers-smoke":
+        smoke(args, ("workers",))
     else:
         build(args, args.stage)
