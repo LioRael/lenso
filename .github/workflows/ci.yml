@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LENSO_WASM_FIXTURE_CACHE_DIR: ${{ github.workspace }}/.lenso/ci-wasm-fixtures
+      LENSO_CARGO_FIXTURE_CACHE_DIR: ${{ github.workspace }}/.lenso/ci-wasm-fixtures/native-consumers
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -39,7 +40,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.LENSO_WASM_FIXTURE_CACHE_DIR }}
-          key: wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.toml', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.lock', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.toml', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.lock', 'tests/fixtures/portable-http-endpoint/guest/Cargo.toml', 'tests/fixtures/portable-http-endpoint/guest/Cargo.lock') }}
+          key: wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.toml', 'crates/lenso-wasm-component-adapter/tests/fixtures/**/Cargo.lock', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.toml', 'crates/lenso-http-egress-plugin/tests/fixtures/**/Cargo.lock', 'tests/fixtures/portable-http-endpoint/guest/Cargo.toml', 'tests/fixtures/portable-http-endpoint/guest/Cargo.lock', 'crates/lenso-contract-authoring-macros/src/**', 'crates/lenso-contract-authoring-macros/tests/registered_snapshot.rs', 'crates/lenso-contract-authoring-macros/tests/fixtures/registered_snapshot.rs') }}
           restore-keys: |
             wasm-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.cachekey }}-
       - name: Run shared native gates
