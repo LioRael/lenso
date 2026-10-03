@@ -79,8 +79,9 @@ def main():
         if not directory.is_dir():
             return {"retained_precompiled_host_origin": proof(Path(args.cli).resolve())}
         paths = [directory / "lenso-generated-local-host", *sorted((directory / "deps").glob("libdevloop*.rlib"))]
-        if len(paths) != 3:
-            raise RuntimeError("Expected Greeting, Health and generated Host compilation units")
+        if not all(any(path.name.startswith(prefix) for path in paths)
+                   for prefix in ["libdevloop_proof-", "libdevloop_health-"]):
+            raise RuntimeError("Expected Proof, Health and generated Host compilation units")
         return {str(path.relative_to(root)): proof(path) for path in paths}
 
     def generation():
@@ -106,6 +107,9 @@ def main():
         result["edit_to_request_ready_ms"] = (time.monotonic() - started) * 1000
         result["operation"] = "Native typed ToolProvider.execute" if args.native_call else "HTTP GET /typescript"
         result["request_results"] = [line.strip() for line in lines[count:] if "NATIVE_BUN_RESULT " in line]
+        result["unrelated_request_results"] = [line.strip() for line in lines[count:] if "NATIVE_HEALTH_RESULT " in line]
+        if args.native_call:
+            assert any("unrelated-bun" in line for line in result["unrelated_request_results"])
         result["native_after"] = native()
         result["packaging_after"] = packaging()
         result["feedback"] = json.loads((root / ".lenso/dev-feedback.json").read_text())
@@ -132,6 +136,8 @@ def main():
             child.wait()
         reader.join(timeout=2)
         source.write_text(original)
+        if args.out:
+            Path(args.out + ".log").write_text("".join(lines))
     result["shutdown_exit_code"] = child.returncode
     assert child.returncode == 0, "Development lifecycle did not retire cleanly"
     output = json.dumps(result, indent=2)

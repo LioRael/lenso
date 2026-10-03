@@ -3,11 +3,6 @@ name="devloop-health"
 version="0.1.0"
 edition="2024"
 [workspace]
-[package.metadata.lenso]
-plugin-id="example.health"
-root-slot="health"
-[package.metadata.lenso-cli]
-runtime="native-linked"
 [dependencies]
 lenso={path="../../../../crates/lenso"}
 lenso-capability-agent-tool-provider="=0.3.0"

@@ -47,3 +47,14 @@ The probe waits for a real typed Request result **and** completed activation,
 records native binary/rlib hashes and modification times, compares retained
 packaging, requires only Bun A in development feedback, and restores its source
 after clean shutdown. Initial startup and subsequent edit timing are separate.
+
+The consumers use existing `consumer` and `plugin_impl` create/stop hooks, with
+named Dependencies. Legacy `Lifecycle` authoring uses its older requirement
+identity rules and cannot be mixed with these named choices.
+
+One same-environment warm edit sample took 6.092 s with the previous dev-loop
+and 2.217 s with targeted packaging. The latter packaged only Bun A, invoked
+no Host build, preserved all native hash/mtime evidence and Bun B bytes, and
+returned the edited value through the actual typed Request. This is one local
+workload, not a cold-build or CI speedup. Raw evidence and the comparable
+baseline recipe are in `docs/performance/dev-loop-bun-20261003.json`.

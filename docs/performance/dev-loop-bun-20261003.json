@@ -1,0 +1,207 @@
+{
+  "schema": "lenso.dev-loop-bun-evidence.v1",
+  "date": "2026-10-03",
+  "main_base": "66907ae817cff233ac47d179ad1e74bb82f7b9d2",
+  "own_incremental_delta": "84117ea400cdfcca835e155ca50e2ab577a921b3",
+  "tested_composition_before_final_fix": "3a5af48844932bf74d8eaef73567fa9c6e08e16b",
+  "source_owner": "b44e83633af2a45ad726ede1aebc63da7e51f87a",
+  "ts_owner": [
+    "20a4cf51026ff5ad42feb80559e06a3eb9e4a0de",
+    "aa5d0d0ef894a97b3669a5752f2d2007c3a9bbf8"
+  ],
+  "scope": "Single Linux cloud warm-cache samples, same App and dependency/source/target composition. Real typed Request plus completed Watching activation. No cold-start comparison or full CI benefit claimed.",
+  "baseline_recipe": "Same composed source tree and corrected example; temporarily replace local_dev.rs and local_dev/{changes,frontend,managed_host}.rs with 007dfba6 versions, build/copy/strip CLI, then restore those files. No resolver/discovery/SDK differences between baseline and after.",
+  "cold": "Not measured for this mixed Native/Bun follow-up; caches already populated. Earlier native-only cold evidence is in dev-loop-20261003.json and is a separate workload.",
+  "lifecycle": "Fresh checked Host Generation; whole Host Instances restart after old Host retirement. No in-place TS Instance reload.",
+  "console": "Selected Console page edits classified using read-only convention evidence; generated Workspace still follows its compiler packaging. Existing external Console Vite HMR proof remains separate.",
+  "configuration": "Existing guarded re-resolve/reuse applies; structural Plan changes fall back to generation. Native bootstrap provider 103ea7a is not integrated or activated by this evidence.",
+  "warm_before": {
+    "initial_ready_ms": 3939.709940001194,
+    "native_before": {
+      ".lenso/host-cache/source/target/release/lenso-generated-local-host": {
+        "sha256": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+        "mtime_ns": 1791042170897380372
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-6e1c5ca4ccfcc10d.rlib": {
+        "sha256": "5d90b41fc48d2f4d678cbca6dc73d129499cb518bce3fd19b7344abc232073f2",
+        "mtime_ns": 1791042165409614596
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-d0fa98870a316105.rlib": {
+        "sha256": "cac2179880e069b312996adde7f8242cb8943db312ab20aa7ec47ef0d8f26c7c",
+        "mtime_ns": 1791040356953281651
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-1eb17ec771eb3c42.rlib": {
+        "sha256": "15dd0c91de811806f04f8d85b4a2fbcca5147c1ea5725593cc7d95b8ab263667",
+        "mtime_ns": 1791040286925690440
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-d2845454444334c0.rlib": {
+        "sha256": "37787ba6aabc4e4d97c483099da6581a947c435a49d8d4c251042e7c0e996a2e",
+        "mtime_ns": 1791042165661453279
+      }
+    },
+    "packaging_before": {
+      ".lenso/host": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+      ".lenso/host-mode": "bef32d2c315a289576f2a6828d27edb16bb316a4d85c271f2d794045f3ea668d",
+      "runtime/artifacts/example.bun-a": "7390c9177c03923c1ded4536aa00aae8f5131af2f3821f64fb8bf392d76d9d8a",
+      "runtime/artifacts/example.bun-b": "7c8f5c4b65e6d8fc5aff96b4d61d41881779293a8a3772ad6fea358f4c39888d",
+      "bundles/example.bun-b.lenso-plugin": "19f12095eaf68592bed76c1c709a858ecd4bab0a503eef437ec212d2ce19801e"
+    },
+    "edit_to_request_ready_ms": 6092.001118999178,
+    "operation": "Native typed ToolProvider.execute",
+    "request_results": [
+      "NATIVE_BUN_RESULT \"bun-edited\"",
+      "NATIVE_BUN_RESULT \"bun-edited\""
+    ],
+    "unrelated_request_results": [
+      "NATIVE_HEALTH_RESULT \"unrelated-bun\"",
+      "NATIVE_HEALTH_RESULT \"unrelated-bun\""
+    ],
+    "native_after": {
+      ".lenso/host-cache/source/target/release/lenso-generated-local-host": {
+        "sha256": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+        "mtime_ns": 1791042170897380372
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-6e1c5ca4ccfcc10d.rlib": {
+        "sha256": "5d90b41fc48d2f4d678cbca6dc73d129499cb518bce3fd19b7344abc232073f2",
+        "mtime_ns": 1791042165409614596
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-d0fa98870a316105.rlib": {
+        "sha256": "cac2179880e069b312996adde7f8242cb8943db312ab20aa7ec47ef0d8f26c7c",
+        "mtime_ns": 1791040356953281651
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-1eb17ec771eb3c42.rlib": {
+        "sha256": "15dd0c91de811806f04f8d85b4a2fbcca5147c1ea5725593cc7d95b8ab263667",
+        "mtime_ns": 1791040286925690440
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-d2845454444334c0.rlib": {
+        "sha256": "37787ba6aabc4e4d97c483099da6581a947c435a49d8d4c251042e7c0e996a2e",
+        "mtime_ns": 1791042165661453279
+      }
+    },
+    "packaging_after": {
+      ".lenso/host": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+      ".lenso/host-mode": "bef32d2c315a289576f2a6828d27edb16bb316a4d85c271f2d794045f3ea668d",
+      "runtime/artifacts/example.bun-a": "e38955ed114bb3d3eca5708a534a0f1618b4fb53865e8784a6a8c80db9480421",
+      "runtime/artifacts/example.bun-b": "7c8f5c4b65e6d8fc5aff96b4d61d41881779293a8a3772ad6fea358f4c39888d",
+      "bundles/example.bun-b.lenso-plugin": "19f12095eaf68592bed76c1c709a858ecd4bab0a503eef437ec212d2ce19801e"
+    },
+    "feedback": {
+      "schema": "lenso.dev-feedback.v1",
+      "change": "type_script",
+      "status": "ready",
+      "generation": 2,
+      "build_invoked": true,
+      "elapsed_ms": 6084,
+      "dev_process_id": 81482,
+      "reason": "source build completed; fresh Host generation",
+      "paths": [
+        "/workspace/lenso-devloop/examples/incremental-bun/app/bun-a/src/plugin.ts"
+      ]
+    },
+    "compile_lines": [],
+    "packaging_lines": [],
+    "shutdown_exit_code": 0
+  },
+  "warm_after": {
+    "initial_ready_ms": 3868.164526000328,
+    "native_before": {
+      ".lenso/host-cache/source/target/release/lenso-generated-local-host": {
+        "sha256": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+        "mtime_ns": 1791042170897380372
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-6e1c5ca4ccfcc10d.rlib": {
+        "sha256": "5d90b41fc48d2f4d678cbca6dc73d129499cb518bce3fd19b7344abc232073f2",
+        "mtime_ns": 1791042165409614596
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-d0fa98870a316105.rlib": {
+        "sha256": "cac2179880e069b312996adde7f8242cb8943db312ab20aa7ec47ef0d8f26c7c",
+        "mtime_ns": 1791040356953281651
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-1eb17ec771eb3c42.rlib": {
+        "sha256": "15dd0c91de811806f04f8d85b4a2fbcca5147c1ea5725593cc7d95b8ab263667",
+        "mtime_ns": 1791040286925690440
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-d2845454444334c0.rlib": {
+        "sha256": "37787ba6aabc4e4d97c483099da6581a947c435a49d8d4c251042e7c0e996a2e",
+        "mtime_ns": 1791042165661453279
+      }
+    },
+    "packaging_before": {
+      ".lenso/host": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+      ".lenso/host-mode": "bef32d2c315a289576f2a6828d27edb16bb316a4d85c271f2d794045f3ea668d",
+      "runtime/artifacts/example.bun-a": "7390c9177c03923c1ded4536aa00aae8f5131af2f3821f64fb8bf392d76d9d8a",
+      "runtime/artifacts/example.bun-b": "7c8f5c4b65e6d8fc5aff96b4d61d41881779293a8a3772ad6fea358f4c39888d",
+      "bundles/example.bun-b.lenso-plugin": "19f12095eaf68592bed76c1c709a858ecd4bab0a503eef437ec212d2ce19801e"
+    },
+    "edit_to_request_ready_ms": 2216.9263729992963,
+    "operation": "Native typed ToolProvider.execute",
+    "request_results": [
+      "NATIVE_BUN_RESULT \"bun-edited\"",
+      "NATIVE_BUN_RESULT \"bun-edited\""
+    ],
+    "unrelated_request_results": [
+      "NATIVE_HEALTH_RESULT \"unrelated-bun\"",
+      "NATIVE_HEALTH_RESULT \"unrelated-bun\""
+    ],
+    "native_after": {
+      ".lenso/host-cache/source/target/release/lenso-generated-local-host": {
+        "sha256": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+        "mtime_ns": 1791042170897380372
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-6e1c5ca4ccfcc10d.rlib": {
+        "sha256": "5d90b41fc48d2f4d678cbca6dc73d129499cb518bce3fd19b7344abc232073f2",
+        "mtime_ns": 1791042165409614596
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-d0fa98870a316105.rlib": {
+        "sha256": "cac2179880e069b312996adde7f8242cb8943db312ab20aa7ec47ef0d8f26c7c",
+        "mtime_ns": 1791040356953281651
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-1eb17ec771eb3c42.rlib": {
+        "sha256": "15dd0c91de811806f04f8d85b4a2fbcca5147c1ea5725593cc7d95b8ab263667",
+        "mtime_ns": 1791040286925690440
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_proof-d2845454444334c0.rlib": {
+        "sha256": "37787ba6aabc4e4d97c483099da6581a947c435a49d8d4c251042e7c0e996a2e",
+        "mtime_ns": 1791042165661453279
+      }
+    },
+    "packaging_after": {
+      ".lenso/host": "7ed0d199aedcd0a3972c3af9a37779418034ad8d045185a0efa289d6949a4ad1",
+      ".lenso/host-mode": "bef32d2c315a289576f2a6828d27edb16bb316a4d85c271f2d794045f3ea668d",
+      "runtime/artifacts/example.bun-a": "e38955ed114bb3d3eca5708a534a0f1618b4fb53865e8784a6a8c80db9480421",
+      "runtime/artifacts/example.bun-b": "7c8f5c4b65e6d8fc5aff96b4d61d41881779293a8a3772ad6fea358f4c39888d",
+      "bundles/example.bun-b.lenso-plugin": "19f12095eaf68592bed76c1c709a858ecd4bab0a503eef437ec212d2ce19801e"
+    },
+    "feedback": {
+      "schema": "lenso.dev-feedback.v1",
+      "change": "type_script",
+      "status": "ready",
+      "generation": 2,
+      "build_invoked": true,
+      "elapsed_ms": 2210,
+      "dev_process_id": 83564,
+      "reason": "selected Bun Plugins repackaged; native Host retained; fresh checked Host generation",
+      "paths": [
+        "/workspace/lenso-devloop/examples/incremental-bun/app/bun-a/src/plugin.ts"
+      ],
+      "host_build_invoked": false,
+      "packaged_plugins": [
+        "example.bun-a"
+      ],
+      "invalidation_reason": null
+    },
+    "compile_lines": [],
+    "packaging_lines": [
+      "Dev packaging Plugin example.bun-a (retained Host)"
+    ],
+    "shutdown_exit_code": 0
+  },
+  "checks": {
+    "clippy_engine_app_all_targets": "passed",
+    "local_dev_tests": "34 passed with Linux child subreaper; no assertions weakened",
+    "fmt": "passed",
+    "diff_check": "passed",
+    "python_compile": "passed",
+    "remote_ci": "Not run for this follow-up; no new push/main/release authorization."
+  }
+}

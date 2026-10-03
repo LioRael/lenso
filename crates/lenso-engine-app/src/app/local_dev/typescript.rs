@@ -147,7 +147,11 @@ pub(super) async fn candidate(
     )?;
     let before = lenso_app_authoring::load_resolved_app(current)?;
     let after = lenso_app_authoring::load_resolved_app(output)?;
-    if before.plan() != after.plan() {
+    let mut before_plan = serde_json::to_value(before.plan())?;
+    let mut after_plan = serde_json::to_value(after.plan())?;
+    normalize_implementation_revision(&mut before_plan, &packaged);
+    normalize_implementation_revision(&mut after_plan, &packaged);
+    if before_plan != after_plan {
         fs::remove_dir_all(output)?;
         return Ok(Outcome::Unavailable("resolved Plan changed"));
     }
@@ -212,34 +216,47 @@ fn replace(
         || serde_json::to_value(&selected.target_capability_profile)?
             != entry["target_capability_profile"]
     {
+        eprintln!("Changed Plugin identity or implementation selection differs from retained Host");
         return Ok(false);
     }
-    let retained: GeneratedHostBuild = serde_json::from_value(authority.clone())?;
-    if retained
-        .verify_distribution_bundle(
-            &selected.implementation.descriptor,
-            entry["manifest_digest"]
-                .as_str()
-                .context("retained bundle digest")?,
-        )
-        .is_err()
-    {
+    let new_descriptor = serde_json::to_value(&selected.implementation.descriptor)?;
+    let old_descriptor = authority["admissions"]
+        .as_array()
+        .context("retained admissions")?
+        .iter()
+        .flat_map(|rule| rule["releases"].as_array().into_iter().flatten())
+        .find(|release| {
+            release["manifest_digest"] == entry["manifest_digest"]
+                && release["descriptor"]["plugin_id"] == verified.plugin_id
+        })
+        .map(|release| release["descriptor"].clone());
+    let Some(old_descriptor) = old_descriptor else {
+        return Ok(false);
+    };
+    let mut compatible_descriptor = new_descriptor.clone();
+    compatible_descriptor["runtime_package_revision"] =
+        old_descriptor["runtime_package_revision"].clone();
+    if compatible_descriptor != old_descriptor {
+        eprintln!("Changed Plugin Descriptor is not admitted by retained Host");
         return Ok(false);
     }
     let artifact = directory.join(&selected.implementation.artifact.path);
     if crate::plugin::local_runtime_descriptor(&artifact, "lenso.bun-process@1")?
         != Some(codecs[&verified.plugin_id].clone())
     {
+        eprintln!("Changed Plugin runtime codec header differs from retained Host");
         return Ok(false);
     }
     if !update_admission(
         authority,
-        &selected.implementation.descriptor,
+        &old_descriptor,
+        &new_descriptor,
         entry["manifest_digest"]
             .as_str()
             .context("retained bundle digest")?,
         &verified.manifest_digest,
     )? {
+        eprintln!("Changed Plugin has no retained bundle admission to update");
         return Ok(false);
     }
     fs::copy(
@@ -316,11 +333,11 @@ fn relock(output: &Path, packaged: &[String]) -> anyhow::Result<()> {
 
 fn update_admission(
     authority: &mut Value,
-    descriptor: &lenso_app_plan::authoring::PluginDescriptor,
+    old_descriptor: &Value,
+    new_descriptor: &Value,
     before: &str,
     after: &str,
 ) -> anyhow::Result<bool> {
-    let descriptor = serde_json::to_value(descriptor)?;
     let mut changed = false;
     for rule in authority["admissions"]
         .as_array_mut()
@@ -330,21 +347,94 @@ fn update_admission(
             .as_array_mut()
             .context("retained releases")?
         {
-            if release["descriptor"] == descriptor && release["manifest_digest"] == before {
+            if release["descriptor"] == *old_descriptor && release["manifest_digest"] == before {
+                release["descriptor"] = new_descriptor.clone();
                 release["manifest_digest"] = after.into();
                 changed = true;
             }
         }
     }
     if changed {
+        for release in authority["catalog"]["plugins"]
+            .as_array_mut()
+            .context("retained catalog")?
+        {
+            if release["descriptor"] == *old_descriptor {
+                release["descriptor"] = new_descriptor.clone();
+            }
+        }
         let _: GeneratedHostBuild = serde_json::from_value(authority.clone())?;
     }
     Ok(changed)
 }
 
+// Bun bundle verification binds this revision to the implementation artifact's
+// digest. A new Generation may change those bytes, while all other Plan fields
+// (including contracts, bindings, configuration and topology) remain exact.
+fn normalize_implementation_revision(value: &mut Value, plugins: &[String]) {
+    match value {
+        Value::Object(fields) => {
+            let selected = fields
+                .get("package_id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| plugins.iter().any(|plugin| plugin == id));
+            if selected
+                && fields.get("execution_class").and_then(Value::as_str)
+                    == Some("lenso.bun-process@1")
+                && fields.contains_key("package_revision")
+            {
+                fields.insert("package_revision".into(), Value::Null);
+            }
+            for child in fields.values_mut() {
+                normalize_implementation_revision(child, plugins);
+            }
+        }
+        Value::Array(values) => {
+            for child in values {
+                normalize_implementation_revision(child, plugins);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn implementation_revision_does_not_mask_configuration_or_other_packages() {
+        use lenso_app_plan::{ExecutionClassId, PluginInstancePlan};
+        let instance = PluginInstancePlan::new("example.bun-a/default", "example.bun-a")
+            .with_execution_class(ExecutionClassId::new("lenso.bun-process@1"))
+            .with_package_revision("sha256:before");
+        let selected = vec!["example.bun-a".to_owned()];
+        let normalize = |instance: &PluginInstancePlan| {
+            let mut value = serde_json::to_value(instance).unwrap();
+            normalize_implementation_revision(&mut value, &selected);
+            value
+        };
+        assert_eq!(
+            normalize(&instance),
+            normalize(&instance.clone().with_package_revision("sha256:after"))
+        );
+        assert_ne!(
+            normalize(&instance),
+            normalize(&instance.clone().with_configuration("{\"structural\":true}"))
+        );
+        let other = PluginInstancePlan::new("example.bun-b/default", "example.bun-b")
+            .with_execution_class(ExecutionClassId::new("lenso.bun-process@1"))
+            .with_package_revision("sha256:before");
+        assert_ne!(
+            normalize(&other),
+            normalize(&other.clone().with_package_revision("sha256:after"))
+        );
+        let native = instance.with_execution_class(ExecutionClassId::native_rust());
+        assert_ne!(
+            normalize(&native),
+            normalize(&native.clone().with_package_revision("sha256:after"))
+        );
+    }
 
     #[test]
     fn repackaging_cannot_relock_a_tampered_retained_host() {
