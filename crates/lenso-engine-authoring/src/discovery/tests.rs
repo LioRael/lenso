@@ -88,6 +88,79 @@ fn source_modules_have_independent_identity_and_explicit_selection() {
 }
 
 #[test]
+fn source_inventory_skips_external_contract_helpers_but_rejects_plugin_escape() {
+    let root = tempfile::tempdir().unwrap();
+    let helper = root.path().join("helper");
+    write(
+        root.path(),
+        "helper/Cargo.toml",
+        "[package]\nname='fixture-helper'\nversion='1.0.0'\n",
+    );
+    write(
+        root.path(),
+        "helper/src/lib.rs",
+        "#[path=\"../../shared.rs\"] pub mod shared;",
+    );
+    write(root.path(), "shared.rs", "pub struct Token;");
+    let files = || {
+        source_files_in(
+            &helper,
+            &lenso_engine::discovery::DiscoverySession::new(root.path()).unwrap(),
+        )
+    };
+    assert!(
+        files().unwrap().is_empty(),
+        "a pure helper supplies no Plugin inventory"
+    );
+    assert!(discover(&helper).unwrap().candidates.is_empty());
+
+    // An actual source declaration outside the package must still fail.
+    write(
+        root.path(),
+        "shared.rs",
+        "#[lenso::plugin(id=\"example.escaped\", root_slot=\"tools\")] pub struct Plugin {}",
+    );
+    assert!(
+        format!("{:#}", files().unwrap_err()).contains("Plugin source escapes its Cargo package")
+    );
+
+    // Even an in-package declaration cannot import an escaped source closure.
+    write(root.path(), "shared.rs", "pub struct Token;");
+    write(
+        root.path(),
+        "helper/src/lib.rs",
+        "#[path=\"../../shared.rs\"] pub mod shared; pub mod business { #[lenso::plugin(id=\"example.inside\", root_slot=\"tools\")] pub struct Plugin {} }",
+    );
+    assert!(
+        format!("{:#}", files().unwrap_err()).contains("Plugin source escapes its Cargo package")
+    );
+
+    // Metadata-authored Plugins retain the same package boundary too.
+    write(
+        root.path(),
+        "helper/src/lib.rs",
+        "#[path=\"../../shared.rs\"] pub mod shared;",
+    );
+    write(
+        root.path(),
+        "helper/Cargo.toml",
+        "[package]\nname='fixture-helper'\nversion='1.0.0'\n[package.metadata.lenso]\nplugin-id='example.metadata'\n",
+    );
+    assert!(
+        format!("{:#}", files().unwrap_err()).contains("Plugin source escapes its Cargo package")
+    );
+
+    // No catch-and-ignore path: malformed helper input remains an error.
+    write(
+        root.path(),
+        "helper/Cargo.toml",
+        "[package]\nname='fixture-helper'\nversion='1.0.0'\n",
+    );
+    write(root.path(), "shared.rs", "pub struct {");
+    assert!(format!("{:#}", files().unwrap_err()).contains("parse Rust Plugin source"));
+}
+
+#[test]
 fn source_discovery_follows_library_module_paths_and_ignores_non_declarations() {
     let root = tempfile::tempdir().unwrap();
     write(

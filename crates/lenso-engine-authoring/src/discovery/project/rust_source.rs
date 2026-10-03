@@ -42,10 +42,21 @@ fn inspect(
     let mut visited = Traversal {
         active: BTreeSet::new(),
         files: BTreeSet::new(),
+        outside_package: false,
         visits: 0,
         inputs: inputs.scope(root)?,
     };
     walk(root, &entry, &[], &mut visited, &mut declarations)?;
+    // Dependency inventory also inspects ordinary contract/helper packages.
+    // Rust allows their shared #[path] modules; they grant no Plugin source
+    // status. A real Plugin still requires its entire inspected source closure
+    // to remain inside the package, including metadata-authored Plugins.
+    if visited.outside_package
+        && (!declarations.is_empty()
+            || value.pointer("/package/metadata/lenso/plugin-id").is_some())
+    {
+        bail!("Plugin source escapes its Cargo package");
+    }
     if declarations.is_empty() {
         return Ok((Vec::new(), BTreeSet::new()));
     }
@@ -79,6 +90,7 @@ fn inspect(
 struct Traversal {
     active: BTreeSet<PathBuf>,
     files: BTreeSet<PathBuf>,
+    outside_package: bool,
     visits: usize,
     inputs: lenso_engine::discovery::DiscoverySession,
 }
@@ -91,9 +103,7 @@ fn walk(
     found: &mut Vec<(String, String)>,
 ) -> anyhow::Result<()> {
     let file = fs::canonicalize(file)?;
-    if !file.starts_with(fs::canonicalize(root)?) {
-        bail!("Plugin source escapes its Cargo package");
-    }
+    visited.outside_package |= !file.starts_with(fs::canonicalize(root)?);
     if modules.len() > 32 || visited.visits >= 1024 {
         bail!("Rust Plugin source discovery limit exceeded");
     }

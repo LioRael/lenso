@@ -45,21 +45,24 @@ lenso-runtime-codec={{path={:?}}}
                 .unwrap()
         ),
         r#"
-pub struct Token;
+#[path="../../shared-contract.rs"] pub mod shared;
+pub use shared::Token;
 pub const NORMAL: bool = cfg!(feature="normal");
 pub const UNREQUESTED: bool = cfg!(feature="unrequested");
 "#,
     );
+    fs::write(root.join("shared-contract.rs"), "pub struct Token;\n").unwrap();
     // A selected metadata wrapper reexports one canonical Plugin from a local
     // aggregate. Cargo retains the aggregate's other inventory registrations.
     package(
         &root.join("aggregate"),
         "fixture-aggregate",
         &format!(
-            "[dependencies]\nlenso={{path={:?}}}\n",
+            "[dependencies]\nlenso={{path={:?}}}\nhelper={{package=\"fixture-contract\",path=\"../contract\",default-features=false,features=[\"normal\"]}}\n",
             facade.to_str().unwrap()
         ),
         r#"
+pub use helper::Token;
 pub mod chosen {
     #[lenso::plugin(id="example.chosen", root_slot="tools", consumer)]
     #[derive(Debug)]
