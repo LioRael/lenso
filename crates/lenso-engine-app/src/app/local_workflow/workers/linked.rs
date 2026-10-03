@@ -283,7 +283,7 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
     )?;
     fs::write(
         stage.path().join("README.md"),
-        "Static linked Rust Workers candidate. Run `wrangler dev --local --config wrangler.jsonc`. The exact resolved graph uses the Workers Driver and Kernel for every HTTP event. Request and Stream Capabilities and one main lane are admitted. HTTP response chunks are pulled incrementally; successful EOF follows the stream terminal and clean shutdown of that request's independent App. Cancellation and session limits retain the event generation until cleanup. Plugin memory is recreated per event; this does not prove durable state, D1, PostgreSQL, deployed Workers, dynamic loading or Event Capability support.\n",
+        "Static linked Rust Workers candidate. Run `wrangler dev --local --config wrangler.jsonc`. The exact resolved graph uses the Workers Driver and Kernel for every HTTP event. Request and Stream Capabilities and one main lane are admitted. HTTP response chunks are pulled incrementally. Internally, the JavaScript response reader reports clean EOF only after the provider's successful terminal and clean request-App shutdown. External HTTP completion is a separate, unqualified boundary; the strict local workerd abnormal-EOF check is currently failing. Cancellation and session limits retain the event generation until cleanup completes or bounded generation abandonment. Plugin memory is recreated per event; this does not prove durable state, D1, PostgreSQL, deployed Workers, dynamic loading or Event Capability support.\n",
     )?;
     for name in [".lenso/host-build.json", "local-sources.json"] {
         fs::copy(native.join(name), stage.path().join(name))
