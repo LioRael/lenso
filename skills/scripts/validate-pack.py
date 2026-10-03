@@ -47,7 +47,7 @@ REQUIRED_TEXT = {
     ),
     "lenso-plugin-authoring/references/paths/portable-rust.md": (
         "--runtime multi",
-        "V3 `.lenso-plugin` Release",
+        "V4 `.lenso-plugin` Release",
     ),
     "lenso-plugin-authoring/references/paths/linked-rust.md": (
         "#[lenso::plugin]",

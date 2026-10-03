@@ -28,13 +28,15 @@ credentials in typed configuration and external secret authority.
 
 ## Complete one vertical request
 
-1. Prove the Endpoint Plugin directly through its generated provider/client.
+1. Run affected Endpoint tests through the existing generated provider/client.
 2. Add only the intended `plugins/` differences and inspect the derived App.
-3. Exercise the real socket through Ingress, including success, declared
-   Domain Errors, malformed input, method/path mismatch, and Runtime Failure.
-4. Prove duplicate routes or incomplete bindings fail before readiness.
-5. Disable or remove the optional Endpoint and confirm the remaining App still
-   resolves.
+3. Exercise the real socket through Ingress, including changed success and
+   rejection behavior. Add malformed-input, method/path, Runtime Failure and
+   allow/deny vectors where that boundary changes.
+4. Prove duplicate routes or incomplete bindings fail before readiness when
+   route composition or binding behavior changes.
+5. Disable/remove and resolve when optional support or selection/removal changes
+   or is claimed. A handler-only edit need not repeat deletion proof.
 6. For deployment work, verify the actual Host boundary, TLS/proxy ownership,
    readiness, graceful shutdown, configuration, and secret injection. Do not
    invent a framework-owned deployment artifact when the repository does not
@@ -42,3 +44,7 @@ credentials in typed configuration and external secret authority.
 
 The Web path is complete when the real HTTP behavior is observable and every
 artifact has one Core owner; a route diagram or handler-only test is not enough.
+Reuse the existing method attributes and Endpoint macros; propose a narrow
+patch only for a demonstrated missing API, rather than designing a new DSL.
+Money, Auth and migration retain explicit authority and affected concurrency,
+idempotency and recovery checks with real storage.

@@ -13,6 +13,24 @@ test harness incomplete; an evaluator that stops and names that prerequisite
 has behaved correctly. Record such a run as **inconclusive**, not as a skill
 failure. Keep fixtures free of the expected observations.
 
+### Concrete local change
+
+**Prompt:** "Add a local Rust POST /greet Plugin that trims a name, returns a
+greeting, rejects empty names, and prove it with affected tests and a real
+request. Do not publish or deploy."
+
+**Fixture:** the matching source CLI, Rust toolchain and an isolated source App.
+The executable example under `examples/agent-flow/` supplies implementation and
+command smoke evidence; it is not itself an independent model evaluation.
+
+**Required observations:** continue through Plugin authoring in one task; reuse
+Endpoint macros and existing source discovery/build/check/show/configure;
+affected tests and real success/rejected requests pass. No mandatory card,
+freeze/pack, handoff, full workspace check or report per edit. Keep final review
+and exact candidate CI at delivery. Do not invent MCP counterparts or claim
+discovery is activation. Ordinary helpers and unused languages/targets remain
+optional. Money/Auth/migration follow the stronger boundaries.
+
 ## 0. Task-map routing
 
 Run each prompt with `lenso-start`. These scenarios prove the higher-order
@@ -206,7 +224,7 @@ runtime fallback."
 a Host Catalog builder with implementation policy, and a real consumer. A V2
 single-implementation Bundle is insufficient for this scenario.
 
-**Required observations:** one editable Plugin source produces one V3 Release;
+**Required observations:** one editable Plugin source produces one V4 Release;
 one Plugin Contract owns configuration, Capabilities, restart/criticality, and
 state semantics; implementation records alone own target, entrypoint, exact
 runtime package, and Execution Class; `plugin check`, `plugin dev`, and `plugin

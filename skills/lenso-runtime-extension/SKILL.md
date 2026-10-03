@@ -54,12 +54,20 @@ authoring layer; file conventions do not belong in the CLI or portable Kernel.
    mismatches, and incomplete bindings before activation. Bound frames, queues,
    tasks, and cancellation state. Finish when malformed host state cannot reach
    Plugin business code.
-7. **Prove portable and real behavior.** Run product-neutral conformance, the
-   owning repository's locked gates, target compile checks, and the branch's
-   real host smoke. Exercise startup failure, cancellation/deadline, shutdown,
+7. **Prove affected portable and real behavior.** Run affected product-neutral
+   target conformance, target compile checks, and the branch's real host smoke.
+   Exercise startup failure, cancellation/deadline, shutdown,
    recreation/supervision, and terminal outcome where affected. Finish when a
    fake-only test cannot mask a broken process, browser, WASIp2, wire, or host
    boundary.
+
+Keep App Composition and semantic resolution shared across targets. Each target
+still validates support, binds resources and lowers its required entrypoint or
+platform bindings. Do not fork application business behavior into Native and
+Workers Hosts. Implement only the required target/storage and abstract after a
+real reuse need. Repository final review and exact candidate gates run at
+delivery, not at every intermediate step. Money, Auth and migration changes
+retain authority and real-storage concurrency/idempotency/recovery proof.
 
 Return the chosen seam and owner, host facility, core Interface version,
 dependency direction, failure boundary, conformance and host-smoke evidence,

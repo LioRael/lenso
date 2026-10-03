@@ -23,18 +23,18 @@ creates a new `@major` series.
 
 ## Prove the contract
 
-Require evidence for every changed Operation:
+Require evidence for each changed Operation and affected published projection:
 
 - Descriptor and Schema validation;
 - deterministic generation and a freshness check for every declared artifact;
 - typed consumer and provider compilation;
 - success, domain-error, and runtime-failure preservation;
-- cross-language wire vectors for portable contracts; and
+- cross-language wire vectors for changed portable boundaries; and
 - stream or event terminal, cancellation, backpressure, and partial-admission
   behavior when those interaction kinds are present.
 
-Also compile/typecheck each generated Provider and Client from a clean checkout
-of the package that distributes that language projection.
+Also compile/typecheck affected generated Providers and Clients from a clean
+checkout of the package that distributes that language projection.
 Exercise at least one old consumer or provider against an additive minor change
 when compatibility is claimed. Verify that an older generated client preserves
 an unknown Domain Error code and payload instead of discarding it.

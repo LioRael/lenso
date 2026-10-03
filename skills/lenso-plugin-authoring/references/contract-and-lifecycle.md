@@ -20,6 +20,11 @@ Package defaults are conservative implementation defaults. Host configuration
 is product policy. `plugins/<plugin-id>/<instance>.toml` is the App owner's
 typed patch. Secrets remain external references.
 
+One implementation may create multiple Instances. Each has independent
+configuration, bindings, resources, mutable state and permissions. Ordinary
+internal modules need no separate Plugin or Capability. Add lifecycle hooks
+only for owned state, resources or work; a stateless handler needs none.
+
 Every prepared Instance generation is fresh. Preparation validates resources
 without exposing traffic; activation starts owned work; readiness precedes
 routing; deactivation and cleanup release every task/resource; recreation does
@@ -27,6 +32,7 @@ not share mutable state with its predecessor. Stateful implementation switches
 require explicit compatibility or migration evidence owned by the Plugin.
 
 These rules are satisfied when Contract and implementation fields have one
-owner, all implementations pass identical observable vectors, and a failed
+owner, changed or published implementations pass the affected observable
+vectors, and a failed
 selected implementation fails the candidate Generation without trying another
 implementation.

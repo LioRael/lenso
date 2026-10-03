@@ -33,7 +33,7 @@ unconditional library modules. A filename such as `plugin.rs` is not authority.
 Declare one Plugin per module; ordinary modules, tests and example binaries are
 not candidates. Source-declared Plugins require explicit
 `plugins/<plugin-id>/<instance>.toml` selection, even in the App's package. See
-the [multiple-Plugin example](../../../../examples/multiple-plugins/README.md).
+the [multiple-Plugin example](https://github.com/LioRael/lenso/blob/main/examples/multiple-plugins/README.md).
 
 When several local Rust contracts share the Plugin crate, generate each runtime
 projection with `lenso-contract-codegen generate capability.json --rust-runtime
@@ -110,6 +110,7 @@ Cargo identity and content digest. Supply a closed module; this path does not
 bundle imports or discover npm dependencies.
 
 This path is complete when the linked factory is discoverable in the exact Host
-build, typed configuration fails closed, generated Capability calls exercise a
-real consumer/provider path, lifecycle cleanup is observable, and removing the
-Plugin leaves no hidden registration or Kernel branch.
+build and an affected real consumer/request passes. Add typed configuration,
+lifecycle cleanup and removal proof when changed or claimed, following
+[verification](../verification.md). Source development does not require a
+packed/frozen release.

@@ -4,6 +4,12 @@ The canonical Skill pack mirrors the public documentation without copying its
 page tree. A user enters through Core, Web, or Agent; the pack then routes the
 first concrete artifact to one stable owner Skill.
 
+For a concrete request, implement directly through that owner in the same task.
+The [lightweight development guide](development-loop.md) and runnable
+[one-sentence source example](../../examples/agent-flow/README.md) show the
+existing commands and risk-based proof. Cards, handoffs, packaging and long
+reports are conditional; repository final review and candidate CI remain.
+
 ## The two layers
 
 ```text
@@ -25,8 +31,8 @@ Invoke `$lenso-start` when the owner or sequence is unclear:
 
 | Path | Use it for | Observable completion |
 | --- | --- | --- |
-| Core | Plugins, Capabilities, App changes, composition, runtime, framework semantics | One owned artifact plus success, honest failure, inspection, and removal/replacement proof |
-| Web | Endpoints, Auth, upstream calls, Ingress, socket tests, deployment | One real HTTP path with readiness and removal proof |
+| Core | Plugins, Capabilities, App changes, composition, runtime, framework semantics | One owned artifact plus affected behavior and inspection; removal/replacement when changed or claimed |
+| Web | Endpoints, Auth, upstream calls, Ingress, socket tests, deployment | One real affected HTTP path with readiness; removal when changed or claimed |
 | Agent | Profiles, Tools, Sessions, Memory, child Agents, MCP, surfaces | One real Turn with Session and Tool/Context evidence |
 
 The selected map names one primary owner and any later handoffs. It does not
@@ -59,7 +65,7 @@ Constraints: [language, target, compatibility, security, delivery scope]
 Completion:
 - [success to exercise]
 - [honest failure to preserve]
-- [inspection and removal/replacement proof]
+- [relevant inspection; removal/replacement proof when changed or claimed]
 - [requested commit, PR, or merge boundary]
 ```
 
@@ -112,17 +118,19 @@ derived artifacts; edit only the canonical repository source.
 ```sh
 python3 skills/scripts/validate-pack.py
 python3 -m unittest skills/scripts/test_validate_pack.py
-npx skills add . --list
+npx skills add ./skills --list
 ```
 
-Run the active Agent runtime's official validator for every changed Skill.
+Run the active Agent runtime's official validator for changed Skills when that
+runtime exposes one. Pack validation alone does not prove runtime discovery.
 After a substantial routing or workflow change, run the independent prompts in
 [`skills/validation/scenarios.md`](../../skills/validation/scenarios.md) with
 complete fixtures and isolated writable directories.
 
 A pack change is complete when:
 
-- installer discovery returns exactly the canonical six Skills;
+- `./skills` discovery returns exactly the canonical six Skills (repository-root
+  discovery may also find the local `lenso-land` delivery Skill);
 - Core, Web, and Agent routes each choose one primary owner;
 - every reference is reachable only through the branch that needs it;
 - current-source inspection precedes implementation;
