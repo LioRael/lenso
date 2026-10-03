@@ -99,7 +99,7 @@ def fetch(port, path):
     return connection, response
 
 
-def corpus(port):
+def corpus(port, target):
     result = []
     failures = {}
     for mode, expected in [("", FIRST + b"second"), ("half-close", FIRST)]:
@@ -127,12 +127,17 @@ def corpus(port):
         assert response.status == 200, (mode, response.status, response.read())
         assert response.read(len(FIRST)) == FIRST
         failed = False
+        remaining = None
         try:
-            response.read()
+            remaining = response.read()
         except (http.client.IncompleteRead, ConnectionError):
             failed = True
         connection.close()
-        assert failed, f"failed terminal became EOF: {mode}"
+        assert failed, {"error": "failed terminal became EOF", "target": target,
+                        "mode": mode, "headers": response.getheaders(),
+                        "http_version": response.version, "chunked": response.chunked,
+                        "will_close": response.will_close,
+                        "remaining_hex": remaining.hex() if remaining is not None else None}
         failures[mode] = "head/chunk then transport failure"
         result.append(mode)
     return {"cases": result, "failure_transport": failures}
@@ -140,6 +145,7 @@ def corpus(port):
 
 def smoke(args):
     inputs = json.loads((args.out / "inputs.json").read_text())
+    (args.out / "RESULT.json").unlink(missing_ok=True)
     fixture = Path(__file__).parent / "fixtures/linked-stream-app"
     workers = args.out / "workers"
     shutil.copy(fixture / "probe.mjs", workers / "probe.mjs")
@@ -159,9 +165,13 @@ def smoke(args):
             process = subprocess.Popen(command, cwd=workers if name == "workers" else args.out,
                                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             processes.append((process, log, name))
+            (args.out / "processes.json").write_text(json.dumps([
+                {"pid": p.pid, "target": n, "exit_code": p.poll()}
+                for p, _, n in processes], indent=2))
             port = inputs[f"{name}_port"]
             wait_http(process, port)
-            results[name] = corpus(port)
+            results[name] = corpus(port, name)
+            (args.out / "PARTIAL.json").write_text(json.dumps(results, indent=2))
             if name == "workers":
                 connection, response = fetch(port, "/__probe")
                 data = response.read()
@@ -187,6 +197,9 @@ def smoke(args):
                 os.killpg(process.pid, signal.SIGTERM)
                 process.wait(timeout=15)
             log.close()
+        (args.out / "processes.json").write_text(json.dumps([
+            {"pid": p.pid, "target": n, "exit_code": p.returncode}
+            for p, _, n in processes], indent=2))
 
 
 if __name__ == "__main__":

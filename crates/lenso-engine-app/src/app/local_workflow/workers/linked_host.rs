@@ -168,10 +168,15 @@ pub async fn open_http(input: String, scope: JsValue) -> Result<ResponseSession,
         };
         lifetime_body.cancel();
         let shutdown = app.shutdown(SHUTDOWN_TIMEOUT).await;
-        if shutdown != ShutdownOutcome::Clean || !terminal || failed.get() {
-            return Err(error(("response session failed", shutdown)));
+        // Stream failure is observed by read(); it does not make a cleanly
+        // stopped, independent request App an unsafe Wasm generation. Only
+        // unconfirmed cleanup abandons the runner's shared generation.
+        if shutdown != ShutdownOutcome::Clean || (!terminal && !failed.get()) {
+            return Err(error(("response session cleanup unconfirmed", shutdown)));
         }
-        js_sys::JSON::parse(if cancelled {
+        js_sys::JSON::parse(if failed.get() {
+            "{\"shutdown\":\"clean\",\"terminal\":\"failed\"}"
+        } else if cancelled {
             "{\"shutdown\":\"clean\",\"terminal\":\"cancelled\"}"
         } else {
             "{\"shutdown\":\"clean\",\"terminal\":\"success\"}"
