@@ -21,8 +21,10 @@ use tokio::{
 use super::configuration_source::AcceptedSourceProof;
 
 mod changes;
+mod console;
 mod frontend;
 mod managed_host;
+mod typescript;
 use managed_host::{Host, Retirement};
 
 #[derive(Clone, Debug, Args)]
@@ -95,6 +97,7 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
     let mut current_output: Option<PathBuf> = None;
     let mut active: Option<TimedProof> = None;
     let mut active_inputs: Option<changes::Inputs> = None;
+    let mut active_console_inputs: Option<console::Inputs> = None;
     let mut pending_change = Some(changes::Batch::new(
         notify::Event::new(notify::EventKind::Any).add_path(root.clone()),
     ));
@@ -120,10 +123,12 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         let output = generations.path().join(format!("generation-{revision}"));
         let mut compiled = true;
         let mut reused = false;
+        let mut packaged_plugins = Vec::new();
         let mut reuse_failed = false;
         let inputs_before_build = if policy.is_none() {
             changes::Inputs::capture(&root, frontend_enabled).ok().flatten()
         } else { None };
+        let console_before_build = console::Inputs::capture(&root).ok().flatten();
         if policy.is_none()
             && let (Some(batch), Some(current), Some(inputs)) =
                 (&pending_change, &current_output, &active_inputs)
@@ -138,8 +143,37 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 }
             }
         }
+        if policy.is_none()
+            && let (Some(batch), Some(current), Some(inputs)) =
+                (&pending_change, &current_output, &active_inputs)
+            && batch.work(&root, frontend_enabled) == changes::Work::TypeScript
+        {
+            batch.report(&root, changes::Work::TypeScript, "building", revision, true, "checking targeted Plugin packaging against retained Host")?;
+            match typescript::candidate(&root, current, &output, inputs, &args.trust_linked_build, frontend_enabled, interrupt.as_mut()).await {
+                Ok(typescript::Outcome::Packaged(plugins)) => { reused = true; packaged_plugins = plugins; }
+                Ok(typescript::Outcome::Unavailable(reason)) => {
+                    if let Some(batch) = &mut pending_change {
+                        batch.classification = Some(changes::Work::Generation);
+                        batch.invalidation_reason = Some(reason.into());
+                    }
+                    eprintln!("Dev Generation required: {reason}");
+                }
+                Ok(typescript::Outcome::Interrupted) => {
+                    stop_active(&mut host, &mut frontend_process).await?;
+                    return Ok(());
+                }
+                Err(error) => {
+                    eprintln!("Plugin packaging candidate rejected; previous preview retained: {error:#}");
+                    reuse_failed = true;
+                }
+            }
+        }
+        if let Some(batch) = &mut pending_change {
+            batch.packaged_plugins.clone_from(&packaged_plugins);
+        }
         let built = if reused { true } else if reuse_failed { false } else {
-        if let Some(batch) = &pending_change {
+        if let Some(batch) = &mut pending_change {
+            batch.host_build_invoked = true;
             batch.report(&root, batch.work(&root, frontend_enabled), "building", revision, true, "preparing source candidate; previous preview remains active")?;
         }
         let mut build = command(std::env::current_exe()?);
@@ -287,12 +321,16 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 Some(true) => {
                     select_output(&mut current_output, &output);
                     active_inputs = if policy.is_some() { None } else { match changes::Inputs::capture(&root, frontend_enabled) {
-                        Ok(inputs) => inputs.filter(|after| reused || inputs_before_build.as_ref().is_some_and(|before| after.agrees_with_before_build(before))),
+                        Ok(inputs) => inputs.filter(|after| inputs_before_build.as_ref().is_some_and(|before| after.agrees_with_before_build(before))),
                         Err(error) => { eprintln!("Incremental configuration reuse unavailable: {error:#}"); None }
                     } };
+                    active_console_inputs = console::Inputs::capture(&root).ok().flatten()
+                        .filter(|after| console_before_build.as_ref().is_some_and(|before| before == after));
                     if let Some(batch) = &pending_change {
                         batch.report(&root, batch.work(&root, frontend_enabled), "ready", revision, compiled,
-                            if reused { "configuration re-resolved; fresh Host generation; execution artifacts reused" }
+                            if !packaged_plugins.is_empty() { "selected Bun Plugins repackaged; native Host retained; fresh checked Host generation" }
+                            else if reused { "configuration re-resolved; fresh Host generation; execution artifacts reused" }
+                            else if batch.work(&root, frontend_enabled) == changes::Work::ConsoleFrontend { "Console page-only edit; selected convention compiler owns provider packaging; fresh Host generation" }
                             else { "source build completed; fresh Host generation" })?;
                     }
                     eprintln!(
@@ -349,6 +387,9 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                             }
                             if batch.paths.iter().any(|p| frontend::is_config(&root, p)) {
                                 eprintln!("Frontend dev configuration changed; restart lenso dev to review and apply its command.");
+                            }
+                            if active_console_inputs.as_ref().is_some_and(|inputs| inputs.page_edit(&root, &batch.paths).unwrap_or(false)) {
+                                batch.classification = Some(changes::Work::ConsoleFrontend);
                             }
                             if batch.work(&root, frontend_enabled) == changes::Work::Frontend {
                                 // The explicitly selected frontend owns its HMR/rebuild loop.

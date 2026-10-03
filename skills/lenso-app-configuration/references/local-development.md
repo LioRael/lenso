@@ -82,14 +82,22 @@ For incremental development, keep using `app dev`. Existing Instance TOML
 edits may reuse locked execution artifacts; source, contracts, dependency or
 resource changes retain the normal build path. Configuration still activates
 through a fresh checked Host generation. A selected convention compiler keeps
-its build semantics. An explicitly configured frontend keeps its own reload
-loop. Agents may read the existing MCP entry's `project_dev_feedback` tool for
+its build semantics. Local Bun implementation-only edits can repackage just the
+affected Plugin against the retained Host's exact contract, codec and target
+profile. This still activates a fresh Host Generation; it does not reload one
+live Instance in place. Selected page-only Console edits have a distinct
+`console_frontend` diagnostic classification, while generated provider packaging
+remains owned by its convention compiler. New routes/layers, services, dependency
+or mixed edits retain the structural path. An explicitly configured frontend
+keeps its own reload loop. Agents may read the existing MCP entry's `project_dev_feedback` tool for
 the last classification and measured result; no generated snapshot inspection
-is required. See [the small dev App](https://github.com/LioRael/lenso/blob/main/examples/incremental-dev/README.md).
+is required. See [the small dev App](https://github.com/LioRael/lenso/blob/main/examples/incremental-dev/README.md)
+and [the Bun implementation example](https://github.com/LioRael/lenso/blob/main/examples/incremental-bun/README.md).
 
 Prove source discovery, a real build/start and one observable operation. When
 optional support selection/removal changes or is claimed, disable it and verify
-its behavior and private compilation disappear. A faileddevelopment build keeps the previous generation; successful builds restart the
+its behavior and private compilation disappear. A failed development build keeps
+the previous generation; successful builds restart the
 Host, potentially on a new dynamic port. This is not React Fast Refresh or a
 zero-downtime promise. The Console kit has native macOS ARM64 and Linux x64
 CI evidence, including extracted-archive, clean-PATH and real HTTP allow/deny

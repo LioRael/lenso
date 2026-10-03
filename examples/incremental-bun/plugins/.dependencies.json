@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "choices": [
+    {
+      "consumer": {
+        "plugin_id": "example.health",
+        "instance_key": "default"
+      },
+      "requirement_id": "tools",
+      "provider": {
+        "plugin_id": "example.bun-b",
+        "instance_key": "default"
+      }
+    },
+    {
+      "consumer": {
+        "plugin_id": "example.proof",
+        "instance_key": "default"
+      },
+      "requirement_id": "tools",
+      "provider": {
+        "plugin_id": "example.bun-a",
+        "instance_key": "default"
+      }
+    }
+  ]
+}

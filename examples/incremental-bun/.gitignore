@@ -1,0 +1,6 @@
+.lenso/
+target/
+Cargo.lock
+node_modules/
+bun.lock
+bun.lockb
