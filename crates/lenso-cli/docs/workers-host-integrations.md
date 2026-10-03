@@ -269,5 +269,7 @@ the target name.
 
 Known stream failures still reject response reads. A clean shutdown receipt marks
 them as a failed terminal without retiring unrelated request Apps. Unconfirmed
-cleanup rejects the session receipt and retires the Wasm generation. The generated
-Host retains the full runner cleanup Promise in the Workers execution context.
+Rust App shutdown rejects the session receipt and retires the Wasm generation.
+A native resource-scope cleanup failure rejects and fences that request; it does
+not itself retire unrelated request Apps. The generated Host retains the full
+runner cleanup Promise in the Workers execution context.
