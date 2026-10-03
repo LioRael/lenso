@@ -101,7 +101,41 @@ pub(super) fn source_files_in(
     root: &Path,
     inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<BTreeSet<std::path::PathBuf>> {
-    rust_source::source_files(root, inputs)
+    let mut files = rust_source::source_files(root, inputs)?;
+    if !files.is_empty() {
+        return Ok(files);
+    }
+    // A declared Bun entry remains source beside Instance intent. This grants
+    // no exemption to arbitrary filenames, imports or package resources.
+    if let Some(candidate) = read_in(root, SourceRole::AppOwned, inputs)?
+        && candidate.format == "bun"
+    {
+        let package = document_in(&root.join("package.json"), inputs)?;
+        let source = package
+            .pointer("/lenso/source")
+            .map(|value| value.as_str().context("Bun Plugin source must be a string"))
+            .transpose()?
+            .unwrap_or("src/plugin.ts");
+        let relative = Path::new(source);
+        if relative.as_os_str().is_empty()
+            || relative.components().any(|part| {
+                !matches!(
+                    part,
+                    std::path::Component::Normal(_) | std::path::Component::CurDir
+                )
+            })
+        {
+            bail!("Bun Plugin source must be a relative path inside its package");
+        }
+        let path = root.join(relative);
+        let metadata = fs::symlink_metadata(&path).context("read declared Bun Plugin source")?;
+        let path = fs::canonicalize(&path)?;
+        if !metadata.is_file() || !path.starts_with(fs::canonicalize(root)?) {
+            bail!("Bun Plugin source must be a regular file inside its package");
+        }
+        files.insert(path);
+    }
+    Ok(files)
 }
 
 pub(super) fn read_all_in(

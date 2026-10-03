@@ -16,8 +16,14 @@ pub(super) fn project(
     let files = lenso_app_authoring::discovery::source_files_in(root, inputs)?
         .into_iter()
         // A module path cannot consume an Instance, marker or authority file.
-        // The filename restriction supplements exact module-graph provenance.
-        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        // Source extensions supplement exact module/entry provenance.
+        .filter(|path| {
+            path.extension().is_some_and(|extension| {
+                ["rs", "ts", "tsx", "js", "mjs", "mts", "cts"]
+                    .iter()
+                    .any(|allowed| extension == *allowed)
+            })
+        })
         .filter_map(|path| match is_intent_file(&source, &path) {
             Ok(true) => None,
             Ok(false) => Some(Ok(path)),
@@ -28,7 +34,7 @@ pub(super) fn project(
     Ok(())
 }
 
-/// A Rust module input may also be an explicitly configured Instance resource.
+/// A source input may also be an explicitly configured Instance resource.
 /// Its source identity cannot erase resource or Bundle intent.
 fn is_intent_file(root: &Path, file: &Path) -> anyhow::Result<bool> {
     let Ok(relative) = file.strip_prefix(root) else {
@@ -137,13 +143,19 @@ mod tests {
     }
 
     fn resolve(root: &Path) -> anyhow::Result<lenso_app_plan::authoring::ResolvedApp> {
+        resolve_with_descriptor(
+            root,
+            PluginDescriptor::new("example.health", "1.0.0", "web"),
+        )
+    }
+
+    fn resolve_with_descriptor(
+        root: &Path,
+        descriptor: PluginDescriptor,
+    ) -> anyhow::Result<lenso_app_plan::authoring::ResolvedApp> {
         let catalog = HostCatalog::new(
             [HostSlot::many("web")],
-            [HostPluginRelease::new(PluginDescriptor::new(
-                "example.health",
-                "1.0.0",
-                "web",
-            ))],
+            [HostPluginRelease::new(descriptor)],
             [],
         );
         write(
@@ -152,6 +164,116 @@ mod tests {
             &serde_json::to_string(&catalog)?,
         );
         lenso_app_authoring::load_resolved_app(root)
+    }
+
+    #[test]
+    fn declared_bun_entry_projects_beside_instances_without_consuming_resources() {
+        let root = tempfile::tempdir().unwrap();
+        let built = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "package.json",
+            r#"{
+            "name":"fixture", "version":"1.0.0",
+            "lenso":{"pluginId":"example.health", "rootSlot":"web", "runtime":"bun",
+                "source":"plugins/example.health/plugin.ts"}
+        }"#,
+        );
+        write(
+            root.path(),
+            "plugins/example.health/plugin.ts",
+            "export default {};\n",
+        );
+        write(root.path(), "plugins/example.health/default.toml", "");
+        write(root.path(), "plugins/example.health/secondary.toml", "");
+        write(
+            root.path(),
+            "plugins/example.health/default/plugin.ts",
+            "resource bytes",
+        );
+        project_to(root.path(), built.path()).unwrap();
+        assert!(
+            !built
+                .path()
+                .join("plugins/example.health/plugin.ts")
+                .exists()
+        );
+        assert_eq!(
+            fs::read(
+                built
+                    .path()
+                    .join("plugins/example.health/default/plugin.ts")
+            )
+            .unwrap(),
+            b"resource bytes"
+        );
+        assert_eq!(resolve(built.path()).unwrap().instances().len(), 2);
+
+        let invalid = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "plugins/example.health/unclaimed.ts",
+            "export {};\n",
+        );
+        project_to(root.path(), invalid.path()).unwrap();
+        assert!(
+            format!("{:#}", resolve(invalid.path()).unwrap_err()).contains("unknown Plugin file")
+        );
+    }
+
+    #[test]
+    fn two_instances_keep_independent_configuration_beside_one_source() {
+        let root = tempfile::tempdir().unwrap();
+        let built = tempfile::tempdir().unwrap();
+        source(root.path(), "example.health");
+        write(
+            root.path(),
+            "plugins/example.health/default.toml",
+            "label = 'first'",
+        );
+        write(
+            root.path(),
+            "plugins/example.health/secondary.toml",
+            "label = 'second'",
+        );
+        project_to(root.path(), built.path()).unwrap();
+        let app = resolve_with_descriptor(
+            built.path(),
+            PluginDescriptor::new("example.health", "1.0.0", "web")
+                .with_configuration_schema(serde_json::json!({
+                    "type":"object", "properties":{"label":{"type":"string"}},
+                    "required":["label"], "additionalProperties":false
+                }))
+                .with_configuration_defaults(serde_json::json!({"label":"default"})),
+        )
+        .unwrap();
+        assert_eq!(app.instances().len(), 2);
+        assert_eq!(
+            app.plan().plugin_instances()[0].configuration(),
+            r#"{"label":"first"}"#
+        );
+        assert_eq!(
+            app.plan().plugin_instances()[1].configuration(),
+            r#"{"label":"second"}"#
+        );
+        assert!(
+            !built
+                .path()
+                .join("plugins/example.health/plugin.rs")
+                .exists()
+        );
+        assert!(
+            built
+                .path()
+                .join("plugins/example.health/default.toml")
+                .is_file()
+        );
+        assert!(
+            built
+                .path()
+                .join("plugins/example.health/secondary.toml")
+                .is_file()
+        );
     }
 
     #[test]

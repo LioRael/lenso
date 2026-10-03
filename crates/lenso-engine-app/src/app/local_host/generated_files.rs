@@ -3,7 +3,13 @@ use std::{fs, path::Path};
 
 use anyhow::Context;
 
-const BASE_FILES: [&str; 4] = ["Cargo.toml", "Cargo.lock", "src/main.rs", "build.rs"];
+const BASE_FILES: [&str; 5] = [
+    "Cargo.toml",
+    "Cargo.lock",
+    "src/main.rs",
+    "src/plugin_links.rs",
+    "build.rs",
+];
 
 pub(super) const TERMINAL_FILES: [&str; 4] = [
     "src/terminal/mod.rs",
@@ -67,6 +73,7 @@ mod tests {
             "fn main() {}\n"
         };
         fs::write(root.join("src/main.rs"), source).unwrap();
+        fs::write(root.join("src/plugin_links.rs"), "{}\n").unwrap();
     }
 
     fn write_terminal(root: &Path, command: bool, provider: bool) {
@@ -103,6 +110,44 @@ mod tests {
             output.status.success(),
             "retained generated Host failed to rebuild: {}",
             String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn selected_source_module_links_rebuild_without_generation_cache() {
+        let generated = tempfile::tempdir().unwrap();
+        let stage = tempfile::tempdir().unwrap();
+        write_base(generated.path(), false);
+        fs::write(generated.path().join("src/main.rs"), r#"
+mod local_plugin_0 {
+    pub mod left { pub fn link_plugin() { crate::LINKS.fetch_or(1, std::sync::atomic::Ordering::SeqCst); } }
+    pub mod right { pub fn link_plugin() { crate::LINKS.fetch_or(2, std::sync::atomic::Ordering::SeqCst); } }
+}
+static LINKS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+fn main() {
+    include!("plugin_links.rs");
+    assert_eq!(LINKS.load(std::sync::atomic::Ordering::SeqCst), 3);
+}
+"#).unwrap();
+        fs::write(
+            generated.path().join("src/plugin_links.rs"),
+            "{ local_plugin_0::left::link_plugin(); local_plugin_0::right::link_plugin(); }\n",
+        )
+        .unwrap();
+        let provenance = stage.path().join(".lenso/generated-host");
+        copy(generated.path(), &provenance).unwrap();
+        fs::remove_dir_all(generated.path()).unwrap();
+        assert!(
+            super::super::distribution_file_paths(stage.path(), &[])
+                .contains(&".lenso/generated-host/src/plugin_links.rs".into())
+        );
+        let target = stage.path().join("target");
+        rebuild(&provenance, &target);
+        assert!(
+            crate::app::build_command(target.join("debug/retained-terminal-host"))
+                .status()
+                .unwrap()
+                .success()
         );
     }
 

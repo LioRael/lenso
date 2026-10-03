@@ -1,6 +1,42 @@
 use super::*;
 
 #[test]
+fn bun_source_inputs_require_package_authority_and_stay_inside_it() {
+    let root = tempfile::tempdir().unwrap();
+    let inputs = || lenso_engine::discovery::DiscoverySession::new(root.path()).unwrap();
+    write(root.path(), "plugins/example.bun/plugin.ts", "export {};\n");
+    assert!(source_files_in(root.path(), &inputs()).unwrap().is_empty());
+    let package = serde_json::json!({"name":"fixture", "version":"1.0.0",
+        "lenso":{"pluginId":"example.bun", "runtime":"bun", "rootSlot":"web",
+            "source":"plugins/example.bun/plugin.ts"}});
+    write(root.path(), "package.json", &package.to_string());
+    assert_eq!(
+        source_files_in(root.path(), &inputs()).unwrap(),
+        BTreeSet::from([
+            fs::canonicalize(root.path().join("plugins/example.bun/plugin.ts")).unwrap()
+        ])
+    );
+    for source in ["../outside.ts", "/outside.ts", ""] {
+        let mut invalid = package.clone();
+        invalid["lenso"]["source"] = source.into();
+        write(root.path(), "package.json", &invalid.to_string());
+        assert!(source_files_in(root.path(), &inputs()).is_err());
+    }
+    #[cfg(unix)]
+    {
+        write(root.path(), "package.json", &package.to_string());
+        fs::remove_file(root.path().join("plugins/example.bun/plugin.ts")).unwrap();
+        write(root.path(), "source.ts", "export {};\n");
+        std::os::unix::fs::symlink(
+            "../../source.ts",
+            root.path().join("plugins/example.bun/plugin.ts"),
+        )
+        .unwrap();
+        assert!(source_files_in(root.path(), &inputs()).is_err());
+    }
+}
+
+#[test]
 fn repeated_helper_inclusion_preserves_metadata_plugin_and_rejects_duplicate_identity() {
     let root = tempfile::tempdir().unwrap();
     rust(root.path(), "app", "example.metadata");
