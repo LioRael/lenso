@@ -190,6 +190,10 @@ struct ProjectInspectionQuery {
     scope: ProjectInspectionScope,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ProjectDevFeedbackQuery {}
+
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ProjectFactsQuery {
@@ -1060,7 +1064,10 @@ impl AppTools {
     #[tool(
         description = "Read the latest source App dev change classification, readiness result and measured feedback time; this is advisory history from lenso app dev, not execution or activation authority"
     )]
-    fn project_dev_feedback(&self) -> Result<CallToolResult, McpError> {
+    fn project_dev_feedback(
+        &self,
+        Parameters(_request): Parameters<ProjectDevFeedbackQuery>,
+    ) -> Result<CallToolResult, McpError> {
         let report = read_dev_feedback(&self.root).map_err(|_| {
             McpError::invalid_request(
                 "App dev feedback is invalid or exceeds the bounded report size",
