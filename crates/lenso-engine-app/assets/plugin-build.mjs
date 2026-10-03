@@ -49,7 +49,7 @@ function packageForFile(filename) {
     if (fs.existsSync(manifestPath)) {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
       if (typeof manifest.name === "string" && typeof manifest.version === "string") {
-        const identity = lockedIdentity(manifest.name, manifest.version);
+        const identity = lockedIdentity(manifest.name, manifest.version, directory);
         const info = { directory, manifest, identity };
         packageCache.set(real, info);
         packagesByIdentity.set(identityKey(identity), info);
@@ -61,7 +61,40 @@ function packageForFile(filename) {
   throw new Error(`${filename}: declaration origin is outside an exact package`);
 }
 
-function lockedIdentity(name, version) {
+function lockedIdentity(name, version, directory) {
+  // A local source dependency is admitted only by the consumer's own file:
+  // declaration and exact lock selection. Its byte identity stays internal.
+  const consumerManifest = path.join(root, "package.json");
+  const consumer = fs.existsSync(consumerManifest) ? JSON.parse(fs.readFileSync(consumerManifest, "utf8")) : {};
+  const declared = consumer.dependencies?.[name] ?? consumer.devDependencies?.[name];
+  if (typeof declared === "string" && declared.startsWith("file:")) {
+    const selected = fs.realpathSync(path.resolve(root, declared.slice(5)));
+    const entries = Object.values(lock.packages ?? {}).filter(candidate =>
+      Array.isArray(candidate) && candidate[0].startsWith(`${name}@file:`) &&
+      fs.realpathSync(path.resolve(root, candidate[0].slice(`${name}@file:`.length))) === selected);
+    if (selected !== directory || entries.length !== 1 || lock.workspaces?.[""]?.dependencies?.[name] !== declared && lock.workspaces?.[""]?.devDependencies?.[name] !== declared) {
+      throw new Error(`${name}: local source dependency does not match its declared lock selection`);
+    }
+    const files = [];
+    let bytes = 0;
+    const collect = (current) => {
+      for (const item of fs.readdirSync(current, { withFileTypes: true }).sort((a,b) => a.name.localeCompare(b.name))) {
+        if (["node_modules", ".git", ".lenso"].includes(item.name)) continue;
+        const filename = path.join(current, item.name);
+        if (item.isSymbolicLink()) throw new Error(`${filename}: local build dependency cannot contain symlinks`);
+        if (item.isDirectory()) collect(filename);
+        else if (item.isFile()) {
+          const contents = fs.readFileSync(filename);
+          bytes += contents.length;
+          if (files.length >= 4096 || bytes > 64 * 1024 * 1024) throw new Error(`${directory}: local build dependency exceeds source limits`);
+          files.push([path.relative(directory, filename), digest(contents)]);
+        }
+        else throw new Error(`${filename}: local build dependency must contain regular files`);
+      }
+    };
+    collect(directory);
+    return Object.freeze({ name, version, integrity: `local-source:${digest(JSON.stringify(files))}` });
+  }
   const entries = Object.values(lock.packages ?? {}).filter((candidate) =>
     Array.isArray(candidate) && candidate[0] === `${name}@${version}`,
   );
@@ -156,7 +189,7 @@ function classifySymbol(origin) {
   const local =
     originFile.startsWith(`${root}${path.sep}`) &&
     !originFile.includes(`${path.sep}node_modules${path.sep}`);
-  if (local) return generatedContract(origin, true);
+  if (local && (!origin.module || origin.module.startsWith("."))) return generatedContract(origin, true);
   const info = packageForFile(origin.file);
   const subpath = exportSubpath(info, origin);
   if (info.manifest.name === "@lenso/bun-plugin" && [".", "./authoring"].includes(subpath)) {
@@ -370,7 +403,7 @@ for (const [index, provider] of loweredProviders.entries()) {
     operations: [...provider.request_operations, ...(provider.stream_operations ?? [])],
     stream_operations: provider.stream_operations ?? [],
     event_operations: [],
-  })}, bind: binder${index} }`);
+  })}, streamLifecycleProfile: definition.providers.find(value => value.descriptor.capability_id === ${JSON.stringify(provider.capability_id)})?.streamLifecycleProfile, bind: binder${index} }`);
 }
 const wrapper = path.join(stage, "entry.ts");
 fs.writeFileSync(wrapper, [
@@ -412,13 +445,21 @@ const linker = {
     });
   },
 };
+// A source SDK can add target packaging without changing older Native SDKs.
+const targetCompilerPackage = packageForFile(resolveFromPlugin("@lenso/bun-plugin"));
+const targetPackaging = targetCompilerPackage.manifest.exports?.["./targets"]
+  ? (await importFromPlugin("@lenso/bun-plugin/targets")).createPluginTargetBuildPlugin("native-bun")
+  : undefined;
+if (targetPackaging) {
+  lockedPackages.set(identityKey(targetCompilerPackage.identity), targetCompilerPackage.identity);
+}
 const result = await Bun.build({
   entrypoints: [wrapper],
   target: "bun",
   format: "esm",
   minify: profile === "release",
   external: ["bun", "node:*"],
-  plugins: [linker],
+  plugins: [linker, ...(targetPackaging ? [targetPackaging] : [])],
 });
 if (!result.success || result.outputs.length !== 1) {
   throw new Error(`Bun Plugin build failed: ${result.logs.map(String).join("\n")}`);
@@ -429,6 +470,13 @@ await Bun.write(artifact, result.outputs[0]);
 const sourceClosure = definition.sourceFiles
   .filter((filename) => path.resolve(filename).startsWith(`${root}${path.sep}`) && !filename.includes(`${path.sep}node_modules${path.sep}`))
   .map((filename) => ({ path: path.relative(root, filename).replaceAll(path.sep, "/"), sha256: digest(fs.readFileSync(filename)) }));
+for (const identity of lockedPackages.values()) {
+  if (!identity.integrity.startsWith("local-source:")) continue;
+  const info = packagesByIdentity.get(identityKey(identity));
+  if (!info || lockedIdentity(identity.name, identity.version, info.directory).integrity !== identity.integrity) {
+    throw new Error(`${identity.name}: local source dependency changed during compilation; retry`);
+  }
+}
 const fingerprint = buildApi.fingerprintBuildInputs({
   sourceClosure,
   contractArtifacts: [...contractArtifacts].map(([path, sha256]) => ({ path, sha256 })),

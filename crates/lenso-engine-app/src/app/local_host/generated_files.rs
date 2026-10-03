@@ -3,11 +3,12 @@ use std::{fs, path::Path};
 
 use anyhow::Context;
 
-const BASE_FILES: [&str; 5] = [
+const BASE_FILES: [&str; 6] = [
     "Cargo.toml",
     "Cargo.lock",
     "src/main.rs",
     "src/plugin_links.rs",
+    "src/codec_links.rs",
     "build.rs",
 ];
 
@@ -74,6 +75,7 @@ mod tests {
         };
         fs::write(root.join("src/main.rs"), source).unwrap();
         fs::write(root.join("src/plugin_links.rs"), "{}\n").unwrap();
+        fs::write(root.join("src/codec_links.rs"), "vec![]\n").unwrap();
     }
 
     fn write_terminal(root: &Path, command: bool, provider: bool) {

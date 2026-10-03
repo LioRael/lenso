@@ -168,6 +168,38 @@ pub(super) fn generate_in(
             .map(|candidate| candidate.plugin_id.clone()),
     );
     let mut watch_roots = BTreeSet::new();
+    // Local TS build dependencies are selected source, rather than installed
+    // Plugin intent. Retain both authoring inputs and emitted SDK projections.
+    for candidate in candidates
+        .iter()
+        .filter(|candidate| candidate.format == "bun")
+    {
+        let package: Value =
+            serde_json::from_slice(&fs::read(candidate.project.join("package.json"))?)?;
+        for table in ["dependencies", "devDependencies"] {
+            for dependency in package[table]
+                .as_object()
+                .into_iter()
+                .flat_map(|items| items.values())
+            {
+                if let Some(relative) = dependency
+                    .as_str()
+                    .and_then(|value| value.strip_prefix("file:"))
+                {
+                    let source = fs::canonicalize(candidate.project.join(relative))
+                        .context("locate declared TS source dependency")?;
+                    ensure!(
+                        source.is_dir(),
+                        "local TS file dependency must be a source directory"
+                    );
+                    if source.join("dist").is_dir() {
+                        watch_roots.insert(source.join("dist"));
+                    }
+                    watch_roots.insert(source);
+                }
+            }
+        }
+    }
     for (index, candidate) in candidates.iter().enumerate() {
         // A portable Cargo Guest can depend on a rust-runtime projection for
         // its own SDK without making that projection a Host-linked contract.
@@ -531,6 +563,7 @@ pub(super) fn generate_in(
         bail!("bundled terminal support requires runtime-codec 0.4 contracts");
     }
     let mut terminal_aliases = BTreeMap::new();
+    let mut codec_links = Vec::new();
     let mut register = format!("let typed = std::collections::BTreeSet::<&str>::from([{ids}]);\n");
     for (index, (capability, (id, dependency))) in codecs.into_iter().enumerate() {
         let alias =
@@ -543,6 +576,7 @@ pub(super) fn generate_in(
             terminal_aliases.insert(capability.clone(), alias.clone());
         }
         let name = codec_name(&capability)?;
+        codec_links.push(format!("std::rc::Rc::new({alias}::{name}) as std::rc::Rc<dyn lenso_runtime_codec::JsonCapabilityCodec>"));
         if adapters.bun {
             register.push_str(&format!("let bun = bun.with_codec(LegacyBunCodec({alias}::{name})).with_authoring_codec({alias}::{name});\n"));
         }
@@ -555,6 +589,10 @@ pub(super) fn generate_in(
             register.push_str(&format!("let wasm = wasm.with_codec({alias}::{name});\n"));
         }
     }
+    fs::write(
+        generated.join("src/codec_links.rs"),
+        format!("vec![{}]\n", codec_links.join(",\n")),
+    )?;
     if terminal_enabled {
         for (name, version) in [
             ("lenso-contract-runtime", "0.2.0"),
@@ -1361,6 +1399,7 @@ fn distribution_file_paths(stage: &Path, runtime_artifacts: &[Value]) -> Vec<Str
         ".lenso/generated-host/Cargo.toml",
         ".lenso/generated-host/src/main.rs",
         ".lenso/generated-host/src/plugin_links.rs",
+        ".lenso/generated-host/src/codec_links.rs",
         ".lenso/generated-host/build.rs",
         ".lenso/generated-host/local-inputs.json",
     ]
@@ -1885,6 +1924,7 @@ mod tests {
         std::fs::write(generated.path().join("build.rs"), "fn main() {}\n").unwrap();
         std::fs::write(generated.path().join("src/main.rs"), "fn main() {}\n").unwrap();
         std::fs::write(generated.path().join("src/plugin_links.rs"), "{}\n").unwrap();
+        std::fs::write(generated.path().join("src/codec_links.rs"), "vec![]\n").unwrap();
         // A reused cache must not publish a stale business-specific module.
         std::fs::write(
             generated.path().join("src/local_business_snapshot.rs"),

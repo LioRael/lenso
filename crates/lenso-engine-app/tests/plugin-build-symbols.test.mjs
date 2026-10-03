@@ -27,13 +27,14 @@ function fixture(t, { integrity = "sha512-selected", exported = true } = {}) {
   }));
   const declaration = path.join(directory, "dist/authoring.d.ts");
   fs.writeFileSync(declaration, "export declare function configuration(): void;\n");
+  const lock = { packages: { sdk: ["@lenso/bun-plugin@0.4.2", "", {}, integrity] } };
   const context = vm.createContext({
     fs, path, root, pathToFileURL,
-    lock: { packages: { sdk: ["@lenso/bun-plugin@0.4.2", "", {}, integrity] } },
+    lock,
     digest: (source) => `sha256:${createHash("sha256").update(source).digest("hex")}`,
   });
   return {
-    root, declaration,
+    root, declaration, lock,
     ...vm.runInContext(`${classifier}\n({ classifySymbol, lockedPackages, contractArtifacts, generatedProviderDescriptors });`, context),
   };
 }
@@ -113,4 +114,25 @@ test("generated contract markers and required digest are still enforced", (t) =>
     'export const STORE_CONTRACT = {};',
   ].join("\n"));
   assert.throws(() => value.classifySymbol(origin), /missing DESCRIPTOR_DIGEST/u);
+});
+
+
+test("local source SDK requires a matching consumer declaration and lock selection", (t) => {
+  const value = fixture(t);
+  const declared = "file:node_modules/@lenso/bun-plugin";
+  fs.writeFileSync(path.join(value.root, "package.json"), JSON.stringify({ dependencies: { "@lenso/bun-plugin": declared } }));
+  value.lock.workspaces = { "": { dependencies: { "@lenso/bun-plugin": declared } } };
+  value.lock.packages.sdk = [`@lenso/bun-plugin@${declared}`, {}];
+  const meaning = value.classifySymbol({ file: value.declaration, module: "@lenso/bun-plugin/authoring", name: "configuration" });
+  assert.match(meaning.package.integrity, /^local-source:sha256:[a-f0-9]{64}$/u);
+});
+
+test("local source SDK rejects an unselected or different file dependency", (t) => {
+  for (const selected of [false, true]) {
+    const value = fixture(t);
+    fs.writeFileSync(path.join(value.root, "package.json"), JSON.stringify({ dependencies: { "@lenso/bun-plugin": "file:node_modules/@lenso/bun-plugin" } }));
+    value.lock.workspaces = { "": { dependencies: { "@lenso/bun-plugin": "file:node_modules/@lenso/bun-plugin" } } };
+    if (selected) value.lock.packages.sdk = ["@lenso/bun-plugin@file:.", {}];
+    assert.throws(() => value.classifySymbol({ file: value.declaration, module: "@lenso/bun-plugin/authoring", name: "configuration" }), /local source dependency does not match/u);
+  }
 });

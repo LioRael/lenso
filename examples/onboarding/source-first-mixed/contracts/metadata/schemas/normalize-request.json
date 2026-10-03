@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["name", "size_bytes"],
+  "properties": {
+    "name": { "type": "string" },
+    "size_bytes": { "type": "integer" }
+  },
+  "additionalProperties": false
+}

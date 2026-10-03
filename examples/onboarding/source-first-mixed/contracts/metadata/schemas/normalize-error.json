@@ -1,0 +1,1 @@
+{ "oneOf": [{ "const": "invalid_name" }, { "const": "invalid_size" }] }

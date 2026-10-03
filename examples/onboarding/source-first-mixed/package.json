@@ -1,0 +1,23 @@
+{
+  "name": "lenso-source-first-mixed",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lenso/bun-plugin": "0.4.2",
+    "@lenso/contract-runtime": "0.3.1"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "@types/bun": "1.4.0"
+  },
+  "lenso": {
+    "runtime": "bun",
+    "pluginId": "example.label",
+    "rootSlot": "labels",
+    "source": "plugins/example.label/plugin.ts"
+  }
+}

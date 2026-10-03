@@ -10,6 +10,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 
@@ -30,7 +31,7 @@ def stop(process, sig):
         raise AssertionError("Host did not stop within its cleanup budget")
 
 
-def native(cli, root, temporary):
+def native(cli, root, temporary, expected=None):
     log_path = temporary / "native.log"
     with log_path.open("w") as log:
         process = subprocess.Popen(
@@ -46,10 +47,10 @@ def native(cli, root, temporary):
             else:
                 raise AssertionError("Native readiness failed: " + log_path.read_text())
             responses = [fetch(address[1]), fetch(address[1])]
-            assert responses == [
+            assert responses == (expected or [
                 ["left:1:hello", "right:1:hello"],
                 ["left:2:hello", "right:2:hello"],
-            ], responses
+            ]), responses
             code = stop(process, signal.SIGINT)
             assert code == 0, log_path.read_text()
             return {"responses": responses, "exit_code": code}
@@ -57,9 +58,12 @@ def native(cli, root, temporary):
             stop(process, signal.SIGINT)
 
 
-def workers(binary, root, temporary):
+def workers(binary, root, temporary, expected=None):
     modules = ["worker.mjs", "host.js", "host_bg.wasm"]
     modules.extend(f"runtime/{path.name}" for path in sorted((root / "runtime").glob("*.mjs")))
+    if (root / "plugin-host.mjs").is_file():
+        modules.append("plugin-host.mjs")
+        modules.extend(f"js-plugins/{path.name}" for path in sorted((root / "js-plugins").glob("*.mjs")))
     entries = ",\n".join(
         f'(name={json.dumps(name)}, {"wasm" if name.endswith(".wasm") else "esModule"}'
         f" = embed {json.dumps(os.path.relpath(root / name, temporary))})" for name in modules
@@ -87,12 +91,14 @@ def workers(binary, root, temporary):
             try:
                 first = fetch(url)
                 break
+            except urllib.error.HTTPError as failure:
+                raise AssertionError(f"Workers HTTP {failure.code}: {failure.read().decode()}; {log_path.read_text()}") from failure
             except OSError:
                 time.sleep(0.1)
         else:
             raise AssertionError("Workers readiness failed: " + log_path.read_text())
         responses = [first, fetch(url)]
-        assert responses == [["left:1:hello", "right:1:hello"]] * 2, responses
+        assert responses == (expected or [["left:1:hello", "right:1:hello"]] * 2), responses
         return {"responses": responses, "exit_code": stop(process, signal.SIGTERM)}
     finally:
         stop(process, signal.SIGTERM)

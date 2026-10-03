@@ -1,0 +1,11 @@
+{
+  "name": "source-first-metadata-projection",
+  "version": "1.0.0",
+  "lenso": {
+    "contract": {
+      "descriptor": "capability.json",
+      "projection": "typescript",
+      "output": "generated.ts"
+    }
+  }
+}

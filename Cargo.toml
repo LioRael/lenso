@@ -11,6 +11,7 @@ members = [
     "examples/onboarding/background-jobs",
     "examples/onboarding/metadata-pipeline",
     "examples/onboarding/source-first-instances",
+    "examples/onboarding/source-first-mixed",
     "spec/fixtures/*/rust",
     "tests/fixtures/*",
 ]

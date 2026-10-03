@@ -13,6 +13,8 @@ const BODY_LIMIT: usize = 1_048_576;
 const HEAD_LIMIT: usize = 16_384;
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(250);
 
+// LENSO_WORKERS_JS_IMPORT
+
 mod response_session;
 use response_session::ResponseSession;
 
@@ -109,7 +111,8 @@ pub async fn open_http(input: String, scope: JsValue) -> Result<ResponseSession,
         .with_linked_factories()
         .with_factory(ingress.clone());
     // LENSO_WORKERS_FACILITY_BIND
-    let app = Kernel::start_native(plan, driver, registry)
+    // LENSO_WORKERS_JS_ADAPTER
+    let app = Kernel::start(plan, driver, adapters)
         .await
         .map_err(error)?;
     let ready = app.is_ready() && app.is_accepting();

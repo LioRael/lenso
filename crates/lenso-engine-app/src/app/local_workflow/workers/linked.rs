@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 const PROFILE: &str = "lenso.linked-rust-workers@2";
 const BINDGEN_VERSION: &str = "wasm-bindgen 0.2.127";
 const WORKERS_DRIVER_REQUIREMENT: &str = "=0.1.2";
+mod js;
 mod limits;
 const RUNTIME_FILES: &[(&str, &str)] = &[
     (
@@ -78,9 +79,10 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
         !selected.is_empty(),
         "linked Workers found no selected Rust source Plugins"
     );
-    for candidate in selected {
+    for candidate in &selected {
         ensure!(
-            candidate.format == "cargo" && crate::app::local_host::is_native(candidate),
+            (candidate.format == "cargo" && crate::app::local_host::is_native(candidate))
+                || candidate.format == "bun",
             "linked Workers rejects Plugin {}: select a linked Cargo implementation, not {}",
             candidate.plugin_id,
             candidate.format
@@ -122,6 +124,7 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
         "reserved .lenso output directory"
     );
     let stage = crate::app::assemble::stage_output(&root, &parent)?;
+    let js_artifacts = js::compile(&selected, stage.path(), &args.workers_runtime)?;
     let native_stage = tempfile::tempdir()?;
     let native = native_stage.path().join("native");
     crate::app::assemble::assemble(crate::app::assemble::AssembleArgs {
@@ -134,22 +137,35 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
         portable_implementations: Vec::new(),
     })?;
     let resolved = lenso_app_authoring::load_resolved_app(&native)?;
-    admit(resolved.plan())?;
+    let target_plan = js::lower(resolved.plan(), &js_artifacts)?;
+    admit(&target_plan)?;
     let generated = stage.path().join(".lenso/generated-host");
     fs::create_dir_all(generated.join("src"))?;
     let native_source = native.join(".lenso/generated-host");
     let manifest: Value = toml::from_str(&fs::read_to_string(native_source.join("Cargo.toml"))?)?;
-    let manifest = wasm_manifest(manifest)?;
+    let mut manifest = wasm_manifest(manifest)?;
     fs::copy(
         native_source.join("src/plugin_links.rs"),
         generated.join("src/plugin_links.rs"),
     )
     .context("retain selected source Plugin linkage for Workers")?;
+    let js_module = if !js_artifacts.is_empty() {
+        Some(js::prepare(&native, &generated, &mut manifest)?)
+    } else {
+        None
+    };
     let mut worker_scope = String::new();
     let mut facility_evidence = Vec::new();
     let mut grants_digest = None;
     let mut host_source = include_str!("linked_host.rs")
         .replace("// LENSO_LINK_PLUGINS", "include!(\"plugin_links.rs\");");
+    host_source = host_source.replace(
+        "// LENSO_WORKERS_JS_IMPORT",
+        js_module.as_deref().unwrap_or(""),
+    );
+    host_source = host_source.replace("// LENSO_WORKERS_JS_ADAPTER", if js_module.is_some() {
+        "let adapters = lenso_kernel::ExecutionAdapterCatalog::single(registry).with_adapter(js_host::WorkersJsAdapter::new(scope.clone())).map_err(error)?;"
+    } else { "let adapters = lenso_kernel::ExecutionAdapterCatalog::single(registry);" });
     if let Some(path) = &args.facilities {
         let bytes = super::runtime::read_file(path)?;
         ensure!(
@@ -207,8 +223,12 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
         generated.join("src/response_session.rs"),
         include_str!("linked_response_session.rs"),
     )?;
-    let plan = serde_json::to_vec(resolved.plan())?;
+    let plan = serde_json::to_vec(&target_plan)?;
     fs::write(generated.join("src/plan.json"), &plan)?;
+    fs::write(
+        stage.path().join(".lenso/resolved-plan.json"),
+        serde_json::to_vec(resolved.plan())?,
+    )?;
     let status = crate::app::cargo_command()
         .args(["generate-lockfile", "--manifest-path"])
         .arg(generated.join("Cargo.toml"))
@@ -267,7 +287,7 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
     );
     let bindings = rewrite_bindings(&fs::read_to_string(stage.path().join("host.js"))?)?;
     fs::write(stage.path().join("host.js"), bindings)?;
-    fs::create_dir(stage.path().join("runtime"))?;
+    fs::create_dir_all(stage.path().join("runtime"))?;
     for module in &runtime.modules {
         fs::write(
             stage.path().join("runtime").join(module.name),
@@ -305,7 +325,9 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
     }
     let receipt = json!({
         "schema": "lenso.workers-app-build.v1", "target": "workers", "environment": "local-workerd",
-        "profile": PROFILE, "builder_version": env!("CARGO_PKG_VERSION"),
+        "profile": PROFILE, "execution_lowering": if js_module.is_some() { "native-bun-v2-to-workers-js-v2" } else { "linked-rust" },
+        "resolved_plan_digest": super::digest_bytes(&serde_json::to_vec(resolved.plan())?),
+        "js_implementation_digests": js_artifacts, "builder_version": env!("CARGO_PKG_VERSION"),
         "compatibility_date": "2026-09-26",
         "source_digest": source_digest,
         "plan_digest": super::digest_bytes(&plan), "plugin_instances": resolved.plan().plugin_instances().len(),
@@ -368,8 +390,10 @@ fn admit(plan: &ResolvedAppPlan) -> anyhow::Result<()> {
     );
     for instance in plan.plugin_instances() {
         ensure!(
-            instance.execution_class().as_str() == "lenso.native-rust@1"
-                && instance.execution_lane().as_str() == "main",
+            matches!(
+                instance.execution_class().as_str(),
+                "lenso.native-rust@1" | "lenso.workers-js@1"
+            ) && instance.execution_lane().as_str() == "main",
             "linked Workers rejects unsupported execution for {}",
             instance.instance_key()
         );

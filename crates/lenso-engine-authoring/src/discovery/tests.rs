@@ -1,6 +1,53 @@
 use super::*;
 
 #[test]
+fn root_rust_and_declared_bun_plugins_share_source_and_instance_intent() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "Cargo.toml",
+        "[package]\nname='fixture'\nversion='1.0.0'\n",
+    );
+    write(
+        root.path(),
+        "src/lib.rs",
+        "#[path=\"../plugins/example.rust/plugin.rs\"] pub mod rust;",
+    );
+    write(
+        root.path(),
+        "plugins/example.rust/plugin.rs",
+        "#[lenso::plugin(id=\"example.rust\", root_slot=\"web\")] pub struct Plugin {}",
+    );
+    let mut package = serde_json::json!({"name":"fixture", "version":"1.0.0", "lenso":{
+        "pluginId":"example.ts", "runtime":"bun", "rootSlot":"labels", "source":"plugins/example.ts/plugin.ts"}});
+    write(root.path(), "package.json", &package.to_string());
+    write(root.path(), "plugins/example.ts/plugin.ts", "export {};\n");
+    let report = discover(root.path()).unwrap();
+    assert_eq!(
+        report
+            .candidates
+            .iter()
+            .map(|c| c.plugin_id.as_str())
+            .collect::<Vec<_>>(),
+        ["example.rust", "example.ts"]
+    );
+    let files = source_files_in(
+        root.path(),
+        &lenso_engine::discovery::DiscoverySession::new(root.path()).unwrap(),
+    )
+    .unwrap();
+    for path in [
+        "plugins/example.rust/plugin.rs",
+        "plugins/example.ts/plugin.ts",
+    ] {
+        assert!(files.contains(&fs::canonicalize(root.path().join(path)).unwrap()));
+    }
+    package["lenso"]["pluginId"] = "example.rust".into();
+    write(root.path(), "package.json", &package.to_string());
+    assert!(format!("{:#}", discover(root.path()).unwrap_err()).contains("duplicate Rust and Bun"));
+}
+
+#[test]
 fn bun_source_inputs_require_package_authority_and_stay_inside_it() {
     let root = tempfile::tempdir().unwrap();
     let inputs = || lenso_engine::discovery::DiscoverySession::new(root.path()).unwrap();

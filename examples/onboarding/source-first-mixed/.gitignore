@@ -1,0 +1,6 @@
+node_modules/
+dist*/
+bun.lock
+__pycache__/
+contracts/*/generated.ts
+package.local.json

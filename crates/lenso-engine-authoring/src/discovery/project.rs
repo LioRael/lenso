@@ -102,9 +102,6 @@ pub(super) fn source_files_in(
     inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<BTreeSet<std::path::PathBuf>> {
     let mut files = rust_source::source_files(root, inputs)?;
-    if !files.is_empty() {
-        return Ok(files);
-    }
     // A declared Bun entry remains source beside Instance intent. This grants
     // no exemption to arbitrary filenames, imports or package resources.
     if let Some(candidate) = read_in(root, SourceRole::AppOwned, inputs)?
@@ -143,8 +140,27 @@ pub(super) fn read_all_in(
     role: SourceRole,
     inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<Vec<Candidate>> {
-    let source = rust_source::read(root, inputs)?;
+    let mut source = rust_source::read(root, inputs)?;
     if !source.is_empty() {
+        let package = root.join("package.json");
+        if package.try_exists()?
+            && document_in(&package, inputs)?
+                .pointer("/lenso/pluginId")
+                .is_some()
+            && let Some(candidate) = read_in(root, role, inputs)?
+            && candidate.format == "bun"
+        {
+            if source
+                .iter()
+                .any(|rust| rust.plugin_id == candidate.plugin_id)
+            {
+                bail!(
+                    "duplicate Rust and Bun source Plugin identity {}",
+                    candidate.plugin_id
+                );
+            }
+            source.push(candidate);
+        }
         return Ok(source);
     }
     Ok(read_in(root, role, inputs)?.into_iter().collect())
