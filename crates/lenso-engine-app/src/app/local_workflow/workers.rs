@@ -43,6 +43,7 @@ pub(super) struct BuildArgs {
     pub(super) facilities: Option<PathBuf>,
     pub(super) host_limits: Option<PathBuf>,
     pub(super) trust_linked_build: Vec<String>,
+    pub(super) host_many_slots: Vec<String>,
     pub(super) integration: Option<PathBuf>,
     pub(super) trust_integration: Option<String>,
 }
@@ -69,6 +70,10 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
     if args.wasm_bindgen.is_some() {
         return linked::build(args);
     }
+    ensure!(
+        args.host_many_slots.is_empty(),
+        "Host many-Slot policies require the static linked Workers profile"
+    );
     let jco = args.jco.as_deref().context(
         "Workers Component build needs --jco 1.35.0; the static linked-Rust profile uses --wasm-bindgen 0.2.127",
     )?;

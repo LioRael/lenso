@@ -53,8 +53,16 @@ pub struct BuildArgs {
         value_name = "PLUGIN_ID=process|wasm"
     )]
     portable_implementations: Vec<String>,
+    /// Host-owned provider Slot restriction for an existing Many requirement.
+    #[arg(
+        long = "host-many-slot",
+        value_name = "CONSUMER=CAPABILITY=PROVIDER_SLOT",
+        conflicts_with = "source"
+    )]
+    host_many_slots: Vec<String>,
 }
 pub fn build(args: BuildArgs) -> anyhow::Result<()> {
+    super::assemble::parse_host_many_slots(&args.host_many_slots)?;
     if args.target.as_deref() == Some("workers") && args.source.is_none() {
         if !args.portable_implementations.is_empty()
             || (!args.trust_linked_build.is_empty() && args.wasm_bindgen.is_none())
@@ -75,6 +83,7 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
             facilities: args.workers_facilities,
             host_limits: args.workers_host_limits,
             trust_linked_build: args.trust_linked_build,
+            host_many_slots: args.host_many_slots,
             integration: args.workers_integration,
             trust_integration: args.trust_workers_integration,
         });
@@ -118,6 +127,7 @@ pub fn build(args: BuildArgs) -> anyhow::Result<()> {
             runtime_executable: std::env::current_exe()?,
             trust_linked_build: args.trust_linked_build,
             portable_implementations: args.portable_implementations,
+            host_many_slots: args.host_many_slots,
         }
         .prepare()?,
     ))?;
@@ -542,6 +552,7 @@ pub fn build_local(
             runtime_executable,
             trust_linked_build: Vec::new(),
             portable_implementations: Vec::new(),
+            host_many_slots: Vec::new(),
         }
         .prepare()?,
     ))?;

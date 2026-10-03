@@ -18,6 +18,14 @@ struct SelectedSource {
     package: Value,
 }
 
+pub(super) fn link_alias(id: &str, index: usize, automatic_web_ingress: bool) -> Option<String> {
+    if automatic_web_ingress && id == "lenso.web-ingress" {
+        None
+    } else {
+        Some(format!("root_plugin_{index}"))
+    }
+}
+
 impl Sources {
     pub(super) fn new(candidate_ids: impl IntoIterator<Item = String>) -> Self {
         Self {
@@ -160,6 +168,148 @@ fn validate_resolved_features(package: &Value, node: &Value) -> anyhow::Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn root_selected_ingress_reuses_automatic_cargo_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let ingress = root.path().join("ingress");
+        let native = root.path().join("native");
+        let host = root.path().join("host");
+        for path in [&ingress, &native, &host] {
+            fs::create_dir_all(path.join("src")).unwrap();
+            fs::write(path.join("src/lib.rs"), "").unwrap();
+        }
+        fs::write(
+            ingress.join("Cargo.toml"),
+            "[package]\nname='lenso-web-ingress-plugin'\nversion='0.4.11'\nedition='2024'\n[workspace]\n[features]\ndefault=['native']\nnative=[]\n",
+        )
+        .unwrap();
+        let ingress_dep = json!({"path": ingress, "package": "lenso-web-ingress-plugin"});
+        let manifest = |name: &str, dependencies: Value| {
+            toml::to_string(&json!({
+                "package": {"name": name, "version": "0.0.0", "edition": "2024"},
+                "workspace": {}, "dependencies": dependencies,
+            }))
+            .unwrap()
+        };
+        fs::write(
+            native.join("Cargo.toml"),
+            manifest("native-owner", json!({"ingress": ingress_dep})),
+        )
+        .unwrap();
+        let native_dep = json!({"path": native, "package": "native-owner"});
+        let selected = json!({"path": ingress, "package": "lenso-web-ingress-plugin", "default-features": false, "features": []});
+        let mut dependencies =
+            json!({"local_plugin_0": native_dep, "lenso-web-ingress-plugin": ingress_dep});
+        dependencies["root_plugin_0"] = selected.clone();
+        let host_manifest = host.join("Cargo.toml");
+        fs::write(
+            &host_manifest,
+            manifest("generated-host", dependencies.clone()),
+        )
+        .unwrap();
+        let metadata = || {
+            crate::app::cargo_command()
+                .args([
+                    "metadata",
+                    "--offline",
+                    "--format-version=1",
+                    "--manifest-path",
+                ])
+                .arg(&host_manifest)
+                .output()
+                .unwrap()
+        };
+        let duplicate = metadata();
+        assert!(
+            !duplicate.status.success(),
+            "the original two-name manifest must fail"
+        );
+        assert!(String::from_utf8_lossy(&duplicate.stderr).contains("different names"));
+
+        dependencies
+            .as_object_mut()
+            .unwrap()
+            .remove("root_plugin_0");
+        if let Some(alias) = link_alias("lenso.web-ingress", 0, true) {
+            dependencies[alias] = selected;
+        }
+        fs::write(&host_manifest, manifest("generated-host", dependencies)).unwrap();
+        let resolved = metadata();
+        assert!(
+            resolved.status.success(),
+            "{}",
+            String::from_utf8_lossy(&resolved.stderr)
+        );
+        let graph: Value = serde_json::from_slice(&resolved.stdout).unwrap();
+        let selected_id = graph["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|package| package["name"] == "lenso-web-ingress-plugin")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut expected = BTreeMap::from([("lenso_web_ingress_plugin".to_owned(), selected_id)]);
+        super::super::linked_aliases::resolve(&host_manifest, &expected).unwrap();
+        expected.insert(
+            "lenso_web_ingress_plugin".into(),
+            "a different Root source".into(),
+        );
+        assert!(super::super::linked_aliases::resolve(&host_manifest, &expected).is_err());
+        assert_eq!(
+            link_alias("example.owner", 1, true).as_deref(),
+            Some("root_plugin_1")
+        );
+
+        // The source Host's explicit Many role policy uses the existing SDK;
+        // a second provider of the same Capability in another Slot stays out.
+        use lenso_app_authoring::host_authoring::{GeneratedHostBuild, LocalPluginInput};
+        use lenso_app_plan::{
+            CapabilityEndpointPlan, CapabilityRequirementPlan, authoring::PluginDescriptor,
+        };
+        let input = |descriptor| LocalPluginInput {
+            descriptor,
+            manifest_digest: format!("sha256:{}", "a".repeat(64)),
+            app_owned: true,
+            source: "local test source".into(),
+        };
+        let auth = || CapabilityEndpointPlan::new("example.auth@1", "1", ["check"]);
+        let values = vec!["example.console=example.auth@1=example.console.auth".to_owned()];
+        let policies = super::super::super::assemble::parse_host_many_slots(&values).unwrap();
+        let (_, resolved) = GeneratedHostBuild::lower_local(
+            "example.app",
+            vec![
+                input(
+                    PluginDescriptor::new("example.console", "1.0.0", "web")
+                        .with_requirement(CapabilityRequirementPlan::many("example.auth@1", "1")),
+                ),
+                input(
+                    PluginDescriptor::new("example.console-auth", "1.0.0", "example.console.auth")
+                        .with_capability(auth()),
+                ),
+                input(
+                    PluginDescriptor::new("example.account-auth", "1.0.0", "example.account.auth")
+                        .with_capability(auth()),
+                ),
+            ],
+        )
+        .unwrap()
+        .with_local_root_bindings(root.path(), &policies)
+        .unwrap();
+        assert_eq!(resolved.plan().capability_bindings().len(), 1);
+        assert_eq!(
+            resolved.plan().capability_bindings()[0].provider_instance(),
+            "example.console-auth/default"
+        );
+        for invalid in [
+            vec![values[0].clone(), values[0].clone()],
+            vec!["example.console=example.auth@1=../escape".into()],
+        ] {
+            assert!(super::super::super::assemble::parse_host_many_slots(&invalid).is_err());
+        }
+    }
 
     fn package(id: &str, source: &str) -> Value {
         json!({"id":format!("{source}#owner@1.0.0"),"name":"owner","version":"1.0.0","source":source,"manifest_path":"/immutable/owner/Cargo.toml","metadata":{"lenso":{"plugin-id":id,"root-slot":"owners"}},"targets":[{"kind":["lib"]}],"features":{"default":[],"pg":[],"workers":[]}})
