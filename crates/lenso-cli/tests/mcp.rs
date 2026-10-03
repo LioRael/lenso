@@ -54,6 +54,8 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         r#"{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"project_npm_preview","arguments":{"plugin_id":"example.notes","version":"1.2.3"}}}"#,
         r#"{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"project_npm_adopt","arguments":{"plugin_id":"example.notes","version":"1.2.3","request_id":"without-owner-authorization"}}}"#,
         r#"{"jsonrpc":"2.0","id":23,"method":"tools/call","params":{"name":"project_npm_unadopt","arguments":{"plugin_id":"example.notes","version":"1.2.3","request_id":"without-owner-authorization"}}}"#,
+        r#"{"jsonrpc":"2.0","id":24,"method":"tools/call","params":{"name":"project_dev_feedback","arguments":{}}}"#,
+        r#"{"jsonrpc":"2.0","id":25,"method":"tools/call","params":{"name":"project_dev_feedback","arguments":{"root":"/wrong-project"}}}"#,
     ].join("\n");
     child
         .stdin
@@ -73,13 +75,25 @@ fn stdio_exposes_bounded_read_only_app_facts() {
         .lines()
         .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
         .collect::<Vec<_>>();
-    assert_eq!(responses.len(), 23, "{frames}");
+    assert_eq!(responses.len(), 25, "{frames}");
     let by_id = responses
         .iter()
         .map(|response| (response["id"].as_u64().unwrap(), response))
         .collect::<std::collections::BTreeMap<_, _>>();
-    assert_eq!(by_id.len(), 23);
+    assert_eq!(by_id.len(), 25);
     assert_tools(by_id[&2]);
+    let feedback: serde_json::Value =
+        serde_json::from_str(by_id[&24]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(feedback["schema"], "lenso.dev-feedback.v1");
+    assert_eq!(feedback["status"], "unavailable");
+    assert_eq!(by_id[&25]["result"]["isError"], true);
+    assert!(
+        by_id[&25]["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("unknown field `root`")
+    );
+    assert!(!root.path().join(".lenso").exists());
     let facts: serde_json::Value =
         serde_json::from_str(by_id[&3]["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(facts["kind"], "lenso.app-facts");
@@ -148,6 +162,7 @@ fn assert_tools(list: &serde_json::Value) {
             "project_build_status",
             "project_change_apply",
             "project_change_preview",
+            "project_dev_feedback",
             "project_explain",
             "project_facts",
             "project_linked_adopt",
