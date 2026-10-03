@@ -1,6 +1,37 @@
 mod support;
 
 #[test]
+fn smoke_corpus_replays_without_wall_clock_waits() {
+    assert_eq!(support::smoke_corpus(), support::smoke_corpus());
+}
+
+#[test]
+fn socket_smoke_sentinel_matches_simulated_corpus() {
+    let started = std::time::Instant::now();
+    let result = std::process::Command::new("python3")
+        .arg(format!("{}/smoke.py", env!("CARGO_MANIFEST_DIR")))
+        .arg(env!("CARGO_BIN_EXE_lenso-onboarding-background-jobs"))
+        .output()
+        .expect("Python 3 runs the retained real-socket and process sentinel");
+    let output = String::from_utf8(result.stdout).unwrap();
+    assert!(
+        result.status.success(),
+        "{output}\n{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let receipt = output
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find_map(|value| value.get("corpus_receipt").cloned())
+        .expect("the real sentinel emits its observable corpus receipt");
+    assert_eq!(receipt, support::smoke_corpus());
+    eprintln!(
+        "real socket/process corpus sentinel: {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
 fn virtual_deadline_is_exact() {
     support::virtual_deadline();
 }

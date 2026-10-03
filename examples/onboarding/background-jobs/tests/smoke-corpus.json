@@ -1,0 +1,12 @@
+{
+  "schema": "lenso.background-jobs-smoke.v1",
+  "success": {"message": "Local notification", "delay_ms": 1500},
+  "failure": {"message": "Fail locally", "delay_ms": 50, "fail": true},
+  "shutdown": {"message": "Cancel during shutdown", "delay_ms": 5000},
+  "invalid": {"message": "", "delay_ms": 50},
+  "success_status": "completed",
+  "failure_status": "failed",
+  "failure_error": "requested_failure",
+  "active_statuses": ["queued", "running"],
+  "poll_timeout_seconds": 4
+}

@@ -5,6 +5,7 @@
 mod support;
 
 fn main() {
+    assert_eq!(support::smoke_corpus(), support::smoke_corpus());
     support::virtual_deadline();
     let receipt = support::transient_retry();
     assert_eq!(receipt, support::transient_retry());
@@ -24,6 +25,6 @@ fn main() {
     support::failed_completion_write();
     support::without_jobs();
     println!(
-        "PASS: 13 deterministic background-job scenarios; every started App shut down cleanly"
+        "PASS: 14 deterministic background-job scenarios; every started App shut down cleanly"
     );
 }

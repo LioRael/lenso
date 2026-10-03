@@ -13,6 +13,9 @@ use lenso_test::{
 use lenso_web_host::{NativeWebHost, SimulatedWebHost};
 use serde_json::{Value, json};
 
+mod smoke_corpus;
+pub use smoke_corpus::smoke_corpus;
+
 fn runtime(simulator: &TestSimulator) -> JobRuntime {
     let clock = simulator.clone();
     let timer = simulator.clone();

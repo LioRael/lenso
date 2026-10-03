@@ -104,34 +104,36 @@ def wait_for_job(app: App, job_id: int, status: str, timeout: float = 4):
 
 def main():
     repo = Path(__file__).resolve().parents[3]
+    corpus = json.loads((Path(__file__).parent / "tests/smoke-corpus.json").read_text())
+    assert corpus["schema"] == "lenso.background-jobs-smoke.v1"
     binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else repo / "target/debug/lenso-onboarding-background-jobs"
     app = App(binary)
     try:
         assert app.request("/health") == (200, "ok")
         assert app.request("/jobs") == (200, [])
         assert app.request("/notifications") == (200, [])
-        code, problem = app.request("/jobs", {"message": "", "delay_ms": 50})
+        code, problem = app.request("/jobs", corpus["invalid"])
         assert code == 400 and problem["code"] == "invalid_job", (code, problem)
         started = time.monotonic()
-        code, accepted = app.request("/jobs", {"message": "Local notification", "delay_ms": 1500})
+        code, accepted = app.request("/jobs", corpus["success"])
         accepted_ms = round((time.monotonic() - started) * 1000, 1)
         assert code == 202 and accepted["status"] == "queued", (code, accepted)
         assert accepted_ms < 1000, f"submission blocked for {accepted_ms} ms"
         assert app.request("/notifications") == (200, []), "notification appeared before background completion"
-        assert app.request("/jobs")[1][0]["status"] in ("queued", "running")
-        completed = wait_for_job(app, accepted["id"], "completed")
+        assert app.request("/jobs")[1][0]["status"] in corpus["active_statuses"]
+        completed = wait_for_job(app, accepted["id"], corpus["success_status"], corpus["poll_timeout_seconds"])
         assert completed["error"] is None
-        assert app.request("/notifications") == (200, [{"job_id": accepted["id"], "message": "Local notification"}])
+        assert app.request("/notifications") == (200, [{"job_id": accepted["id"], "message": corpus["success"]["message"]}])
         print(f"PASS asynchronous acceptance ({accepted_ms} ms), later completion, one in-memory notification")
 
-        code, failed = app.request("/jobs", {"message": "Fail locally", "delay_ms": 50, "fail": True})
+        code, failed = app.request("/jobs", corpus["failure"])
         assert code == 202
-        failure = wait_for_job(app, failed["id"], "failed")
-        assert failure["error"] == "requested_failure"
+        failure = wait_for_job(app, failed["id"], corpus["failure_status"], corpus["poll_timeout_seconds"])
+        assert failure["error"] == corpus["failure_error"]
         assert len(app.request("/notifications")[1]) == 1, "failed job sent a notification"
         print("PASS invalid input and asynchronous failure leave no extra notification")
 
-        code, cancelled = app.request("/jobs", {"message": "Cancel during shutdown", "delay_ms": 5000})
+        code, cancelled = app.request("/jobs", corpus["shutdown"])
         assert code == 202
         wait_for_job(app, cancelled["id"], "running")
     finally:
@@ -165,6 +167,18 @@ def main():
     removed.assert_clean()
     assert not any(event["event"] == "plugin_stopped" for event in removed.events())
     print("PASS removing the Plugin removes its routes and lifecycle")
+    print(json.dumps({"corpus_receipt": {
+        "schema": corpus["schema"],
+        "success": completed,
+        "failure": failure,
+        "notifications": [{"job_id": accepted["id"], "message": corpus["success"]["message"]}],
+        "cancelled_job_id": next(event["job_id"] for event in events if event["event"] == "job_cancelled"),
+        "task_dropped_ids": sorted(dropped),
+        "shutdown": "clean",
+        "new_tasks_rejected": True,
+        "fresh_jobs": [], "fresh_notifications": [],
+        "removed_route_statuses": [404, 404],
+    }}, sort_keys=True))
 
 
 if __name__ == "__main__":

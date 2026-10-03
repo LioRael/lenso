@@ -98,7 +98,7 @@ impl Store {
         Ok(())
     }
 
-    pub(crate) fn interrupted(&mut self, id: usize) {
+    pub(crate) fn interrupted(&mut self, id: usize) -> bool {
         if self.path.is_none() && !self.state.jobs[id - 1].terminal() {
             self.state.jobs[id - 1].status = "cancelled".into();
             self.state.jobs[id - 1].error = None;
@@ -106,6 +106,9 @@ impl Store {
                 "{}",
                 serde_json::json!({"event": "job_cancelled", "job_id": id})
             );
+            true
+        } else {
+            false
         }
     }
 }

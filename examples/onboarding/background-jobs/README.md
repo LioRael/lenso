@@ -11,14 +11,26 @@ From this source checkout, with its pinned Rust toolchain:
 
 ```sh
 cargo run --locked -p lenso-onboarding-background-jobs --example simulate
-cargo test --locked -p lenso-onboarding-background-jobs --test simulator
+cargo test --locked -p lenso-onboarding-background-jobs --test simulator \
+  smoke_corpus_replays_without_wall_clock_waits -- --exact
 ```
 
-The example and tests use `NativeWebHost::prepare_simulated()` and pass its exact
+The example and deterministic tests use `NativeWebHost::prepare_simulated()` and pass its exact
 Plan and Registry to `TestApp::builder(...).with_registry(...).with_simulator(...)`.
 Requests travel through `SimulatedWebHost`, real Web Ingress, the real Kernel and
 the generated Plugin factory. They open no socket. There is one job
 implementation for both execution modes.
+
+The shared [smoke corpus](tests/smoke-corpus.json) is also consumed by the
+retained Python socket/process smoke. The full `--test simulator` target runs
+that real sentinel and compares its observable receipt with simulation. It is
+unconditionally included in the existing `cargo test --workspace` CI gate;
+the filtered command above is a development loop, not provider qualification.
+Drop and shutdown-cancellation IDs come from actual task lifecycle observations.
+Intermediate queued/running states are an allowed set; their scheduling trace
+need not be identical across environments. See the
+[measurement report](../../../docs/performance/simulator-smoke.md) for separate
+compile and execution costs and the remaining CI/Store work.
 
 The private `JobRuntime` accepts a clock, a timer and explicit delivery hooks.
 Tests supply `TestSimulator::now` and `sleep_until` from the same Simulator that

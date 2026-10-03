@@ -142,11 +142,15 @@ struct TaskLifetime {
 
 impl Drop for TaskLifetime {
     fn drop(&mut self) {
-        self.owner.store.borrow_mut().interrupted(self.id);
+        let cancelled = self.owner.store.borrow_mut().interrupted(self.id);
         self.owner.cancellations.borrow_mut().remove(&self.id);
         let mut probe = self.owner.runtime.probe.0.borrow_mut();
         probe.active -= 1;
         probe.dropped += 1;
+        probe.dropped_job_ids.push(self.id);
+        if cancelled {
+            probe.shutdown_cancelled_job_ids.push(self.id);
+        }
         println!(
             "{}",
             serde_json::json!({"event": "task_dropped", "job_id": self.id})

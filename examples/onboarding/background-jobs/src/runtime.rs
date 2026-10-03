@@ -9,6 +9,8 @@ type CommitHook = Rc<dyn Fn(usize) -> JobFuture<Result<(), String>>>;
 pub struct ProbeSnapshot {
     pub started: usize,
     pub dropped: usize,
+    pub dropped_job_ids: Vec<usize>,
+    pub shutdown_cancelled_job_ids: Vec<usize>,
     pub active: usize,
     pub stop_rejected: usize,
     pub receipts: usize,
