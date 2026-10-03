@@ -1,0 +1,16 @@
+{
+  "pid": 80680,
+  "exit_code": 0,
+  "elapsed_seconds": 2.0010422910563648,
+  "command": [
+    "npm",
+    "ci",
+    "--offline",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--cache",
+    "/tmp/lenso-web-performance-20261002/npm-offline-cache"
+  ],
+  "cwd": "/private/tmp/lenso-web-performance-20261002/jco-135-tools"
+}

@@ -1,0 +1,8 @@
+{
+  "collected_after_measurement": true,
+  "node_version": "v26.10.0",
+  "node_binary": "/opt/homebrew/Cellar/node/26.10.0_1/bin/node",
+  "node_binary_sha256": "d4cd917f05a5730ffda8a203e32fb8f9b70f79213fff1fafb045e438db8a6c06",
+  "machine": "arm64",
+  "macos": "27.0"
+}

@@ -1,0 +1,26 @@
+{
+  "phase": "installed",
+  "command": [
+    "npm",
+    "install",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--save-exact",
+    "--fetch-retries=0",
+    "--registry=https://registry.npmjs.org/",
+    "--cache",
+    "/tmp/lenso-web-performance-20261002/npm-offline-cache",
+    "--prefix",
+    "/tmp/lenso-web-performance-20261002/jco-135-tools",
+    "@bytecodealliance/jco@1.35.0"
+  ],
+  "started_unix": 1790998306.1835892,
+  "rust_build_started": false,
+  "load_started": false,
+  "pid": 77494,
+  "pgid": 77494,
+  "exit_code": 0,
+  "finished_unix": 1790998490.27442,
+  "elapsed_seconds": 184.09083080291748
+}

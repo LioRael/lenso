@@ -1,0 +1,95 @@
+completed pair 1/7
+completed pair 2/7
+completed pair 3/7
+completed pair 4/7
+completed pair 5/7
+completed pair 6/7
+completed pair 7/7
+{
+  "schema": "lenso.web-workerd-paired.v1",
+  "phase": "completed",
+  "started_unix": 1790999526.5023758,
+  "pid": 5466,
+  "source_sha": "58a48391844b2c6fce80bb504232bc25a4630d53",
+  "variants_manifest_sha256": "1b6d0f9935488ad6b57a84c187b077fd4a9aa609d382c9fbca449acb1d774d60",
+  "client_sha256": "e1a1f716980bf877ce54bc744a9fcb1e588860fd8ccc6fb6b4034a5278b9bef5",
+  "runner_sha256": "7131c9d7c7ab859c975fd6dad5171408797ca8dc0f3343c644c6bfa48a37e246",
+  "groups": 7,
+  "tools_manifest_sha256": "da1ea46832eb189dffc2cfd817a4ffbc997346137cdf22aae0045b8ff44c4ba5",
+  "qualification_receipts": [
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-corpus-20261003-1/status.json",
+      "sha256": "c4ac2eafbc6b691fe88ea5cb7fee5c5d0db9e6190faa9b5d6f102cfbecd8f4bc"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-before-corpus-20261003-1/status.json",
+      "sha256": "99fc11f3e46ac124880d53bbf0265b3bd62dad3d54a8d0d32a393e7d449d57a8"
+    }
+  ],
+  "scope": "same artifact, only HTTP glue differs; existing five routes; 64KiB; one/eight clients",
+  "main_budget_seconds": 240,
+  "total_budget_seconds": 300,
+  "uncertainty": "warm closed-loop local HTTP; no confidence interval; warm OS caches; readiness includes Wrangler startup; no server CPU/RSS measurement",
+  "remaining_owned_group_rows": [],
+  "finished_unix": 1790999744.294306,
+  "slot_released": true,
+  "owned_groups": [
+    5467,
+    5477,
+    5615,
+    5621,
+    5627,
+    5637,
+    5683,
+    5709,
+    5710,
+    5738,
+    5757,
+    5764,
+    5783,
+    5790,
+    5801,
+    5812,
+    5909,
+    5923,
+    5990,
+    6062,
+    6070,
+    6077,
+    6082,
+    6090,
+    6108,
+    6114,
+    6126,
+    6146,
+    6159,
+    6165,
+    6171,
+    6177,
+    6207,
+    6215,
+    6709,
+    6717,
+    6740,
+    6747,
+    6763,
+    6790,
+    6798,
+    6825,
+    6829,
+    6837,
+    6855,
+    6864,
+    6904,
+    6911,
+    6937,
+    6943,
+    7015,
+    7024,
+    7046,
+    7062,
+    7088,
+    7110
+  ],
+  "valid_cases": 28
+}

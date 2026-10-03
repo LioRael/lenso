@@ -1,0 +1,72 @@
+{
+  "phase": "measurement-source-ready-awaiting-quiet-window",
+  "recorded_unix": 1790999318.664453,
+  "source_sha": "58a48391844b2c6fce80bb504232bc25a4630d53",
+  "body_bytes": 65536,
+  "connections": [
+    1,
+    8
+  ],
+  "variants": [
+    "before",
+    "after"
+  ],
+  "groups": 7,
+  "cases": 28,
+  "requests_per_case": 1000,
+  "warmup_per_case": 200,
+  "main_budget_seconds": 240,
+  "total_budget_seconds": 300,
+  "compile_needed": false,
+  "measurement_started": false,
+  "files": [
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/package-lock.json",
+      "sha256": "cca15807defbbccbd70b3f8a4eb7a0574f63d164b50ae2ad01f11c186b764f2d"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/toolchain-lock-manifest.json",
+      "sha256": "ad7a490e0f1aff1e46504a4c34d9a7f09ff9cab73e75fa5e6894035428170469"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/tarball-integrity-verification.json",
+      "sha256": "f88c712056b4723526e7c8d9f3f33e41851a81bcb28c9811ee04c6d8a4164fca"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/workerd-tools-manifest.json",
+      "sha256": "da1ea46832eb189dffc2cfd817a4ffbc997346137cdf22aae0045b8ff44c4ba5"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/variants-manifest.json",
+      "sha256": "1b6d0f9935488ad6b57a84c187b077fd4a9aa609d382c9fbca449acb1d774d60"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/workerd-http-case.mjs",
+      "sha256": "e1a1f716980bf877ce54bc744a9fcb1e588860fd8ccc6fb6b4034a5278b9bef5"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/workerd-paired.py",
+      "sha256": "7131c9d7c7ab859c975fd6dad5171408797ca8dc0f3343c644c6bfa48a37e246"
+    },
+    {
+      "file": "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/qualify-workerd.py",
+      "sha256": "03af80b2d0cc2e95d58efef38daa8e762571714a9fa364a6234f2fd5e88201e7"
+    }
+  ],
+  "qualification_receipts": [
+    "/tmp/lenso-web-performance-20261002/workerd-corpus-20261003-1/status.json",
+    "/tmp/lenso-web-performance-20261002/workerd-before-corpus-20261003-1/status.json"
+  ],
+  "command": [
+    "python3",
+    "/tmp/lenso-web-performance-20261002/workerd-setup-20261003-1/workerd-paired.py",
+    "--out",
+    "/tmp/lenso-web-performance-20261002/workerd-paired-20261003-1"
+  ],
+  "source_checks": [
+    "Python AST passed",
+    "Node client --check passed",
+    "variant17files differ only in workers-http.mjs",
+    "both existing full10 corpora passed with actual frozen workerd"
+  ]
+}

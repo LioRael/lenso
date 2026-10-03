@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "scope": "verified V4 Bundle App build in local-workerd, full HTTP corpus",
+  "results": [
+    {
+      "name": "method",
+      "passed": true
+    },
+    {
+      "name": "binary",
+      "passed": true
+    },
+    {
+      "name": "evidence",
+      "passed": true
+    },
+    {
+      "name": "method_not_allowed",
+      "passed": true
+    },
+    {
+      "name": "not_found",
+      "passed": true
+    },
+    {
+      "name": "encoded_path",
+      "passed": true
+    },
+    {
+      "name": "domain_error",
+      "passed": true
+    },
+    {
+      "name": "runtime_failure",
+      "passed": true
+    },
+    {
+      "name": "oversized_body",
+      "passed": true
+    },
+    {
+      "name": "healthy_after_failure",
+      "passed": true
+    }
+  ]
+}

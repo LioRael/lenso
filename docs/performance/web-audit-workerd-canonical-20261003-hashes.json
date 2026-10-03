@@ -1,0 +1,788 @@
+{
+  "schema": "lenso.web-audit.workerd-archive.v1",
+  "source_sha": "58a48391844b2c6fce80bb504232bc25a4630d53",
+  "scope": "same-artifact canonical actual workerd64KiB one/eight clients before/after HTTP glue only",
+  "files": [
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/allocation/runner.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/allocation/runner.stdout",
+      "bytes": 2134,
+      "sha256": "5b12fa6e55ce9b9ebe6528853d0388ab2be1789b5f6c300c23f108d2a54c1689"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/allocation/status.json",
+      "bytes": 1325,
+      "sha256": "9a9267dd013df5cbfd10e19a8e7ecc7dd1d90069e7d1f7ec8b4889defe90f02e"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/build/artifact-manifest.json",
+      "bytes": 5523,
+      "sha256": "51c0725cbb0c27f62d30df900e485de8ca9cbb03dbd789b8de72874a93a00f0c"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/build/build.stderr",
+      "bytes": 19383,
+      "sha256": "923f7e7e61639cf7c994945a8ca77c44751e8496e12e9ad8797e48d53685828c"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/build/build.stdout",
+      "bytes": 376,
+      "sha256": "c425642f2b0205c8c366c7d292a13f0ff34ff437d21203c916c476373724e698"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/build/status.json",
+      "bytes": 1385,
+      "sha256": "552bc60d735cc8b40322e9fc73d69d57597277ec05be868cdb571e19ac308358"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-after/corpus.json",
+      "bytes": 759,
+      "sha256": "821d2c8cafaeb9c94cb48da10f265713514b65a96901986d9f30e8627d9431be"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-after/corpus.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-after/status.json",
+      "bytes": 2564,
+      "sha256": "c4ac2eafbc6b691fe88ea5cb7fee5c5d0db9e6190faa9b5d6f102cfbecd8f4bc"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-before/corpus.json",
+      "bytes": 759,
+      "sha256": "821d2c8cafaeb9c94cb48da10f265713514b65a96901986d9f30e8627d9431be"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-before/corpus.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/corpus-before/status.json",
+      "bytes": 2650,
+      "sha256": "99fc11f3e46ac124880d53bbf0265b3bd62dad3d54a8d0d32a393e7d449d57a8"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/analysis.json",
+      "bytes": 10305,
+      "sha256": "20808a5073ab503e72d649c16b111902de8e0a4bba7acccd68395ca836aa914e"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/environment.json",
+      "bytes": 270,
+      "sha256": "44c0f2bc221899094e084ef24128fe4c9da12ade376aa4cd67002615aecf90c4"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-after/case.json",
+      "bytes": 69588,
+      "sha256": "0aabe05e34b13ef27ab5092c2f27f34f3081a2b699f6d8496fbd5e939772c838"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-before/case.json",
+      "bytes": 68584,
+      "sha256": "e2ae7cf6b46485aa6b244fb87e24d5df1e4d8315b3d96cad02b46c000edfe74a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-after/case.json",
+      "bytes": 69612,
+      "sha256": "d71674c14a9bf11a82f99f4ad67b367e239b65df2eeaac29e0c51e91d73cef65"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-before/case.json",
+      "bytes": 68713,
+      "sha256": "e4b8392036aec8e2300c17a2ef1ca5a5f6557a1c8ff5bb3b180ae9de8e674e6f"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-after/case.json",
+      "bytes": 68709,
+      "sha256": "76e3e0c39ae7eafb41061afb7e50a642297f66c3e4e80a8216e945abfa2ac2ee"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-before/case.json",
+      "bytes": 68666,
+      "sha256": "6313d567569ddc03201a73aba70bf0f123d4c02accfb5a5af2394da015ec89b5"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-after/case.json",
+      "bytes": 69569,
+      "sha256": "70becbd7cb0810f1ba13387ca241cacc040e197542168b92805cce7846a98657"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-before/case.json",
+      "bytes": 68821,
+      "sha256": "d40545647e58873f4c9c24e7032bc59569d0944faace478f3dc6eaffab0ff927"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-after/case.json",
+      "bytes": 68851,
+      "sha256": "5d3adfe9acb5659fe47397d6c7c6532abd2e96c946849a4c523575916a6a1fd2"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-before/case.json",
+      "bytes": 68667,
+      "sha256": "d9faf7a72f65a35d705ae911a72a3ff3fcb6a5aa76f8a2e14e9cad479e40ef8f"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-after/case.json",
+      "bytes": 69678,
+      "sha256": "899e1fa41d2d8d4fab963e035da4b9b3b5a68f096d5d3ebb3684a9efbdf4d939"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-before/case.json",
+      "bytes": 68773,
+      "sha256": "78eb672e883b63646f780abbb5dfb0780722d8b71763396f7c3b36be79996590"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-after/case.json",
+      "bytes": 68722,
+      "sha256": "a7ccdd7c7e579185e5e992a553ec9badccc64c578c65b7d1fb891ea5deeb6a36"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-before/case.json",
+      "bytes": 68666,
+      "sha256": "7f59848ed865360cb5d9310ac8a6859c76e422e26b1bd874a608b9a1b62c0d57"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-after/case.json",
+      "bytes": 69618,
+      "sha256": "7d805c01ecee74d60f1d0c0ff89ff66e73baca2eb5434469134f3323514be468"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-before/case.json",
+      "bytes": 68805,
+      "sha256": "ca31974e9d5027edb90ded91988a30dac089c55a622c952558bfb1c1fc6590b5"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-after/case.json",
+      "bytes": 69550,
+      "sha256": "262521045e718d31877031fe1d6d4376fc160124aabb01573842a1b400e14a11"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-before/case.json",
+      "bytes": 68625,
+      "sha256": "c302de25fcd2b716c13b8ea866454875862e9af5f1b3e57ba600ff08fb85d294"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-after/case.json",
+      "bytes": 69658,
+      "sha256": "df8e5d0f1010e0a25c332cf9b6b4d22b9b6998806a0e805fb9829b3f49e7d86d"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-before/case.json",
+      "bytes": 68830,
+      "sha256": "349f31476bcab3bb99454261f9ed5af8856244b7aaeb7a2857982fbaab39da24"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-after/case.json",
+      "bytes": 68879,
+      "sha256": "ba5fe4866c24dd959b661e883d3d367c2cfa3e78c16f58ed8c18338d536dcd68"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-before/case.json",
+      "bytes": 68612,
+      "sha256": "48c064ee744a62e2d10b34d030ed31fe655707104945fd8cc09df7d4ed7e83f1"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-after/case.json",
+      "bytes": 69631,
+      "sha256": "ffc1a93eb24b606ddadeabb4aca3252978a9d1ae587dc5260dc183376eddda38"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-before/case.json",
+      "bytes": 68791,
+      "sha256": "7439b9c1a8af448790e98e0f2c4f3e98a8965d26bc4b773c51fdda0db4c658e6"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-after/case.json",
+      "bytes": 69048,
+      "sha256": "8e1026f1b1419b478afac55ca7b01fe5ddccf431d047ec1bec830f3da8db9ff7"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-before/case.json",
+      "bytes": 68561,
+      "sha256": "325b243a7cb6fafe89e65a15ee5e9a22f777d5508b36604ed83ab0a2d9b01830"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-after/case.json",
+      "bytes": 69536,
+      "sha256": "b1cc39bf284e073c4129b6b6fa55ad8bf63f1810643db253c89645a112124e2a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-after/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-after/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-after/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-before/case.json",
+      "bytes": 68769,
+      "sha256": "7b03888d72d45b9a35035463dd27b542df8627ff5c06f82f47023d0e0c4a9afb"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-before/client.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-before/server.stderr",
+      "bytes": 136,
+      "sha256": "6205e22497347c74bf6517d7c67792b17cc2051d7b12f33098353c4b1b9bed4a"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-before/server.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/measurement/status.json",
+      "bytes": 40153,
+      "sha256": "cedb5a780115e13b7a188c6f8f82d2de64a2bf6da16baa388dfcc9be3d8c4fc0"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/jco-version.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/jco-version.stdout",
+      "bytes": 7,
+      "sha256": "c34d19b8ddcf6f916e4e43354d3a22058dcb584a957d62ac967052ec7bb3a424"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/lock-canonicalize.stderr",
+      "bytes": 145,
+      "sha256": "3aca6b4a03c9ed71bb09cd6ae6392d989b43a1914caabb1323f44938b294f5f6"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/lock-canonicalize.stdout",
+      "bytes": 21,
+      "sha256": "75f926378be86f3a6c76782f9f63f87a91ec27cedad759bfe9186d234d9a8e7f"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/locked-ci.json",
+      "bytes": 340,
+      "sha256": "f0c297f3074181e0182ddf3b75026d0f845794c91cddde52982c2b328a7fdc66"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/locked-ci.stderr",
+      "bytes": 145,
+      "sha256": "3aca6b4a03c9ed71bb09cd6ae6392d989b43a1914caabb1323f44938b294f5f6"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/locked-ci.stdout",
+      "bytes": 26,
+      "sha256": "0110f1db6c61733c3dd4f87d609a2fb7726160aaee88d228cb088a05a5165114"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/measurement-ready.json",
+      "bytes": 2689,
+      "sha256": "2a3b18af0223af638b2e88c223264b5d5d6c498941dec365987aeb0945b06432"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/npm-install.stderr",
+      "bytes": 145,
+      "sha256": "3aca6b4a03c9ed71bb09cd6ae6392d989b43a1914caabb1323f44938b294f5f6"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/npm-install.stdout",
+      "bytes": 26,
+      "sha256": "29443efa53b46ae4eb19997c0435c1af4cf8369bb3bf8a1f6af9123e311eeb03"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/npm-prefix-original-package-lock.json",
+      "bytes": 145742,
+      "sha256": "9012edcd4c31ef4fb6ece098923adf6dcdeb3e744c26347c21f838bfb29b70a5"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/npm-tree.stderr",
+      "bytes": 145,
+      "sha256": "3aca6b4a03c9ed71bb09cd6ae6392d989b43a1914caabb1323f44938b294f5f6"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/npm-tree.stdout",
+      "bytes": 56253,
+      "sha256": "65790988d1b9a4932898b3c938f8dd9af512e9b5bbd0e0ae7711fe9a6730bb80"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/package-lock.json",
+      "bytes": 267359,
+      "sha256": "cca15807defbbccbd70b3f8a4eb7a0574f63d164b50ae2ad01f11c186b764f2d"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/package.json",
+      "bytes": 66,
+      "sha256": "94846837c41ca743a5037f2a3f7c8f8ed1dda81e4f1484b861c0f31771c21e34"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/qualify-workerd.py",
+      "bytes": 5237,
+      "sha256": "03af80b2d0cc2e95d58efef38daa8e762571714a9fa364a6234f2fd5e88201e7"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/status.json",
+      "bytes": 629,
+      "sha256": "1abba0959870fccfd63db8ba87f18b7d053a64f78a6bd5a4db3de677eb0a4485"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/tarball-integrity-verification.json",
+      "bytes": 43515,
+      "sha256": "f88c712056b4723526e7c8d9f3f33e41851a81bcb28c9811ee04c6d8a4164fca"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/toolchain-lock-manifest.json",
+      "bytes": 1197235,
+      "sha256": "ad7a490e0f1aff1e46504a4c34d9a7f09ff9cab73e75fa5e6894035428170469"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/variants-manifest.json",
+      "bytes": 5579,
+      "sha256": "1b6d0f9935488ad6b57a84c187b077fd4a9aa609d382c9fbca449acb1d774d60"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/workerd-http-case.mjs",
+      "bytes": 3098,
+      "sha256": "e1a1f716980bf877ce54bc744a9fcb1e588860fd8ccc6fb6b4034a5278b9bef5"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/workerd-paired.py",
+      "bytes": 8645,
+      "sha256": "7131c9d7c7ab859c975fd6dad5171408797ca8dc0f3343c644c6bfa48a37e246"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/workerd-preflight.json",
+      "bytes": 1402,
+      "sha256": "002122abca13b803770d477ffa5fb18ed78215441445b0c59c44e4a9309070ed"
+    },
+    {
+      "file": "web-audit-workerd-canonical-20261003-raw/setup/workerd-tools-manifest.json",
+      "bytes": 312448,
+      "sha256": "da1ea46832eb189dffc2cfd817a4ffbc997346137cdf22aae0045b8ff44c4ba5"
+    }
+  ],
+  "binary_artifacts_embedded": false
+}

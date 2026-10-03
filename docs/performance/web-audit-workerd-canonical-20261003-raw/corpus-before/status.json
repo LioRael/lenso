@@ -1,0 +1,63 @@
+{
+  "phase": "qualified",
+  "started_unix": 1790999184.92013,
+  "command": [
+    "node",
+    "/tmp/lenso-web-performance-20261002/workerd-tools-frozen-20261003/node_modules/wrangler/bin/wrangler.js",
+    "dev",
+    "--local",
+    "--config",
+    "/private/tmp/lenso-web-performance-20261002/workerd-variants-frozen-20261003/before/wrangler.jsonc",
+    "--ip",
+    "127.0.0.1",
+    "--port",
+    "63739",
+    "--persist-to",
+    "/tmp/lenso-web-performance-20261002/workerd-before-corpus-20261003-1/local-state",
+    "--log-level",
+    "error"
+  ],
+  "build_receipt": {
+    "schema": "lenso.workers-app-build.v1",
+    "target": "workers",
+    "environment": "local-workerd",
+    "builder_version": "0.3.4",
+    "source_digest": "sha256:43bfcae82e0f0664293b3b53388adc1199baeb5f97d1d507b6ec3cca09c00aa0",
+    "selected_source_digests": {
+      "local.portable-http": "sha256:2d009283e515d599fb1b278324cbf6cd930cc2bf0e66125b89187babd67b91c1"
+    },
+    "plugin_id": "local.portable-http",
+    "manifest_digest": "sha256:2f20cb79e3dd34b7b54bf58c6869a424a7ba5eb0b68b77bfd9bb29692c7d048f",
+    "bundle_digest": "sha256:666ad4402ae1bfbe3d94edffdc1b09ecc6a15e030c24ddeb8bae4702b5b089af",
+    "implementation_id": "workers",
+    "variant_id": null,
+    "component_digest": "sha256:d66a8655f6c54923cb0be0bae8dbab4eb1dcb2a8507cf6b238447464662e1afe",
+    "source_descriptor_digest": "sha256:2a953b1121bca174d9aafebbf4221dcaade8cc0f341d40f9b8ccb73c5d933cce",
+    "expected_descriptor_digests": {
+      "lenso.http.endpoint@1": "sha256:701deedf705cb1a3b2f35fcae72f20ae85d46c6da6a008405a519018bbcdd3fe"
+    },
+    "plan_digest": "sha256:058c92bfff706ef32c44993c8ed2526c4cb33e6b66291f7baf41409447b1f7a7",
+    "workers_runtime": {
+      "package": "@lenso/workers-runtime",
+      "version": "0.1.5",
+      "module_digests": {
+        "component-admission.mjs": "sha256:e06d95bc3fe958f72e4eefd4c97a21f6a81b94a65dd6ca32e0e61bfa4de5b14e",
+        "component-requests.mjs": "sha256:b5e315b999b2ee6fa6ab374c8238dff4428cfa0b792270d0953e12560cac0b43"
+      }
+    },
+    "jco_version": "1.35.0",
+    "jco_core_digest": "sha256:ce9a2ec2ce7b9b1cb8da49f875af5093326cae03f917a60f1cae693788629233",
+    "jco_bindings_digest": "sha256:9932e428e62cbc5eed956ab690b7a103d151aac979e63486ff6789389302f2a8"
+  },
+  "measurement_started": false,
+  "glue_sha256": "ce552f355dd08daed61bcd73418cf784407aeb0f4547c2315432013fd394ccd2",
+  "pid": 4410,
+  "pgid": 4410,
+  "corpus_pid": 4419,
+  "corpus_exit_code": 0,
+  "corpus_seconds": 0.16657395800575614,
+  "remaining_owned_group_rows": [],
+  "slot_released": true,
+  "finished_unix": 1790999187.130751,
+  "elapsed_seconds": 2.210620880126953
+}

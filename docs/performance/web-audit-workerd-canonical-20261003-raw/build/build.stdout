@@ -1,0 +1,7 @@
+
+running 1 test
+Built Workers App at /private/var/folders/hp/q9psfx3j2l58mrp6g7d8x8000000gn/T/.tmpJIpLPh/dist-workers. Run `wrangler dev --local --config wrangler.jsonc` there.
+test app::local_workflow::workers::tests::verified_bundle_builds_a_self_contained_workers_app ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 355 filtered out; finished in 0.78s
+

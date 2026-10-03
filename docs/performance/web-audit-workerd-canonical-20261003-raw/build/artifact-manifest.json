@@ -1,0 +1,142 @@
+{
+  "source_sha": "58a48391844b2c6fce80bb504232bc25a4630d53",
+  "retained_original": "/var/folders/hp/q9psfx3j2l58mrp6g7d8x8000000gn/T/.tmpJIpLPh",
+  "frozen_root": "/tmp/lenso-web-performance-20261002/canonical-app-frozen-20261003",
+  "app": "/tmp/lenso-web-performance-20261002/canonical-app-frozen-20261003/dist-workers",
+  "build_receipt": {
+    "schema": "lenso.workers-app-build.v1",
+    "target": "workers",
+    "environment": "local-workerd",
+    "builder_version": "0.3.4",
+    "source_digest": "sha256:43bfcae82e0f0664293b3b53388adc1199baeb5f97d1d507b6ec3cca09c00aa0",
+    "selected_source_digests": {
+      "local.portable-http": "sha256:2d009283e515d599fb1b278324cbf6cd930cc2bf0e66125b89187babd67b91c1"
+    },
+    "plugin_id": "local.portable-http",
+    "manifest_digest": "sha256:2f20cb79e3dd34b7b54bf58c6869a424a7ba5eb0b68b77bfd9bb29692c7d048f",
+    "bundle_digest": "sha256:666ad4402ae1bfbe3d94edffdc1b09ecc6a15e030c24ddeb8bae4702b5b089af",
+    "implementation_id": "workers",
+    "variant_id": null,
+    "component_digest": "sha256:d66a8655f6c54923cb0be0bae8dbab4eb1dcb2a8507cf6b238447464662e1afe",
+    "source_descriptor_digest": "sha256:2a953b1121bca174d9aafebbf4221dcaade8cc0f341d40f9b8ccb73c5d933cce",
+    "expected_descriptor_digests": {
+      "lenso.http.endpoint@1": "sha256:701deedf705cb1a3b2f35fcae72f20ae85d46c6da6a008405a519018bbcdd3fe"
+    },
+    "plan_digest": "sha256:058c92bfff706ef32c44993c8ed2526c4cb33e6b66291f7baf41409447b1f7a7",
+    "workers_runtime": {
+      "package": "@lenso/workers-runtime",
+      "version": "0.1.5",
+      "module_digests": {
+        "component-admission.mjs": "sha256:e06d95bc3fe958f72e4eefd4c97a21f6a81b94a65dd6ca32e0e61bfa4de5b14e",
+        "component-requests.mjs": "sha256:b5e315b999b2ee6fa6ab374c8238dff4428cfa0b792270d0953e12560cac0b43"
+      }
+    },
+    "jco_version": "1.35.0",
+    "jco_core_digest": "sha256:ce9a2ec2ce7b9b1cb8da49f875af5093326cae03f917a60f1cae693788629233",
+    "jco_bindings_digest": "sha256:9932e428e62cbc5eed956ab690b7a103d151aac979e63486ff6789389302f2a8"
+  },
+  "files": [
+    {
+      "file": "app/portable-http/implementations/native/guest.component.wasm",
+      "bytes": 189893,
+      "sha256": "d66a8655f6c54923cb0be0bae8dbab4eb1dcb2a8507cf6b238447464662e1afe"
+    },
+    {
+      "file": "app/portable-http/implementations/workers/guest.component.wasm",
+      "bytes": 189893,
+      "sha256": "d66a8655f6c54923cb0be0bae8dbab4eb1dcb2a8507cf6b238447464662e1afe"
+    },
+    {
+      "file": "app/portable-http/lenso-plugin.json",
+      "bytes": 1856,
+      "sha256": "2de8508c55233ea4742415dbe085f73eba628d9ed95e868a22d4642515d1923a"
+    },
+    {
+      "file": "dist-workers/.lenso/host-build.json",
+      "bytes": 4315,
+      "sha256": "3eff5f51eeb60fbb39894547bf7712cb88c4968d4ee1a6bbfc4775865d33742d"
+    },
+    {
+      "file": "dist-workers/README.md",
+      "bytes": 1726,
+      "sha256": "86cd03fc660338363d3493e11372f19f2afe9ba1a40643cdca8f9612ca8a6e2b"
+    },
+    {
+      "file": "dist-workers/bundles/local.portable-http.lenso-plugin",
+      "bytes": 145805,
+      "sha256": "666ad4402ae1bfbe3d94edffdc1b09ecc6a15e030c24ddeb8bae4702b5b089af"
+    },
+    {
+      "file": "dist-workers/bundles.json",
+      "bytes": 1539,
+      "sha256": "c1236dab152aca3ff0d77a09acb78d7250987d0e164fc7a2a8863a645f2e7f53"
+    },
+    {
+      "file": "dist-workers/component-admission.mjs",
+      "bytes": 10907,
+      "sha256": "e06d95bc3fe958f72e4eefd4c97a21f6a81b94a65dd6ca32e0e61bfa4de5b14e"
+    },
+    {
+      "file": "dist-workers/component-requests.mjs",
+      "bytes": 1054,
+      "sha256": "b5e315b999b2ee6fa6ab374c8238dff4428cfa0b792270d0953e12560cac0b43"
+    },
+    {
+      "file": "dist-workers/components/local.portable-http.wasm",
+      "bytes": 189893,
+      "sha256": "d66a8655f6c54923cb0be0bae8dbab4eb1dcb2a8507cf6b238447464662e1afe"
+    },
+    {
+      "file": "dist-workers/descriptor-digests.mjs",
+      "bytes": 116,
+      "sha256": "5f78a7316b475264b887290b5133f551c209bb7b1721fb6f5b6f770b6c6f26ab"
+    },
+    {
+      "file": "dist-workers/guest.component.wasm",
+      "bytes": 189893,
+      "sha256": "d66a8655f6c54923cb0be0bae8dbab4eb1dcb2a8507cf6b238447464662e1afe"
+    },
+    {
+      "file": "dist-workers/guest.core.wasm",
+      "bytes": 189439,
+      "sha256": "ce9a2ec2ce7b9b1cb8da49f875af5093326cae03f917a60f1cae693788629233"
+    },
+    {
+      "file": "dist-workers/guest.d.ts",
+      "bytes": 1315,
+      "sha256": "30dcd4dd9f969e2b6f8bc764b72e449040d34e8fec6ce91a9b6e15710442bc6a"
+    },
+    {
+      "file": "dist-workers/guest.js",
+      "bytes": 98860,
+      "sha256": "9932e428e62cbc5eed956ab690b7a103d151aac979e63486ff6789389302f2a8"
+    },
+    {
+      "file": "dist-workers/plan.mjs",
+      "bytes": 1066,
+      "sha256": "c585daa6de4638abef7f90f79b7b9e991e6525906fd4bdc014986ed304c4421a"
+    },
+    {
+      "file": "dist-workers/worker.mjs",
+      "bytes": 607,
+      "sha256": "1d2053ded9d413f33dec808077fea9f902777fcae073baff95f4562df2a83bf8"
+    },
+    {
+      "file": "dist-workers/workers-build.json",
+      "bytes": 1643,
+      "sha256": "b384e691475298cbb94e38df463305e4312630d800b9578ae23bf2e12bb061be"
+    },
+    {
+      "file": "dist-workers/workers-http.mjs",
+      "bytes": 10089,
+      "sha256": "2bfe1b31462cc97b513a51c3177640311b4a6791b7582372b0e31a7439a66609"
+    },
+    {
+      "file": "dist-workers/wrangler.jsonc",
+      "bytes": 207,
+      "sha256": "014ea317a74cfe06b1e2f7a03b67b76808d68400d2f8a4c486f92f01467394a8"
+    }
+  ],
+  "corpus_started": false,
+  "measurement_started": false
+}

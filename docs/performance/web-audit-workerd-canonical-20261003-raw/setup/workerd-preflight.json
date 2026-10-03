@@ -1,0 +1,35 @@
+{
+  "command": [
+    "/Users/leosouthey/.npm/_npx/7312ca2c6bee2f8f/node_modules/@cloudflare/workerd-darwin-arm64/bin/workerd",
+    "--version"
+  ],
+  "pid": 79363,
+  "exit_code": 0,
+  "stdout": "workerd 2026-09-26",
+  "stderr": "",
+  "elapsed_seconds": 0.020900332950986922,
+  "binary_sha256": "a428d3bde692f1fa80159ae02235c2e224424edf8fd145abf86c779b70abb919",
+  "manifests": [
+    {
+      "file": "/Users/leosouthey/.npm/_npx/7312ca2c6bee2f8f/node_modules/wrangler/package.json",
+      "sha256": "01e5f9f88cf1cb2f6c847f585dc16c3bdafa374276765678c56fd5a0637e44dc",
+      "version": "4.143.1"
+    },
+    {
+      "file": "/Users/leosouthey/.npm/_npx/7312ca2c6bee2f8f/node_modules/miniflare/package.json",
+      "sha256": "436c3255fe4542c6567580f048af6ba6d19fb4c06ae74fbaf281776c6a1cb469",
+      "version": "5.20260926.1-alpha"
+    },
+    {
+      "file": "/Users/leosouthey/.npm/_npx/7312ca2c6bee2f8f/node_modules/workerd/package.json",
+      "sha256": "726bbe70e3b62e136dbfac7c36e61b912f111f5a271eb44ea72b88d17199eb18",
+      "version": "1.20260926.1"
+    },
+    {
+      "file": "/Users/leosouthey/.npm/_npx/7312ca2c6bee2f8f/node_modules/@cloudflare/workerd-darwin-arm64/package.json",
+      "sha256": "bf9cc43fd4383e6e367c2bc8eba9200abad818a6495aac2e78f55483229180f2",
+      "version": "1.20260926.1"
+    }
+  ],
+  "npm_lock_sha256": "74bd15f1b8d6461facc76dac7433718710cdc3f118a2950d3b2658f6dd4ef6a9"
+}
