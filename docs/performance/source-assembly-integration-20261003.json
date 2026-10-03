@@ -1,0 +1,68 @@
+{
+  "schema": "lenso.source-assembly-local-evidence.v1",
+  "date": "2026-10-03",
+  "environment": "task-owned Linux cloud workspace, Rust 1.94.0, Bun 1.4.2, Node 24.19.0",
+  "base_sha": "ed5d30e52a620ed5f5bc9854b8cafede7a42d866",
+  "js_source_sha": "b6371aebfdf0b1a7056e0121ab6d0e7cb5206b73",
+  "rust_source_app": {
+    "native_http": "passed",
+    "workers_workerd_http": "passed",
+    "same_resolved_graph": true,
+    "simulated_same_cli_plan": "passed",
+    "clean_shutdown": "passed"
+  },
+  "mixed_source_app": {
+    "native_http": "passed",
+    "workers_workerd_http": "passed",
+    "same_logical_graph_after_explicit_execution_lowering": true,
+    "core_workers_js_operation_profile": "Request only",
+    "clean_shutdown": "passed"
+  },
+  "console_auth_app": {
+    "official_shell_and_asset": "HTTP 200",
+    "missing_and_invalid_credentials": "HTTP 401",
+    "original_auth_protected_http_and_console_session": "HTTP 200",
+    "original_auth_postgres_tests_passed": 3,
+    "clean_shutdown": "passed",
+    "fresh_browser_render_hmr": "unpassed: Playwright CDN HTTP 403 Domain forbidden; no bypass"
+  },
+  "checks": {
+    "engine_app_after_main_hotfix": {
+      "passed": 377,
+      "ignored": 18,
+      "failed": 0
+    },
+    "later_devloop_affected_group": {
+      "passed": 35,
+      "failed": 0
+    },
+    "node_source_identity_and_workers_scope": {
+      "passed": 12,
+      "failed": 0
+    },
+    "canonical_skill_pack": 6,
+    "skill_validator_tests_passed": 5,
+    "affected_all_targets_clippy": "passed",
+    "preflight": "passed",
+    "candidate_ci": "pending exact integrated candidate"
+  },
+  "bun_edit_feedback": {
+    "initial_ready_ms": 76488.77122299928,
+    "edit_to_real_typed_request_ms": 2883.196147999115,
+    "host_build_invoked": false,
+    "packaged_plugins": [
+      "example.bun-a"
+    ],
+    "affected_instances": [
+      "example.bun-a/default"
+    ],
+    "activation_scope": "host_generation",
+    "native_hash_and_mtime_unchanged": true,
+    "unrelated_bun_packaging_unchanged": true,
+    "compile_lines": [],
+    "shutdown_exit_code": 0
+  },
+  "comparison_boundary": "Inherited same-owner comparable baselines live in dev-loop-20261003.json and dev-loop-bun-20261003.json. Integration observations are separate samples, not cross-environment before/after or whole-CI savings.",
+  "unimplemented_transition": "ADR 0067 atomic apply_transition entry does not exist. Affected packaging/Instance selection does not imply affected-only activation.",
+  "raw_task_evidence": "/workspace/evidence/source-assembly"
+}
