@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "choices": [
+    {
+      "consumer": { "plugin_id": "example.pair", "instance_key": "default" },
+      "requirement_id": "left",
+      "provider": { "plugin_id": "example.label", "instance_key": "left" }
+    },
+    {
+      "consumer": { "plugin_id": "example.pair", "instance_key": "default" },
+      "requirement_id": "right",
+      "provider": { "plugin_id": "example.label", "instance_key": "right" }
+    }
+  ]
+}

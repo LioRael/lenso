@@ -637,7 +637,7 @@ pub(super) fn generate_in(
     let mut source = (include_str!("local_runtime_template.rs").to_owned()
         + include_str!("local_json_template.rs"))
     .replace("// LENSO_REGISTER_CODECS", &register)
-    .replace("// LENSO_LINK_PLUGINS", &linked);
+    .replace("// LENSO_LINK_PLUGINS", "include!(\"plugin_links.rs\");");
     // Cargo may retain inventory entries for every module of a selected crate.
     // Its independently declared siblings are availability, not App selection.
     let selected_source_ids = candidates
@@ -742,6 +742,13 @@ pub(super) fn generate_in(
         toml::to_string_pretty(&manifest)?.as_bytes(),
     )?;
     write_generated_host_file(&generated.join("src/main.rs"), source.as_bytes())?;
+    // Linkage is selected once from source identities and exact Cargo aliases.
+    // Target lowering consumes this same generated input instead of inferring
+    // a package-root factory for every independently declared Plugin module.
+    write_generated_host_file(
+        &generated.join("src/plugin_links.rs"),
+        format!("{{\n{linked}}}\n").as_bytes(),
+    )?;
     let build_script = generated_host_build_script(adapters, cohort);
     write_generated_host_file(&generated.join("build.rs"), build_script.as_bytes())?;
 
@@ -1353,6 +1360,7 @@ fn distribution_file_paths(stage: &Path, runtime_artifacts: &[Value]) -> Vec<Str
         ".lenso/generated-host/Cargo.lock",
         ".lenso/generated-host/Cargo.toml",
         ".lenso/generated-host/src/main.rs",
+        ".lenso/generated-host/src/plugin_links.rs",
         ".lenso/generated-host/build.rs",
         ".lenso/generated-host/local-inputs.json",
     ]
@@ -1876,6 +1884,7 @@ mod tests {
         .unwrap();
         std::fs::write(generated.path().join("build.rs"), "fn main() {}\n").unwrap();
         std::fs::write(generated.path().join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(generated.path().join("src/plugin_links.rs"), "{}\n").unwrap();
         // A reused cache must not publish a stale business-specific module.
         std::fs::write(
             generated.path().join("src/local_business_snapshot.rs"),

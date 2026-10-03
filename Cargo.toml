@@ -10,6 +10,7 @@ members = [
     "examples/onboarding/todo-http",
     "examples/onboarding/background-jobs",
     "examples/onboarding/metadata-pipeline",
+    "examples/onboarding/source-first-instances",
     "spec/fixtures/*/rust",
     "tests/fixtures/*",
 ]

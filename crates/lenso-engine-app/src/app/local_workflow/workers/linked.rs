@@ -139,11 +139,17 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
     fs::create_dir_all(generated.join("src"))?;
     let native_source = native.join(".lenso/generated-host");
     let manifest: Value = toml::from_str(&fs::read_to_string(native_source.join("Cargo.toml"))?)?;
-    let (manifest, links) = wasm_manifest(manifest)?;
+    let manifest = wasm_manifest(manifest)?;
+    fs::copy(
+        native_source.join("src/plugin_links.rs"),
+        generated.join("src/plugin_links.rs"),
+    )
+    .context("retain selected source Plugin linkage for Workers")?;
     let mut worker_scope = String::new();
     let mut facility_evidence = Vec::new();
     let mut grants_digest = None;
-    let mut host_source = include_str!("linked_host.rs").replace("// LENSO_LINK_PLUGINS", &links);
+    let mut host_source = include_str!("linked_host.rs")
+        .replace("// LENSO_LINK_PLUGINS", "include!(\"plugin_links.rs\");");
     if let Some(path) = &args.facilities {
         let bytes = super::runtime::read_file(path)?;
         ensure!(
@@ -413,7 +419,7 @@ fn rewrite_bindings(source: &str) -> anyhow::Result<String> {
     Ok(bindings)
 }
 
-fn wasm_manifest(mut manifest: Value) -> anyhow::Result<(Value, String)> {
+fn wasm_manifest(mut manifest: Value) -> anyhow::Result<Value> {
     manifest["package"]["name"] = json!("lenso-generated-workers-host");
     manifest["lib"] = json!({"crate-type":["cdylib"]});
     let patched_kernel = manifest.pointer("/patch/crates-io/lenso-kernel").cloned();
@@ -458,17 +464,7 @@ fn wasm_manifest(mut manifest: Value) -> anyhow::Result<(Value, String)> {
         .as_object_mut()
         .context("Ingress Cargo identity")?
         .insert("default-features".into(), json!(false));
-    let mut plugins = dependencies
-        .keys()
-        .filter(|name| name.starts_with("local_plugin_") || name.starts_with("root_plugin_"))
-        .cloned()
-        .collect::<Vec<_>>();
-    plugins.sort();
-    let links = plugins
-        .iter()
-        .map(|name| format!("{name}::link_plugin();\n"))
-        .collect::<String>();
-    Ok((manifest, links))
+    Ok(manifest)
 }
 
 struct LoadedRuntime {
@@ -542,7 +538,7 @@ mod tests {
             "local_plugin_1":{"path":"/owner/plugin"},
             "root_plugin_2":{"path":"/owner/auth","default-features":false,"features":["workers"]}
         },"patch":{"crates-io":{"lenso-kernel":{"path":"/owner/framework/crates/lenso-kernel"}}}});
-        let (wasm, links) = wasm_manifest(manifest).unwrap();
+        let wasm = wasm_manifest(manifest).unwrap();
         assert_eq!(
             wasm["dependencies"]["lenso-workers-driver"]["path"],
             "/owner/framework/crates/lenso-workers-driver"
@@ -564,10 +560,7 @@ mod tests {
             wasm["dependencies"]["root_plugin_2"]["features"],
             json!(["workers"])
         );
-        assert_eq!(
-            links,
-            "local_plugin_1::link_plugin();\nroot_plugin_2::link_plugin();\n"
-        );
+        assert!(wasm["dependencies"].get("local_plugin_1").is_some());
     }
 
     #[test]
@@ -587,7 +580,7 @@ mod tests {
                 "lenso-kernel":kernel,
                 "lenso-web-ingress-plugin":"=0.4.10"
             }});
-            let (wasm, _) = wasm_manifest(manifest).unwrap();
+            let wasm = wasm_manifest(manifest).unwrap();
             assert_eq!(
                 wasm["dependencies"]["lenso-workers-driver"],
                 expected_driver
