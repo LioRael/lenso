@@ -5,18 +5,30 @@ import json
 import os
 from pathlib import Path
 import platform
+import signal
 import subprocess
 import time
 
 
 def run(command, checkout, log, env):
     started = time.monotonic()
-    result = subprocess.run(command, cwd=checkout, env=env, capture_output=True,
-                            text=True, timeout=120)
-    log.write_text(result.stdout + result.stderr)
-    if result.returncode:
+    process = subprocess.Popen(command, cwd=checkout, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        stdout, stderr = process.communicate(timeout=120)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate()
+        log.write_text(stdout + stderr)
+        raise RuntimeError(f"command exceeded deadline: see {log}") from None
+    log.write_text(stdout + stderr)
+    if process.returncode:
         raise RuntimeError(f"command failed: see {log}")
-    return time.monotonic() - started, result.stdout
+    return time.monotonic() - started, stdout
 
 
 def main():

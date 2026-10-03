@@ -1,0 +1,15 @@
+    Updating crates.io index
+     Locking 51 packages to latest Rust 1.94.0 compatible versions
+      Adding generic-array v0.14.7 (available: v0.14.9)
+      Adding lenso-contract-authoring v0.1.1 (available: v0.1.2)
+      Adding lenso-contract-codegen v0.10.0 (available: v0.10.2)
+   Compiling registered-snapshot-consumer v0.1.0 (/tmp/lenso-consumer-reject-3d0c6tff)
+error: intentional-cache-qualification-probe
+  --> src/lib.rs:41:1
+   |
+41 | compile_error!("intentional-cache-qualification-probe");
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `registered-snapshot-consumer` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `registered-snapshot-consumer` (lib test) due to 1 previous error

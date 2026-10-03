@@ -1,0 +1,26 @@
+[
+  {
+    "sample": 0,
+    "cache": "cold",
+    "seconds": 14.563116750000518,
+    "returncode": 0
+  },
+  {
+    "sample": 1,
+    "cache": "warm",
+    "seconds": 0.7392977319996135,
+    "returncode": 0
+  },
+  {
+    "sample": 2,
+    "cache": "warm",
+    "seconds": 0.7386503930001709,
+    "returncode": 0
+  },
+  {
+    "sample": 3,
+    "cache": "warm",
+    "seconds": 0.7012329350000073,
+    "returncode": 0
+  }
+]

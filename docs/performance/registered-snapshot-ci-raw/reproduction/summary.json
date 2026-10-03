@@ -1,0 +1,28 @@
+{
+  "platform": "Linux-6.18.44-x86_64-with-glibc2.41",
+  "build_jobs": 2,
+  "rustc": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+  "boundary": "actual child Cargo and assertions; outer harness build excluded; registry sources pre-fetched; no Actions transfer included",
+  "cases": {
+    "baseline": {
+      "sha": "c28dce56cfffe639523b6ef07f797943a431ace0",
+      "parent_build_seconds_excluded": 4.351542627000526,
+      "process_seconds": [
+        13.317937504999463,
+        13.307936484000493
+      ],
+      "child_cache": "fresh per process"
+    },
+    "candidate": {
+      "sha": "0e0d26d5aff93ed279b07d45bd53cf442d10ed52",
+      "parent_build_seconds_excluded": 4.180595994999749,
+      "process_seconds": [
+        13.067746958000498,
+        0.6424695089999659,
+        0.6683373830001074,
+        0.6390106409999134
+      ],
+      "child_cache": "empty first; reused remaining"
+    }
+  }
+}

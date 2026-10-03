@@ -1,0 +1,5 @@
+{
+  "exit_code": 101,
+  "seconds": 0.491291710999576,
+  "expected": "actual Cargo rejects fresh changed consumer despite warm artifacts"
+}
