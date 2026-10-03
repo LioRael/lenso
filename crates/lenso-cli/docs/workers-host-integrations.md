@@ -41,14 +41,29 @@ backend does not supply cross-request CAS or restart persistence.
 
 The generated Workers Host uses the same Stream Endpoint contract and Web
 Ingress routing as Native. Response headers and each chunk leave incrementally,
-with one receive per transport pull. A successful HTTP EOF requires the provider's
-successful terminal and clean shutdown of that request's independent App.
+with one receive per transport pull. The generated JavaScript body reader returns
+clean EOF only after the provider's successful terminal and clean shutdown of
+that request's independent App.
 Cancellation, deadlines and failed terminals release the same request-owned
-resources; a failed terminal cannot become successful EOF. The shared Wasm
+resources; failed reads remain errors, and clean cleanup does not turn a failed
+terminal into success. The shared Wasm
 generation stays leased until session cleanup completes. Applications supply
 one Plugin source tree for both targets, without maintaining a Workers Host or
 copying framework source. Provider-owned D1/PG differences remain in that
 provider's infrastructure adapter, not in generated Host code.
+
+External HTTP completion is a separate platform boundary. The selected local
+workerd 1.20260926.1 direct HTTP socket sends a complete chunked response and
+normally ends the connection after both a native `ReadableStream` error and a
+generated App terminal error. Its KJ output sink does not implement aborting
+the HTTP body writer, whose [destructor emits the final chunk](https://github.com/capnproto/capnproto/blob/fda9aecf8120d92f2085c9625330ffd9ddca7c24/c%2B%2B/src/kj/compat/http.c%2B%2B#L2636-L2648).
+The Host therefore
+does not guarantee an abnormal client EOF after headers. Internal stream failure
+remains observable, but network EOF does not prove a successful App or business
+terminal. Applications retain their established explicit terminal/proof semantics.
+Generator/session correctness and external transport qualification must be
+recorded separately; this local result does not qualify production Cloudflare.
+The fixture's strict external failure-EOF gate remains a separate failing check.
 
 ## Owner facilities
 

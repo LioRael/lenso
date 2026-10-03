@@ -30,3 +30,11 @@ For a Workers-only correction after a recorded Native corpus pass, use
 `workers-smoke` to reuse its generated Plan and fixture identity without repeating
 Native execution. Preserve that prior pass evidence; this stage reports reuse
 explicitly and still requires every strict Workers assertion.
+
+Record generator/session correctness separately from external HTTP qualification.
+With local workerd 1.20260926.1, the internal failed body read remains rejected,
+while the native HTTP socket emits a complete chunked body and normal connection
+end even for the native JavaScript stream error control. The existing strict
+external failure-EOF assertion is retained and fails for that boundary; a normal
+EOF is not an App or business success terminal. A session-only result must not
+write the combined `RESULT.json` or claim that this external gate passed.
