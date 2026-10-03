@@ -1,0 +1,12 @@
+[package]
+name = "devloop-greeting"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+lenso = { path = "../../crates/lenso" }
+lenso-capability-http-endpoint = { path = "../../crates/lenso-capability-http-endpoint" }
+serde = { version = "1", features = ["derive"] }

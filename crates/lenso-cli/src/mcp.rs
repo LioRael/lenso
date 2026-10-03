@@ -1057,6 +1057,19 @@ impl AppTools {
         Ok(CallToolResult::success(vec![ContentBlock::text(json)]))
     }
 
+    #[tool(
+        description = "Read the latest source App dev change classification, readiness result and measured feedback time; this is advisory history from lenso app dev, not execution or activation authority"
+    )]
+    fn project_dev_feedback(&self) -> Result<CallToolResult, McpError> {
+        let report = read_dev_feedback(&self.root).map_err(|_| {
+            McpError::invalid_request(
+                "App dev feedback is invalid or exceeds the bounded report size",
+                None,
+            )
+        })?;
+        Ok(CallToolResult::success(vec![ContentBlock::text(report)]))
+    }
+
     fn require_local_change_authority(&self) -> Result<(), McpError> {
         let control = change_root(&self.root).join(".lenso");
         let has_authority = ["host-build.json", "host-catalog.json"].iter().any(|name| {
@@ -1088,6 +1101,48 @@ impl AppTools {
         }
         Ok(distribution)
     }
+}
+
+fn read_dev_feedback(root: &std::path::Path) -> anyhow::Result<String> {
+    use std::io::Read;
+    let control = root.join(".lenso");
+    let path = control.join("dev-feedback.json");
+    if !path.try_exists()? {
+        return Ok(serde_json::json!({"schema":"lenso.dev-feedback.v1","status":"unavailable","reason":"Run lenso app dev at the configured source root to observe development feedback"}).to_string());
+    }
+    anyhow::ensure!(
+        std::fs::symlink_metadata(&control)?.file_type().is_dir(),
+        "dev control must be a directory"
+    );
+    anyhow::ensure!(
+        std::fs::symlink_metadata(&path)?.file_type().is_file(),
+        "dev feedback must be a regular file"
+    );
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
+    }
+    let file = options.open(&path)?;
+    anyhow::ensure!(
+        file.metadata()?.is_file(),
+        "dev feedback must stay a regular file"
+    );
+    let mut bytes = Vec::new();
+    file.take(MAX_MCP_TEXT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    anyhow::ensure!(
+        bytes.len() <= MAX_MCP_TEXT_BYTES,
+        "dev feedback exceeds MCP output limit"
+    );
+    let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+    anyhow::ensure!(
+        value["schema"] == "lenso.dev-feedback.v1",
+        "unsupported dev feedback schema"
+    );
+    Ok(serde_json::to_string(&value)?)
 }
 
 fn page_linked_catalog_report(
@@ -1366,6 +1421,30 @@ impl ServerHandler for AppTools {}
     reason = "the MCP test module precedes the standalone stdio entry point in this file"
 )]
 mod tests {
+    #[test]
+    fn dev_feedback_is_optional_bounded_and_rejects_symlinks() {
+        let root = tempfile::tempdir().unwrap();
+        let unavailable = super::read_dev_feedback(root.path()).unwrap();
+        assert!(unavailable.contains("unavailable"));
+        let control = root.path().join(".lenso");
+        std::fs::create_dir(&control).unwrap();
+        let path = control.join("dev-feedback.json");
+        std::fs::write(&path, serde_json::json!({"schema":"lenso.dev-feedback.v1","status":"ready","build_invoked":false}).to_string()).unwrap();
+        let report: serde_json::Value =
+            serde_json::from_str(&super::read_dev_feedback(root.path()).unwrap()).unwrap();
+        assert_eq!(report["build_invoked"], false);
+        std::fs::write(&path, vec![b' '; super::MAX_MCP_TEXT_BYTES + 1]).unwrap();
+        assert!(super::read_dev_feedback(root.path()).is_err());
+        #[cfg(unix)]
+        {
+            std::fs::remove_file(&path).unwrap();
+            let external = root.path().join("external.json");
+            std::fs::write(&external, "private bytes").unwrap();
+            std::os::unix::fs::symlink(external, path).unwrap();
+            assert!(super::read_dev_feedback(root.path()).is_err());
+        }
+    }
+
     use lenso_engine_app::app::facts::{
         BindingFacts, BuildProvenanceFacts, DiscoveredSourceFacts, GeneratedArtifactFacts,
         ObservedWebRouteFacts, ObservedWebRoutesFacts, PluginFacts, ProjectFacts, RuntimeFacts,

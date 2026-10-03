@@ -78,6 +78,15 @@ the built runtime distribution must run without source/toolchain downloads.
 
 ## Completion
 
+For incremental development, keep using `app dev`. Existing Instance TOML
+edits may reuse locked execution artifacts; source, contracts, dependency or
+resource changes retain the normal build path. Configuration still activates
+through a fresh checked Host generation. A selected convention compiler keeps
+its build semantics. An explicitly configured frontend keeps its own reload
+loop. Agents may read the existing MCP entry's `project_dev_feedback` tool for
+the last classification and measured result; no generated snapshot inspection
+is required. See [the small dev App](../../../../examples/incremental-dev/README.md).
+
 Prove source discovery, a real build/start and one observable operation. Disable
 support and verify its contributions and private compilation disappear. A failed
 development build keeps the previous generation; successful builds restart the

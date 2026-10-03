@@ -20,6 +20,7 @@ use tokio::{
 
 use super::configuration_source::AcceptedSourceProof;
 
+mod changes;
 mod frontend;
 mod managed_host;
 use managed_host::{Host, Retirement};
@@ -75,19 +76,28 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         .transpose()?;
     fs::create_dir_all(root.join(".lenso"))?;
     let _dev_lock = lock_dev(&root)?;
+    match fs::remove_file(root.join(".lenso/dev-feedback.json")) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error).context("clear previous development feedback"),
+    }
     Retirement::check_session(&root)?;
     let generations = tempfile::Builder::new()
         .prefix("dev-")
         .tempdir_in(root.join(".lenso"))?;
     let frontend_config = frontend::FrontendConfig::load(&root)?;
     let frontend_enabled = frontend_config.is_some();
-    let (mut watcher, mut events) = watch(&root)?;
+    let (mut watcher, mut events, mut watch_overflow) = watch(&root)?;
     let mut host: Option<Host> = None;
     let mut frontend_process: Option<frontend::FrontendProcess> = None;
     let mut active_backend_url: Option<String> = None;
     let mut revision = 0;
     let mut current_output: Option<PathBuf> = None;
     let mut active: Option<TimedProof> = None;
+    let mut active_inputs: Option<changes::Inputs> = None;
+    let mut pending_change = Some(changes::Batch::new(
+        notify::Event::new(notify::EventKind::Any).add_path(root.clone()),
+    ));
     let mut supervised_dynamic_start_available = true;
     let configured_poll = Duration::from_secs(args.configuration_poll_seconds);
     let mut effective_poll = configured_poll;
@@ -108,6 +118,30 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
         loop {
         revision += 1;
         let output = generations.path().join(format!("generation-{revision}"));
+        let mut compiled = true;
+        let mut reused = false;
+        let mut reuse_failed = false;
+        let inputs_before_build = if policy.is_none() {
+            changes::Inputs::capture(&root, frontend_enabled).ok().flatten()
+        } else { None };
+        if policy.is_none()
+            && let (Some(batch), Some(current), Some(inputs)) =
+                (&pending_change, &current_output, &active_inputs)
+            && batch.work(&root, frontend_enabled) == changes::Work::Configuration
+        {
+            match changes::configuration_candidate(&root, current, &output, batch, inputs, frontend_enabled) {
+                Ok(value) => { reused = value; compiled = !value; }
+                Err(error) => {
+                    eprintln!("Configuration candidate rejected; previous preview retained: {error:#}");
+                    reuse_failed = true;
+                    compiled = false;
+                }
+            }
+        }
+        let built = if reused { true } else if reuse_failed { false } else {
+        if let Some(batch) = &pending_change {
+            batch.report(&root, batch.work(&root, frontend_enabled), "building", revision, true, "preparing source candidate; previous preview remains active")?;
+        }
         let mut build = command(std::env::current_exe()?);
         build
             .args(["app", "build", "--root"])
@@ -172,7 +206,8 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 }
             }
         };
-        let built = status.success();
+        status.success()
+        };
         watch_dependencies(&root, &mut watcher)?;
         expire_active_if_needed(
             &root,
@@ -251,12 +286,25 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
             match activation {
                 Some(true) => {
                     select_output(&mut current_output, &output);
+                    active_inputs = if policy.is_some() { None } else { match changes::Inputs::capture(&root, frontend_enabled) {
+                        Ok(inputs) => inputs.filter(|after| reused || inputs_before_build.as_ref().is_some_and(|before| after.agrees_with_before_build(before))),
+                        Err(error) => { eprintln!("Incremental configuration reuse unavailable: {error:#}"); None }
+                    } };
+                    if let Some(batch) = &pending_change {
+                        batch.report(&root, batch.work(&root, frontend_enabled), "ready", revision, compiled,
+                            if reused { "configuration re-resolved; fresh Host generation; execution artifacts reused" }
+                            else { "source build completed; fresh Host generation" })?;
+                    }
                     eprintln!(
                         "Watching {} for App changes. Press Ctrl-C to stop.",
                         root.display()
                     );
                 }
-                Some(false) => {}
+                Some(false) => {
+                    if let Some(batch) = &pending_change {
+                        batch.report(&root, batch.work(&root, frontend_enabled), "rejected", revision, compiled, "candidate failed readiness; previous preview retained")?;
+                    }
+                }
                 None => {
                     stop_active(&mut host, &mut frontend_process).await?;
                     return Ok(());
@@ -264,6 +312,9 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
             }
         } else {
             eprintln!("App rebuild failed; edit the source to retry.");
+            if let Some(batch) = &pending_change {
+                batch.report(&root, batch.work(&root, frontend_enabled), "rejected", revision, compiled, "candidate preparation failed; previous preview retained")?;
+            }
         }
         loop {
             let deadline = active.as_ref().map(TimedProof::deadline);
@@ -284,30 +335,31 @@ pub async fn dev(args: DevArgs) -> anyhow::Result<()> {
                 event = events.recv() => {
                     match event.context("App watcher closed")? {
                         Ok(event) if rebuild_event(&event) => {
-                            if event.paths.iter().any(|p| frontend::is_config(&root, p)) {
+                            let mut batch = changes::Batch::new(event);
+                            match run_until(active.as_ref().map(TimedProof::deadline), batch.collect(&mut events)).await {
+                                Ok(result) => result?,
+                                Err(_) => { expire_active_if_needed(
+                                    &root, &mut active, &mut host, &mut frontend_process, &mut active_backend_url,
+                                ).await?; }
+                            }
+                            if watch_overflow.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                                // A full frontend-only queue cannot prove that a later
+                                // backend event was retained. Unknown changes rebuild.
+                                batch.paths.insert(root.clone());
+                            }
+                            if batch.paths.iter().any(|p| frontend::is_config(&root, p)) {
                                 eprintln!("Frontend dev configuration changed; restart lenso dev to review and apply its command.");
                             }
-                            if frontend_enabled
-                                && event.paths.iter().filter(|p| relevant(p)).all(|p| frontend::is_frontend(&root, p))
-                            {
+                            if batch.work(&root, frontend_enabled) == changes::Work::Frontend {
                                 // The explicitly selected frontend owns its HMR/rebuild loop.
                                 // Its source edits do not invalidate the Rust Host distribution.
+                                batch.report(&root, changes::Work::Frontend, "delegated", revision, false, "frontend dev server owns reload; no Host build or restart")?;
                                 continue;
                             }
-                            if run_until(
-                                active.as_ref().map(TimedProof::deadline),
-                                tokio::time::sleep(Duration::from_millis(150)),
-                            ).await.is_err() {
-                                expire_active_if_needed(
-                                    &root,
-                                    &mut active, &mut host, &mut frontend_process,
-                                    &mut active_backend_url,
-                                ).await?;
-                            }
-                            while events.try_recv().is_ok() {}
+                            pending_change = Some(batch);
                             // Configuration edits may add a previously unwatched shared source.
                             match watch(&root) {
-                                Ok((next, receiver)) => { watcher = next; events = receiver; }
+                                Ok((next, receiver, overflow)) => { watcher = next; events = receiver; watch_overflow = overflow; }
                                 Err(error) => eprintln!("App source configuration is invalid: {error:#}"),
                             }
                             break;
@@ -1999,14 +2051,21 @@ fn watch(
 ) -> anyhow::Result<(
     notify::RecommendedWatcher,
     mpsc::Receiver<notify::Result<notify::Event>>,
+    std::sync::Arc<std::sync::atomic::AtomicBool>,
 )> {
     let (sender, receiver) = mpsc::channel(128);
+    let overflow = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let queue_overflow = overflow.clone();
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         if event.as_ref().is_ok_and(|event| !rebuild_event(event)) {
             return;
         }
-        // A full queue already guarantees a rebuild; coalesce further events.
-        let _ = sender.try_send(event);
+        if matches!(
+            sender.try_send(event),
+            Err(mpsc::error::TrySendError::Full(_))
+        ) {
+            queue_overflow.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
     })?;
     watcher.watch(root, RecursiveMode::Recursive)?;
     let config = root.join("lenso.toml");
@@ -2040,7 +2099,7 @@ fn watch(
         }
     }
     watch_dependencies(root, &mut watcher)?;
-    Ok((watcher, receiver))
+    Ok((watcher, receiver, overflow))
 }
 fn watch_dependencies(root: &Path, watcher: &mut notify::RecommendedWatcher) -> anyhow::Result<()> {
     let path = root.join(".lenso/host-cache/watch-roots.json");

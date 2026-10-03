@@ -1571,7 +1571,7 @@ pub(super) fn input_digest_in(
     ))
 }
 
-fn generated_distribution(path: &Path) -> anyhow::Result<bool> {
+pub(super) fn generated_distribution(path: &Path) -> anyhow::Result<bool> {
     if !fs::symlink_metadata(path)?.is_dir() {
         return Ok(false);
     }
