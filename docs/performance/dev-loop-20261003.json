@@ -1,0 +1,216 @@
+{
+  "schema": "lenso.dev-loop-evidence.v1",
+  "date": "2026-10-03",
+  "base_sha": "20a2f5fe184c8e1f174d38348f837bc3ea008565",
+  "scope": "Single Linux cloud samples; locked dependencies prepared. Warm edit timings wait for activation confirmation and real HTTP. Initial startup samples have different cache/source states and are not a before/after speedup comparison. No full CI benefit claimed.",
+  "baseline_initial_build": {
+    "target_cache": "empty",
+    "registry_cache": "prepared",
+    "wall_seconds": 94.039,
+    "measurement": "app build; excludes HTTP startup"
+  },
+  "warm_before": {
+    "label": "before-final",
+    "warm_initial_ready_ms": 1847.3933459999898,
+    "config_edit_to_http_ms": 2274.260052000045,
+    "config_artifacts_before": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ns": 1791033934844435700,
+        "sha256": "33b9204f8f1cdff836045301da733be055a3c2fa6fb062f9aaa54332bb8c43d2"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ns": 1791033637952591400,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    },
+    "config_artifacts_after": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ns": 1791033934844435700,
+        "sha256": "33b9204f8f1cdff836045301da733be055a3c2fa6fb062f9aaa54332bb8c43d2"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ns": 1791033637952591400,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    },
+    "config_unchanged_artifacts": true,
+    "config_compiling_lines": [],
+    "config_feedback": {
+      "schema": "lenso.dev-feedback.v1",
+      "change": "rust",
+      "status": "ready",
+      "generation": 3,
+      "build_invoked": true,
+      "elapsed_ms": 6136,
+      "reason": "source build completed; fresh Host generation",
+      "paths": [
+        "/workspace/scratch/devloop-app/src/lib.rs"
+      ]
+    },
+    "rust_edit_to_http_ms": 6175.152374999925,
+    "rust_artifacts_after": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ns": 1791033945454804500,
+        "sha256": "508318bdd0ec147bb433b491b8aaac5f18db9b2e9e54c34c9d4191567a88bd4e"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ns": 1791033637952591400,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    },
+    "rust_compiling_lines": [
+      "Compiling devloop-greeting v0.1.0 (/workspace/scratch/devloop-app)",
+      "Compiling lenso-generated-local-host v0.0.0 (/workspace/scratch/devloop-app/.lenso/host-cache/source)"
+    ],
+    "last_endpoint": "http://127.0.0.1:38679"
+  },
+  "warm_after": {
+    "initial_ready_ms": 6223.915592000139,
+    "config_artifacts_before": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ns": 1791035504545368600,
+        "sha256": "33b9204f8f1cdff836045301da733be055a3c2fa6fb062f9aaa54332bb8c43d2"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ns": 1791033637952591400,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    },
+    "config_edit_to_http_ms": 645.3357199998209,
+    "config_artifacts_after": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ns": 1791035504545368600,
+        "sha256": "33b9204f8f1cdff836045301da733be055a3c2fa6fb062f9aaa54332bb8c43d2"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ns": 1791033637952591400,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    },
+    "config_unchanged_artifacts": true,
+    "config_compiling_lines": [],
+    "config_feedback": {
+      "schema": "lenso.dev-feedback.v1",
+      "change": "configuration",
+      "status": "ready",
+      "generation": 2,
+      "build_invoked": false,
+      "elapsed_ms": 623,
+      "dev_process_id": 46599,
+      "reason": "configuration re-resolved; fresh Host generation; execution artifacts reused",
+      "paths": [
+        "/workspace/scratch/devloop-app/plugins/example.greeting/default.toml"
+      ]
+    },
+    "rust_edit_to_http_ms": 6200.290537000001,
+    "rust_artifacts_after": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ns": 1791035511570940400,
+        "sha256": "508318bdd0ec147bb433b491b8aaac5f18db9b2e9e54c34c9d4191567a88bd4e"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ns": 1791033637952591400,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    },
+    "rust_compiling_lines": [
+      "Compiling devloop-greeting v0.1.0 (/workspace/scratch/devloop-app)",
+      "Compiling lenso-generated-local-host v0.0.0 (/workspace/scratch/devloop-app/.lenso/host-cache/source)"
+    ]
+  },
+  "new_example_initial_and_edits": {
+    "initial_ready_ms": 56412.83953000016,
+    "config_artifacts_before": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-90a645e0dab59ed3.rlib": {
+        "mtime_ns": 1791034889333065200,
+        "sha256": "e4be9897c397d88e8a7024e7fb72882f62d8b09e5094e1a0b583440ae37f947b"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-433f01e65f058c15.rlib": {
+        "mtime_ns": 1791034889478335200,
+        "sha256": "f1be90723c44161783044effd235792a15c1af5585b0cb75a0552f82bd02df8f"
+      }
+    },
+    "config_edit_to_http_ms": 625.5543689999286,
+    "config_artifacts_after": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-90a645e0dab59ed3.rlib": {
+        "mtime_ns": 1791034889333065200,
+        "sha256": "e4be9897c397d88e8a7024e7fb72882f62d8b09e5094e1a0b583440ae37f947b"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-433f01e65f058c15.rlib": {
+        "mtime_ns": 1791034889478335200,
+        "sha256": "f1be90723c44161783044effd235792a15c1af5585b0cb75a0552f82bd02df8f"
+      }
+    },
+    "config_unchanged_artifacts": true,
+    "config_compiling_lines": [],
+    "config_feedback": {
+      "schema": "lenso.dev-feedback.v1",
+      "change": "configuration",
+      "status": "ready",
+      "generation": 2,
+      "build_invoked": false,
+      "elapsed_ms": 621,
+      "dev_process_id": 38278,
+      "reason": "configuration re-resolved; fresh Host generation; execution artifacts reused",
+      "paths": [
+        "/workspace/lenso-devloop/examples/incremental-dev/plugins/example.greeting/default.toml"
+      ]
+    },
+    "rust_edit_to_http_ms": 6184.256980999862,
+    "rust_artifacts_after": {
+      ".lenso/host-cache/source/target/release/deps/libdevloop_health-90a645e0dab59ed3.rlib": {
+        "mtime_ns": 1791034889333065200,
+        "sha256": "e4be9897c397d88e8a7024e7fb72882f62d8b09e5094e1a0b583440ae37f947b"
+      },
+      ".lenso/host-cache/source/target/release/deps/libdevloop_greeting-433f01e65f058c15.rlib": {
+        "mtime_ns": 1791034902226590200,
+        "sha256": "c6b87662cfc09032d5bc27220754864950b6dd81670811f52c9f3a67d7c01a1d"
+      }
+    },
+    "rust_compiling_lines": [
+      "Compiling devloop-greeting v0.1.0 (/workspace/lenso-devloop/examples/incremental-dev)",
+      "Compiling lenso-generated-local-host v0.0.0 (/workspace/lenso-devloop/examples/incremental-dev/.lenso/host-cache/source)"
+    ]
+  },
+  "console_frontend": {
+    "data_source": "Console Shell mock data; real Vite and Chromium; separate real native Greeting/Health App",
+    "edit_to_browser_ms": 2311.0225689999997,
+    "frontend_controller_feedback": {
+      "schema": "lenso.dev-feedback.v1",
+      "change": "frontend",
+      "status": "delegated",
+      "generation": 1,
+      "build_invoked": false,
+      "elapsed_ms": 150,
+      "dev_process_id": 47528,
+      "reason": "frontend dev server owns reload; no Host build or restart",
+      "paths": [
+        "/workspace/scratch/devloop-app/frontend/probe.ts"
+      ]
+    },
+    "dev_pid_unchanged": true,
+    "artifacts_unchanged": true,
+    "backend_handshake_status": 200,
+    "backend_handshake_url": "http://127.0.0.1:44915/",
+    "artifacts_before": {
+      "libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ms": 1791035594132.3733,
+        "sha256": "33b9204f8f1cdff836045301da733be055a3c2fa6fb062f9aaa54332bb8c43d2"
+      },
+      "libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ms": 1791033637952.5913,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    },
+    "artifacts_after": {
+      "libdevloop_greeting-94408b1e2f936f65.rlib": {
+        "mtime_ms": 1791035594132.3733,
+        "sha256": "33b9204f8f1cdff836045301da733be055a3c2fa6fb062f9aaa54332bb8c43d2"
+      },
+      "libdevloop_health-467ca29605ed2437.rlib": {
+        "mtime_ms": 1791033637952.5913,
+        "sha256": "ad35af2d8abe9bee6508050f2999c3c724f10ed4119df19b66f3fe88033aa1bb"
+      }
+    }
+  }
+}

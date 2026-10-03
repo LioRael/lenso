@@ -370,6 +370,23 @@ contract; the handshake is not a general browser-flow test.
 
 ## Supported local runtime profile
 
+App dev coalesces complete event batches before selecting work. Rust source
+edits retain Cargo's package cache and necessary Host relinking. Existing
+Instance TOML edits can reuse the exact locked execution packaging when source,
+Instance membership and resources are unchanged and no selected convention
+compiler consumes configuration. Resolution and readiness still precede a fresh
+Host generation; configuration is not patched into live native factories.
+Invalid configuration keeps the previous preview. Structural, contract,
+dependency and resource edits use the normal build path. TS implementation
+events are classified separately, but still use source build/restart until a
+targeted execution-packaging path is available.
+
+The read-only MCP `project_dev_feedback` tool returns the most recent dev change,
+build invocation, outcome and measured elapsed time. `delegated` means the
+explicit frontend server owns reload, not that browser HMR was measured. See
+the [two-package dev example](../../../examples/incremental-dev/README.md) for a
+real HTTP timing probe and unaffected artifact evidence.
+
 | Source | Build/runtime path | Boundary |
 | --- | --- | --- |
 | Rust native linked | Generated Host + normal SDK factories | Cargo required at build time |
