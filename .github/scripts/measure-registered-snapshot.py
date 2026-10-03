@@ -22,7 +22,14 @@ def run(command, checkout, log, env):
             stdout, stderr = process.communicate(timeout=5)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL)
-            stdout, stderr = process.communicate()
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.stdout.close()
+                process.stderr.close()
+                process.wait(timeout=5)
+                log.write_text("deadline exceeded; descendants retained output pipes\n")
+                raise RuntimeError(f"cleanup exceeded deadline: see {log}") from None
         log.write_text(stdout + stderr)
         raise RuntimeError(f"command exceeded deadline: see {log}") from None
     log.write_text(stdout + stderr)

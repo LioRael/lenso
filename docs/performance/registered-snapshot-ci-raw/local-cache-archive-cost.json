@@ -1,0 +1,6 @@
+{
+  "boundary": "local default-zstd tar only; no network or GitHub Actions archive-equivalence claim",
+  "archive_bytes": 74743327,
+  "pack_seconds": 1.1441358279998894,
+  "extract_seconds": 0.40196465799999714
+}

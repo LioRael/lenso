@@ -78,6 +78,7 @@ A real negative probe changed the fresh consumer by adding `compile_error!`.
 The same warm target returned Cargo 101 and the intended compiler error; old
 passing artifacts did not qualify changed source. Raw reproduction, initial
 samples and the negative probe are under `registered-snapshot-ci-raw/`.
+Log copies normalize trailing blank lines for repository whitespace checks.
 
 The child target initially occupied about 274MiB on this machine. Actions archive
 transfer and extraction are not included in local process measurements. The first
@@ -87,6 +88,9 @@ critical-path savings, including additional cache transfer. The 12.67s local
 component reduction is **not** an established end-to-end GitHub CI reduction.
 No reduction is claimed for Cargo's outer workspace build, Host generation, SQL,
 real-provider qualification, or other retained E2E startup.
+An additional local default-zstd tar probe produced a 74,743,327-byte archive,
+taking 1.144s to pack and 0.402s to extract. This excludes network and does not
+establish equivalence with Actions' archive settings or total cache overhead.
 
 Reproduce with independent clean worktrees and a new build root:
 
