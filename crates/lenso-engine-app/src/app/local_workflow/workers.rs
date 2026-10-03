@@ -78,9 +78,10 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
     );
     let root = fs::canonicalize(&args.root).context("locate source App")?;
     let source_digest = super::super::local_host::input_digest(&root)?;
-    let report = discover(&root)?;
+    let acquired = lenso_engine::discovery::DiscoverySession::new(&root)?;
+    let report = lenso_app_authoring::discovery::discover_in(&root, &acquired)?;
     super::super::convention_authoring::linked_catalog::verify_sources(&root, &report.candidates)?;
-    let conventions = lenso_app_authoring::discovery::conventions::plan(&report)?;
+    let conventions = lenso_app_authoring::discovery::conventions::plan_in(&report, &acquired)?;
     ensure!(
         conventions.compilations.is_empty(),
         "Workers App target cannot run selected convention compilers; remove the convention or build a verified Workers Component Bundle first"
@@ -127,7 +128,7 @@ pub(super) fn build(args: BuildArgs) -> anyhow::Result<()> {
     fs::create_dir_all(stage.path().join("components"))?;
     let plugin_root = root.join("plugins");
     if plugin_root.try_exists()? {
-        super::super::assemble::copy_root(&plugin_root, &stage.path().join("plugins"), 0, &mut 0)?;
+        super::super::source_intent::project(&root, &stage.path().join("plugins"), &acquired)?;
     }
 
     let policy = ImplementationPolicy {

@@ -7,13 +7,27 @@ pub(super) fn read(
     root: &Path,
     inputs: &lenso_engine::discovery::DiscoverySession,
 ) -> anyhow::Result<Vec<Candidate>> {
+    inspect(root, inputs).map(|(candidates, _)| candidates)
+}
+
+pub(super) fn source_files(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<BTreeSet<PathBuf>> {
+    inspect(root, inputs).map(|(_, files)| files)
+}
+
+fn inspect(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<(Vec<Candidate>, BTreeSet<PathBuf>)> {
     let manifest = root.join("Cargo.toml");
     if !manifest.is_file() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), BTreeSet::new()));
     }
     let value = document_in(&manifest, inputs)?;
     if value.get("package").is_none() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), BTreeSet::new()));
     }
     let entry = root.join(
         value
@@ -22,21 +36,22 @@ pub(super) fn read(
             .unwrap_or("src/lib.rs"),
     );
     if !entry.is_file() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), BTreeSet::new()));
     }
     let mut declarations = Vec::new();
     let mut visited = Traversal {
         active: BTreeSet::new(),
+        files: BTreeSet::new(),
         visits: 0,
         inputs: inputs.scope(root)?,
     };
     walk(root, &entry, &[], &mut visited, &mut declarations)?;
     if declarations.is_empty() {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), BTreeSet::new()));
     }
     let version = cargo_version_in(root, &value, inputs)?;
     validate_release_version(&version)?;
-    declarations
+    let candidates = declarations
         .into_iter()
         .map(|(id, link)| {
             classify_existing_plugin_id(&id)?;
@@ -57,11 +72,13 @@ pub(super) fn read(
                 evidence: "rust_source_identity".into(),
             })
         })
-        .collect()
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    Ok((candidates, visited.files))
 }
 
 struct Traversal {
     active: BTreeSet<PathBuf>,
+    files: BTreeSet<PathBuf>,
     visits: usize,
     inputs: lenso_engine::discovery::DiscoverySession,
 }
@@ -87,6 +104,7 @@ fn walk(
     let source = super::super::read_metadata_in(&file, &visited.inputs)?;
     let parsed = syn::parse_file(&source)
         .with_context(|| format!("parse Rust Plugin source {}", file.display()))?;
+    visited.files.insert(file.clone());
     let directory = if modules.is_empty()
         || file
             .file_name()

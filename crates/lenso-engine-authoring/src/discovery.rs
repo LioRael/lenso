@@ -106,6 +106,17 @@ pub fn discover(root: &Path) -> anyhow::Result<DiscoveryReport> {
     discover_in(root, &lenso_engine::discovery::DiscoverySession::new(root)?)
 }
 
+/// Exact regular Rust module inputs of the root package's source-declared Plugins.
+/// Reuses discovery's bounded public, unconditional module traversal. Filenames
+/// alone confer no source status, and packages without declarations return none.
+/// This is build projection input, never an exception to runtime Root validation.
+pub fn source_files_in(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<BTreeSet<PathBuf>> {
+    project::source_files_in(root, inputs)
+}
+
 /// Read-only Plugin discovery sharing a caller's explicitly selected inputs.
 pub fn discover_in(
     root: &Path,

@@ -121,6 +121,18 @@ fn source_discovery_follows_library_module_paths_and_ignores_non_declarations() 
         report.candidates[0].native_link.as_deref(),
         Some("health::link_plugin")
     );
+    let files = source_files_in(
+        root.path(),
+        &lenso_engine::discovery::DiscoverySession::new(root.path()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        files,
+        ["src/lib.rs", "plugins/health/plugin.rs", "src/ordinary.rs"]
+            .map(|path| fs::canonicalize(root.path().join(path)).unwrap())
+            .into_iter()
+            .collect()
+    );
     write(
         root.path(),
         "plugins/health/plugin.rs",

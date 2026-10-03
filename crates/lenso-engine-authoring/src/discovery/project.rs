@@ -97,6 +97,13 @@ use std::{collections::BTreeSet, fs, path::Path};
 
 mod rust_source;
 
+pub(super) fn source_files_in(
+    root: &Path,
+    inputs: &lenso_engine::discovery::DiscoverySession,
+) -> anyhow::Result<BTreeSet<std::path::PathBuf>> {
+    rust_source::source_files(root, inputs)
+}
+
 pub(super) fn read_all_in(
     root: &Path,
     role: SourceRole,

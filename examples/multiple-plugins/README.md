@@ -25,3 +25,11 @@ running Cargo or build scripts; private and conditional modules, tests,
 examples and binaries are outside this default library surface. Feature-gated
 Plugins require a custom Host. Existing package metadata remains the fallback
 for single-Plugin libraries. Custom CLI/Console/Agent conventions are unchanged.
+
+Health keeps its source at `plugins/example.health/plugin.rs` beside its
+`default.toml` selection. A source App build projects only the exact discovered
+Rust module files out of the runtime Plugin Root; unknown files still fail
+validation. The built `intent/plugins/` contains configuration and resources,
+and a prepared Host still rejects source files placed into its runtime Root.
+The conventional `app/` source projects and optional shared roots remain valid;
+this layout needs no additional source-directory configuration.

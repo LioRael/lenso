@@ -183,7 +183,7 @@ pub(super) fn assemble_in(
     )?;
     let root_intent = root.join("plugins");
     if root_intent.try_exists()? {
-        copy_root(&root_intent, &stage.path().join("plugins"), 0, &mut 0)?;
+        super::source_intent::project(&root, &stage.path().join("plugins"), &acquired)?;
     }
     let mut inputs = Vec::new();
     let mut inventory = Vec::new();

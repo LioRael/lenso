@@ -49,6 +49,7 @@ mod preset;
 pub(crate) use local_workflow::prepare_web_starter;
 pub use preset::{AppProject, PreparedAppProject};
 mod signed_catalog;
+mod source_intent;
 mod target_closure;
 mod tool_cli;
 pub use signed_catalog::{PortableCatalogPage, PortableCatalogQuery};
