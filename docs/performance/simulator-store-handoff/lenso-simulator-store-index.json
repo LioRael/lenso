@@ -1,0 +1,95 @@
+{
+  "repository": "https://github.com/LioRael/lenso",
+  "base_sha": "c28dce56cfffe639523b6ef07f797943a431ace0",
+  "measured_source_sha": "91750a046985e52c48266b0a271f2bf45bb90019",
+  "candidate_sha": "255b75b805854a9537366cf01f4fb8f4c7a79812",
+  "candidate_ref": "refs/heads/candidate/simulator-store-facade/20261003-1",
+  "candidate_ref_scope": "local bundle only; not pushed; no GitHub CI proof for second slice",
+  "first_slice": {
+    "main_sha": "c28dce56cfffe639523b6ef07f797943a431ace0",
+    "ci_run": 37102233391,
+    "quality_job": 111143881314,
+    "quality": "success",
+    "bun": "success",
+    "integration": "landed by Core owner; main read back at c28"
+  },
+  "review": {
+    "source": "PASS, separate GPT-6.1 Sol high read-only review; no remaining blockers",
+    "candidate": "PASS for exact 255b75b805854a9537366cf01f4fb8f4c7a79812; separate read-only GPT-6.1 Sol high review; source-to-candidate changes are documentation only; reviewer did not rerun tests"
+  },
+  "local_validation": {
+    "unit": 19,
+    "durable_fault": 5,
+    "replay_and_negative": 3,
+    "receipt_diagnostics": 9,
+    "doctest": 1,
+    "real_providers": [
+      "PostgreSQL 17.6",
+      "Miniflare 5.20260926.1-alpha / workerd 1.20260926.1"
+    ],
+    "fresh_trace_replay": "passed at final exact candidate; fresh captures under raw/fresh",
+    "clippy": "all-target package -D warnings passed",
+    "format_and_scripts": "passed"
+  },
+  "files": {
+    "lenso-simulator-store-slice.patch": {
+      "sha256": "078039b906f6b97312e142b8f586634d622769b81daa8f4af063d7d263f9b06a",
+      "bytes": 136016
+    },
+    "lenso-simulator-store-slice.bundle": {
+      "sha256": "30c9965cb5dfb29dc5d576666dd930fed8486e9a5cdd8cbf9b52ab9225753217",
+      "bytes": 35843
+    },
+    "lenso-simulator-store-evidence.tar.gz": {
+      "sha256": "bd546e91cb1433b9e4c0b1dc48bbcf1a681c6876d14b98ce094b7cb6041f4984",
+      "bytes": 28720
+    },
+    "lenso-simulator-store-review.txt": {
+      "sha256": "ec5bff814200b40d7545f57d44f3df2b51993bdb6a566ee77b7d394da7895233",
+      "bytes": 1247
+    }
+  },
+  "limits": [
+    "test-owned Store fixture, not production adapter qualification",
+    "PG pool reconnection, not server restart",
+    "Cloudflare network not established",
+    "four timing seeds, no concurrent schedule search or shrinking",
+    "no demonstrated default CI acceleration; existing slow gates retained",
+    "Core owner coordinates future candidate CI/landing; no publishing/deployment"
+  ],
+  "summary": {
+    "source_sha": "91750a046985e52c48266b0a271f2bf45bb90019",
+    "cold_compile_seconds": 20.641325694999978,
+    "warm_compile_seconds": 0.1922724749997542,
+    "samples": {
+      "postgres": {
+        "first_process_seconds": 0.11982676199977504,
+        "repeated_process_seconds": [
+          0.13150710799982335,
+          0.1304493980001098,
+          0.13819586199997502
+        ],
+        "repeated_median_seconds": 0.13150710799982335
+      },
+      "d1": {
+        "first_process_seconds": 5.564514186999986,
+        "repeated_process_seconds": [
+          5.590669500000331,
+          5.577311086999998,
+          5.6515778309999405
+        ],
+        "repeated_median_seconds": 5.590669500000331
+      },
+      "replay": {
+        "first_process_seconds": 0.009687636999842653,
+        "repeated_process_seconds": [
+          0.008565861000079167,
+          0.006347104999804287,
+          0.00715867500002787
+        ],
+        "repeated_median_seconds": 0.00715867500002787
+      }
+    },
+    "comparison": "replay includes both providers' six-case transcripts; each real sample runs one provider's six-case corpus"
+  }
+}
