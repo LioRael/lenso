@@ -13,3 +13,12 @@ serde.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+bytes = "1"
+http = "1"
+lenso-app-plan.workspace = true
+lenso-app-authoring = { package = "lenso-engine-authoring", path = "../../../crates/lenso-engine-authoring" }
+lenso-native-adapter.workspace = true
+lenso-web-ingress-plugin = { path = "../../../crates/lenso-web-ingress-plugin", default-features = false }
+serde_json.workspace = true

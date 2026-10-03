@@ -218,3 +218,51 @@ pub fn typed(value: fixture_facade::Token) -> owner::Token { value }
     assert_eq!(recorded.as_array().unwrap().len(), 1);
     assert_eq!(recorded[0]["dependency"]["default-features"], false);
 }
+
+// This protects a real Cargo failure: two generated packages with the same
+// name/version reused the other App's build-script cfg in a shared target dir.
+#[test]
+fn shared_cargo_target_does_not_mix_generated_app_adapter_cfgs() {
+    let fixture = tempfile::tempdir().unwrap();
+    let shared = fixture.path().join("target");
+    let roots = [fixture.path().join("one"), fixture.path().join("two")];
+    for (index, root) in roots.iter().enumerate() {
+        fs::create_dir_all(root.join("src")).unwrap();
+        let name = generated_host_package(&root.canonicalize().unwrap());
+        fs::write(
+            root.join("Cargo.toml"),
+            format!("[package]\nname={name:?}\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n"),
+        )
+        .unwrap();
+        fs::write(
+            root.join("src/main.rs"),
+            "fn main() { println!(\"{}\", cfg!(generated_bun_adapter)); }\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("build.rs"),
+            generated_host_build_script(
+                AdapterSet {
+                    bun: index == 0,
+                    ..AdapterSet::default()
+                },
+                "modern",
+            ),
+        )
+        .unwrap();
+    }
+    for (index, expected) in [(0, "true"), (1, "false"), (0, "true")] {
+        let output = super::super::cargo_command()
+            .args(["run", "--quiet", "--offline", "--manifest-path"])
+            .arg(roots[index].join("Cargo.toml"))
+            .env("CARGO_TARGET_DIR", &shared)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
+    }
+}

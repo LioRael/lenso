@@ -11,6 +11,8 @@ if (!manifest.exports?.["./authoring"] || !manifest.exports?.["./targets"])
 const file = path.join(root, "package.json");
 const app = JSON.parse(fs.readFileSync(file, "utf8"));
 app.dependencies["@lenso/bun-plugin"] = "file:" + path.relative(root, sdk);
+const contracts = fs.realpathSync(path.join(process.argv[2], "packages/lenso-contract-runtime"));
+app.dependencies["@lenso/contract-runtime"] = "file:" + path.relative(root, contracts);
 fs.writeFileSync(file, JSON.stringify(app, null, 2) + "\n");
 const result = spawnSync("bun", ["install"], { cwd: root, stdio: "inherit" });
 process.exit(result.status ?? 1);

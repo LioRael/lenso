@@ -1,0 +1,3 @@
+database_env = "LENSO_AUTH_DATABASE_URL"
+signing_env = "LENSO_AUTH_SIGNING_SECRET"
+pepper_env = "LENSO_AUTH_TOKEN_PEPPER"

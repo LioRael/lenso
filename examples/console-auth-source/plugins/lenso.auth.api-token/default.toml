@@ -1,0 +1,7 @@
+schema = "source_assembly"
+issuer = "auth.api-token"
+assertion_public_key = "csVHbgpU8IVIpH6wOz_f585Q1lBdzZfEUUQoJBLRGqI"
+database_url_secret = "fixture/database"
+assertion_signing_key_secret = "fixture/signing"
+token_pepper_secret = "fixture/pepper"
+assertion_ttl_seconds = 300

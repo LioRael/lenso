@@ -1,0 +1,17 @@
+liveness_readiness_routes = true
+agent_home = "fixture-agent"
+agent_configuration_store = "fixture-agent/configuration.sqlite3"
+allowed_tools = []
+connected_agent_label = "Lenso Agent"
+connected_agent_plugin_configuration = false
+connected_agent_plugin_lifecycle = false
+connected_agent_auth_connections = false
+connected_agent_url = ""
+console_agent_url = ""
+managed_app_root = "."
+web_root = "REPLACE_WITH_CONSOLE_SHELL_ROOT"
+managed_apps = []
+require_user_session = true
+administrator_subjects = ["source-demo"]
+member_workspace_ids = []
+[trusted_plugin_bundles]

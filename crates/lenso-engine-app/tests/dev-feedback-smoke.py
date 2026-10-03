@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import signal
@@ -67,9 +68,10 @@ def main():
         return sum("Watching " in line for line in lines)
 
     def artifacts():
-        directory = root / ".lenso/host-cache/source/target/release/deps"
+        target = os.environ.get("CARGO_TARGET_DIR")
+        directory = (Path(target).resolve() if target else root / ".lenso/host-cache/source/target") / "release/deps"
         return {
-            str(path.relative_to(root)): {
+            str(path.relative_to(root) if path.is_relative_to(root) else path): {
                 "mtime_ns": path.stat().st_mtime_ns,
                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             }

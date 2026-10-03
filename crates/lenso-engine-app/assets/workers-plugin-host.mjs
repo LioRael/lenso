@@ -2,12 +2,13 @@
 import { prepareWorkersRequestPlugin } from "./runtime/plugin.mjs";
 // LENSO_JS_DEFINITIONS
 
-function context(scope, cancelled, budget, requestId) {
+function context(scope, cancelled, budget, requestId, kernelContextKey = requestId) {
   const controller = new AbortController();
   const deadline = Date.now() + budget;
   const timer = setTimeout(() => controller.abort(), budget);
   return {
     requestId,
+    kernelContextKey,
     signal: controller.signal,
     get cancelled() {
       if (scope.invalidated || controller.signal.aborted || cancelled()) {
@@ -17,14 +18,16 @@ function context(scope, cancelled, budget, requestId) {
       return false;
     },
     remainingTimeoutMs: () => Math.max(0, deadline - Date.now()),
+    abort: () => controller.abort(),
     close: () => clearTimeout(timer),
   };
 }
 
 export function constructPlugin(scope, options, cancelled, invoke, budget) {
-  return scope.run(async () => {
+  return scope.operation(() => {
     const admitted = JSON.parse(options);
     const lifecycle = context(scope, cancelled, budget, "construct");
+    return { abort: () => lifecycle.abort(), promise: (async () => {
     try {
       const dependencies = Object.fromEntries(admitted.requirements.map(id => [id, []]));
       for (const binding of admitted.bindings) {
@@ -51,19 +54,22 @@ export function constructPlugin(scope, options, cancelled, invoke, budget) {
         dependencies, configuration: admitted.configuration, lifecycle,
       });
     } finally { lifecycle.close(); }
-  });
+    })() };
+  }).promise;
 }
 
-export function invokePlugin(scope, plugin, capability, operation, payload, cancelled, budget, requestId) {
-  return scope.run(async () => {
-    const call = context(scope, cancelled, budget, requestId);
+export function invokePlugin(scope, plugin, capability, operation, payload, cancelled, budget, requestId, kernelContextKey) {
+  return scope.operation(() => {
+    const call = context(scope, cancelled, budget, requestId, kernelContextKey);
+    return { abort: () => call.abort(), promise: (async () => {
     try {
       // Dependency callbacks use this invocation's Kernel context, never a
       // fresh JS route or the construction scope. The route closure delegates
       // through the current call token retained by the generation.
       return JSON.stringify(await plugin.invokeRequest(capability, operation, call, JSON.parse(payload)));
     } finally { call.close(); }
-  });
+    })() };
+  }).promise;
 }
 
 export function stopPlugin(scope, plugin, cancelled, budget) {

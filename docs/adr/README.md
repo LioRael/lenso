@@ -116,3 +116,9 @@ active vNext requirements.
 
 Do not renumber, rewrite, or delete a superseded ADR. Record a new decision and
 link the relationship when vNext changes.
+
+[`0079-use-one-plugin-authoring-model-and-target-lowering.md`](0079-use-one-plugin-authoring-model-and-target-lowering.md)
+retains Plugin as the sole behavior abstraction, treats Source/Dependency/Portable
+as origins, and separates common App resolution from target validation, resource
+binding and execution lowering. It bounds local feedback and target claims to
+actual composed-App evidence.

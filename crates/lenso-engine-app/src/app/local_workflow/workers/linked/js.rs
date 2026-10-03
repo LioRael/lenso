@@ -105,7 +105,8 @@ pub(super) fn compile(
         }))?;
         // Resolve from the declared source package, not the CLI's dependencies.
         let script = format!(
-            "import {{ createRequire }} from 'node:module'; import {{ pathToFileURL }} from 'node:url'; const require = createRequire(process.cwd() + '/package.json'); const api = await import(pathToFileURL(require.resolve('@lenso/bun-plugin/targets')).href); await api.buildPluginTarget({compiler});"
+            "import {{ createRequire }} from 'node:module'; import {{ pathToFileURL }} from 'node:url'; const require = createRequire(process.cwd() + '/package.json'); const api = await import(pathToFileURL(require.resolve('@lenso/bun-plugin/targets')).href); await api.buildPluginTarget({compiler}); const {{default: definition}} = await import(pathToFileURL({output_literal}).href); const descriptors = [...definition.providers.map(value => value.descriptor), ...Object.values(definition.dependencies ?? {{}}).map(value => value.contract?.descriptor ?? value.descriptor)]; if (descriptors.some(value => !value || (value.stream_operations?.length ?? 0) || (value.event_operations?.length ?? 0))) throw new Error('Core Workers JS Request adapter rejects Stream/Event before Native assembly');",
+            output_literal = serde_json::to_string(&output)?
         );
         let status = crate::app::build_command("bun")
             .current_dir(&candidate.project)

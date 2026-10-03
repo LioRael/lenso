@@ -790,7 +790,10 @@ pub(super) fn generate_in(
         &git_lenso_source,
         local_crates.is_some(),
     )?;
-    let manifest = json!({"package":{"name":"lenso-generated-local-host", "version":"0.0.0", "edition":"2024"}, "workspace":{}, "dependencies": dependencies, "patch":{"crates-io":patches}});
+    // Cargo shares build-script output by package identity in a common target
+    // directory. Distinct generated Apps must not reuse another App's cfgs.
+    let name = generated_host_package(&cache.canonicalize()?);
+    let manifest = json!({"package":{"name":name, "version":"0.0.0", "edition":"2024", "autobins":false}, "bin":[{"name":"lenso-generated-local-host", "path":"src/main.rs"}], "workspace":{}, "dependencies": dependencies, "patch":{"crates-io":patches}});
     write_generated_host_file(
         &generated.join("Cargo.toml"),
         toml::to_string_pretty(&manifest)?.as_bytes(),
@@ -1834,6 +1837,11 @@ pub(super) fn digest_text(value: &str) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn generated_host_package(cache: &Path) -> String {
+    let identity = hex::encode(Sha256::digest(cache.as_os_str().as_encoded_bytes()));
+    format!("lenso-generated-local-host-{}", &identity[..16])
 }
 
 fn generated_host_build_script(adapters: AdapterSet, cohort: &str) -> String {

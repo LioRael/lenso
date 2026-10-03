@@ -3024,11 +3024,18 @@ dependencies = [
 name = "lenso-source-first-instances"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "http",
  "lenso",
+ "lenso-app-plan",
  "lenso-capability-http-endpoint",
+ "lenso-engine-authoring",
  "lenso-kernel",
+ "lenso-native-adapter",
  "lenso-onboarding-metadata-contract",
+ "lenso-web-ingress-plugin",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

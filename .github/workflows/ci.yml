@@ -116,14 +116,15 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: LioRael/lenso-js
-          ref: f0ea1bd4254dfecd68dbbe7a4c108e7ef81e3e2a
+          ref: b6371aebfdf0b1a7056e0121ab6d0e7cb5206b73
           path: lenso-js
           persist-credentials: false
       - name: Verify JavaScript fixture revision
-        run: test "$(git -C lenso-js rev-parse HEAD)" = f0ea1bd4254dfecd68dbbe7a4c108e7ef81e3e2a
+        run: test "$(git -C lenso-js rev-parse HEAD)" = b6371aebfdf0b1a7056e0121ab6d0e7cb5206b73
       - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
         with:
           toolchain: 1.94.0
+          targets: wasm32-unknown-unknown
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
@@ -137,3 +138,9 @@ jobs:
       - name: Run shared Bun conformance gates
         working-directory: lenso
         run: bash .github/scripts/check.sh bun
+      - name: Qualify one resolved mixed source App across Native and Workers
+        working-directory: lenso
+        run: |
+          cargo install --locked wasm-bindgen-cli --version 0.2.127 --root .lenso/ci-tools
+          npm install --prefix .lenso/ci-tools --ignore-scripts workerd@1.20260926.1
+          bash .github/scripts/check-source-app.sh

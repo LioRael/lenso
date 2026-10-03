@@ -55,3 +55,18 @@ source availability requires explicit Instance selection. Default development
 does not require `plugin pack`, a frozen release, or installation. Bundles and
 exact Artifact identities remain the distribution/portable boundary. Existing
 single-Plugin package metadata and custom Hosts retain their existing behavior.
+
+The same built App also has a deterministic Simulated entry. It reads the same
+CLI distribution authority and Root through `resolve_runtime_app`, uses the
+same linked source Plugins, and starts Kernel with that exact Plan. Only the
+Driver and the socket-free event Ingress entry differ; no routes, configs,
+Instances, permissions or business bindings are rebuilt in the test:
+
+```sh
+LENSO_SOURCE_INSTANCE_DISTRIBUTION=/absolute/dist \
+  cargo test -p lenso-source-first-instances --test simulated -- --ignored
+```
+
+This exercises the exact Rust App in Native, Workers and Simulated. The mixed
+TypeScript example is qualified in Native and Workers; its process Adapter is
+not claimed as a deterministic Simulated combination.

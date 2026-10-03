@@ -7,7 +7,7 @@ use lenso_kernel::{
 use lenso_runtime_codec::{
     JsonCapabilityCodec, JsonHostImports, JsonInvocationOutcome, JsonRequestTransport,
 };
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc, time::Duration};
+use std::{cell::{Cell, RefCell}, collections::BTreeMap, rc::Rc, time::Duration};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::{JsFuture, future_to_promise};
 
@@ -35,6 +35,7 @@ extern "C" {
         cancelled: &JsValue,
         budget: f64,
         request_id: &str,
+        context_key: &str,
     ) -> Result<js_sys::Promise, JsValue>;
     #[wasm_bindgen(catch, js_name = stopPlugin)]
     fn stop_plugin(
@@ -88,6 +89,7 @@ impl ExecutionAdapter for WorkersJsAdapter {
                 codecs,
                 imports: Rc::new(imports),
                 contexts: Rc::new(RefCell::new(BTreeMap::new())),
+                next_invocation: Cell::new(0),
                 plugin: RefCell::new(None),
                 callback: RefCell::new(None),
             });
@@ -112,6 +114,7 @@ struct Generation {
     codecs: Vec<Rc<dyn JsonCapabilityCodec>>,
     imports: Rc<JsonHostImports>,
     contexts: Rc<RefCell<BTreeMap<String, InvocationContext>>>,
+    next_invocation: Cell<u64>,
     plugin: RefCell<Option<JsValue>>,
     callback: RefCell<Option<ImportCallback>>,
 }
@@ -146,7 +149,7 @@ impl Generation {
         let contexts = self.contexts.clone();
         let imports = self.imports.clone();
         Closure::new(move |binding, operation, payload: String, call: JsValue| {
-            let context = js_sys::Reflect::get(&call, &JsValue::from_str("requestId"))
+            let context = js_sys::Reflect::get(&call, &JsValue::from_str("kernelContextKey"))
                 .ok()
                 .and_then(|v| v.as_string())
                 .and_then(|key| contexts.borrow().get(&key).cloned());
@@ -179,8 +182,15 @@ impl JsonRequestTransport for Generation {
             let budget = context
                 .remaining_budget()
                 .map_or(DEFAULT_BUDGET_MS, |d| d.as_secs_f64() * 1000.0);
-            let key = context.request_id().to_string();
-            let call = CallGuard::new(&self, key.clone(), context.clone());
+            // Correlation IDs intentionally survive nested Capability calls.
+            // Distinct invocations in this generation still need distinct
+            // authority entries, even when they share that correlation ID.
+            let sequence = self.next_invocation.get().checked_add(1)
+                .ok_or(RuntimeFailure::AdmissionClosed)?;
+            self.next_invocation.set(sequence);
+            let request_id = context.request_id().to_string();
+            let key = format!("{request_id}:{sequence}");
+            let call = CallGuard::new(&self, key, context.clone());
             let plugin = self
                 .plugin
                 .borrow()
@@ -194,7 +204,8 @@ impl JsonRequestTransport for Generation {
                 &request_json,
                 call.cancelled.as_ref(),
                 budget,
-                &key,
+                &request_id,
+                &call.key,
             )
             .map_err(failure)?;
             let value = JsFuture::from(promise).await.map_err(failure)?;

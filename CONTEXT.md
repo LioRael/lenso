@@ -105,6 +105,14 @@ are retired draft terms: attachment is a Slot concern, shared runtime resources
 are Plugins, and intent plus proposal are Desired State and Change Proposal. A
 separately running program is a host or an Execution Adapter concern.
 
+Under [ADR 0079](docs/adr/0079-use-one-plugin-authoring-model-and-target-lowering.md),
+local source, normal dependencies and portable artifacts share Plugin semantics.
+Ordinary authors use Plugin, Instance, Config, Dependency and Target; public
+Capabilities are added as needed. App resolution is shared, followed by explicit
+target support validation, resource binding and execution lowering. Private
+language modules need no separate Plugin identity, and specialized Plugins need
+only their required target/storage combinations.
+
 ## Hard invariants
 
 - Kernel executes only immutable Plan Snapshots. It may apply one validated

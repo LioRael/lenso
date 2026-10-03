@@ -1,0 +1,20 @@
+[package]
+name = "lenso-console-auth-source-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+lenso = "=0.5.29"
+lenso-kernel = "=0.3.12"
+lenso-capability-http-endpoint = "=0.3.7"
+lenso-capability-secrets = "=0.1.4"
+lenso-console-plugin = { git = "https://github.com/LioRael/lenso-console", rev = "ee75086aaa63c8038e24be984e459bfbce3507ce" }
+lenso-auth-api-token-plugin = { git = "https://github.com/LioRael/lenso-auth-plugin", rev = "699bd9621bc2e7f8581f6c0ff0bcbfcb6e3c2167" }
+lenso-auth-sdk = { git = "https://github.com/LioRael/lenso-auth-plugin", rev = "699bd9621bc2e7f8581f6c0ff0bcbfcb6e3c2167" }
+lenso-capability-auth = { git = "https://github.com/LioRael/lenso-auth-plugin", rev = "699bd9621bc2e7f8581f6c0ff0bcbfcb6e3c2167" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+time = "0.3"

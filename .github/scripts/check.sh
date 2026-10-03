@@ -27,7 +27,7 @@ wasm() {
 }
 verify_js_revision() {
   : "${LENSO_JS_ROOT:?Set LENSO_JS_ROOT to the pinned lenso-js fixture checkout}"
-  local expected_js_revision=f0ea1bd4254dfecd68dbbe7a4c108e7ef81e3e2a
+  local expected_js_revision=b6371aebfdf0b1a7056e0121ab6d0e7cb5206b73
   local actual_js_revision
   actual_js_revision="$(git -C "$LENSO_JS_ROOT" rev-parse HEAD)" || return
   if [[ "$actual_js_revision" != "$expected_js_revision" ]]; then
@@ -44,7 +44,7 @@ bun_commands() {
   (cd "$LENSO_JS_ROOT"; run bun install --frozen-lockfile; run bun run build)
   run cargo test --locked -p lenso-bun-adapter --features js-integration --test authoring_v2 --test bun_cross_runtime --test process_v1_bootstrap -- --include-ignored --test-threads=1
   run cargo test --locked -p lenso-engine-app --lib app::local_workflow::workers::linked::runtime_tests -- --ignored
-  run node --test crates/lenso-engine-app/tests/plugin-build-symbols.test.mjs
+  run node --test crates/lenso-engine-app/tests/plugin-build-symbols.test.mjs crates/lenso-engine-app/tests/workers-plugin-host.test.mjs
 }
 check_bun() {
   bun_inputs
