@@ -1,0 +1,210 @@
+docs/performance/web-audit-workerd-canonical-20261003-hashes.json
+  h_9d56aba080c170 1-788
+docs/performance/web-audit-workerd-canonical-20261003-raw/allocation/runner.stdout
+  h_9d56aba080c170 1-95
+docs/performance/web-audit-workerd-canonical-20261003-raw/allocation/status.json
+  h_9d56aba080c170 1-83
+docs/performance/web-audit-workerd-canonical-20261003-raw/build/artifact-manifest.json
+  h_9d56aba080c170 1-142
+docs/performance/web-audit-workerd-canonical-20261003-raw/build/build.stderr
+  h_9d56aba080c170 1-401
+docs/performance/web-audit-workerd-canonical-20261003-raw/build/build.stdout
+  h_9d56aba080c170 1-7
+docs/performance/web-audit-workerd-canonical-20261003-raw/build/status.json
+  h_9d56aba080c170 1-44
+docs/performance/web-audit-workerd-canonical-20261003-raw/corpus-after/corpus.json
+  h_9d56aba080c170 1-46
+docs/performance/web-audit-workerd-canonical-20261003-raw/corpus-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/corpus-after/status.json
+  h_9d56aba080c170 1-62
+docs/performance/web-audit-workerd-canonical-20261003-raw/corpus-before/corpus.json
+  h_9d56aba080c170 1-46
+docs/performance/web-audit-workerd-canonical-20261003-raw/corpus-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/corpus-before/status.json
+  h_9d56aba080c170 1-63
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/analysis.json
+  h_9d56aba080c170 1-344
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/environment.json
+  h_9d56aba080c170 1-8
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-1-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-0-8-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-1-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-1-8-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-1-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-2-8-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-1-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-3-8-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-1-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-4-8-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-1-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-5-8-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-1-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-after/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-after/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-before/case.json
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/group-6-8-before/server.stderr
+  h_9d56aba080c170 1-3
+docs/performance/web-audit-workerd-canonical-20261003-raw/measurement/status.json
+  h_9d56aba080c170 1-1266
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/jco-version.stdout
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/lock-canonicalize.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/lock-canonicalize.stdout
+  h_9d56aba080c170 1-2
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/locked-ci.json
+  h_9d56aba080c170 1-16
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/locked-ci.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/locked-ci.stdout
+  h_9d56aba080c170 1-2
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/measurement-ready.json
+  h_9d56aba080c170 1-72
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/npm-install.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/npm-install.stdout
+  h_9d56aba080c170 1-2
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/npm-prefix-original-package-lock.json
+  h_9d56aba080c170 1-3664
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/npm-tree.stderr
+  h_9d56aba080c170 1
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/npm-tree.stdout
+  h_9d56aba080c170 1-1133
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/package-lock.json
+  h_9d56aba080c170 1-7225
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/package.json
+  h_9d56aba080c170 1-5
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/qualify-workerd.py
+  h_9d56aba080c170 1-99
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/status.json
+  h_9d56aba080c170 1-26
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/tarball-integrity-verification.json
+  h_9d56aba080c170 1-864
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/toolchain-lock-manifest.json
+  h_9d56aba080c170 1-28344
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/variants-manifest.json
+  h_9d56aba080c170 1-83
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/workerd-http-case.mjs
+  h_9d56aba080c170 1-67
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/workerd-paired.py
+  h_9d56aba080c170 1-150
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/workerd-preflight.json
+  h_9d56aba080c170 1-35
+docs/performance/web-audit-workerd-canonical-20261003-raw/setup/workerd-tools-manifest.json
+  h_9d56aba080c170 1-8278
+docs/performance/web-audit-workerd-canonical-results-20261003.md
+  h_9d56aba080c170 1-47
+docs/performance/web-audit-workerd-delivery-review-20261003.md
+  h_9d56aba080c170 1-27
+tools/performance/workerd-replay-worker.py
+  h_9d56aba080c170 1-193
+tools/performance/workerd-replay.py
+  h_9d56aba080c170 1-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee3f5580b04a43d524dd9a9f9787938d8f6020c2",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
