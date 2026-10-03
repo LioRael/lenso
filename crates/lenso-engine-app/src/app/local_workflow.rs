@@ -5,6 +5,10 @@ use std::{fs, path::PathBuf, process::Command};
 mod notes;
 mod workers;
 
+pub(super) fn admit_linked_workers(plan: &lenso_app_plan::ResolvedAppPlan) -> anyhow::Result<()> {
+    workers::admit_linked(plan)
+}
+
 #[derive(Clone, Debug, Args)]
 pub struct BuildArgs {
     /// Existing static TypeScript Host source. Omit for the local App convention.
@@ -60,9 +64,26 @@ pub struct BuildArgs {
         conflicts_with = "source"
     )]
     host_many_slots: Vec<String>,
+    /// Reuse existing generated Host contracts for offline source target preflight.
+    #[arg(long, conflicts_with = "source")]
+    check_from: Option<PathBuf>,
+    /// Host-authorized per-Instance resource references used by target preflight.
+    #[arg(long, conflicts_with_all = ["source", "workers_facilities"])]
+    host_facilities: Option<PathBuf>,
 }
 pub fn build(args: BuildArgs) -> anyhow::Result<()> {
     super::assemble::parse_host_many_slots(&args.host_many_slots)?;
+    if args.source.is_none() {
+        let root = crate::plugins::project_root(args.root.clone())?;
+        super::target_check::before_build(
+            &root,
+            args.target.as_deref().unwrap_or("native"),
+            args.check_from.as_deref(),
+            args.host_facilities
+                .as_deref()
+                .or(args.workers_facilities.as_deref()),
+        )?;
+    }
     if args.target.as_deref() == Some("workers") && args.source.is_none() {
         if !args.portable_implementations.is_empty()
             || (!args.trust_linked_build.is_empty() && args.wasm_bindgen.is_none())

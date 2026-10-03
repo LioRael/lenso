@@ -50,7 +50,9 @@ pub(crate) use local_workflow::prepare_web_starter;
 pub use preset::{AppProject, PreparedAppProject};
 mod signed_catalog;
 mod source_intent;
+mod target_check;
 mod target_closure;
+pub use target_check::CheckArgs;
 mod tool_cli;
 pub use signed_catalog::{PortableCatalogPage, PortableCatalogQuery};
 pub(crate) use signed_catalog::{
@@ -329,7 +331,7 @@ pub enum AppCommand {
     /// Create an App workspace from one exact Host executable and Host Catalog.
     Init(AppInitArgs),
     /// Validate the App derived from this Host and its `plugins/` directory.
-    Check(ProjectArgs),
+    Check(CheckArgs),
     /// Explain the derived Plugin Instances, provenance, and bindings.
     Show(ShowArgs),
     /// Explain target admission, selected implementations, and consumer capability demand.
@@ -459,7 +461,7 @@ pub async fn app(command: AppCommand) -> anyhow::Result<()> {
             .map_err(|_| anyhow::anyhow!("local runtime worker panicked"))?,
         AppCommand::Prepare(args) => prepare::prepare(args),
         AppCommand::Init(args) => init(args),
-        AppCommand::Check(args) => check(args),
+        AppCommand::Check(args) => target_check::run(args),
         AppCommand::Show(args) => show(args),
         AppCommand::Explain(args) => explain::run(args),
         AppCommand::Discover(args) => discover(args),
@@ -548,20 +550,6 @@ fn init(args: AppInitArgs) -> anyhow::Result<()> {
         );
     } else {
         println!("Created App workspace at {}.", root.display());
-    }
-    Ok(())
-}
-
-fn check(args: ProjectArgs) -> anyhow::Result<()> {
-    let root = project_root(args.root)?;
-    let report = inspect_app_check(&root)?;
-    if args.json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    } else {
-        println!(
-            "App is valid: {} Plugin Instance(s), {} Capability binding(s).",
-            report.plugin_instances, report.capability_bindings
-        );
     }
     Ok(())
 }

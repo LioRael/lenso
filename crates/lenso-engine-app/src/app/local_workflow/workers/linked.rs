@@ -350,7 +350,7 @@ pub(super) fn build(args: super::BuildArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn admit(plan: &ResolvedAppPlan) -> anyhow::Result<()> {
+pub(super) fn admit(plan: &ResolvedAppPlan) -> anyhow::Result<()> {
     ensure!(
         plan.execution_lanes().len() == 1,
         "linked Workers supports one main execution lane"

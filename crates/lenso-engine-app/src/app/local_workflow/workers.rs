@@ -28,6 +28,10 @@ use crate::archive::{archive_bundle, with_bundle_directory};
 
 mod integration;
 mod linked;
+
+pub(super) fn admit_linked(plan: &lenso_app_plan::ResolvedAppPlan) -> anyhow::Result<()> {
+    linked::admit(plan)
+}
 mod runtime;
 
 const HOST_TARGET: &str = "workers";
