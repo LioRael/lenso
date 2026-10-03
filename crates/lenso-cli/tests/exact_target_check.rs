@@ -199,3 +199,18 @@ fn missing_resource_binding_and_source_entry_are_reported_without_tools() {
     );
     no_build(temp.path(), &output);
 }
+
+#[test]
+fn offline_check_refuses_the_contract_extraction_fallback() {
+    let temp = tempfile::tempdir().unwrap();
+    fixture(temp.path());
+    grants(temp.path(), "native", "postgresql");
+    fs::write(temp.path().join("lenso.contracts.json"), "{}").unwrap();
+    let output = command(temp.path(), "check", "native").output().unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("required generated contract freshness evidence")
+    );
+    no_build(temp.path(), &output);
+}

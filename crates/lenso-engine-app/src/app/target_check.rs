@@ -121,6 +121,17 @@ pub(super) fn inspect(
         matches!(target, "native" | "workers"),
         "unsupported check target `{target}`; available: native, workers"
     );
+    let contract_root = from.unwrap_or(root);
+    // The legacy freshness fallback may invoke source extraction. Offline
+    // preflight requires generated evidence instead of running that fallback.
+    ensure!(
+        contract_root
+            .join(".lenso/contracts/freshness.json")
+            .is_file()
+            || !contract_root.join("lenso.contracts.json").exists(),
+        "required generated contract freshness evidence; available: extraction would be needed; no build started"
+    );
+    super::contracts::check(contract_root)?;
     let (resolved, declarations) = source::resolve(root, from)?;
     let grants = facilities
         .map(read_grants)
