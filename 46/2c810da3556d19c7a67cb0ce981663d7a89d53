@@ -1,0 +1,20 @@
+crates/lenso-cli/docs/workers-host-integrations.md
+  h_9d56aba080c170 254-258
+crates/lenso-engine-app/assets/workers-linked-stream.mjs
+  h_9d56aba080c170 25-31
+crates/lenso-engine-app/src/app/local_workflow/workers/linked_host.rs
+  h_9d56aba080c170 171-175,177-179
+crates/lenso-engine-app/tests/linked-stream-smoke.py
+  h_9d56aba080c170 102,130,132,136-140,148,168-170,173-174,200-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "462c810da3556d19c7a67cb0ce981663d7a89d53",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
