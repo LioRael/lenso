@@ -43,8 +43,9 @@ The key retains OS, architecture, compiler and original manifest/lockfile inputs
 and adds the macro source, test harness and consumer fixture. Restore fallbacks
 remain within that platform/compiler boundary. Only successful main runs save
 the cache. Existing native, Wasm and Bun commands are unchanged. The second
-Store slice, integrated separately by the Core owner, must retain its mandatory
-real-provider prerequisite when these workflow edits are combined.
+Store slice is included as frozen candidate `225c0d27`, preserving its mandatory
+real-provider prerequisite. Delivery combines candidates for qualification;
+only the Core owner integrates main, whose latest observed SHA remains `c28dce56`.
 
 Cargo still validates source and dependency fingerprints. This stores artifacts,
 not a cached qualification result. The consumer's existing dynamic dependency
