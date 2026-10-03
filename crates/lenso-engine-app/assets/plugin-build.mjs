@@ -159,7 +159,7 @@ function classifySymbol(origin) {
   if (local) return generatedContract(origin, true);
   const info = packageForFile(origin.file);
   const subpath = exportSubpath(info, origin);
-  if (info.manifest.name === "@lenso/bun-plugin" && subpath === ".") {
+  if (info.manifest.name === "@lenso/bun-plugin" && [".", "./authoring"].includes(subpath)) {
     if (origin.name === "definePlugin") return { kind: "plugin_definition" };
     if (origin.name === "dependency" || origin.name === "configuration" || origin.name === "provider") {
       lockedPackages.set(identityKey(info.identity), info.identity);

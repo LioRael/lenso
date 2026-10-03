@@ -20,7 +20,10 @@ function fixture(t, { integrity = "sha512-selected", exported = true } = {}) {
   fs.writeFileSync(path.join(directory, "package.json"), JSON.stringify({
     name: "@lenso/bun-plugin",
     version: "0.4.2",
-    exports: exported ? { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } } : {},
+    exports: exported ? {
+      ".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
+      "./authoring": { types: "./dist/authoring.d.ts", import: "./dist/authoring.js" },
+    } : {},
   }));
   const declaration = path.join(directory, "dist/authoring.d.ts");
   fs.writeFileSync(declaration, "export declare function configuration(): void;\n");
@@ -58,6 +61,16 @@ test("standard SDK names still require registry integrity and a public export", 
       file: value.declaration, module: "@lenso/bun-plugin", name: "configuration",
     }), options.exported === false ? /not a public package export/u : /registry integrity/u);
   }
+});
+
+test("pure authoring export uses the same locked source-first declaration contract", (t) => {
+  const value = fixture(t);
+  for (const name of ["definePlugin", "configuration", "dependency", "provider"]) {
+    const meaning = value.classifySymbol({ file: value.declaration, module: "@lenso/bun-plugin/authoring", name });
+    assert.equal(meaning.kind, name === "definePlugin" ? "plugin_definition" : "declaration");
+    if (name !== "definePlugin") assert.equal(meaning.package.integrity, "sha512-selected");
+  }
+  assert.equal(value.contractArtifacts.size, 0);
 });
 
 test("a real generated contract still requires its runtime module", (t) => {
