@@ -1,0 +1,35 @@
+{
+  "source_sha": "91750a046985e52c48266b0a271f2bf45bb90019",
+  "cold_compile_seconds": 20.641325694999978,
+  "warm_compile_seconds": 0.1922724749997542,
+  "samples": {
+    "postgres": {
+      "first_process_seconds": 0.11982676199977504,
+      "repeated_process_seconds": [
+        0.13150710799982335,
+        0.1304493980001098,
+        0.13819586199997502
+      ],
+      "repeated_median_seconds": 0.13150710799982335
+    },
+    "d1": {
+      "first_process_seconds": 5.564514186999986,
+      "repeated_process_seconds": [
+        5.590669500000331,
+        5.577311086999998,
+        5.6515778309999405
+      ],
+      "repeated_median_seconds": 5.590669500000331
+    },
+    "replay": {
+      "first_process_seconds": 0.009687636999842653,
+      "repeated_process_seconds": [
+        0.008565861000079167,
+        0.006347104999804287,
+        0.00715867500002787
+      ],
+      "repeated_median_seconds": 0.00715867500002787
+    }
+  },
+  "comparison": "replay includes both providers' six-case transcripts; each real sample runs one provider's six-case corpus"
+}

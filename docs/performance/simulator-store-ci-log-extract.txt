@@ -1,0 +1,71 @@
+CI workflow: https://github.com/LioRael/lenso/actions/runs/37102233391
+Candidate: candidate/simulator-ci-wait/20261003-1
+Head SHA: c28dce56cfffe639523b6ef07f797943a431ace0
+Quality job: 111143881314; attempt 1; successful
+Workflow created_at: 2026-10-03T06:11:28Z; final updated_at: 2026-10-03T06:34:18Z
+Decoded official job log excerpt; ANSI presentation and trailing formatting whitespace removed, timestamps preserved.
+
+2026-10-03T06:11:48.7172546Z Cache hit for restore-key: v0-rust-quality-Linux-x64-b3ec7760-1b12af2a
+2026-10-03T06:12:08.4643731Z Cache restored successfully
+2026-10-03T06:12:08.5194685Z Restored from cache key "v0-rust-quality-Linux-x64-b3ec7760-1b12af2a" full match: false.
+2026-10-03T06:12:08.7225855Z Lenso check: sha=c28dce56cfffe639523b6ef07f797943a431ace0 phase=preflight os=Linux x86_64
+2026-10-03T06:12:13.7618292Z + cargo fmt --all -- --check
+2026-10-03T06:12:23.1397646Z Cache not found for input keys: wasm-fixtures-v1-Linux-X64-202603024a4e-b71f24264b250bd9e084c3cacc4e721cfd6d78c4ddaccfb52ebeca3c6af7805e, wasm-fixtures-v1-Linux-X64-202603024a4e-
+2026-10-03T06:12:23.1712127Z Lenso check: sha=c28dce56cfffe639523b6ef07f797943a431ace0 phase=native os=Linux x86_64
+2026-10-03T06:12:23.2033801Z + cargo test --locked -p lenso-engine-app --lib plugin::tests
+2026-10-03T06:14:37.1272043Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 13s
+2026-10-03T06:14:37.1893951Z + cargo clippy --locked --workspace --all-targets --timings -- -D warnings
+2026-10-03T06:16:33.9969628Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 56s
+2026-10-03T06:16:34.1293490Z + cargo test --locked --workspace --no-run --timings
+2026-10-03T06:21:20.1536938Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 4m 45s
+2026-10-03T06:21:21.8774591Z + cargo test --locked --workspace
+2026-10-03T06:21:22.8248258Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 1.11s
+2026-10-03T06:23:23.2098083Z [configuration_source_dev/external_configuration_changes_openapi_title_after_supervised_restart] source revision 1, last activation 1: 93.29s; visible Cargo durations (newest first): ["1m 13s"]; compilations: 134; lock waits: 0
+2026-10-03T06:23:26.2286503Z [configuration_source_dev/external_configuration_changes_openapi_title_after_supervised_restart] source revision 2, last activation 2: 3.02s; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:23:26.2331336Z [configuration_source_dev/external_configuration_changes_openapi_title_after_supervised_restart] retired generation cleanup: 107.78µs; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:23:27.0318659Z [configuration_source_dev/external_configuration_changes_openapi_title_after_supervised_restart] source outage or rejection: 801.42ms; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:23:28.0346555Z [configuration_source_dev/external_configuration_changes_openapi_title_after_supervised_restart] source outage or rejection: 1.00s; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:23:28.0459510Z [configuration_source_dev/external_configuration_changes_openapi_title_after_supervised_restart] source revision 2, last activation 2: 11.33ms; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:24:15.8216688Z [configuration_source_dev/real_process_host_recovers_missing_file_source_and_activates_new_revision] initial Process distribution build: 46.92s; visible Cargo durations (newest first): ["41.83s"]; compilations: 80; lock waits: 0
+2026-10-03T06:24:25.8459395Z [configuration_source_dev/real_process_host_recovers_missing_file_source_and_activates_new_revision] source revision 1, last activation 1: 8.02s; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:24:26.0575594Z [configuration_source_dev/real_process_host_recovers_missing_file_source_and_activates_new_revision] source revision 2, last activation 1: 211.22ms; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:24:26.9591591Z [configuration_source_dev/real_process_host_recovers_missing_file_source_and_activates_new_revision] source outage or rejection: 901.35ms; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:24:27.9845895Z [configuration_source_dev/real_process_host_recovers_missing_file_source_and_activates_new_revision] source revision 3, last activation 1: 1.01s; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:24:28.9863320Z [configuration_source_dev/real_process_host_recovers_missing_file_source_and_activates_new_revision] source outage or rejection: 1.00s; visible Cargo durations (newest first): []; compilations: 0; lock waits: 0
+2026-10-03T06:24:36.5089179Z [configuration_source_dev/real_process_host_recovers_missing_file_source_and_activates_new_revision] source revision 3, last activation 3: 7.22s; visible Cargo durations (newest first): ["0.06s"]; compilations: 0; lock waits: 0
+2026-10-03T06:32:37.2886204Z     Finished `release` profile [optimized] target(s) in 32.82s
+2026-10-03T06:33:06.9458524Z     Finished `release` profile [optimized] target(s) in 12.61s
+2026-10-03T06:33:07.0785632Z     Finished `release` profile [optimized] target(s) in 12.74s
+2026-10-03T06:33:16.3814622Z     Finished `release` profile [optimized] target(s) in 0.61s
+2026-10-03T06:33:29.5975570Z     Finished `release` profile [optimized] target(s) in 0.38s
+2026-10-03T06:33:41.8057700Z Lenso check: sha=c28dce56cfffe639523b6ef07f797943a431ace0 phase=wasm os=Linux x86_64
+2026-10-03T06:33:41.8397815Z + cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-unknown-unknown
+2026-10-03T06:33:44.1704358Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.32s
+2026-10-03T06:33:44.1876785Z + cargo check --locked --timings -p lenso-workers-http-parity-host --target wasm32-unknown-unknown
+2026-10-03T06:34:07.9190923Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 23.72s
+2026-10-03T06:34:07.9439823Z + cargo check --locked --timings -p lenso-http-egress-plugin --no-default-features --features workers --target wasm32-unknown-unknown
+2026-10-03T06:34:10.8699862Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.91s
+2026-10-03T06:34:10.8994567Z + cargo check --locked --timings -p lenso-app-plan -p lenso-kernel -p lenso-runtime-conformance --target wasm32-wasip2
+2026-10-03T06:34:13.1944824Z     Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.28s
+2026-10-03T06:21:24.7641836Z      Running tests/configuration_source_dev.rs (target/debug/deps/configuration_source_dev-e7bc0abd6642331f)
+2026-10-03T06:24:36.8267863Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 192.06s
+2026-10-03T06:24:36.8530814Z      Running tests/configuration_source_retirement.rs (target/debug/deps/configuration_source_retirement-4f4968a79b300a5d)
+2026-10-03T06:24:49.0804182Z test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 12.16s
+2026-10-03T06:24:50.2371642Z      Running tests/local_host_bindings.rs (target/debug/deps/local_host_bindings-193409766fb2e02e)
+2026-10-03T06:25:37.6450986Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 47.40s
+2026-10-03T06:25:41.9009510Z      Running tests/mcp.rs (target/debug/deps/mcp-ee1ceee2a349156a)
+2026-10-03T06:26:39.5453061Z test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 57.63s
+2026-10-03T06:26:39.5468059Z      Running tests/process_notes.rs (target/debug/deps/process_notes-2ce902a46fc3fe59)
+2026-10-03T06:28:37.7960415Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 118.24s
+2026-10-03T06:28:38.0773107Z      Running tests/release_details_cargo_adoption.rs (target/debug/deps/release_details_cargo_adoption-72c12b418a04837f)
+2026-10-03T06:29:19.4420065Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 41.36s
+2026-10-03T06:29:21.8100067Z      Running tests/v6_linked_pack.rs (target/debug/deps/v6_linked_pack-50531adf5d7bbaaf)
+2026-10-03T06:30:38.4931168Z test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 76.67s
+2026-10-03T06:30:38.6924159Z      Running tests/registered_snapshot.rs (target/debug/deps/registered_snapshot-98e45a032fe090ce)
+2026-10-03T06:30:50.6929271Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.00s
+2026-10-03T06:30:51.1227806Z      Running unittests src/lib.rs (target/debug/deps/lenso_engine_app-1f88c4b6c41688c1)
+2026-10-03T06:32:01.3930046Z test result: ok. 366 passed; 0 failed; 18 ignored; 0 measured; 0 filtered out; finished in 70.27s
+2026-10-03T06:32:04.4239937Z      Running tests/portable_wasm_client.rs (target/debug/deps/portable_wasm_client-687ff430ac3dfa9d)
+2026-10-03T06:32:46.0925595Z test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 41.65s
+2026-10-03T06:32:54.3266328Z      Running tests/wasm_host.rs (target/debug/deps/wasm_host-a8cc2e76b5dfdbd8)
+2026-10-03T06:33:26.1890991Z test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.86s
