@@ -1,0 +1,13 @@
+Exact Store candidate: 225c0d27a0c3ae0181109041409a6f1149359702
+CI run: https://github.com/LioRael/lenso/actions/runs/37105216415
+Real Store job: 111152268809; success
+Official decoded GitHub log excerpt, ANSI presentation removed.
+2026-10-03T07:06:56.5264708Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 18.79s
+2026-10-03T07:06:56.7509778Z {"store_fixture_phases":{"provider":"postgres","boot_ms":38.516057,"delegated_calls_ms":42.90290299999992,"restart_ms":0.3323620000000034,"cleanup_ms":4.128411999999997,"calls":34}}
+2026-10-03T07:06:56.7549724Z test real_provider_store_corpus ... ok
+2026-10-03T07:06:56.7550449Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.12s
+2026-10-03T07:06:57.4726696Z {"store_fixture_phases":{"provider":"d1","boot_ms":455.120376,"delegated_calls_ms":130.72819899999985,"restart_ms":95.58347600000002,"cleanup_ms":3.6672290000000203,"calls":34}}
+2026-10-03T07:06:57.4813271Z test real_provider_store_corpus ... ok
+2026-10-03T07:06:57.4814061Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.72s
+2026-10-03T07:06:57.4878582Z test replay_provider_store_corpus ... ok
+2026-10-03T07:06:57.4879329Z test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s

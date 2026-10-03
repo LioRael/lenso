@@ -1,0 +1,29 @@
+{
+  "candidate_sha": "531d5dd1edd8abedc552bf43247fb0615a26a400",
+  "ref": "candidate/simulator-ci-consumer/20261003-1",
+  "store_parent_sha": "225c0d27a0c3ae0181109041409a6f1149359702",
+  "latest_observed_main": "c28dce56cfffe639523b6ef07f797943a431ace0",
+  "measured_source_sha": "0e0d26d5aff93ed279b07d45bd53cf442d10ed52",
+  "measured_baseline_sha": "c28dce56cfffe639523b6ef07f797943a431ace0",
+  "ci": "https://github.com/LioRael/lenso/actions/runs/37106147968",
+  "qualification": "in progress, not yet success",
+  "scope": "existing real consumer compiled dependency reuse; no real gate removal",
+  "source_review": "PASS exact candidate",
+  "local_validation": [
+    "actual retained macro consumer after rebase passed",
+    "targeted clippy -D warnings",
+    "workspace fmt --check",
+    "full diff --check",
+    "warm cache rejected changed consumer compile_error"
+  ],
+  "warm_component_seconds_before": 13.312936994499978,
+  "warm_component_seconds_after": 0.6424695089999659,
+  "whole_ci_speedup_proven": false,
+  "files": {
+    "candidate.bundle": "b47263f754264961f772344ffadc380068b69d5833b46ca8223e8fd7b3775571",
+    "evidence.tar.gz": "9ce478c4c434c2f3cebdda9f7cdf2cf1b49d76a999e87024cd12e401797429c5",
+    "slice3-only.patch": "311f45e6352c404c73607122ed0fd864d65dcb93b64ad4466e094bbb35364b4f",
+    "review.txt": "83c038a0fa836df9abe04d739f0310a53122882ce472612e58bede31b8ad916f",
+    "candidate.patch": "96227a88d58b327e75d5af1f0cd2584635583054bf505f31246e0fea04aa0e17"
+  }
+}
