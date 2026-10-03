@@ -1,0 +1,10 @@
+{
+  "name": "lenso-durable-store-contract-fixture",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "dependencies": {
+    "miniflare": "5.20260926.1-alpha",
+    "pg": "8.16.3"
+  }
+}

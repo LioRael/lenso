@@ -21,3 +21,7 @@ lenso-native-adapter = { path = "../lenso-native-adapter", version = "0.3.20" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

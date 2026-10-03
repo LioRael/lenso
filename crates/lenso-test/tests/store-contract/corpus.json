@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "seed": 31,
+  "cases": [
+    { "id": "success-'?-binding", "amount": 7, "rollback": false, "fault": null, "knowledge": "committed", "persisted": true, "completion_ms": 3 },
+    { "id": "not-dispatched", "amount": 11, "rollback": false, "fault": "before_operation", "knowledge": "not_executed", "persisted": false, "completion_ms": 0 },
+    { "id": "confirmed-rollback", "amount": 13, "rollback": true, "fault": null, "knowledge": "rolled_back", "persisted": false, "completion_ms": 7 },
+    { "id": "committed-ack-lost", "amount": 17, "rollback": false, "fault": "after_durable_commit", "knowledge": "committed", "persisted": true, "completion_ms": 5 },
+    { "id": "unknown-committed", "amount": 19, "rollback": false, "fault": "before_response", "knowledge": "unknown", "persisted": true, "completion_ms": 11 },
+    { "id": "unknown-rolled-back", "amount": 23, "rollback": true, "fault": "before_response", "knowledge": "unknown", "persisted": false, "completion_ms": 2 }
+  ],
+  "race": { "id": "concurrent-dedup", "amounts": [7, 11] }
+}

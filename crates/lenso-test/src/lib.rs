@@ -11,6 +11,7 @@ use lenso_native_adapter::{NativePluginFactory, NativePluginRegistry};
 use lenso_plugin_authoring::CapabilityClient;
 
 mod clock;
+mod durable;
 mod entropy;
 mod faults;
 mod receipt;
@@ -18,6 +19,7 @@ mod receipt_diagnostics;
 mod simulator;
 
 pub use clock::TestWallClock;
+pub use durable::{CommitKnowledge, DurableFailure, DurableFailureCause, DurableFaultFacade};
 pub use entropy::TestEntropy;
 pub use faults::{FaultInjector, FaultPointError, ScenarioBoundary, SimulatorFault};
 pub use receipt::{ScenarioReceipt, ScenarioReceiptEvent, ScenarioTerminal, ScenarioTransition};
