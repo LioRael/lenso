@@ -20,6 +20,7 @@ mod generated_files;
 mod generated_host_tests;
 mod linked_aliases;
 mod root_linking;
+mod source_inventory;
 pub(super) mod web_authoring;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -166,6 +167,12 @@ pub(super) fn generate_in(
         candidates
             .iter()
             .map(|candidate| candidate.plugin_id.clone()),
+    );
+    let mut source_inventory = source_inventory::Sources::new(
+        candidates
+            .iter()
+            .filter(|candidate| candidate.native_link.is_some())
+            .map(|candidate| candidate.project.clone()),
     );
     let mut watch_roots = BTreeSet::new();
     // Local TS build dependencies are selected source, rather than installed
@@ -354,6 +361,7 @@ pub(super) fn generate_in(
                     .find(|p| p["id"] == id)
                     .context("reachable Cargo package")?;
                 root_linked.select(stage, package, node)?;
+                source_inventory.include(package)?;
                 collect_local_lenso_patch(&mut local_lenso_patches, package)?;
                 collect_git_lenso_source(&mut git_lenso_source, package)?;
             }
@@ -694,27 +702,13 @@ pub(super) fn generate_in(
     .replace("// LENSO_LINK_PLUGINS", "include!(\"plugin_links.rs\");");
     // Cargo may retain inventory entries for every module of a selected crate.
     // Its independently declared siblings are availability, not App selection.
-    let selected_source_ids = candidates
+    let mut selected_source_ids = candidates
         .iter()
-        .filter(|candidate| candidate.native_link.is_some())
+        .filter(|candidate| is_native(candidate))
         .map(|candidate| candidate.plugin_id.as_str())
         .collect::<BTreeSet<_>>();
-    let mut unselected_source_ids = BTreeSet::new();
-    for candidate in candidates
-        .iter()
-        .filter(|candidate| candidate.native_link.is_some())
-    {
-        for sibling in
-            lenso_app_authoring::discovery::discover_in(&candidate.project, inputs)?.candidates
-        {
-            if sibling.native_link.is_some()
-                && !selected_source_ids.contains(sibling.plugin_id.as_str())
-            {
-                unselected_source_ids.insert(sibling.plugin_id);
-            }
-        }
-    }
-    let unselected_source_ids = unselected_source_ids.into_iter().collect::<Vec<_>>();
+    selected_source_ids.extend(root_linked.packages().map(|(id, _)| id));
+    let unselected_source_ids = source_inventory.exclude_in(&selected_source_ids, inputs)?;
     source = source.replace("// LENSO_SELECT_SOURCE_PLUGINS", &format!(r#"
         let mut identities = std::collections::BTreeSet::new();
         for release in catalog.plugins() {{

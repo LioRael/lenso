@@ -50,6 +50,41 @@ pub const NORMAL: bool = cfg!(feature="normal");
 pub const UNREQUESTED: bool = cfg!(feature="unrequested");
 "#,
     );
+    // A selected metadata wrapper reexports one canonical Plugin from a local
+    // aggregate. Cargo retains the aggregate's other inventory registrations.
+    package(
+        &root.join("aggregate"),
+        "fixture-aggregate",
+        &format!(
+            "[dependencies]\nlenso={{path={:?}}}\n",
+            facade.to_str().unwrap()
+        ),
+        r#"
+pub mod chosen {
+    #[lenso::plugin(id="example.chosen", root_slot="tools", consumer)]
+    #[derive(Debug)]
+    pub struct Plugin {}
+}
+pub mod sibling {
+    #[lenso::plugin(id="example.unselected", root_slot="tools", consumer)]
+    #[derive(Debug)]
+    pub struct Plugin {}
+}
+"#,
+    );
+    package(
+        &root.join("wrapper"),
+        "fixture-wrapper",
+        r#"
+[package.metadata.lenso]
+plugin-id="example.chosen"
+[package.metadata.lenso-cli]
+runtime="native-linked"
+[dependencies]
+aggregate={package="fixture-aggregate",path="../aggregate"}
+"#,
+        "pub use aggregate::chosen::{Plugin, link_plugin};\n",
+    );
     fs::write(
         root.join("contract/capability.json"),
         r#"{"id":"example.echo@1"}"#,
@@ -77,7 +112,7 @@ contract={{package="fixture-contract",path="../contract",default-features=false,
             facade.to_str().unwrap()
         ),
         r#"
-mod authoring {
+pub mod authoring {
     #[lenso::plugin(id="example.root-owner", root_slot="tools", consumer)]
     #[derive(Debug)]
     pub struct Plugin {}
@@ -195,10 +230,17 @@ pub fn typed(value: fixture_facade::Token) -> owner::Token { value }
         evidence: "generated Host regression".into(),
     };
     let inputs = lenso_engine::discovery::DiscoverySession::new(root).unwrap();
+    let wrapper = lenso_app_authoring::discovery::discover_in(&root.join("wrapper"), &inputs)
+        .unwrap()
+        .candidates
+        .pop()
+        .unwrap();
+    assert!(wrapper.native_link.is_none());
+    assert!(is_native(&wrapper));
     let descriptors = generate_in(
         &stage,
         &root.join("cache"),
-        &[candidate],
+        &[candidate, wrapper],
         AdapterSet::default(),
         &inputs,
     )
@@ -208,7 +250,7 @@ pub fn typed(value: fixture_facade::Token) -> owner::Token { value }
             .iter()
             .map(|d| d.plugin_id())
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["example.app", "example.root-owner"])
+        BTreeSet::from(["example.app", "example.chosen", "example.root-owner"])
     );
     assert!(stage.join(".lenso/host").is_file());
     assert!(stage.join(".lenso/generated-host/Cargo.lock").is_file());
