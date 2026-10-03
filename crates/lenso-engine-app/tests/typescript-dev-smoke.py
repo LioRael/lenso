@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import signal
@@ -75,14 +76,14 @@ def main():
         return {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "mtime_ns": path.stat().st_mtime_ns}
 
     def native():
-        directory = root / ".lenso/host-cache/source/target/release"
+        directory = Path(os.environ.get("CARGO_TARGET_DIR", root / ".lenso/host-cache/source/target")) / "release"
         if not directory.is_dir():
             return {"retained_precompiled_host_origin": proof(Path(args.cli).resolve())}
         paths = [directory / "lenso-generated-local-host", *sorted((directory / "deps").glob("libdevloop*.rlib"))]
         if not all(any(path.name.startswith(prefix) for path in paths)
                    for prefix in ["libdevloop_proof-", "libdevloop_health-"]):
             raise RuntimeError("Expected Proof, Health and generated Host compilation units")
-        return {str(path.relative_to(root)): proof(path) for path in paths}
+        return {str(path): proof(path) for path in paths}
 
     def generation():
         candidates = list((root / ".lenso").glob("dev-*/generation-*"))

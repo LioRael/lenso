@@ -25,10 +25,10 @@ that a new feature has shipped.
 | 16 | Kernel has no database concept. Original API-token Auth performs private PostgreSQL persistence and setup via its original operator; real local storage lifecycle tests pass. Existing semantic Store contracts are retained without forcing GenericDatabase. |
 | 17 | Three-D1 consolidation is explicitly out of scope. |
 | 18 | Official Console + original Auth + protected HTTP is one normal CLI App. Multi-Instance mount work is with the Console owner and not claimed by this single-Console demonstration. |
-| 19 | Inherited dev-loop re-resolves config and reuses execution artifacts; integrated real HTTP probe confirms no build invocation and unchanged artifact hashes. |
+| 19 | Inherited dev-loop re-resolves config and reuses execution artifacts; integrated real HTTP probe confirms no build invocation and unchanged artifact hashes. Bun implementation edits repackage selected Plugins and report all affected Instances. Actual activation remains `host_generation`: unchanged Instances restart too. ADR 0067 atomic Plan Transition is not implemented. |
 | 20 | Rust edits relink the changed package plus generated Host; unrelated Health stays cached. No dynamic Rust replacement claim. |
 | 21 | Target validation remains separate from common resolution. Mixed JS Stream/Event rejection now occurs before Native assembly; broader support-preflight task remains with its owner. |
-| 22 | Agent DX candidate `5d217697` is queued for unique integration. Its skills/docs/real source-handler flow simplify existing commands without new MCP/runtime APIs; inherited dev feedback MCP remains. |
+| 22 | Agent DX candidate `5d217697` is integrated. Its skills/docs/real source-handler flow simplify existing commands without new MCP/runtime APIs; inherited dev feedback MCP remains. |
 | 23 | The same candidate updates the official skill pack and validator; no new packaging vocabulary is exposed. |
 | 24 | Before/after feedback samples are recorded in `docs/performance/dev-loop-20261003.json`; integration adds a separate Linux sample, with no CI extrapolation. |
 | 25 | Rust and TS examples run through normal CLI and existing contract generation. Internal factory/codec/generation/artifact work is automatic. |
@@ -68,6 +68,27 @@ render/HMR check is unpassed here: Playwright's browser CDN returned HTTP 403
 `Domain forbidden`; access was not bypassed. The inherited dev-loop owner's
 separate Vite/Chromium sample remains separately attributed in its evidence.
 Neither result qualifies deployed infrastructure.
+
+## Transition integration boundary
+
+`local_dev/{changes,typescript,managed_host}.rs` belongs to the dev-loop owner.
+It may classify a candidate, select affected Instances from the exact resolved
+Plan, retain packaging, and report the actual activation scope. It must not
+mutate Kernel endpoint tables or report Instance replacement as completed.
+
+Core owns the eventual `lenso-app-plan` transition data and Kernel entry. The
+intended entry consumes a complete validated successor Plan, a receipt binding
+the exact predecessor/successor digests and Instance delta, and the admitted
+execution packaging. This is an interface boundary, **not an implemented API**.
+Its first whitelist is configuration-only and interface-identical provider
+replacement; class/profile, topology, contract and binding changes fall back to
+whole Host generation. Preparation/readiness must complete before atomic
+endpoint switch; failed preparation preserves the old authority, and replaced
+generations retire through existing cancellation, physical drain and cleanup.
+Current immutable runtime Plan/plugin maps require a real Kernel transition
+implementation and deterministic concurrency/lifecycle proof before dev-loop
+can call it. Do not substitute independent business Hosts or an unchecked
+restart/retarget operation.
 
 The candidate CI pins the actual JS source commit
 `b6371aebfdf0b1a7056e0121ab6d0e7cb5206b73` and runs the actual shared-source App
