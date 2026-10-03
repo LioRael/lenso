@@ -39,6 +39,15 @@ Configuration and bindings are static; Plugin memory is recreated for each
 event. Persist state through an explicitly selected owner backend. An in-memory
 backend does not supply cross-request CAS or restart persistence.
 
+Source Host owners can restrict an existing Many requirement with repeated
+`--host-many-slot CONSUMER=CAPABILITY=PROVIDER_SLOT` arguments on `app build`
+or `app assemble`. For example, `example.console=example.auth@1=console-auth`
+selects compatible providers from that Host Slot, excluding another auth role
+in a different Slot. The static linked Workers build carries the same policy
+through ordinary source assembly. It uses `LocalManySlotBinding`; it does not
+write a Plan or grant selectable Many choices to the App Plugin Root. Duplicate
+policies, unavailable Slots and non-Many requirements fail before publication.
+
 The generated Workers Host uses the same Stream Endpoint contract and Web
 Ingress routing as Native. Response headers and each chunk leave incrementally,
 with one receive per transport pull. The generated JavaScript body reader returns

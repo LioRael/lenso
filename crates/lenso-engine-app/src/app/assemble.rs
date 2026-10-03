@@ -55,6 +55,12 @@ pub struct AssembleArgs {
         value_name = "PLUGIN_ID=process|wasm"
     )]
     pub(super) portable_implementations: Vec<String>,
+    /// Host-owned restriction for an existing Many requirement; repeat per role.
+    #[arg(
+        long = "host-many-slot",
+        value_name = "CONSUMER=CAPABILITY=PROVIDER_SLOT"
+    )]
+    pub(super) host_many_slots: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -96,6 +102,56 @@ fn parse_portable_implementations(
     Ok(selections)
 }
 
+pub(super) fn parse_host_many_slots(
+    values: &[String],
+) -> anyhow::Result<Vec<LocalManySlotBinding<'_>>> {
+    ensure!(values.len() <= 256, "Host many-Slot policy limit exceeded");
+    let mut keys = BTreeSet::new();
+    values
+        .iter()
+        .map(|value| {
+            ensure!(
+                value.len() <= 512,
+                "Host many-Slot policy exceeds size limit"
+            );
+            let mut parts = value.split('=');
+            let consumer = parts.next().unwrap_or_default();
+            let capability = parts.next().unwrap_or_default();
+            let slot = parts.next().unwrap_or_default();
+            ensure!(
+                parts.next().is_none() && !slot.is_empty(),
+                "--host-many-slot needs CONSUMER=CAPABILITY=PROVIDER_SLOT"
+            );
+            lenso_app_authoring::identity::validate_plugin_id_v1(consumer)?;
+            let (series, version) = capability
+                .rsplit_once('@')
+                .context("Host many-Slot Capability needs its exact series ID")?;
+            lenso_app_authoring::identity::validate_plugin_id_v1(series)?;
+            ensure!(
+                version.parse::<u32>().is_ok_and(|version| version > 0),
+                "invalid Capability series version"
+            );
+            ensure!(
+                slot.len() <= 128
+                    && slot
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric()
+                            || matches!(byte, b'.' | b'-' | b'_')),
+                "invalid Host provider Slot"
+            );
+            ensure!(
+                keys.insert((consumer, capability)),
+                "duplicate Host many-Slot policy"
+            );
+            Ok(LocalManySlotBinding {
+                consumer_plugin_id: consumer,
+                capability_id: capability,
+                provider_slot: slot,
+            })
+        })
+        .collect()
+}
+
 pub fn assemble(args: AssembleArgs) -> anyhow::Result<()> {
     assemble_with_report(args, None)
 }
@@ -113,6 +169,7 @@ pub(super) fn assemble_in(
     inputs: Option<&lenso_engine::discovery::DiscoverySession>,
 ) -> anyhow::Result<()> {
     let portable_implementations = parse_portable_implementations(&args.portable_implementations)?;
+    let many_slots = parse_host_many_slots(&args.host_many_slots)?;
     let root = fs::canonicalize(crate::plugins::project_root(args.root)?)?;
     let acquired = match inputs {
         Some(inputs) => inputs.scope(&root)?,
@@ -563,6 +620,25 @@ pub(super) fn assemble_in(
             },
         );
     }
+    for policy in &many_slots {
+        ensure!(
+            inputs.iter().any(
+                |input| input.descriptor.plugin_id() == policy.consumer_plugin_id
+                    && input.descriptor.required_capabilities().iter().any(
+                        |requirement| requirement.capability_id() == policy.capability_id
+                            && requirement.cardinality()
+                                == lenso_app_plan::CapabilityCardinality::Many
+                    )
+            ),
+            "Host many-Slot policy must name a selected consumer's Many requirement"
+        );
+        ensure!(
+            inputs
+                .iter()
+                .any(|input| input.descriptor.root_slot() == policy.provider_slot),
+            "Host many-Slot policy names an unavailable provider Slot"
+        );
+    }
     let mut host_bindings = if inputs
         .iter()
         .any(|input| input.descriptor.plugin_id() == "lenso.openapi")
@@ -583,7 +659,10 @@ pub(super) fn assemble_in(
         });
     }
     let (authority, proposed) = GeneratedHostBuild::lower_local(&args.id, inputs)?
-        .with_local_root_bindings(stage.path(), &host_bindings)?;
+        .with_local_root_bindings(stage.path(), &{
+            host_bindings.extend(many_slots);
+            host_bindings
+        })?;
     if !proposed.dependency_choices().is_empty() {
         fs::create_dir_all(stage.path().join("plugins"))?;
         let legacy = stage.path().join("plugins/dependencies.json");
@@ -1050,6 +1129,7 @@ mod tests {
             executable: false,
             trust_linked_build: Vec::new(),
             portable_implementations: Vec::new(),
+            host_many_slots: Vec::new(),
         })
         .unwrap_err();
 

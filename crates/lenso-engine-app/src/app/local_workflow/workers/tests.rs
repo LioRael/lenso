@@ -225,6 +225,7 @@ fn native_only_bundle_cannot_fall_back_to_workers() {
         facilities: None,
         host_limits: None,
         trust_linked_build: Vec::new(),
+        host_many_slots: Vec::new(),
         integration: None,
         trust_integration: None,
     })
@@ -293,6 +294,7 @@ fn dependency_closure_reports_the_consumer_requirement_and_provider() {
         facilities: None,
         host_limits: None,
         trust_linked_build: Vec::new(),
+        host_many_slots: Vec::new(),
         integration: None,
         trust_integration: None,
     })
@@ -377,6 +379,7 @@ fn verified_bundle_builds_a_self_contained_workers_app() {
         facilities: None,
         host_limits: None,
         trust_linked_build: Vec::new(),
+        host_many_slots: Vec::new(),
         integration: None,
         trust_integration: None,
     })
@@ -450,6 +453,7 @@ fn verified_integration_builds_a_bounded_local_workers_app() {
         facilities: None,
         host_limits: None,
         trust_linked_build: Vec::new(),
+        host_many_slots: Vec::new(),
         integration: Some(integration),
         trust_integration: Some(trust.clone()),
     })

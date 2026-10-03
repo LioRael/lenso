@@ -9,6 +9,7 @@ pub struct AppProject {
     pub runtime_executable: PathBuf,
     pub trust_linked_build: Vec<String>,
     pub portable_implementations: Vec<String>,
+    pub host_many_slots: Vec<String>,
 }
 impl Plugin for AppProject {
     fn identity(&self) -> &str {
@@ -28,6 +29,7 @@ impl Plugin for AppProject {
 impl AppProject {
     /// Prepare one shared acquisition epoch for the official App pipeline.
     pub fn prepare(self) -> anyhow::Result<PreparedAppProject> {
+        super::assemble::parse_host_many_slots(&self.host_many_slots)?;
         let inputs =
             std::sync::Mutex::new(lenso_engine::discovery::DiscoverySession::new(&self.root)?);
         Ok(PreparedAppProject {
@@ -77,7 +79,7 @@ impl AppProject {
             id: "app/build".into(),
             inputs: vec![],
             after: vec![],
-            options: serde_json::json!({"root":root,"discovery":report,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks,"portable_implementations":self.portable_implementations}),
+            options: serde_json::json!({"root":root,"discovery":report,"output":self.output,"conventions":conventions,"runtime_executable":self.runtime_executable,"fingerprints":fingerprints,"dependency_locks":dependency_locks,"portable_implementations":self.portable_implementations,"host_many_slots":self.host_many_slots}),
         }])
     }
     fn process_in(
@@ -122,6 +124,7 @@ impl AppProject {
                 executable: true,
                 trust_linked_build: self.trust_linked_build.clone(),
                 portable_implementations: self.portable_implementations.clone(),
+                host_many_slots: self.host_many_slots.clone(),
             },
             Some(serde_json::from_value(
                 context.step.options["discovery"].clone(),
@@ -237,6 +240,7 @@ mod tests {
             runtime_executable: root.path().join("must-not-execute"),
             trust_linked_build: vec![],
             portable_implementations: vec![],
+            host_many_slots: vec![],
         };
         let steps = project.plan_in(&inputs).unwrap();
         let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));

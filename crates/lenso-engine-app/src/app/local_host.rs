@@ -449,7 +449,23 @@ pub(super) fn generate_in(
     // Pin a tested set instead of allowing Cargo to mix distinct traits.
     let cohort = codec_cohorts.first().map_or("0.4", String::as_str);
     for (index, (plugin_id, package)) in root_linked.packages().enumerate() {
-        let alias = format!("root_plugin_{index}");
+        let Some(alias) = root_linking::link_alias(
+            plugin_id,
+            index,
+            web_contract.is_some() || web_stream_contract.is_some(),
+        ) else {
+            // The automatic Host already owns this dependency, descriptor and
+            // factory. Retain the Root's exact identity check without adding a
+            // second Cargo name or calling a business Plugin link anchor.
+            alias_identities.insert(
+                "lenso_web_ingress_plugin".into(),
+                package["id"]
+                    .as_str()
+                    .context("Root-selected Ingress Cargo ID")?
+                    .to_owned(),
+            );
+            continue;
+        };
         alias_identities.insert(
             alias.clone(),
             package["id"]
