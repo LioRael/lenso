@@ -1,0 +1,6 @@
+PASS asynchronous acceptance (0.5 ms), later completion, one in-memory notification
+PASS invalid input and asynchronous failure leave no extra notification
+PASS cancellation, every task future dropped once, closed generation rejects new tasks, clean shutdown
+{"lifecycle_events": [{"event": "job_finished", "job_id": 1, "status": "completed"}, {"event": "task_dropped", "job_id": 1}, {"event": "job_finished", "job_id": 2, "status": "failed"}, {"event": "task_dropped", "job_id": 2}, {"event": "job_cancelled", "job_id": 3}, {"event": "task_dropped", "job_id": 3}, {"event": "plugin_stopped", "new_tasks_rejected": true}, {"event": "shutdown", "outcome": "clean"}]}
+PASS restart creates fresh in-memory state
+PASS removing the Plugin removes its routes and lifecycle

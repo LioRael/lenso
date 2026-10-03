@@ -1,0 +1,15 @@
+
+running 1 test
+test socket_smoke_sentinel_matches_simulated_corpus ... {"event":"job_finished","job_id":1,"status":"completed"}
+{"event":"task_dropped","job_id":1}
+{"event":"job_finished","job_id":2,"status":"failed"}
+{"event":"task_dropped","job_id":2}
+{"event":"job_cancelled","job_id":3}
+{"event":"task_dropped","job_id":3}
+{"event":"plugin_stopped","new_tasks_rejected":true}
+{"event":"plugin_stopped","new_tasks_rejected":true}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 1.68s
+
+real socket/process corpus sentinel: 1.679647639s

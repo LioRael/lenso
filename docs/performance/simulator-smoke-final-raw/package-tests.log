@@ -1,0 +1,23 @@
+   Compiling lenso-onboarding-background-jobs v0.1.0 (/workspace/lenso-sim-ci/examples/onboarding/background-jobs)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.05s
+     Running tests/simulator.rs (target/debug/deps/simulator-79cf87f2004d585b)
+
+running 15 tests
+test cancelled_restart_does_not_resume ... ok
+test committed_restart_does_not_duplicate_lost_receipt ... ok
+test completion_write_failure_cannot_acknowledge_job ... ok
+test frozen_resource_cancellation_has_no_late_effect ... ok
+test invalid_snapshot_fails_startup_without_work ... ok
+test jobs_removal_preserves_health ... ok
+test pending_restart_reopens_snapshot ... ok
+test retry_exhaustion_never_notifies ... ok
+test retry_restart_preserves_attempt_budget ... ok
+test shutdown_in_commit_ack_gap_drops_blocked_receipt ... ok
+test smoke_corpus_replays_without_wall_clock_waits ... ok
+test snapshot_write_failure_cannot_admit_job ... ok
+test socket_smoke_sentinel_matches_simulated_corpus ... ok
+test transient_retry_receipt_repeats_exactly ... ok
+test virtual_deadline_is_exact ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.71s
+
