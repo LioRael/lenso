@@ -1,0 +1,19 @@
+CREATE TABLE lenso_files (
+  file_id TEXT PRIMARY KEY NOT NULL,
+  storage_id TEXT NOT NULL,
+  object_key TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  owner_id TEXT,
+  tenant_id TEXT,
+  state TEXT NOT NULL CHECK (state IN ('pending','uploading','ready','failed','deleting','deleted')),
+  revision INTEGER NOT NULL,
+  size INTEGER,
+  expected_size INTEGER,
+  max_bytes INTEGER,
+  etag TEXT,
+  upload_expires_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (storage_id, object_key)
+);
