@@ -12,6 +12,7 @@ import {
   releaseSet,
   sha256,
   validateReceipt,
+  waitForVisibility,
   type Receipt,
 } from "./release-ci";
 
@@ -156,6 +157,39 @@ test("safe retry compares existing archive bytes, not version existence alone", 
   expect(redirected.urls).toHaveLength(1);
 });
 
+test("visibility wait handles delayed processing, timeout and fatal registry failures", async () => {
+  let now = 0;
+  const sleeps: number[] = [];
+  const clock = {
+    now: () => now,
+    sleep: async (milliseconds: number) => {
+      sleeps.push(milliseconds);
+      now += milliseconds;
+    },
+  };
+  const available = registry(200);
+  const delayed = (async (url: string | URL | Request) =>
+    now < 60_000 ? new Response(null, { status: 404 }) : available.request(url)) as typeof fetch;
+  await waitForVisibility([pkg], policy, delayed, clock, 60_000);
+  expect(sleeps).toEqual([30_000, 30_000]);
+  expect(available.urls).toHaveLength(2);
+  now = 0;
+  sleeps.length = 0;
+  const absent = (async (_input: string | URL | Request) =>
+    new Response(null, { status: 404 })) as typeof fetch;
+  await expect(waitForVisibility([pkg], policy, absent, clock, 45_000)).rejects.toThrow(
+    "fixture@1.0.0; inspect registry before retry",
+  );
+  expect(sleeps).toEqual([30_000, 15_000]);
+  sleeps.length = 0;
+  for (const request of [
+    registry(403).request,
+    registry(200, new TextEncoder().encode("different")).request,
+  ])
+    await expect(waitForVisibility([pkg], policy, request, clock)).rejects.toThrow();
+  expect(sleeps).toHaveLength(0);
+});
+
 test("workflow boundaries: only protected publish gets OIDC, actions are immutable", async () => {
   for (const file of ["checks", "version", "release"]) {
     const text = await Bun.file(`${import.meta.dir}/../.github/workflows/${file}.yml`).text();
@@ -194,6 +228,7 @@ async function batch(
     fail?: boolean;
     conflict?: boolean;
     publishConfig?: Record<string, unknown>;
+    delayedVisibility?: boolean;
   } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), "lenso-publish-fixture-"));
@@ -211,7 +246,7 @@ async function batch(
       if (url.pathname.endsWith(".tgz"))
         return new Response(new Uint8Array(published.get(url.pathname.slice(1, -4))!));
       const name = decodeURIComponent(url.pathname.split("/")[1]!);
-      return published.has(name)
+      return published.has(name) && (!options.delayedVisibility || published.size === 2)
         ? new Response(
             JSON.stringify({
               name,
@@ -279,6 +314,18 @@ test("publisher uses the same archives in dependency order, disables scripts and
     await execute();
     expect(writes).toHaveLength(2);
   });
+});
+
+test("publisher submits the dependency-ordered batch before waiting for registry processing", async () => {
+  await batch(
+    async ({ execute, writes }) => {
+      await execute();
+      expect(writes).toHaveLength(2);
+      await execute();
+      expect(writes).toHaveLength(2);
+    },
+    { delayedVisibility: true },
+  );
 });
 
 test("publisher validates the entire batch before writes and stops on first write failure", async () => {
