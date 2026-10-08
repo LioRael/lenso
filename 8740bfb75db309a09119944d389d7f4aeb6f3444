@@ -1,0 +1,130 @@
+bun.lock
+  h_9d56aba080c170 33,62,74-75,83,85-87,90-99
+docs/DATABASE.md
+  h_9d56aba080c170 35-37,40,47-72,89-94,99-100,102-103,108-119,121-126,140-157
+examples/notes/migrations/OWNERSHIP.md
+  h_9d56aba080c170 1-17
+examples/notes/migrations/pg/0001_owner.sql
+  h_9d56aba080c170 1-28
+examples/notes/migrations/pg/meta/0001_snapshot.json
+  h_9d56aba080c170 1-62
+examples/notes/migrations/pg/meta/_journal.json
+  h_9d56aba080c170 11-17
+examples/notes/migrations/sqlite/0001_owner.sql
+  h_9d56aba080c170 1-23
+examples/notes/migrations/sqlite/meta/0001_snapshot.json
+  h_9d56aba080c170 1-63
+examples/notes/migrations/sqlite/meta/_journal.json
+  h_9d56aba080c170 11-17
+examples/notes/package.json
+  h_9d56aba080c170 20
+examples/notes/src/app-pg.ts
+  h_9d56aba080c170 2-4,9-13,15-33
+examples/notes/src/auth.ts
+  h_9d56aba080c170 1-115
+examples/notes/src/cli.ts
+  h_9d56aba080c170 3-5,9,11,17-20,22-28,31-35,38-43,45-46,52-95,97
+examples/notes/src/files.ts
+  h_9d56aba080c170 7,9-11,21-25,31-41,69,74,80,93-94,97-102
+examples/notes/src/notes.ts
+  h_9d56aba080c170 2-17,26,39-46,50-54,73-101,103-104,107-112,115-119,121-122,125-134,143,148,150-153
+examples/notes/src/queries-pg.ts
+  h_9d56aba080c170 1,14-19,21-22,25-37
+examples/notes/src/queries-sqlite.ts
+  h_9d56aba080c170 1,18-24,26-27,30-44
+examples/notes/src/router.ts
+  h_9d56aba080c170 2-3,5-6,8-12,22-32,34-36,38-42
+examples/notes/src/schema-pg.ts
+  h_9d56aba080c170 5
+examples/notes/src/schema-sqlite.ts
+  h_9d56aba080c170 5
+examples/notes/src/server.ts
+  h_9d56aba080c170 3-5,7-14,38-43,47-51
+examples/notes/src/web.ts
+  h_9d56aba080c170 1-112
+examples/notes/test/files.test.ts
+  h_9d56aba080c170 13-20
+examples/notes/test/notes.test.ts
+  h_9d56aba080c170 2,7-11,13-14,17-23,25-26,29-35,39-42,45-62,66,69-74,77,82-348,355-372,380-433
+examples/notes/test/postgres.test.ts
+  h_9d56aba080c170 12,22-65,76-81,92,94-97,109-172,179,181-213
+examples/workers/README.md
+  h_9d56aba080c170 6,9-13,15-47
+examples/workers/package.json
+  h_9d56aba080c170 12-14,17,29-30
+examples/workers/src/notes.ts
+  h_9d56aba080c170 2,4,7,10-14,16,18-27,31,34-35
+examples/workers/test/notes-workerd.test.ts
+  h_9d56aba080c170 1-255
+examples/workers/tsconfig.test.json
+  h_9d56aba080c170 1-4
+packages/auth/README.md
+  h_9d56aba080c170 3-6,8-33,36-44,46-168,172-294
+packages/auth/migrations/pg/0000_auth_sessions.sql
+  h_9d56aba080c170 1-20
+packages/auth/migrations/sqlite/0000_auth_sessions.sql
+  h_9d56aba080c170 1-19
+packages/auth/package.json
+  h_9d56aba080c170 5-6,13-54,57,62,64-66,68-83
+packages/auth/src/core.ts
+  h_9d56aba080c170 1-370
+packages/auth/src/drizzle/d1.ts
+  h_9d56aba080c170 1-10
+packages/auth/src/drizzle/pg.ts
+  h_9d56aba080c170 1-69
+packages/auth/src/drizzle/schema-pg.ts
+  h_9d56aba080c170 1-36
+packages/auth/src/drizzle/schema-sqlite.ts
+  h_9d56aba080c170 1-34
+packages/auth/src/drizzle/shared.ts
+  h_9d56aba080c170 1-64
+packages/auth/src/drizzle/sqlite.ts
+  h_9d56aba080c170 1-64
+packages/auth/src/errors.ts
+  h_9d56aba080c170 1-31
+packages/auth/src/fetch.ts
+  h_9d56aba080c170 1-69
+packages/auth/src/index.ts
+  h_9d56aba080c170 1-35
+packages/auth/src/orpc.ts
+  h_9d56aba080c170 1-74
+packages/auth/src/plugin.ts
+  h_9d56aba080c170 1-17
+packages/auth/src/requirements.ts
+  h_9d56aba080c170 1-114
+packages/auth/src/session-source.ts
+  h_9d56aba080c170 1-40
+packages/auth/src/session-store.ts
+  h_9d56aba080c170 1-41
+packages/auth/src/sessions.ts
+  h_9d56aba080c170 1-456
+packages/auth/src/source.ts
+  h_9d56aba080c170 1-74
+packages/auth/test/auth.test.ts
+  h_9d56aba080c170 2-3,8-23,25-33,35-42,44,46-232,234-260,262-273,275-354,356-369,372,379,385-393,400-403,405-453,455,458-465,467-484,487-506,508-512,514-523,525-628,630
+packages/auth/test/drizzle.test.ts
+  h_9d56aba080c170 1-397
+packages/auth/test/package.test.ts
+  h_9d56aba080c170 1-73
+packages/auth/test/postgres.test.ts
+  h_9d56aba080c170 1-369
+packages/auth/test/sessions.test.ts
+  h_9d56aba080c170 1-452
+packages/auth/test/types.ts
+  h_9d56aba080c170 1-64
+packages/storage/README.md
+  h_9d56aba080c170 5-14,30-34,58-59,64-65,78-81,98-99,105,116-122
+turbo.json
+  h_9d56aba080c170 7-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8740bfb75db309a09119944d389d7f4aeb6f3444",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

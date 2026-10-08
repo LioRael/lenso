@@ -1,0 +1,86 @@
+packages/authorization/README.md
+  h_9d56aba080c170 1-408
+packages/authorization/VALIDATION.md
+  h_9d56aba080c170 1-97
+packages/authorization/migrations/0001-role-graphs-pg.sql
+  h_9d56aba080c170 1-5
+packages/authorization/migrations/0001-role-graphs-sqlite.sql
+  h_9d56aba080c170 1-5
+packages/authorization/package.json
+  h_9d56aba080c170 1-82
+packages/authorization/src/auth.ts
+  h_9d56aba080c170 1-122
+packages/authorization/src/conditions.ts
+  h_9d56aba080c170 1-56
+packages/authorization/src/core.ts
+  h_9d56aba080c170 1-394
+packages/authorization/src/drizzle/README.md
+  h_9d56aba080c170 1-48
+packages/authorization/src/drizzle/d1.ts
+  h_9d56aba080c170 1-9
+packages/authorization/src/drizzle/pg.ts
+  h_9d56aba080c170 1-57
+packages/authorization/src/drizzle/schema-pg.ts
+  h_9d56aba080c170 1-8
+packages/authorization/src/drizzle/schema-sqlite.ts
+  h_9d56aba080c170 1-8
+packages/authorization/src/drizzle/shared.ts
+  h_9d56aba080c170 1-67
+packages/authorization/src/drizzle/sqlite.ts
+  h_9d56aba080c170 1-69
+packages/authorization/src/errors.ts
+  h_9d56aba080c170 1-13
+packages/authorization/src/index.ts
+  h_9d56aba080c170 1-31
+packages/authorization/src/list.ts
+  h_9d56aba080c170 1-38
+packages/authorization/src/management.ts
+  h_9d56aba080c170 1-288
+packages/authorization/src/plugin.ts
+  h_9d56aba080c170 1-25
+packages/authorization/src/rbac.ts
+  h_9d56aba080c170 1-263
+packages/authorization/src/snapshot.ts
+  h_9d56aba080c170 1-34
+packages/authorization/src/types.ts
+  h_9d56aba080c170 1-207
+packages/authorization/test/auth.test.ts
+  h_9d56aba080c170 1-259
+packages/authorization/test/core.test.ts
+  h_9d56aba080c170 1-383
+packages/authorization/test/d1.test.ts
+  h_9d56aba080c170 1-46
+packages/authorization/test/drizzle.test.ts
+  h_9d56aba080c170 1-91
+packages/authorization/test/list.test.ts
+  h_9d56aba080c170 1-64
+packages/authorization/test/management-auth.test.ts
+  h_9d56aba080c170 1-89
+packages/authorization/test/management.test.ts
+  h_9d56aba080c170 1-348
+packages/authorization/test/pg.test.ts
+  h_9d56aba080c170 1-63
+packages/authorization/test/plugin.test.ts
+  h_9d56aba080c170 1-90
+packages/authorization/test/rbac.test.ts
+  h_9d56aba080c170 1-195
+packages/authorization/test/toctou.test.ts
+  h_9d56aba080c170 1-57
+packages/authorization/test/usage.test.ts
+  h_9d56aba080c170 1-138
+packages/authorization/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/authorization/tsconfig.json
+  h_9d56aba080c170 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b4fda0f623320315e7151cdcb4229aaf247ad9bc",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
