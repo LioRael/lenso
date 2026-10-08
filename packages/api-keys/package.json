@@ -1,0 +1,102 @@
+{
+  "name": "@lenso/api-keys",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/api-keys"
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "default": "./dist/auth.js"
+    },
+    "./manage": {
+      "types": "./dist/manage.d.ts",
+      "default": "./dist/manage.js"
+    },
+    "./drizzle/pg": {
+      "types": "./dist/drizzle/pg.d.ts",
+      "default": "./dist/drizzle/pg.js"
+    },
+    "./drizzle/sqlite": {
+      "types": "./dist/drizzle/sqlite.d.ts",
+      "default": "./dist/drizzle/sqlite.js"
+    },
+    "./drizzle/d1": {
+      "types": "./dist/drizzle/d1.d.ts",
+      "default": "./dist/drizzle/d1.js"
+    },
+    "./drizzle/schema-pg": {
+      "types": "./dist/drizzle/schema-pg.d.ts",
+      "default": "./dist/drizzle/schema-pg.js"
+    },
+    "./drizzle/schema-sqlite": {
+      "types": "./dist/drizzle/schema-sqlite.d.ts",
+      "default": "./dist/drizzle/schema-sqlite.js"
+    },
+    "./migrations/*": "./migrations/*"
+  },
+  "scripts": {
+    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive: true, force: true}))\" && tsc -p tsconfig.build.json && bun build src/index.ts src/plugin.ts src/auth.ts src/manage.ts src/drizzle/pg.ts src/drizzle/sqlite.ts src/drizzle/d1.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261008.1",
+    "@lenso/auth": "workspace:^",
+    "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
+    "drizzle-orm": "0.45.3",
+    "miniflare": "5.20261006.0-alpha",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@cloudflare/workers-types": "^5.20261008.1",
+    "@lenso/auth": "^0.2.0",
+    "@lenso/core": "^0.2.0",
+    "@lenso/engine": "^0.2.0",
+    "@lenso/manage": "^0.2.0",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  },
+  "peerDependenciesMeta": {
+    "@cloudflare/workers-types": {
+      "optional": true
+    },
+    "@lenso/auth": {
+      "optional": true
+    },
+    "@lenso/core": {
+      "optional": true
+    },
+    "@lenso/engine": {
+      "optional": true
+    },
+    "@lenso/manage": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  }
+}
