@@ -52,7 +52,7 @@ export function defaultEnginePlugins(readApp: (snapshot: EngineSnapshot) => Prom
               : `${header}export {};\n`,
           },
         ]);
-        context.target("bun", (context) => context.bundle({ entry: context.entry }));
+        context.target("bun", (target) => target.bundle({ entry: target.entry }));
       },
     }),
   ];

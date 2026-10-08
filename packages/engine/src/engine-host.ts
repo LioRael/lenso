@@ -206,7 +206,7 @@ function orderPlugins(value: unknown, source: EngineSource): EnginePlugin[] {
         [...dependencies.get(plugin.name)!].every((name) => done.has(name)),
     );
     if (!next) {
-      const plugin = plugins.find((plugin) => !done.has(plugin.name))!;
+      const plugin = plugins.find((candidate) => !done.has(candidate.name))!;
       throw error(
         "cyclic-engine-order",
         "Engine plugin ordering contains a cycle.",
@@ -732,7 +732,7 @@ export class EngineSession {
       if (!paths.has(file.path) && (await exists(outputs.get(file.path)!)))
         await unlink(outputs.get(file.path)!);
     await mkdir(dirname(ownershipPath), { recursive: true });
-    const content = `${JSON.stringify({ schemaVersion: 1, files: files.map(({ path, plugin, capability, hash }) => ({ path, plugin, capability, hash })) }, null, 2)}\n`;
+    const content = `${JSON.stringify({ schemaVersion: 1, files: files.map(({ path, plugin, capability, hash: fileHash }) => ({ path, plugin, capability, hash: fileHash })) }, null, 2)}\n`;
     if (!(await exists(ownershipPath)) || (await readFile(ownershipPath, "utf8")) !== content)
       await Bun.write(ownershipPath, content);
   }

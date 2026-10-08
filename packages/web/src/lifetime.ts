@@ -183,7 +183,7 @@ export function createRequestTask(request: Request, handler: FetchHandler, optio
   })();
 
   // Deadline/disconnect returns promptly; the late handler/body remains owned above.
-  let removeAbort = () => {};
+  let removeAbort: (() => void) | undefined;
   const interrupted = new Promise<Response>((resolve) => {
     const listener = () =>
       resolve(
@@ -199,7 +199,7 @@ export function createRequestTask(request: Request, handler: FetchHandler, optio
     }
   });
   return {
-    response: Promise.race([handled, interrupted]).finally(() => removeAbort()),
+    response: Promise.race([handled, interrupted]).finally(() => removeAbort?.()),
     completed,
     abort: () => abort.abort(new DOMException("Web service stopped", "AbortError")),
   };

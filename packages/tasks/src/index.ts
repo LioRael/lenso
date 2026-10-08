@@ -46,6 +46,11 @@ export function defineTask<S extends StandardSchemaV1, R>(definition: Task<S, R>
   });
 }
 
+function checkJobId(jobId: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId))
+    throw new TaskQueueError("invalid-options");
+}
+
 export function createTaskQueue(options: {
   readonly provider: TaskProvider;
   readonly tasks: readonly RegisteredTask[];
@@ -69,10 +74,6 @@ export function createTaskQueue(options: {
       if (error instanceof TaskQueueError) throw error;
       throw new TaskQueueError("provider-unavailable");
     }
-  }
-  function checkJobId(jobId: string): void {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId))
-      throw new TaskQueueError("invalid-options");
   }
   async function execute(job: ClaimedJob): Promise<ExecutionResult> {
     const task = tasks.get(job.task);

@@ -243,9 +243,9 @@ test(
       } else {
         // Rotation can invalidate the old credential before logout reads it; revoke the current one.
         assert.ok(successor);
-        const revoked = await post(url, "/session/revoke", successor.credential);
-        assert.equal(revoked.status, 200);
-        await revoked.arrayBuffer();
+        const successorRevocation = await post(url, "/session/revoke", successor.credential);
+        assert.equal(successorRevocation.status, 200);
+        await successorRevocation.arrayBuffer();
         await assert.rejects(rpc(url, successor.credential).list(), { code: "UNAUTHORIZED" });
       }
     } finally {

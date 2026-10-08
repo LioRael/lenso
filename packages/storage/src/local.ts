@@ -368,20 +368,20 @@ export function createLocalStoragePlugin(options: { id: string; root: string }) 
           uploadRequiresSize: false,
         },
         put: (input) => run(input.signal, (signal) => put(input, signal)),
-        get: (key, options = {}) =>
-          run(options.signal, async (signal) => {
+        get: (key, readOptions = {}) =>
+          run(readOptions.signal, async (signal) => {
             validateKey(key);
-            validateRange(options, true);
+            validateRange(readOptions, true);
             const { metadata, payload } = await load(objectName(key), key);
             try {
-              if (options.ifMatch !== undefined && options.ifMatch !== metadata.etag) {
+              if (readOptions.ifMatch !== undefined && readOptions.ifMatch !== metadata.etag) {
                 throw new StorageError("conflict", "Object etag does not match");
               }
-              const offset = options.range?.offset ?? 0;
-              if (options.range && offset >= metadata.size)
+              const offset = readOptions.range?.offset ?? 0;
+              if (readOptions.range && offset >= metadata.size)
                 throw new StorageError("invalid-input", "Range starts outside the object");
               const length = Math.min(
-                options.range?.length ?? metadata.size - offset,
+                readOptions.range?.length ?? metadata.size - offset,
                 metadata.size - offset,
               );
               let position = offset;
@@ -429,14 +429,18 @@ export function createLocalStoragePlugin(options: { id: string; root: string }) 
                 },
                 { highWaterMark: 0 },
               );
-              return { metadata, body, ...(options.range ? { range: { offset, length } } : {}) };
+              return {
+                metadata,
+                body,
+                ...(readOptions.range ? { range: { offset, length } } : {}),
+              };
             } catch (error) {
               await close(payload, error);
               throw error;
             }
           }),
-        head: (key, options = {}) =>
-          run(options.signal, async () => {
+        head: (key, headOptions = {}) =>
+          run(headOptions.signal, async () => {
             validateKey(key);
             try {
               const { metadata, payload } = await load(objectName(key), key);
@@ -449,8 +453,8 @@ export function createLocalStoragePlugin(options: { id: string; root: string }) 
               throw error;
             }
           }),
-        delete: (key, options = {}) =>
-          run(options.signal, async (signal) => {
+        delete: (key, deleteOptions = {}) =>
+          run(deleteOptions.signal, async (signal) => {
             validateKey(key);
             const tomb = join(root, `.delete-${objectName(key)}`);
             async function removeTomb(): Promise<boolean> {

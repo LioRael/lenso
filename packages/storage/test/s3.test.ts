@@ -38,8 +38,8 @@ async function fixture(
             ...objects.entries(),
           ]
             .map(
-              ([key, object]) =>
-                `<Contents><Key>${key}</Key><Size>${object.bytes.length}</Size><ETag>"etag"</ETag></Contents>`,
+              ([objectKey, object]) =>
+                `<Contents><Key>${objectKey}</Key><Size>${object.bytes.length}</Size><ETag>"etag"</ETag></Contents>`,
             )
             .join("")}</ListBucketResult>`,
         );
@@ -305,7 +305,7 @@ test("cancellation after a part is uploaded aborts multipart and cancels blocked
   });
   const controller = new AbortController();
   const pending = f.storage.put({ key: "large", body: source, signal: controller.signal });
-  const rejection = pending.catch((error: unknown) => error);
+  const rejection = pending.catch((cause: unknown) => cause);
   for (let attempt = 0; !f.parts.has(1) && attempt < 100; attempt++) await Bun.sleep(5);
   expect(f.parts.has(1)).toBe(true);
   controller.abort();
@@ -346,7 +346,7 @@ test("owned client registers cleanup immediately and stopping cancels active upl
       },
     }),
   });
-  const rejection = pending.catch((error: unknown) => error);
+  const rejection = pending.catch((cause: unknown) => cause);
   await app.stop();
   expect(await rejection).toMatchObject({ code: "aborted" });
   expect(cancelled).toBe(true);

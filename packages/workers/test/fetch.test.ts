@@ -99,6 +99,36 @@ test("fetch failures preserve the original error and release acquired resources"
   expect(stopped).toBe(1);
 });
 
+test("fetch and cleanup failures retain both error identities in order", async () => {
+  const fetchFailure = new Error("fetch failed");
+  const cleanupFailure = new Error("cleanup failed");
+  const handler = createWorkerHandler(() => {
+    const web = definePlugin({
+      id: "web",
+      setup(context) {
+        context.onCleanup(() => {
+          throw cleanupFailure;
+        });
+        return {
+          async fetch(): Promise<Response> {
+            throw fetchFailure;
+          },
+        };
+      },
+    });
+    return { plugins: [web], web };
+  });
+  const failure = await handler
+    .fetch(new Request("https://example.com"), {}, executionContext)
+    .catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(AggregateError);
+  const aggregate = failure as AggregateError;
+  expect(aggregate.errors[0]).toBe(fetchFailure);
+  expect(aggregate.errors[1]).toBeInstanceOf(AggregateError);
+  expect((aggregate.errors[1] as AggregateError).errors).toEqual([cleanupFailure]);
+  expect((aggregate.errors[1] as AggregateError).errors[0]).toBe(cleanupFailure);
+});
+
 test("a bodyless response releases its app before returning", async () => {
   let stopped = false;
   const handler = createWorkerHandler(() => {

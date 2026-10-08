@@ -319,7 +319,7 @@ test("SQLite private CRUD, CLI dispatch, HTTP and persistent sessions", async ()
         new RPCLink({
           url: "http://notes.test/rpc",
           headers: () => ({ authorization: `Bearer ${credential}` }),
-          fetch: (request, init) => handler.fetch(new Request(request, init)),
+          fetch: (input, init) => handler.fetch(new Request(input, init)),
         }),
       );
       expect((await client.read({ id }))?.id).toBe(id);
