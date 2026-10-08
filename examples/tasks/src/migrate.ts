@@ -5,7 +5,7 @@ import pg from "pg";
 import { readConfig, reportFailure } from "./config";
 
 async function main() {
-  const config = readConfig();
+  const config = await readConfig();
   await migratePostgresTaskQueue(config);
   const pool = new pg.Pool({ connectionString: config.connectionString });
   pool.on("error", () => reportFailure("Migration database connection"));

@@ -1,7 +1,8 @@
 import { createD1Plugin } from "@lenso/db/d1";
 import { d1SessionStore } from "@lenso/auth/drizzle/d1";
 import { createWorkerHandler } from "@lenso/workers";
-import { createNotesAuthPlugin, parseNotesPrincipals } from "../../notes/src/auth";
+import { envSource } from "@lenso/core/config/env";
+import { createNotesAuthPlugin } from "../../notes/src/auth";
 import { createNotesPlugin } from "../../notes/src/notes";
 import { createSqliteNotesQueries } from "../../notes/src/queries-sqlite";
 import { createNotesWebPlugin } from "../../notes/src/web";
@@ -18,11 +19,18 @@ export default createWorkerHandler<AuthenticatedNotesEnv>((env) => {
   const authentication = createNotesAuthPlugin({
     database,
     store: d1SessionStore,
-    principals: parseNotesPrincipals(env.NOTES_LOGIN_KEYS),
-    lifetime: {
-      idle: 3_600_000,
-      absolute: 86_400_000,
-      renewAfter: Number(env.NOTES_RENEW_AFTER_MS ?? 60_000),
+    principals: {
+      sources: [
+        envSource({
+          id: "notes-worker-env",
+          read: (name) =>
+            name === "NOTES_LOGIN_KEYS" ? env.NOTES_LOGIN_KEYS : env.NOTES_RENEW_AFTER_MS,
+          bindings: {
+            principals: { name: "NOTES_LOGIN_KEYS", sensitive: true },
+            renewAfter: { name: "NOTES_RENEW_AFTER_MS", type: "number" },
+          },
+        }),
+      ],
     },
   });
   const notes = createNotesPlugin({

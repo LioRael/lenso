@@ -143,6 +143,9 @@
     "packages/lenso": {
       "name": "@lenso/core",
       "version": "0.1.0",
+      "dependencies": {
+        "@standard-schema/spec": "1.1.0",
+      },
     },
     "packages/mcp": {
       "name": "@lenso/mcp",
@@ -219,6 +222,7 @@
       },
       "devDependencies": {
         "@lenso/web": "workspace:^",
+        "@standard-schema/spec": "1.1.0",
       },
     },
   },

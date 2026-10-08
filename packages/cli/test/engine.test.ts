@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { defineApp, definePlugin } from "@lenso/core";
 import { z } from "zod";
 import { defineOperation } from "../src/operations";
@@ -169,4 +170,39 @@ test("inspect reports static instance metadata, sources, and redacts contributio
     if (previous === undefined) delete process.env.LENSO_DIAGNOSTICS_SECRET;
     else process.env.LENSO_DIAGNOSTICS_SECRET = previous;
   }
+});
+
+test("inspect describes instance configuration without source reads or business setup", async () => {
+  const root = await fixture(`
+    import {bindConfig,definePluginConfig} from ${JSON.stringify(pathToFileURL(Bun.resolveSync("@lenso/core", import.meta.dir)).href)};
+    const source = {
+      descriptor: {
+        id:'explicit-env',kind:'env',
+        fields:[{path:['credential'],env:'EXPLICIT_CONFIG_KEY',sensitive:true}]
+      },
+      async read() { throw Error('source must not be read during inspection'); }
+    };
+    const contract = definePluginConfig({
+      schema:{'~standard':{version:1,vendor:'test',validate:value=>({value})}},
+      fields:[{path:['credential'],sensitive:true}],
+      jsonSchema:()=>({type:'object',properties:{credential:{default:'private-default',examples:['private-example']}}})
+    });
+    const first=bindConfig(contract,[source],{id:'first',setup(){throw Error('must not start')}});
+    const second=bindConfig(contract,{credential:'private-value'},{id:'second',setup(){throw Error('must not start')}});
+    export default {plugins:[first,second]};
+  `);
+  const result = await inspect(root);
+  expect(result.plugins[0]?.config).toMatchObject({
+    sources: [
+      {
+        id: "explicit-env",
+        kind: "env",
+        fields: [{ path: ["credential"], env: "EXPLICIT_CONFIG_KEY", sensitive: true }],
+      },
+    ],
+    inputSchema: { type: "object", properties: { credential: { writeOnly: true } } },
+  });
+  expect(JSON.stringify(result)).not.toContain("private-");
+  await generate(root);
+  expect(await Bun.file(join(root, ".lenso/manifest.json")).text()).not.toContain("private-");
 });

@@ -1,10 +1,12 @@
 import { AuthError, type AuthSource } from "@lenso/auth";
-import { definePlugin } from "@lenso/core/plugin";
+import { definePlugin, type PluginContext } from "@lenso/core/plugin";
+import { bindConfig } from "@lenso/core/config";
 import { CliError } from "@lenso/cli";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { createAuthorizedTaskService } from "./authorized-service";
 import { openResources } from "./resources";
+import { tasksConfig, tasksEnvSource, type TasksConfig } from "./config";
 
 export interface TaskAuthConnection {
   source: AuthSource<string | null>;
@@ -18,8 +20,8 @@ type TaskResources = Omit<
   close: () => Promise<void>;
 };
 
-async function connectResources(): Promise<TaskResources> {
-  const resources = await openResources();
+async function connectResources(config: TasksConfig): Promise<TaskResources> {
+  const resources = await openResources(config);
   return { ...resources, reports: resources.service };
 }
 
@@ -43,33 +45,37 @@ export function createTasksPlugin(options: {
   evidence: () => string | null;
   connectResources?: () => Promise<TaskResources>;
 }) {
-  return definePlugin({
-    id: "tasks",
-    async setup(context) {
-      const connection = await options.connectAuth();
-      if (connection.close) context.onCleanup(() => connection.close!());
-      const resources = await (options.connectResources ?? connectResources)();
-      context.onCleanup(() => resources.close());
-      const service = createAuthorizedTaskService({
-        ...resources,
-        source: connection.source,
-        evidence: options.evidence,
+  const setup = async (context: PluginContext, acquire: () => Promise<TaskResources>) => {
+    const connection = await options.connectAuth();
+    if (connection.close) context.onCleanup(() => connection.close!());
+    const resources = await acquire();
+    context.onCleanup(() => resources.close());
+    const service = createAuthorizedTaskService({
+      ...resources,
+      source: connection.source,
+      evidence: options.evidence,
+    });
+    context.onCleanup(() => service.close());
+    return {
+      submit: (input: Parameters<typeof service.submit>[0]) =>
+        cliAuthBoundary(() => service.submit(input)),
+      query: (input: Parameters<typeof service.query>[0]) =>
+        cliAuthBoundary(() => service.query(input)),
+      cancel: (input: Parameters<typeof service.cancel>[0]) =>
+        cliAuthBoundary(() => service.cancel(input)),
+      retry: (input: Parameters<typeof service.retry>[0]) =>
+        cliAuthBoundary(() => service.retry(input)),
+      report: (input: Parameters<typeof service.report>[0]) =>
+        cliAuthBoundary(() => service.report(input)),
+    };
+  };
+  const injected = options.connectResources;
+  return injected
+    ? definePlugin({ id: "tasks", setup: (context) => setup(context, injected) })
+    : bindConfig(tasksConfig, [tasksEnvSource()], {
+        id: "tasks",
+        setup: (context, config) => setup(context, () => connectResources(config)),
       });
-      context.onCleanup(() => service.close());
-      return {
-        submit: (input: Parameters<typeof service.submit>[0]) =>
-          cliAuthBoundary(() => service.submit(input)),
-        query: (input: Parameters<typeof service.query>[0]) =>
-          cliAuthBoundary(() => service.query(input)),
-        cancel: (input: Parameters<typeof service.cancel>[0]) =>
-          cliAuthBoundary(() => service.cancel(input)),
-        retry: (input: Parameters<typeof service.retry>[0]) =>
-          cliAuthBoundary(() => service.retry(input)),
-        report: (input: Parameters<typeof service.report>[0]) =>
-          cliAuthBoundary(() => service.report(input)),
-      };
-    },
-  });
 }
 
 export const tasks = createTasksPlugin({

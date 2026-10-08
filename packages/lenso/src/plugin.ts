@@ -1,3 +1,6 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { ConfigBinding } from "./config-types";
+
 export type Cleanup = () => Promise<void>;
 
 export interface PluginSource {
@@ -10,6 +13,7 @@ export interface PluginSource {
 /** A resource acquired during setup must register its cleanup immediately. */
 export interface PluginContext {
   get<T>(dependency: Plugin<T>): T;
+  config<S extends StandardSchemaV1>(binding: ConfigBinding<S>): StandardSchemaV1.InferOutput<S>;
   /** The returned disposer shares its completion with automatic LIFO cleanup. */
   onCleanup(cleanup: () => void | Promise<void>): Cleanup;
 }
@@ -20,6 +24,7 @@ export interface Plugin<T = unknown> {
   readonly source?: PluginSource;
   readonly requires?: readonly Plugin<unknown>[];
   readonly contributions?: readonly Contribution[];
+  readonly config?: ConfigBinding;
   readonly setup: (context: PluginContext) => T | Promise<T>;
 }
 

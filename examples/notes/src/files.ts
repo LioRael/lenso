@@ -11,7 +11,7 @@ import { createLocalStoragePlugin } from "@lenso/storage/local";
 import { createSqliteFileQueries, fileSchema } from "@lenso/storage/sqlite";
 import { sqliteSessionStore } from "@lenso/auth/drizzle/sqlite";
 import { definePlugin, startApp } from "@lenso/core";
-import { parseNotesPrincipals, type NotesPrincipal } from "./auth";
+import type { NotesPrincipalsInput } from "./auth";
 import { createApplicationAuth } from "./application-auth";
 import { migrateSqlite } from "./migrate-sqlite";
 import { createNotesPlugin, notesAudiences, type NotesActor } from "./notes";
@@ -33,7 +33,7 @@ const fileAudience = {
 export function createNotesFiles(options: {
   filename: string;
   root: string;
-  principals: readonly NotesPrincipal[] | (() => readonly NotesPrincipal[]);
+  principals: NotesPrincipalsInput;
 }) {
   const database = createBunSqlitePlugin({
     id: "notes-db",
@@ -120,7 +120,7 @@ export async function migrateFiles(filename: string) {
 }
 
 async function demo(filename: string, root: string) {
-  const principals = parseNotesPrincipals(process.env.NOTES_LOGIN_KEYS);
+  const principals = () => process.env.NOTES_LOGIN_KEYS;
   const definition = createNotesFiles({ filename, root, principals });
   const app = await startApp({ plugins: definition.plugins });
   try {

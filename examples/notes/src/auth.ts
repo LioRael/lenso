@@ -1,11 +1,18 @@
 import { AuthConfigurationError, createAuth, defineSource, realm, type Auth } from "@lenso/auth";
 import {
   createManagedSessions,
+  sessionLifetime,
   type ManagedSession,
   type SessionLifetime,
   type SessionStore,
 } from "@lenso/auth/sessions";
-import { definePlugin, type Plugin } from "@lenso/core";
+import type { Plugin } from "@lenso/core";
+import {
+  bindConfig,
+  definePluginConfig,
+  valuesSource,
+  type ConfigSource,
+} from "@lenso/core/config";
 import { z } from "zod";
 
 export interface NotesPrincipal {
@@ -33,13 +40,52 @@ const principalsSchema = z
 
 export function parseNotesPrincipals(value: string | undefined): NotesPrincipal[] {
   try {
-    return principalsSchema.parse(JSON.parse(value ?? ""));
+    return principalsInputSchema.parse(value);
   } catch {
     throw new AuthConfigurationError(
       "Configure NOTES_LOGIN_KEYS as unique subjects and 32-byte hex keys",
     );
   }
 }
+
+const principalsInputSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}, principalsSchema);
+
+export const notesAuthConfig = definePluginConfig({
+  description: "Notes login principals and managed session lifetime",
+  fields: [{ path: ["principals"], sensitive: true }],
+  schema: z
+    .strictObject({
+      principals: principalsInputSchema,
+      idle: z.number().default(3_600_000),
+      absolute: z.number().default(86_400_000),
+      renewAfter: z.number().default(60_000),
+    })
+    .transform((value, context) => {
+      try {
+        return { principals: value.principals, lifetime: sessionLifetime(value) };
+      } catch {
+        context.addIssue({
+          code: "custom",
+          path: ["renewAfter"],
+          message: "Invalid session lifetime",
+        });
+        return z.NEVER;
+      }
+    }),
+});
+
+export type NotesPrincipalsInput =
+  | readonly NotesPrincipal[]
+  | string
+  | (() => readonly NotesPrincipal[] | string | undefined)
+  | { sources: readonly ConfigSource[] };
 
 export interface NotesAuthentication extends Auth<"notes", string | null, string> {
   issue(key: string, options?: { signal?: AbortSignal }): Promise<ManagedSession>;
@@ -57,18 +103,37 @@ export function createNotesAuthPlugin<T>(options: {
   id?: string;
   database: Plugin<T>;
   store(database: T): SessionStore<string>;
-  principals: readonly NotesPrincipal[];
+  principals: NotesPrincipalsInput;
   lifetime?: SessionLifetime;
 }): Plugin<NotesAuthentication> {
-  const validated = principalsSchema.safeParse(options.principals);
-  if (!validated.success) throw new AuthConfigurationError("Invalid Notes login configuration");
-  const principals = validated.data;
-  return definePlugin({
+  const input = options.principals;
+  const lifetime = options.lifetime;
+  const sources: readonly ConfigSource[] =
+    typeof input === "object" && input !== null && "sources" in input
+      ? [
+          ...input.sources,
+          ...(lifetime ? [valuesSource({ ...lifetime }, { id: "notes-lifetime" })] : []),
+        ]
+      : typeof input === "function"
+        ? [
+            {
+              descriptor: {
+                id: "notes-principals",
+                kind: "supplier",
+                fields: [{ path: ["principals"], sensitive: true }],
+              },
+              async read() {
+                return { values: { principals: input(), ...lifetime } };
+              },
+            },
+          ]
+        : [valuesSource({ principals: input, ...lifetime }, { sensitive: [["principals"]] })];
+  return bindConfig(notesAuthConfig, sources, {
     id: options.id ?? "notes-auth",
     requires: [options.database],
-    async setup(context) {
+    async setup(context, config) {
       const configured = await Promise.all(
-        principals.map(async ({ subjectId, key }) => ({
+        config.principals.map(async ({ subjectId, key }) => ({
           subjectId,
           digest: await digest(key),
         })),
@@ -97,7 +162,7 @@ export function createNotesAuthPlugin<T>(options: {
         realmId: "notes",
         login,
         store: options.store(context.get(options.database)),
-        lifetime: options.lifetime ?? { idle: 3_600_000, absolute: 86_400_000, renewAfter: 60_000 },
+        lifetime: config.lifetime,
         subjectActive: async (subject) =>
           configured.some((principal) => principal.subjectId === subject),
       });
