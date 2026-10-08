@@ -162,12 +162,12 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       import {invoke} from '@lenso/cli';
       import {defineManage,selectManageOperations,bindManageOperation} from '@lenso/manage';
       import {createManageRouter} from '@lenso/manage/orpc';
-      const input={"~standard":{version:1 as const,vendor:"consumer",validate:(value:unknown)=>({value})}};
+      const managementInput={"~standard":{version:1 as const,vendor:"consumer",validate:(value:unknown)=>({value})}};
       const managed=definePlugin({id:'managed',setup:()=>({
         read:(_input:unknown,context:{evidence:string})=>context.evidence,
       })});
       const operation=defineOperation({
-        plugin:managed,method:'read',input,context:true,description:'Read',
+        plugin:managed,method:'read',input:managementInput,context:true,description:'Read',
       });
       operation satisfies Operation<{evidence:string}>;
       bindManageOperation(operation,{context:{evidence:'launch'}});
@@ -177,7 +177,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       // @ts-expect-error Context must match the actual service's second parameter.
       bindManageOperation(operation,{context:{evidence:42}});
       // @ts-expect-error Required context cannot be silently omitted from the declaration.
-      defineOperation({plugin:managed,method:'read',input,description:'Read'});
+      defineOperation({plugin:managed,method:'read',input:managementInput,description:'Read'});
       const manage=defineManage({plugin:managed,operations:[operation]});
       selectManageOperations(manage,['read']);
       // @ts-expect-error Entry selection cannot invent a service method.
