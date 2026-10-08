@@ -1,0 +1,105 @@
+{
+  "name": "@lenso/notifications",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/notifications"
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./resend": {
+      "types": "./dist/resend.d.ts",
+      "import": "./dist/resend.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./tasks": {
+      "types": "./dist/tasks.d.ts",
+      "import": "./dist/tasks.js"
+    },
+    "./manage": {
+      "types": "./dist/manage.d.ts",
+      "import": "./dist/manage.js"
+    },
+    "./postgres": {
+      "types": "./dist/postgres.d.ts",
+      "import": "./dist/postgres.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
+    },
+    "./d1": {
+      "types": "./dist/d1.d.ts",
+      "import": "./dist/d1.js"
+    },
+    "./migrations/*": "./migrations/*"
+  },
+  "scripts": {
+    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive: true, force: true}))\" && bun build src/index.ts src/resend.ts src/plugin.ts src/auth.ts src/tasks.ts src/manage.ts src/postgres.ts src/sqlite.ts src/d1.ts --root src --outdir dist --target browser --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "1.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261008.1",
+    "@lenso/auth": "workspace:^",
+    "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
+    "@lenso/tasks": "workspace:^",
+    "drizzle-orm": "0.45.3",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@lenso/auth": "^0.2.0",
+    "@lenso/core": "^0.2.0",
+    "@lenso/engine": "^0.2.0",
+    "@lenso/manage": "^0.2.0",
+    "@lenso/tasks": "^0.2.0",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.6.5"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/core": {
+      "optional": true
+    },
+    "@lenso/auth": {
+      "optional": true
+    },
+    "@lenso/engine": {
+      "optional": true
+    },
+    "@lenso/manage": {
+      "optional": true
+    },
+    "@lenso/tasks": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  }
+}
