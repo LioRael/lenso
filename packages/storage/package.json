@@ -1,0 +1,80 @@
+{
+  "name": "@lenso/storage",
+  "version": "0.1.0",
+  "files": [
+    "dist",
+    "migrations",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./local": {
+      "types": "./dist/local.d.ts",
+      "default": "./dist/local.js"
+    },
+    "./s3": {
+      "types": "./dist/s3.d.ts",
+      "default": "./dist/s3.js"
+    },
+    "./r2": {
+      "types": "./dist/r2.d.ts",
+      "default": "./dist/r2.js"
+    },
+    "./files": {
+      "types": "./dist/files.d.ts",
+      "default": "./dist/files.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "default": "./dist/sqlite.js"
+    },
+    "./postgres": {
+      "types": "./dist/postgres.d.ts",
+      "default": "./dist/postgres.js"
+    },
+    "./fetch": {
+      "types": "./dist/fetch.d.ts",
+      "default": "./dist/fetch.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/local.ts src/s3.ts src/r2.ts src/files.ts src/sqlite.ts src/postgres.ts src/fetch.ts --outdir dist --target browser --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "lenso": "workspace:^"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "3.1147.0",
+    "@aws-sdk/lib-storage": "3.1147.0",
+    "@aws-sdk/s3-request-presigner": "3.1147.0",
+    "@cloudflare/workers-types": "5.20261008.1",
+    "drizzle-orm": "0.45.3",
+    "miniflare": "5.20261006.0-alpha"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.1147.0",
+    "@aws-sdk/lib-storage": "^3.1147.0",
+    "@aws-sdk/s3-request-presigner": "^3.1147.0",
+    "drizzle-orm": "0.45.3"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@aws-sdk/lib-storage": {
+      "optional": true
+    },
+    "@aws-sdk/s3-request-presigner": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    }
+  }
+}

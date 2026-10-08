@@ -13,3 +13,7 @@ Notes imports the real D1 adapter, shared schema and async query factory. The Bu
 The Worker entry imports no Bun listener or CLI Engine. Wrangler/workerd executes Fetch directly, with no remote Bun backend. The basic copyable Workers template is in `templates/workers`; Notes intentionally reuses the database example rather than copying its business code.
 
 Both configs enable `enable_request_signal` so network disconnects reach the Web source and the adapter can keep asynchronous app cleanup alive with the platform's `waitUntil`. Runtime termination can still interrupt cleanup; resources and non-cancellable producers must respect the platform lifetime.
+
+## Optional R2 objects
+
+`src/storage.ts` shows two explicitly referenced native R2 instances. Call `createStorageInstances(env)` inside the existing Worker app factory after supplying `PUBLIC_ASSETS` and `PRIVATE_FILES` bindings in your own Wrangler configuration, and include its returned plugins. The example does not provision buckets, enable public access or install private HTTP routes. Binding uploads require known byte length and do not support presigned URLs. For authorization, file records/D1 and raw Fetch or S3-based direct upload, see [`@lenso/storage`](../../packages/storage/README.md).

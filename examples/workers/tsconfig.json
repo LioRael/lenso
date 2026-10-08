@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": { "types": ["@cloudflare/workers-types"], "lib": ["ES2022"] },
-  "include": ["src/index.ts", "worker-greeting.d.ts"]
+  "include": ["src/index.ts", "src/storage.ts", "worker-greeting.d.ts"]
 }

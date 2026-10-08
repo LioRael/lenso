@@ -9,6 +9,8 @@
     "test": "bun test test",
     "cli": "bun src/cli.ts",
     "serve": "bun src/server.ts",
+    "files:migrate": "bun src/files.ts migrate",
+    "files:demo": "bun src/files.ts demo",
     "migrate:pg": "bun src/migrate-pg.ts",
     "migrate:sqlite": "bun src/migrate-sqlite.ts",
     "generate:pg": "drizzle-kit generate --config drizzle.pg.config.ts",
@@ -16,6 +18,7 @@
   },
   "dependencies": {
     "@lenso/db": "workspace:^",
+    "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",
     "@orpc/server": "1.15.5",
     "drizzle-orm": "0.45.3",

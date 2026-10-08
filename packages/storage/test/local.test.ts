@@ -22,19 +22,26 @@ async function fixture() {
 
 async function instance(root: string, id: string): Promise<ObjectStorage> {
   return createLocalStoragePlugin({ id, root }).setup({
-    get() { throw new Error("No dependencies"); },
-    onCleanup(cleanup) { cleanups.push(cleanup); },
+    get() {
+      throw new Error("No dependencies");
+    },
+    onCleanup(cleanup) {
+      cleanups.push(cleanup);
+    },
   });
 }
 
 function chunks(...values: string[]): ReadableStream<Uint8Array> {
   let index = 0;
-  return new ReadableStream({
-    pull(controller) {
-      if (index === values.length) controller.close();
-      else controller.enqueue(new TextEncoder().encode(values[index++]));
+  return new ReadableStream(
+    {
+      pull(controller) {
+        if (index === values.length) controller.close();
+        else controller.enqueue(new TextEncoder().encode(values[index++]));
+      },
     },
-  }, { highWaterMark: 0 });
+    { highWaterMark: 0 },
+  );
 }
 
 function name(key: string) {
@@ -42,8 +49,10 @@ function name(key: string) {
 }
 
 async function errorCode(promise: Promise<unknown>, code: StorageErrorCode) {
-  try { await promise; throw new Error("Expected rejection"); }
-  catch (error) {
+  try {
+    await promise;
+    throw new Error("Expected rejection");
+  } catch (error) {
     expect(error).toBeInstanceOf(StorageError);
     expect((error as StorageError).code).toBe(code);
   }
@@ -53,8 +62,11 @@ test("multi-chunk streaming roundtrip persists metadata across instances", async
   const { root, storage } = await fixture();
   const text = "a".repeat(200_000) + "middle" + "z".repeat(100_000);
   const metadata = await storage.put({
-    key: "photos/é.jpg", body: chunks("a".repeat(200_000), "middle", "z".repeat(100_000)),
-    size: text.length, contentType: "image/jpeg", customMetadata: { owner: "alice" },
+    key: "photos/é.jpg",
+    body: chunks("a".repeat(200_000), "middle", "z".repeat(100_000)),
+    size: text.length,
+    contentType: "image/jpeg",
+    customMetadata: { owner: "alice" },
   });
   const other = await instance(root, "two");
   expect(await other.head(metadata.key)).toEqual(metadata);
@@ -84,10 +96,15 @@ test("create-only duplicate including competing instances never overwrites", asy
 test("ranges, conditional reads, empty files and unsupported signing", async () => {
   const { storage } = await fixture();
   const metadata = await storage.put({ key: "a", body: chunks("abc", "def") });
-  const range = await storage.get("a", { range: { offset: 2, length: 99 }, ifMatch: metadata.etag });
+  const range = await storage.get("a", {
+    range: { offset: 2, length: 99 },
+    ifMatch: metadata.etag,
+  });
   expect(range.range).toEqual({ offset: 2, length: 4 });
   expect(await new Response(range.body).text()).toBe("cdef");
-  expect(await new Response((await storage.get("a", { range: { offset: 1, length: 2 } })).body).text()).toBe("bc");
+  expect(
+    await new Response((await storage.get("a", { range: { offset: 1, length: 2 } })).body).text(),
+  ).toBe("bc");
   await errorCode(storage.get("a", { ifMatch: '"wrong"' }), "conflict");
   await errorCode(storage.get("a", { range: { offset: 6 } }), "invalid-input");
   await errorCode(storage.get("a", { range: { offset: -1 } }), "invalid-input");
@@ -95,7 +112,10 @@ test("ranges, conditional reads, empty files and unsupported signing", async () 
   await storage.put({ key: "empty", body: chunks(), maxBytes: 0, size: 0 });
   expect(await new Response((await storage.get("empty")).body).text()).toBe("");
   await errorCode(storage.signDownload({ key: "a", expiresIn: 60 }), "unsupported");
-  await errorCode(storage.signUpload({ key: "a", expiresIn: 60, contentType: "text/plain" }), "unsupported");
+  await errorCode(
+    storage.signUpload({ key: "a", expiresIn: 60, contentType: "text/plain" }),
+    "unsupported",
+  );
 });
 
 test("list key pagination, prefix and idempotent delete", async () => {
@@ -116,9 +136,27 @@ test("list key pagination, prefix and idempotent delete", async () => {
   await errorCode(storage.list({ cursor: "../a" }), "invalid-key");
 });
 
+test("deletion retries recover complete and partially removed per-key tombs", async () => {
+  const { root, storage } = await fixture();
+  for (const partial of [false, true]) {
+    const key = partial ? "partial" : "complete";
+    await storage.put({ key, body: chunks("private bytes") });
+    const tomb = join(root, `.delete-${name(key)}`);
+    await rename(join(root, name(key)), tomb); // Crash/failure after logical removal.
+    if (partial) await unlink(join(tomb, "metadata.json"));
+    expect(await storage.list()).toEqual({ objects: [] });
+    expect(await storage.delete(key)).toEqual({ outcome: "deleted" });
+    expect(await storage.delete(key)).toEqual({ outcome: "not-found" });
+    expect(await readdir(root)).toEqual([]);
+  }
+});
+
 test("upload limits, mismatched size and source failures leave no artifacts", async () => {
   const { storage, root } = await fixture();
-  await errorCode(storage.put({ key: "over", body: chunks("abc", "def"), maxBytes: 4 }), "too-large");
+  await errorCode(
+    storage.put({ key: "over", body: chunks("abc", "def"), maxBytes: 4 }),
+    "too-large",
+  );
   await errorCode(storage.put({ key: "short", body: chunks("abc"), size: 5 }), "invalid-input");
   await errorCode(storage.put({ key: "long", body: chunks("abcdef"), size: 5 }), "invalid-input");
   await errorCode(storage.put({ key: "invalid", body: chunks("x"), size: -1 }), "invalid-input");
@@ -140,12 +178,22 @@ test("abort interrupts a source blocked in read and removes partial upload", asy
   const { storage, root } = await fixture();
   const abort = new AbortController();
   let started!: () => void;
-  const ready = new Promise<void>((resolve) => { started = resolve; });
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
   let cancelled = false;
-  const body = new ReadableStream<Uint8Array>({
-    pull() { started(); return new Promise<void>(() => {}); },
-    cancel() { cancelled = true; },
-  }, { highWaterMark: 0 });
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull() {
+        started();
+        return new Promise<void>(() => {});
+      },
+      cancel() {
+        cancelled = true;
+      },
+    },
+    { highWaterMark: 0 },
+  );
   const upload = storage.put({ key: "blocked", body, signal: abort.signal });
   await ready;
   abort.abort();
@@ -243,10 +291,18 @@ test("cleanup aborts unconsumed downloads without deleting stored objects", asyn
 test("cleanup interrupts an owned blocked upload and removes only its partial artifacts", async () => {
   const { storage, root } = await fixture();
   let started!: () => void;
-  const ready = new Promise<void>((resolve) => { started = resolve; });
-  const body = new ReadableStream<Uint8Array>({
-    pull() { started(); return new Promise<void>(() => {}); },
-  }, { highWaterMark: 0 });
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull() {
+        started();
+        return new Promise<void>(() => {});
+      },
+    },
+    { highWaterMark: 0 },
+  );
   const upload = storage.put({ key: "blocked", body });
   const rejected = errorCode(upload, "aborted");
   await ready;
