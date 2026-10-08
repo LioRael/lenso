@@ -1,50 +1,39 @@
 # Lenso
 
-A Bun-first plugin framework with ordinary async business services. The core SDK is independent of Web, oRPC, Auth, databases, Console and Rust. This local first slice calls the same in-memory greeting service from a CLI or an optional oRPC Fetch server with an inferred typed client.
+A Bun-first plugin framework with ordinary async services. Core owns instance dependencies and resource cleanup. Build-time Engine extensions and optional Web, Auth, Drizzle and Workers adapters remain separate from business code. Console belongs in a future independent repository.
 
-Console was removed following the user's latest direction. It belongs in a future independent repository. This repository has no Console package, React/Vite UI, or Console-specific contribution protocol.
-
-## Run
-
-Validated tools: Bun **1.4.2**, TypeScript **7.0.2**, Turbo **2.11.7**, oRPC server/client **1.15.5**, Zod **4.6.5**. Exact dependency versions and one root `bun.lock` are committed. `mise.toml` pins Bun. Node **26.10.0** was available for tool execution; application runtime and package management use Bun.
+## Run locally
 
 ```sh
 cd /Users/leosouthey/Projects/framework/lenso
 bun install --frozen-lockfile
-bun run dev
+bun dev
 ```
 
-In another terminal:
+The included greeting starts on loopback and reports its actual URL, enabled plugins and readiness. In another terminal:
 
 ```sh
-# Discover the declared service operation without starting resources.
 bun run cli inspect greeting greet --root examples/greeting --json
-bun run cli call greeting greet '{"name":"Ada"}' --root examples/greeting
+bun run cli call greeting greet '{"name":"Ada"}' --root examples/greeting --json
 bun run client Ada
-# Expected message: Hello, Ada!; runtime status: greeting, web, http-listener
-bun run client x
-# Expected business validation error and nonzero exit.
 ```
 
-CLI calls use the explicit operation declaration and shared input schema in the greeting app config. CLI calls start/stop an isolated app each time; HTTP calls share the server's current in-memory counter. Invalid names do not increase it. Restart resets it. This is not persistence.
+CLI and Web reuse the same input schema and service. Each CLI call starts a fresh app; HTTP shares the running instance's in-memory counter. Restart resets this counter. `LENSO_PORT` changes the listener port; `LENSO_URL` changes the sample client URL.
 
-Routine code hygiene is intentionally small:
+## Packages
 
-```sh
-bun run lint
-bun run fmt
-```
+| Package | Purpose | Usage |
+| --- | --- | --- |
+| `lenso` | `definePlugin`, `defineApp`, validation, Promise lifecycle | API example below |
+| `lenso-cli` | discovery, descriptions, explicit calls, generation, builds and supervised dev | [CLI contracts](docs/CLI.md), [development output](packages/cli/README.md) |
+| `@lenso/web` | Fetch, oRPC and streaming request ownership | [Web API](packages/web/README.md) |
+| `@lenso/auth` | provider adapters, typed middleware and shared service authorization | [Auth API](packages/auth/README.md) |
+| `@lenso/db` | native Drizzle PostgreSQL, Bun SQLite and D1 resources | [Database and Notes](docs/DATABASE.md) |
+| `@lenso/workers` | request-owned Fetch app and platform bindings | [Workers API](packages/workers/README.md), [local D1 example](examples/workers/README.md) |
 
-`bun run build`, `bun run typecheck`, and `bun run test` remain available when needed. Tests stay focused on lifecycle, assembly and business behavior; there is no standing smoke suite or verification-script workflow.
+[Minimal templates](templates/README.md) consume real packed packages outside the workspace. They are template contents; no scaffold command or npm release is implied. PostgreSQL, SQLite and local D1 Notes use real storage and explicit migrations.
 
-`LENSO_PORT` changes the loopback server port; `LENSO_URL` changes the sample client URL. No remote Git origin, publishing or deployment is configured.
-
-## Packages and minimum API
-
-- `packages/lenso` (`lenso`): `definePlugin`, `defineApp`, validation and application lifecycle. `lenso/plugin` exposes authoring without loading lifecycle. `lenso/browser` exposes only authoring helpers/types, with no server implementation.
-- `packages/cli` (`lenso-cli`): `check`, `inspect`, `generate`, `build`, `call`, `dev`. Engine discovers explicit `lenso.config.ts`, validates static instances/dependencies and writes `.lenso/manifest.json`, `server.ts` and an optional typed `client.ts`. It uses Bun's bundler, never runs plugin setup during generation and stays outside request handling. Config modules must be free of top-level resource acquisition.
-- `packages/web` (`@lenso/web`): optional oRPC Fetch plugin and `@lenso/web/client` transport. Uses oRPC schemas/router/middleware/client without a second RPC abstraction. The generated `#lenso/client` imports router types only.
-- `examples/greeting`: one plain async service, business-only app config, optional Web/listener assembly and typed client.
+## Core API
 
 ```ts
 import { defineApp, definePlugin, startApp } from 'lenso';
@@ -58,8 +47,7 @@ const clock = definePlugin({
   },
 });
 const report = definePlugin({
-  id: 'report',
-  requires: [clock],
+  id: 'report', requires: [clock],
   setup(context) {
     const service = context.get(clock);
     return { async run() { return service.now(); } };
@@ -70,14 +58,10 @@ try { console.log(await app.get(report).run()); }
 finally { await app.stop(); }
 ```
 
-Instance IDs must be unique. Dependencies use the exact installed plugin object; different instances of one implementation have different IDs/objects. A plugin may access only its declared initialized dependencies. Acquire resources during setup and register cleanup immediately. Initialization failure rolls back resources, including those already acquired by the failing plugin. An explicit Promise cleanup stack finalizes in reverse order, attempts all callbacks and reports collected errors. `stop()` is idempotent, including concurrent callers. Detached promises and arbitrary resource acquisition after setup are not automatically managed.
+IDs identify distinct instances. Dependencies use exact plugin references, and a plugin can access only declared initialized dependencies. Acquire resources during setup and register cleanup immediately. Setup failure rolls back registered resources, including the failing plugin's resources. Cleanup runs sequentially in global LIFO order, attempts every callback and aggregates failures. Concurrent/repeated `stop()` returns the same Promise. Business code stays ordinary async.
 
-Generic contribution records remain simple plugin metadata. No page registry or future Console protocol is predefined.
+## Development boundaries
 
-Dev watches the example's `src` and config, requests graceful shutdown, waits for the old child to exit, regenerates and starts a fresh process. It may force-stop only its owned child after five seconds. There is no state migration. Framework package edits require rebuilding package outputs. Generation avoids rewriting unchanged entries.
+Use package.json for the pinned tools and scripts. The workspace has one Bun lockfile, TypeScript 7.0.2, thin Turbo orchestration and oxlint/oxfmt. Rebuild changed framework packages before running consumers: exports resolve to dist. `.lenso` and `dist` are reproducible framework-owned output; edit source/config and regenerate. Config top-level code must avoid resource acquisition. Root tests are focused; the PostgreSQL integration test requires `LENSO_TEST_DATABASE_URL` pointing to a disposable test database.
 
-## Scope
-
-See [CLI development and operation declarations](docs/CLI.md). Historic implementation records remain in Git history.
-
-This is a local prototype with trusted in-process plugins and memory state. Auth composition is verified with a standalone oRPC middleware test, not an account system or core auth policy. The example rejects foreign Host/Origin and binds loopback; it is not a public deployment. Workers, Drizzle/PG/D1, streaming/cancellation beyond registered lifecycle resources, Rust extensions and AI Relay migration have not been implemented or validated. Next work should validate a real app and request cancellation/resource ownership, then independently validate Workers and storage adapters when needed.
+Plugins and config are trusted code, not a sandbox. CLI exposes only declared operations and does not invent a user identity. Auth adapters provide identity/policy seams, not a deployed account system. Cancellation is cooperative; detached work needs explicit ownership and registration. The included Bun server binds loopback and rejects foreign Host/Origin. Workers examples are local; cloud deployment, provider credentials, MCP/AI runtime and Rust extensions are outside this deliverable.

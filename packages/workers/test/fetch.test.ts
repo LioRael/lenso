@@ -150,3 +150,82 @@ test("Web request cleanup finishes before the Workers app releases its dependenc
   expect(await response.text()).toBe("stream");
   expect(events).toEqual(["request", "app"]);
 });
+
+test.each(["eof", "cancel", "empty", "error"] as const)(
+  "Web/Workers %s waits for tracked work and releases request before app resources",
+  async (mode) => {
+    const events: string[] = [];
+    let settle!: () => void;
+    const work = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    let registered!: () => void;
+    const registration = new Promise<void>((resolve) => {
+      registered = resolve;
+    });
+    const handler = createWorkerHandler(() => {
+      const resource = definePlugin({
+        id: "owned",
+        setup(context) {
+          context.onCleanup(() => {
+            events.push("app");
+          });
+          return {};
+        },
+      });
+      const web = createWebPlugin({
+        requires: [resource],
+        router: () => ({}),
+        fetch: () => (context) => {
+          context.waitUntil(work);
+          context.onCleanup(() => {
+            events.push("request");
+          });
+          registered();
+          if (mode === "empty") return new Response(null, { status: 204 });
+          return new Response(
+            new ReadableStream<Uint8Array>(
+              {
+                pull(controller) {
+                  if (mode === "eof") {
+                    controller.enqueue(new TextEncoder().encode("ok"));
+                    controller.close();
+                  }
+                  if (mode === "error") controller.error(new Error("source failure"));
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+          );
+        },
+      });
+      return { plugins: [resource, web], web };
+    });
+    let completed = false;
+    const outcome = (async () => {
+      const response = await handler.fetch(
+        new Request("https://example.com"),
+        {},
+        executionContext,
+      );
+      if (mode === "cancel") await response.body!.cancel();
+      else await response.text();
+    })()
+      .then(
+        () => undefined,
+        (error) => error,
+      )
+      .finally(() => {
+        completed = true;
+      });
+    await registration;
+    await Bun.sleep(5);
+    expect(events).toEqual([]);
+    expect(completed).toBe(false);
+    settle();
+    const error = await outcome;
+    expect(mode === "error" ? error instanceof Error : error === undefined).toBe(true);
+    expect(events).toEqual(["request", "app"]);
+  },
+  1000,
+);
