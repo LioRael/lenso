@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { definePlugin, type Plugin, type PluginContext } from "@lenso/core/plugin";
+import { definePlugin, type Logger, type Plugin, type PluginContext } from "@lenso/core/plugin";
 import type {
   ClaimedJob,
   EnqueueOptions,
@@ -10,6 +10,8 @@ import type {
 } from "./contracts";
 import { TaskQueueError } from "./errors";
 import { copyJson, INPUT_LIMIT_BYTES, RESULT_LIMIT_BYTES } from "./json";
+import { metrics, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
+import { producerLinks, producerMetadata } from "./telemetry";
 
 export type * from "./contracts";
 export { TaskQueueError } from "./errors";
@@ -54,7 +56,16 @@ function checkJobId(jobId: string): void {
 export function createTaskQueue(options: {
   readonly provider: TaskProvider;
   readonly tasks: readonly RegisteredTask[];
+  readonly instanceId?: string;
+  readonly pluginId?: string;
+  readonly logger?: Logger;
 }) {
+  const instanceId = options.instanceId ?? crypto.randomUUID();
+  const pluginId = options.pluginId ?? "tasks";
+  const scope = {
+    "lenso.instance.id": instanceId,
+    "lenso.plugin.id": pluginId,
+  };
   const tasks = new Map<string, RegisteredTask>();
   for (const task of options.tasks) {
     defineTask(task);
@@ -76,6 +87,59 @@ export function createTaskQueue(options: {
     }
   }
   async function execute(job: ClaimedJob): Promise<ExecutionResult> {
+    const started = performance.now();
+    return trace.getTracer("@lenso/tasks").startActiveSpan(
+      "lenso.task.attempt",
+      {
+        kind: SpanKind.CONSUMER,
+        attributes: {
+          ...scope,
+          "messaging.message.id": job.jobId,
+          "lenso.task.name": job.task,
+          "messaging.operation.type": "process",
+          "lenso.task.attempt": job.attempt,
+        },
+        links: producerLinks(job.traceMetadata),
+      },
+      ROOT_CONTEXT,
+      async (span) => {
+        const fields = {
+          instanceId,
+          pluginId,
+          operation: job.task,
+          jobId: job.jobId,
+          attempt: job.attempt,
+        };
+        let logger: Logger | undefined;
+        try {
+          logger = options.logger?.child(fields);
+        } catch {}
+        try {
+          try {
+            logger?.debug({}, "Task attempt started");
+          } catch {}
+          const result = await executeAttempt(job, logger);
+          if (!result.ok) span.setStatus({ code: SpanStatusCode.ERROR });
+          const labels = { outcome: result.ok ? "success" : "failure" };
+          const meter = metrics.getMeter("@lenso/tasks");
+          meter.createCounter("lenso.task.attempts").add(1, labels);
+          if (!result.ok) meter.createCounter("lenso.task.errors").add(1);
+          meter
+            .createHistogram("lenso.task.duration", { unit: "ms" })
+            .record(performance.now() - started, labels);
+          try {
+            if (result.ok) logger?.info({ outcome: "success" }, "Task attempt completed");
+            else
+              logger?.warn({ outcome: "failure", errorCode: result.error }, "Task attempt failed");
+          } catch {}
+          return result;
+        } finally {
+          span.end();
+        }
+      },
+    );
+  }
+  async function executeAttempt(job: ClaimedJob, logger?: Logger): Promise<ExecutionResult> {
     const task = tasks.get(job.task);
     if (!task) return { ok: false, error: "invalid-input" };
     let input: unknown;
@@ -92,6 +156,9 @@ export function createTaskQueue(options: {
     try {
       job.signal.throwIfAborted();
       value = await task.handler(input, {
+        instanceId,
+        pluginId,
+        ...(logger ? { logger } : {}),
         jobId: job.jobId,
         attempt: job.attempt,
         signal: job.signal,
@@ -140,15 +207,52 @@ export function createTaskQueue(options: {
         throw new TaskQueueError("invalid-input");
       }
       // Persist the raw JSON, not transformed output: the same schema runs once on each boundary.
-      return operation(() =>
-        options.provider.enqueue({
-          task: task.name,
-          input: raw,
-          maxAttempts: task.maxAttempts ?? 3,
-          retry: task.retry,
-          runAt: enqueueOptions.runAt ? new Date(enqueueOptions.runAt.getTime()) : undefined,
-          deduplicationKey: enqueueOptions.deduplicationKey,
-        }),
+      return trace.getTracer("@lenso/tasks").startActiveSpan(
+        "lenso.task.enqueue",
+        {
+          kind: SpanKind.PRODUCER,
+          attributes: {
+            ...scope,
+            "messaging.operation.type": "send",
+            "lenso.task.name": task.name,
+          },
+        },
+        async (span) => {
+          const started = performance.now();
+          let outcome = "success";
+          try {
+            const jobId = await operation(() =>
+              options.provider.enqueue({
+                traceMetadata: producerMetadata(),
+                task: task.name,
+                input: raw,
+                maxAttempts: task.maxAttempts ?? 3,
+                retry: task.retry,
+                runAt: enqueueOptions.runAt ? new Date(enqueueOptions.runAt.getTime()) : undefined,
+                deduplicationKey: enqueueOptions.deduplicationKey,
+              }),
+            );
+            span.setAttribute("messaging.message.id", jobId);
+            try {
+              options.logger?.info(
+                { instanceId, pluginId, operation: task.name, jobId },
+                "Task enqueued",
+              );
+            } catch {}
+            return jobId;
+          } catch (error) {
+            outcome = "failure";
+            span.setStatus({ code: SpanStatusCode.ERROR });
+            throw error;
+          } finally {
+            const meter = metrics.getMeter("@lenso/tasks");
+            meter.createCounter("lenso.task.enqueues").add(1, { outcome });
+            meter
+              .createHistogram("lenso.task.enqueue.duration", { unit: "ms" })
+              .record(performance.now() - started, { outcome });
+            span.end();
+          }
+        },
       );
     },
     get(jobId: string) {
@@ -203,7 +307,13 @@ export function createTaskPlugin(options: {
       const provider = await options.connect(context);
       let queue: TaskQueue | undefined;
       const release = context.onCleanup(() => (queue ? queue.close() : provider.close()));
-      queue = createTaskQueue({ provider, tasks: options.tasks });
+      queue = createTaskQueue({
+        provider,
+        tasks: options.tasks,
+        instanceId: context.instanceId,
+        pluginId: options.id,
+        logger: context.logger,
+      });
       if (options.worker !== undefined) await queue.startWorker(options.worker);
       return { ...queue, close: release };
     },

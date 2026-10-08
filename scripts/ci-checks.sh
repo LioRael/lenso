@@ -34,4 +34,4 @@ TASK_TEST_DATABASE_URL="postgres://lenso_ci@127.0.0.1:$port/tasks_package_ci" \
 DATABASE_URL="postgres://lenso_ci@127.0.0.1:$port/tasks_example_ci" \
   TASK_QUEUE_NAME=authorization-test bun examples/tasks/src/migrate.ts
 TASK_TEST_DATABASE_URL="postgres://lenso_ci@127.0.0.1:$port/tasks_example_ci" \
-  bun test examples/tasks/src/postgres.test.ts examples/tasks/src/entry.test.ts
+  bun test examples/tasks/src/postgres.test.ts examples/tasks/src/entry.test.ts examples/tasks/src/telemetry.test.ts

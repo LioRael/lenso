@@ -91,7 +91,8 @@ test.skipIf(!connection)(
     const server = await createNotesServer(connection, principals, 0);
     const client: RouterClient<NotesRouter> = createORPCClient(
       new RPCLink({
-        url: new URL("rpc", server.url),
+        origin: server.url.origin,
+        url: "/rpc",
         headers: () => ({ authorization: `Bearer ${session.credential}` }),
       }),
     );
@@ -108,7 +109,8 @@ test.skipIf(!connection)(
       const otherSession = await server.authentication.issue(otherKey);
       const otherClient: RouterClient<NotesRouter> = createORPCClient(
         new RPCLink({
-          url: new URL("rpc", server.url),
+          origin: server.url.origin,
+          url: "/rpc",
           headers: { authorization: `Bearer ${otherSession.credential}` },
         }),
       );

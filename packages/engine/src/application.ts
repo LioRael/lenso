@@ -1,10 +1,12 @@
 import { access } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { validatePlugins, type Contribution, type Plugin } from "@lenso/core";
+import { validatePlugins, type Contribution, type Logger, type Plugin } from "@lenso/core";
 import { EngineError, diagnostic } from "./diagnostics";
 import { validateOperations, type Operation } from "./operations";
 
 export interface AppDefinition {
+  readonly instanceId?: string;
+  readonly logger?: Logger;
   readonly plugins: readonly Plugin<unknown>[];
   readonly operations?: readonly Operation[];
 }

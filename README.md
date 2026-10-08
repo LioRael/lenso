@@ -34,8 +34,29 @@ CLI and Web reuse the same input schema and service. Each CLI call starts a fres
 | `@lenso/storage` | streaming local/S3/R2 objects and optional authorized file records | [Storage API and examples](packages/storage/README.md) |
 | `@lenso/tasks` | durable PostgreSQL jobs, retries and cooperative worker lifecycle | [Tasks API](packages/tasks/README.md), [producer/worker example](examples/tasks/README.md) |
 | `@lenso/workers` | request-owned Fetch app and platform bindings | [Workers API](packages/workers/README.md), [local D1 example](examples/workers/README.md) |
+| `@lenso/log` | independent Pino logging, safe stderr output and active trace correlation | [Logging API](packages/log/README.md) |
+| `@lenso/otel` | application-owned OpenTelemetry bootstrap, OTLP and optional oRPC/Workers entries | [Telemetry API](packages/otel/README.md) |
 
 [Minimal templates](templates/README.md) consume real packed packages outside the workspace. They are template contents; no scaffold command or npm release is implied. PostgreSQL, SQLite and local D1 Notes use real storage and explicit migrations.
+
+Web and all clients use exactly **oRPC 2.0.0-beta.42**, still a prerelease, with no
+v1 compatibility path. See the [Web migration notes](packages/web/README.md).
+Console owners must consume the same version and v2 wire format; Console is not a
+dependency of logging or telemetry.
+
+For an observed finite CLI call, configure a **local** OTLP receiver and use the
+existing greeting preload (SDK initialization happens before the CLI/config):
+
+```sh
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+  bun --preload ./examples/greeting/src/telemetry.ts packages/cli/dist/bin.js \
+  call greeting greet '{"name":"Ada"}' --root examples/greeting --json
+```
+
+The preload is for finite commands; long-running hosts own drain and bounded
+SDK shutdown explicitly. See the telemetry package for owned/external SDK and
+Workers configuration. Logging is separate: pass `createLogger()` from
+`@lenso/log` as `startApp`'s `logger` option, or supply an existing logger.
 
 ## Core API
 

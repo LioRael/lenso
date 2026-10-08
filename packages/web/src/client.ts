@@ -3,7 +3,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { AnyRouter, RouterClient } from "@orpc/server";
 
 export interface ClientOptions {
-  fetch?: typeof globalThis.fetch;
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   headers?: HeadersInit;
 }
 
@@ -12,9 +12,11 @@ export function createClient<R extends AnyRouter>(
   url: string | URL,
   options: ClientOptions = {},
 ): RouterClient<R> {
+  const endpoint = new URL(url, globalThis.location?.href);
   return createORPCClient(
     new RPCLink({
-      url,
+      origin: endpoint.origin,
+      url: `${endpoint.pathname}${endpoint.search}${endpoint.hash}` as `/${string}`,
       fetch: options.fetch,
       headers: options.headers ? new Headers(options.headers) : undefined,
     }),

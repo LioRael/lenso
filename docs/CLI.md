@@ -79,6 +79,18 @@ such as `const`/`enum` remain discoverable; do not embed secrets in schema metad
 
 The CLI routes trusted application console methods to stderr, redacts sensitive keys, credential-bearing URLs, authorization strings and known secret environment values, and redacts results. Applications must still avoid printing sensitive values; arbitrary direct stdout writes/native logs and secrets under innocuous keys cannot be reliably isolated in this trusted in-process model. This is not a sandbox. Returned data must be acyclic plain finite JSON; unsupported values produce `serialization-failed`, including an undefined result.
 
+Command and declared operation spans use only the OpenTelemetry API. Initialize
+the application's SDK **before** the CLI/config via an explicit Bun preload
+using `@lenso/otel/bun`; `flushOnCliExit: true` finishes bounded export in the CLI's
+`finally` path. Export failure reports a fixed stderr diagnostic without changing
+the business exit code. Existing SDK owners use external mode and retain their
+own flush/shutdown responsibility. No SDK, exporter, signal/exception hook or
+credentials are configured by importing CLI/core.
+An application can supply `defineApp({plugins, logger, instanceId})` using its
+existing logger; keep configuration imports free of resource acquisition.
+`@lenso/log` defaults to stderr JSON and enriches current trace/span fields;
+collect that stream once rather than also exporting it through an OTel log SDK.
+
 ## Generated ownership
 
 `generate` writes `.lenso/manifest.json`, `server.ts` and `client.ts` by default. Build plugins can add owned files; the command reports their paths from `.lenso/.engine-files.json`. Conflicting owners, edited outputs and path/symlink escapes fail before overwriting files. See [Engine authoring](../packages/engine/README.md) for `lenso.engine.ts`, discovery/generation hooks, explicit capability replacement and custom build targets. Manifest schemaVersion is 1, contains plugin/dependency and operation descriptions, and identifies `lenso.config.ts` as source. Keys are sorted; unchanged bytes are not rewritten. Missing router produces an empty client entry, removing stale imports. Metadata must be plain JSON and contain no secrets; sensitive fields are redacted. No timestamps or setup results enter generated output. Determinism depends on deterministic config metadata; import-time randomness, environment-sensitive declarations and module caches remain app-owned constraints. A new CLI process loads current source; repeated in-process discovery follows normal module caching. Edit source/config, then regenerate; do not hand-edit generated files.

@@ -68,13 +68,13 @@
     "@cloudflare/workers-types": "5.20261008.1",
     "@lenso/core": "workspace:^",
     "@lenso/web": "workspace:^",
-    "@orpc/server": "1.15.5",
+    "@orpc/server": "2.0.0-beta.42",
     "drizzle-orm": "0.45.3",
     "zod": "4.6.5"
   },
   "peerDependencies": {
     "@lenso/core": "^0.1.0",
-    "@orpc/server": "^1.15.5",
+    "@orpc/server": "2.0.0-beta.42",
     "drizzle-orm": "^0.45.3"
   },
   "peerDependenciesMeta": {

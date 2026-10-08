@@ -2,6 +2,7 @@ import { join, resolve } from "node:path";
 import { startApp } from "@lenso/core";
 import { readApplication } from "@lenso/engine/application";
 import { EngineError } from "@lenso/engine/diagnostics";
+import { executeOperation } from "@lenso/engine/operations";
 import { CliError, diagnostic, environmentSecrets, exitCode, redact } from "./diagnostics";
 import { describeOperation, redactOperationDescription, validateOperations } from "./operations";
 import type { AppDefinition } from "@lenso/engine/application";
@@ -75,21 +76,7 @@ export async function invoke(
   let callFailed = false;
   let callError: unknown;
   try {
-    const service = running.get(plugin);
-    if (
-      service === null ||
-      typeof service !== "object" ||
-      !Object.hasOwn(service, method) ||
-      typeof Reflect.get(service, method) !== "function"
-    ) {
-      throw new CliError({
-        code: "unavailable-operation",
-        phase: "invoke",
-        message: "Declared operation is not an own callable service method.",
-        ...context,
-      });
-    }
-    result = await Reflect.get(service, method).call(service, validated.value);
+    result = await executeOperation(running, operation, validated.value);
   } catch (cause) {
     callFailed = true;
     callError =
