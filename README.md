@@ -105,7 +105,7 @@ Use package.json for the pinned tools and scripts. The workspace has one Bun loc
 Run `bun run lint` and `bun run fmt:check` to check the repository, including templates,
 scripts, root configuration and supported documentation formats. Generated output and
 dependencies are ignored. Use `bun run lint:fix` for safe lint fixes and `bun run fmt`
-to write formatting changes. These commands do not run automatically on save or in CI.
+to write formatting changes. Checks run in PR/main CI, but not automatically on save.
 
 Lint permits local helpers and deliberate array mutation, rather than enforcing function
 hoisting or ES2023 array methods. Async loop conditions may depend on state changed by
@@ -115,6 +115,7 @@ The package table uses a local formatter ignore to keep its source compact; othe
 remains checked.
 
 See [Releasing packages](docs/RELEASING.md) for local release checks, package validation
-and the manual publishing steps. Release checks do not publish anything.
+and the version PR/protected CI publication setup. Local release checks do not publish
+anything; publication requires an explicit dispatch and configured Environment approval.
 
 Plugins and config are trusted code, not a sandbox. CLI exposes only declared operations and does not invent a user identity. Auth adapters provide identity/policy seams, not a deployed account system. Cancellation is cooperative; detached work needs explicit ownership and registration. The included Bun server binds loopback and rejects foreign Host/Origin. Workers examples are local; cloud deployment, provider credentials, MCP/AI runtime and Rust extensions are outside this deliverable.

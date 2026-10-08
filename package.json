@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "turbo run typecheck && bun run release:typecheck",
     "test": "turbo run test && bun run release:test",
     "generate": "bun packages/cli/src/bin.ts generate --root examples/greeting",
     "dev": "bun run build && bun packages/cli/src/bin.ts dev --root examples/greeting",
@@ -22,7 +22,9 @@
     "release:status": "bun node_modules/@changesets/cli/bin.js status",
     "release:version": "bun node_modules/@changesets/cli/bin.js version",
     "release:verify": "bun scripts/release-verify.ts",
-    "release:test": "bun test scripts/release.test.ts"
+    "release:typecheck": "tsc --noEmit -p scripts/tsconfig.json",
+    "release:test": "bun test scripts/release.test.ts scripts/release-ci.test.ts",
+    "release:prepare": "bun scripts/release-ci.ts prepare"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",

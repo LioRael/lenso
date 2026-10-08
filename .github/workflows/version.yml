@@ -1,0 +1,32 @@
+name: Version PR
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: version-pr
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.21.0
+      - run: bun install --frozen-lockfile
+      - uses: changesets/action@8eb63fb4cfc7f9643537c7d39d0b68c835012a19 # v1.5.3
+        with:
+          version: bash scripts/release-version.sh
+          title: "Version packages"
+          commit: "Version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

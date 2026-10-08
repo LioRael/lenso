@@ -1,9 +1,10 @@
-# Local release preparation
+# Release preparation and protected CI publication
 
-This workflow does not use CI and never publishes, pushes, creates Git tags or
-creates remote releases. Publishing is a separate human command after approval.
+Local preparation never publishes, pushes, creates Git tags or remote releases.
+The GitHub Actions release workflow can publish only through its separate
+`npm-release` Environment job after repository administrators configure approval.
 Use the repository's Bun version (`1.4.2`) and installed dependencies. `tar` must
-be available on PATH.
+be available on PATH. Do not invoke a real local publish as a validation step.
 
 ## Decide before a first publication
 
@@ -88,9 +89,9 @@ and [CLI](https://changesets.dev/guide/cli) documentation.
 
 Registry, access and tag are still unconfirmed. The omitted Changesets `access`
 field retains the built-in `restricted` fallback; it is not our approved access
-policy. No publication script is provided. Do not use prerelease or snapshot mode
-without an explicit release policy, and never send a prerelease to `latest`
-accidentally.
+policy. CI publication uses its own mandatory explicit policy, not that fallback.
+Do not use prerelease or snapshot mode without an explicit release policy.
+The CI receipt validator refuses prereleases under `latest`.
 
 ## Validate locally
 
@@ -98,7 +99,7 @@ From the repository root:
 
 ```sh
 bun install --frozen-lockfile
-bun test scripts/release.test.ts
+bun run release:test
 bun run typecheck
 bun run lint
 bun run fmt:check
@@ -142,59 +143,163 @@ registry, but do not publish. Templates intentionally consume local `vendor`
 tarballs; this release workflow does not change them to remote dependencies.
 Verification itself does not run the full test suite.
 
-## Publish only after explicit approval
+## Three GitHub Actions workflows
 
-The recommended publication path remains manual publication of the exact
-`release:verify` tarballs below. Changesets is used for `add`, `status` and
-`version`, not publication. Plain `changeset publish` would pack from mutable
-package directories and create Git tags by default, so it is not equivalent to
-publishing our verified artifacts. Changesets 3 also offers `pack` and
-`publish --from-pack-dir`, but this repository does not configure or verify their
-separate output format. Do not treat `verified.json` as a Changesets pack
-manifest, substitute a fresh pack, or execute any publication without separate
-human authorization.
+1. `checks.yml` runs for ordinary PRs, pushes to `main`, and manual dispatch.
+   Its only token permission is `contents: read`; checkout does not persist
+   credentials. Fork code never receives repository write or OIDC permission.
+   It performs frozen install, lint, formatting check, build, typecheck and tests.
+2. `version.yml` runs on `main`, using the pinned Changesets action with only a
+   `version` command. It updates manifests/changelogs/consumed changesets and the
+   one root `bun.lock`, checks frozen installation, formats, and opens/updates a
+   version PR. There is no publish input, npm credential or OIDC permission.
+3. `release.yml` is `workflow_dispatch` only, restricted to `main`. Its prepare
+   job repeats checks and runs the existing archive verifier, then writes a
+   `release.json` receipt for the explicitly requested comma-separated package
+   names. The immutable artifact contains the same verified tarballs and receipts.
+   An independent Environment job downloads that artifact and invokes the
+   explicit `publish <release.json>` command. It performs no install of workspace
+   dependencies, package build, pack, Changesets publish, tag or remote release.
 
-Do not run these commands as part of local preparation. After the registry,
-ownership, versions, license, access and tag are confirmed and publication is
-authorized, the human release operator uses their normal external npm credential
-store (and interactive OTP if requested). Never commit `.npmrc`, tokens or
-credential files to this repository, or put tokens in command arguments.
+The prepare job verifies all public framework packages to preserve build
+dependency ordering; only the explicit receipt subset is published. `release.json`
+binds source SHA, repository, workflow run ID, preparation attempt, policy, ordered
+names/versions, archive basenames, hashes and file lists. It is not a Changesets
+pack manifest. Preparation checks that the actual checkout matches the source
+SHA and remains unchanged before and after building. The receipt's selected set
+must match the dispatch inputs. Archive hashes and identities are checked for the whole batch
+before writes and hashes are checked again immediately before each publish.
+Runtime/optional/peer dependencies in the selected set must precede their
+consumers and satisfy packed ranges; omitted dependencies must have compatible
+versions visible in the approved registry. Registry failures stop the release.
+Optional dependencies/peers are conservatively required by this CI policy.
 
-Set the following variables to the approved values in your own shell. There
-are intentionally no registry, tag or access defaults:
+### Version PR checks and `GITHUB_TOKEN`
 
-```sh
-export RELEASE_REGISTRY='https://<approved-registry>'
-export RELEASE_TAG='<approved-dist-tag>'
-export RELEASE_ACCESS='<public-or-restricted>'
-npm login --registry "$RELEASE_REGISTRY"
-npm whoami --registry "$RELEASE_REGISTRY"
-```
+The version action uses the ephemeral `GITHUB_TOKEN`, not a long-lived PAT.
+GitHub suppresses workflows triggered by most events this token creates, so the
+bot's version PR and updates do **not** automatically trigger ordinary PR checks.
+Do not merge it assuming checks ran. The recommended no-token workaround is:
 
-For **each** archive from one successful receipt, in the receipt's order:
+1. Fetch/review the bot branch, make a deliberate human-authored commit (an empty
+   commit is sufficient) and push it with your normal human Git authentication.
+2. Confirm the required `Checks / checks` check runs for the new PR head SHA.
+3. If the bot updates that branch again, repeat before merging.
 
-```sh
-# First review locally; this must not publish.
-npm publish /absolute/path/to/verified-package.tgz --dry-run --ignore-scripts \
-  --registry "$RELEASE_REGISTRY" --tag "$RELEASE_TAG" --access "$RELEASE_ACCESS"
+Alternatively, manually dispatch `checks.yml` on the bot branch and review that
+exact SHA. A dispatch run is not promised to satisfy a PR-required status rule;
+verify your branch protection behavior. If fully automatic bot PR checks become
+necessary, an explicitly approved short-lived GitHub App installation token is
+a follow-up, not a hardcoded PAT or hidden prerequisite here. See GitHub's
+[triggering workflows](https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-when-your-workflow-runs/triggering-a-workflow).
 
-# Separate, explicitly authorized publication command.
-npm publish /absolute/path/to/verified-package.tgz --ignore-scripts \
-  --registry "$RELEASE_REGISTRY" --tag "$RELEASE_TAG" --access "$RELEASE_ACCESS"
-```
+### PostgreSQL test isolation
 
-Use the exact reviewed archive, not the source directory. Verify its SHA-256
-against `verified.json` immediately before publishing, and inspect existing
-remote versions with `npm view <name>@<version> --registry "$RELEASE_REGISTRY"`.
-Do not overwrite an existing version. `npm publish --dry-run` is supplemental
-npm packaging feedback, not proof of authorization or registry acceptance.
+`scripts/ci-checks.sh` requires installed `postgres`, `initdb`, `pg_ctl` and
+`createdb`. On Ubuntu 24.04 CI installs PostgreSQL 16 binaries and adds their bin
+directory to PATH. The script uses a unique temporary data directory and an
+ephemeral loopback TCP port, no shared PostgreSQL service or fixed port. The
+allocation-to-start interval has the same small port race as existing Auth tests;
+a collision fails startup, never connects to a shared database. EXIT cleanup
+stops only the cluster identified by that data directory.
 
-There is no atomic multi-package npm release. Stop at the first failure, record
-which exact versions succeeded, and inspect the registry before deciding what
-to retry. Do not blindly rerun the whole list or automatically unpublish.
-Publish providers before consumers; all packages in the receipt are preparation
-candidates, not a mandate to republish unchanged versions. If publishing only
-a subset, first ensure its dependencies and required peers already exist at
-compatible versions in the approved registry.
+Root `bun run test` runs ordinary tests, plus Auth's independently owned temporary
+clusters with `LENSO_REQUIRE_POSTGRES=1`. `turbo.json` explicitly forwards that
+switch in strict environment mode. The URL-dependent PG tests are then run
+serially with `LENSO_TEST_DATABASE_URL` for Notes and `TASK_TEST_DATABASE_URL` for
+Tasks. Each of Notes, Tasks package, and Tasks example has a different fresh
+database. The Tasks example's `authorization-test` queue is explicitly migrated
+before its PG/entry tests; it is not shared with package tests or another CI job.
+Their UUID data can remain until the owned temporary cluster is destroyed.
+Ambient DB URLs are unset so local reproduction cannot reuse a production URL.
 
-Git commits, tags, pushes and remote releases remain separate authorized steps.
+### Remote setup required before enabling publication
+
+These steps are administrator work; adding YAML does not configure remote
+approval or package ownership:
+
+1. Confirm name/scope ownership, license/legal metadata, exact release set,
+   registry, access and tag. This implementation supports npm's OIDC registry
+   only. Selecting a different registry fails closed; adapting to another
+   registry's verified short-lived authentication is a separate design decision.
+   Anonymous registry verification cannot read restricted/private packages, so
+   those fail closed rather than gaining a fallback read token.
+   Set each selected source manifest's `repository.url` to the actual GitHub
+   repository, as npm requires. Currently public manifests omit repository and
+   license metadata; the publisher refuses missing/mismatched repository URLs
+   before registry writes. No repository identity or license is guessed here.
+2. Configure repository variables `RELEASE_REGISTRY`, `RELEASE_ACCESS`,
+   `RELEASE_TAG`, or supply explicit dispatch inputs. No value has a default;
+   blank/malformed policy fails. The supported registry value, if approved, is
+   exactly `https://registry.npmjs.org`; access is `public` or `restricted`.
+3. Create the GitHub Environment **`npm-release`**, require designated reviewers,
+   prevent self-review, restrict deployment branches to protected `main`, and
+   prohibit protection bypass where your GitHub plan permits it. Protect `main`
+   and require review of workflows/release scripts. Without remote protection,
+   `environment:` alone is not an approval gate. Do not dispatch until configured.
+4. For every package, configure npm Trusted Publisher for this exact GitHub
+   organization/user, repository, workflow filename **`release.yml`**, and
+   Environment **`npm-release`**. Allow direct `npm publish` in npm's current
+   trusted-publisher settings. New package names may require an owner-authorized
+   first-publication/bootstrap procedure before npm exposes package settings;
+   this repository does not automate bootstrap or store a fallback publish token.
+   npm's current documentation says a new publisher configuration must complete
+   its first successful publication within two days, otherwise recreate it.
+5. Enable Actions PR creation for the version job and allow its scoped
+   contents/PR-write permissions. Configure required checks, including the bot
+   PR procedure above. Check organization/fork approval restrictions too.
+6. Dispatch release on `main` with explicit package names. Before approving the
+   publish job, download/review `release.json`, source SHA, policy, complete
+   archive file lists/hashes and all preparation checks. Artifacts expire in
+   14 days. Do not approve stale or unexplained batches.
+
+The local script guard refuses publication without dispatch/main/protected-job
+markers and OIDC environment, and refuses common token fallback variables.
+These markers are not cryptographic proof of an Environment approval: the real
+enforcement is GitHub protection plus npm's exact trusted publisher identity.
+There is intentionally no root `release:publish` shortcut.
+
+### Toolchain and official references
+
+Bun is pinned to project `1.4.2`. Node `24.21.0` is pinned from the official
+[Node distribution index](https://nodejs.org/dist/index.json), on the supported
+24 LTS line. npm `12.2.0` is pinned from official
+[npm package metadata](https://registry.npmjs.org/npm/12.2.0); its Node engine
+accepts `^24.15.0`. npm's current
+[Trusted Publishers documentation](https://docs.npmjs.com/trusted-publishers/)
+requires npm >=11.5.1 and Node >=22.14.0 and supports GitHub-hosted runners,
+not self-hosted runners. OIDC permission exists only on the publish job.
+The npm CLI is installed globally there, with an empty temporary user config;
+there is no registry-url setup-node credential template or repository npm token.
+Trusted publishing automatically generates provenance where npm supports it;
+private-package provenance and first-publish acceptance are not locally proven.
+
+Every `uses:` is pinned to a full commit SHA resolved from official repository
+tags via `git ls-remote`: checkout v4.3.1, setup-node v4.4.0,
+upload-artifact v4.6.2, download-artifact v4.3.0, changesets/action v1.5.3,
+and oven-sh/setup-bun v2. Do not replace pins with moving major tags.
+
+### Partial publication and retry
+
+npm releases are not atomic. Publishing stops on the first error, with no
+automatic rollback, unpublish, version overwrite, or dist-tag mutation on retry.
+Before any write, existing selected versions are downloaded from the registry
+and their archive SHA-256 must match the receipt, not merely their version
+number. Identical archives are safely skipped; differing bytes or unreadable
+registry content fail closed. After each publish the registry archive is checked.
+A visibility delay can stop the run even after a successful write.
+
+After inspecting logs and registry state, rerun only the failed publish job of
+the same workflow run to reuse the original prepare job's artifact output.
+The receipt permits a later attempt of that same source/run, not another run.
+GitHub rerun output propagation and Environment reapproval must be verified
+remotely. Rerunning all jobs rebuilds a new batch and may create different archive
+bytes; those will not be silently accepted for already published versions.
+If the original artifact expired, recover the exact reviewed archive through
+an owner-approved process; do not substitute a repack and call it the same batch.
+
+Local tests use registry mocks and never publish. They cannot prove GitHub
+Environment protection, fork token restrictions, hosted-runner provisioning,
+OIDC exchange, npm permissions/name availability or real Actions execution.
+Git commits, tags, pushes, deployment and remote releases remain separate
+authorized steps.
