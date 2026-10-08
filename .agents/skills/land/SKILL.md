@@ -1,7 +1,8 @@
 ---
 name: land
 description: >-
-  Land requested Lenso TypeScript changes onto local main after verification.
+  Land requested Lenso TypeScript changes onto main in the user's primary checkout
+  after verification; updating a temporary clone does not count as landing.
   Invoke only when the user explicitly requests landing or merging changes,
   never merely for review, preparation, passing checks, or skill installation.
 disable-model-invocation: true
@@ -11,15 +12,21 @@ metadata:
 
 # Land
 
-Complete the explicit landing request in the assigned Lenso checkout. The request
-already authorizes the local merge; proceed without asking for the same permission
-again. Default destination is local `main`. Honor a different explicitly requested
-local destination only after confirming its identity and applicable policy.
+Complete the explicit landing request by updating `main` in the user's primary
+checkout, not a same-named branch in a temporary source clone. Honor another
+explicitly requested destination only after confirming its checkout, branch and
+policy. The merge request supplies landing intent; do not ask for it again.
 
-Scope is local Git integration. Preserve the source branch. Pushes, including to
-the `local` backlink, package publication, deployment, shared-history rewrites and
-changes to Git/signing settings require separate authorization. Do not operate in
-another checkout.
+Operate only in authorized checkouts. If the primary destination is outside the
+authorized workspace, stop and request access before changing its files, index,
+objects or refs. Resolving a path does not authorize modifying it. Never substitute
+a source-clone merge for an unavailable primary destination.
+
+Scope is local Git integration, including transferring verified commits between
+authorized local repositories. Preserve source branches and unrelated primary
+checkout work. Remote publication, deployment, shared-history rewrites and changes
+to Git/signing settings require separate authorization. Do not push into a
+checked-out branch through the `local` backlink.
 
 ## 1. Establish the change and destination
 
@@ -36,34 +43,67 @@ Inspect the current state:
 git --no-optional-locks status --short
 git branch --show-current
 git remote -v
+git remote get-url local
+git rev-parse --absolute-git-dir
 git worktree list --porcelain
 git log -8 --oneline
-git rev-parse --verify refs/heads/main
 ```
 
-Use the selected destination instead of `main` when one was explicitly requested.
-Resolve the requested source from the current branch and conversation; stop if
-scope is ambiguous. Record source and destination commit IDs. Inspect their diff,
-including uncommitted changes. The `local` remote identifies the user's primary
-repository, not a publication destination; this workflow does not update it.
+Resolve the requested source from the current branch and conversation. The `local`
+filesystem backlink identifies this project's primary repository. Resolve its
+actual checkout and Git directory; do not treat a network URL or bare repository
+as a checkout. If the backlink is missing or ambiguous, obtain the intended primary
+checkout rather than guessing. If already working in the explicitly identified
+primary checkout, use it directly.
+
+Record the canonical source and primary checkout paths, their Git directories, the
+destination branch (default `main`), and both commit IDs. Inspect the primary state
+read-only before requesting any missing access:
+
+```sh
+git --no-optional-locks -C <primary-checkout> status --porcelain=v1
+git -C <primary-checkout> rev-parse --show-toplevel
+git -C <primary-checkout> rev-parse --absolute-git-dir
+git -C <primary-checkout> rev-parse --verify refs/heads/<destination>
+git -C <primary-checkout> worktree list --porcelain
+```
+
+Replace placeholders with resolved paths and names. Record staged and unstaged
+diffs and untracked file content hashes, not just status labels, so unrelated
+primary changes can be preserved and checked after landing.
+Unrelated dirty work is not permission to reset, restore, stash or commit it.
+Stop if the requested result cannot be applied without disturbing it.
 
 Commit only requested uncommitted changes, using explicit paths and a noninteractive
-message. Preserve the configured signing mechanism; if signing needs unavailable
+message. Use `GIT_EDITOR=true` for every commit and merge command. Preserve the
+configured signing mechanism; if signing needs unavailable
 authentication, stop rather than disabling it. Do not amend or rewrite existing
 shared commits. If unrelated work cannot be safely separated, stop and explain what
 must be isolated. Do not discard or automatically stash unrelated changes.
 
-**Done:** the requested source is a pinned local commit, the destination is a known
-local branch, applicable obligations are identified, and the checkout is safe to
-switch without disturbing unrelated work.
+**Done:** the source is a pinned commit, the primary checkout and its destination
+branch are identified and authorized, applicable obligations are met, and unrelated
+work can be preserved. A clone-local `main` is not the destination.
 
 ## 2. Form a candidate without advancing the destination
 
-If the pinned source is already an ancestor of the destination, verify that the
-requested changes are present and report that they are already landed.
+Compare the pinned source with the actual primary destination commit. A matching
+or newer branch in the source clone proves nothing about the primary checkout.
+If the requested source is already contained in the primary destination, verify
+the primary state and report that it is already landed.
 
-Otherwise create a uniquely named local integration branch from the pinned
-destination. Keep its recovery name and commit IDs available.
+If repositories differ, fetch the authorized primary destination into the source
+repository without updating the primary branch:
+
+```sh
+git fetch --no-tags <primary-git-directory> refs/heads/<destination>
+```
+
+Confirm `FETCH_HEAD` equals the recorded primary destination commit; if the primary
+advanced, refresh the recorded base. Create a uniquely named local integration
+branch from that pinned base, leaving the actual primary branch untouched. Keep
+the recovery name and commit IDs available. If source and destination share one
+repository, create the integration branch directly from the pinned destination.
 
 - If the destination is an ancestor of the source, fast-forward the integration
   branch to the pinned source with `GIT_EDITOR=true git merge --ff-only <source>`.
@@ -78,8 +118,8 @@ For ambiguous intent, unsafe resolution, or an unresolved permission requirement
 stop and report that landing has not completed. Do not force a result or invoke an
 interactive editor. Recheck the whole resolved diff, not just conflicted lines.
 
-**Done:** one clean candidate commit contains the requested source and destination
-work; the destination branch still points to its recorded commit.
+**Done:** one clean candidate commit contains the requested source and primary
+destination work; the primary destination still points to its recorded base.
 
 ## 3. Verify the exact candidate
 
@@ -172,28 +212,44 @@ required check has passed, and no required review or submission obligation remai
 
 ## 4. Land and confirm
 
-Recheck that the destination still points to the recorded base and is not checked
-out in another worktree. If it advanced, rebuild the candidate against its new tip
-and repeat applicable verification. If another worktree owns it, stop rather than
-overriding ownership.
+Recheck the actual primary checkout's destination ref, branch ownership and
+uncommitted state, not the source clone's `main`. If the destination advanced,
+rebuild the candidate against its new tip and repeat applicable verification. If
+unrelated primary work changed, reassess preservation before proceeding.
 
-Switch to the destination in the assigned checkout and fast-forward it to the
-verified candidate:
+It is normal for `main` to be checked out in the primary checkout. If another
+linked worktree owns the destination, use that owner only if it is an authorized
+destination; otherwise stop and request access instead of overriding ownership.
+
+When repositories differ, transfer the exact verified candidate into the primary
+repository without updating a branch:
 
 ```sh
-git switch <destination>
-GIT_EDITOR=true git merge --ff-only <verified-candidate>
-git rev-parse HEAD
-git merge-base --is-ancestor <pinned-source> HEAD
-git --no-optional-locks status --short
+git -C <primary-checkout> fetch --no-tags <source-git-directory> <verified-candidate-id>
+git -C <primary-checkout> rev-parse FETCH_HEAD
 ```
 
-Replace placeholders with the recorded names and IDs. Confirm that the destination
-tip equals the verified candidate and contains the requested source. A prepared
-branch, created commit, started check or incomplete merge is not successful landing.
-If the merge fails, report that the changes have not landed and retain recoverable
-state without discarding work.
+Confirm the fetched ID equals the tested candidate. Then, in the authorized
+primary checkout, switch to the destination if needed and fast-forward it:
 
-Report the destination, landed commit, source, checks actually run, and any explicit
-validation limitations. Preserve the source and integration branches; perform no
-push, publication or deployment as part of this local landing.
+```sh
+git -C <primary-checkout> switch <destination>
+GIT_EDITOR=true git -C <primary-checkout> merge --ff-only <verified-candidate-id>
+git -C <primary-checkout> rev-parse refs/heads/<destination>
+git -C <primary-checkout> merge-base --is-ancestor <pinned-source> refs/heads/<destination>
+git --no-optional-locks -C <primary-checkout> status --porcelain=v1
+```
+
+Replace placeholders with the recorded paths, names and IDs. Confirm the primary
+destination tip equals the verified candidate, contains the requested source, and
+its checked-out files reflect that commit without unexpected changes. Verify that
+pre-existing unrelated staged, unstaged and untracked work remains intact.
+
+Success requires this verification in the primary checkout. A source-clone merge,
+prepared branch, transferred commit, started check or incomplete merge is not
+successful landing. If access or the final merge is blocked, report that the
+primary destination has not been updated; retain recoverable state.
+
+Report the actual primary checkout path, destination branch, landed commit, source,
+checks run and validation limitations. Preserve source and integration branches.
+Perform no remote publication or deployment as part of this local landing.
