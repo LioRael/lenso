@@ -2,16 +2,16 @@
 
 Private object storage with explicit Lenso instance references. Business methods are ordinary async functions. The package root has no filesystem, AWS SDK, database or Web imports.
 
-| Import | Runtime / optional dependency |
-| --- | --- |
-| `@lenso/storage` | Object types, errors and plugin factory |
-| `@lenso/storage/local` | Bun, dedicated local directory |
-| `@lenso/storage/s3` | Bun, AWS SDK v3 `client-s3`, `lib-storage`, `s3-request-presigner` |
-| `@lenso/storage/r2` | Workers native R2 binding, no AWS SDK |
-| `@lenso/storage/files` | Optional authorized file records, database supplied by application |
-| `@lenso/storage/sqlite` | Drizzle schema/queries for Bun SQLite or D1 |
-| `@lenso/storage/postgres` | Drizzle schema/queries for Bun SQL PostgreSQL |
-| `@lenso/storage/fetch` | Optional raw Fetch helpers, no listener or implicit routes |
+| Import                    | Runtime / optional dependency                                      |
+| ------------------------- | ------------------------------------------------------------------ |
+| `@lenso/storage`          | Object types, errors and plugin factory                            |
+| `@lenso/storage/local`    | Bun, dedicated local directory                                     |
+| `@lenso/storage/s3`       | Bun, AWS SDK v3 `client-s3`, `lib-storage`, `s3-request-presigner` |
+| `@lenso/storage/r2`       | Workers native R2 binding, no AWS SDK                              |
+| `@lenso/storage/files`    | Optional authorized file records, database supplied by application |
+| `@lenso/storage/sqlite`   | Drizzle schema/queries for Bun SQLite or D1                        |
+| `@lenso/storage/postgres` | Drizzle schema/queries for Bun SQL PostgreSQL                      |
+| `@lenso/storage/fetch`    | Optional raw Fetch helpers, no listener or implicit routes         |
 
 Install `lenso` and this package. Install the three AWS SDK peers for `/s3`, or `drizzle-orm@0.45.3` for the database subpaths. Do not import `/local` or `/s3` in a Workers entry. Inspect `storage.capabilities` before selecting signing, conditional or range operations; unsupported operations throw `StorageError` with `code: "unsupported"`.
 
@@ -27,8 +27,11 @@ const app = await startApp(defineApp({ plugins: [publicAssets, privateFiles] }))
 try {
   const storage = app.get(privateFiles); // No global default.
   await storage.put({
-    key: "contracts/unique-id.pdf", body: request.body!,
-    contentType: "application/pdf", maxBytes: 20 * 1024 * 1024, signal: request.signal,
+    key: "contracts/unique-id.pdf",
+    body: request.body!,
+    contentType: "application/pdf",
+    maxBytes: 20 * 1024 * 1024,
+    signal: request.signal,
   });
   const download = await storage.get("contracts/unique-id.pdf");
   const response = new Response(download.body, {
@@ -52,12 +55,14 @@ Object services are **trusted internal APIs**, not public endpoints. Knowing a k
 ```ts
 import { createS3StoragePlugin } from "@lenso/storage/s3";
 const privateFiles = createS3StoragePlugin({
-  id: "privateFiles", bucket: "private-files",
+  id: "privateFiles",
+  bucket: "private-files",
   clientConfig: { region: "us-east-1" }, // SDK credential chain; no credentials in source
 });
 // R2 S3 API uses the same adapter, separately from the binding:
 const r2S3 = createS3StoragePlugin({
-  id: "r2S3", bucket: "files",
+  id: "r2S3",
+  bucket: "files",
   clientConfig: { region: "auto", endpoint: process.env.R2_S3_ENDPOINT },
   multipart: false,
 });
@@ -70,7 +75,10 @@ import { createR2StoragePlugin } from "@lenso/storage/r2";
 const privateFiles = createR2StoragePlugin({ id: "privateFiles", binding: env.PRIVATE_FILES });
 // Native binding upload needs known size and Workers FixedLengthStream.
 await app.get(privateFiles).put({
-  key: crypto.randomUUID(), body: request.body!, size: trustedExpectedSize, maxBytes: serverLimit,
+  key: crypto.randomUUID(),
+  body: request.body!,
+  size: trustedExpectedSize,
+  maxBytes: serverLimit,
 });
 ```
 
@@ -87,12 +95,14 @@ bun install
 bun run build
 mkdir -p output
 cd examples/notes
+export NOTES_LOGIN_KEYS="$(bun -e 'console.log(JSON.stringify([{subjectId:"local-demo",key:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,"0")).join("")}]))')"
+export NOTES_LOGIN_KEY="$(bun -e 'console.log(JSON.parse(process.env.NOTES_LOGIN_KEYS)[0].key)')"
 SQLITE_PATH=../../output/notes-files.sqlite bun run migrate:sqlite
 SQLITE_PATH=../../output/notes-files.sqlite bun run files:migrate
 SQLITE_PATH=../../output/notes-files.sqlite bun run files:demo
 ```
 
-`examples/notes/src/files.ts` binds two local instances, the existing Notes database resource and an owner/tenant policy. The demo streams a private upload, gets a stable `fileId`, downloads it and retries deletion. It supplies a local demo actor, not production authentication.
+`examples/notes/src/files.ts` binds two local instances, the existing Notes database resource, its Auth instance and an owner/tenant policy. The demo verifies the configured login key before deriving its file access context, streams a private upload, gets a stable `fileId`, downloads it and retries deletion. The login-key source and fixed local tenant are application configuration, not a production identity system. No credentials are written to tracked files.
 
 Import `fileSchema` and `createSqliteFileQueries` (or the PostgreSQL equivalents), include the table in your existing database schema, then use `createFilesPlugin({ id, storages, database, queries, authorize })`. `authorize({ access, action, file })` is required for every file operation; omitting it denies access. Owner/tenant fields are application associations, not a user system. Applications authenticate `access` and validate assignments and quota/type policies themselves. The plugin neither creates identities nor assumes future Auth APIs.
 
@@ -103,9 +113,13 @@ Migrations belong to this package at `migrations/sqlite/0001_files.sql` and `mig
 ```ts
 const files = app.get(filePlugin);
 const { file, link } = await files.beginUpload(access, {
-  storageId: privateFiles.id, filename: "contract.pdf", contentType: "application/pdf",
-  maxBytes: 20 * 1024 * 1024, expiresIn: 300,
-  ownerId: access.ownerId, tenantId: access.tenantId,
+  storageId: privateFiles.id,
+  filename: "contract.pdf",
+  contentType: "application/pdf",
+  maxBytes: 20 * 1024 * 1024,
+  expiresIn: 300,
+  ownerId: access.ownerId,
+  tenantId: access.tenantId,
 });
 // Send link only to the authorized client, never a logger.
 await fetch(link.url, { method: link.method, headers: link.headers, body: browserFile });

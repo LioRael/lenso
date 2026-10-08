@@ -1,4 +1,20 @@
 import { definePlugin, type Plugin } from "lenso/plugin";
+import { audience, type Actor } from "@lenso/auth";
+import type { NotesAuthentication } from "./auth";
+
+export const notesAudiences = {
+  create: audience("notes:create"),
+  list: audience("notes:list"),
+  read: audience("notes:read"),
+  update: audience("notes:update"),
+  remove: audience("notes:remove"),
+} as const;
+export type NotesOperation = keyof typeof notesAudiences;
+export type NotesActor<O extends NotesOperation> = Actor<
+  "notes",
+  string,
+  (typeof notesAudiences)[O]["id"]
+>;
 
 export interface NoteInput {
   title: string;
@@ -7,6 +23,7 @@ export interface NoteInput {
 
 export interface StoredNote {
   id: string;
+  readonly ownerId: string;
   title: string;
   body: string;
   createdAt: Date;
@@ -19,16 +36,22 @@ export interface Note extends Omit<StoredNote, "createdAt"> {
 /** Only the queries this business needs; each dialect keeps its real Drizzle type. */
 export interface NotesQueries {
   insert(note: StoredNote): Promise<StoredNote>;
-  list(): Promise<StoredNote[]>;
-  update(id: string, input: { title: string; body: string }): Promise<StoredNote | null>;
-  remove(id: string): Promise<boolean>;
+  list(ownerId: string): Promise<StoredNote[]>;
+  read(id: string): Promise<StoredNote | null>;
+  update(
+    id: string,
+    ownerId: string,
+    input: { title: string; body: string },
+  ): Promise<StoredNote | null>;
+  remove(id: string, ownerId: string): Promise<boolean>;
 }
 
 export interface NotesService {
-  create(input: NoteInput): Promise<Note>;
-  list(): Promise<Note[]>;
-  update(id: string, input: NoteInput): Promise<Note | null>;
-  remove(id: string): Promise<boolean>;
+  create(actor: NotesActor<"create"> | null, input: NoteInput): Promise<Note>;
+  list(actor: NotesActor<"list"> | null): Promise<Note[]>;
+  read(actor: NotesActor<"read"> | null, id: string): Promise<Note | null>;
+  update(actor: NotesActor<"update"> | null, id: string, input: NoteInput): Promise<Note | null>;
+  remove(actor: NotesActor<"remove"> | null, id: string): Promise<boolean>;
 }
 
 export class NoteInputError extends Error {}
@@ -47,23 +70,68 @@ function present(note: StoredNote): Note {
   return { ...note, createdAt: note.createdAt.toISOString() };
 }
 
-export function createNotesService(queries: NotesQueries): NotesService {
+export function createNotesService(
+  queries: NotesQueries,
+  authentication: NotesAuthentication,
+): NotesService {
+  async function authorize<O extends NotesOperation>(
+    operation: O,
+    actor: NotesActor<O> | null,
+    note?: StoredNote,
+  ) {
+    return authentication
+      .for(notesAudiences[operation])
+      .enforce(
+        actor,
+        note,
+        ({ principal, resource }) =>
+          principal.kind === "user" &&
+          (resource === undefined || resource.ownerId === principal.subjectId),
+      );
+  }
+  async function owned<O extends "read" | "update" | "remove">(
+    operation: O,
+    actor: NotesActor<O> | null,
+    id: string,
+  ) {
+    await authorize(operation, actor);
+    const note = await queries.read(id);
+    if (note) await authorize(operation, actor, note);
+    return note;
+  }
   return {
-    async create(input) {
+    async create(actor, input) {
+      const principal = await authorize("create", actor);
       const values = validate(input);
       return present(
-        await queries.insert({ ...values, id: crypto.randomUUID(), createdAt: new Date() }),
+        await queries.insert({
+          ...values,
+          ownerId: principal.subjectId,
+          id: crypto.randomUUID(),
+          createdAt: new Date(),
+        }),
       );
     },
-    async list() {
-      return (await queries.list()).map(present);
+    async list(actor) {
+      const principal = await authorize("list", actor);
+      const rows = await queries.list(principal.subjectId);
+      for (const row of rows) await authorize("list", actor, row);
+      return rows.map(present);
     },
-    async update(id, input) {
-      const note = await queries.update(id, validate(input));
+    async read(actor, id) {
+      const note = await owned("read", actor, id);
       return note ? present(note) : null;
     },
-    async remove(id) {
-      return queries.remove(id);
+    async update(actor, id, input) {
+      const existing = await owned("update", actor, id);
+      const values = validate(input);
+      if (!existing) return null;
+      const note = await queries.update(id, existing.ownerId, values);
+      return note ? present(note) : null;
+    },
+    async remove(actor, id) {
+      const existing = await owned("remove", actor, id);
+      return existing ? queries.remove(id, existing.ownerId) : false;
     },
   };
 }
@@ -72,13 +140,17 @@ export function createNotesService(queries: NotesQueries): NotesService {
 export function createNotesPlugin<TDatabase>(options: {
   id: string;
   database: Plugin<TDatabase>;
+  authentication: Plugin<NotesAuthentication>;
   queries(database: TDatabase): NotesQueries;
 }): Plugin<NotesService> {
   return definePlugin({
     id: options.id,
-    requires: [options.database],
+    requires: [options.database, options.authentication],
     setup(context) {
-      return createNotesService(options.queries(context.get(options.database)));
+      return createNotesService(
+        options.queries(context.get(options.database)),
+        context.get(options.authentication),
+      );
     },
   });
 }

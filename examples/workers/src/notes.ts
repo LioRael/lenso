@@ -1,22 +1,36 @@
 import { createD1Plugin } from "@lenso/db/d1";
-import { createWebPlugin } from "@lenso/web";
+import { d1SessionStore } from "@lenso/auth/drizzle/d1";
 import { createWorkerHandler } from "@lenso/workers";
+import { createNotesAuthPlugin, parseNotesPrincipals } from "../../notes/src/auth";
 import { createNotesPlugin } from "../../notes/src/notes";
 import { createSqliteNotesQueries } from "../../notes/src/queries-sqlite";
-import { createNotesRouter } from "../../notes/src/router";
+import { createNotesWebPlugin } from "../../notes/src/web";
 import * as schema from "../../notes/src/schema-sqlite";
 
+interface AuthenticatedNotesEnv extends NotesEnv {
+  NOTES_LOGIN_KEYS: string;
+  NOTES_RENEW_AFTER_MS?: string;
+}
+
 /** The same Notes service, schema, and queries used by the Bun SQLite example. */
-export default createWorkerHandler<NotesEnv>((env) => {
+export default createWorkerHandler<AuthenticatedNotesEnv>((env) => {
   const database = createD1Plugin({ id: "notes-db", binding: env.DB, schema });
+  const authentication = createNotesAuthPlugin({
+    database,
+    store: d1SessionStore,
+    principals: parseNotesPrincipals(env.NOTES_LOGIN_KEYS),
+    lifetime: {
+      idle: 3_600_000,
+      absolute: 86_400_000,
+      renewAfter: Number(env.NOTES_RENEW_AFTER_MS ?? 60_000),
+    },
+  });
   const notes = createNotesPlugin({
     id: "notes",
     database,
+    authentication,
     queries: createSqliteNotesQueries,
   });
-  const web = createWebPlugin({
-    requires: [notes],
-    router: (context) => createNotesRouter(context.get(notes)),
-  });
-  return { plugins: [database, notes, web], web };
+  const web = createNotesWebPlugin(notes, authentication);
+  return { plugins: [database, authentication, notes, web], web };
 });

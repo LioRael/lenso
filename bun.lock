@@ -30,6 +30,7 @@
       "name": "@lenso/example-notes",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/auth": "workspace:^",
         "@lenso/db": "workspace:^",
         "@lenso/storage": "workspace:^",
         "@lenso/web": "workspace:^",
@@ -58,6 +59,7 @@
     "examples/workers": {
       "name": "lenso-example-workers",
       "dependencies": {
+        "@lenso/auth": "workspace:^",
         "@lenso/db": "workspace:^",
         "@lenso/storage": "workspace:^",
         "@lenso/web": "workspace:^",
@@ -69,20 +71,32 @@
       },
       "devDependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
+        "@orpc/client": "1.15.5",
+        "miniflare": "5.20261006.0-alpha",
         "wrangler": "4.148.0",
       },
     },
     "packages/auth": {
       "name": "@lenso/auth",
       "version": "0.1.0",
-      "dependencies": {
-        "@orpc/server": "1.15.5",
-        "lenso": "workspace:^",
-      },
       "devDependencies": {
+        "@cloudflare/workers-types": "5.20261008.1",
         "@lenso/web": "workspace:^",
+        "@orpc/server": "1.15.5",
+        "drizzle-orm": "0.45.3",
+        "lenso": "workspace:^",
         "zod": "4.6.5",
       },
+      "peerDependencies": {
+        "@orpc/server": "^1.15.5",
+        "drizzle-orm": "^0.45.3",
+        "lenso": "^0.1.0",
+      },
+      "optionalPeers": [
+        "@orpc/server",
+        "drizzle-orm",
+        "lenso",
+      ],
     },
     "packages/cli": {
       "name": "lenso-cli",
