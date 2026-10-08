@@ -17,6 +17,7 @@
     "generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts"
   },
   "dependencies": {
+    "@lenso/auth": "workspace:^",
     "@lenso/db": "workspace:^",
     "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",

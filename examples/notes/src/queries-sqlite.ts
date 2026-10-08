@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { NotesQueries } from "./notes";
@@ -15,15 +15,33 @@ export function createSqliteNotesQueries(
       if (!row) throw new Error("Note insert returned no row");
       return row;
     },
-    async list() {
-      return db.select().from(notes).orderBy(asc(notes.createdAt), asc(notes.id)).all();
+    async list(ownerId) {
+      return db
+        .select()
+        .from(notes)
+        .where(eq(notes.ownerId, ownerId))
+        .orderBy(asc(notes.createdAt), asc(notes.id))
+        .all();
     },
-    async update(id, input) {
-      const [row] = await db.update(notes).set(input).where(eq(notes.id, id)).returning().all();
+    async read(id) {
+      const [row] = await db.select().from(notes).where(eq(notes.id, id)).limit(1).all();
       return row ?? null;
     },
-    async remove(id) {
-      const rows = await db.delete(notes).where(eq(notes.id, id)).returning().all();
+    async update(id, ownerId, input) {
+      const [row] = await db
+        .update(notes)
+        .set(input)
+        .where(and(eq(notes.id, id), eq(notes.ownerId, ownerId)))
+        .returning()
+        .all();
+      return row ?? null;
+    },
+    async remove(id, ownerId) {
+      const rows = await db
+        .delete(notes)
+        .where(and(eq(notes.id, id), eq(notes.ownerId, ownerId)))
+        .returning()
+        .all();
       return rows.length !== 0;
     },
   };

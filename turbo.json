@@ -4,6 +4,8 @@
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^build"] },
     "lenso-cli#typecheck": { "dependsOn": ["build"] },
-    "test": { "dependsOn": ["^build"], "cache": false }
+    "test": { "dependsOn": ["^build"], "cache": false },
+    "@lenso/auth#typecheck": { "dependsOn": ["build"] },
+    "@lenso/auth#test": { "dependsOn": ["build"], "cache": false }
   }
 }

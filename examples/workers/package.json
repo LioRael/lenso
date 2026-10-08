@@ -9,9 +9,12 @@
     "types": "wrangler types worker-greeting.d.ts --include-runtime false && wrangler types worker-notes.d.ts --config wrangler.notes.jsonc --env-interface NotesEnv --include-runtime false",
     "build": "wrangler deploy --dry-run --outdir dist",
     "build:notes": "wrangler deploy --config wrangler.notes.jsonc --dry-run --outdir dist/notes",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.notes.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.notes.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "bun run test:notes",
+    "test:notes": "bun build src/notes.ts --outdir .lenso/workerd --target browser --external 'node:*' && node --experimental-strip-types --test test/notes-workerd.test.ts"
   },
   "dependencies": {
+    "@lenso/auth": "workspace:^",
     "@lenso/db": "workspace:^",
     "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",
@@ -23,6 +26,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261008.1",
+    "@orpc/client": "1.15.5",
+    "miniflare": "5.20261006.0-alpha",
     "wrangler": "4.148.0"
   }
 }
