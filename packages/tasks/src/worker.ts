@@ -46,7 +46,18 @@ export function createTaskWorker(
   ) {
     throw new Error("Task worker timeoutMs must be positive");
   }
+  if (
+    options.maxJobs !== undefined &&
+    (!Number.isSafeInteger(options.maxJobs) || options.maxJobs < 1 || options.maxJobs > 1000)
+  ) {
+    throw new Error("Task worker maxJobs must be a positive integer at most 1000");
+  }
+  if (options.stopWhenIdle !== undefined && typeof options.stopWhenIdle !== "boolean") {
+    throw new Error("Task worker stopWhenIdle must be boolean");
+  }
   let stopping = false;
+  let exhausted = false;
+  let attempts = 0;
   let abortOnStop = false;
   const wake = new AbortController();
   const active = new Set<AbortController>();
@@ -116,11 +127,20 @@ export function createTaskWorker(
   }
 
   async function lane(): Promise<void> {
-    while (!stopping) {
+    while (!stopping && !exhausted) {
+      // Reserve synchronously before yielding so concurrent lanes share one budget.
+      if (options.maxJobs !== undefined && attempts >= options.maxJobs) return;
+      attempts++;
       const claim = await backend.fetch();
       // A stop racing with fetch still owns the returned claim and must settle it.
       if (claim) await run(claim);
-      else if (!stopping) await delay(pollIntervalMs, wake.signal);
+      else if (options.stopWhenIdle) {
+        // Natural exhaustion drains in-flight claims without aborting their handlers.
+        exhausted = true;
+        wake.abort();
+      } else if (!stopping && (options.maxJobs === undefined || attempts < options.maxJobs)) {
+        await delay(pollIntervalMs, wake.signal);
+      }
     }
   }
   const lanes = Array.from({ length: concurrency }, () =>

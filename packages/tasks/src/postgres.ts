@@ -14,7 +14,7 @@ import type {
 } from "./contracts";
 import { TaskQueueError } from "./errors";
 import { copyJson, RESULT_LIMIT_BYTES } from "./json";
-import { taskQueueSchema } from "./schema";
+import { taskQueueIdentitySchema, taskQueueSchema } from "./schema";
 import { traceMetadata } from "./telemetry";
 import { createTaskWorker, type WorkerBackend } from "./worker";
 
@@ -162,6 +162,15 @@ export async function migratePostgresTaskQueue(
         "utf8",
       );
       await client.query(metadataSql.replaceAll("__LENSO_SCHEMA__", `"${config.schema}"`));
+      const identitySql = await readFile(
+        new URL("../migrations/0003_queue_identity.sql", import.meta.url),
+        "utf8",
+      );
+      await client.query(identitySql.replaceAll("__LENSO_SCHEMA__", `"${config.schema}"`));
+      await drizzle(client)
+        .insert(taskQueueIdentitySchema(config.schema))
+        .values({ queueName: options.queueName, queueId: randomUUID() })
+        .onConflictDoNothing();
     });
   } catch (error) {
     throw error instanceof TaskQueueError ? error : new TaskQueueError("provider-unavailable");
@@ -220,6 +229,8 @@ export async function createPostgresTaskProvider(
     pool.on("error", () => options.onError?.(new TaskQueueError("provider-unavailable")));
   const { boss, config } = bossClient(pool, options, false);
   const relation = taskQueueSchema(config.schema);
+  const identityTable = taskQueueIdentitySchema(config.schema);
+  let queueId: string;
   const jobTable = `"${config.schema}".job`;
   const workers = new Set<TaskWorker>();
   let closing = false;
@@ -232,6 +243,13 @@ export async function createPostgresTaskProvider(
     }
     // Read the declared relation shape, not only its name. No startup DDL is permitted.
     await drizzle(pool).select().from(relation).limit(0);
+    const [identity] = await drizzle(pool)
+      .select()
+      .from(identityTable)
+      .where(eq(identityTable.queueName, options.queueName));
+    if (!identity || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(identity.queueId))
+      throw new Error("Task queue identity is not migrated");
+    queueId = identity.queueId;
   } catch (error) {
     try {
       await release(boss, pool, !options.pool);
@@ -334,7 +352,21 @@ export async function createPostgresTaskProvider(
         }
       }),
   };
-  return {
+  const provider: TaskProvider = {
+    async identity() {
+      assertOpen();
+      return { kind: "postgres", id: queueId };
+    },
+    async lookupDeduplicationKey(key) {
+      assertOpen();
+      const [accepted] = await drizzle(pool)
+        .select({ jobId: relation.jobId })
+        .from(relation)
+        .where(and(eq(relation.queueName, options.queueName), eq(relation.deduplicationKey, key)));
+      if (!accepted) return null;
+      // Pruning between these reads preserves acceptance and yields a null status.
+      return { jobId: accepted.jobId, status: await provider.get(accepted.jobId) };
+    },
     async enqueue(job) {
       assertOpen();
       return transaction(pool, async (client, db) => {
@@ -460,6 +492,10 @@ export async function createPostgresTaskProvider(
       assertOpen();
       const worker = createTaskWorker(backend, execute, workerOptions, config.pollIntervalMs);
       workers.add(worker);
+      void worker.done.then(
+        () => workers.delete(worker),
+        () => {},
+      );
       return worker;
     },
     close() {
@@ -479,4 +515,5 @@ export async function createPostgresTaskProvider(
       return closePromise;
     },
   };
+  return provider;
 }
