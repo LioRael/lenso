@@ -45,44 +45,50 @@ export interface RegistrationOptions {
   readonly replace?: string;
   readonly source?: EngineSource;
 }
+/** Synchronously revoke this registration. Repeated calls are harmless. */
+export type Registration = () => void;
+/** Release once; explicit calls and session close share the same completion. */
+export type Cleanup = () => Promise<void>;
 export interface EngineContext {
   readonly root: string;
   readonly mode: EngineMode;
   convention(
     run: () => EngineConvention | Promise<EngineConvention>,
     options?: RegistrationOptions,
-  ): void;
+  ): Registration;
   discover(
     name: string,
     run: (context: EngineSnapshot) => readonly string[] | Promise<readonly string[]>,
     options?: RegistrationOptions,
-  ): void;
+  ): Registration;
   generate(
     name: string,
     run: (context: EngineSnapshot) => readonly GeneratedFile[] | Promise<readonly GeneratedFile[]>,
     options?: RegistrationOptions,
-  ): void;
+  ): Registration;
   target(
     name: string,
     run: (context: BuildContext) => string | Promise<string>,
     options?: RegistrationOptions,
-  ): void;
+  ): Registration;
   dev(
     name: string,
-    run: (event: DevEvent, context: EngineSnapshot) => void | Promise<void>,
+    /** Awaited for completion; return values are ignored, never vetoes. */
+    run: (event: DevEvent, context: EngineSnapshot) => unknown,
     options?: RegistrationOptions,
-  ): void;
+  ): Registration;
   /** File/directory reads not expressed as static imports must be registered explicitly. */
-  watch(path: string): void;
+  watch(path: string): Registration;
   /** Register immediately after acquiring a resource, including inside hooks via this context. Sequential LIFO; runs on all exits. */
-  onCleanup(cleanup: () => void | Promise<void>): void;
+  onCleanup(cleanup: () => void | Promise<void>): Cleanup;
 }
 export interface EnginePlugin {
   readonly name: string;
   readonly source?: EngineSource;
   readonly before?: readonly string[];
   readonly after?: readonly string[];
-  setup(context: EngineContext): void | Promise<void>;
+  /** Awaited for completion; return values are ignored, including registration handles. */
+  setup(context: EngineContext): unknown;
 }
 export interface EngineConfig {
   readonly plugins?: readonly EnginePlugin[];

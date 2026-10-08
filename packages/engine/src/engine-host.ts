@@ -228,6 +228,7 @@ export class EngineSession {
     run: () => void | Promise<void>;
   }[] = [];
   private readonly watches = new Set<string>();
+  private readonly watchRegistrations = new Map<string, number>();
   private closed?: Promise<void>;
   private closing = false;
   private cleanupStarted = false;
@@ -392,7 +393,17 @@ export class EngineSession {
             plugin.name,
             location,
           );
-        this.capabilities.set(key, { plugin: plugin.name, source: location, run });
+        const capability = { plugin: plugin.name, source: location, run };
+        this.capabilities.set(key, capability);
+        let revoked = false;
+        const revoke = () => {
+          if (revoked) return;
+          revoked = true;
+          // A replaced owner's handle must never remove its successor.
+          if (this.capabilities.get(key) === capability) this.capabilities.delete(key);
+        };
+        this.cleanups.push({ plugin: plugin.name, source: location, run: revoke });
+        return revoke;
       };
       const context = Object.freeze<EngineContext>({
         root: this.root,
@@ -438,7 +449,17 @@ export class EngineSession {
               plugin.name,
               source,
             );
-          this.watches.add(absolute);
+          this.watchRegistrations.set(absolute, (this.watchRegistrations.get(absolute) ?? 0) + 1);
+          let revoked = false;
+          const revoke = () => {
+            if (revoked) return;
+            revoked = true;
+            const remaining = this.watchRegistrations.get(absolute)! - 1;
+            if (remaining) this.watchRegistrations.set(absolute, remaining);
+            else this.watchRegistrations.delete(absolute);
+          };
+          this.cleanups.push({ plugin: plugin.name, source, run: revoke });
+          return revoke;
         },
         onCleanup: (run) => {
           if (this.cleanupStarted)
@@ -455,7 +476,10 @@ export class EngineSession {
               plugin.name,
               source,
             );
-          this.cleanups.push({ plugin: plugin.name, source, run });
+          let completion: Promise<void> | undefined;
+          const dispose = () => (completion ??= Promise.resolve().then(run));
+          this.cleanups.push({ plugin: plugin.name, source, run: dispose });
+          return dispose;
         },
       });
       try {
@@ -564,7 +588,9 @@ export class EngineSession {
       mode: this.mode,
       convention: this.conventionValue,
       sources: Object.freeze([...this.sourceFiles]),
-      watchFiles: Object.freeze([...this.watches].sort()),
+      watchFiles: Object.freeze(
+        [...new Set([...this.watches, ...this.watchRegistrations.keys()])].sort(),
+      ),
       importPath(output: string, source: string) {
         if (!safeRelative(output)) throw new Error("Generated path must be relative to .lenso");
         const target = appPath(root, source);
@@ -740,7 +766,19 @@ export class EngineSession {
     return this.stage("build", true, () => this.performBuild(entry));
   }
   private async performBuild(entry?: string): Promise<string> {
-    const hook = this.capabilities.get(`target:${this.target}`)!;
+    const key = `target:${this.target}`;
+    const unavailable = () =>
+      error(
+        "unknown-engine-target",
+        `Unknown build target "${this.target}".`,
+        "engine",
+        {
+          file: this.configPath,
+        },
+        "build",
+      );
+    const hook = this.capabilities.get(key);
+    if (!hook) throw unavailable();
     const chosen = entry ?? this.conventionValue!.entry ?? ".lenso/server.ts";
     const entryPath = resolve(this.root, chosen);
     if (relative(this.root, entryPath).startsWith("..") || !(await exists(entryPath)))
@@ -800,6 +838,8 @@ export class EngineSession {
         return outdir;
       },
     });
+    // Entry validation yields; a target revoked before invocation must stay unavailable.
+    if (this.capabilities.get(key) !== hook) throw unavailable();
     const outdir = await this.run<string>(hook, "build", context);
     if (typeof outdir !== "string")
       throw error(
@@ -860,6 +900,10 @@ export class EngineSession {
           );
         }
       }
+      this.capabilities.clear();
+      this.watches.clear();
+      this.watchRegistrations.clear();
+      this.sourceFiles = [];
       if (causes.length)
         throw new EngineError(
           {

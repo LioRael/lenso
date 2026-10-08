@@ -11,6 +11,7 @@ export interface EngineDiagnostic {
   readonly phase: string;
   readonly message: string;
   readonly pluginId?: string;
+  readonly dependencyId?: string;
   readonly operation?: string;
   readonly source?: SourceLocation;
   readonly details?: unknown;
@@ -79,7 +80,7 @@ function describeError(
       causes: error.diagnostics.map((item) => ({
         ...item,
         phase: "assembly",
-        ...(base.source ? { source: base.source } : {}),
+        ...(item.source ? { source: item.source } : base.source ? { source: base.source } : {}),
       })),
     };
   }

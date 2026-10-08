@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { defineApp, definePlugin, DiagnosticError, startApp, validatePlugins } from "../src";
-import type { Plugin, PluginContext } from "../src";
+import type { Cleanup, Plugin, PluginContext } from "../src";
 
 describe("static plugin diagnostics", () => {
   test("dependency order and independently identified instances", async () => {
@@ -272,4 +272,98 @@ test("synchronous cleanup reentry observes the cached stop Promise", async () =>
   const stopping = running.stop();
   await stopping;
   expect(reentered).toBe(stopping);
+});
+
+test("early cleanup and stop join the same disposal, including synchronous reentry", async () => {
+  let dispose!: Cleanup;
+  let reentered: Promise<void> | undefined;
+  let release!: () => void;
+  let calls = 0;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const plugin = definePlugin({
+    id: "early",
+    setup({ onCleanup }) {
+      dispose = onCleanup(async () => {
+        calls++;
+        reentered = dispose();
+        await pending;
+      });
+    },
+  });
+  const app = await startApp({ plugins: [plugin] });
+  const completion = dispose();
+  expect(dispose()).toBe(completion);
+  let stopped = false;
+  const stopping = app.stop().then(() => {
+    stopped = true;
+  });
+  await Promise.resolve();
+  expect(reentered).toBe(completion);
+  expect(stopped).toBe(false);
+  release();
+  await Promise.all([completion, stopping]);
+  expect(calls).toBe(1);
+  expect(dispose()).toBe(completion);
+});
+
+test("a failed early disposer stays visible to rollback and later finalizers", async () => {
+  const cleanupFailure = new Error("early cleanup");
+  const setupFailure = new Error("partial setup");
+  const events: string[] = [];
+  let calls = 0;
+  const plugin = definePlugin({
+    id: "partial",
+    async setup({ onCleanup }) {
+      onCleanup(() => {
+        events.push("remaining");
+      });
+      const dispose = onCleanup(() => {
+        calls++;
+        throw cleanupFailure;
+      });
+      const completion = dispose();
+      await expect(completion).rejects.toBe(cleanupFailure);
+      expect(dispose()).toBe(completion);
+      throw setupFailure;
+    },
+  });
+  const failure = await startApp({ plugins: [plugin] }).catch((error: unknown) => error);
+  expect((failure as AggregateError).errors).toEqual([setupFailure, cleanupFailure]);
+  expect(calls).toBe(1);
+  expect(events).toEqual(["remaining"]);
+});
+
+test("listener removal registered once is safe before shutdown and on partial setup failure", async () => {
+  const events = new EventTarget();
+  let calls = 0;
+  const listener = () => {
+    calls++;
+  };
+  const plugin = definePlugin({
+    id: "listener",
+    setup({ onCleanup }) {
+      events.addEventListener("message", listener);
+      const remove = onCleanup(() => events.removeEventListener("message", listener));
+      return { remove };
+    },
+  });
+  const app = await startApp({ plugins: [plugin] });
+  events.dispatchEvent(new Event("message"));
+  expect(calls).toBe(1);
+  await app.get(plugin).remove();
+  await app.stop();
+  events.dispatchEvent(new Event("message"));
+  expect(calls).toBe(1);
+  const broken = definePlugin({
+    id: "broken-listener",
+    setup(context) {
+      plugin.setup(context);
+      throw new Error("setup");
+    },
+  });
+  await expect(startApp({ plugins: [broken] })).rejects.toThrow("setup");
+  events.dispatchEvent(new Event("message"));
+  expect(calls).toBe(1);
 });

@@ -138,11 +138,14 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       import {build,discover,generate,createDevSupervisor,EngineError} from '@lenso/engine';
       import {defineEnginePlugin,defineEngineConfig} from '@lenso/engine/authoring';
       export const config=defineEngineConfig({target:'custom',plugins:[
+        defineEnginePlugin({name:'typed/implicit',setup:c=>c.generate('implicit',()=>[])}),
+        defineEnginePlugin({name:'typed/async-implicit',setup:async c=>c.watch('source.ts')}),
         defineEnginePlugin({name:'typed/consumer',setup(c){
           c.discover('input',async()=>['source.ts']);
           c.generate('output',s=>[{path:'output.ts',content:JSON.stringify(s.sources)}]);
           c.target('custom',b=>b.bundle({entry:b.entry,platform:'browser'}));
           c.dev('lifecycle',(_event,s)=>{c.watch(s.convention.config)});
+          c.dev('implicit-lifecycle',()=>c.watch('source.ts'));
           c.onCleanup(async()=>{});
           // @ts-expect-error Build targets are not terminal rendering callbacks.
           c.target('invalid',()=>42);

@@ -138,3 +138,34 @@ test("explicit discovery/schema validation never starts resources; dual failures
   expect(await Bun.file(join(root, ".lenso/manifest.json")).text()).toBe(first);
   expect(JSON.parse(first).schemaVersion).toBe(1);
 });
+
+test("inspect reports static instance metadata, sources, and redacts contributions", async () => {
+  const previous = process.env.LENSO_DIAGNOSTICS_SECRET;
+  process.env.LENSO_DIAGNOSTICS_SECRET = "inspect-private-value";
+  try {
+    const root = await fixture(`
+      const first = { id: 'first', source: { file: 'one.ts', export: 'first' }, contributions: [{ kind: 'example', label: 'inspect-private-value' }], setup() { throw Error('must not start'); } };
+      const second = { id: 'second', source: { file: 'two.ts' }, contributions: [{ kind: 'example', apiKey: 'credential' }], setup() { throw Error('must not start'); } };
+      const consumer = { id: 'consumer', requires: [second], setup() { throw Error('must not start'); } };
+      export default { plugins: [consumer, first, second] };
+    `);
+    await Bun.write(join(root, "lenso.engine.ts"), "throw Error('must not load');");
+    const result = await inspect(root);
+    expect(result.inspection).toBe("static");
+    expect(result.plugins.map((plugin) => ({ id: plugin.id, requires: plugin.requires }))).toEqual([
+      { id: "second", requires: [] },
+      { id: "consumer", requires: ["second"] },
+      { id: "first", requires: [] },
+    ]);
+    expect(result.plugins.find((plugin) => plugin.id === "first")?.source).toMatchObject({
+      file: "one.ts",
+      export: "first",
+    });
+    expect(JSON.stringify(result)).not.toContain("inspect-private-value");
+    expect(JSON.stringify(result)).not.toContain('"apiKey":"credential"');
+    expect(result.limitations.join(" ")).toContain("Does not load Engine config");
+  } finally {
+    if (previous === undefined) delete process.env.LENSO_DIAGNOSTICS_SECRET;
+    else process.env.LENSO_DIAGNOSTICS_SECRET = previous;
+  }
+});

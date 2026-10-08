@@ -1,5 +1,5 @@
 import { validatePlugins } from "./diagnostics";
-import type { Contribution, Plugin, PluginContext } from "./plugin";
+import type { Contribution, Plugin, PluginContext, PluginSource } from "./plugin";
 
 export interface RunningApp {
   get<T>(plugin: Plugin<T>): T;
@@ -11,7 +11,11 @@ export interface RunningApp {
 /** Serial setup and explicit LIFO cleanup; business methods stay ordinary async. */
 export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Promise<RunningApp> {
   const plugins = validatePlugins(app.plugins);
-  const finalizers: Array<{ pluginId: string; cleanup: () => void | Promise<void> }> = [];
+  const finalizers: Array<{
+    pluginId: string;
+    source?: PluginSource;
+    cleanup: () => void | Promise<void>;
+  }> = [];
   const services = new Map<Plugin<unknown>, unknown>();
   const cleanupErrors: unknown[] = [];
   let running = true;
@@ -23,11 +27,11 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
       // Cache before running callbacks, including synchronous reentrant stop calls.
       stopPromise = Promise.resolve().then(async () => {
         while (finalizers.length) {
-          const { pluginId, cleanup } = finalizers.pop()!;
+          const { pluginId, source, cleanup } = finalizers.pop()!;
           try {
             await cleanup();
           } catch (error) {
-            recordFailure(error, { phase: "cleanup", pluginId });
+            recordFailure(error, { phase: "cleanup", pluginId, ...(source ? { source } : {}) });
             cleanupErrors.push(error);
           }
         }
@@ -64,16 +68,39 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
           }
           return services.get(dependency) as T;
         },
-        onCleanup(cleanup): void {
+        onCleanup(cleanup) {
           if (!setupActive)
             throw new Error(`Plugin "${plugin.id}" setup context is no longer active.`);
-          finalizers.push({ pluginId: plugin.id, cleanup });
+          let completion: Promise<void> | undefined;
+          const dispose = () =>
+            (completion ??= Promise.resolve().then(async () => {
+              try {
+                await cleanup();
+              } catch (error) {
+                recordFailure(error, {
+                  phase: "cleanup",
+                  pluginId: plugin.id,
+                  ...(plugin.source ? { source: plugin.source } : {}),
+                });
+                throw error;
+              }
+            }));
+          finalizers.push({
+            pluginId: plugin.id,
+            ...(plugin.source ? { source: plugin.source } : {}),
+            cleanup: dispose,
+          });
+          return dispose;
         },
       };
       try {
         services.set(plugin, await plugin.setup(context));
       } catch (error) {
-        recordFailure(error, { phase: "setup", pluginId: plugin.id });
+        recordFailure(error, {
+          phase: "setup",
+          pluginId: plugin.id,
+          ...(plugin.source ? { source: plugin.source } : {}),
+        });
         throw error;
       } finally {
         setupActive = false;
@@ -87,7 +114,7 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
         [setupError, ...cleanupErrors],
         "Plugin initialization failed and rollback reported cleanup errors.",
       );
-      recordFailure(error, { phase: "setup", pluginId: lifecycleFailure(setupError)?.pluginId });
+      recordFailure(error, { ...lifecycleFailure(setupError), phase: "setup" });
       throw error;
     }
     throw setupError;
@@ -113,6 +140,7 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
 export interface LifecycleFailure {
   readonly phase: "setup" | "cleanup";
   readonly pluginId?: string;
+  readonly source?: PluginSource;
 }
 const failures = new WeakMap<object, LifecycleFailure>();
 function recordFailure(error: unknown, failure: LifecycleFailure): void {

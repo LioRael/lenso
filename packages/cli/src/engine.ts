@@ -1,7 +1,7 @@
 import { join, resolve } from "node:path";
 import { startApp } from "lenso";
 import { readApplication, type AppDefinition } from "@lenso/engine/application";
-import { CliError, diagnostic, exitCode } from "./diagnostics";
+import { CliError, diagnostic, environmentSecrets, exitCode, redact } from "./diagnostics";
 import { describeOperation, redactOperationDescription, validateOperations } from "./operations";
 export { discover, generate, build, createEngineSession } from "@lenso/engine";
 export type { AppDefinition, Discovery, PluginManifest } from "@lenso/engine/application";
@@ -172,16 +172,20 @@ export async function inspect(root = process.cwd(), pluginId?: string, method?: 
         code: "unknown-operation",
         phase: "discovery",
         message: "Operation is not declared.",
+        ...(pluginId ? { pluginId } : {}),
+        ...(method ? { operation: `${pluginId ?? "*"}.${method}` } : {}),
         source: { file: configPath },
       },
       3,
     );
   return {
     configPath,
+    inspection: "static" as const,
     plugins: ordered.map((plugin) => ({
       id: plugin.id,
       requires: (plugin.requires ?? []).map((dependency) => dependency.id),
-      source: { file: configPath },
+      source: plugin.source ?? { file: configPath },
+      contributions: redact(plugin.contributions ?? [], environmentSecrets()),
     })),
     operations: operations.map((operation) =>
       redactOperationDescription(describeOperation(operation, configPath)),
@@ -189,6 +193,7 @@ export async function inspect(root = process.cwd(), pluginId?: string, method?: 
     limitations: [
       "Imports trusted config and executes module top-level code.",
       "Never runs plugin setup; runtime-only methods and authorization outcomes cannot be discovered.",
+      "Does not load Engine config or infer service methods, provider descriptors, or health from runtime state.",
       "Each call starts and stops an isolated app; no automatic retry, cancellation or request drain.",
     ],
   };

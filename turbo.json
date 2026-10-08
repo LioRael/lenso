@@ -3,6 +3,7 @@
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^build"] },
+    "lenso-cli#typecheck": { "dependsOn": ["build"] },
     "test": { "dependsOn": ["^build"], "cache": false }
   }
 }
