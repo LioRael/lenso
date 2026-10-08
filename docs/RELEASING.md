@@ -11,8 +11,8 @@ be available on PATH. Do not invoke a real local publish as a validation step.
 The repository does not establish a registry, ownership of the unscoped names
 `lenso` and `lenso-cli` or the `@lenso` scope, package access, license, or dist-tag.
 Confirm those with the release owner. Do not infer a registry from a package
-name. Review legal/package metadata before publication; the current manifests
-do not declare a license. Local checks cannot prove name availability or
+name. The ten public package manifests declare MIT and the GitHub repository
+with their package directories. Local checks cannot prove name availability or
 permission to publish.
 
 ## Record changes and prepare versions
@@ -225,9 +225,9 @@ approval or package ownership:
    Anonymous registry verification cannot read restricted/private packages, so
    those fail closed rather than gaining a fallback read token.
    Set each selected source manifest's `repository.url` to the actual GitHub
-   repository, as npm requires. Currently public manifests omit repository and
-   license metadata; the publisher refuses missing/mismatched repository URLs
-   before registry writes. No repository identity or license is guessed here.
+   repository, as npm requires. The public manifests declare repository metadata
+   and MIT, confirmed by the release owner. The publisher refuses
+   missing/mismatched repository URLs before registry writes.
 2. Configure repository variables `RELEASE_REGISTRY`, `RELEASE_ACCESS`,
    `RELEASE_TAG`, or supply explicit dispatch inputs. No value has a default;
    blank/malformed policy fails. The supported registry value, if approved, is
