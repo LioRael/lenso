@@ -1,7 +1,45 @@
-node_modules/
-dist/
-.turbo/
-.lenso/
-*.tgz
+# Installed dependencies and build output at the actual workspace roots
+/node_modules/
+/packages/*/node_modules/
+/examples/*/node_modules/
+/dist/
+/packages/*/dist/
+/examples/*/dist/
 
-.playwright-cli/
+# Engine-generated entries and Turbo's local caches
+/.lenso/
+/packages/*/.lenso/
+/examples/*/.lenso/
+/.turbo/
+/packages/*/.turbo/
+/examples/*/.turbo/
+
+# Local run output, coverage and compiler intermediates
+/output/
+/coverage/
+/packages/*/coverage/
+/examples/*/coverage/
+*.tsbuildinfo
+
+# Archives emitted by bun pm pack (source fixtures remain visible)
+/*.tgz
+/packages/*/*.tgz
+/examples/*/*.tgz
+
+# Environment files at workspace roots; preserve committed examples/templates
+/.env
+/.env.*
+/packages/*/.env
+/packages/*/.env.*
+/examples/*/.env
+/examples/*/.env.*
+!.env.example
+!.env.sample
+!.env.template
+!.env.defaults
+!.env.*.example
+!.env.*.sample
+!.env.*.template
+
+# macOS metadata
+.DS_Store

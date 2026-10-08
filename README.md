@@ -6,7 +6,7 @@ Console was removed following the user's latest direction. It belongs in a futur
 
 ## Run
 
-Validated tools: Bun **1.4.2**, TypeScript **5.9.3**, Turbo **2.11.7**, Effect **3.22.2**, oRPC server/client **1.15.5**, Zod **4.6.5**. Exact dependency versions and one root `bun.lock` are committed. `mise.toml` pins Bun. Node **26.10.0** was available for tool execution; application runtime and package management use Bun.
+Validated tools: Bun **1.4.2**, TypeScript **7.0.2**, Turbo **2.11.7**, Effect **3.22.2**, oRPC server/client **1.15.5**, Zod **4.6.5**. Exact dependency versions and one root `bun.lock` are committed. `mise.toml` pins Bun. Node **26.10.0** was available for tool execution; application runtime and package management use Bun.
 
 ```sh
 cd /Users/leosouthey/Projects/framework/lenso
