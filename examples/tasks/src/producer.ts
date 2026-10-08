@@ -1,4 +1,4 @@
-import { call } from "lenso-cli";
+import { call } from "@lenso/cli";
 import { resolve } from "node:path";
 import { reportFailure } from "./config";
 

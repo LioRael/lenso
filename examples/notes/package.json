@@ -19,14 +19,14 @@
   },
   "dependencies": {
     "@lenso/auth": "workspace:^",
+    "@lenso/cli": "workspace:^",
+    "@lenso/core": "workspace:^",
     "@lenso/db": "workspace:^",
     "@lenso/mcp": "workspace:^",
     "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",
     "@orpc/server": "1.15.5",
     "drizzle-orm": "0.45.3",
-    "lenso": "workspace:^",
-    "lenso-cli": "workspace:^",
     "zod": "4.6.5"
   },
   "devDependencies": {

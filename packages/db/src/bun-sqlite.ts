@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
-import type { Plugin } from "lenso/plugin";
+import type { Plugin } from "@lenso/core/plugin";
 import { createDrizzlePlugin } from "./index";
 
 export type BunSqliteOptions<TSchema extends Record<string, unknown>> = {

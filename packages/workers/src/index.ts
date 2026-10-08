@@ -1,5 +1,5 @@
-import { startApp } from "lenso";
-import { definePlugin, type Plugin } from "lenso/plugin";
+import { startApp } from "@lenso/core";
+import { definePlugin, type Plugin } from "@lenso/core/plugin";
 
 /** The subset used by this adapter; Cloudflare's generated ExecutionContext is compatible. */
 export interface WorkerExecutionContext {

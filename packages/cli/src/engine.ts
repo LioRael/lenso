@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { readApplication } from "@lenso/engine/application";
 import { EngineError } from "@lenso/engine/diagnostics";
 import { CliError, diagnostic, environmentSecrets, exitCode, redact } from "./diagnostics";

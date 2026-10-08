@@ -53,7 +53,7 @@
     "test": "bun test test"
   },
   "dependencies": {
-    "lenso": "workspace:^"
+    "@lenso/core": "workspace:^"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1147.0",

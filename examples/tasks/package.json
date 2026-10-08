@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@lenso/auth": "workspace:^",
+    "@lenso/cli": "workspace:^",
+    "@lenso/core": "workspace:^",
     "@lenso/mcp": "workspace:^",
     "@lenso/tasks": "workspace:^",
     "drizzle-orm": "0.45.3",
-    "lenso": "workspace:^",
-    "lenso-cli": "workspace:^",
     "pg": "8.23.1",
     "zod": "4.6.5"
   },

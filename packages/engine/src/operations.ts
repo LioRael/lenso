@@ -1,5 +1,5 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
-import type { Plugin } from "lenso";
+import type { Plugin } from "@lenso/core";
 import { EngineError, environmentSecrets, redact, type SourceLocation } from "./diagnostics";
 
 export interface Operation {

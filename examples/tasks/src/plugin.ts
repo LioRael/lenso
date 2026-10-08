@@ -1,6 +1,6 @@
 import { AuthError, type AuthSource } from "@lenso/auth";
-import { definePlugin } from "lenso/plugin";
-import { CliError } from "lenso-cli";
+import { definePlugin } from "@lenso/core/plugin";
+import { CliError } from "@lenso/cli";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { createAuthorizedTaskService } from "./authorized-service";

@@ -1,6 +1,6 @@
 import { SQL } from "bun";
 import { drizzle, type BunSQLDatabase } from "drizzle-orm/bun-sql";
-import type { Plugin } from "lenso/plugin";
+import type { Plugin } from "@lenso/core/plugin";
 import { createDrizzlePlugin } from "./index";
 
 export type BunPostgresConnection = Omit<SQL.PostgresOrMySQLOptions, "adapter"> & {

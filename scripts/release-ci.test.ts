@@ -56,8 +56,8 @@ test("policy has no registry/access/tag defaults and rejects unsupported registr
     expect(() => policyFrom({ ...env, RELEASE_TAG: tag })).toThrow("dist-tag");
   for (const tag of ["latest", "next", "beta", "vnext"])
     expect(policyFrom({ ...env, RELEASE_TAG: tag }).tag).toBe(tag);
-  expect(releaseSet("lenso, @lenso/auth")).toEqual(["lenso", "@lenso/auth"]);
-  for (const value of [undefined, "", "lenso,lenso", "lenso,", "*"])
+  expect(releaseSet("@lenso/core, @lenso/auth")).toEqual(["@lenso/core", "@lenso/auth"]);
+  for (const value of [undefined, "", "@lenso/core,@lenso/core", "@lenso/core,", "*"])
     expect(() => releaseSet(value)).toThrow("explicitly");
   assertRepository({ type: "git", url: "git+https://github.com/fixture/repo.git" }, "fixture/repo");
   for (const value of [undefined, { url: "https://github.com/another/repo" }])

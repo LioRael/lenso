@@ -160,7 +160,7 @@ A Worker composes the same service using its explicit binding:
 import { createD1Plugin } from "@lenso/db/d1";
 import { d1SessionStore } from "@lenso/auth/drizzle/d1";
 import { bearerEvidence } from "@lenso/auth/fetch";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { createNotesAuthPlugin, parseNotesPrincipals } from "./src/auth";
 import { createNotesPlugin, notesAudiences } from "./src/notes";
 import { createSqliteNotesQueries } from "./src/queries-sqlite";

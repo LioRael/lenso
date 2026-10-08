@@ -27,9 +27,9 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@lenso/core": "workspace:^",
     "@orpc/client": "1.15.5",
-    "@orpc/server": "1.15.5",
-    "lenso": "workspace:^"
+    "@orpc/server": "1.15.5"
   },
   "devDependencies": {
     "zod": "4.6.5"

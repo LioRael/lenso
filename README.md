@@ -25,9 +25,9 @@ CLI and Web reuse the same input schema and service. Each CLI call starts a fres
 <!-- prettier-ignore -->
 | Package | Purpose | Usage |
 | --- | --- | --- |
-| `lenso` | `definePlugin`, `defineApp`, validation, Promise lifecycle | API example below |
+| `@lenso/core` | `definePlugin`, `defineApp`, validation, Promise lifecycle | API example below |
 | `@lenso/engine` | typed discovery, generation, extensible build targets and dev scheduling | [Engine API and plugins](packages/engine/README.md) |
-| `lenso-cli` | command parsing, explicit service calls, terminal presentation and exit codes | [CLI contracts](docs/CLI.md), [development output](packages/cli/README.md) |
+| `@lenso/cli` | command parsing, explicit service calls, terminal presentation and exit codes | [CLI contracts](docs/CLI.md), [development output](packages/cli/README.md) |
 | `@lenso/web` | Fetch, oRPC and streaming request ownership | [Web API](packages/web/README.md) |
 | `@lenso/auth` | provider adapters, typed middleware and shared service authorization | [Auth API](packages/auth/README.md) |
 | `@lenso/db` | native Drizzle PostgreSQL, Bun SQLite and D1 resources | [Database and Notes](docs/DATABASE.md) |
@@ -40,7 +40,7 @@ CLI and Web reuse the same input schema and service. Each CLI call starts a fres
 ## Core API
 
 ```ts
-import { defineApp, definePlugin, startApp } from "lenso";
+import { defineApp, definePlugin, startApp } from "@lenso/core";
 
 const clock = definePlugin({
   id: "clock.primary",

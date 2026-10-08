@@ -3,7 +3,7 @@ import { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { os, call } from "@orpc/server";
 import { readFile } from "node:fs/promises";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { audience, AuthError, createAuth, defineSource, realm } from "@lenso/auth";
 import { createAuthPlugin } from "@lenso/auth/plugin";
 import { bearerEvidence } from "@lenso/auth/fetch";

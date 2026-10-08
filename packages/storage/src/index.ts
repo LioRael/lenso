@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin, type PluginContext } from "lenso/plugin";
+import { definePlugin, type Plugin, type PluginContext } from "@lenso/core/plugin";
 
 export type StorageErrorCode =
   | "invalid-key"

@@ -46,7 +46,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "@standard-schema/spec": "1.1.0",
-    "lenso": "workspace:^"
+    "@lenso/core": "workspace:^",
+    "@standard-schema/spec": "1.1.0"
   }
 }

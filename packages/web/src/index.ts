@@ -1,6 +1,6 @@
 import { RPCHandler } from "@orpc/server/fetch";
 import type { Router } from "@orpc/server";
-import { definePlugin, type Plugin, type PluginContext } from "lenso";
+import { definePlugin, type Plugin, type PluginContext } from "@lenso/core";
 import { createRequestTask, type FetchContext, type FetchOptions } from "./lifetime";
 export type { FetchContext, FetchHandler, FetchOptions } from "./lifetime";
 

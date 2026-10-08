@@ -1,4 +1,4 @@
-import { definePlugin, startApp } from "lenso";
+import { definePlugin, startApp } from "@lenso/core";
 import { createWebPlugin, type WebContext } from "@lenso/web";
 import { os } from "@orpc/server";
 import { z } from "zod";

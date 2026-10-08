@@ -26,7 +26,7 @@ There is deliberately no general-purpose command-line operation selector or
 dynamic config-module loader. Use a fresh process when changing source or the
 allowlist: normal trusted module caching still applies.
 
-Startup calls `lenso-cli.inspect(root)` without application setup. Every
+Startup calls `inspect(root)` from `@lenso/cli` without application setup. Every
 allowlisted `(pluginId, method)` must already be declared. Duplicate, absent,
 runtime-validation-only, and non-object input schemas reject startup before
 protocol readiness. The adapter preserves Engine's converted input schema; it
@@ -42,7 +42,7 @@ safety of their business input.
 
 ## Invocation, authorization, and output
 
-Each call delegates to `lenso-cli.call(root, pluginId, method, input)`. The
+Each call delegates to `call(root, pluginId, method, input)` from `@lenso/cli`. The
 existing shared Standard Schema validator runs before setup; the existing
 service method runs with its service as `this`; CLI awaits app shutdown,
 including ordered business/cleanup diagnostics. No alternate execution graph,
@@ -135,7 +135,7 @@ credentials are advertised.
 ## Development
 
 The integration owner installs dependencies and owns the workspace lockfile.
-Rebuild `lenso`, `@lenso/engine`, and `lenso-cli` before consuming their exports.
+Rebuild `@lenso/core`, `@lenso/engine`, and `@lenso/cli` before consuming their exports.
 Then run from this package:
 
 ```sh

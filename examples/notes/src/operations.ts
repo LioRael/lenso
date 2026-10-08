@@ -1,6 +1,6 @@
 import { AuthError } from "@lenso/auth";
-import { definePlugin, type Plugin } from "lenso";
-import { CliError, defineOperation } from "lenso-cli";
+import { definePlugin, type Plugin } from "@lenso/core";
+import { CliError, defineOperation } from "@lenso/cli";
 import type { Files } from "@lenso/storage/files";
 import type { z } from "zod";
 import type { NotesAuthentication } from "./auth";

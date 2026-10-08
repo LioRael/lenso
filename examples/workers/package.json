@@ -15,13 +15,13 @@
   },
   "dependencies": {
     "@lenso/auth": "workspace:^",
+    "@lenso/core": "workspace:^",
     "@lenso/db": "workspace:^",
     "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",
     "@lenso/workers": "workspace:^",
     "@orpc/server": "1.15.5",
     "drizzle-orm": "0.45.3",
-    "lenso": "workspace:^",
     "zod": "4.6.5"
   },
   "devDependencies": {

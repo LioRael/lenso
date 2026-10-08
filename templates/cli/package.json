@@ -11,9 +11,9 @@
     "fmt": "oxfmt ."
   },
   "dependencies": {
+    "@lenso/cli": "file:./vendor/lenso-cli.tgz",
+    "@lenso/core": "file:./vendor/lenso-core.tgz",
     "@lenso/engine": "file:./vendor/lenso-engine.tgz",
-    "lenso": "file:./vendor/lenso.tgz",
-    "lenso-cli": "file:./vendor/lenso-cli.tgz",
     "zod": "4.6.5"
   },
   "devDependencies": {
@@ -23,8 +23,8 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "@lenso/engine": "file:./vendor/lenso-engine.tgz",
-    "lenso": "file:./vendor/lenso.tgz"
+    "@lenso/core": "file:./vendor/lenso-core.tgz",
+    "@lenso/engine": "file:./vendor/lenso-engine.tgz"
   },
   "packageManager": "bun@1.4.2"
 }

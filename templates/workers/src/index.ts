@@ -1,6 +1,6 @@
 import { createBindingsPlugin, createWorkerHandler } from "@lenso/workers";
 import { createWebPlugin, type WebContext } from "@lenso/web";
-import { definePlugin } from "lenso/plugin";
+import { definePlugin } from "@lenso/core/plugin";
 import { os } from "@orpc/server";
 import { z } from "zod";
 

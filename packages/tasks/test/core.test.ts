@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { lifecycleFailure, startApp } from "lenso";
+import { lifecycleFailure, startApp } from "@lenso/core";
 import {
   createTaskPlugin,
   createTaskQueue,

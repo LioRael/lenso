@@ -1,7 +1,7 @@
 import { AuthError } from "@lenso/auth";
 import { authErrorResponse, bearerEvidence } from "@lenso/auth/fetch";
 import { createWebPlugin } from "@lenso/web";
-import type { Plugin } from "lenso";
+import type { Plugin } from "@lenso/core";
 import { z } from "zod";
 import type { NotesAuthentication } from "./auth";
 import { NoteInputError, notesAudiences, type NotesService } from "./notes";

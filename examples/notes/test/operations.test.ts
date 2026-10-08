@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, access, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { definePlugin, startApp } from "lenso";
-import { invoke } from "lenso-cli";
+import { definePlugin, startApp } from "@lenso/core";
+import { invoke } from "@lenso/cli";
 import { createSqliteFileQueries } from "@lenso/storage/sqlite";
 import {
   createNotesFiles,

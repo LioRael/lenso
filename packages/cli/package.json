@@ -1,5 +1,5 @@
 {
-  "name": "lenso-cli",
+  "name": "@lenso/cli",
   "version": "0.1.0",
   "private": false,
   "license": "MIT",
@@ -29,8 +29,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@lenso/core": "workspace:^",
     "@lenso/engine": "workspace:^",
-    "lenso": "workspace:^",
     "picocolors": "1.1.1"
   },
   "devDependencies": {

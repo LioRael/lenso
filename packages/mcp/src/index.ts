@@ -12,7 +12,7 @@ import {
   type CallToolResult,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { call, inspect, CliError, diagnostic } from "lenso-cli";
+import { call, inspect, CliError, diagnostic } from "@lenso/cli";
 import { environmentSecrets, redact, stableJson } from "@lenso/engine/diagnostics";
 
 export interface StdioOptions {

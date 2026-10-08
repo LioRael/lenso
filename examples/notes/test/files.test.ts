@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileDownloadHandler } from "@lenso/storage/fetch";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { createNotesFiles, migrateFiles, notesFileTenant } from "../src/files";
 import { notesAudiences } from "../src/notes";
 

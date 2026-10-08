@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { definePlugin, type Plugin, type PluginContext } from "lenso/plugin";
+import { definePlugin, type Plugin, type PluginContext } from "@lenso/core/plugin";
 import type {
   ClaimedJob,
   EnqueueOptions,

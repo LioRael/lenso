@@ -1,5 +1,5 @@
-import { defineApp } from "lenso";
-import { defineOperation } from "lenso-cli";
+import { defineApp } from "@lenso/core";
+import { defineOperation } from "@lenso/cli";
 import { greeting, greetingInput } from "./src/server";
 export default defineApp({ plugins: [greeting] });
 export const operations = [

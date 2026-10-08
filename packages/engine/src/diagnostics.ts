@@ -1,4 +1,4 @@
-import { DiagnosticError, lifecycleFailure } from "lenso";
+import { DiagnosticError, lifecycleFailure } from "@lenso/core";
 
 export interface SourceLocation {
   readonly file: string;

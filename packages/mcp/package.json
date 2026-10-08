@@ -24,12 +24,12 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@lenso/cli": "workspace:^",
     "@lenso/engine": "workspace:^",
     "@modelcontextprotocol/sdk": "1.32.1",
-    "lenso-cli": "workspace:^",
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "lenso": "workspace:^"
+    "@lenso/core": "workspace:^"
   }
 }

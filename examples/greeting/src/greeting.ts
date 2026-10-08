@@ -1,4 +1,4 @@
-import { definePlugin } from "lenso/plugin";
+import { definePlugin } from "@lenso/core/plugin";
 import { greetingInput, GreetingInputError } from "./contracts";
 export interface GreetingService {
   greet(input: { name: string }): Promise<{ message: string; count: number }>;

@@ -1,5 +1,5 @@
-import { startApp } from "lenso";
-import { call, CliError } from "lenso-cli";
+import { startApp } from "@lenso/core";
+import { call, CliError } from "@lenso/cli";
 import { AuthConfigurationError, AuthError } from "@lenso/auth";
 import { fileURLToPath } from "node:url";
 import { NoteInputError } from "./notes";

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { sql } from "drizzle-orm";
-import { definePlugin, startApp } from "lenso";
+import { definePlugin, startApp } from "@lenso/core";
 import { createBunSqlitePlugin } from "../src/bun-sqlite";
 
 test("distinct database references stay isolated; owned clients close at stop", async () => {

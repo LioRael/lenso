@@ -4,7 +4,7 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { createBunSqlPlugin } from "@lenso/db/bun-sql";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { sql } from "drizzle-orm";
 import { migratePostgres } from "../src/migrate-pg";
 import { createNotesServer } from "../src/server";

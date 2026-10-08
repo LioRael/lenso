@@ -13,14 +13,14 @@
     "test": "bun test src"
   },
   "dependencies": {
+    "@lenso/core": "workspace:^",
     "@lenso/engine": "workspace:^",
     "@lenso/web": "workspace:^",
     "@orpc/client": "1.15.5",
     "@orpc/server": "1.15.5",
-    "lenso": "workspace:^",
     "zod": "4.6.5"
   },
   "devDependencies": {
-    "lenso-cli": "workspace:^"
+    "@lenso/cli": "workspace:^"
   }
 }

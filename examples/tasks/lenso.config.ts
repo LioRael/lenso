@@ -1,5 +1,5 @@
-import { defineApp } from "lenso";
-import { defineOperation } from "lenso-cli";
+import { defineApp } from "@lenso/core";
+import { defineOperation } from "@lenso/cli";
 import { jobInput, reportQueryInput, submitInput } from "./src/contracts";
 import { tasks } from "./src/plugin";
 

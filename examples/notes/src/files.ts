@@ -10,7 +10,7 @@ import {
 import { createLocalStoragePlugin } from "@lenso/storage/local";
 import { createSqliteFileQueries, fileSchema } from "@lenso/storage/sqlite";
 import { sqliteSessionStore } from "@lenso/auth/drizzle/sqlite";
-import { definePlugin, startApp } from "lenso";
+import { definePlugin, startApp } from "@lenso/core";
 import { parseNotesPrincipals, type NotesPrincipal } from "./auth";
 import { createApplicationAuth } from "./application-auth";
 import { migrateSqlite } from "./migrate-sqlite";

@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-types": "5.20261008.1",
-    "drizzle-orm": "0.45.3",
-    "lenso": "workspace:^"
+    "@lenso/core": "workspace:^",
+    "drizzle-orm": "0.45.3"
   }
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import app from "../lenso.config";
 import { greeting } from "./greeting";
 test("plain async service rejects invalid input without increasing state", async () => {
