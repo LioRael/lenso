@@ -276,6 +276,28 @@
         "@standard-schema/spec": "1.1.0",
       },
     },
+    "packages/limits": {
+      "name": "@lenso/limits",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lenso/core": "workspace:^",
+        "@standard-schema/spec": "1.1.0",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20261008.1",
+        "@lenso/auth": "workspace:^",
+        "@lenso/db": "workspace:^",
+        "@lenso/workers": "workspace:^",
+        "drizzle-orm": "0.45.3",
+        "miniflare": "5.20261006.0-alpha",
+      },
+      "peerDependencies": {
+        "drizzle-orm": "0.45.3",
+      },
+      "optionalPeers": [
+        "drizzle-orm",
+      ],
+    },
     "packages/log": {
       "name": "@lenso/log",
       "version": "0.2.0",
@@ -804,6 +826,8 @@
     "@lenso/example-notes": ["@lenso/example-notes@workspace:examples/notes"],
 
     "@lenso/example-tasks": ["@lenso/example-tasks@workspace:examples/tasks"],
+
+    "@lenso/limits": ["@lenso/limits@workspace:packages/limits"],
 
     "@lenso/log": ["@lenso/log@workspace:packages/log"],
 
