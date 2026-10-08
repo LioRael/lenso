@@ -19,10 +19,14 @@
     "./client": {
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
+    },
+    "./bun": {
+      "types": "./dist/bun.d.ts",
+      "default": "./dist/bun.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target bun --packages external && bun build src/client.ts --outdir dist --target browser --packages external",
+    "build": "tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target bun --packages external && bun build src/client.ts --outdir dist --target browser --packages external && bun build src/bun.ts --outdir dist --target bun --packages external",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },
