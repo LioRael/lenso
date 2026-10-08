@@ -1,0 +1,42 @@
+examples/workers/README.md
+  h_9d56aba080c170 14-15
+examples/workers/package.json
+  h_9d56aba080c170 9
+examples/workers/tsconfig.json
+  h_9d56aba080c170 4
+examples/workers/worker-greeting.d.ts
+  h_9d56aba080c170 2
+examples/workers/wrangler.jsonc
+  h_9d56aba080c170 6
+examples/workers/wrangler.notes.jsonc
+  h_9d56aba080c170 7
+packages/workers/README.md
+  h_9d56aba080c170 5
+packages/workers/src/index.ts
+  h_9d56aba080c170 89-95,97-100,103,106,109
+packages/workers/test/fetch.test.ts
+  h_9d56aba080c170 153,232-280
+templates/README.md
+  h_9d56aba080c170 22-25
+templates/bun-web/lenso.config.ts
+  h_9d56aba080c170 2-3,5-13
+templates/bun-web/src/server.ts
+  h_9d56aba080c170 5-7,14-15,33,54
+templates/cli/lenso.config.ts
+  h_9d56aba080c170 2-5,10-12,18-26
+templates/cli/package.json
+  h_9d56aba080c170 15-16
+templates/workers/wrangler.jsonc
+  h_9d56aba080c170 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e9523051040dfb9d1ff06c6f427dedc4a0a4b4f4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
