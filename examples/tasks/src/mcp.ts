@@ -8,7 +8,6 @@ await serveStdio({
     { pluginId: "tasks", method: "query" },
     { pluginId: "tasks", method: "cancel" },
     { pluginId: "tasks", method: "retry" },
-    { pluginId: "tasks", method: "report" },
   ],
 }).catch(() => {
   process.stderr.write("Tasks MCP startup failed; check trusted application configuration.\n");

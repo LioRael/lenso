@@ -35,7 +35,10 @@
     "picocolors": "1.1.1"
   },
   "devDependencies": {
+    "@lenso/auth": "workspace:^",
+    "@lenso/manage": "workspace:^",
     "@lenso/web": "workspace:^",
+    "@orpc/server": "2.0.0-beta.42",
     "zod": "4.6.5"
   }
 }

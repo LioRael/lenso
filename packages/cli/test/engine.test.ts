@@ -5,9 +5,40 @@ import { tmpdir } from "node:os";
 import { defineApp, definePlugin } from "@lenso/core";
 import { z } from "zod";
 import { defineOperation } from "../src/operations";
-import { diagnostic } from "../src/diagnostics";
+import { diagnostic, CliError } from "../src/diagnostics";
 import { generate } from "@lenso/engine";
+import type { OperationBinding } from "@lenso/engine/operations";
 import { inspect, invoke } from "../src/engine";
+
+test("shared invocation preserves an application's explicit CLI error status", async () => {
+  let cleanup = 0;
+  const plugin = definePlugin({
+    id: "known-error",
+    setup(context) {
+      context.onCleanup(() => {
+        cleanup++;
+      });
+      return {
+        run(_input: unknown) {
+          throw new CliError(
+            { code: "application-refused", phase: "invoke", message: "Refused." },
+            2,
+          );
+        },
+      };
+    },
+  });
+  const operation = defineOperation({
+    plugin,
+    method: "run",
+    input: z.unknown(),
+    description: "Run",
+  });
+  await expect(
+    invoke({ plugins: [plugin], operations: [operation] }, plugin.id, "run", {}),
+  ).rejects.toMatchObject({ exitCode: 2, diagnostic: { code: "application-refused" } });
+  expect(cleanup).toBe(1);
+});
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -85,6 +116,293 @@ describe("direct service invocation", () => {
     await expect(invoke(app, "failure", "run", {})).rejects.toThrow("Service invocation failed");
     await expect(invoke(app, "failure", "toString", {})).rejects.toThrow("not explicitly exposed");
     expect(closed).toBe(1);
+  });
+
+  test("binds transformed input once to trusted context and the original service", async () => {
+    const events: string[] = [];
+    const actor = { id: "launch-owner" };
+    let transforms = 0;
+    let receivedInput: unknown;
+    const input = z.object({ name: z.string(), actor: z.string() }).transform((value) => {
+      transforms++;
+      events.push("validate");
+      return { ...value, name: value.name.toUpperCase() };
+    });
+    const plugin = definePlugin({
+      id: "bound",
+      setup({ onCleanup }) {
+        events.push("setup");
+        onCleanup(async () => {
+          events.push("cleanup");
+          await Bun.sleep(5);
+          events.push("closed");
+        });
+        const service = {
+          prefix: "Hello",
+          async greet(
+            value: z.output<typeof input>,
+            context: { actor: typeof actor; service: unknown },
+          ): Promise<{ message: string; actor: string; token: string }> {
+            events.push("invoke");
+            expect(receivedInput).toBe(value);
+            expect(context.actor).toBe(actor);
+            expect(context.service).toBe(this);
+            return {
+              message: `${this.prefix} ${value.name}`,
+              actor: context.actor.id,
+              token: "private-token",
+            };
+          },
+        };
+        return service;
+      },
+    });
+    const operation = defineOperation({
+      plugin,
+      method: "greet",
+      description: "Bound greeting",
+      input,
+      context: true,
+      confirmation: "required",
+      approval: "required",
+    });
+    const binding: OperationBinding<typeof operation> = async (
+      selected,
+      validatedInput,
+      running,
+    ) => {
+      events.push("binding");
+      expect(selected).toBe(operation);
+      expect(validatedInput).toEqual({ name: "ADA", actor: "input-attacker" });
+      receivedInput = validatedInput;
+      return {
+        context: { actor, service: running.get(plugin) },
+        confirm: async () => {
+          events.push("confirm");
+          return true;
+        },
+        approve: async () => {
+          events.push("approve");
+          return true;
+        },
+      };
+    };
+    expect(
+      await invoke(
+        {
+          ...defineApp({ plugins: [plugin] }),
+          operations: [operation],
+          operationBinding: binding,
+        },
+        "bound",
+        "greet",
+        { name: "Ada", actor: "input-attacker" },
+      ),
+    ).toEqual({
+      message: "Hello ADA",
+      actor: "launch-owner",
+      token: "[REDACTED]",
+    });
+    expect(transforms).toBe(1);
+    expect(events).toEqual([
+      "validate",
+      "setup",
+      "binding",
+      "confirm",
+      "approve",
+      "invoke",
+      "cleanup",
+      "closed",
+    ]);
+  });
+
+  test.each([
+    ["context", "missing", undefined, "missing-context-binding"],
+    ["confirmation", "missing", undefined, "confirmation-required"],
+    ["confirmation", "false", false, "confirmation-required"],
+    ["approval", "missing", undefined, "approval-required"],
+    ["approval", "false", false, "approval-required"],
+  ] as const)(
+    "refuses %s with %s gate and awaits cleanup",
+    async (requirement, _label, gate, code) => {
+      const events: string[] = [];
+      const plugin = definePlugin({
+        id: "guarded",
+        setup({ onCleanup }) {
+          events.push("setup");
+          onCleanup(async () => {
+            await Bun.sleep(5);
+            events.push("closed");
+          });
+          return {
+            async run(_input: unknown, _context?: unknown) {
+              events.push("side-effect");
+              return {};
+            },
+          };
+        },
+      });
+      const operation = defineOperation({
+        plugin,
+        method: "run",
+        description: "Guarded call",
+        input: z.unknown(),
+        context: true,
+        ...(requirement === "confirmation" ? { confirmation: "required" as const } : {}),
+        ...(requirement === "approval" ? { approval: "required" as const } : {}),
+      });
+      const binding: OperationBinding<typeof operation> | undefined =
+        requirement === "context"
+          ? undefined
+          : () => ({
+              context: {},
+              ...(gate === undefined ? {} : { confirm: () => gate, approve: () => gate }),
+            });
+      try {
+        await invoke(
+          { plugins: [plugin], operations: [operation] },
+          "guarded",
+          "run",
+          {
+            context: { actor: "attacker" },
+            confirmed: true,
+            approved: true,
+          },
+          binding,
+        );
+        throw new Error("Expected refusal");
+      } catch (error) {
+        expect(diagnostic(error).code).toBe(code);
+      }
+      expect(events).toEqual(["setup", "closed"]);
+    },
+  );
+
+  test("explicit binding overrides the app binding; binding failures are opaque and close resources", async () => {
+    let closed = 0;
+    let calls = 0;
+    const plugin = definePlugin({
+      id: "binding",
+      setup({ onCleanup }) {
+        onCleanup(async () => {
+          await Bun.sleep(5);
+          closed++;
+        });
+        return {
+          async run() {
+            calls++;
+            return {};
+          },
+        };
+      },
+    });
+    const app = {
+      plugins: [plugin],
+      operations: [
+        defineOperation({ plugin, method: "run", description: "Run", input: z.unknown() }),
+      ],
+      operationBinding: () => {
+        throw new Error("private-binding-secret");
+      },
+    };
+    expect(await invoke(app, "binding", "run", {}, () => ({}))).toEqual({});
+    try {
+      await invoke(app, "binding", "run", {});
+      throw new Error("Expected binding failure");
+    } catch (error) {
+      expect(diagnostic(error).code).toBe("invocation-failed");
+      expect(JSON.stringify(diagnostic(error))).not.toContain("private-binding-secret");
+    }
+    expect(calls).toBe(1);
+    expect(closed).toBe(2);
+  });
+
+  test.each([
+    ["undefined", undefined, "serialization-failed"],
+    ["infinity", Number.POSITIVE_INFINITY, "serialization-failed"],
+    ["nonfinite sensitive field", { token: Number.POSITIVE_INFINITY }, "serialization-failed"],
+    ["oversized object", { value: "x".repeat(100) }, "output-too-large"],
+  ] as const)(
+    "checks finite output before redaction and respects the bound output limit (%s)",
+    async (_label, value, code) => {
+      let closed = false;
+      const plugin = definePlugin({
+        id: "output",
+        setup({ onCleanup }) {
+          onCleanup(async () => {
+            await Bun.sleep(5);
+            closed = true;
+          });
+          return {
+            async run() {
+              return value;
+            },
+          };
+        },
+      });
+      try {
+        await invoke(
+          {
+            plugins: [plugin],
+            operations: [
+              defineOperation({ plugin, method: "run", description: "Output", input: z.unknown() }),
+            ],
+          },
+          "output",
+          "run",
+          {},
+          () => ({ maxOutputBytes: 64 }),
+        );
+        throw new Error("Expected output failure");
+      } catch (error) {
+        expect(diagnostic(error).code).toBe(code);
+      }
+      expect(closed).toBe(true);
+    },
+  );
+
+  test("a declared inherited method is still unavailable and cleanup is awaited", async () => {
+    let called = false;
+    let closed = false;
+    const inherited = {
+      async run() {
+        called = true;
+        return {};
+      },
+    };
+    const plugin = definePlugin({
+      id: "inherited",
+      setup({ onCleanup }) {
+        onCleanup(async () => {
+          await Bun.sleep(5);
+          closed = true;
+        });
+        return Object.create(inherited) as typeof inherited;
+      },
+    });
+    try {
+      await invoke(
+        {
+          plugins: [plugin],
+          operations: [
+            defineOperation({
+              plugin,
+              method: "run",
+              description: "Inherited",
+              input: z.unknown(),
+            }),
+          ],
+        },
+        "inherited",
+        "run",
+        {},
+      );
+      throw new Error("Expected unavailable method");
+    } catch (error) {
+      expect(diagnostic(error).code).toBe("unavailable-operation");
+    }
+    expect(called).toBe(false);
+    expect(closed).toBe(true);
   });
 });
 

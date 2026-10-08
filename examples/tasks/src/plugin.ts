@@ -1,9 +1,12 @@
 import { AuthError, type AuthSource } from "@lenso/auth";
 import { definePlugin, type PluginContext } from "@lenso/core/plugin";
 import { CliError } from "@lenso/cli";
+import { defineOperation } from "@lenso/engine/operations";
+import { defineManage } from "@lenso/manage";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { createAuthorizedTaskService } from "./authorized-service";
+import { jobInput, reportQueryInput, submitInput } from "./contracts";
 import { openResources } from "./resources";
 
 export interface TaskAuthConnection {
@@ -78,7 +81,79 @@ export function createTasksPlugin(options: {
   });
 }
 
-export const tasks = createTasksPlugin({
+export function createTasksOperations(options: Parameters<typeof createTasksPlugin>[0]) {
+  const plugin = createTasksPlugin(options);
+  const source = { file: "src/plugin.ts", export: "createTasksOperations" };
+  const operations = [
+    defineOperation({
+      plugin,
+      method: "submit",
+      input: submitInput,
+      description: "Submit a report owned by the authenticated session subject.",
+      effect: "write",
+      destructive: false,
+      retry: "unsafe",
+      cancellation: "none",
+      outputDescription:
+        "An owned jobId. Without a deduplication key, repeating creates another job.",
+      source,
+    }),
+    defineOperation({
+      plugin,
+      method: "query",
+      input: jobInput,
+      description: "Read safe status after durable owner authorization.",
+      effect: "read",
+      destructive: false,
+      retry: "safe",
+      cancellation: "none",
+      outputDescription:
+        "State, attempt budget and cancellation request flag, or null after pruning.",
+      source,
+    }),
+    defineOperation({
+      plugin,
+      method: "cancel",
+      input: jobInput,
+      description: "Request cancellation of an owned job; requested does not mean stopped.",
+      effect: "write",
+      destructive: true,
+      retry: "safe",
+      cancellation: "request-only",
+      outputDescription:
+        "cancelled, requested, terminal or missing. No external effects are rolled back.",
+      source,
+    }),
+    defineOperation({
+      plugin,
+      method: "retry",
+      input: jobInput,
+      description: "Retry an owned final failure, preserving payload and attempt count.",
+      effect: "write",
+      destructive: false,
+      retry: "unsafe",
+      cancellation: "none",
+      outputDescription: "true only if a final failure received one more attempt; otherwise false.",
+      source,
+    }),
+    defineOperation({
+      plugin,
+      method: "report",
+      input: reportQueryInput,
+      description: "Read an owned report from the business table.",
+      effect: "read",
+      destructive: false,
+      retry: "safe",
+      cancellation: "none",
+      outputDescription: "sum and count, or null before the report is written.",
+      source,
+    }),
+  ];
+  const manage = defineManage({ plugin, operations: operations.slice(0, 4) });
+  return { plugin, operations, manage };
+}
+
+export const taskOperations = createTasksOperations({
   evidence: () => process.env.TASK_SESSION ?? null,
   async connectAuth() {
     const file = process.env.TASK_AUTH_SOURCE_MODULE;
@@ -89,3 +164,4 @@ export const tasks = createTasksPlugin({
     return module.connectTaskAuth();
   },
 });
+export const tasks = taskOperations.plugin;

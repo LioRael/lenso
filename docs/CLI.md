@@ -33,6 +33,16 @@ the config's named `operations`. Notes uses this pattern in
 or add anything to the separate MCP allowlist. Keep functions and schemas in code,
 not JSON contributions or manifests.
 
+Optional [`@lenso/manage`](../packages/manage/README.md) companion factories bind
+an explicit subset of those same Operations to the exact plugin instance.
+`selectManageOperations` returns the original declarations, without copying schemas
+or introducing handlers. Notes and Tasks use this pattern. A manage declaration
+alone exposes nothing: named `operations` selects CLI; named `mcpOperations`
+independently selects MCP, whose trusted launch `allow` list still applies.
+For existing configs without `mcpOperations`, MCP retains the `operations` fallback;
+an explicit `mcpOperations = []` disables it. Agent/HTTP adapters select their own
+lists and borrow an explicitly supplied running app.
+
 `defineOperation` checks the service method's input type. The schema uses Standard Schema v1, including Zod 4. `inspect [plugin-id [method]]` derives JSON Schema from that same object's Standard JSON Schema converter. Field names/types remain discoverable, including credential fields; payload defaults/examples are omitted. If conversion is absent or unsupported, it reports `runtime-validation-only` and `inputSchema:null`; it never starts resources to infer methods. Source locations are explicit declaration metadata, otherwise the exact config file; line/column are omitted unless supplied or reported by Bun build diagnostics.
 
 Calls validate input before setup, start one app, invoke the declared own service method with validated input and the original service as `this`, then stop. Unknown methods fail before setup. Both business and cleanup failures survive in ordered causes. No eval, automatic retry or inferred exposure occurs. Each CLI call owns a fresh app instance; HTTP normally retains an app. An effect description provides no idempotency or authorization guarantee. Keep authorization inside shared application/service rules or an already authorized public API. CLI does not invent an actor from JSON input.
@@ -48,6 +58,25 @@ Application-owned thin methods can adapt multi-argument services and obtain
 authentication evidence from a trusted entry without accepting identity in
 business input. Map known authorization errors to safe `CliError` codes at
 that application boundary; unknown service errors remain opaque.
+
+Methods needing request evidence or an Auth-produced actor may declare
+`context: true`; its type comes from the real method's second parameter.
+CLI's named `operationBinding` (or programmatic `invoke` binding) supplies that
+context after raw input validation and setup. Use
+`OperationBinding<typeof operations[number]>` to retain the contextual type.
+MCP uses only its explicit launch `binding`, never the CLI binding. Context is not
+input JSON, and credentials are verified by Auth/service rules on every call.
+Single-input methods need no binding. Passing a signal does not establish
+cooperative cancellation; existing cancellation metadata remains descriptive.
+
+`confirmation: "required"` and `approval: "required"` refuse invocation unless
+the trusted entry binding supplies a successful `confirm`/`approve` callback.
+Those callbacks must verify the specific invocation through a real confirmation
+flow or explicit approval owner. JSON flags do not satisfy either requirement.
+Allowlist, permission, confirmation and approval are independent; destructive
+metadata grants none of them. Shared calls never retry unknown write outcomes.
+Output is finite, redacted JSON with a default 1 MiB budget; programmatic bindings
+may select a budget, while MCP always applies its configured host limit.
 
 The local developer controls trusted config, application root, code and launch
 environment, but a declared business call still follows the shared actor and

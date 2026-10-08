@@ -42,6 +42,7 @@
         "@lenso/core": "workspace:^",
         "@lenso/db": "workspace:^",
         "@lenso/engine": "workspace:^",
+        "@lenso/manage": "workspace:^",
         "@lenso/mcp": "workspace:^",
         "@lenso/storage": "workspace:^",
         "@lenso/web": "workspace:^",
@@ -61,7 +62,9 @@
         "@lenso/auth": "workspace:^",
         "@lenso/cli": "workspace:^",
         "@lenso/core": "workspace:^",
+        "@lenso/engine": "workspace:^",
         "@lenso/log": "workspace:^",
+        "@lenso/manage": "workspace:^",
         "@lenso/mcp": "workspace:^",
         "@lenso/tasks": "workspace:^",
         "drizzle-orm": "0.45.3",
@@ -133,7 +136,10 @@
         "picocolors": "1.1.1",
       },
       "devDependencies": {
+        "@lenso/auth": "workspace:^",
+        "@lenso/manage": "workspace:^",
         "@lenso/web": "workspace:^",
+        "@orpc/server": "2.0.0-beta.42",
         "zod": "4.6.5",
       },
     },
@@ -170,6 +176,29 @@
         "pino": "10.4.0",
         "pino-pretty": "13.2.0",
       },
+    },
+    "packages/manage": {
+      "name": "@lenso/manage",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lenso/core": "workspace:^",
+        "@lenso/engine": "workspace:^",
+        "@standard-schema/spec": "1.1.0",
+      },
+      "devDependencies": {
+        "@lenso/auth": "workspace:^",
+        "@orpc/client": "2.0.0-beta.42",
+        "@orpc/server": "2.0.0-beta.42",
+        "zod": "4.6.5",
+      },
+      "peerDependencies": {
+        "@lenso/auth": "^0.1.0",
+        "@orpc/server": "2.0.0-beta.42",
+      },
+      "optionalPeers": [
+        "@lenso/auth",
+        "@orpc/server",
+      ],
     },
     "packages/mcp": {
       "name": "@lenso/mcp",
@@ -516,6 +545,8 @@
     "@lenso/example-tasks": ["@lenso/example-tasks@workspace:examples/tasks"],
 
     "@lenso/log": ["@lenso/log@workspace:packages/log"],
+
+    "@lenso/manage": ["@lenso/manage@workspace:packages/manage"],
 
     "@lenso/mcp": ["@lenso/mcp@workspace:packages/mcp"],
 

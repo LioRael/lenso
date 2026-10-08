@@ -94,7 +94,6 @@ test.skipIf(!process.env.TASK_TEST_DATABASE_URL)(
         "tasks.query",
         "tasks.cancel",
         "tasks.retry",
-        "tasks.report",
       ]);
       const query = tools.find((tool) => tool.title === "tasks.query")!;
       const cancel = tools.find((tool) => tool.title === "tasks.cancel")!;

@@ -8,7 +8,14 @@ export {
 } from "./application";
 export * from "./engine-authoring";
 export { defaultEngineOwner, defaultEnginePlugins } from "./engine-defaults";
-export { defineOperation, type Operation } from "./operations";
+export {
+  defineOperation,
+  type Operation,
+  type OperationBinding,
+  type OperationInvocationOptions,
+  type OperationContext,
+  type OperationBoundOptions,
+} from "./operations";
 export { EngineError, diagnostic, type EngineDiagnostic, type SourceLocation } from "./diagnostics";
 export { startEngineDevCycle, type EngineDevCycle } from "./engine-dev";
 export {

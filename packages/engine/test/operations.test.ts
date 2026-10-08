@@ -1,6 +1,15 @@
 import { expect, test } from "bun:test";
-import { definePlugin } from "@lenso/core";
-import { defineOperation, describeOperation, validateOperations } from "../src/operations";
+import { definePlugin, startApp } from "@lenso/core";
+import { EngineError } from "../src/diagnostics";
+import {
+  defineOperation,
+  describeOperation,
+  validateOperations,
+  resolveOperation,
+  validateOperationInput,
+  invokeValidatedOperation,
+  type Operation,
+} from "../src/operations";
 
 const input = {
   "~standard": {
@@ -60,7 +69,236 @@ test("omitted semantics stay unknown; malformed hints fail discovery", () => {
     { outputDescription: {} },
     { retry: "automatic" },
     { cancellation: "rollback" },
+    { context: false },
+    { confirmation: true },
+    { approval: "client-confirmation" },
   ]) {
     expect(() => validateOperations([plugin], [{ ...operation, ...invalid }])).toThrow();
   }
 });
+
+test("shared calls validate raw transformed input once and retain exact service this", async () => {
+  let validations = 0;
+  let cleanup = 0;
+  const transformed = {
+    "~standard": {
+      version: 1 as const,
+      vendor: "test",
+      validate(value: unknown) {
+        validations++;
+        return typeof value === "string"
+          ? { value: Number(value) }
+          : { issues: [{ message: "Expected raw string", path: ["value"] }] };
+      },
+      types: undefined as unknown as { input: string; output: number },
+    },
+  };
+  const instance = definePlugin({
+    id: "counter:a",
+    setup(lifecycle) {
+      lifecycle.onCleanup(async () => {
+        cleanup++;
+      });
+      const service = {
+        count: 10,
+        add(
+          value: number,
+          context: { evidence: string },
+        ): { count: number; evidence: string; secret: string } {
+          return { count: this.count + value, evidence: context.evidence, secret: "hidden" };
+        },
+      };
+      return service;
+    },
+  });
+  const operation = defineOperation({
+    plugin: instance,
+    method: "add",
+    input: transformed,
+    context: true,
+    description: "Add",
+  });
+  const typed: Operation<{ evidence: string }> = operation;
+  expect(typed).toBe(operation);
+  const clone = { ...instance };
+  expect(() => validateOperations([clone], [operation])).toThrow();
+  expect(() => resolveOperation([instance], [], instance.id, "add")).toThrow();
+  expect(resolveOperation([instance], [operation], instance.id, "add")).toBe(operation);
+  const running = await startApp({ plugins: [instance] });
+  try {
+    const validated = await validateOperationInput(operation, "2");
+    expect(
+      await invokeValidatedOperation(running, operation, validated, {
+        context: { evidence: "trusted" },
+      }),
+    ).toEqual({ count: 12, evidence: "trusted", secret: "[REDACTED]" });
+    expect(validations).toBe(1);
+    expect(cleanup).toBe(0);
+    await expect(invokeValidatedOperation(running, operation, validated)).rejects.toMatchObject({
+      diagnostic: {
+        code: "missing-context-binding",
+        instanceId: running.instanceId,
+        pluginId: instance.id,
+        operation: "counter:a.add",
+      },
+    });
+    await expect(validateOperationInput(operation, 2)).rejects.toMatchObject({
+      diagnostic: { code: "invalid-input", phase: "input", details: { paths: [["value"]] } },
+    });
+  } finally {
+    await running.stop();
+  }
+  expect(cleanup).toBe(1);
+});
+
+test("trusted gates fail closed and unknown writes are never replayed", async () => {
+  let calls = 0;
+  const instance = definePlugin({
+    id: "writes",
+    setup: () => ({
+      write(_input: unknown) {
+        calls++;
+        throw new Error("credential=do-not-disclose");
+      },
+    }),
+  });
+  const operation = defineOperation({
+    plugin: instance,
+    method: "write",
+    input,
+    description: "Write",
+    confirmation: "required",
+    approval: "required",
+    retry: "safe",
+    effect: "write",
+  });
+  const running = await startApp({ plugins: [instance] });
+  try {
+    await expect(
+      invokeValidatedOperation(running, operation, { confirmed: true }),
+    ).rejects.toMatchObject({
+      diagnostic: { code: "confirmation-required" },
+    });
+    await expect(
+      invokeValidatedOperation(
+        running,
+        operation,
+        {},
+        {
+          confirm: () => true,
+        },
+      ),
+    ).rejects.toMatchObject({ diagnostic: { code: "approval-required" } });
+    expect(calls).toBe(0);
+    try {
+      await invokeValidatedOperation(
+        running,
+        operation,
+        {},
+        {
+          confirm: () => true,
+          approve: () => true,
+        },
+      );
+      throw new Error("Expected failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(EngineError);
+      expect((error as EngineError).diagnostic).toMatchObject({
+        code: "invocation-failed",
+        phase: "invoke",
+        operation: "writes.write",
+      });
+      expect(JSON.stringify((error as EngineError).diagnostic)).not.toContain("do-not-disclose");
+    }
+    expect(calls).toBe(1);
+  } finally {
+    await running.stop();
+  }
+});
+
+test("finite output rejects streams and applies output limits without stopping a borrowed app", async () => {
+  const instance = definePlugin({
+    id: "outputs",
+    setup: () => ({
+      async *stream(_input: unknown) {
+        yield { row: 1 };
+      },
+      large(_input: unknown) {
+        return "123456789";
+      },
+    }),
+  });
+  const running = await startApp({ plugins: [instance] });
+  try {
+    const stream = defineOperation({
+      plugin: instance,
+      method: "stream",
+      input,
+      description: "Stream",
+    });
+    const large = defineOperation({
+      plugin: instance,
+      method: "large",
+      input,
+      description: "Large",
+    });
+    await expect(invokeValidatedOperation(running, stream, {})).rejects.toMatchObject({
+      diagnostic: { code: "serialization-failed", phase: "output" },
+    });
+    await expect(
+      invokeValidatedOperation(running, large, {}, { maxOutputBytes: 5 }),
+    ).rejects.toMatchObject({
+      diagnostic: { code: "output-too-large", phase: "output" },
+    });
+    expect(running.status()).toEqual([{ id: "outputs", state: "ready" }]);
+  } finally {
+    await running.stop();
+  }
+});
+
+function operationTypeChecks() {
+  const service = definePlugin({
+    id: "typed",
+    setup: () => ({
+      normal(_input: unknown) {
+        return 1;
+      },
+      contextual(_input: unknown, _context: { evidence: string }) {
+        return 1;
+      },
+      wrongInput(_input: number, _context: { evidence: string }) {
+        return 1;
+      },
+    }),
+  });
+  defineOperation({ plugin: service, method: "normal", input, description: "Normal" });
+  defineOperation({
+    plugin: service,
+    // @ts-expect-error Context declarations require an actual second method parameter.
+    method: "normal",
+    input,
+    context: true,
+    description: "Normal",
+  });
+  // @ts-expect-error A required second argument needs an explicit context declaration.
+  defineOperation({ plugin: service, method: "contextual", input, description: "Contextual" });
+  const contextual = defineOperation({
+    plugin: service,
+    method: "contextual",
+    input,
+    context: true,
+    description: "Contextual",
+  });
+  contextual satisfies Operation<{ evidence: string }>;
+  // @ts-expect-error The context type comes from the real method.
+  contextual satisfies Operation<{ evidence: number }>;
+  defineOperation({
+    plugin: service,
+    // @ts-expect-error The shared schema's validated output must match the actual method input.
+    method: "wrongInput",
+    input,
+    context: true,
+    description: "Wrong",
+  });
+}
+void operationTypeChecks;

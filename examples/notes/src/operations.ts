@@ -1,6 +1,8 @@
 import { AuthError } from "@lenso/auth";
 import { definePlugin, type Plugin } from "@lenso/core";
-import { CliError, defineOperation } from "@lenso/cli";
+import { CliError } from "@lenso/cli";
+import { defineOperation } from "@lenso/engine/operations";
+import { defineManage } from "@lenso/manage";
 import type { Files } from "@lenso/storage/files";
 import type { z } from "zod";
 import type { NotesAuthentication } from "./auth";
@@ -13,6 +15,11 @@ import {
 } from "./contracts";
 import { notesAudiences, type NotesService } from "./notes";
 import type { NotesFileAccess } from "./files";
+
+export interface NotesOperationContext {
+  evidence: string | null;
+  signal?: AbortSignal;
+}
 
 async function safeAuth<T>(work: () => Promise<T>): Promise<T> {
   try {
@@ -32,37 +39,59 @@ async function safeAuth<T>(work: () => Promise<T>): Promise<T> {
 export function createNotesOperationsService(
   notes: NotesService,
   authentication: NotesAuthentication,
-  credential: () => string | null,
+  credential: () => string | null = () => null,
 ) {
+  const fallback = (): NotesOperationContext => ({ evidence: credential() });
   return {
-    create(input: z.input<typeof noteInput>) {
+    create(input: z.input<typeof noteInput>, context: NotesOperationContext = fallback()) {
       return safeAuth(async () =>
-        notes.create(await authentication.for(notesAudiences.create).required(credential()), input),
+        notes.create(
+          await authentication.for(notesAudiences.create).required(context.evidence, {
+            signal: context.signal,
+          }),
+          input,
+        ),
       );
     },
-    list(_input: z.input<typeof notesListInput>) {
+    list(_input: z.input<typeof notesListInput>, context: NotesOperationContext = fallback()) {
       return safeAuth(async () =>
-        notes.list(await authentication.for(notesAudiences.list).required(credential())),
+        notes.list(
+          await authentication.for(notesAudiences.list).required(context.evidence, {
+            signal: context.signal,
+          }),
+        ),
       );
     },
-    read(input: z.input<typeof noteLookupInput>) {
+    read(input: z.input<typeof noteLookupInput>, context: NotesOperationContext = fallback()) {
       return safeAuth(async () =>
-        notes.read(await authentication.for(notesAudiences.read).required(credential()), input.id),
+        notes.read(
+          await authentication.for(notesAudiences.read).required(context.evidence, {
+            signal: context.signal,
+          }),
+          input.id,
+        ),
       );
     },
-    update({ id, ...input }: z.input<typeof noteUpdateInput>) {
+    update(
+      { id, ...input }: z.input<typeof noteUpdateInput>,
+      context: NotesOperationContext = fallback(),
+    ) {
       return safeAuth(async () =>
         notes.update(
-          await authentication.for(notesAudiences.update).required(credential()),
+          await authentication.for(notesAudiences.update).required(context.evidence, {
+            signal: context.signal,
+          }),
           id,
           input,
         ),
       );
     },
-    remove(input: z.input<typeof noteLookupInput>) {
+    remove(input: z.input<typeof noteLookupInput>, context: NotesOperationContext = fallback()) {
       return safeAuth(async () => ({
         removed: await notes.remove(
-          await authentication.for(notesAudiences.remove).required(credential()),
+          await authentication.for(notesAudiences.remove).required(context.evidence, {
+            signal: context.signal,
+          }),
           input.id,
         ),
       }));
@@ -73,7 +102,7 @@ export function createNotesOperationsService(
 export function createNotesOperations(options: {
   notes: Plugin<NotesService>;
   authentication: Plugin<NotesAuthentication>;
-  credential(): string | null;
+  credential?(): string | null;
 }) {
   const plugin = definePlugin({
     id: "notes-operations",
@@ -91,6 +120,7 @@ export function createNotesOperations(options: {
     defineOperation({
       plugin,
       method: "create",
+      context: true,
       input: noteInput,
       effect: "write",
       destructive: false,
@@ -103,6 +133,7 @@ export function createNotesOperations(options: {
     defineOperation({
       plugin,
       method: "list",
+      context: true,
       input: notesListInput,
       effect: "read",
       destructive: false,
@@ -115,6 +146,7 @@ export function createNotesOperations(options: {
     defineOperation({
       plugin,
       method: "read",
+      context: true,
       input: noteLookupInput,
       effect: "read",
       destructive: false,
@@ -127,6 +159,7 @@ export function createNotesOperations(options: {
     defineOperation({
       plugin,
       method: "update",
+      context: true,
       input: noteUpdateInput,
       effect: "write",
       destructive: false,
@@ -139,6 +172,7 @@ export function createNotesOperations(options: {
     defineOperation({
       plugin,
       method: "remove",
+      context: true,
       input: noteLookupInput,
       effect: "write",
       destructive: true,
@@ -149,33 +183,47 @@ export function createNotesOperations(options: {
       description: "Remove an owned private note.",
     }),
   ];
-  return { plugin, operations };
+  const manage = defineManage({
+    plugin,
+    operations: operations.filter((operation) =>
+      ["list", "read", "remove"].includes(operation.method),
+    ),
+  });
+  return { plugin, operations, manage };
 }
 
 export function createNotesFileOperations(options: {
   files: Plugin<Files<NotesFileAccess>>;
   authentication: Plugin<NotesAuthentication>;
-  credential(): string | null;
+  credential?(): string | null;
 }) {
   const plugin = definePlugin({
     id: "notes-file-operations",
     requires: [options.files, options.authentication],
-    setup(context) {
-      const files = context.get(options.files);
-      const authentication = context.get(options.authentication);
+    setup(lifecycle) {
+      const files = lifecycle.get(options.files);
+      const authentication = lifecycle.get(options.authentication);
+      const fallback = (): NotesOperationContext => ({ evidence: options.credential?.() ?? null });
       return {
-        metadata(input: z.input<typeof noteFileInput>) {
+        metadata(
+          input: z.input<typeof noteFileInput>,
+          context: NotesOperationContext = fallback(),
+        ) {
           return safeAuth(async () =>
             files.metadata(
-              await authentication.for(notesAudiences.fileMetadata).required(options.credential()),
+              await authentication.for(notesAudiences.fileMetadata).required(context.evidence, {
+                signal: context.signal,
+              }),
               input.fileId,
             ),
           );
         },
-        delete(input: z.input<typeof noteFileInput>) {
+        delete(input: z.input<typeof noteFileInput>, context: NotesOperationContext = fallback()) {
           return safeAuth(async () =>
             files.delete(
-              await authentication.for(notesAudiences.fileDelete).required(options.credential()),
+              await authentication.for(notesAudiences.fileDelete).required(context.evidence, {
+                signal: context.signal,
+              }),
               input.fileId,
             ),
           );
@@ -188,6 +236,7 @@ export function createNotesFileOperations(options: {
     defineOperation({
       plugin,
       method: "metadata",
+      context: true,
       input: noteFileInput,
       effect: "read",
       destructive: false,
@@ -201,6 +250,7 @@ export function createNotesFileOperations(options: {
     defineOperation({
       plugin,
       method: "delete",
+      context: true,
       input: noteFileInput,
       effect: "write",
       destructive: true,
@@ -211,5 +261,6 @@ export function createNotesFileOperations(options: {
       description: "Delete an owned attachment in the local Notes tenant.",
     }),
   ];
-  return { plugin, operations };
+  const manage = defineManage({ plugin, operations });
+  return { plugin, operations, manage };
 }

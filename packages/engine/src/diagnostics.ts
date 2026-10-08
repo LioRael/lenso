@@ -10,6 +10,7 @@ export interface EngineDiagnostic {
   readonly code: string;
   readonly phase: string;
   readonly message: string;
+  readonly instanceId?: string;
   readonly pluginId?: string;
   readonly dependencyId?: string;
   readonly operation?: string;
@@ -106,7 +107,7 @@ export function redact(
   if (typeof value === "string") {
     let result = value
       .replace(/(\b(?:Bearer|Basic)\s+)\S+/gi, "$1[REDACTED]")
-      .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[REDACTED]@")
+      .replace(/(:\/\/)[^\s/@]+:[^\s/@]+@/g, "$1[REDACTED]@")
       .replace(/((?:password|secret|token|api[-_]?key)\s*[=:]\s*)[^\s,;]+/gi, "$1[REDACTED]");
     for (const secret of secrets)
       if (secret.length >= 3) result = result.replaceAll(secret, "[REDACTED]");
@@ -138,6 +139,15 @@ export function stableJson(value: unknown, space?: number): string {
         code: "serialization-failed",
         phase: "output",
         message: "Output must be finite, acyclic JSON data.",
+      });
+    if (
+      Symbol.asyncIterator in item ||
+      Reflect.ownKeys(item).some((key) => typeof key === "symbol")
+    )
+      throw new EngineError({
+        code: "serialization-failed",
+        phase: "output",
+        message: "Output cannot contain streams or symbol-keyed data.",
       });
     if (
       !Array.isArray(item) &&
