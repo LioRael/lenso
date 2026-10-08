@@ -242,8 +242,8 @@ real PostgreSQL/Bun SQL, the existing pg-boss-backed Tasks provider/worker and
 SIGKILL child processes. No external notifications, payments or production
 resources are used.
 
-The integration owner must update the root Bun lockfile for this package and
-test dependencies; it is intentionally unchanged here. Shared Tasks now exports
+Workspace and test dependencies are recorded in the single root Bun lockfile;
+dependency updates remain owned by the integration owner. Shared Tasks now exports
 identity/lookup and finite consumption; shared Auth/Manage behavior is unchanged.
 Remote read-replica routing, multi-region behavior, Workers CPU/time-limit
 termination and non-tested architectures remain unverified. Optional
