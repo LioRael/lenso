@@ -1,0 +1,60 @@
+packages/storage/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/auth/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/lenso/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+packages/workers/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+packages/auth/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+packages/mcp/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+packages/web/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/db/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/workers/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/engine/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 5-10
+packages/tasks/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+docs/RELEASING.md
+  s_e3dbe949a951a5::t_e339914ef6d7d5 14-15
+  s_e3dbe949a951a5::t_eef0955161d41a 228-230
+packages/mcp/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/db/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+packages/storage/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+packages/web/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 4-9
+packages/tasks/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/cli/package.json
+  s_e3dbe949a951a5::t_50bdf5aba90143 5-10
+packages/cli/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/engine/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+packages/lenso/LICENSE
+  s_e3dbe949a951a5::t_49b78aaa556d28 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "084d4521aafe8780468586f90c9ba92eab7f4550",
+  "prompts": {},
+  "sessions": {
+    "s_e3dbe949a951a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11a4a-829c-7a91-8ac5-ef4c67bb9d37",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
