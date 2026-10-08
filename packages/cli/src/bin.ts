@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { build, discover, generate } from "@lenso/engine";
 import { call, inspect } from "./engine";
 import { dev } from "./dev";
+import { SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   CliError,
   diagnostic,
@@ -133,122 +134,149 @@ const help = {
   ],
 };
 
-try {
-  let command = "help";
-  if (args[0] && !args[0].startsWith("-")) command = args.shift()!;
-  const values = new Map<string, string>();
-  const flags = new Set<string>();
-  const positionals: string[] = [];
-  for (let index = 0; index < args.length; index++) {
-    const arg = args[index]!;
-    if (["--json", "--stdin", "--help", "-h"].includes(arg)) {
-      if (flags.has(arg)) usage("Repeated flag.");
-      flags.add(arg);
-    } else if (["--root", "--entry", "--input-file"].includes(arg)) {
-      if (values.has(arg)) usage("Repeated option.");
-      const value = args[++index];
-      if (!value || value.startsWith("-")) usage("Missing option value.");
-      values.set(arg, value);
-    } else if (arg.startsWith("-")) usage("Unknown flag.");
-    else positionals.push(arg);
-  }
-  if (flags.has("--help") || flags.has("-h")) command = "help";
-  if (!help.commands.some((item) => item.name === command))
-    usage("Unknown command; use lenso help.");
-  if (values.has("--entry") && !["build", "dev"].includes(command))
-    usage("--entry is available for build/dev only.");
-  if ((values.has("--input-file") || flags.has("--stdin")) && command !== "call")
-    usage("Input options are available for call only.");
-  if (command !== "call" && command !== "inspect" && positionals.length)
-    usage("Unexpected positional arguments.");
-  const root = values.get("--root") ?? process.cwd();
-  const entry = values.get("--entry");
-  let data: unknown;
-  switch (command) {
-    case "check": {
-      const discovery = await discover(root);
-      data = {
-        valid: true,
-        configPath: discovery.configPath,
-        order: discovery.ordered.map((plugin) => plugin.id),
-      };
-      break;
+await trace.getTracer("lenso-cli").startActiveSpan("lenso.cli.command", async (span) => {
+  try {
+    let command = "help";
+    if (args[0] && !args[0].startsWith("-")) command = args.shift()!;
+    const values = new Map<string, string>();
+    const flags = new Set<string>();
+    const positionals: string[] = [];
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index]!;
+      if (["--json", "--stdin", "--help", "-h"].includes(arg)) {
+        if (flags.has(arg)) usage("Repeated flag.");
+        flags.add(arg);
+      } else if (["--root", "--entry", "--input-file"].includes(arg)) {
+        if (values.has(arg)) usage("Repeated option.");
+        const value = args[++index];
+        if (!value || value.startsWith("-")) usage("Missing option value.");
+        values.set(arg, value);
+      } else if (arg.startsWith("-")) usage("Unknown flag.");
+      else positionals.push(arg);
     }
-    case "inspect":
-      if (positionals.length > 2) usage("Usage: inspect [plugin-id [method]].");
-      data = await inspect(root, positionals[0], positionals[1]);
-      break;
-    case "generate": {
-      const manifest = await generate(root);
-      data = {
-        plugins: manifest.map((plugin) => plugin.id),
-        directory: resolve(root, ".lenso"),
-        files: (await Bun.file(resolve(root, ".lenso/.engine-files.json")).json()).files.map(
-          (file: { path: string }) => file.path,
-        ),
-      };
-      break;
-    }
-    case "build":
-      data = { directory: await build(root, entry) };
-      break;
-    case "call": {
-      if (positionals.length < 2 || positionals.length > 3)
-        usage("Usage: call <plugin-id> <method> [JSON input].");
-      const [plugin, method, inline] = positionals;
-      const inputFile = values.get("--input-file");
-      const inputCount =
-        Number(inline !== undefined) +
-        Number(inputFile !== undefined) +
-        Number(flags.has("--stdin"));
-      if (inputCount > 1)
-        usage("Choose one input source: positional JSON, --input-file, or --stdin.");
-      let inputText = inline ?? "{}";
-      try {
-        if (inputFile) inputText = await Bun.file(resolve(inputFile)).text();
-        if (flags.has("--stdin")) inputText = await Bun.stdin.text();
-      } catch {
-        throw new CliError(
-          { code: "input-read-failed", phase: "input", message: "Cannot read JSON input source." },
-          2,
-        );
+    if (flags.has("--help") || flags.has("-h")) command = "help";
+    if (!help.commands.some((item) => item.name === command))
+      usage("Unknown command; use lenso help.");
+    span.setAttribute("lenso.cli.command", command);
+    if (values.has("--entry") && !["build", "dev"].includes(command))
+      usage("--entry is available for build/dev only.");
+    if ((values.has("--input-file") || flags.has("--stdin")) && command !== "call")
+      usage("Input options are available for call only.");
+    if (command !== "call" && command !== "inspect" && positionals.length)
+      usage("Unexpected positional arguments.");
+    const root = values.get("--root") ?? process.cwd();
+    const entry = values.get("--entry");
+    let data: unknown;
+    switch (command) {
+      case "check": {
+        const discovery = await discover(root);
+        data = {
+          valid: true,
+          configPath: discovery.configPath,
+          order: discovery.ordered.map((plugin) => plugin.id),
+        };
+        break;
       }
-      let input;
-      try {
-        input = JSON.parse(inputText);
-      } catch {
-        throw new CliError(
-          { code: "invalid-json", phase: "input", message: "Input must be valid JSON." },
-          2,
-        );
+      case "inspect":
+        if (positionals.length > 2) usage("Usage: inspect [plugin-id [method]].");
+        data = await inspect(root, positionals[0], positionals[1]);
+        break;
+      case "generate": {
+        const manifest = await generate(root);
+        data = {
+          plugins: manifest.map((plugin) => plugin.id),
+          directory: resolve(root, ".lenso"),
+          files: (await Bun.file(resolve(root, ".lenso/.engine-files.json")).json()).files.map(
+            (file: { path: string }) => file.path,
+          ),
+        };
+        break;
       }
-      data = await call(root, plugin!, method!, input);
-      break;
+      case "build":
+        data = { directory: await build(root, entry) };
+        break;
+      case "call": {
+        if (positionals.length < 2 || positionals.length > 3)
+          usage("Usage: call <plugin-id> <method> [JSON input].");
+        const [plugin, method, inline] = positionals;
+        const inputFile = values.get("--input-file");
+        const inputCount =
+          Number(inline !== undefined) +
+          Number(inputFile !== undefined) +
+          Number(flags.has("--stdin"));
+        if (inputCount > 1)
+          usage("Choose one input source: positional JSON, --input-file, or --stdin.");
+        let inputText = inline ?? "{}";
+        try {
+          if (inputFile) inputText = await Bun.file(resolve(inputFile)).text();
+          if (flags.has("--stdin")) inputText = await Bun.stdin.text();
+        } catch {
+          throw new CliError(
+            {
+              code: "input-read-failed",
+              phase: "input",
+              message: "Cannot read JSON input source.",
+            },
+            2,
+          );
+        }
+        let input;
+        try {
+          input = JSON.parse(inputText);
+        } catch {
+          throw new CliError(
+            { code: "invalid-json", phase: "input", message: "Input must be valid JSON." },
+            2,
+          );
+        }
+        data = await call(root, plugin!, method!, input);
+        break;
+      }
+      case "dev":
+        if (jsonMode)
+          usage("dev --json is unsupported; use finite commands for structured results.");
+        await dev({ root, entry });
+        data = { stopped: true };
+        break;
+      case "help":
+        data = help;
+        break;
     }
-    case "dev":
-      if (jsonMode) usage("dev --json is unsupported; use finite commands for structured results.");
-      await dev({ root, entry });
-      data = { stopped: true };
-      break;
-    case "help":
-      data = help;
-      break;
+    stableJson(data);
+    const safe =
+      command === "inspect"
+        ? (() => {
+            const { operations, ...metadata } = data as Awaited<ReturnType<typeof inspect>>;
+            return { ...(redact(metadata, secrets) as typeof metadata), operations };
+          })()
+        : redact(data, secrets);
+    stdout(
+      `${stableJson(jsonMode ? { schemaVersion: 1, ok: true, data: safe } : safe, jsonMode ? undefined : 2)}\n`,
+    );
+  } catch (error) {
+    span.setStatus({ code: SpanStatusCode.ERROR });
+    // Remove absent optional diagnostic fields, preserving only JSON-safe public data.
+    const detail = redact(JSON.parse(JSON.stringify(diagnostic(error))), secrets);
+    if (jsonMode) stdout(`${stableJson({ schemaVersion: 1, ok: false, error: detail })}\n`);
+    else process.stderr.write(`${stableJson(detail, 2)}\n`);
+    process.exitCode = exitCode(error);
+  } finally {
+    span.end();
+    await finishTelemetry();
   }
-  stableJson(data);
-  const safe =
-    command === "inspect"
-      ? (() => {
-          const { operations, ...metadata } = data as Awaited<ReturnType<typeof inspect>>;
-          return { ...(redact(metadata, secrets) as typeof metadata), operations };
-        })()
-      : redact(data, secrets);
-  stdout(
-    `${stableJson(jsonMode ? { schemaVersion: 1, ok: true, data: safe } : safe, jsonMode ? undefined : 2)}\n`,
-  );
-} catch (error) {
-  // Remove absent optional diagnostic fields, preserving only JSON-safe public data.
-  const detail = redact(JSON.parse(JSON.stringify(diagnostic(error))), secrets);
-  if (jsonMode) stdout(`${stableJson({ schemaVersion: 1, ok: false, error: detail })}\n`);
-  else process.stderr.write(`${stableJson(detail, 2)}\n`);
-  process.exitCode = exitCode(error);
+});
+// An explicit SDK preload owns this callback; the CLI itself imports API only.
+async function finishTelemetry(): Promise<void> {
+  const finish = (
+    globalThis as typeof globalThis & {
+      [key: symbol]: (() => Promise<void>) | undefined;
+    }
+  )[Symbol.for("lenso.telemetry.cli.finish.v1")];
+  if (finish) {
+    try {
+      await finish();
+    } catch {
+      process.stderr.write("Telemetry flush failed.\n");
+    }
+  }
 }

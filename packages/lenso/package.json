@@ -23,5 +23,8 @@
     "build": "bun build src/index.ts src/plugin.ts src/browser.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.1"
   }
 }

@@ -187,8 +187,8 @@ test("Notes registry validates before setup and authenticates all business/file 
 test("real inspect/call CLI uses the Notes config without actor input or implicit migration", async () => {
   const directory = await mkdtemp(join(await realpath(tmpdir()), "notes-cli-"));
   const filename = join(directory, "notes.sqlite");
-  const cli = resolve("packages/cli/src/bin.ts");
-  const root = resolve("examples/notes");
+  const cli = new URL("../../../packages/cli/src/bin.ts", import.meta.url).pathname;
+  const root = new URL("..", import.meta.url).pathname;
   const key = "03".repeat(32);
   const env = {
     ...process.env,
@@ -229,7 +229,7 @@ test("real inspect/call CLI uses the Notes config without actor input or implici
     expect(invalid.output.error.code).toBe("invalid-input");
     await expect(access(filename)).rejects.toBeDefined();
     await migrateFiles(filename);
-    const login = Bun.spawn([process.execPath, resolve("examples/notes/dist/cli.js"), "login"], {
+    const login = Bun.spawn([process.execPath, resolve(root, "dist/cli.js"), "login"], {
       env: { ...env, NOTES_LOGIN_KEY: key },
       cwd: directory,
       stdout: "pipe",

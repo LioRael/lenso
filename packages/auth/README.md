@@ -14,7 +14,7 @@ realm, and owns only the session state it actually manages.
 | `@lenso/auth/sessions`                            | Optional opaque managed sessions and domain Store contract                   |
 | `@lenso/auth/session-source`                      | Existing `getSession` bridge; external session ownership                     |
 | `@lenso/auth/fetch`                               | Explicit credential extraction, origin gate, safe error responses            |
-| `@lenso/auth/orpc`                                | Typed middleware for oRPC 1.15.5                                             |
+| `@lenso/auth/orpc`                                | Typed middleware for oRPC 2.0.0-beta.42                                     |
 | `@lenso/auth/drizzle/pg`                          | Native Drizzle PostgreSQL session store                                      |
 | `@lenso/auth/drizzle/sqlite`                      | Native Drizzle Bun SQLite session store                                      |
 | `@lenso/auth/drizzle/d1`                          | Native Drizzle D1 session store, no Bun runtime imports                      |

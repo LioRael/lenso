@@ -3,6 +3,10 @@ import { createWebPlugin, type WebContext } from "@lenso/web";
 import { definePlugin } from "lenso/plugin";
 import { os } from "@orpc/server";
 import { z } from "zod";
+import { bootstrapWorkerTracing } from "@lenso/otel/workers";
+
+// The Worker entry owns this once; the platform owns request spans and export.
+bootstrapWorkerTracing();
 
 export default createWorkerHandler<Env>((env) => {
   const bindings = createBindingsPlugin({ id: "bindings", bindings: env });

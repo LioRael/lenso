@@ -21,6 +21,7 @@
     "lenso": "workspace:^"
   },
   "devDependencies": {
-    "@lenso/web": "workspace:^"
+    "@lenso/web": "workspace:^",
+    "@orpc/server": "2.0.0-beta.42"
   }
 }

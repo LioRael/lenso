@@ -1,0 +1,64 @@
+{
+  "name": "@lenso/otel",
+  "version": "0.1.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./bun": {
+      "types": "./dist/bun.d.ts",
+      "import": "./dist/bun.js"
+    },
+    "./orpc": {
+      "types": "./dist/orpc.d.ts",
+      "import": "./dist/orpc.js"
+    },
+    "./workers": {
+      "types": "./dist/workers.d.ts",
+      "import": "./dist/workers.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts src/bun.ts src/orpc.ts --outdir dist --target bun --packages external && bun build src/workers.ts --outdir dist --target browser --packages external && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/context-async-hooks": "2.12.0",
+    "@opentelemetry/core": "2.12.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "0.223.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+    "@opentelemetry/instrumentation": "0.223.0",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-metrics": "2.12.0",
+    "@opentelemetry/sdk-trace-base": "2.12.0",
+    "@opentelemetry/sdk-trace-node": "2.12.0"
+  },
+  "devDependencies": {
+    "@orpc/cloudflare": "2.0.0-beta.42",
+    "@orpc/opentelemetry": "2.0.0-beta.42"
+  },
+  "peerDependencies": {
+    "@orpc/cloudflare": "2.0.0-beta.42",
+    "@orpc/opentelemetry": "2.0.0-beta.42"
+  },
+  "peerDependenciesMeta": {
+    "@orpc/opentelemetry": {
+      "optional": true
+    },
+    "@orpc/cloudflare": {
+      "optional": true
+    }
+  }
+}

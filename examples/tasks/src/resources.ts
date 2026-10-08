@@ -2,13 +2,17 @@ import { createTaskQueue } from "@lenso/tasks";
 import { createPostgresTaskProvider } from "@lenso/tasks/postgres";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import type { Logger } from "lenso";
 import { readConfig, reportFailure } from "./config";
 import { createReportService } from "./report-service";
 import { createOwnershipStore } from "./ownership";
 import * as schema from "./schema";
 import { createReportTask } from "./task";
 
-export async function openResources(config = readConfig()) {
+export async function openResources(
+  config = readConfig(),
+  options: { instanceId?: string; pluginId?: string; logger?: Logger } = {},
+) {
   const pool = new pg.Pool({ connectionString: config.connectionString });
   pool.on("error", () => reportFailure("Business database connection"));
   try {
@@ -18,7 +22,7 @@ export async function openResources(config = readConfig()) {
     const provider = await createPostgresTaskProvider(config);
     let queue;
     try {
-      queue = createTaskQueue({ provider, tasks: [task] });
+      queue = createTaskQueue({ provider, tasks: [task], ...options });
     } catch (error) {
       await provider.close();
       throw error;

@@ -15,6 +15,7 @@ import type {
 import { TaskQueueError } from "./errors";
 import { copyJson, RESULT_LIMIT_BYTES } from "./json";
 import { taskQueueSchema } from "./schema";
+import { traceMetadata } from "./telemetry";
 import { createTaskWorker, type WorkerBackend } from "./worker";
 
 export type PostgresTaskProviderOptions = {
@@ -108,6 +109,8 @@ function bossClient(pool: Pool, options: PostgresTaskProviderOptions, migrate: b
     reindex: false,
     superviseIntervalSeconds: config.superviseIntervalSeconds,
     monitorIntervalSeconds: config.superviseIntervalSeconds,
+    // The portable queue boundary owns spans, propagation and bounded metric labels.
+    openTelemetry: { enabled: false },
   });
   // Supervision reports errors through this event, not through a rejected worker promise.
   // The worker independently verifies every claim before renewing or settling it.
@@ -154,6 +157,11 @@ export async function migratePostgresTaskQueue(
     );
     await transaction(pool, async (client) => {
       await client.query(sql.replaceAll("__LENSO_SCHEMA__", `"${config.schema}"`));
+      const metadataSql = await readFile(
+        new URL("../migrations/0002_trace_metadata.sql", import.meta.url),
+        "utf8",
+      );
+      await client.query(metadataSql.replaceAll("__LENSO_SCHEMA__", `"${config.schema}"`));
     });
   } catch (error) {
     throw error instanceof TaskQueueError ? error : new TaskQueueError("provider-unavailable");
@@ -286,6 +294,7 @@ export async function createPostgresTaskProvider(
           attempt: job.retryCount + 1,
           task: own.task,
           input: own.input,
+          traceMetadata: traceMetadata(own.traceMetadata),
           heartbeatMs: Math.max(
             1,
             Math.min(
@@ -338,6 +347,7 @@ export async function createPostgresTaskProvider(
             jobId,
             task: job.task,
             input: sql`${JSON.stringify(job.input)}::jsonb`,
+            traceMetadata: traceMetadata(job.traceMetadata),
             deduplicationKey: job.deduplicationKey,
           })
           .onConflictDoNothing()

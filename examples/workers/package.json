@@ -10,23 +10,26 @@
     "build": "wrangler deploy --dry-run --outdir dist",
     "build:notes": "wrangler deploy --config wrangler.notes.jsonc --dry-run --outdir dist/notes",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.notes.json && tsc --noEmit -p tsconfig.test.json",
-    "test": "bun run test:notes",
+    "test": "bun run test:traces && bun run test:notes",
+    "test:traces": "bun build src/index.ts --outdir .lenso/workerd --target browser --external 'node:*' --external 'cloudflare:workers' && node --experimental-strip-types --test test/traces-workerd.test.ts",
     "test:notes": "bun build src/notes.ts --outdir .lenso/workerd --target browser --external 'node:*' && node --experimental-strip-types --test test/notes-workerd.test.ts"
   },
   "dependencies": {
     "@lenso/auth": "workspace:^",
     "@lenso/db": "workspace:^",
+    "@lenso/otel": "workspace:^",
     "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",
     "@lenso/workers": "workspace:^",
-    "@orpc/server": "1.15.5",
+    "@orpc/cloudflare": "2.0.0-beta.42",
+    "@orpc/server": "2.0.0-beta.42",
     "drizzle-orm": "0.45.3",
     "lenso": "workspace:^",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261008.1",
-    "@orpc/client": "1.15.5",
+    "@orpc/client": "2.0.0-beta.42",
     "miniflare": "5.20261006.0-alpha",
     "wrangler": "4.148.0"
   }

@@ -1,4 +1,4 @@
-import { ORPCError, os, type IntersectPick } from "@orpc/server";
+import { ORPCError, os } from "@orpc/server";
 import { AuthError } from "./errors";
 import type { AuthenticationOptions } from "./core";
 import type { EvidenceInput } from "./fetch";
@@ -21,8 +21,8 @@ function transportError(error: unknown): never {
 }
 
 function actorContext<C, P>(actor: P) {
-  // Only actor is injected; oRPC v1 requires an overlap constraint for generic contexts.
-  return { actor } as { actor: P } & IntersectPick<C, { actor: P }>;
+  // EvidenceExtractor forbids an existing actor; satisfy the generic overlap constraint.
+  return { actor } as { actor: P } & Pick<C, keyof C & "actor">;
 }
 
 export function optionalAuth<C extends object, E, P>(

@@ -1,10 +1,21 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "WRANGLER_SEND_METRICS",
+    "TASK_TEST_DATABASE_URL",
+    "LENSO_TEST_DATABASE_URL",
+    "LENSO_REQUIRE_POSTGRES"
+  ],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^build"] },
     "lenso-cli#typecheck": { "dependsOn": ["build"] },
-    "test": { "dependsOn": ["^build"], "cache": false },
+    "test": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
+    "@lenso/otel#test": { "dependsOn": ["^build", "lenso-cli#build"], "cache": false },
+    "@lenso/example-notes#test": { "dependsOn": ["build"], "cache": false },
     "@lenso/auth#typecheck": { "dependsOn": ["build"] },
     "@lenso/auth#test": { "dependsOn": ["build"], "cache": false }
   }

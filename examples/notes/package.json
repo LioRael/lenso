@@ -23,7 +23,7 @@
     "@lenso/mcp": "workspace:^",
     "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",
-    "@orpc/server": "1.15.5",
+    "@orpc/server": "2.0.0-beta.42",
     "drizzle-orm": "0.45.3",
     "lenso": "workspace:^",
     "lenso-cli": "workspace:^",
@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
-    "@orpc/client": "1.15.5",
+    "@orpc/client": "2.0.0-beta.42",
     "drizzle-kit": "0.31.11"
   }
 }

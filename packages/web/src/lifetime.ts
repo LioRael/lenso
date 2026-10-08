@@ -1,3 +1,5 @@
+import { context as telemetryContext } from "@opentelemetry/api";
+
 /** Resources belong to the body/producer lifetime, not the Response promise. */
 export interface FetchContext {
   request: Request;
@@ -19,6 +21,7 @@ export interface FetchOptions {
 export type FetchHandler = (context: FetchContext) => Response | Promise<Response>;
 
 export function createRequestTask(request: Request, handler: FetchHandler, options: FetchOptions) {
+  const scope = telemetryContext.active();
   const abort = new AbortController();
   const cleanups: (() => void | Promise<void>)[] = [];
   const work = new Set<Promise<void>>();
@@ -49,7 +52,7 @@ export function createRequestTask(request: Request, handler: FetchHandler, optio
       finished = true;
       for (const cleanup of cleanups.reverse()) {
         try {
-          await cleanup();
+          await telemetryContext.with(scope, cleanup);
         } catch {
           report("cleanup");
         }
@@ -127,37 +130,41 @@ export function createRequestTask(request: Request, handler: FetchHandler, optio
           start(controller) {
             streamController = controller;
           },
-          async pull(controller) {
-            try {
-              const read = reader.read();
-              reading = read;
-              const chunk = await read;
-              if (closing) return;
-              if (chunk.done) {
-                await end(false);
-                controller.close();
-              } else {
-                if (
-                  !(chunk.value instanceof Uint8Array) ||
-                  chunk.value.byteLength > (options.maxChunkBytes ?? 65536)
-                ) {
-                  throw new Error("Response chunk exceeds byte limit");
+          pull(controller) {
+            return telemetryContext.with(scope, async () => {
+              try {
+                const read = reader.read();
+                reading = read;
+                const chunk = await read;
+                if (closing) return;
+                if (chunk.done) {
+                  await end(false);
+                  controller.close();
+                } else {
+                  if (
+                    !(chunk.value instanceof Uint8Array) ||
+                    chunk.value.byteLength > (options.maxChunkBytes ?? 65536)
+                  ) {
+                    throw new Error("Response chunk exceeds byte limit");
+                  }
+                  controller.enqueue(chunk.value);
                 }
-                controller.enqueue(chunk.value);
+              } catch {
+                if (closing) return;
+                report("body");
+                controller.error(new Error("Response body failed"));
+                abort.abort(new Error("Response body failed"));
+                await end(true);
               }
-            } catch {
-              if (closing) return;
-              report("body");
-              controller.error(new Error("Response body failed"));
-              abort.abort(new Error("Response body failed"));
-              await end(true);
-            }
+            });
           },
           cancel() {
-            // Consumer cancellation already closed the wrapper; don't error it again.
-            const ending = end(true);
-            abort.abort(new DOMException("Response cancelled", "AbortError"));
-            return ending;
+            return telemetryContext.with(scope, () => {
+              // Consumer cancellation already closed the wrapper; don't error it again.
+              const ending = end(true);
+              abort.abort(new DOMException("Response cancelled", "AbortError"));
+              return ending;
+            });
           },
         },
         { highWaterMark: 0 },
@@ -201,6 +208,7 @@ export function createRequestTask(request: Request, handler: FetchHandler, optio
   return {
     response: Promise.race([handled, interrupted]).finally(() => removeAbort()),
     completed,
+    signal: abort.signal,
     abort: () => abort.abort(new DOMException("Web service stopped", "AbortError")),
   };
 }

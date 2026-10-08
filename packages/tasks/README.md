@@ -111,6 +111,28 @@ the full task set for that queue in each worker; an unknown task fails safely.
 
 ## Data and authority
 
+Tracing imports only the official OpenTelemetry API, never an SDK. A host may
+explicitly initialize `@lenso/otel/bun`. Enqueue creates a producer span; each
+durable attempt creates a fresh root linked to the original producer. Only
+bounded `traceparent`/`tracestate` are stored in the separate `trace_metadata`
+column, never baggage, payload or identity. Deduplication retains the original
+producer metadata, and retries receive new attempt spans. Trace context is not
+authority. Re-run the explicit migration before upgrading an existing queue;
+`0002_trace_metadata.sql` adds the nullable metadata column without changing jobs.
+The queue uses the official W3C propagator for this fixed carrier format,
+independently of any custom propagator selected for the host's HTTP traffic.
+
+Pass `logger`, `instanceId` and `pluginId` to `createTaskQueue`, or use
+`createTaskPlugin` to inherit the app's scope. A standalone queue gets its own
+instance ID. Each handler's `TaskContext.logger` is scoped to jobId/task/attempt
+and correlates the currently active span; logs still work without an SDK.
+Framework logs contain only bounded safe summaries, never the task payload or
+exception text. Task IDs and instance IDs belong in logs/traces, not metric
+labels. Counts/durations/errors label only outcome.
+The pg-boss driver's default telemetry is disabled: Lenso's portable queue
+boundary owns producer/attempt semantics and avoids duplicate send spans and
+driver-specific schema/queue metric labels.
+
 - Input is validated with the **same Standard Schema v1 object** before enqueue
   and before execution. Its input/output types are inferred, including defaults
   and transformations. Raw JSON is persisted so transformations do not compound
@@ -125,7 +147,8 @@ the full task set for that queue in each worker; an unknown task fails safely.
   fields; never include credentials, tokens, actor objects or full service data.
 - Errors are fixed codes: `handler-failed`, `invalid-input`, `invalid-result`,
   `aborted`. Original exception messages, input values and stacks are not saved
-  or exposed by the core queue API. There is no automatic handler logging.
+  or exposed by the core queue API. Optional framework logging records attempt
+  start/completion and fixed error codes, not arbitrary handler output.
 - `get` omits input and internal queue metadata. Knowing a jobId is **not**
   authority. Queue services are trusted in-process APIs: application services
   must load ownership and authorize the authenticated actor before querying,

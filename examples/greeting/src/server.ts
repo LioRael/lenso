@@ -1,11 +1,14 @@
-import { definePlugin, startApp, type RunningApp } from "lenso";
+import { definePlugin, startApp, type Logger, type RunningApp } from "lenso";
 import { reportDevReady } from "@lenso/engine/dev-ready";
 import { greeting } from "./greeting";
 import { createGreetingWeb } from "./web";
 
-export async function createExampleServer(port = 3000) {
+export async function createExampleServer(
+  port = 3000,
+  options: { instanceId?: string; logger?: Logger; requestLifetime?: boolean } = {},
+) {
   let running: RunningApp | undefined;
-  const web = createGreetingWeb(() => running?.status() ?? []);
+  const web = createGreetingWeb(() => running?.status() ?? [], options.requestLifetime);
   const listener = definePlugin({
     id: "http-listener",
     requires: [web],
@@ -32,7 +35,7 @@ export async function createExampleServer(port = 3000) {
       return { url: server.url };
     },
   });
-  running = await startApp({ plugins: [greeting, web, listener] });
+  running = await startApp({ plugins: [greeting, web, listener] }, options);
   return { app: running, url: running.get(listener).url };
 }
 

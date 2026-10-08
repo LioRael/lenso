@@ -317,9 +317,10 @@ test("SQLite private CRUD, CLI dispatch, HTTP and persistent sessions", async ()
       ).toBe(401);
       const client: RouterClient<NotesRouter> = createORPCClient(
         new RPCLink({
-          url: "http://notes.test/rpc",
+          origin: "http://notes.test",
+          url: "/rpc",
           headers: () => ({ authorization: `Bearer ${credential}` }),
-          fetch: (request, init) => handler.fetch(new Request(request, init)),
+          fetch: (url, init) => handler.fetch(new Request(url, init)),
         }),
       );
       expect((await client.read({ id }))?.id).toBe(id);

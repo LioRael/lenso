@@ -2,6 +2,7 @@ import type { ClaimedJob, ExecutionResult, TaskWorker, WorkerOptions } from "./c
 import { TaskQueueError } from "./errors";
 
 export interface WorkerClaim {
+  readonly traceMetadata?: ClaimedJob["traceMetadata"];
   readonly jobId: string;
   readonly task: string;
   readonly input: ClaimedJob["input"];
@@ -91,6 +92,7 @@ export function createTaskWorker(
             jobId: claim.jobId,
             task: claim.task,
             input: claim.input,
+            traceMetadata: claim.traceMetadata,
             attempt: claim.attempt,
             signal: controller.signal,
           });
