@@ -1,20 +1,22 @@
 # Verification — 2026-10-08
 
-Final repository: `/Users/leosouthey/Projects/framework/lenso-ts`. Local working branch: `feat/typescript-v1`. No remote configured, push, main merge or publication. Existing Rust/UI repositories, toolchains and credentials were not modified.
+Current repository: `/Users/leosouthey/Projects/framework/lenso`. The naming follow-up moved the standalone repository from its former `framework/lenso-ts` directory after commit `6fae8cc`; that former name is retained only in historical evidence. Local working branch: `feat/typescript-v1`. No remote configured, push, main merge or publication. Existing Rust/UI repositories, toolchains and credentials were not modified.
 
 The user's latest instruction cancelled Console for this phase. Final scope is SDK + CLI/TS Engine + optional Web + greeting service. No packages/console, React, Vite, UI, screenshot delivery or Console-specific generation remains. Earlier files created by this task are preserved outside this repository at `/Users/leosouthey/Documents/Codex/2026-10-08/task-5/console-deferred`.
 
-## Actually passed
+## Initial slice checks before path migration
+
+The following checks and measurements were run at the former TypeScript path. Raw evidence is preserved unchanged; it is not presented as a rerun at the new path. See [path migration verification](PATH-MIGRATION.md) for fresh checks.
 
 | Check | Result / evidence |
 | --- | --- |
-| `bun install --frozen-lockfile` at final path | Passed. Single root bun.lock; reduced fresh install used 28 packages; no Console/React/Vite in dependency graph. |
+| `bun install --frozen-lockfile` at the former path | Passed. Single root bun.lock; reduced fresh install used 28 packages; no Console/React/Vite in dependency graph. |
 | `bun run build` | Passed, 4 workspace packages/tasks including private greeting example. SDK, CLI and Web JS + .d.ts outputs; example server output. |
 | `bun run typecheck` | Passed all 4 packages and integration scripts. |
 | `bun run test` | 21 tests, 0 failures, 55 assertions: SDK 11/32, Engine 7/17, Web 2/4, example 1/2. |
 | SDK lifecycle | Duplicate/missing/cyclic dependency and exact-instance diagnostics, multiple instance identities, LIFO async cleanup, failing plugin resource rollback, collected cleanup errors, repeated/concurrent stop, declared dependency access and stopped-state rejection. |
 | Built CLI | `bun packages/cli/dist/bin.js call greeting greet '{"name":"Ada"}' --root examples/greeting`: `Hello, Ada!`, count 1. See [cli.json](../output/cli.json). Business-only config excludes Web. |
-| `bun run dev` | Passed at final path; Bun server bound 127.0.0.1:3000, fresh process supervision and generated typed client. No Console/Vite listener. |
+| `bun run dev` | Passed before path migration; Bun server bound 127.0.0.1:3000, fresh process supervision and generated typed client. No Console/Vite listener. |
 | Real generated typed HTTP client | `bun run client Ada`: `Hello, Ada!`, count 1, actual `greeting`, `web`, `http-listener` states ready. See [http-success.log](../output/http-success.log). |
 | Expected HTTP error | `bun run client x`: `BAD_REQUEST`, 'Name must contain at least 2 characters', exit 1. This expected error is a passed check, not an unresolved failure. See [http-error.log](../output/http-error.log). Subsequent count 2 proves rejected input did not increment. |
 | Business edit feedback | Source `Hello` → `Welcome`: new response in 517 ms; PID 64496 → 64517. Restore: 412 ms; PID 64524. Counter reset to 1, old process gone, exactly one listener. Source restored byte-for-byte. See [feedback.json](../output/feedback.json). These are one local observation, not a benchmark or latency guarantee. |

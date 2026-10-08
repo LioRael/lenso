@@ -1,4 +1,6 @@
-# TypeScript v1 plan and minimal API
+# Lenso v1 plan and minimal API
+
+Canonical local repository: `/Users/leosouthey/Projects/framework/lenso`.
 
 Current scope reflects the user's latest instruction: Console will be a separate repository. This deliverable has no Console package, React, Vite, browser UI, or Console contribution protocol. Earlier task-created Console files are preserved outside the repository at the task workspace's console-deferred directory.
 

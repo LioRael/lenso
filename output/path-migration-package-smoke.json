@@ -1,0 +1,22 @@
+{
+  "consumer": "/var/folders/hp/q9psfx3j2l58mrp6g7d8x8000000gn/T/lenso-package-smoke-L2D42w",
+  "coreCLI": "Hello, Consumer",
+  "coreHasNoWebDependencies": true,
+  "typecheck": true,
+  "full": {
+    "typedHTTP": {
+      "message": "Hello, Consumer"
+    },
+    "plugins": [
+      {
+        "id": "greeting",
+        "state": "ready"
+      },
+      {
+        "id": "web",
+        "state": "ready"
+      }
+    ]
+  },
+  "browserBytes": 48427
+}
