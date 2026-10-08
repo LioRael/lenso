@@ -1,4 +1,5 @@
 import { definePlugin } from "lenso/plugin";
+import { greetingInput, GreetingInputError } from "./contracts";
 export interface GreetingService {
   greet(input: { name: string }): Promise<{ message: string; count: number }>;
 }
@@ -8,8 +9,9 @@ export const greeting = definePlugin<GreetingService>({
     let count = 0;
     return {
       async greet({ name }) {
-        const trimmed = name.trim();
-        if (trimmed.length < 2) throw new Error("Name must contain at least 2 characters");
+        const parsed = greetingInput.safeParse({ name });
+        if (!parsed.success) throw new GreetingInputError();
+        const trimmed = parsed.data.name;
         return { message: `Hello, ${trimmed}!`, count: ++count };
       },
     };

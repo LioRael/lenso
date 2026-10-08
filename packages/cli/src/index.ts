@@ -12,3 +12,4 @@ export {
 export { dev } from "./dev";
 export { defineOperation, type Operation } from "./operations";
 export { CliError, diagnostic, type CliDiagnostic, type SourceLocation } from "./diagnostics";
+export { reportDevReady, type DevReadyInfo } from "./dev-ready";

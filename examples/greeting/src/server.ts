@@ -1,4 +1,5 @@
 import { definePlugin, startApp, type RunningApp } from "lenso";
+import { reportDevReady } from "lenso-cli/dev";
 import { greeting } from "./greeting";
 import { createGreetingWeb } from "./web";
 
@@ -37,7 +38,10 @@ export async function createExampleServer(port = 3000) {
 
 if (import.meta.main) {
   const example = await createExampleServer(Number(process.env.LENSO_PORT ?? 3000));
-  console.log(`[example] ready pid=${process.pid} ${example.url}`);
+  reportDevReady({
+    urls: [example.url],
+    capabilities: example.app.status().map((plugin) => plugin.id),
+  });
   let stopping: Promise<void> | undefined;
   const shutdown = () => {
     stopping ??= example.app

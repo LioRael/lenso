@@ -17,7 +17,7 @@ bun run dev
 In another terminal:
 
 ```sh
-# After declaring greeting.greet in the app config (see docs/CLI.md).
+# Discover the declared service operation without starting resources.
 bun run cli inspect greeting greet --root examples/greeting --json
 bun run cli call greeting greet '{"name":"Ada"}' --root examples/greeting
 bun run client Ada
@@ -26,7 +26,7 @@ bun run client x
 # Expected business validation error and nonzero exit.
 ```
 
-CLI call requires an explicit operation declaration; the original greeting config needs the declaration shown in docs/CLI.md. CLI calls start/stop an isolated app each time; HTTP calls share the server's current in-memory counter. Invalid names do not increase it. Restart resets it. This is not persistence.
+CLI calls use the explicit operation declaration and shared input schema in the greeting app config. CLI calls start/stop an isolated app each time; HTTP calls share the server's current in-memory counter. Invalid names do not increase it. Restart resets it. This is not persistence.
 
 Routine code hygiene is intentionally small:
 

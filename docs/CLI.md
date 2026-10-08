@@ -1,6 +1,6 @@
 # CLI and local agent development
 
-Use `lenso help --json` for current commands, flags, side effects and exit codes. Finite commands support one `schemaVersion: 1` envelope on stdout: `{ok:true,data}` or `{ok:false,error}`. Logs use stderr. Exit 0 means success, 2 arguments/input failure, 3 discovery/assembly failure, 1 runtime/build/output failure. `dev --json` is unsupported; its human lifecycle is managed separately.
+Use `lenso help --json` for current commands, flags, side effects and exit codes. Finite commands support one `schemaVersion: 1` envelope on stdout: `{ok:true,data}` or `{ok:false,error}`. Logs use stderr. Exit 0 means success, 2 arguments/input failure, 3 discovery/assembly failure, 1 runtime/build/output failure. `dev --json` is unsupported; its human lifecycle is managed separately. For custom entry readiness, use `reportDevReady` from `lenso-cli/dev` after successful startup; the greeting entry already wires this helper.
 
 ## Declare existing service operations
 

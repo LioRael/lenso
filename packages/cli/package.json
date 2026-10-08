@@ -13,10 +13,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./dev": {
+      "types": "./dist/dev-ready.d.ts",
+      "import": "./dist/dev-ready.js"
     }
   },
   "scripts": {
-    "build": "bun build src/bin.ts src/index.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "build": "bun build src/bin.ts src/index.ts src/dev-ready.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },

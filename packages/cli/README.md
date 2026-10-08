@@ -5,17 +5,18 @@ The human startup view uses stderr. TTY output has modest colors; `NO_COLOR`,
 CI, non-TTY and `TERM=dumb` output stays plain.
 
 Readiness is explicit. In the development entry, after application startup and
-listener binding succeed, send the actual runtime information over Bun IPC:
+listener binding succeed, report actual runtime information with the public helper:
 
 ```ts
-process.send?.({
-  type: "lenso:dev-ready",
+import { reportDevReady } from "lenso-cli/dev";
+
+reportDevReady({
   urls: [server.url.href],
   capabilities: ["web"],
 });
 ```
 
-Service-only entries can omit `urls`. Use enabled capability names, without
+The included greeting entry already calls this helper. It is a no-op outside supervised dev; authors never need to handwrite IPC messages. Custom entries call it after successful startup. Service-only entries can omit `urls`. Use enabled capability names, without
 configuration values or secrets. Entries without this signal remain Starting;
 spawning a process alone does not prove readiness. Failed starts keep watching
 for source changes. The displayed URL is the reported listener origin, with no
