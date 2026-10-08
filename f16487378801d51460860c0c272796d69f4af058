@@ -1,0 +1,36 @@
+README.md
+  h_9d56aba080c170 1,12
+bun.lock
+  h_9d56aba080c170 6
+docs/PATH-MIGRATION.md
+  h_9d56aba080c170 1-32
+docs/PLAN.md
+  h_9d56aba080c170 1-3
+docs/VERIFICATION.md
+  h_9d56aba080c170 3,7-9,13,19
+output/README.md
+  h_9d56aba080c170 2-3
+output/path-migration-checks.log
+  h_9d56aba080c170 1-181
+output/path-migration-cli.json
+  h_9d56aba080c170 1-4
+output/path-migration-http.log
+  h_9d56aba080c170 1-19
+output/path-migration-package-smoke.json
+  h_9d56aba080c170 1-22
+output/path-migration.json
+  h_9d56aba080c170 1-16
+package.json
+  h_9d56aba080c170 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f16487378801d51460860c0c272796d69f4af058",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
