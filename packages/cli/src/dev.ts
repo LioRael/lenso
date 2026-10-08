@@ -1,10 +1,31 @@
 import { watch, type FSWatcher } from "node:fs";
 import { resolve, join } from "node:path";
+import { createDevPresentation, type DevPresentation, type DevReady } from "./dev-presentation";
 
 interface DevOptions {
   root: string;
   entry?: string;
   cliPath: string;
+  presentation?: DevPresentation;
+}
+
+/** The entry sends this over Bun IPC after its app and listeners have started. */
+export interface DevReadyMessage extends DevReady {
+  readonly type: "lenso:dev-ready";
+  readonly urls?: readonly string[];
+}
+
+function isDevReadyMessage(message: unknown): message is DevReadyMessage {
+  if (!message || typeof message !== "object" || !("type" in message)) return false;
+  if (message.type !== "lenso:dev-ready") return false;
+  for (const key of ["urls", "capabilities"] as const) {
+    if (key in message) {
+      const values: unknown = Reflect.get(message, key);
+      if (!Array.isArray(values) || !values.every((value) => typeof value === "string"))
+        return false;
+    }
+  }
+  return true;
 }
 
 /** Restarts a fresh Bun process after stopping the previous process and its listeners. */
@@ -12,6 +33,7 @@ export async function dev(options: DevOptions): Promise<void> {
   const root = resolve(options.root);
   const entry = resolve(root, options.entry ?? "src/server.ts");
   if (!(await Bun.file(entry).exists())) throw new Error(`Development entry missing: ${entry}`);
+  const presentation = options.presentation ?? createDevPresentation({ project: root });
   let child: ReturnType<typeof Bun.spawn> | undefined;
   let generator: ReturnType<typeof Bun.spawn> | undefined;
   let closed = false;
@@ -50,10 +72,12 @@ export async function dev(options: DevOptions): Promise<void> {
         queued = false;
         await stopChild();
         if (closed) break;
+        presentation.starting();
         // Fresh generation also invalidates imports of the config's dependencies.
         const generated = Bun.spawn(
           [process.execPath, options.cliPath, "generate", "--root", root],
-          { cwd: root, stdout: "inherit", stderr: "inherit" },
+          // Generation's command result is redundant with the dev status; keep diagnostics.
+          { cwd: root, stdout: "ignore", stderr: "inherit" },
         );
         generator = generated;
         const generationExit = await generated.exited;
@@ -61,6 +85,7 @@ export async function dev(options: DevOptions): Promise<void> {
         if (closed) break;
         if (generationExit !== 0) {
           console.error("[lenso] Generation failed. Fix the source to restart.");
+          presentation.failed();
           continue;
         }
         if (closed) break;
@@ -68,15 +93,19 @@ export async function dev(options: DevOptions): Promise<void> {
           cwd: root,
           stdout: "inherit",
           stderr: "inherit",
+          ipc(message, subprocess) {
+            if (!closed && child === subprocess && isDevReadyMessage(message))
+              presentation.ready(message);
+          },
         });
         const launched = child;
         void launched.exited.then((code) => {
           if (child === launched && !closed) {
             child = undefined;
             console.error(`[lenso] Development process exited (${code}). Edit source to restart.`);
+            presentation.failed();
           }
         });
-        console.log(`[lenso] Started ${entry}`);
       }
     } finally {
       restarting = false;
@@ -87,7 +116,10 @@ export async function dev(options: DevOptions): Promise<void> {
     if (closed) return;
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(() => {
-      void restart().catch((error) => console.error("[lenso]", error));
+      void restart().catch((error) => {
+        console.error("[lenso]", error);
+        presentation.failed();
+      });
     }, 100);
   }
 

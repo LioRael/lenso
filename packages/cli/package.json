@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "@standard-schema/spec": "1.1.0",
-    "lenso": "workspace:^"
+    "lenso": "workspace:^",
+    "picocolors": "1.1.1"
   },
   "devDependencies": {
     "zod": "4.6.5"
