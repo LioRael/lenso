@@ -9,7 +9,7 @@
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test && bun run release:test",
     "generate": "bun packages/cli/src/bin.ts generate --root examples/greeting",
     "dev": "bun run build && bun packages/cli/src/bin.ts dev --root examples/greeting",
     "cli": "bun packages/cli/src/bin.ts",
@@ -17,9 +17,15 @@
     "lint": "oxlint . --deny-warnings",
     "lint:fix": "oxlint . --fix --deny-warnings",
     "fmt": "oxfmt .",
-    "fmt:check": "oxfmt --check ."
+    "fmt:check": "oxfmt --check .",
+    "changeset": "bun node_modules/@changesets/cli/bin.js add",
+    "release:status": "bun node_modules/@changesets/cli/bin.js status",
+    "release:version": "bun node_modules/@changesets/cli/bin.js version",
+    "release:verify": "bun scripts/release-verify.ts",
+    "release:test": "bun test scripts/release.test.ts"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.3",
     "@types/bun": "1.4.2",
     "oxfmt": "0.72.0",
     "oxlint": "1.87.0",

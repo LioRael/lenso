@@ -114,4 +114,7 @@ callbacks. Scoped exceptions cover MCP SDK callback slots and errors already pre
 The package table uses a local formatter ignore to keep its source compact; other Markdown
 remains checked.
 
+See [Releasing packages](docs/RELEASING.md) for local release checks, package validation
+and the manual publishing steps. Release checks do not publish anything.
+
 Plugins and config are trusted code, not a sandbox. CLI exposes only declared operations and does not invent a user identity. Auth adapters provide identity/policy seams, not a deployed account system. Cancellation is cooperative; detached work needs explicit ownership and registration. The included Bun server binds loopback and rejects foreign Host/Origin. Workers examples are local; cloud deployment, provider credentials, MCP/AI runtime and Rust extensions are outside this deliverable.
