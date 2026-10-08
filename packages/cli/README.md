@@ -60,7 +60,8 @@ existing application sources; generators return static files. Sources live insid
 application root, outside .lenso/dist. A convention returns `{config, entry?, router?}`;
 router is optional, so Web/oRPC is never required. A target receives `entry` and `bundle`
 for the same Bun build implementation used by the default target. Select a registered
-target with `defineEngineConfig({target: "workers", plugins})`.
+target with `defineEngineConfig({target: "workers", plugins})`. `convention.entry` selects
+the build entry only; supervised `lenso dev` uses `--entry` or the default `src/server.ts`.
 
 Plugins have unique names. `before`/`after` specify named ordering constraints; unknown
 names and cycles fail. Otherwise configuration order is stable. Capabilities have unique
