@@ -2,8 +2,6 @@ import { createDevSupervisor, type DevSupervisor } from "@lenso/engine";
 import { createDevPresentation, type DevPresentation } from "./dev-presentation";
 import { diagnostic } from "./diagnostics";
 
-export type { DevReadyMessage } from "@lenso/engine/dev-ready";
-
 interface DevOptions {
   root: string;
   entry?: string;

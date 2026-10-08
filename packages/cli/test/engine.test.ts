@@ -6,7 +6,8 @@ import { defineApp, definePlugin } from "lenso";
 import { z } from "zod";
 import { defineOperation } from "../src/operations";
 import { diagnostic } from "../src/diagnostics";
-import { generate, inspect, invoke } from "../src/engine";
+import { generate } from "@lenso/engine";
+import { inspect, invoke } from "../src/engine";
 
 const directories: string[] = [];
 afterEach(async () => {
