@@ -13,11 +13,20 @@ import { input, localFixture, template } from "./helpers";
 
 /** Deterministic queue fixture; this does not verify the PostgreSQL Tasks backend. */
 class QueueFixture implements TaskProvider {
+  readonly queueId = crypto.randomUUID();
   failEnqueue = false;
   job: ProviderJob | undefined;
   status: JobStatus | null = null;
   execute: ((job: ClaimedJob) => Promise<ExecutionResult>) | undefined;
   retried = 0;
+  async identity() {
+    return { kind: "postgres" as const, id: this.queueId };
+  }
+  async lookupDeduplicationKey(key: string) {
+    return this.job?.deduplicationKey === key && this.status
+      ? { jobId: this.status.jobId, status: this.status }
+      : null;
+  }
   async enqueue(job: ProviderJob) {
     if (this.failEnqueue) throw new Error("fixture queue unavailable");
     if (!this.job) {
