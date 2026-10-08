@@ -451,6 +451,31 @@ describe("plugin configuration", () => {
     );
   });
 
+  test("legacy contexts stay valid for plain plugins but cannot bypass configured preflight", () => {
+    const context = {
+      instanceId: "legacy",
+      get() {
+        throw new Error("No dependencies");
+      },
+      onCleanup: () => async () => {},
+    };
+    const plain = definePlugin({ id: "plain", setup: () => "legacy service" });
+    expect(plain.setup(context)).toBe("legacy service");
+    let setups = 0;
+    const bound = bindConfig(
+      objectContract,
+      {},
+      {
+        id: "bound",
+        setup() {
+          setups++;
+        },
+      },
+    );
+    expect(() => bound.setup(context)).toThrow(ConfigError);
+    expect(setups).toBe(0);
+  });
+
   test("schema issues and adapter errors retain only safe paths and scrub credential locations", async () => {
     const contract = definePluginConfig({
       schema: schema<Record<string, unknown>, Record<string, unknown>>(() => ({

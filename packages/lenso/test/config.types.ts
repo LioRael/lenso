@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { bindConfig, definePluginConfig, resolveConfig, valuesSource } from "../src/config";
 import type { ConfigBinding } from "../src/config-types";
-import type { Plugin, PluginContext } from "../src/plugin";
+import type { ConfiguredPluginContext, Plugin, PluginContext } from "../src/plugin";
 
 type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -50,9 +50,18 @@ const snapshot = resolveConfig("typed", binding);
 type SnapshotValue = Awaited<typeof snapshot>["value"];
 export type SnapshotIsOutput = Assert<Equal<SnapshotValue, Output>>;
 export type SnapshotNotAny = Assert<Equal<IsAny<SnapshotValue>, false>>;
-function contextTypes(context: PluginContext): void {
+function contextTypes(context: ConfiguredPluginContext): void {
   const config = context.config(binding);
   assertType<Equal<typeof config, Output>>(true);
   assertType<Equal<IsAny<typeof config>, false>>(true);
 }
 void contextTypes;
+
+const legacyContext: PluginContext = {
+  instanceId: "legacy",
+  get() {
+    throw new Error("No dependencies");
+  },
+  onCleanup: () => async () => {},
+};
+void legacyContext;

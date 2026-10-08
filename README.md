@@ -124,6 +124,10 @@ health or methods returned by setup.
 Ordinary `Plugin` factories can keep accepting ordinary options. Opt in when a
 plugin needs shared validation, startup preflight or multiple sources:
 
+Ordinary `PluginContext` implementations need not provide `config()`.
+`bindConfig` callbacks receive a `ConfiguredPluginContext` with that capability;
+calling a bound plugin without a preflight-capable context fails before its setup.
+
 ```ts
 import { bindConfig, definePluginConfig, startApp, valuesSource } from "@lenso/core";
 import type { ConfigSource } from "@lenso/core";

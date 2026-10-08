@@ -9,7 +9,7 @@ import type {
   ConfigSnapshot,
   ConfigSource,
 } from "./config-types";
-import type { Plugin, PluginContext, PluginSource } from "./plugin";
+import type { ConfiguredPluginContext, Plugin, PluginSource } from "./plugin";
 
 export type * from "./config-types";
 
@@ -197,7 +197,10 @@ export function bindConfig<S extends StandardSchemaV1, T>(
   contract: ConfigContract<S>,
   input: StandardSchemaV1.InferInput<S> | readonly ConfigSource[],
   plugin: Omit<Plugin<T>, "setup" | "config"> & {
-    setup(context: PluginContext, config: StandardSchemaV1.InferOutput<S>): T | Promise<T>;
+    setup(
+      context: ConfiguredPluginContext,
+      config: StandardSchemaV1.InferOutput<S>,
+    ): T | Promise<T>;
   },
 ): Plugin<T> {
   const binding: ConfigBinding<S> = Object.freeze({
@@ -211,7 +214,10 @@ export function bindConfig<S extends StandardSchemaV1, T>(
   return {
     ...plugin,
     config: binding,
-    setup: (context) => plugin.setup(context, context.config(binding)),
+    setup(context) {
+      if (!context.config) throw new ConfigError([{ code: "config-invalid", pluginId: plugin.id }]);
+      return plugin.setup(context as ConfiguredPluginContext, context.config(binding));
+    },
   };
 }
 
