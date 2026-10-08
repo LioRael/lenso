@@ -1,0 +1,106 @@
+{
+  "name": "@lenso/audit",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/audit"
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md",
+    "CHECKS.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "default": "./dist/auth.js"
+    },
+    "./manage": {
+      "types": "./dist/manage.d.ts",
+      "default": "./dist/manage.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics.d.ts",
+      "default": "./dist/diagnostics.js"
+    },
+    "./tasks": {
+      "types": "./dist/tasks.d.ts",
+      "default": "./dist/tasks.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "default": "./dist/sqlite.js"
+    },
+    "./postgres": {
+      "types": "./dist/postgres.d.ts",
+      "default": "./dist/postgres.js"
+    },
+    "./migrations/*": "./migrations/*"
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/plugin.ts src/auth.ts src/manage.ts src/diagnostics.ts src/tasks.ts src/sqlite.ts src/postgres.ts --root src --outdir dist --target browser --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "devDependencies": {
+    "@lenso/auth": "workspace:^",
+    "@lenso/core": "workspace:^",
+    "@lenso/db": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/log": "workspace:^",
+    "@lenso/manage": "workspace:^",
+    "@lenso/tasks": "workspace:^",
+    "@opentelemetry/api": "1.9.1",
+    "drizzle-orm": "0.45.3",
+    "miniflare": "5.20261006.0-alpha",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@lenso/auth": "^0.2.0",
+    "@lenso/core": "^0.2.0",
+    "@lenso/engine": "^0.2.0",
+    "@lenso/manage": "^0.2.0",
+    "@lenso/tasks": "^0.2.0",
+    "@opentelemetry/api": "1.9.1",
+    "drizzle-orm": "0.45.3",
+    "zod": "4.6.5"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/auth": {
+      "optional": true
+    },
+    "@lenso/core": {
+      "optional": true
+    },
+    "@lenso/engine": {
+      "optional": true
+    },
+    "@lenso/manage": {
+      "optional": true
+    },
+    "@lenso/tasks": {
+      "optional": true
+    },
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  }
+}
