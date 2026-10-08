@@ -1,5 +1,6 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
-import type { Plugin } from "@lenso/core";
+import type { Plugin, RunningApp } from "@lenso/core";
+import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
 import { EngineError, environmentSecrets, redact, type SourceLocation } from "./diagnostics";
 
 export interface Operation {
@@ -14,6 +15,67 @@ export interface Operation {
   readonly retry?: "safe" | "unsafe" | "unknown";
   readonly cancellation?: "cooperative" | "request-only" | "none" | "unknown";
 }
+
+/** Shared by entries/adapters after their input and authorization boundary. */
+export async function executeOperation(
+  running: RunningApp,
+  operation: Operation,
+  input: unknown,
+): Promise<unknown> {
+  const attributes = {
+    "lenso.instance.id": running.instanceId,
+    "lenso.plugin.id": operation.plugin.id,
+    "lenso.operation": operation.method,
+  };
+  const meter = metrics.getMeter("@lenso/engine");
+  const labels = { outcome: "success" };
+  const started = performance.now();
+  return trace
+    .getTracer("@lenso/engine")
+    .startActiveSpan("lenso.operation", { attributes }, async (span) => {
+      try {
+        const service = running.get(operation.plugin);
+        if (
+          service === null ||
+          typeof service !== "object" ||
+          !Object.hasOwn(service, operation.method) ||
+          typeof Reflect.get(service, operation.method) !== "function"
+        )
+          throw new EngineError({
+            code: "unavailable-operation",
+            phase: "invoke",
+            message: "Declared operation is not an own callable service method.",
+            pluginId: operation.plugin.id,
+          });
+        return await Reflect.get(service, operation.method).call(service, input);
+      } catch (error) {
+        labels.outcome = "failure";
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        meter.createCounter("lenso.operation.errors").add(1);
+        throw error;
+      } finally {
+        try {
+          running.logger?.debug(
+            {
+              instanceId: running.instanceId,
+              pluginId: operation.plugin.id,
+              operation: operation.method,
+              outcome: labels.outcome,
+            },
+            "Operation completed",
+          );
+        } catch {
+          // Diagnostics cannot change the service result or failure identity.
+        }
+        meter.createCounter("lenso.operation.calls").add(1, labels);
+        meter
+          .createHistogram("lenso.operation.duration", { unit: "ms" })
+          .record(performance.now() - started, labels);
+        span.end();
+      }
+    });
+}
+
 /** Static adapter metadata only: invocation always uses the existing service method. */
 export function defineOperation<T, S extends StandardSchemaV1>(
   operation: Omit<Operation, "plugin" | "method" | "input"> & {

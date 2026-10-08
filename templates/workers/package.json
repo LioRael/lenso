@@ -14,7 +14,7 @@
     "@lenso/core": "file:./vendor/lenso-core.tgz",
     "@lenso/web": "file:./vendor/lenso-web.tgz",
     "@lenso/workers": "file:./vendor/lenso-workers.tgz",
-    "@orpc/server": "1.15.5",
+    "@orpc/server": "2.0.0-beta.42",
     "zod": "4.6.5"
   },
   "devDependencies": {

@@ -89,7 +89,8 @@ async function login(url: URL, subjectId: "alice" | "bob"): Promise<IssuedSessio
 function rpc(url: URL, token?: string): RouterClient<NotesRouter> {
   return createORPCClient(
     new RPCLink({
-      url: new URL("/rpc", url),
+      origin: url.origin,
+      url: "/rpc",
       headers: token ? { authorization: `Bearer ${token}` } : {},
     }),
   );

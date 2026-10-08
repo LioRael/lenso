@@ -1,12 +1,15 @@
-import { definePlugin, startApp, type RunningApp } from "@lenso/core";
+import { definePlugin, startApp, type Logger, type RunningApp } from "@lenso/core";
 import { reportDevReady } from "@lenso/engine/dev-ready";
 import { createBunListenerPlugin } from "@lenso/web/bun";
 import { greeting } from "./greeting";
 import { createGreetingWeb } from "./web";
 
-export async function createExampleServer(port = 3000) {
+export async function createExampleServer(
+  port = 3000,
+  options: { instanceId?: string; logger?: Logger; requestLifetime?: boolean } = {},
+) {
   let running: RunningApp | undefined;
-  const web = createGreetingWeb(() => running?.status() ?? []);
+  const web = createGreetingWeb(() => running?.status() ?? [], options.requestLifetime);
   const bunListener = createBunListenerPlugin({
     id: "http-listener",
     web,
@@ -32,7 +35,7 @@ export async function createExampleServer(port = 3000) {
       return service;
     },
   });
-  running = await startApp({ plugins: [greeting, web, listener] });
+  running = await startApp({ plugins: [greeting, web, listener] }, options);
   return { app: running, url: running.get(listener).url };
 }
 

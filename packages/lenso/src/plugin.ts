@@ -1,5 +1,13 @@
 export type Cleanup = () => Promise<void>;
 
+export interface Logger {
+  child(bindings: Record<string, unknown>): Logger;
+  debug(fields: Record<string, unknown>, message?: string): void;
+  info(fields: Record<string, unknown>, message?: string): void;
+  warn(fields: Record<string, unknown>, message?: string): void;
+  error(fields: Record<string, unknown>, message?: string): void;
+}
+
 export interface PluginSource {
   readonly file: string;
   readonly export?: string;
@@ -9,6 +17,8 @@ export interface PluginSource {
 
 /** A resource acquired during setup must register its cleanup immediately. */
 export interface PluginContext {
+  readonly instanceId: string;
+  readonly logger?: Logger;
   get<T>(dependency: Plugin<T>): T;
   /** The returned disposer shares its completion with automatic LIFO cleanup. */
   onCleanup(cleanup: () => void | Promise<void>): Cleanup;
@@ -34,6 +44,8 @@ export function definePlugin<T>(plugin: Plugin<T>): Plugin<T> {
 
 export function defineApp<const P extends readonly Plugin<unknown>[]>(app: {
   plugins: P;
-}): { plugins: P } {
+  instanceId?: string;
+  logger?: Logger;
+}): { plugins: P; instanceId?: string; logger?: Logger } {
   return app;
 }

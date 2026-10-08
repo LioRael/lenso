@@ -1,4 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { Logger } from "@lenso/core";
+import type { TraceMetadata } from "./telemetry";
 
 export type JsonValue =
   | null
@@ -9,6 +11,9 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export interface TaskContext {
+  readonly instanceId?: string;
+  readonly pluginId?: string;
+  readonly logger?: Logger;
   readonly jobId: string;
   /** Starts at 1; use a business key, not this attempt number, for side-effect idempotency. */
   readonly attempt: number;
@@ -64,6 +69,7 @@ export interface TaskWorker {
 }
 
 export interface ProviderJob {
+  readonly traceMetadata?: TraceMetadata;
   readonly task: string;
   readonly input: JsonValue;
   readonly maxAttempts: number;
@@ -73,6 +79,7 @@ export interface ProviderJob {
 }
 
 export interface ClaimedJob extends TaskContext {
+  readonly traceMetadata?: TraceMetadata;
   readonly task: string;
   readonly input: JsonValue;
 }

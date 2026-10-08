@@ -2,14 +2,51 @@
 
 Optional Fetch/oRPC adapter for Lenso. The application owns the HTTP listener,
 or can opt into the Bun-specific listener adapter at `@lenso/web/bun`.
-`createWebPlugin({ requires, router, prefix?, fetch?, timeoutMs?, maxChunkBytes?, onError? })`
+`createWebPlugin({ requires, router, prefix?, errorStatusMap?, fetch?, timeoutMs?, maxChunkBytes?, onError? })`
 exposes `WebService.fetch(request): Promise<Response>`. The default RPC prefix is `/rpc`.
 
-`router(pluginContext)` builds the existing oRPC 1.15.5 router. Optional
+`router(pluginContext)` builds an oRPC 2.0.0-beta.42 router. Optional
 `fetch(pluginContext)` builds a raw handler receiving `WebContext`; returning
 `undefined` falls through to oRPC. Raw responses keep their status, headers and
-bytes without token-by-token RPC encoding. Use oRPC's existing event iterator
+bytes without token-by-token RPC encoding. Use oRPC's `asyncIteratorObject`
 when you actually need typed RPC events.
+
+`createClient<Router>(endpoint, { fetch?, headers? })` from `@lenso/web/client`
+keeps the full endpoint URL API, splitting it into oRPC's `origin` and path `url`.
+Relative endpoints resolve against the browser location; server callers supply an
+absolute URL. Custom Fetch functions receive a URL string and request options.
+RPC calls use POST; GET/HEAD requests do not invoke procedures. `errorStatusMap`
+extends the common HTTP status map for application error codes. Errors contain no
+`status` field. Upgrade clients and servers together because the RPC wire format changed.
+
+oRPC no longer deduplicates middleware applied at both router and procedure level.
+Apply authentication middleware once, or explicitly guard repeated application
+with a request-context flag. This adapter adds no implicit middleware or auth cache.
+
+## Telemetry
+
+Add `createORPCInstrumentation()` from `@lenso/otel/orpc` to the application's
+single SDK bootstrap, not plugin setup. Its default `propagationEnabled: true`
+uses oRPC v2's built-in propagation and handler/procedure/middleware/stream spans.
+When HTTP/Fetch instrumentation already propagates context, explicitly set
+`propagationEnabled: false`. This adapter adds instance/plugin attributes to
+procedure spans, with no second HTTP server span or Web-specific SDK.
+
+For raw handlers or detached work/cleanup, opt into
+`telemetry: { requestLifetime: true }`. It owns incoming context extraction and
+adds an **internal** `web.lifetime` span, not a duplicate server span, through
+body settlement, registered work and finalizers. Pair it with oRPC
+`propagationEnabled: false` and do not enable it when external HTTP/Fetch
+instrumentation already owns the boundary. `response_ready`, `aborted` and
+`cleanup_complete` distinguish headers, cancellation and actual resource
+release. Body pulls and cleanup re-enter the captured async context.
+Request metrics use only bounded HTTP method/status labels, never URLs or IDs.
+The application chooses logging; no body, header, credential, URL query or
+abort-reason text is logged. oRPC's own exception instrumentation can include
+application error text: keep public/recorded errors safe and avoid secrets in
+messages.
+
+## Bun listener
 
 `createBunListenerPlugin({ web, hostname, port, ingress })` owns a Bun listener
 for the exact declared `web` plugin instance. `ingress` is required and is the
@@ -65,7 +102,7 @@ keep running. `waitUntil` preserves ownership of that work; cleanup and app stop
 then wait for real settlement, possibly indefinitely. A deadline does not prove
 that the producer stopped, release a still-used resource, or kill that operation.
 
-Official contracts: [oRPC v1 Fetch](https://v1.orpc.dev/docs/adapters/http),
-[oRPC event iterators](https://v1.orpc.dev/docs/event-iterator),
+Official contracts: [oRPC Fetch](https://orpc.dev/docs/adapters/fetch-api),
+[oRPC async iterators](https://orpc.dev/docs/async-iterator-object),
 [Streams](https://streams.spec.whatwg.org/),
 [Bun server](https://bun.com/docs/runtime/http/server).

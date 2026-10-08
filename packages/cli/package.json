@@ -31,6 +31,7 @@
   "dependencies": {
     "@lenso/core": "workspace:^",
     "@lenso/engine": "workspace:^",
+    "@opentelemetry/api": "1.9.1",
     "picocolors": "1.1.1"
   },
   "devDependencies": {
