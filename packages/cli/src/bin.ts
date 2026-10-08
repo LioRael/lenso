@@ -192,7 +192,13 @@ try {
       break;
   }
   stableJson(data);
-  const safe = redact(data, secrets);
+  const safe =
+    command === "inspect"
+      ? (() => {
+          const { operations, ...metadata } = data as Awaited<ReturnType<typeof inspect>>;
+          return { ...(redact(metadata, secrets) as typeof metadata), operations };
+        })()
+      : redact(data, secrets);
   stdout(
     `${stableJson(jsonMode ? { schemaVersion: 1, ok: true, data: safe } : safe, jsonMode ? undefined : 2)}\n`,
   );

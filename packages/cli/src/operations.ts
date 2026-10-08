@@ -1,6 +1,6 @@
 import type { StandardJSONSchemaV1, StandardSchemaV1 } from "@standard-schema/spec";
 import type { Plugin } from "lenso";
-import { CliError, type SourceLocation } from "./diagnostics";
+import { CliError, environmentSecrets, redact, type SourceLocation } from "./diagnostics";
 
 export interface Operation {
   readonly plugin: Plugin<unknown>;
@@ -90,7 +90,42 @@ export function describeOperation(operation: Operation, configPath: string) {
     description: operation.description,
     effect: operation.effect ?? "unknown",
     source: operation.source ?? { file: configPath },
-    inputSchema,
+    inputSchema: inputSchema ? safeInputSchema(inputSchema) : null,
     schemaAvailability: inputSchema ? "available" : "runtime-validation-only",
   };
+}
+
+/** Preserve field names/types; omit payload annotations that may embed credentials. */
+function safeInputSchema(value: Record<string, unknown>): Record<string, unknown> {
+  const secrets = environmentSecrets();
+  function walk(item: unknown, fields = false): unknown {
+    if (Array.isArray(item)) return item.map((child) => walk(child));
+    if (item && typeof item === "object")
+      return Object.fromEntries(
+        Object.entries(item)
+          .filter(
+            ([key]) => fields || (key !== "default" && key !== "examples" && key !== "example"),
+          )
+          .map(([key, child]) => [
+            key,
+            walk(
+              child,
+              [
+                "properties",
+                "$defs",
+                "definitions",
+                "patternProperties",
+                "dependentSchemas",
+              ].includes(key),
+            ),
+          ]),
+      );
+    return typeof item === "string" ? redact(item, secrets) : item;
+  }
+  return walk(value) as Record<string, unknown>;
+}
+
+export function redactOperationDescription(description: ReturnType<typeof describeOperation>) {
+  const { inputSchema, ...metadata } = description;
+  return { ...(redact(metadata, environmentSecrets()) as typeof metadata), inputSchema };
 }

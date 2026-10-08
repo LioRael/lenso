@@ -108,6 +108,19 @@ test("schema description derives from the validator; non-JSON output fails", () 
   expect(describeOperation(operation, "lenso.config.ts").inputSchema?.properties).toEqual({
     name: { type: "string" },
   });
+  const credentialInput = z.object({
+    password: z.string().default("secret-default"),
+    token: z.string(),
+    default: z.string(),
+  });
+  const credentialOperation = { ...operation, input: credentialInput };
+  const credentialSchema = describeOperation(credentialOperation, "lenso.config.ts").inputSchema;
+  expect(credentialSchema?.properties).toEqual({
+    password: { type: "string" },
+    token: { type: "string" },
+    default: { type: "string" },
+  });
+  expect(JSON.stringify(credentialSchema)).not.toContain("secret-default");
   expect(() => stableJson(undefined)).toThrow("Output must");
   const cycle: Record<string, unknown> = {};
   cycle.self = cycle;
