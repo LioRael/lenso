@@ -1,0 +1,29 @@
+{
+  "name": "@lenso/example-notes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/cli.ts src/server.ts --outdir dist --target bun --packages external",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test",
+    "cli": "bun src/cli.ts",
+    "serve": "bun src/server.ts",
+    "migrate:pg": "bun src/migrate-pg.ts",
+    "migrate:sqlite": "bun src/migrate-sqlite.ts",
+    "generate:pg": "drizzle-kit generate --config drizzle.pg.config.ts",
+    "generate:sqlite": "drizzle-kit generate --config drizzle.sqlite.config.ts"
+  },
+  "dependencies": {
+    "@lenso/db": "workspace:^",
+    "@lenso/web": "workspace:^",
+    "@orpc/server": "1.15.5",
+    "drizzle-orm": "0.45.3",
+    "lenso": "workspace:^",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@orpc/client": "1.15.5",
+    "drizzle-kit": "0.31.11"
+  }
+}

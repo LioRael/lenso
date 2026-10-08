@@ -1,0 +1,36 @@
+{
+  "name": "@lenso/db",
+  "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./bun-sql": {
+      "types": "./dist/bun-sql.d.ts",
+      "import": "./dist/bun-sql.js"
+    },
+    "./bun-sqlite": {
+      "types": "./dist/bun-sqlite.d.ts",
+      "import": "./dist/bun-sqlite.js"
+    },
+    "./d1": {
+      "types": "./dist/d1.d.ts",
+      "import": "./dist/d1.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts src/bun-sql.ts src/bun-sqlite.ts src/d1.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "@cloudflare/workers-types": "5.20261008.1",
+    "drizzle-orm": "0.45.3",
+    "lenso": "workspace:^"
+  }
+}
