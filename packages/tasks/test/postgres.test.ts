@@ -38,6 +38,104 @@ async function setup() {
 }
 
 integration("real PostgreSQL durable tasks", () => {
+  test("identity persists across provisioning and lookup preserves queue-scoped tombstones", async () => {
+    const { options, queueName } = await setup();
+    const otherQueue = `test_${crypto.randomUUID().replaceAll("-", "")}`;
+    await migratePostgresTaskQueue({ ...options, queueName: otherQueue });
+    const pool = new Pool({ connectionString });
+    let provider = await createPostgresTaskProvider(options);
+    const other = await createPostgresTaskProvider({ ...options, queueName: otherQueue });
+    try {
+      const identity = await provider.identity();
+      expect(identity.kind).toBe("postgres");
+      expect(identity.id).toMatch(/^[0-9a-f-]{36}$/i);
+      expect((await other.identity()).id).not.toBe(identity.id);
+      await provider.close();
+      await migratePostgresTaskQueue(options);
+      provider = await createPostgresTaskProvider(options);
+      expect(await provider.identity()).toEqual(identity);
+      const lookup = provider.lookupDeduplicationKey;
+      expect(await lookup("accepted")).toBeNull();
+      const jobId = await provider.enqueue({
+        task: "privatePayload",
+        input: { secret: "never-return-input" },
+        maxAttempts: 1,
+        deduplicationKey: "accepted",
+      });
+      expect(await lookup("accepted")).toEqual({ jobId, status: await provider.get(jobId) });
+      expect(JSON.stringify(await lookup("accepted"))).not.toContain("never-return-input");
+      expect(await other.lookupDeduplicationKey("accepted")).toBeNull();
+      await pool.query("DELETE FROM pgboss.job WHERE name=$1 AND id=$2", [queueName, jobId]);
+      expect(await lookup("accepted")).toEqual({ jobId, status: null });
+      expect(await provider.get(jobId)).toBeNull();
+      const relation = await pool.query(
+        "SELECT job_id FROM pgboss.lenso_task_relation WHERE queue_name=$1 AND deduplication_key=$2",
+        [queueName, "accepted"],
+      );
+      expect(relation.rows[0].job_id).toBe(jobId);
+    } finally {
+      await provider.close();
+      await other.close();
+      await pool.end();
+    }
+  }, 20_000);
+
+  test("missing identity fails startup without creating an identity at runtime", async () => {
+    const { options, queueName } = await setup();
+    const pool = new Pool({ connectionString });
+    try {
+      await pool.query("DELETE FROM pgboss.lenso_task_queue_identity WHERE queue_name=$1", [
+        queueName,
+      ]);
+      await expect(createPostgresTaskProvider(options)).rejects.toMatchObject({
+        code: "provider-unavailable",
+      });
+      expect(
+        (
+          await pool.query(
+            "SELECT queue_id FROM pgboss.lenso_task_queue_identity WHERE queue_name=$1",
+            [queueName],
+          )
+        ).rows,
+      ).toHaveLength(0);
+    } finally {
+      await pool.end();
+    }
+  }, 20_000);
+
+  test("runBatch processes only its finite budget and then exits on idle", async () => {
+    const { options } = await setup();
+    let handled = 0;
+    const task = defineTask({
+      name: "finite",
+      input: z.object({}),
+      maxAttempts: 1,
+      async handler() {
+        handled++;
+      },
+    });
+    const queue = createTaskQueue({
+      provider: await createPostgresTaskProvider(options),
+      tasks: [task],
+    });
+    try {
+      const jobs = await Promise.all(Array.from({ length: 5 }, () => queue.enqueue(task, {})));
+      await queue.runBatch({ maxJobs: 3, concurrency: 2 });
+      expect(handled).toBe(3);
+      expect(
+        (await Promise.all(jobs.map((jobId) => queue.get(jobId)))).filter(
+          (job) => job?.state === "pending",
+        ),
+      ).toHaveLength(2);
+      await queue.runBatch({ concurrency: 2 });
+      expect(handled).toBe(5);
+      await queue.runBatch();
+      expect(handled).toBe(5);
+    } finally {
+      await queue.close();
+    }
+  }, 20_000);
+
   test("trace metadata roundtrips separately from payload and preserves original producer on dedup", async () => {
     const { options, queueName } = await setup();
     const provider = await createPostgresTaskProvider(options);

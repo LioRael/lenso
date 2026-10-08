@@ -2,6 +2,13 @@ import { boolean, jsonb, pgSchema, primaryKey, text, unique, uuid } from "drizzl
 import type { JsonValue } from "./contracts";
 import type { TraceMetadata } from "./telemetry";
 
+export function taskQueueIdentitySchema(schema: string) {
+  return pgSchema(schema).table("lenso_task_queue_identity", {
+    queueName: text("queue_name").primaryKey(),
+    queueId: uuid("queue_id").notNull().unique(),
+  });
+}
+
 export function taskQueueSchema(schema: string) {
   return pgSchema(schema).table(
     "lenso_task_relation",

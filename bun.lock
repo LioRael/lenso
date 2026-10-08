@@ -350,6 +350,37 @@
         "@orpc/opentelemetry",
       ],
     },
+    "packages/scheduler": {
+      "name": "@lenso/scheduler",
+      "version": "0.1.0",
+      "dependencies": {
+        "@standard-schema/spec": "1.1.0",
+        "cron-parser": "5.10.1",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20261008.1",
+        "@lenso/auth": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@lenso/tasks": "workspace:^",
+        "@types/pg": "8.23.1",
+        "drizzle-orm": "0.45.3",
+        "miniflare": "5.20261006.0-alpha",
+        "pg": "8.23.1",
+        "zod": "4.6.5",
+      },
+      "peerDependencies": {
+        "@lenso/auth": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@lenso/tasks": "workspace:^",
+        "drizzle-orm": "0.45.3",
+      },
+      "optionalPeers": [
+        "@lenso/auth",
+        "@lenso/core",
+        "@lenso/tasks",
+        "drizzle-orm",
+      ],
+    },
     "packages/storage": {
       "name": "@lenso/storage",
       "version": "0.1.1",
@@ -386,13 +417,21 @@
         "@opentelemetry/core": "2.12.0",
         "@standard-schema/spec": "1.1.0",
         "drizzle-orm": "0.45.3",
-        "pg": "8.23.1",
-        "pg-boss": "12.37.0",
       },
       "devDependencies": {
         "@types/pg": "8.23.1",
+        "pg": "8.23.1",
+        "pg-boss": "12.37.0",
         "zod": "4.6.5",
       },
+      "peerDependencies": {
+        "pg": "8.23.1",
+        "pg-boss": "12.37.0",
+      },
+      "optionalPeers": [
+        "pg",
+        "pg-boss",
+      ],
     },
     "packages/web": {
       "name": "@lenso/web",
@@ -669,6 +708,8 @@
     "@lenso/organization": ["@lenso/organization@workspace:packages/organization"],
 
     "@lenso/otel": ["@lenso/otel@workspace:packages/otel"],
+
+    "@lenso/scheduler": ["@lenso/scheduler@workspace:packages/scheduler"],
 
     "@lenso/storage": ["@lenso/storage@workspace:packages/storage"],
 

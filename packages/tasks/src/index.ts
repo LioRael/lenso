@@ -53,6 +53,27 @@ function checkJobId(jobId: string): void {
     throw new TaskQueueError("invalid-options");
 }
 
+function checkDeduplicationKey(key: string): void {
+  if (typeof key !== "string" || !key.length || new TextEncoder().encode(key).byteLength > 256)
+    throw new TaskQueueError("invalid-options");
+}
+
+function checkWorkerOptions(options: WorkerOptions): void {
+  if (
+    !Number.isInteger(options.concurrency ?? 1) ||
+    (options.concurrency ?? 1) < 1 ||
+    (options.concurrency ?? 1) > 100 ||
+    (options.timeoutMs !== undefined &&
+      (!Number.isInteger(options.timeoutMs) ||
+        options.timeoutMs < 1 ||
+        options.timeoutMs > 2_147_483_647)) ||
+    (options.maxJobs !== undefined &&
+      (!Number.isInteger(options.maxJobs) || options.maxJobs < 1 || options.maxJobs > 1000)) ||
+    (options.stopWhenIdle !== undefined && typeof options.stopWhenIdle !== "boolean")
+  )
+    throw new TaskQueueError("invalid-options");
+}
+
 export function createTaskQueue(options: {
   readonly provider: TaskProvider;
   readonly tasks: readonly RegisteredTask[];
@@ -187,15 +208,13 @@ export function createTaskQueue(options: {
       assertOpen();
       if (tasks.get(task.name) !== task) throw new TaskQueueError("invalid-task");
       if (
-        (enqueueOptions.runAt !== undefined &&
-          (!(enqueueOptions.runAt instanceof Date) ||
-            !Number.isFinite(enqueueOptions.runAt.getTime()))) ||
-        (enqueueOptions.deduplicationKey !== undefined &&
-          (typeof enqueueOptions.deduplicationKey !== "string" ||
-            !enqueueOptions.deduplicationKey.length ||
-            new TextEncoder().encode(enqueueOptions.deduplicationKey).byteLength > 256))
+        enqueueOptions.runAt !== undefined &&
+        (!(enqueueOptions.runAt instanceof Date) ||
+          !Number.isFinite(enqueueOptions.runAt.getTime()))
       )
         throw new TaskQueueError("invalid-options");
+      if (enqueueOptions.deduplicationKey !== undefined)
+        checkDeduplicationKey(enqueueOptions.deduplicationKey);
       const raw = copyJson(input, INPUT_LIMIT_BYTES, "invalid-input");
       try {
         const validation = await task.input["~standard"].validate(
@@ -255,6 +274,13 @@ export function createTaskQueue(options: {
         },
       );
     },
+    identity() {
+      return operation(() => options.provider.identity());
+    },
+    lookupDeduplicationKey(key: string) {
+      checkDeduplicationKey(key);
+      return operation(() => options.provider.lookupDeduplicationKey(key));
+    },
     get(jobId: string) {
       checkJobId(jobId);
       return operation(() => options.provider.get(jobId));
@@ -268,17 +294,22 @@ export function createTaskQueue(options: {
       return operation(() => options.provider.retry(jobId));
     },
     startWorker(workerOptions: WorkerOptions = {}) {
-      if (
-        !Number.isInteger(workerOptions.concurrency ?? 1) ||
-        (workerOptions.concurrency ?? 1) < 1 ||
-        (workerOptions.concurrency ?? 1) > 100 ||
-        (workerOptions.timeoutMs !== undefined &&
-          (!Number.isInteger(workerOptions.timeoutMs) ||
-            workerOptions.timeoutMs < 1 ||
-            workerOptions.timeoutMs > 2_147_483_647))
-      )
-        throw new TaskQueueError("invalid-options");
+      checkWorkerOptions(workerOptions);
       return operation(() => options.provider.startWorker(execute, workerOptions));
+    },
+    async runBatch(
+      batchOptions: { maxJobs?: number; concurrency?: number; timeoutMs?: number } = {},
+    ): Promise<void> {
+      const workerOptions = {
+        ...batchOptions,
+        maxJobs: batchOptions.maxJobs ?? 100,
+        stopWhenIdle: true,
+      };
+      checkWorkerOptions(workerOptions);
+      return operation(async () => {
+        const worker = await options.provider.startWorker(execute, workerOptions);
+        await worker.done;
+      });
     },
     close(): Promise<void> {
       if (!closePromise) {

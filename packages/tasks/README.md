@@ -1,8 +1,11 @@
 # Durable tasks
 
-`@lenso/tasks` runs ordinary async services through a PostgreSQL queue on Bun.
+`@lenso/tasks` runs ordinary async services through PostgreSQL on Bun or D1 on
+Workers. Both providers use the same schema validation, executor and task status.
 It is optional and independent of Engine, Web, Auth, oRPC and `@lenso/workers`
 (the Cloudflare Fetch adapter). There is no global queue or default HTTP admin API.
+PostgreSQL consumers install the optional peers `pg@8.23.1` and
+`pg-boss@12.37.0`; D1 consumers do not need them.
 
 ## Define, enqueue, consume
 
@@ -111,6 +114,21 @@ the full task set for that queue in each worker; an unknown task fails safely.
 
 ## Data and authority
 
+`queue.identity()` returns `{kind, id}` where `id` is an opaque, persisted queue
+UUID. It survives process restart and repeated explicit provisioning; it is not
+a plugin ID, connection string or authorization grant. The PostgreSQL upgrade
+adds `0003_queue_identity.sql`; rerun the explicit queue migration before startup.
+Cloning a database also copies its identity, so independently operated clones
+must not be treated as one queue.
+
+`queue.lookupDeduplicationKey(key)` is read-only and returns `{jobId, status}` or
+null if no acceptance mapping exists in this queue. A pruned PostgreSQL job can
+still have an accepted mapping with `status: null`. It never enqueues, returns
+payload/trace metadata, or assigns a new key. Like `get`, this is a trusted
+internal API: authorize the caller and durable owner/tenant before exposing it.
+Custom `TaskProvider` implementations must implement both new methods with their
+real durable backend, not invent process-local identities or enqueue on lookup.
+
 Tracing imports only the official OpenTelemetry API, never an SDK. A host may
 explicitly initialize `@lenso/otel/bun`. Enqueue creates a producer span; each
 durable attempt creates a fresh root linked to the original producer. Only
@@ -197,7 +215,7 @@ An unresponsive handler is not forcibly stopped by a heartbeat or deadline.
 
 The provider pins **pg-boss 12.37.0**. pg-boss owns its internal schema, claim
 locks, attempt counters, heartbeat recovery, retry scheduling and pruning.
-Lenso owns only its Drizzle relationship table for cancellation and deduplication;
+Lenso owns its Drizzle relationship and durable queue-identity tables;
 see `src/schema.ts` and the explicit SQL in `migrations/`.
 
 `migratePostgresTaskQueue` uses pg-boss's official construction/upgrade path and
@@ -259,6 +277,65 @@ PostgreSQL tests create uniquely named queues in the supplied **test database**.
 They use real processes and SIGKILL, not an in-memory persistence substitute.
 Without `TASK_TEST_DATABASE_URL`, those tests are explicitly skipped.
 
-Not included: D1, Cloudflare Queues, cron, DAGs, durable workflows, Console,
+Not included: Cloudflare Queues, cron, DAGs, durable workflows, Console,
 multi-region scheduling, cluster-wide concurrency quotas or forced handler
 termination.
+
+## D1 and finite Workers consumption
+
+Explicitly apply `migrations/d1/0001_tasks.sql` using the application's authorized
+migration workflow, then explicitly call `provisionD1TaskQueue(database, queueName)`
+from `@lenso/tasks/d1`. The latter provisions a stable queue identity, not tables.
+`createD1TaskProvider({database, queueName})` fails when schema/provisioning is
+missing; import, setup and worker start perform no DDL.
+
+```ts
+import { createTaskQueue } from "@lenso/tasks";
+import { createD1TaskProvider } from "@lenso/tasks/d1";
+
+const queue = createTaskQueue({
+  provider: await createD1TaskProvider({ database: env.DB, queueName: "reports" }),
+  tasks: [generateReport],
+});
+try {
+  await queue.runBatch({ maxJobs: 100, concurrency: 2, timeoutMs: 30_000 });
+} finally {
+  await queue.close(); // drains only owned workers; env.DB stays borrowed
+}
+```
+
+Await this finite call from a platform `scheduled()` handler or another trusted
+entry. It uses the existing worker/executor, exits on idle and drains active
+handlers and heartbeats. `maxJobs` is a **global fetch-attempt budget** across
+lanes, including empty fetches, default 100, maximum 1000; it is not a guarantee
+that that many jobs complete. `startWorker({maxJobs, stopWhenIdle:true})` offers
+the same finite mode. Native continuous polling remains explicitly opt-in; do
+not leave it running beyond a Workers invocation.
+
+D1 uses conditional `UPDATE … RETURNING` claims, monotonically increasing
+attempt fences, and transactional batches for enqueue/recovery/cancel. Supply a
+**plain D1 binding**, not a session-backed facade: authoritative reads use the
+primary. [Cloudflare batch/session semantics](https://developers.cloudflare.com/d1/worker-api/d1-database/)
+are not an interactive transaction API; zero-row CAS is not a batch failure.
+
+Options: `leaseMs` defaults to 30000, independent `expireInMs` to 900000, polling
+to 1000 ms; each is an integer 1–2147483647. Recovery runs during the next fetch,
+so it needs a later platform invocation, not a permanent supervisor. Lease loss,
+expiry or platform termination can overlap handler attempts; external effects
+still need idempotency/fencing. Cooperative cancellation does not physically
+kill a handler or free its lane before settlement.
+
+D1 exponential backoff is deterministic, unlike pg-boss jitter. Its base is at
+least one second when `backoff:true`; fixed delay can be zero. Optional
+`maxDelaySeconds` caps it. The first D1 version retains job/dedup rows indefinitely;
+it has no automatic pruning or archive. Do not manually delete dedup rows as a
+retry mechanism.
+
+Workers must preserve `node:*` externals and enable Node compatibility for the
+common JSON/tracing code. Package builds preserve these specifiers; otherwise a
+browser bundler can replace native `node:util` with an incomplete polyfill.
+The actual local workerd suite lives in Scheduler:
+`bun run --filter @lenso/scheduler test:d1`. It validates D1 plus finite worker
+execution and real scheduled events using Miniflare, not a SQLite mock.
+Remote D1 replication, CPU quotas and all platform/architecture combinations
+are not verified by that local suite.
