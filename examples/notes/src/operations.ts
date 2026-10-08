@@ -13,8 +13,11 @@ import {
   notesListInput,
   noteFileInput,
 } from "./contracts";
-import { notesAudiences, type NotesService } from "./notes";
+import { notesAudiences, type NotesActor, type NotesService } from "./notes";
 import type { NotesFileAccess } from "./files";
+import type { AuditService } from "@lenso/audit";
+
+type NotesRemovalAudit = Pick<AuditService<NotesActor<"remove"> | null>, "appendBestEffort">;
 
 export interface NotesOperationContext {
   evidence: string | null;
@@ -40,8 +43,31 @@ export function createNotesOperationsService(
   notes: NotesService,
   authentication: NotesAuthentication,
   credential: () => string | null = () => null,
+  audit?: NotesRemovalAudit,
 ) {
   const fallback = (): NotesOperationContext => ({ evidence: credential() });
+  async function recordRemoval(
+    actor: NotesActor<"remove">,
+    id: string,
+    result: "success" | "denied" | "unknown",
+    reasonCode: string,
+    removed?: boolean,
+  ) {
+    if (!audit) return;
+    await audit.appendBestEffort(
+      {
+        id: crypto.randomUUID(),
+        occurredAt: Date.now(),
+        scope: { tenantId: null, scopeId: `owner:${actor.subjectId}` },
+        action: "notes.remove",
+        target: { type: "note", id },
+        result,
+        reasonCode,
+        summary: removed === undefined ? {} : { removed },
+      },
+      actor,
+    );
+  }
   return {
     create(input: z.input<typeof noteInput>, context: NotesOperationContext = fallback()) {
       return safeAuth(async () =>
@@ -87,14 +113,28 @@ export function createNotesOperationsService(
       );
     },
     remove(input: z.input<typeof noteLookupInput>, context: NotesOperationContext = fallback()) {
-      return safeAuth(async () => ({
-        removed: await notes.remove(
-          await authentication.for(notesAudiences.remove).required(context.evidence, {
-            signal: context.signal,
-          }),
-          input.id,
-        ),
-      }));
+      return safeAuth(async () => {
+        const actor = await authentication.for(notesAudiences.remove).required(context.evidence, {
+          signal: context.signal,
+        });
+        let removed: boolean;
+        try {
+          removed = await notes.remove(actor, input.id);
+        } catch (error) {
+          const denied =
+            error instanceof AuthError &&
+            (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN");
+          await recordRemoval(
+            actor,
+            input.id,
+            denied ? "denied" : "unknown",
+            error instanceof AuthError ? error.code : "operation-unconfirmed",
+          );
+          throw error;
+        }
+        await recordRemoval(actor, input.id, "success", removed ? "removed" : "missing", removed);
+        return { removed };
+      });
     },
   };
 }
@@ -103,15 +143,17 @@ export function createNotesOperations(options: {
   notes: Plugin<NotesService>;
   authentication: Plugin<NotesAuthentication>;
   credential?(): string | null;
+  audit?: Plugin<NotesRemovalAudit>;
 }) {
   const plugin = definePlugin({
     id: "notes-operations",
-    requires: [options.notes, options.authentication],
+    requires: [options.notes, options.authentication, ...(options.audit ? [options.audit] : [])],
     setup(context) {
       return createNotesOperationsService(
         context.get(options.notes),
         context.get(options.authentication),
         options.credential,
+        options.audit ? context.get(options.audit) : undefined,
       );
     },
   });
