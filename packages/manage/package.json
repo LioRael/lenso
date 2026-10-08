@@ -1,0 +1,57 @@
+{
+  "name": "@lenso/manage",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/manage"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./agent": {
+      "types": "./dist/agent.d.ts",
+      "import": "./dist/agent.js"
+    },
+    "./orpc": {
+      "types": "./dist/orpc.d.ts",
+      "import": "./dist/orpc.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/agent.ts src/orpc.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@standard-schema/spec": "1.1.0"
+  },
+  "devDependencies": {
+    "@lenso/auth": "workspace:^",
+    "@orpc/client": "2.0.0-beta.42",
+    "@orpc/server": "2.0.0-beta.42",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@lenso/auth": "^0.1.0",
+    "@orpc/server": "2.0.0-beta.42"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/auth": {
+      "optional": true
+    },
+    "@orpc/server": {
+      "optional": true
+    }
+  }
+}

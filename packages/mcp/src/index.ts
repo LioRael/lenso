@@ -1,5 +1,5 @@
 import { Console } from "node:console";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { Writable } from "node:stream";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -12,7 +12,13 @@ import {
   type CallToolResult,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { call, inspect, CliError, diagnostic } from "@lenso/cli";
+import { invoke, CliError, diagnostic } from "@lenso/cli";
+import { readApplication, type OperationBinding } from "@lenso/engine/application";
+import {
+  describeOperation,
+  redactOperationDescription,
+  validateOperations,
+} from "@lenso/engine/operations";
 import { environmentSecrets, redact, stableJson } from "@lenso/engine/diagnostics";
 
 export interface StdioOptions {
@@ -22,6 +28,7 @@ export interface StdioOptions {
   maxInputBytes?: number;
   maxOutputBytes?: number;
   maxFrameBytes?: number;
+  binding?: OperationBinding;
 }
 
 let serving = false;
@@ -176,7 +183,8 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
     });
   };
   try {
-    const inspection = await inspect(root);
+    const { app, configPath } = await readApplication(root, join(root, "lenso.config.ts"));
+    const selected = validateOperations(app.plugins, app.mcpOperations ?? app.operations ?? []);
     const tools: Tool[] = [];
     const bindings = new Map<string, { pluginId: string; method: string }>();
     const seen = new Set<string>();
@@ -185,9 +193,12 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
       if (seen.has(key))
         throw failure("duplicate-operation", "discovery", "Duplicate MCP allowlist entry.");
       seen.add(key);
-      const operation = inspection.operations.find(
-        (item) => item.pluginId === allowed.pluginId && item.method === allowed.method,
+      const ref = selected.find(
+        (item) => item.plugin.id === allowed.pluginId && item.method === allowed.method,
       );
+      const operation = ref
+        ? redactOperationDescription(describeOperation(ref, configPath))
+        : undefined;
       if (!operation)
         throw failure("unknown-operation", "discovery", "MCP allowlist operation is not declared.");
       const schema = operation.inputSchema;
@@ -258,7 +269,16 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
           const input = request.params.arguments ?? {};
           if (Buffer.byteLength(stableJson(input)) > maxInput)
             throw failure("input-too-large", "input", "Operation input exceeds the host limit.");
-          const data = await call(root, binding.pluginId, binding.method, input);
+          const data = await invoke(
+            { ...app, operations: selected, operationBinding: undefined },
+            binding.pluginId,
+            binding.method,
+            input,
+            async (operation, validatedInput, running) => ({
+              ...(options.binding ? await options.binding(operation, validatedInput, running) : {}),
+              maxOutputBytes: maxOutput,
+            }),
+          );
           if (extra.signal.aborted)
             throw failure(
               "request-cancelled",

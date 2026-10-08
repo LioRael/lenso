@@ -8,6 +8,9 @@ const packages = [
   ["@lenso/core", "packages/lenso"],
   ["@lenso/engine", "packages/engine"],
   ["@lenso/cli", "packages/cli"],
+  ["@lenso/manage", "packages/manage"],
+  ["@lenso/auth", "packages/auth"],
+  ["@lenso/mcp", "packages/mcp"],
   ["@lenso/web", "packages/web"],
   ["@lenso/workers", "packages/workers"],
   ["lenso-example-content-engine", "packages/cli/examples/content-plugin"],
@@ -72,8 +75,13 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
         dependencies: {
           "@lenso/core": dependencies["@lenso/core"],
           "@lenso/engine": dependencies["@lenso/engine"],
+          "@lenso/manage": dependencies["@lenso/manage"],
         },
-        overrides: { "@lenso/core": dependencies["@lenso/core"] },
+        overrides: {
+          "@lenso/core": dependencies["@lenso/core"],
+          "@lenso/engine": dependencies["@lenso/engine"],
+          "@lenso/manage": dependencies["@lenso/manage"],
+        },
       }),
     );
     await run(engineOnly, ["install", "--ignore-scripts"]);
@@ -82,7 +90,14 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       `
       import assert from 'node:assert/strict';
       import {generate,startEngineDevCycle} from '@lenso/engine';
+      import {defineManage,createManageAdapter} from '@lenso/manage';
+      import {createAgentTools} from '@lenso/manage/agent';
+      assert.equal(typeof defineManage,'function');
+      assert.equal(typeof createManageAdapter,'function');
+      assert.equal(typeof createAgentTools,'function');
       assert.throws(()=>Bun.resolveSync('@lenso/cli',process.cwd()));
+      assert.throws(()=>Bun.resolveSync('@lenso/auth',process.cwd()));
+      assert.throws(()=>Bun.resolveSync('@orpc/server',process.cwd()));
       await Bun.write('lenso.config.ts','export default {plugins:[]};');
       await Bun.write('lenso.engine.ts',\`export default {plugins:[{name:'standalone',setup(c){
         c.onCleanup(()=>Bun.write(c.root+'/closed','yes'));
@@ -101,10 +116,9 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
         private: true,
         type: "module",
         dependencies,
-        overrides: {
-          "@lenso/core": dependencies["@lenso/core"],
-          "@lenso/engine": dependencies["@lenso/engine"],
-        },
+        overrides: Object.fromEntries(
+          Object.entries(dependencies).filter(([name]) => name.startsWith("@lenso/")),
+        ),
         devDependencies: {
           "@types/bun": "1.4.2",
           typescript: "7.0.2",
@@ -144,6 +158,31 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       import {build,discover,generate,createDevSupervisor,EngineError} from '@lenso/engine';
       import {defineEnginePlugin,defineEngineConfig} from '@lenso/engine/authoring';
       import {definePlugin,bindConfig,definePluginConfig,startApp} from '@lenso/core';
+      import {defineOperation,type Operation} from '@lenso/engine/operations';
+      import {invoke} from '@lenso/cli';
+      import {defineManage,selectManageOperations,bindManageOperation} from '@lenso/manage';
+      import {createManageRouter} from '@lenso/manage/orpc';
+      const input={"~standard":{version:1 as const,vendor:"consumer",validate:(value:unknown)=>({value})}};
+      const managed=definePlugin({id:'managed',setup:()=>({
+        read:(_input:unknown,context:{evidence:string})=>context.evidence,
+      })});
+      const operation=defineOperation({
+        plugin:managed,method:'read',input,context:true,description:'Read',
+      });
+      operation satisfies Operation<{evidence:string}>;
+      bindManageOperation(operation,{context:{evidence:'launch'}});
+      invoke({plugins:[managed],operations:[operation]},'managed','read',{},()=>({context:{evidence:'launch'}}));
+      // @ts-expect-error The actual CLI invoke binding retains the service context type.
+      invoke({plugins:[managed],operations:[operation]},'managed','read',{},()=>({context:{evidence:42}}));
+      // @ts-expect-error Context must match the actual service's second parameter.
+      bindManageOperation(operation,{context:{evidence:42}});
+      // @ts-expect-error Required context cannot be silently omitted from the declaration.
+      defineOperation({plugin:managed,method:'read',input,description:'Read'});
+      const manage=defineManage({plugin:managed,operations:[operation]});
+      selectManageOperations(manage,['read']);
+      // @ts-expect-error Entry selection cannot invent a service method.
+      selectManageOperations(manage,['hidden']);
+      export const routerFactory=createManageRouter;
       import {createBunListenerPlugin} from '@lenso/web/bun';
       const web=definePlugin({id:'typed-web',setup:()=>({fetch:async()=>new Response('ok')})});
       export const listener=createBunListenerPlugin({
@@ -242,6 +281,106 @@ async function verifyConsumer() {
   assert.equal(typeof (await import("@lenso/core/config/env")).envSource, "function");
   assert.equal(typeof (await import("@lenso/core/config/file")).jsonFileSource, "function");
   const cliPackage = await import("@lenso/cli");
+  const { definePlugin: createManagedPlugin, startApp: startManagedApp } =
+    await import("@lenso/core");
+  const { defineOperation } = await import("@lenso/engine/operations");
+  const { defineManage, describeManage, selectManageOperations, createManageAdapter } =
+    await import("@lenso/manage");
+  const { createAgentTools } = await import("@lenso/manage/agent");
+  const { createManageRouter } = await import("@lenso/manage/orpc");
+  const { bearerEvidence } = await import("@lenso/auth/fetch");
+  const { call: callProcedure } = await import("@orpc/server");
+  const mcpSpecifier = "@lenso/mcp";
+  assert.equal(typeof (await import(mcpSpecifier)).serveStdio, "function");
+  let managedSetup = 0;
+  let managedCleanup = 0;
+  const managed = createManagedPlugin({
+    id: "packaged-managed",
+    setup(context) {
+      managedSetup++;
+      context.onCleanup(() => {
+        managedCleanup++;
+      });
+      return {
+        read: (_input: unknown, binding: { evidence: string | null }) => binding.evidence,
+        hidden: () => "not exposed",
+      };
+    },
+  });
+  const managedInput = {
+    "~standard": {
+      version: 1 as const,
+      vendor: "consumer",
+      validate: (value: unknown) => ({ value }),
+      jsonSchema: { input: () => ({ type: "object" }), output: () => ({}) },
+    },
+  };
+  const managedOperation = defineOperation({
+    plugin: managed,
+    method: "read",
+    input: managedInput,
+    context: true,
+    description: "Read",
+  });
+  const manage = defineManage({ plugin: managed, operations: [managedOperation] });
+  assert.equal(describeManage(manage).operations.length, 1);
+  assert.equal(managedSetup, 0);
+  const selected = selectManageOperations(manage, ["read"]);
+  const runningManaged = await startManagedApp({ plugins: [managed] });
+  try {
+    const adapter = createManageAdapter({
+      running: runningManaged,
+      plugins: [managed],
+      operations: selected,
+      binding: () => ({ context: { evidence: "agent-launch" } }),
+      canList: () => true,
+    });
+    const tools = await createAgentTools(adapter);
+    assert.equal(await tools[0]!.invoke({}), "agent-launch");
+    await assert.rejects(adapter.invoke(managed.id, "hidden", {}));
+    const router = createManageRouter({
+      running: runningManaged,
+      plugins: [managed],
+      operations: selected,
+      evidence: bearerEvidence,
+      canList: () => true,
+      binding: (_operation, _input, evidence) => ({ context: { evidence: evidence.evidence } }),
+    });
+    assert.equal(
+      await callProcedure(
+        router.invoke,
+        {
+          pluginId: managed.id,
+          method: "read",
+          input: {},
+        },
+        {
+          context: {
+            request: new Request("https://consumer.invalid/rpc", {
+              headers: { authorization: "Bearer current-request" },
+            }),
+          },
+        },
+      ),
+      "current-request",
+    );
+    assert.equal(managedSetup, 1);
+    assert.equal(managedCleanup, 0);
+  } finally {
+    await runningManaged.stop();
+  }
+  assert.equal(
+    await cliPackage.invoke(
+      { plugins: [managed], operations: selected },
+      managed.id,
+      "read",
+      {},
+      () => ({ context: { evidence: "cli-launch" } }),
+    ),
+    "cli-launch",
+  );
+  assert.equal(managedSetup, 2);
+  assert.equal(managedCleanup, 2);
   for (const name of [
     "discover",
     "generate",

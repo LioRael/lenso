@@ -36,6 +36,7 @@ CLI and Web reuse the same input schema and service. Each CLI call starts a fres
 | `@lenso/workers` | request-owned Fetch app and platform bindings | [Workers API](packages/workers/README.md), [local D1 example](examples/workers/README.md) |
 | `@lenso/log` | independent Pino logging, safe stderr output and active trace correlation | [Logging API](packages/log/README.md) |
 | `@lenso/otel` | application-owned OpenTelemetry bootstrap, OTLP and optional oRPC/Workers entries | [Telemetry API](packages/otel/README.md) |
+| `@lenso/manage` | optional instance-bound operation catalogs, agent tools and an explicitly mounted oRPC adapter | [Manage API](packages/manage/README.md) |
 
 [Minimal templates](templates/README.md) consume real packed packages outside the workspace. They are template contents; no scaffold command or npm release is implied. PostgreSQL, SQLite and local D1 Notes use real storage and explicit migrations.
 

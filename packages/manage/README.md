@@ -1,0 +1,88 @@
+# Optional management operations
+
+`@lenso/manage` binds a deliberately chosen set of existing Engine Operations to
+one exact plugin instance. It is optional: core plugins need no manage declaration.
+Methods can live on the original service or an ordinary sidecar plugin with
+explicit `requires`. Setup returns the real service; descriptors never carry handlers.
+
+```ts
+import { defineManage, selectManageOperations, describeManage } from "@lenso/manage";
+
+const manage = defineManage({
+  plugin,
+  operations: [readOperation, removeOperation], // existing defineOperation declarations
+  views: [{ key: "notes/detail", title: "Notes", detail: "read", action: "remove" }],
+});
+export const operations = selectManageOperations(manage, ["read", "remove"]); // CLI
+export const mcpOperations = selectManageOperations(manage, ["read"]); // independent MCP choice
+const descriptor = describeManage(manage); // schemaVersion: 1, plain JSON, no setup
+```
+
+Application code supplies the existing `plugin` and Operations above. See the real
+[Notes factories](../../examples/notes/src/operations.ts) and
+[Tasks factory](../../examples/tasks/src/plugin.ts). Selecting declarations does
+not authenticate a caller, grant permission or open an entry automatically.
+Named CLI exports and ordinary single-input `defineOperation` calls remain supported.
+
+## Running entries
+
+`createManageAdapter({running, plugins, operations, binding, canList})` borrows an
+explicit `RunningApp`. It verifies selected exact instances and never starts or
+stops a service graph. `binding(operation, validatedInput)` is mandatory and runs
+anew for each call; it supplies trusted context and optional confirmation/approval
+callbacks, never business handlers. `canList(operation)` must check the current
+entry identity's operation-level permission. It filters catalog and gates invocation;
+the real service still enforces realm/audience, object, owner and tenant policies.
+
+For methods declared with `context: true`, the binding context type is inferred
+from the actual second argument. `bindManageOperation(operation, {context})` also
+checks individual bindings when an entry selects heterogeneous service contexts.
+Prefer evidence or an actor produced by current Auth, not an identity copied from
+input. Never use a shared mutable current actor/credential or global Context.
+
+- `catalog()` returns safe versioned entries, including schema availability and
+  an adapter-scoped opaque `key`. Display identifiers may be redacted; dispatch
+  uses `invokeEntry(key, input)`, not redacted display strings. Keys are local to
+  the configured selection, not durable IDs or receipts across deployments.
+- `invoke(pluginId, method, input)` remains available for trusted in-process callers.
+- `createAgentTools(adapter)` (also `@lenso/manage/agent`) returns SDK-independent
+  descriptions and `invoke` functions only for the caller-filtered catalog.
+  It requires a convertible object input schema and rechecks admission at invocation.
+- `@lenso/manage/orpc` exports `createManageRouter`. Supply the running app,
+  selected Operations, `evidence(context)` using current Auth Fetch extractors,
+  `binding(operation, input, evidence)` and `canList(operation, evidence)`.
+  Its `catalog` and `invoke` procedures are not mounted automatically.
+  Invoke accepts `{key, input}` or `{pluginId, method, input}`; neither accepts an
+  actor/approval envelope field. Evidence is obtained from each current request.
+  The optional peer is exactly oRPC `2.0.0-beta.42`.
+
+The common Engine path validates raw Standard Schema input once, preserves the
+own service method's `this`, retains existing operation telemetry, and handles
+opaque unknown errors plus finite JSON output. Default success/catalog output
+budget is 1 MiB (`maxOutputBytes`); oRPC diagnostics have a separate fixed 4 KiB
+budget and a safe fallback. Byte budgets do not impose service memory/CPU quotas.
+Missing JSON Schema converters remain runtime-only; agent/MCP tools reject them.
+No output schema is guessed from input.
+
+## Boundaries
+
+`confirmation: "required"` needs a trusted confirmation flow, and
+`approval: "required"` needs an explicit approval-owner callback. Missing/false
+callbacks fail closed. Input flags and destructive metadata cannot satisfy these
+gates or replace business authorization. A callback returning true without real
+verification is an application bug, not an approval implementation.
+
+This is finite query/command invocation, not a control platform: no retry,
+scheduling, rollback, durable journal, receipt recovery or persistent audit.
+`retry: "safe"` is descriptive; business keys/transactions own idempotency.
+Tasks submit/query/cancel/retry remain ordinary, separately authorized operations.
+Submitting returns a job ID; request cancellation is not durable-job cancellation.
+Streams, including plain AsyncIterables, are rejected as JSON results.
+
+View hints only describe presentation (`key`, title/group/order, columns, detail/action
+references). A future Console adapter registers components for stable view keys;
+there is no React, component function, module URL or Devframe runtime here.
+Namespaced extensions must be plain JSON and cannot affect dispatch or Auth.
+Schema defaults/examples and sensitive metadata/results use existing redaction;
+redaction is best effort, not a sandbox or protection for secrets under arbitrary keys.
+There is no implicit configuration read-all/write-all, hot update or restart.

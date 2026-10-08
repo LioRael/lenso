@@ -68,6 +68,7 @@ test("Notes registry validates before setup and authenticates all business/file 
   const appDefinition = {
     plugins: [...definition.plugins, notes.plugin, files.plugin, probe],
     operations: [...notes.operations, ...files.operations],
+    operationBinding: () => ({ context: { evidence: credential } }),
   };
   expect(notes.operations.every((operation) => operation.plugin === notes.plugin)).toBe(true);
   expect(files.operations.every((operation) => operation.plugin === files.plugin)).toBe(true);

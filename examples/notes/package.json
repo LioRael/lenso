@@ -23,6 +23,7 @@
     "@lenso/core": "workspace:^",
     "@lenso/db": "workspace:^",
     "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
     "@lenso/mcp": "workspace:^",
     "@lenso/storage": "workspace:^",
     "@lenso/web": "workspace:^",
