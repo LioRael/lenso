@@ -1,12 +1,23 @@
+export type Cleanup = () => Promise<void>;
+
+export interface PluginSource {
+  readonly file: string;
+  readonly export?: string;
+  readonly line?: number;
+  readonly column?: number;
+}
+
 /** A resource acquired during setup must register its cleanup immediately. */
 export interface PluginContext {
   get<T>(dependency: Plugin<T>): T;
-  onCleanup(cleanup: () => void | Promise<void>): void;
+  /** The returned disposer shares its completion with automatic LIFO cleanup. */
+  onCleanup(cleanup: () => void | Promise<void>): Cleanup;
 }
 
 /** IDs identify instances; use distinct IDs for multiple instances of a plugin. */
 export interface Plugin<T = unknown> {
   readonly id: string;
+  readonly source?: PluginSource;
   readonly requires?: readonly Plugin<unknown>[];
   readonly contributions?: readonly Contribution[];
   readonly setup: (context: PluginContext) => T | Promise<T>;

@@ -53,6 +53,11 @@ test("JSON CLI: inspect without setup, shared Zod validation, stdout/stderr, inp
   expect(description.code).toBe(0);
   expect(description.err).toBe("");
   expect(description.result.data.operations[0].inputSchema.properties.name.type).toBe("string");
+  expect((await run(["inspect", "example", "missing"])).result.error).toMatchObject({
+    code: "unknown-operation",
+    pluginId: "example",
+    operation: "example.missing",
+  });
   const success = await run(["call", "example", "greet", "--stdin"], '{"name":"Ada"}');
   expect(success).toMatchObject({
     code: 0,
@@ -96,6 +101,19 @@ test("JSON CLI: inspect without setup, shared Zod validation, stdout/stderr, inp
   const assembly = await run(["check"]);
   expect(assembly.code).toBe(3);
   expect(assembly.result.error.causes[0].code).toBe("duplicate-id");
+  await Bun.write(
+    join(root, "lenso.config.ts"),
+    `const dependency={id:'database:second',setup(){}};
+     export default {plugins:[{id:'notes',source:{file:'src/notes.ts',export:'notes'},requires:[dependency],setup(){throw Error('must not start')}}]};`,
+  );
+  const missing = await run(["inspect"]);
+  expect(missing.code).toBe(3);
+  expect(missing.result.error.causes[0]).toMatchObject({
+    code: "missing-dependency",
+    pluginId: "notes",
+    dependencyId: "database:second",
+    source: { file: "src/notes.ts", export: "notes" },
+  });
 });
 
 test("schema description derives from the validator; non-JSON output fails", () => {

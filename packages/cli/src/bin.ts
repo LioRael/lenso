@@ -79,6 +79,7 @@ const help = {
     "missing-dependency",
     "cyclic-dependency",
     "invalid-id",
+    "invalid-source",
     "invalid-operations",
     "duplicate-operation",
     "unknown-plugin",

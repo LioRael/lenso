@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createEngineSession } from "../src/engine";
 import { EngineSession } from "../src/engine-host";
 import { EngineError } from "../src/diagnostics";
-import type { EngineContext, EnginePlugin } from "../src/engine-authoring";
+import type { Cleanup, EngineContext, EnginePlugin, Registration } from "../src/engine-authoring";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -13,7 +13,7 @@ afterEach(async () => {
     await rm(directory, { recursive: true, force: true });
 });
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "lenso-session-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "lenso-session-")));
   directories.push(root);
   await Bun.write(join(root, "lenso.config.ts"), "export default { plugins: [] };");
   return root;
@@ -212,4 +212,217 @@ test("failed setup stays cached and close preserves cleanup failures", async () 
   expect(((cause as EngineError).cause as AggregateError).errors).toEqual([cleanupFailure]);
   expect(session.close()).toBe(close);
   expect(await session.close().catch((cause: unknown) => cause)).toBe(cause);
+});
+
+test("registration revocation is immediate, identity-safe and never restores a replaced hook", async () => {
+  const session = new EngineSession(await fixture(), "generate");
+  let old!: Registration;
+  let current!: Registration;
+  const calls: string[] = [];
+  await session.setup([
+    ...defaults((c) => {
+      old = c.generate("file", () => {
+        calls.push("old");
+        return [];
+      });
+    }),
+    {
+      name: "replacement",
+      after: ["test"],
+      setup(c) {
+        current = c.generate(
+          "file",
+          () => {
+            calls.push("current");
+            return [];
+          },
+          { replace: "test" },
+        );
+      },
+    },
+  ]);
+  await session.discover();
+  old();
+  old();
+  await session.generate();
+  expect(calls).toEqual(["current"]);
+  current();
+  current();
+  await session.generate();
+  expect(calls).toEqual(["current"]);
+  await session.close();
+  old();
+  current();
+});
+
+test("each explicit watch owns one reference, independent of shared and static inputs", async () => {
+  const root = await fixture();
+  await Bun.write(join(root, "asset.txt"), "asset");
+  const session = new EngineSession(root, "check");
+  let first!: Registration;
+  let repeated!: Registration;
+  let shared!: Registration;
+  let config!: Registration;
+  await session.setup([
+    ...defaults((c) => {
+      first = c.watch("asset.txt");
+      repeated = c.watch("asset.txt");
+      config = c.watch("lenso.config.ts");
+    }),
+    {
+      name: "shared",
+      setup(c) {
+        shared = c.watch("asset.txt");
+      },
+    },
+  ]);
+  await session.discover();
+  first();
+  first();
+  repeated();
+  expect(session.snapshot().watchFiles).toContain(join(root, "asset.txt"));
+  shared();
+  expect(session.snapshot().watchFiles).not.toContain(join(root, "asset.txt"));
+  config();
+  expect(session.snapshot().watchFiles).toContain(join(root, "lenso.config.ts"));
+  await session.close();
+  expect(session.snapshot().watchFiles).toEqual([]);
+  expect(session.snapshot().sources).toEqual([]);
+});
+
+test("auto revocation follows registration LIFO and cleanup cannot register new work", async () => {
+  const root = await fixture();
+  await Bun.write(join(root, "asset.txt"), "asset");
+  const session = new EngineSession(root, "check");
+  const observations: boolean[] = [];
+  let context!: EngineContext;
+  await session.setup(
+    defaults((c) => {
+      context = c;
+      c.onCleanup(() => {
+        observations.push(session.snapshot().watchFiles.includes(join(root, "asset.txt")));
+        expect(() => c.watch("asset.txt")).toThrow(EngineError);
+        expect(() => c.onCleanup(() => {})).toThrow(EngineError);
+        expect(() => c.generate("late", () => [])).toThrow(EngineError);
+      });
+      c.watch("asset.txt");
+      c.onCleanup(() => {
+        observations.push(session.snapshot().watchFiles.includes(join(root, "asset.txt")));
+      });
+    }),
+  );
+  await session.discover();
+  await session.close();
+  expect(observations).toEqual([true, false]);
+  expect(() => context.watch("asset.txt")).toThrow(EngineError);
+});
+
+test("early async cleanup is joined by close and its rejection survives without a second execution", async () => {
+  const session = new EngineSession(await fixture(), "check");
+  const release = deferred();
+  const failure = new Error("cleanup");
+  let dispose!: Cleanup;
+  let calls = 0;
+  await session.setup(
+    defaults((c) => {
+      dispose = c.onCleanup(async () => {
+        calls++;
+        await release.promise;
+        throw failure;
+      });
+    }),
+  );
+  const completion = dispose();
+  const observed = completion.catch((error: unknown) => error);
+  expect(dispose()).toBe(completion);
+  let finished = false;
+  const close = session.close();
+  const closed = close.catch((error: unknown) => {
+    finished = true;
+    return error;
+  });
+  await Promise.resolve();
+  expect(finished).toBe(false);
+  release.resolve();
+  expect(await observed).toBe(failure);
+  const error = (await closed) as EngineError;
+  expect((error.cause as AggregateError).errors).toEqual([failure]);
+  expect(session.close()).toBe(close);
+  expect(calls).toBe(1);
+});
+
+test("revoking a hook does not cancel its in-flight invocation but skips future hooks", async () => {
+  const session = new EngineSession(await fixture(), "generate");
+  const entered = deferred();
+  const release = deferred();
+  let first!: Registration;
+  let second!: Registration;
+  const calls: string[] = [];
+  await session.setup(
+    defaults((c) => {
+      first = c.generate("first", async () => {
+        calls.push("first");
+        entered.resolve();
+        await release.promise;
+        return [];
+      });
+      second = c.generate("second", () => {
+        calls.push("second");
+        return [];
+      });
+    }),
+  );
+  await session.discover();
+  const generation = session.generate();
+  await entered.promise;
+  first();
+  second();
+  release.resolve();
+  await generation;
+  await session.generate();
+  expect(calls).toEqual(["first"]);
+  await session.close();
+});
+
+test("a revoked selected target fails structurally instead of dereferencing a missing hook", async () => {
+  const root = await fixture();
+  const session = new EngineSession(root, "build");
+  let revoke!: Registration;
+  await session.setup([
+    {
+      name: "target",
+      setup(c) {
+        c.convention(() => ({ config: "lenso.config.ts" }));
+        revoke = c.target("bun", () => "");
+      },
+    },
+  ]);
+  await session.discover();
+  revoke();
+  await expectCode(session.build(), "unknown-engine-target");
+  await session.close();
+});
+
+test("a target revoked while validating its entry never starts", async () => {
+  const session = new EngineSession(await fixture(), "build");
+  let revoke!: Registration;
+  let calls = 0;
+  await session.setup([
+    {
+      name: "target",
+      setup(c) {
+        c.convention(() => ({ config: "lenso.config.ts" }));
+        revoke = c.target("bun", (build) => {
+          calls++;
+          return build.bundle({ entry: build.entry });
+        });
+      },
+    },
+  ]);
+  await session.discover();
+  const building = session.build("lenso.config.ts");
+  queueMicrotask(revoke);
+  await expectCode(building, "unknown-engine-target");
+  expect(calls).toBe(0);
+  await session.close();
 });

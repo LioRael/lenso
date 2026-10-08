@@ -34,11 +34,23 @@ Calls validate input before setup, start one app, invoke the declared own servic
 3. Run the app's typecheck and a focused test. Invoke with `--input-file <path>` or `--stdin` to avoid secrets in shell history; inline JSON remains available for nonsensitive input.
 4. If an already owned HTTP server is relevant, verify its typed client too. Use only owned ports/processes.
 
-SDK lifetime is serial setup and synchronous cleanup registration, global LIFO sequential cleanup, startup rollback and aggregated cleanup failures. `stop()` caches one Promise even on failure. Original setup/cleanup errors keep their identity; `lifecycleFailure(error)` adds attribution for object errors without mutating them. Primitive thrown values have only the containing phase. Cancellation, request drain and detached task ownership remain the host/application's responsibility. A finalizer must not await its own app's stop Promise.
+SDK lifetime is serial setup and synchronous cleanup registration, global LIFO sequential cleanup, startup rollback and aggregated cleanup failures. `onCleanup` returns an async disposer sharing one completion with shutdown, even after early failure. `stop()` caches one Promise even on failure. Original setup/cleanup errors keep their identity; `lifecycleFailure(error)` adds attribution for object errors without mutating them. Primitive thrown values have only the containing phase. Cancellation, request drain and detached task ownership remain the host/application's responsibility. A finalizer must not await its own disposer or its app's stop Promise.
 
 ## Diagnostics and output
 
-Existing assembly codes remain `duplicate-id`, `missing-dependency`, `cyclic-dependency`, `invalid-id`. CLI errors include code/phase/message, with optional pluginId/operation/source/details/ordered causes. `help --json` lists the CLI codes. Unknown application error text, stack traces and raw input are omitted because they may contain secrets; validation details expose paths, not rejected values. Config import errors report the config path; build diagnostics report Bun's source positions where available. In-process engine APIs retain causes where possible; the JSON boundary emits safe diagnostic data.
+Assembly codes are `duplicate-id`, `missing-dependency`, `cyclic-dependency`, `invalid-id` and `invalid-source`. CLI errors include code/phase/message, with optional pluginId/operation/source/details/ordered causes. `help --json` lists the CLI codes. Unknown application error text, stack traces and raw input are omitted because they may contain secrets; validation details expose paths, not rejected values. Config import errors report the config path; build diagnostics report Bun's source positions where available. In-process engine APIs retain causes where possible; the JSON boundary emits safe diagnostic data.
+
+`inspect` reports `inspection: "static"`, ordered enabled plugin instances,
+their mandatory `requires` instance bindings, existing contributions and explicit
+CLI operations. Plugin `source` metadata is used when declared; the real config
+path is the fallback. Missing dependencies name the consumer and missing
+instance; duplicate IDs identify available declaration locations. Contributions
+use the existing redaction policy, not a second configuration renderer.
+Inspection never loads `lenso.engine.ts`, runs Engine/application setup or infers
+runtime service methods/health. Trusted config top-level code and schema converters
+still execute. It does not dump resolved runtime configuration or override
+provenance. JSON Schema defaults/examples are omitted, but validation constraints
+such as `const`/`enum` remain discoverable; do not embed secrets in schema metadata.
 
 The CLI routes trusted application console methods to stderr, redacts sensitive keys, credential-bearing URLs, authorization strings and known secret environment values, and redacts results. Applications must still avoid printing sensitive values; arbitrary direct stdout writes/native logs and secrets under innocuous keys cannot be reliably isolated in this trusted in-process model. This is not a sandbox. Returned data must be acyclic plain finite JSON; unsupported values produce `serialization-failed`, including an undefined result.
 

@@ -126,6 +126,21 @@ The official owner `lenso/defaults` registers the app convention, generators
 keeps stage position. To replace another plugin, order after it and name it in
 `replace`. Conflicting names or outputs never silently overwrite another owner.
 
+All capability registrations return a synchronous, idempotent revoker and
+automatically join the registering plugin's session cleanup:
+
+```ts
+const revoke = context.generate("asset-index", () => []);
+revoke(); // Optional early removal; no separate unregister cleanup is needed.
+```
+
+Revocation affects future invocation, including hooks not yet reached in a
+running stage; it does not cancel a hook already executing. An old owner's
+revoker cannot remove its replacement. Revoking the replacement does not restore
+the old owner. Revoking the selected build target produces `unknown-engine-target`.
+`watch` also returns a revoker: each call owns one reference, so removing one
+registration preserves other owners and static-import invalidation inputs.
+
 The standalone [content plugin](../cli/examples/content-plugin/index.ts) and
 [module target plugin](../cli/examples/module-target-plugin/index.ts) demonstrate
 external packages with an Engine peer dependency. Install as dev dependencies
@@ -143,7 +158,24 @@ are intentionally retained for byte and ownership compatibility.
 Register cleanup immediately on acquiring a resource. Hooks are sequential;
 cleanup is sequential LIFO on success, failure and dev shutdown. Registration
 closes when setup returns; captured `watch`/`onCleanup` remain usable by hooks
-until cleanup starts. `startEngineDevCycle(root)` is the lower-level worker
+until cleanup starts, including in-flight setup/hooks that close is waiting for.
+Capability and watch revocations join the same LIFO stack as resource cleanup.
+`onCleanup` returns an async disposer; explicit calls and close await the same
+completion, and an early cleanup failure remains visible to close. A finalizer
+must not await its own disposer. Clear only resources you own or explicitly
+registered; teardown cannot undo sent requests, database writes or other external
+side effects. Direct sessions still require `finally { await session.close(); }`,
+including after failed preparation.
+
+Discovery hooks run in stable capability order and append validated source
+paths. Generators run in that order and collect files before writes; they do not
+short-circuit on empty output. The convention and selected target each use one
+active provider. Dev hooks are awaited sequentially; their return values are
+ignored, not vetoes. A thrown/rejected hook stops its stage with owner/source
+attribution. Cleanup instead attempts every entry and aggregates failures.
+These are processing/control hooks, not a general business event bus.
+
+`startEngineDevCycle(root)` is the lower-level worker
 lifetime: generation and `beforeStart` precede return, `ready()` runs ready hooks,
 `close()` waits for cleanup. Embedders must stop their runtime before closing it.
 
