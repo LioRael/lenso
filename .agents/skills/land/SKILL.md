@@ -6,6 +6,7 @@ description: >-
 disable-model-invocation: true
 metadata:
   delta-action: land
+  internal: true
 ---
 
 # Land
@@ -227,9 +228,41 @@ diff against the verified PR change and required hosting checks; report the actu
 result ID rather than claiming the candidate ID landed unchanged.
 
 If authentication, permissions, checks, reviews or remote confirmation block
-completion, report landing as incomplete and retain recoverable state. Preserve
-source and integration branches; branch deletion requires a separate request.
+completion, report landing as incomplete and retain source and integration branches
+as recoverable state.
+
+## 5. Clean up confirmed landed branches
+
+Treat an explicit landing request as authorization to delete this landing's remote
+source/PR and temporary integration branches after step 4 confirms success, unless
+the user requests retention. Record their remote names and tip IDs before landing.
+Preserve the destination, shared long-lived branches and unrelated branches.
+Local branches and worktree directories remain untouched unless separately requested.
+
+Confirm each remote branch belongs to this landing, still points to its recorded
+head, and its changes were confirmed landed in step 4. For ancestry-preserving
+merges, verify `git merge-base --is-ancestor <branch-tip> <landed-id>`. For
+squash/rebase merges, use the hosting merge record and verified landed diff.
+Delete with an explicit ref-deletion lease:
+
+```sh
+git push --force-with-lease=refs/heads/<branch>:<recorded-tip-id> <remote> :refs/heads/<branch>
+```
+
+This lease authorizes only deletion of the exact confirmed branch tip, not a
+force-update or history rewrite. If the tip changed, permissions block deletion,
+or the landed evidence is ambiguous, retain the branch. Confirm deleted refs are
+absent using `git ls-remote --heads <remote>`, then prune the attached checkout's
+remote-tracking refs.
+
+Cleanup failure does not undo a confirmed landing. Report it separately, retaining
+recoverable branches rather than retrying with forced local deletion or an unguarded
+remote deletion.
+
+**Done:** eligible remote landed branches are deleted; every retained branch and
+cleanup outcome is accounted for.
 
 Report the remote repository URL, destination branch, landed commit, source,
-PR URL when applicable, checks run and validation limitations. Do not update the
-user's primary checkout or deploy as part of remote landing.
+PR URL when applicable, checks run, validation limitations, and deleted or retained
+branches with reasons. Do not update the user's primary checkout or deploy as part
+of remote landing.
