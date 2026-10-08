@@ -1,4 +1,6 @@
 import { defineApp, type Plugin } from "@lenso/core";
+import type { Operation } from "@lenso/engine/operations";
+import { selectManageOperations } from "@lenso/manage";
 import { resolve } from "node:path";
 import { envSource } from "@lenso/core/config/env";
 import { createPgNotesPlugins } from "./src/app-pg";
@@ -27,19 +29,29 @@ export const definition = local ?? createPgNotesPlugins(process.env.DATABASE_URL
 const notesOperations = createNotesOperations({
   notes: definition.notes,
   authentication: definition.authentication,
-  credential,
 });
 const fileOperations = local
   ? createNotesFileOperations({
       files: local.files,
       authentication: local.authentication,
-      credential,
     })
   : undefined;
 export const operations = [
-  ...notesOperations.operations,
-  ...(fileOperations ? fileOperations.operations : []),
+  notesOperations.operations[0]!,
+  ...selectManageOperations(notesOperations.manage, ["list", "read"]),
+  notesOperations.operations[3]!,
+  ...selectManageOperations(notesOperations.manage, ["remove"]),
+  ...(fileOperations ? selectManageOperations(fileOperations.manage, ["metadata", "delete"]) : []),
 ];
+export const manage = [notesOperations.manage, ...(fileOperations ? [fileOperations.manage] : [])];
+export const mcpOperations = selectManageOperations(notesOperations.manage, [
+  "list",
+  "read",
+  "remove",
+]);
+export const operationBinding = (_operation: Operation, _input: unknown) => ({
+  context: { evidence: credential() },
+});
 const plugins: Plugin<unknown>[] = [
   ...definition.plugins,
   notesOperations.plugin,

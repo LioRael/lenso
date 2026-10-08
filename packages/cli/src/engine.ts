@@ -2,18 +2,25 @@ import { join, resolve } from "node:path";
 import { startApp } from "@lenso/core";
 import { readApplication } from "@lenso/engine/application";
 import { EngineError } from "@lenso/engine/diagnostics";
-import { executeOperation } from "@lenso/engine/operations";
 import { describePluginConfig } from "@lenso/engine";
+import {
+  invokeValidatedOperation,
+  resolveOperation,
+  validateOperationInput,
+  type OperationBinding,
+  type Operation,
+} from "@lenso/engine/operations";
 import { CliError, diagnostic, environmentSecrets, exitCode, redact } from "./diagnostics";
-import { describeOperation, redactOperationDescription, validateOperations } from "./operations";
+import { describeOperation, redactOperationDescription } from "./operations";
 import type { AppDefinition } from "@lenso/engine/application";
 export type { AppDefinition } from "@lenso/engine/application";
 
-export async function invoke(
-  app: AppDefinition,
+export async function invoke<O extends Operation>(
+  app: AppDefinition<O>,
   pluginId: string,
   method: string,
   input: unknown,
+  binding: OperationBinding<NoInfer<O>> | undefined = app.operationBinding,
 ): Promise<unknown> {
   const plugin = app.plugins.find((candidate) => candidate.id === pluginId);
   if (!plugin)
@@ -21,52 +28,23 @@ export async function invoke(
       { code: "unknown-plugin", phase: "discovery", message: "Unknown plugin.", pluginId },
       3,
     );
-  const operations = validateOperations(app.plugins, app.operations ?? []);
-  const operation = operations.find(
-    (candidate) => candidate.plugin === plugin && candidate.method === method,
-  );
+  let operation: O;
+  let validatedInput: unknown;
+  try {
+    operation = resolveOperation(app.plugins, app.operations ?? [], pluginId, method) as O;
+    validatedInput = await validateOperationInput(operation, input);
+  } catch (cause) {
+    throw new CliError(
+      diagnostic(cause, { pluginId, operation: `${pluginId}.${method}` }),
+      exitCode(cause),
+      { cause },
+    );
+  }
   const context = {
     pluginId,
     operation: `${pluginId}.${method}`,
     ...(operation?.source ? { source: operation.source } : {}),
   };
-  if (!operation)
-    throw new CliError(
-      {
-        code: "unknown-operation",
-        phase: "discovery",
-        message: "Service method is not explicitly exposed for CLI invocation.",
-        ...context,
-      },
-      3,
-    );
-  let validated;
-  try {
-    validated = await operation.input["~standard"].validate(input);
-  } catch (cause) {
-    throw new CliError(
-      { code: "invalid-input", phase: "input", message: "Input validation failed.", ...context },
-      2,
-      { cause },
-    );
-  }
-  if (validated.issues)
-    throw new CliError(
-      {
-        code: "invalid-input",
-        phase: "input",
-        message: "Input does not satisfy the shared service schema.",
-        ...context,
-        details: {
-          paths: validated.issues.map((issue) =>
-            (issue.path ?? []).map((segment) =>
-              String(typeof segment === "object" ? segment.key : segment),
-            ),
-          ),
-        },
-      },
-      2,
-    );
   let running;
   try {
     running = await startApp(app);
@@ -77,16 +55,21 @@ export async function invoke(
   let callFailed = false;
   let callError: unknown;
   try {
-    result = await executeOperation(running, operation, validated.value);
+    const options = binding ? await binding(operation, validatedInput, running) : undefined;
+    result = await invokeValidatedOperation<Operation>(running, operation, validatedInput, options);
   } catch (cause) {
     callFailed = true;
     callError =
       cause instanceof CliError
         ? cause
         : cause instanceof EngineError
-          ? new CliError(diagnostic(cause, { ...context, phase: "invoke" }), exitCode(cause), {
-              cause,
-            })
+          ? new CliError(
+              diagnostic(cause, { ...context, phase: "invoke" }),
+              exitCode(cause.cause instanceof CliError ? cause.cause : cause),
+              {
+                cause,
+              },
+            )
           : new CliError(
               {
                 code: "invocation-failed",
