@@ -1,9 +1,9 @@
-import { AuthError, type AuthSource } from "@lenso/auth";
+import { authErrorDiagnostic, type AuthSource } from "@lenso/auth";
 import { definePlugin, type PluginContext } from "@lenso/core/plugin";
 import { bindConfig } from "@lenso/core/config";
-import { CliError } from "@lenso/cli";
 import { defineOperation } from "@lenso/engine/operations";
 import { defineManage } from "@lenso/manage";
+import { taskErrorDiagnostic } from "@lenso/tasks";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { createAuthorizedTaskService } from "./authorized-service";
@@ -35,21 +35,6 @@ async function connectResources(
   return { ...resources, reports: resources.service };
 }
 
-async function cliAuthBoundary<T>(work: () => Promise<T>): Promise<T> {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof AuthError) {
-      throw new CliError({
-        code: error.code,
-        phase: "invoke",
-        message: new AuthError(error.code).message,
-      });
-    }
-    throw error;
-  }
-}
-
 export function createTasksPlugin(options: {
   connectAuth: () => Promise<TaskAuthConnection>;
   evidence: () => string | null;
@@ -67,16 +52,11 @@ export function createTasksPlugin(options: {
     });
     context.onCleanup(() => service.close());
     return {
-      submit: (input: Parameters<typeof service.submit>[0]) =>
-        cliAuthBoundary(() => service.submit(input)),
-      query: (input: Parameters<typeof service.query>[0]) =>
-        cliAuthBoundary(() => service.query(input)),
-      cancel: (input: Parameters<typeof service.cancel>[0]) =>
-        cliAuthBoundary(() => service.cancel(input)),
-      retry: (input: Parameters<typeof service.retry>[0]) =>
-        cliAuthBoundary(() => service.retry(input)),
-      report: (input: Parameters<typeof service.report>[0]) =>
-        cliAuthBoundary(() => service.report(input)),
+      submit: (input: Parameters<typeof service.submit>[0]) => service.submit(input),
+      query: (input: Parameters<typeof service.query>[0]) => service.query(input),
+      cancel: (input: Parameters<typeof service.cancel>[0]) => service.cancel(input),
+      retry: (input: Parameters<typeof service.retry>[0]) => service.retry(input),
+      report: (input: Parameters<typeof service.report>[0]) => service.report(input),
     };
   };
   const injected = options.connectResources;
@@ -91,11 +71,13 @@ export function createTasksPlugin(options: {
 export function createTasksOperations(options: Parameters<typeof createTasksPlugin>[0]) {
   const plugin = createTasksPlugin(options);
   const source = { file: "src/plugin.ts", export: "createTasksOperations" };
+  const mapError = (error: unknown) => authErrorDiagnostic(error) ?? taskErrorDiagnostic(error);
   const operations = [
     defineOperation({
       plugin,
       method: "submit",
       input: submitInput,
+      mapError,
       description: "Submit a report owned by the authenticated session subject.",
       effect: "write",
       destructive: false,
@@ -109,6 +91,7 @@ export function createTasksOperations(options: Parameters<typeof createTasksPlug
       plugin,
       method: "query",
       input: jobInput,
+      mapError,
       description: "Read safe status after durable owner authorization.",
       effect: "read",
       destructive: false,
@@ -122,6 +105,7 @@ export function createTasksOperations(options: Parameters<typeof createTasksPlug
       plugin,
       method: "cancel",
       input: jobInput,
+      mapError,
       description: "Request cancellation of an owned job; requested does not mean stopped.",
       effect: "write",
       destructive: true,
@@ -135,6 +119,7 @@ export function createTasksOperations(options: Parameters<typeof createTasksPlug
       plugin,
       method: "retry",
       input: jobInput,
+      mapError,
       description: "Retry an owned final failure, preserving payload and attempt count.",
       effect: "write",
       destructive: false,
@@ -147,6 +132,7 @@ export function createTasksOperations(options: Parameters<typeof createTasksPlug
       plugin,
       method: "report",
       input: reportQueryInput,
+      mapError,
       description: "Read an owned report from the business table.",
       effect: "read",
       destructive: false,

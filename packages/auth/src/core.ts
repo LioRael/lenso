@@ -197,8 +197,12 @@ class Runtime<R extends string, E, S extends string> {
         return result;
       } catch (error) {
         signal.throwIfAborted();
-        if (error instanceof AuthError) throw new AuthError(error.code);
-        throw new AuthError("SERVICE_UNAVAILABLE");
+        if (error instanceof AuthError) {
+          const safe = new AuthError(error.code);
+          if (safe.code === error.code && safe.message === error.message) throw error;
+          throw new AuthError(safe.code, { cause: error });
+        }
+        throw new AuthError("SERVICE_UNAVAILABLE", { cause: error });
       }
     });
     this.tasks.add(task);

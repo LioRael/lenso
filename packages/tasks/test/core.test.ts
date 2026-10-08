@@ -7,6 +7,7 @@ import {
   defineTask,
   INPUT_LIMIT_BYTES,
   TaskQueueError,
+  taskErrorDiagnostic,
 } from "../src/index";
 import type {
   ClaimedJob,
@@ -59,6 +60,35 @@ function recordingProvider() {
     },
   };
 }
+
+test("TaskQueue runtime codes normalize safely and keep internal provider cause", async () => {
+  const marker = "PRIVATE-provider-error";
+  const cause = new Error(marker);
+  const invalid = new TaskQueueError(marker as "closed", { cause });
+  expect(invalid.code).toBe("provider-unavailable");
+  expect(invalid.cause).toBe(cause);
+  expect(taskErrorDiagnostic(invalid)).toEqual({
+    code: "provider-unavailable",
+    phase: "invoke",
+    message: "Task queue operation failed",
+  });
+  expect(taskErrorDiagnostic({ code: "closed", message: marker })).toBeUndefined();
+  const objectCode = { private: marker, toString: () => "closed" };
+  const malformed = new TaskQueueError(objectCode as unknown as "closed");
+  expect(malformed.code).toBe("provider-unavailable");
+  Object.assign(malformed, { code: objectCode });
+  expect(taskErrorDiagnostic(malformed)?.code).toBe("provider-unavailable");
+  const record = recordingProvider();
+  record.provider.get = async () => {
+    throw cause;
+  };
+  const queue = createTaskQueue({ tasks: [], provider: record.provider });
+  const failure = await queue.get(record.jobId).catch((error) => error);
+  expect(failure).toBeInstanceOf(TaskQueueError);
+  expect(failure.cause).toBe(cause);
+  expect(JSON.stringify(taskErrorDiagnostic(failure))).not.toContain(marker);
+  await queue.close();
+});
 
 describe("task contract boundary (not persistence tests)", () => {
   test("identity and lookup use the open/error boundary and retain tombstones", async () => {

@@ -15,6 +15,8 @@ export interface CreateLoggerOptions<
   logger?: Logger<CustomLevels>;
   /** Optional destination stream, primarily useful for embedding and tests. */
   stream?: DestinationStream;
+  /** Return only application-approved public labels, never raw error properties. */
+  classifyError?: (error: unknown) => { code?: string; phase?: string } | undefined;
 }
 
 function traceBindings(): Record<string, string> {
@@ -69,8 +71,16 @@ const defaultRedaction = {
   censor: "[REDACTED]",
 };
 
-function safeError(error: unknown): unknown {
-  return error instanceof Error ? { type: "Error" } : error;
+function safeError(error: unknown, classify?: CreateLoggerOptions["classifyError"]): unknown {
+  const fields: { type: string; code?: string; phase?: string } = { type: "Error" };
+  try {
+    const classified = classify?.(error);
+    if (typeof classified?.code === "string") fields.code = classified.code;
+    if (typeof classified?.phase === "string") fields.phase = classified.phase;
+  } catch {
+    // Classification is optional telemetry, not part of the service outcome.
+  }
+  return fields;
 }
 
 function safeArguments(args: unknown[], errorKey = "err"): unknown[] {
@@ -82,7 +92,7 @@ function safeArguments(args: unknown[], errorKey = "err"): unknown[] {
   if (
     fields &&
     typeof fields === "object" &&
-    (fields as Record<string, unknown>)[errorKey] instanceof Error
+    [errorKey, "err", "error"].some((key) => key in fields)
   ) {
     return [fields, ...message];
   }
@@ -96,7 +106,14 @@ function safeArguments(args: unknown[], errorKey = "err"): unknown[] {
 export function createLogger<CustomLevels extends string = never>(
   options: CreateLoggerOptions<CustomLevels> = {},
 ): Logger<CustomLevels> {
-  const { pretty = false, traceContext = true, logger, stream, ...loggerOptions } = options;
+  const {
+    pretty = false,
+    traceContext = true,
+    logger,
+    stream,
+    classifyError,
+    ...loggerOptions
+  } = options;
 
   if (logger) {
     const child = logger.child({});
@@ -142,9 +159,9 @@ export function createLogger<CustomLevels extends string = never>(
       ...loggerOptions,
       redact: loggerOptions.redact ?? defaultRedaction,
       serializers: {
-        err: safeError,
-        error: safeError,
-        [loggerOptions.errorKey ?? "err"]: safeError,
+        err: (error) => safeError(error, classifyError),
+        error: (error) => safeError(error, classifyError),
+        [loggerOptions.errorKey ?? "err"]: (error) => safeError(error, classifyError),
         ...loggerOptions.serializers,
       },
       hooks: {

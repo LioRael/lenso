@@ -141,6 +141,18 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       }),
     );
     await run(consumer, ["install", "--ignore-scripts"]);
+    await run(consumer, [
+      "-e",
+      `
+      import assert from 'node:assert/strict';
+      import {createWebPlugin} from '@lenso/web';
+      import {createProblemDetails} from '@lenso/web/problem-details';
+      assert.equal(typeof createWebPlugin,'function');
+      assert.equal(createProblemDetails().fromCode('CONFLICT').status,409);
+      assert.throws(()=>Bun.resolveSync('@orpc/openapi',process.cwd()));
+      `,
+    ]);
+    await run(consumer, ["add", "--dev", "@orpc/openapi@2.0.0-beta.42", "--ignore-scripts"]);
     for (const [name] of packages) {
       const installed = joinPath(consumer, "node_modules", name);
       expect(await canonicalPath(installed)).toBe(installed);
@@ -184,6 +196,18 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       selectManageOperations(manage,['hidden']);
       export const routerFactory=createManageRouter;
       import {createBunListenerPlugin} from '@lenso/web/bun';
+      import {createOpenAPIAdapter} from '@lenso/web/openapi';
+      import {createProblemDetails} from '@lenso/web/problem-details';
+      import {createProblemDetailsDecoder,createProblemDetailsFetch} from '@lenso/web/openapi-client';
+      import {openapi} from '@orpc/openapi';
+      import {os} from '@orpc/server';
+      const publicProcedure=os.meta(openapi({method:'POST',path:'/public'})).handler(()=>({ok:true}));
+      export const publicAPI=createOpenAPIAdapter({
+        prefix:'/api',selectedRouter:{read:publicProcedure},authenticate:()=>{},
+      });
+      export const problem=createProblemDetails().fromCode('CONFLICT');
+      export const decoder=createProblemDetailsDecoder();
+      export const guardedFetch=createProblemDetailsFetch();
       const web=definePlugin({id:'typed-web',setup:()=>({fetch:async()=>new Response('ok')})});
       export const listener=createBunListenerPlugin({
         web,hostname:'127.0.0.1',port:0,ingress:()=>undefined,
@@ -264,6 +288,37 @@ async function verifyConsumer() {
   } = await import("@lenso/engine");
   const { EngineError: diagnosticsError, diagnostic: subpathDiagnostic } =
     await import("@lenso/engine/diagnostics");
+  const { createOpenAPIAdapter } = await import("@lenso/web/openapi");
+  const { createProblemDetailsDecoder, createProblemDetailsFetch } =
+    await import("@lenso/web/openapi-client");
+  const openapiPackage: string = "@orpc/openapi";
+  const { openapi } = await import(openapiPackage);
+  const { OpenAPILink } = await import(`${openapiPackage}/fetch`);
+  const { os, ORPCError } = await import("@orpc/server");
+  const clientPackage: string = "@orpc/client";
+  const { createORPCClient } = await import(clientPackage);
+  const publicRouter = {
+    read: os.meta(openapi({ method: "POST", path: "/public" })).handler(() => {
+      throw new ORPCError("CONFLICT", { message: "PRIVATE-provider", data: { token: "PRIVATE" } });
+    }),
+  };
+  const publicAPI = createOpenAPIAdapter({
+    prefix: "/api",
+    selectedRouter: publicRouter,
+    authenticate: () => {},
+  });
+  const link = new OpenAPILink(publicRouter, {
+    origin: "https://packed.test",
+    url: "/api",
+    fetch: createProblemDetailsFetch({
+      fetch: async (url, init) => (await publicAPI.handle(new Request(url, init), {}))!,
+    }),
+    customErrorResponseBodyDecoder: createProblemDetailsDecoder(),
+  });
+  const apiClient = createORPCClient(link);
+  await assert.rejects(apiClient.read(), { code: "CONFLICT", message: "Conflict" });
+  const publicSpec = await publicAPI.generateSpec({ info: { title: "Packed", version: "1" } });
+  assert(publicSpec.paths?.["/public"]?.post?.responses?.["409"]);
 
   assert.equal(typeof createEngineSession, "function");
   assert.equal(typeof startEngineDevCycle, "function");

@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
+import { metrics, trace } from "@opentelemetry/api";
 import {
   bindConfig,
   defineApp,
@@ -7,6 +8,72 @@ import {
   startApp,
   type Logger,
 } from "../src/index";
+
+test("failing lifecycle telemetry preserves results, LIFO failures and shared stop", async () => {
+  const broken = () => {
+    throw new Error("PRIVATE-telemetry");
+  };
+  const meter = spyOn(metrics, "getMeter").mockImplementation(broken);
+  const tracer = spyOn(trace, "getTracer").mockReturnValue({
+    startActiveSpan(...args: unknown[]) {
+      return (args.at(-1) as (span: unknown) => unknown)({ setStatus: broken, end: broken });
+    },
+  } as unknown as ReturnType<typeof trace.getTracer>);
+  const cleanup = new Error("original cleanup");
+  const setup = new Error("original setup");
+  const events: string[] = [];
+  const success = definePlugin({
+    id: "success",
+    setup(context) {
+      context.onCleanup(() => {
+        events.push("first");
+      });
+      context.onCleanup(() => {
+        events.push("second");
+        throw cleanup;
+      });
+      return { ready: true };
+    },
+  });
+  try {
+    const app = await startApp({ plugins: [success] });
+    expect(app.get(success)).toEqual({ ready: true });
+    const stopped = app.stop();
+    expect(app.stop()).toBe(stopped);
+    const stopFailure = await stopped.catch((error) => error);
+    expect(stopFailure).toBeInstanceOf(AggregateError);
+    expect(stopFailure.errors[0]).toBe(cleanup);
+    expect(events).toEqual(["second", "first"]);
+    const failed = definePlugin({
+      id: "failed",
+      setup(context) {
+        context.onCleanup(() => {
+          throw cleanup;
+        });
+        throw setup;
+      },
+    });
+    const failure = await startApp({ plugins: [failed] }).catch((error) => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.errors).toEqual([setup, cleanup]);
+    tracer.mockImplementation(broken);
+    let calls = 0;
+    const untraced = definePlugin({
+      id: "untraced",
+      setup() {
+        calls++;
+        return true;
+      },
+    });
+    const running = await startApp({ plugins: [untraced] });
+    expect(running.get(untraced)).toBe(true);
+    expect(calls).toBe(1);
+    await running.stop();
+  } finally {
+    meter.mockRestore();
+    tracer.mockRestore();
+  }
+});
 
 test("instance defaults are unique and explicit entry options override app configuration", async () => {
   const instances: string[] = [];

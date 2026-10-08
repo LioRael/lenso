@@ -1,6 +1,38 @@
 import { expect, test } from "bun:test";
 import { DiagnosticError, validatePlugins } from "../src/diagnostics";
 import { lifecycleFailure, startApp } from "../src/lifecycle";
+import type { Plugin } from "../src/plugin";
+
+test("unknown imported plugin shapes fail with a safe assembly location", async () => {
+  const marker = "PRIVATE-plugin-input";
+  for (const value of [
+    null,
+    { id: marker },
+    { id: 12, setup() {} },
+    { id: "consumer", setup() {}, requires: [null] },
+    { id: "consumer", setup() {}, requires: Array(1) },
+    { id: "consumer", setup() {}, requires: marker },
+  ]) {
+    const plugins = [value] as unknown as Plugin<unknown>[];
+    try {
+      validatePlugins(plugins);
+      throw new Error("Expected invalid assembly");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DiagnosticError);
+      expect((error as DiagnosticError).diagnostics).toEqual([
+        {
+          code: "invalid-plugin",
+          pluginId: "[invalid]",
+          message:
+            "Plugin declarations require a string ID, setup function and plugin dependencies.",
+          details: { path: ["plugins", 0] },
+        },
+      ]);
+      expect(JSON.stringify((error as DiagnosticError).diagnostics)).not.toContain(marker);
+    }
+    await expect(startApp({ plugins })).rejects.toBeInstanceOf(DiagnosticError);
+  }
+});
 
 test("assembly diagnostics include declaring sources and missing dependency IDs", () => {
   const consumer = {

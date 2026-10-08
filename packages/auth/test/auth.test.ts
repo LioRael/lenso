@@ -11,6 +11,7 @@ import {
   authenticatedWithin,
   AuthConfigurationError,
   AuthError,
+  authErrorDiagnostic,
   createAuth,
   defineSource,
   realm,
@@ -210,12 +211,13 @@ test("per-entry requirements intersect, reverify authoritatively and never fake 
 });
 
 test("source errors, membership failures and policies expose only safe errors", async () => {
+  const cause = new Error("fixture-secret");
   const broken = createAuth(
     realm(
       "people",
       defineSource({
         async verify() {
-          throw new Error("fixture-secret");
+          throw cause;
         },
       }),
     ),
@@ -223,6 +225,7 @@ test("source errors, membership failures and policies expose only safe errors", 
   await expect(broken.required(undefined)).rejects.toMatchObject({
     code: "SERVICE_UNAVAILABLE",
     message: "Authentication unavailable",
+    cause,
   });
   const auth = createAuth(realm("people", fixture));
   const access = auth.for(audience("notes:read"));
@@ -432,15 +435,17 @@ test("oRPC preserves downstream errors and safely maps AuthError in both modes",
     const request = new Request("https://app.example", {
       headers: { authorization: "Bearer alice" },
     });
+    const denial = new AuthError("FORBIDDEN", { cause: new Error("PRIVATE-cause") });
+    denial.message = "PRIVATE-message";
     const denied = os
       .$context<{ request: Request; signal: AbortSignal }>()
       .use(middleware)
       .handler(() => {
-        throw new AuthError("FORBIDDEN");
+        throw denial;
       });
     await expect(
       call(denied, undefined, { context: { request, signal: request.signal } }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: "Access denied", cause: denial });
     const businessFailure = new Error("business-failure");
     const broken = os
       .$context<{ request: Request; signal: AbortSignal }>()
@@ -453,6 +458,18 @@ test("oRPC preserves downstream errors and safely maps AuthError in both modes",
     ).rejects.toBe(businessFailure);
   }
   await auth.close();
+});
+
+test("Auth projection requires Error identity and ignores mutable text/cause", () => {
+  const error = new AuthError("FORBIDDEN", { cause: new Error("PRIVATE-cause") });
+  error.message = "PRIVATE-message";
+  error.cause = error;
+  expect(authErrorDiagnostic(error)).toEqual({
+    code: "FORBIDDEN",
+    phase: "invoke",
+    message: "Access denied",
+  });
+  expect(authErrorDiagnostic({ code: "FORBIDDEN", message: "PRIVATE-message" })).toBeUndefined();
 });
 
 test("expiration is checked after asynchronous business policy and safe errors cannot leak mutated messages", async () => {

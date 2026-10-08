@@ -51,10 +51,53 @@ oRPC instrumentation is optional and shares this SDK. Its propagation defaults
 to true. If Web's `telemetry.requestLifetime` or an HTTP/Fetch instrumentation
 owns propagation, pass `createORPCInstrumentation({propagationEnabled:false})`.
 Use only one HTTP propagation owner. The helper rejects simultaneous oRPC OTel
-and Workers tracer ownership. Official oRPC exception instrumentation may capture
-business error messages; never put credentials or payloads in those messages.
+and Workers tracer ownership.
 oRPC owns its HTTP/procedure spans. Web's optional INTERNAL lifetime span measures
 body/work/cleanup ownership, not a second HTTP server boundary.
+
+## Error export policy
+
+Owned Bun bootstrap defaults to `errorDetails: "omit"`. Its existing batch
+processor exports through `createSafeSpanExporter`, which passes an independent
+readable span snapshot to the destination. It removes `exception` events,
+`exception.*` and `error.*` attributes on spans/events/links, and every
+`status.message`, while retaining status codes, timing, topology, correlation
+IDs and application-approved labels such as `lenso.error.code` and
+`lenso.phase`. It never infers a public code from an arbitrary thrown object's
+`.code`. Without application classification, omit raw details entirely.
+
+The installed `@orpc/opentelemetry@2.0.0-beta.42` configuration exposes only
+`propagationEnabled` plus standard instrumentation settings. Its official
+implementation records exceptions and sets error status messages from
+`exception.message`; it has no exception-filter callback. The
+[official oRPC integration docs](https://orpc.dev/docs/integrations/opentelemetry)
+document propagation configuration, not an error filtering hook. This package
+therefore uses the supported
+[OTel exporter pipeline](https://opentelemetry.io/docs/specs/otel/trace/sdk/#span-exporter),
+without replacing oRPC's tracer or patching dependencies.
+
+`createORPCInstrumentation()` alone does **not** apply this policy. In
+`mode: "external"`, the existing SDK owner must wrap **every** exporting pipeline:
+
+```ts
+import { createSafeSpanExporter } from "@lenso/otel/bun";
+// In the owner's existing provider setup, not a second SDK:
+const processor = new BatchSpanProcessor(createSafeSpanExporter(ownerExporter));
+```
+
+The helper delegates exporter lifecycle methods and does not transfer ownership.
+Raw sibling exporters/processors still see raw spans. Owned bootstrap may opt
+into `errorDetails: "raw"` only as an explicit SDK-owner decision.
+
+This is omission at export, not a sandbox: official instrumentation still records
+raw exception details in SDK memory, and earlier processors can observe them.
+Names, resources, unrelated attributes, free-form/custom events and payloads
+are not secret-scanned. Applications must use public classification labels and
+avoid sensitive text in those fields. Metrics and native Workers platform export
+are outside this trace exporter policy; the Workers owner must configure its
+platform policy separately. Export/snapshot failures report a generic failed
+export to the SDK, not an exception thrown back into the business operation.
+Explicit flush/shutdown may still reject as documented.
 
 Task metadata retains only bounded `traceparent`/`tracestate`, separate from
 payload and identity. Each durable attempt is a fresh root with a link to its

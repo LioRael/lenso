@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBunSqlitePlugin } from "@lenso/db/bun-sqlite";
 import { sqliteSessionStore } from "@lenso/auth/drizzle/sqlite";
-import { audience, createAuth, defineSource, realm } from "@lenso/auth";
+import { AuthError, audience, createAuth, defineSource, realm } from "@lenso/auth";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
@@ -87,11 +87,11 @@ test("SQLite private CRUD, CLI dispatch, HTTP and persistent sessions", async ()
       await expect(service.create(null, { title: "Anonymous" })).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
-      await expect(
-        createNotesOperationsService(service, auth, () => null).list({}),
-      ).rejects.toMatchObject({
-        diagnostic: { code: "UNAUTHORIZED" },
-      });
+      const anonymousFailure = await createNotesOperationsService(service, auth, () => null)
+        .list({})
+        .catch((error) => error);
+      expect(anonymousFailure).toBeInstanceOf(AuthError);
+      expect(anonymousFailure).toMatchObject({ code: "UNAUTHORIZED" });
       await expect(service.create(await actor("create"), { title: " " })).rejects.toBeInstanceOf(
         NoteInputError,
       );
@@ -346,11 +346,11 @@ test("SQLite private CRUD, CLI dispatch, HTTP and persistent sessions", async ()
       await expect(service.read(proof, privateNote.id)).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
-      await expect(
-        createNotesOperationsService(service, auth, () => other).list({}),
-      ).rejects.toMatchObject({
-        diagnostic: { code: "UNAUTHORIZED" },
-      });
+      const revokedFailure = await createNotesOperationsService(service, auth, () => other)
+        .list({})
+        .catch((error) => error);
+      expect(revokedFailure).toBeInstanceOf(AuthError);
+      expect(revokedFailure).toMatchObject({ code: "UNAUTHORIZED" });
     } finally {
       await app.stop();
     }

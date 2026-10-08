@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createFileDownloadHandler, createFileUploadHandler } from "../src/fetch";
-import { StorageError } from "../src/index";
+import { StorageError, storageErrorDiagnostic } from "../src/index";
 import type { Files, FileRecord } from "../src/files";
 
 function fixture() {
@@ -118,4 +118,42 @@ test("raw upload streams bytes; app selects ownership and storage instead of cal
       request: new Request("https://app.invalid/upload", { method: "PUT", body: "hello" }),
     }))!.status,
   ).toBe(403);
+});
+
+test("Storage runtime codes and Fetch statuses stay legal without publishing provider text", async () => {
+  const marker = "PRIVATE-provider-secret";
+  const cause = new Error(marker);
+  const invalid = new StorageError(marker as "provider", marker, { cause });
+  expect(invalid.code).toBe("provider");
+  expect(invalid.cause).toBe(cause);
+  expect(storageErrorDiagnostic(invalid)).toEqual({
+    code: "provider",
+    phase: "invoke",
+    message: "Storage provider operation failed.",
+  });
+  expect(storageErrorDiagnostic({ code: "not-found", message: marker })).toBeUndefined();
+  const objectCode = { private: marker, toString: () => "not-found" };
+  const malformed = new StorageError(objectCode as unknown as "not-found", marker);
+  expect(malformed.code).toBe("provider");
+  Object.assign(malformed, { code: objectCode });
+  expect(storageErrorDiagnostic(malformed)?.code).toBe("provider");
+  const f = fixture();
+  for (const [code, status] of [
+    ["invalid-input", 400],
+    ["not-found", 404],
+    ["conflict", 409],
+    ["too-large", 413],
+    ["provider", 502],
+    [marker, 502],
+  ] as const) {
+    f.files.metadata = async () => {
+      throw new StorageError(code as "provider", marker, { cause });
+    };
+    const handler = createFileDownloadHandler({ ...f, fileId: () => "id" });
+    const response = await handler({
+      request: new Request("https://app.invalid/id", { method: "HEAD" }),
+    });
+    expect(response!.status).toBe(status);
+    expect(await response!.text()).not.toContain(marker);
+  }
 });

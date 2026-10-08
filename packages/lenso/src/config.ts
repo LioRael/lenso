@@ -57,6 +57,8 @@ export class ConfigSourceError extends Error {
 function safeText(text: string): string {
   // Locations are declaration metadata, never a channel for URL credentials or queries.
   if (
+    typeof text !== "string" ||
+    text.length > 512 ||
     /[?#]|:\/\/[^/\s]*@|(?:bearer|basic)\s|(?:password|token|secret|api[_-]?key)(?:\s*[=:]|[/\\])/i.test(
       text,
     )
@@ -82,7 +84,7 @@ function pathKey(segment: unknown): unknown {
 
 function safePath(path: readonly unknown[]): ConfigPath {
   const result: (string | number)[] = [];
-  for (const segment of path) {
+  for (const segment of path.slice(0, 16)) {
     const key = pathKey(segment);
     if (typeof key === "string") result.push(safeText(key));
     else if (typeof key === "number" && Number.isSafeInteger(key) && key >= 0) result.push(key);
@@ -231,6 +233,48 @@ export async function resolveConfig<S extends StandardSchemaV1>(
   context: ConfigReadContext = {},
 ): Promise<ConfigSnapshot<StandardSchemaV1.InferOutput<S>>> {
   context = Object.freeze(context.signal ? { signal: context.signal } : {});
+  const declaredFields = [
+    ...(binding.contract.fields ?? []),
+    ...binding.sources.flatMap((source) => source?.descriptor?.fields ?? []),
+  ];
+  let declaredSchema: Record<string, unknown> | undefined;
+  try {
+    declaredSchema = binding.contract.jsonSchema?.();
+  } catch {
+    // Diagnostics never need a converter to succeed in order to report failure.
+  }
+  const diagnosticPath = (path: readonly unknown[]): ConfigPath => {
+    const keys = path.slice(0, 16).map(pathKey);
+    let length = 0;
+    for (const field of declaredFields) {
+      let matched = 0;
+      for (const [index, key] of field.path.slice(0, 16).entries()) {
+        if (keys[index] !== key) break;
+        matched++;
+      }
+      length = Math.max(length, matched);
+    }
+    let schema: unknown = declaredSchema;
+    for (const [index, key] of keys.entries()) {
+      if (!plain(schema)) break;
+      if (
+        typeof key === "string" &&
+        plain(schema.properties) &&
+        Object.hasOwn(schema.properties, key)
+      )
+        schema = schema.properties[key];
+      else if (
+        typeof key === "number" &&
+        Number.isSafeInteger(key) &&
+        key >= 0 &&
+        plain(schema.items)
+      )
+        schema = schema.items;
+      else break;
+      length = Math.max(length, index + 1);
+    }
+    return safePath(keys.slice(0, length));
+  };
   const composed: Record<string, unknown> = {};
   const histories = new Map<string, string[]>();
   const locations = new Map<string, PluginSource | undefined>();
@@ -290,8 +334,9 @@ export async function resolveConfig<S extends StandardSchemaV1>(
           pluginId,
           ...(sourceId !== undefined ? { sourceId } : {}),
           ...(location ? { source: location } : {}),
-          ...(error instanceof ConfigSourceError || error instanceof InvalidData
-            ? { path: error.path }
+          ...((error instanceof ConfigSourceError || error instanceof InvalidData) &&
+          error.path !== undefined
+            ? { path: diagnosticPath(error.path) }
             : {}),
         },
       ]);
@@ -305,9 +350,9 @@ export async function resolveConfig<S extends StandardSchemaV1>(
     cancelled(pluginId, context);
     if (result.issues) {
       validationError = new ConfigError(
-        result.issues.map((issue) => {
-          const path = issue.path ? safePath(issue.path) : undefined;
-          const originalKey = pathKey(issue.path?.[0]);
+        result.issues.slice(0, 64).map((issue) => {
+          const path = issue.path ? diagnosticPath(issue.path) : undefined;
+          const originalKey = path?.length ? pathKey(issue.path?.[0]) : undefined;
           const history = typeof originalKey === "string" ? histories.get(originalKey) : undefined;
           const sourceId = history?.[history.length - 1];
           const source = sourceId === undefined ? undefined : locations.get(sourceId);
@@ -330,7 +375,7 @@ export async function resolveConfig<S extends StandardSchemaV1>(
       {
         code: error instanceof InvalidData ? "config-invalid-data" : "config-invalid",
         pluginId,
-        ...(error instanceof InvalidData ? { path: error.path } : {}),
+        ...(error instanceof InvalidData ? { path: diagnosticPath(error.path) } : {}),
       },
     ]);
   }

@@ -1,5 +1,5 @@
 import { ORPCError, os } from "@orpc/server";
-import { AuthError } from "./errors";
+import { AuthError, authErrorDiagnostic } from "./errors";
 import type { AuthenticationOptions } from "./core";
 import type { EvidenceInput } from "./fetch";
 
@@ -12,12 +12,15 @@ type EvidenceExtractor<C, E> = ((context: C) => EvidenceInput<E>) &
   ("actor" extends keyof C ? never : unknown);
 
 function transportError(error: unknown): never {
-  if (error instanceof AuthError) {
-    const safe = new AuthError(error.code);
+  const safe = authErrorDiagnostic(error);
+  if (safe) {
     const code = safe.code === "REAUTHENTICATION_REQUIRED" ? "UNAUTHORIZED" : safe.code;
-    throw new ORPCError(code, { message: safe.message });
+    throw new ORPCError(code, { message: safe.message, cause: error });
   }
-  throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Authentication unavailable" });
+  throw new ORPCError("SERVICE_UNAVAILABLE", {
+    message: "Authentication unavailable",
+    cause: error,
+  });
 }
 
 function actorContext<C, P>(actor: P) {
