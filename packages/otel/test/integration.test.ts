@@ -162,6 +162,12 @@ test("durable retries are fresh roots linked to original producer, never unrelat
   let stored: ProviderJob | undefined;
   let execute: ((job: ClaimedJob) => Promise<ExecutionResult>) | undefined;
   const provider: TaskProvider = {
+    async identity() {
+      return { kind: "postgres", id: "00000000-0000-0000-0000-000000000001" };
+    },
+    async lookupDeduplicationKey() {
+      return null;
+    },
     async enqueue(job) {
       stored = structuredClone(job);
       return crypto.randomUUID();

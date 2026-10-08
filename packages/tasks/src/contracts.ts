@@ -54,11 +54,27 @@ export interface EnqueueOptions {
   readonly deduplicationKey?: string;
 }
 
+export interface TaskQueueIdentity {
+  readonly kind: "postgres" | "d1";
+  /** Persisted UUID of the named durable queue, not a connection or process identity. */
+  readonly id: string;
+}
+
+export interface DeduplicationLookup {
+  readonly jobId: string;
+  /** Null means the accepted job was pruned while its tombstone remains. */
+  readonly status: JobStatus | null;
+}
+
 export interface WorkerOptions {
   /** Local concurrency per worker, not a cluster-wide quota. */
   readonly concurrency?: number;
   /** Cooperative deadline; a slot remains occupied until the handler actually settles. */
   readonly timeoutMs?: number;
+  /** Global fetch/claim attempt budget across all local lanes, at most 1000. */
+  readonly maxJobs?: number;
+  /** Stop claiming after an empty fetch, then drain owned work. Defaults to false. */
+  readonly stopWhenIdle?: boolean;
 }
 
 export interface TaskWorker {
@@ -90,6 +106,8 @@ export type ExecutionResult =
 
 /** A provider owns durable state, claiming, retries, cancellation signalling and worker drain. */
 export interface TaskProvider {
+  identity(): Promise<TaskQueueIdentity>;
+  lookupDeduplicationKey(key: string): Promise<DeduplicationLookup | null>;
   enqueue(job: ProviderJob): Promise<string>;
   get(jobId: string): Promise<JobStatus | null>;
   cancel(jobId: string): Promise<"requested" | "cancelled" | "terminal" | "missing">;

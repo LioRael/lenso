@@ -21,10 +21,14 @@
     "./postgres": {
       "types": "./dist/postgres.d.ts",
       "import": "./dist/postgres.js"
+    },
+    "./d1": {
+      "types": "./dist/d1.d.ts",
+      "import": "./dist/d1.js"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts src/d1.ts --outdir dist --target browser --external 'node:*' --packages external --splitting && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test test"
   },
@@ -33,12 +37,24 @@
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/core": "2.12.0",
     "@standard-schema/spec": "1.1.0",
-    "drizzle-orm": "0.45.3",
-    "pg": "8.23.1",
-    "pg-boss": "12.37.0"
+    "drizzle-orm": "0.45.3"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
+    "pg": "8.23.1",
+    "pg-boss": "12.37.0",
     "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "pg": "8.23.1",
+    "pg-boss": "12.37.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    },
+    "pg-boss": {
+      "optional": true
+    }
   }
 }

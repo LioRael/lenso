@@ -8,7 +8,13 @@ import {
   INPUT_LIMIT_BYTES,
   TaskQueueError,
 } from "../src/index";
-import type { ClaimedJob, ExecutionResult, ProviderJob, TaskProvider } from "../src/contracts";
+import type {
+  ClaimedJob,
+  ExecutionResult,
+  ProviderJob,
+  TaskProvider,
+  WorkerOptions,
+} from "../src/contracts";
 
 function recordingProvider() {
   let sent: ProviderJob | undefined;
@@ -16,6 +22,12 @@ function recordingProvider() {
   let closed = 0;
   const jobId = crypto.randomUUID();
   const provider: TaskProvider = {
+    async identity() {
+      return { kind: "postgres", id: jobId };
+    },
+    async lookupDeduplicationKey() {
+      return sent ? { jobId, status: null } : null;
+    },
     async enqueue(job) {
       sent = job;
       return jobId;
@@ -49,6 +61,85 @@ function recordingProvider() {
 }
 
 describe("task contract boundary (not persistence tests)", () => {
+  test("identity and lookup use the open/error boundary and retain tombstones", async () => {
+    const record = recordingProvider();
+    const task = defineTask({ name: "accepted", input: z.object({}), async handler() {} });
+    const queue = createTaskQueue({ tasks: [task], provider: record.provider });
+    expect(await queue.identity()).toEqual({ kind: "postgres", id: record.jobId });
+    expect(await queue.lookupDeduplicationKey("key")).toBeNull();
+    await queue.enqueue(task, {}, { deduplicationKey: "key" });
+    expect(await queue.lookupDeduplicationKey("key")).toEqual({
+      jobId: record.jobId,
+      status: null,
+    });
+    expect(await queue.lookupDeduplicationKey("é".repeat(128))).toBeDefined();
+    for (const key of ["", "é".repeat(129)]) {
+      expect(() => queue.lookupDeduplicationKey(key)).toThrow(TaskQueueError);
+      await expect(queue.enqueue(task, {}, { deduplicationKey: key })).rejects.toMatchObject({
+        code: "invalid-options",
+      });
+    }
+    record.provider.identity = async () => {
+      throw new Error("private connection");
+    };
+    record.provider.lookupDeduplicationKey = async () => {
+      throw new Error("private input");
+    };
+    await expect(queue.identity()).rejects.toMatchObject({ code: "provider-unavailable" });
+    await expect(queue.lookupDeduplicationKey("key")).rejects.toMatchObject({
+      code: "provider-unavailable",
+    });
+    await queue.close();
+    await expect(queue.identity()).rejects.toMatchObject({ code: "closed" });
+    await expect(queue.lookupDeduplicationKey("key")).rejects.toMatchObject({ code: "closed" });
+  });
+
+  test("runBatch uses the existing executor, defaults a finite budget, and awaits drain", async () => {
+    const record = recordingProvider();
+    const task = defineTask({ name: "batch", input: z.object({}), async handler() {} });
+    const queue = createTaskQueue({ tasks: [task], provider: record.provider });
+    const drain = Promise.withResolvers<void>();
+    let options: WorkerOptions | undefined;
+    record.provider.startWorker = async (execute, workerOptions) => {
+      options = workerOptions;
+      expect(
+        await execute({
+          jobId: record.jobId,
+          task: task.name,
+          input: {},
+          attempt: 1,
+          signal: new AbortController().signal,
+        }),
+      ).toEqual({ ok: true, result: null });
+      return { done: drain.promise, stop: () => drain.promise };
+    };
+    let finished = false;
+    const batch = queue.runBatch().then(() => {
+      finished = true;
+    });
+    await Bun.sleep(0);
+    expect(options).toEqual({ maxJobs: 100, stopWhenIdle: true });
+    expect(finished).toBe(false);
+    drain.resolve();
+    await batch;
+    await queue.runBatch({ maxJobs: 3, concurrency: 2, timeoutMs: 100 });
+    expect(options).toEqual({ maxJobs: 3, concurrency: 2, timeoutMs: 100, stopWhenIdle: true });
+    for (const maxJobs of [0, 1001, 1.5, NaN]) {
+      expect(() => queue.startWorker({ maxJobs })).toThrow(TaskQueueError);
+      await expect(queue.runBatch({ maxJobs })).rejects.toMatchObject({ code: "invalid-options" });
+    }
+    expect(() => queue.startWorker({ stopWhenIdle: "yes" as unknown as boolean })).toThrow(
+      TaskQueueError,
+    );
+    record.provider.startWorker = async () => ({
+      done: Promise.reject(new Error("private failure")),
+      async stop() {},
+    });
+    await expect(queue.runBatch()).rejects.toMatchObject({ code: "provider-unavailable" });
+    await queue.close();
+    await expect(queue.runBatch()).rejects.toMatchObject({ code: "closed" });
+  });
+
   test("same schema at both boundaries; transforms are not applied twice to payload", async () => {
     const record = recordingProvider();
     const task = defineTask({
