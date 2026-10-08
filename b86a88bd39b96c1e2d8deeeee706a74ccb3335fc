@@ -1,0 +1,36 @@
+bun.lock
+  h_9d56aba080c170 26-41,45,49,58-69,80-88,138-139,142-146,148,150,152,154,156,158,160,162,164,166,168,170,172,174,176,178,180,182,184,186,188,190,192,194,196,258-261,264-265,438-439,446-449,454,460-461,486-487,492-495,504-505,529-682
+examples/workers/README.md
+  h_9d56aba080c170 1-13
+examples/workers/package.json
+  h_9d56aba080c170 7-9,11-12,15,19
+examples/workers/src/notes.ts
+  h_9d56aba080c170 1-22
+examples/workers/tsconfig.json
+  h_9d56aba080c170 4
+examples/workers/tsconfig.notes.json
+  h_9d56aba080c170 1-4
+examples/workers/worker-notes.d.ts
+  h_9d56aba080c170 1-36
+examples/workers/wrangler.notes.jsonc
+  h_9d56aba080c170 1-19
+packages/workers/test/fetch.test.ts
+  h_9d56aba080c170 3,101-152
+templates/bun-web/package.json
+  h_9d56aba080c170 25-27
+templates/cli/package.json
+  h_9d56aba080c170 23-25
+templates/workers/package.json
+  h_9d56aba080c170 27-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b86a88bd39b96c1e2d8deeeee706a74ccb3335fc",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

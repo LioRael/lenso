@@ -1,0 +1,76 @@
+docs/DATABASE.md
+  h_9d56aba080c170 1-95
+examples/notes/drizzle.pg.config.ts
+  h_9d56aba080c170 1-7
+examples/notes/drizzle.sqlite.config.ts
+  h_9d56aba080c170 1-7
+examples/notes/migrations/pg/0000_notes.sql
+  h_9d56aba080c170 1-6
+examples/notes/migrations/pg/meta/0000_snapshot.json
+  h_9d56aba080c170 1-56
+examples/notes/migrations/pg/meta/_journal.json
+  h_9d56aba080c170 1-13
+examples/notes/migrations/sqlite/0000_notes.sql
+  h_9d56aba080c170 1-6
+examples/notes/migrations/sqlite/meta/0000_snapshot.json
+  h_9d56aba080c170 1-56
+examples/notes/migrations/sqlite/meta/_journal.json
+  h_9d56aba080c170 1-13
+examples/notes/package.json
+  h_9d56aba080c170 1-29
+examples/notes/src/app-pg.ts
+  h_9d56aba080c170 1-17
+examples/notes/src/cli.ts
+  h_9d56aba080c170 1-42
+examples/notes/src/migrate-pg.ts
+  h_9d56aba080c170 1-18
+examples/notes/src/migrate-sqlite.ts
+  h_9d56aba080c170 1-21
+examples/notes/src/notes.ts
+  h_9d56aba080c170 1-84
+examples/notes/src/queries-pg.ts
+  h_9d56aba080c170 1-26
+examples/notes/src/queries-sqlite.ts
+  h_9d56aba080c170 1-30
+examples/notes/src/router.ts
+  h_9d56aba080c170 1-29
+examples/notes/src/schema-pg.ts
+  h_9d56aba080c170 1-8
+examples/notes/src/schema-sqlite.ts
+  h_9d56aba080c170 1-8
+examples/notes/src/server.ts
+  h_9d56aba080c170 1-50
+examples/notes/test/notes.test.ts
+  h_9d56aba080c170 1-61
+examples/notes/test/postgres.test.ts
+  h_9d56aba080c170 1-92
+examples/notes/tsconfig.json
+  h_9d56aba080c170 1-4
+packages/db/package.json
+  h_9d56aba080c170 1-36
+packages/db/src/bun-sql.ts
+  h_9d56aba080c170 1-39
+packages/db/src/bun-sqlite.ts
+  h_9d56aba080c170 1-25
+packages/db/src/d1.ts
+  h_9d56aba080c170 1-16
+packages/db/src/index.ts
+  h_9d56aba080c170 1-10
+packages/db/test/resources.test.ts
+  h_9d56aba080c170 1-55
+packages/db/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/db/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "589bfae9acf40bd76edd45ac54a0c0757cd83b4e",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
