@@ -11,7 +11,7 @@ import { createLocalStoragePlugin } from "@lenso/storage/local";
 import { createSqliteFileQueries, fileSchema } from "@lenso/storage/sqlite";
 import { sqliteSessionStore } from "@lenso/auth/drizzle/sqlite";
 import { definePlugin, startApp } from "@lenso/core";
-import { parseNotesPrincipals, type NotesPrincipalsInput } from "./auth";
+import type { NotesPrincipalsInput } from "./auth";
 import { createNotesApplication } from "./application";
 import { migrateSqlite } from "./migrate-sqlite";
 import { notesAudiences, type NotesActor } from "./notes";
