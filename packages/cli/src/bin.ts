@@ -1,61 +1,206 @@
 #!/usr/bin/env bun
 import { fileURLToPath } from "node:url";
-import { build, call, discover, generate } from "./engine";
+import { resolve } from "node:path";
+import { build, call, discover, generate, inspect } from "./engine";
 import { dev } from "./dev";
+import { CliError, diagnostic, environmentSecrets, redact, stableJson } from "./diagnostics";
 
 const args = process.argv.slice(2);
-const command = args.shift() ?? "help";
-function option(name: string): string | undefined {
-  const index = args.indexOf(name);
-  if (index < 0) return undefined;
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) throw new Error(`Missing value for ${name}`);
-  args.splice(index, 2);
-  return value;
+const jsonMode = args.includes("--json");
+const stdout = process.stdout.write.bind(process.stdout);
+const secrets = environmentSecrets();
+// Trusted application console output is routed to stderr during this CLI process.
+for (const level of ["log", "info", "warn", "error", "debug"] as const) {
+  console[level] = (...values: unknown[]) => {
+    const safe = values.map((value) =>
+      value instanceof Error ? "[Application error text omitted]" : redact(value, secrets),
+    );
+    process.stderr.write(
+      `${safe.map((value) => (typeof value === "string" ? value : JSON.stringify(value))).join(" ")}\n`,
+    );
+  };
 }
+function usage(message: string): never {
+  throw new CliError({ code: "invalid-arguments", phase: "arguments", message }, 2);
+}
+const help = {
+  commands: [
+    {
+      name: "check",
+      usage: "check [--root directory]",
+      effect: "imports trusted config; validates assembly; no setup",
+    },
+    {
+      name: "inspect",
+      usage: "inspect [plugin-id [method]] [--root directory]",
+      effect: "describes explicit operations; no setup",
+    },
+    {
+      name: "generate",
+      usage: "generate [--root directory]",
+      effect: "writes framework-owned .lenso entries",
+    },
+    {
+      name: "build",
+      usage: "build [--root directory] [--entry file]",
+      effect: "generates entries and writes dist",
+    },
+    {
+      name: "call",
+      usage:
+        "call <plugin-id> <method> [JSON input | --input-file file | --stdin] [--root directory]",
+      effect: "validates input; starts app; invokes declared service operation; stops app",
+    },
+    {
+      name: "dev",
+      usage: "dev [--root directory] [--entry file]",
+      effect: "watches source; supervises owned processes; human mode only",
+    },
+    { name: "help", usage: "help", effect: "describes commands; no config import" },
+  ],
+  json: "Add --json to finite commands. One schemaVersion=1 result on stdout; logs on stderr.",
+  exitCodes: { success: 0, runtime: 1, argumentsOrInput: 2, discoveryOrAssembly: 3 },
+  errorCodes: [
+    "invalid-arguments",
+    "input-read-failed",
+    "invalid-json",
+    "invalid-input",
+    "config-load-failed",
+    "invalid-config",
+    "invalid-assembly",
+    "duplicate-id",
+    "missing-dependency",
+    "cyclic-dependency",
+    "invalid-id",
+    "invalid-operations",
+    "duplicate-operation",
+    "unknown-plugin",
+    "unknown-operation",
+    "unavailable-operation",
+    "initialization-failed",
+    "invocation-failed",
+    "cleanup-failed",
+    "invocation-and-cleanup-failed",
+    "build-failed",
+    "serialization-failed",
+  ],
+  boundaries: [
+    "Trusted local config/plugins; not a sandbox.",
+    "Use shared input schemas and service authorization. CLI does not impersonate an HTTP actor.",
+    "Direct stdout writes from trusted application code must be avoided; console is routed to stderr.",
+    "Operation effects are descriptive; no retry, eval, authorization bypass or automatic cancellation.",
+  ],
+};
 
 try {
-  const root = option("--root") ?? process.cwd();
-  const entry = option("--entry");
+  let command = "help";
+  if (args[0] && !args[0].startsWith("-")) command = args.shift()!;
+  const values = new Map<string, string>();
+  const flags = new Set<string>();
+  const positionals: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    if (["--json", "--stdin", "--help", "-h"].includes(arg)) {
+      if (flags.has(arg)) usage("Repeated flag.");
+      flags.add(arg);
+    } else if (["--root", "--entry", "--input-file"].includes(arg)) {
+      if (values.has(arg)) usage("Repeated option.");
+      const value = args[++index];
+      if (!value || value.startsWith("-")) usage("Missing option value.");
+      values.set(arg, value);
+    } else if (arg.startsWith("-")) usage("Unknown flag.");
+    else positionals.push(arg);
+  }
+  if (flags.has("--help") || flags.has("-h")) command = "help";
+  if (!help.commands.some((item) => item.name === command))
+    usage("Unknown command; use lenso help.");
+  if (values.has("--entry") && !["build", "dev"].includes(command))
+    usage("--entry is available for build/dev only.");
+  if ((values.has("--input-file") || flags.has("--stdin")) && command !== "call")
+    usage("Input options are available for call only.");
+  if (command !== "call" && command !== "inspect" && positionals.length)
+    usage("Unexpected positional arguments.");
+  const root = values.get("--root") ?? process.cwd();
+  const entry = values.get("--entry");
+  let data: unknown;
   switch (command) {
     case "check": {
       const discovery = await discover(root);
-      console.log(
-        JSON.stringify(
-          { valid: true, order: discovery.ordered.map((plugin) => plugin.id) },
-          null,
-          2,
-        ),
-      );
+      data = {
+        valid: true,
+        configPath: discovery.configPath,
+        order: discovery.ordered.map((plugin) => plugin.id),
+      };
       break;
     }
+    case "inspect":
+      if (positionals.length > 2) usage("Usage: inspect [plugin-id [method]].");
+      data = await inspect(root, positionals[0], positionals[1]);
+      break;
     case "generate": {
       const manifest = await generate(root);
-      console.log(`[lenso] Generated ${manifest.length} plugin(s) in .lenso`);
+      data = {
+        plugins: manifest.map((plugin) => plugin.id),
+        directory: resolve(root, ".lenso"),
+        files: ["manifest.json", "server.ts", "client.ts"],
+      };
       break;
     }
     case "build":
-      console.log(`[lenso] Built ${await build(root, entry)}`);
+      data = { directory: await build(root, entry) };
       break;
     case "call": {
-      const [plugin, method, json = "{}"] = args;
-      if (!plugin || !method)
-        throw new Error("Usage: lenso call <plugin-id> <method> [JSON input]");
-      console.log(JSON.stringify(await call(root, plugin, method, JSON.parse(json)), null, 2));
+      if (positionals.length < 2 || positionals.length > 3)
+        usage("Usage: call <plugin-id> <method> [JSON input].");
+      const [plugin, method, inline] = positionals;
+      const inputFile = values.get("--input-file");
+      const inputCount =
+        Number(inline !== undefined) +
+        Number(inputFile !== undefined) +
+        Number(flags.has("--stdin"));
+      if (inputCount > 1)
+        usage("Choose one input source: positional JSON, --input-file, or --stdin.");
+      let inputText = inline ?? "{}";
+      try {
+        if (inputFile) inputText = await Bun.file(resolve(inputFile)).text();
+        if (flags.has("--stdin")) inputText = await Bun.stdin.text();
+      } catch {
+        throw new CliError(
+          { code: "input-read-failed", phase: "input", message: "Cannot read JSON input source." },
+          2,
+        );
+      }
+      let input;
+      try {
+        input = JSON.parse(inputText);
+      } catch {
+        throw new CliError(
+          { code: "invalid-json", phase: "input", message: "Input must be valid JSON." },
+          2,
+        );
+      }
+      data = await call(root, plugin!, method!, input);
       break;
     }
     case "dev":
+      if (jsonMode) usage("dev --json is unsupported; use finite commands for structured results.");
       await dev({ root, entry, cliPath: fileURLToPath(import.meta.url) });
+      data = { stopped: true };
       break;
     case "help":
-      console.log(
-        "lenso <check|generate|build|call|dev> [--root directory] [--entry src/server.ts]\ncall: lenso call <plugin-id> <method> [JSON input]",
-      );
+      data = help;
       break;
-    default:
-      throw new Error(`Unknown command: ${command}`);
   }
+  stableJson(data);
+  const safe = redact(data, secrets);
+  stdout(
+    `${stableJson(jsonMode ? { schemaVersion: 1, ok: true, data: safe } : safe, jsonMode ? undefined : 2)}\n`,
+  );
 } catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
+  // Remove absent optional diagnostic fields, preserving only JSON-safe public data.
+  const detail = redact(JSON.parse(JSON.stringify(diagnostic(error))), secrets);
+  const exitCode = error instanceof CliError ? error.exitCode : 1;
+  if (jsonMode) stdout(`${stableJson({ schemaVersion: 1, ok: false, error: detail })}\n`);
+  else process.stderr.write(`${stableJson(detail, 2)}\n`);
+  process.exitCode = exitCode;
 }

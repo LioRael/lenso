@@ -257,3 +257,19 @@ describe("plugin lifetime", () => {
     await expect(service.run()).rejects.toThrow("The app is stopped");
   });
 });
+
+test("synchronous cleanup reentry observes the cached stop Promise", async () => {
+  let reentered: Promise<void> | undefined;
+  const plugin = definePlugin({
+    id: "reentrant",
+    setup({ onCleanup }) {
+      onCleanup(() => {
+        reentered = running.stop();
+      });
+    },
+  });
+  const running = await startApp({ plugins: [plugin] });
+  const stopping = running.stop();
+  await stopping;
+  expect(reentered).toBe(stopping);
+});

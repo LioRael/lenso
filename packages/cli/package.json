@@ -21,6 +21,10 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@standard-schema/spec": "1.1.0",
     "lenso": "workspace:^"
+  },
+  "devDependencies": {
+    "zod": "4.6.5"
   }
 }

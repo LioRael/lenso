@@ -1,4 +1,9 @@
-# Lenso TypeScript v1
-This is a new TypeScript repository. Never modify sibling Rust/UI/AI Relay repositories. No remote push, publishing, deployment, or merge into main is authorized. Root integration owner alone edits root configuration and bun.lock. See docs/PLAN.md for file ownership and public interfaces. Bun 1.4.2; plain async business code; optional Web/oRPC; Console deferred to a separate repository; Effect only internal lifecycle. Do not introduce fake persistence, empty adapters, or platform support claims.
+# Lenso TypeScript
 
-Routine hygiene uses oxlint and oxfmt. Keep tests focused. Do not add standing smoke suites, verification scripts, acceptance reports or gate layers unless explicitly requested or necessary for a concrete regression.
+Work only in the assigned checkout. Preserve other workspaces and user changes. Local commits are allowed; push, publishing, deployment and merging into main need explicit authorization.
+
+Core is `packages/lenso`; command semantics are `packages/cli`; Web, Auth, DB and Workers are separate optional packages. Keep business services ordinary async. Use the versions and scripts in package.json; one Bun lockfile belongs to the integration owner. Keep tests focused on changed behavior.
+
+When changing service input, CLI exposure, diagnostics or generated files, read [CLI development](docs/CLI.md). Rebuild framework packages before running consumers: package exports resolve to dist. Source lives outside `.lenso` and `dist`; those directories are framework-owned, reproducible output. Config top-level code must avoid resource acquisition. Inspect imports trusted config but does not run setup.
+
+For example, after an app declares `greeting.greet`: run `lenso inspect greeting greet --root <app> --json`, edit the shared schema/service, then `lenso call greeting greet --root <app> --stdin --json` with JSON input and run the related tests. Register resource cleanup immediately during setup; close only processes and ports owned by the task.

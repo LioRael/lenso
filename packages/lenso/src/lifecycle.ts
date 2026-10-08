@@ -1,4 +1,3 @@
-import { Effect, Exit, Scope } from "effect";
 import { validatePlugins } from "./diagnostics";
 import type { Contribution, Plugin, PluginContext } from "./plugin";
 
@@ -9,10 +8,10 @@ export interface RunningApp {
   stop(): Promise<void>;
 }
 
-/** Effect owns finalization only; plugin setup and business methods stay ordinary async. */
+/** Serial setup and explicit LIFO cleanup; business methods stay ordinary async. */
 export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Promise<RunningApp> {
   const plugins = validatePlugins(app.plugins);
-  const scope = await Effect.runPromise(Scope.make());
+  const finalizers: Array<{ pluginId: string; cleanup: () => void | Promise<void> }> = [];
   const services = new Map<Plugin<unknown>, unknown>();
   const cleanupErrors: unknown[] = [];
   let running = true;
@@ -21,13 +20,25 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
   function stop(): Promise<void> {
     if (!stopPromise) {
       running = false;
-      stopPromise = Effect.runPromise(Scope.close(scope, Exit.void)).then(() => {
+      // Cache before running callbacks, including synchronous reentrant stop calls.
+      stopPromise = Promise.resolve().then(async () => {
+        while (finalizers.length) {
+          const { pluginId, cleanup } = finalizers.pop()!;
+          try {
+            await cleanup();
+          } catch (error) {
+            recordFailure(error, { phase: "cleanup", pluginId });
+            cleanupErrors.push(error);
+          }
+        }
         services.clear();
         if (cleanupErrors.length) {
-          throw new AggregateError(
+          const error = new AggregateError(
             cleanupErrors,
             "Plugin cleanup failed. All registered finalizers were attempted.",
           );
+          recordFailure(error, { phase: "cleanup" });
+          throw error;
         }
       });
     }
@@ -56,23 +67,14 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
         onCleanup(cleanup): void {
           if (!setupActive)
             throw new Error(`Plugin "${plugin.id}" setup context is no longer active.`);
-          // An open sequential Scope registers synchronously and closes in LIFO order.
-          Effect.runSync(
-            Scope.addFinalizer(
-              scope,
-              Effect.promise(async () => {
-                try {
-                  await cleanup();
-                } catch (error) {
-                  cleanupErrors.push(error);
-                }
-              }),
-            ),
-          );
+          finalizers.push({ pluginId: plugin.id, cleanup });
         },
       };
       try {
         services.set(plugin, await plugin.setup(context));
+      } catch (error) {
+        recordFailure(error, { phase: "setup", pluginId: plugin.id });
+        throw error;
       } finally {
         setupActive = false;
       }
@@ -81,10 +83,12 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
     try {
       await stop();
     } catch {
-      throw new AggregateError(
+      const error = new AggregateError(
         [setupError, ...cleanupErrors],
         "Plugin initialization failed and rollback reported cleanup errors.",
       );
+      recordFailure(error, { phase: "setup", pluginId: lifecycleFailure(setupError)?.pluginId });
+      throw error;
     }
     throw setupError;
   }
@@ -104,4 +108,21 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
       ),
     stop,
   };
+}
+
+export interface LifecycleFailure {
+  readonly phase: "setup" | "cleanup";
+  readonly pluginId?: string;
+}
+const failures = new WeakMap<object, LifecycleFailure>();
+function recordFailure(error: unknown, failure: LifecycleFailure): void {
+  if ((typeof error === "object" && error !== null) || typeof error === "function") {
+    failures.set(error, failure);
+  }
+}
+/** Read diagnostic attribution without wrapping or mutating the original error. */
+export function lifecycleFailure(error: unknown): LifecycleFailure | undefined {
+  return (typeof error === "object" && error !== null) || typeof error === "function"
+    ? failures.get(error)
+    : undefined;
 }
