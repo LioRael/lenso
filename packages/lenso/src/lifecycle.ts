@@ -37,42 +37,54 @@ export async function startApp(
   ): Promise<T> {
     const started = performance.now();
     let outcome = "success";
-    return trace.getTracer("lenso").startActiveSpan(
-      `lenso.plugin.${phase}`,
-      {
-        attributes: { "lenso.instance.id": instanceId, "lenso.plugin.id": pluginId },
-      },
-      async (span) => {
+    const execute = async (span?: import("@opentelemetry/api").Span) => {
+      try {
+        const result = await call();
         try {
-          const result = await call();
-          try {
-            logger?.debug(
-              { instanceId, pluginId, phase, outcome: "success" },
-              "Plugin lifecycle completed",
-            );
-          } catch {}
-          return result;
-        } catch (error) {
-          outcome = "failure";
-          span.setStatus({ code: SpanStatusCode.ERROR });
-          try {
-            logger?.error(
-              { instanceId, pluginId, phase, outcome: "failure" },
-              "Plugin lifecycle failed",
-            );
-          } catch {}
-          throw error;
-        } finally {
+          logger?.debug(
+            { instanceId, pluginId, phase, outcome: "success" },
+            "Plugin lifecycle completed",
+          );
+        } catch {}
+        return result;
+      } catch (error) {
+        outcome = "failure";
+        try {
+          span?.setStatus({ code: SpanStatusCode.ERROR });
+        } catch {}
+        try {
+          logger?.error(
+            { instanceId, pluginId, phase, outcome: "failure" },
+            "Plugin lifecycle failed",
+          );
+        } catch {}
+        throw error;
+      } finally {
+        try {
           const meter = metrics.getMeter("lenso");
           meter.createCounter("lenso.plugin.calls").add(1, { phase, outcome });
           meter
             .createHistogram("lenso.plugin.duration", { unit: "ms" })
             .record(performance.now() - started, { phase, outcome });
           if (outcome === "failure") meter.createCounter("lenso.plugin.errors").add(1, { phase });
-          span.end();
-        }
-      },
-    );
+        } catch {}
+        try {
+          span?.end();
+        } catch {}
+      }
+    };
+    let execution: Promise<T> | undefined;
+    try {
+      return trace
+        .getTracer("lenso")
+        .startActiveSpan(
+          `lenso.plugin.${phase}`,
+          { attributes: { "lenso.instance.id": instanceId, "lenso.plugin.id": pluginId } },
+          (span) => (execution = execute(span)),
+        );
+    } catch {
+      return execution ?? execute();
+    }
   }
   const finalizers: Array<{
     pluginId: string;

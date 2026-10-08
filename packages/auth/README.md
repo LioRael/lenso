@@ -90,6 +90,12 @@ Only exact `true` grants access. Known Auth errors are normalized to safe
 messages; unknown provider, membership or policy failures become
 `SERVICE_UNAVAILABLE`. Cancellation retains its signal reason.
 
+`authErrorDiagnostic(error)` recognizes only an `AuthError` instance and returns
+fixed `{code, phase, message}` metadata, never mutable exception text or causes.
+Applications can pass it as an Operation's `mapError` without making their
+business service depend on CLI or Engine errors. Auth and oRPC boundaries retain
+provider causes for in-process diagnosis; HTTP responses still use safe messages.
+
 ## Current membership and per-entry requirements
 
 Use your existing membership tables directly. A reader returns a typed grant or

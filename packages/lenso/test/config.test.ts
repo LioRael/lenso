@@ -274,6 +274,7 @@ describe("plugin configuration", () => {
 
   test("schema errors attribute only present raw input fields, not derived or missing fields", async () => {
     const contract = definePluginConfig({
+      fields: [{ path: ["port"] }, { path: ["derived"] }, { path: ["missing"] }],
       schema: schema<Record<string, unknown>, Record<string, unknown>>(() => ({
         issues: [
           { path: ["port"], message: "private rejected value" },
@@ -318,6 +319,7 @@ describe("plugin configuration", () => {
 
   test("redacted diagnostic keys never collide with raw-input attribution keys", async () => {
     const contract = definePluginConfig({
+      fields: [{ path: ["enabled?"] }],
       schema: schema<Record<string, unknown>, Record<string, unknown>>(() => ({
         issues: [{ path: [{ key: "enabled?" }], message: "private error" }],
       })),
@@ -478,6 +480,7 @@ describe("plugin configuration", () => {
 
   test("schema issues and adapter errors retain only safe paths and scrub credential locations", async () => {
     const contract = definePluginConfig({
+      fields: [{ path: ["nested", 0, "field"] }],
       schema: schema<Record<string, unknown>, Record<string, unknown>>(() => ({
         issues: [
           {
@@ -496,6 +499,7 @@ describe("plugin configuration", () => {
       descriptor: {
         id: "file",
         kind: "file",
+        fields: [{ path: ["file"] }],
         location: { file: "https://user:SECRET@example.com/config?token=SECRET" },
       },
       async read() {
@@ -512,6 +516,31 @@ describe("plugin configuration", () => {
     });
     expect(sourceError.cause).toBeUndefined();
     expect(sourceError.message).toBe("Configuration source failed.");
+  });
+
+  test("dynamic configuration keys never become public diagnostic paths", async () => {
+    const marker = "PRIVATE-record-key";
+    const contract = definePluginConfig({
+      jsonSchema: () => ({
+        type: "object",
+        properties: { labels: { type: "object", additionalProperties: { type: "number" } } },
+      }),
+      schema: schema<Record<string, unknown>, Record<string, unknown>>(() => ({
+        issues: [
+          { path: ["labels", marker], message: marker },
+          { path: [marker], message: marker },
+        ],
+      })),
+    });
+    const error = await failure(() =>
+      resolveConfig("plugin", {
+        contract,
+        sources: [valuesSource({ labels: { [marker]: "bad" } })],
+      }),
+    );
+    expect(error.diagnostics.map((item) => item.path)).toEqual([["labels"], []]);
+    expect(JSON.stringify(error)).not.toContain(marker);
+    expect(error.cause).toBeUndefined();
   });
 
   test("schema-thrown errors are replaced even if they masquerade as ConfigError", async () => {

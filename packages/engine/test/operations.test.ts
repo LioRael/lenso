@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { definePlugin, startApp } from "@lenso/core";
-import { EngineError } from "../src/diagnostics";
+import { EngineError, diagnostic } from "../src/diagnostics";
+import { metrics, trace } from "@opentelemetry/api";
+import { spyOn } from "bun:test";
 import {
   defineOperation,
   describeOperation,
@@ -8,6 +10,7 @@ import {
   resolveOperation,
   validateOperationInput,
   invokeValidatedOperation,
+  executeOperation,
   type Operation,
 } from "../src/operations";
 
@@ -72,6 +75,7 @@ test("omitted semantics stay unknown; malformed hints fail discovery", () => {
     { context: false },
     { confirmation: true },
     { approval: "client-confirmation" },
+    { mapError: {} },
   ]) {
     expect(() => validateOperations([plugin], [{ ...operation, ...invalid }])).toThrow();
   }
@@ -143,7 +147,7 @@ test("shared calls validate raw transformed input once and retain exact service 
       },
     });
     await expect(validateOperationInput(operation, 2)).rejects.toMatchObject({
-      diagnostic: { code: "invalid-input", phase: "input", details: { paths: [["value"]] } },
+      diagnostic: { code: "invalid-input", phase: "input", details: { paths: [] } },
     });
   } finally {
     await running.stop();
@@ -302,3 +306,137 @@ function operationTypeChecks() {
   });
 }
 void operationTypeChecks;
+
+test("domain projectors keep original causes and do not classify output or gate failures", async () => {
+  class DomainError extends Error {}
+  const original = new DomainError("private input");
+  const trusted = new EngineError({ code: "custom-code", phase: "invoke", message: "Safe." });
+  let thrown: unknown = original;
+  let mappings = 0;
+  const instance = definePlugin({
+    id: "domain",
+    setup: () => ({
+      run(_input: unknown) {
+        if (thrown) throw thrown;
+        return undefined;
+      },
+    }),
+  });
+  const operation = defineOperation({
+    plugin: instance,
+    method: "run",
+    input,
+    description: "Run",
+    mapError(error) {
+      mappings++;
+      return error instanceof DomainError
+        ? { code: "not-found", phase: "invoke", message: "Resource not found." }
+        : undefined;
+    },
+  });
+  const running = await startApp({ plugins: [instance] });
+  try {
+    const failure = await invokeValidatedOperation(running, operation, {}).catch((error) => error);
+    expect((failure as EngineError).cause).toBe(original);
+    expect(diagnostic(failure)).toMatchObject({ code: "not-found" });
+    expect(diagnostic(failure).causes).toBeUndefined();
+    thrown = trusted;
+    expect(await invokeValidatedOperation(running, operation, {}).catch((error) => error)).toBe(
+      trusted,
+    );
+    thrown = { code: "not-found", message: "private" };
+    expect(
+      await invokeValidatedOperation(running, operation, {}).catch((error) => error),
+    ).toMatchObject({ diagnostic: { code: "invocation-failed" }, cause: thrown });
+    thrown = original;
+    expect(
+      await invokeValidatedOperation(
+        running,
+        {
+          ...operation,
+          mapError() {
+            throw new Error();
+          },
+        },
+        {},
+      ).catch((error) => error),
+    ).toMatchObject({ cause: original });
+    const before = mappings;
+    thrown = null;
+    await expect(invokeValidatedOperation(running, operation, {})).rejects.toMatchObject({
+      diagnostic: { code: "serialization-failed" },
+    });
+    await expect(
+      invokeValidatedOperation(running, { ...operation, approval: "required" }, {}),
+    ).rejects.toMatchObject({ diagnostic: { code: "approval-required" } });
+    expect(mappings).toBe(before);
+  } finally {
+    await running.stop();
+  }
+});
+
+test("input paths omit dynamic keys and runtime-only schema paths", async () => {
+  const operation = defineOperation({
+    plugin,
+    method: "cancel",
+    description: "Cancel",
+    input: {
+      "~standard": {
+        version: 1,
+        vendor: "test",
+        jsonSchema: {
+          input: () => ({
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              record: { type: "object", additionalProperties: { type: "string" } },
+            },
+          }),
+        },
+        validate: () => ({
+          issues: [
+            { message: "private", path: ["name"] },
+            { message: "private", path: ["record", "secret-user-key"] },
+            { message: "private", path: ["unknown-secret"] },
+          ],
+        }),
+      },
+    },
+  });
+  const error = await validateOperationInput(operation, {}).catch((cause) => cause);
+  expect((error as EngineError).diagnostic.details).toEqual({ paths: [["name"]] });
+});
+
+test("throwing telemetry cannot replace success or original service failure", async () => {
+  const original = new Error("business");
+  let fail = false;
+  let calls = 0;
+  const instance = definePlugin({
+    id: "telemetry",
+    setup: () => ({
+      run(_input: unknown) {
+        calls++;
+        if (fail) throw original;
+        return 7;
+      },
+    }),
+  });
+  const operation = defineOperation({ plugin: instance, method: "run", input, description: "Run" });
+  const running = await startApp({ plugins: [instance] });
+  const meter = spyOn(metrics, "getMeter").mockImplementation(() => {
+    throw new Error("meter");
+  });
+  const tracer = spyOn(trace, "getTracer").mockImplementation(() => {
+    throw new Error("tracer");
+  });
+  try {
+    expect(await executeOperation(running, operation, {})).toBe(7);
+    fail = true;
+    expect(await executeOperation(running, operation, {}).catch((error) => error)).toBe(original);
+    expect(calls).toBe(2);
+  } finally {
+    meter.mockRestore();
+    tracer.mockRestore();
+    await running.stop();
+  }
+});

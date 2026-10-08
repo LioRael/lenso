@@ -53,11 +53,12 @@ test("JSON CLI: inspect without setup, shared Zod validation, stdout/stderr, inp
   expect(description.code).toBe(0);
   expect(description.err).toBe("");
   expect(description.result.data.operations[0].inputSchema.properties.name.type).toBe("string");
-  expect((await run(["inspect", "example", "missing"])).result.error).toMatchObject({
+  const unknown = (await run(["inspect", "example", "missing"])).result.error;
+  expect(unknown).toMatchObject({
     code: "unknown-operation",
     pluginId: "example",
-    operation: "example.missing",
   });
+  expect(unknown.operation).toBeUndefined();
   const success = await run(["call", "example", "greet", "--stdin"], '{"name":"Ada"}');
   expect(success).toMatchObject({
     code: 0,

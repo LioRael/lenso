@@ -59,8 +59,22 @@ input. Never use a shared mutable current actor/credential or global Context.
 The common Engine path validates raw Standard Schema input once, preserves the
 own service method's `this`, retains existing operation telemetry, and handles
 opaque unknown errors plus finite JSON output. Default success/catalog output
-budget is 1 MiB (`maxOutputBytes`); oRPC diagnostics have a separate fixed 4 KiB
-budget and a safe fallback. Byte budgets do not impose service memory/CPU quotas.
+budget is 1 MiB (`maxOutputBytes`); oRPC errors use fixed bounded messages and
+typed safe data declared through synchronous `.errors` schemas. Invalid input
+is `BAD_REQUEST`/400; missing authentication or reauthentication is
+`UNAUTHORIZED`/401; domain permission denial is `FORBIDDEN`/403. Unknown plugin,
+unknown operation and caller-hidden operation all return the same `NOT_FOUND`/404
+message/data, omitting requested identifiers. Known mapped resource-not-found,
+conflict and size failures use 404, 409 and 413 respectively. Unexpected,
+unknown, aggregate and cleanup failures are opaque `MANAGE_FAILED`/500.
+Explicitly classified Auth/queue unavailability is `SERVICE_UNAVAILABLE`/503,
+Storage provider failure is `BAD_GATEWAY`/502, unsupported operations are
+`NOT_IMPLEMENTED`/501, and request cancellation is `CLIENT_CLOSED_REQUEST`/499.
+Required confirmation/approval refusal is `FORBIDDEN`/403. Cancellation does not
+prove that effects were rolled back; none of these mappings grants safe retries.
+Original causes remain internal. Applications declare `Operation.mapError`
+using package `instanceof` projectors for service/binding domain errors; only the
+optional `./orpc` entry imports Auth. Byte budgets do not impose service memory/CPU quotas.
 Missing JSON Schema converters remain runtime-only; agent/MCP tools reject them.
 No output schema is guessed from input.
 

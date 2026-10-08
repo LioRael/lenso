@@ -15,6 +15,14 @@ Private object storage with explicit Lenso instance references. Business methods
 
 Install `@lenso/core` and this package. Install the three AWS SDK peers for `/s3`, or `drizzle-orm@0.45.3` for the database subpaths. Do not import `/local` or `/s3` in a Workers entry. Inspect `storage.capabilities` before selecting signing, conditional or range operations; unsupported operations throw `StorageError` with `code: "unsupported"`.
 
+`StorageError` retains its internal message and optional cause. Its runtime code
+is restricted to the declared domain codes; an unsupported code becomes
+`provider`. Use `storageErrorDiagnostic(error)` for a transport-neutral fixed
+`{code, phase, message}` projection of a recognized instance. Do not publish the
+original provider text. The existing `/fetch` helpers retain their JSON format
+and status mapping, not Problem Details; applications may explicitly opt into
+the optional Web helper at a separate HTTP boundary.
+
 ## Multiple instances and object streams
 
 ```ts

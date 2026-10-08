@@ -1,4 +1,4 @@
-import { StorageError } from "./index";
+import { StorageError, storageErrorDiagnostic } from "./index";
 import type { Files, FileUploadInput } from "./files";
 
 export interface FileFetchContext {
@@ -16,7 +16,8 @@ async function respond(operation: () => Promise<Response>): Promise<Response> {
   try {
     return await operation();
   } catch (error) {
-    if (!(error instanceof StorageError)) throw error;
+    const safe = storageErrorDiagnostic(error);
+    if (!safe) throw error;
     const status = {
       "invalid-key": 400,
       "invalid-input": 400,
@@ -27,9 +28,9 @@ async function respond(operation: () => Promise<Response>): Promise<Response> {
       "too-large": 413,
       aborted: 499,
       provider: 502,
-    }[error.code];
+    }[safe.code];
     return Response.json(
-      { error: error.code },
+      { error: safe.code },
       {
         status,
         headers: { "cache-control": "private, no-store" },

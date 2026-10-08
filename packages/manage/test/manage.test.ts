@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { defineApp, definePlugin, startApp } from "@lenso/core";
 import { defineOperation, type Operation } from "@lenso/engine/operations";
-import { stableJson } from "@lenso/engine/diagnostics";
-import { audience, createAuth, defineSource, realm } from "@lenso/auth";
+import { EngineError, stableJson } from "@lenso/engine/diagnostics";
+import { AuthError, audience, createAuth, defineSource, realm } from "@lenso/auth";
 import { bearerEvidence } from "@lenso/auth/fetch";
-import { call, type RouterClient } from "@orpc/server";
+import { call, ORPCError, type RouterClient } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
-import { createORPCClient } from "@orpc/client";
+import { createORPCClient, isDefinedError } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import { z } from "zod";
 import {
@@ -293,6 +293,10 @@ async function securedService() {
     input: schema,
     description: "Read records",
     context: true,
+    mapError: (error) =>
+      error instanceof AuthError
+        ? { code: error.code, phase: "invoke", message: error.message }
+        : undefined,
   });
   const running = await startApp(defineApp({ plugins: [plugin] }));
   return {
@@ -351,7 +355,7 @@ test("agent and oRPC invoke the same service with isolated fresh evidence and re
       { tenantId: "south", subjectId: "bob" },
     ]);
     expect(fixture.counts().transformations - before).toBe(2);
-    await expect(invoke("alice", "south")).rejects.toMatchObject({ code: "MANAGE_FAILED" });
+    await expect(invoke("alice", "south")).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(tools[0]!.invoke({ tenantId: "south" })).rejects.toThrow();
     const wrongAudience = createManageAdapter({
       running,
@@ -367,7 +371,7 @@ test("agent and oRPC invoke the same service with isolated fresh evidence and re
     expect(await call(router.catalog, undefined, { context: context("alice") })).toEqual([]);
     allowed = true;
     fixture.revoke();
-    await expect(invoke("alice", "north")).rejects.toMatchObject({ code: "MANAGE_FAILED" });
+    await expect(invoke("alice", "north")).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(tools[0]!.invoke({ tenantId: "north" })).rejects.toThrow();
     expect(fixture.counts().calls).toBe(3);
   } finally {
@@ -527,8 +531,8 @@ test("borrowed exact instances and catalog/error byte budgets fail closed", asyn
       throw new Error("Expected bounded error");
     } catch (error) {
       expect(error).toMatchObject({
-        code: "MANAGE_FAILED",
-        data: { diagnostic: { code: "output-too-large" } },
+        code: "NOT_FOUND",
+        data: { diagnostic: { code: "NOT_FOUND" } },
       });
       expect(stableJson((error as { data: unknown }).data).length).toBeLessThan(4096);
     }
@@ -595,16 +599,146 @@ test("explicit Fetch mounting uses v2 client requests and current Auth catalog e
       { tenantId: "south", subjectId: "bob" },
     ]);
     await expect(bob.invoke({ key, input: { tenantId: "north" } })).rejects.toMatchObject({
-      code: "MANAGE_FAILED",
+      code: "FORBIDDEN",
     });
     fixture.revoke();
-    await expect(alice.catalog()).rejects.toMatchObject({ code: "MANAGE_FAILED" });
+    await expect(alice.catalog()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(alice.invoke({ key, input: { tenantId: "north" } })).rejects.toMatchObject({
-      code: "MANAGE_FAILED",
+      code: "UNAUTHORIZED",
     });
     expect(running.status()).toEqual([{ id: "records", state: "ready" }]);
   } finally {
     await running.stop();
     await auth.close();
+  }
+});
+
+test("standard RPC clients receive fixed typed HTTP errors without requested identifiers", async () => {
+  class DomainError extends Error {
+    constructor(readonly kind: string) {
+      super("secret internal");
+    }
+  }
+  let failure: unknown;
+  let allowed = true;
+  const plugin = definePlugin({
+    id: "classification",
+    setup: () => ({
+      run(_input: { name: string }) {
+        throw failure;
+      },
+    }),
+  });
+  const operation = defineOperation({
+    plugin,
+    method: "run",
+    input: z.object({ name: z.string() }),
+    description: "Run",
+    mapError: (error) =>
+      error instanceof DomainError
+        ? { code: error.kind, phase: "invoke", message: "Safe domain message." }
+        : undefined,
+  });
+  const running = await startApp({ plugins: [plugin] });
+  const router = createManageRouter({
+    running,
+    plugins: [plugin],
+    operations: [operation],
+    evidence: () => ({ evidence: null }),
+    canList: () => allowed,
+    binding: () => ({}),
+  });
+  const handler = new RPCHandler(router);
+  let httpStatus = 0;
+  let wire = "";
+  const client = createORPCClient<RouterClient<typeof router>>(
+    new RPCLink({
+      origin: "https://manage.test",
+      url: "/rpc",
+      async fetch(url, init) {
+        const request = new Request(url, init);
+        const { response } = await handler.handle(request, {
+          prefix: "/rpc",
+          context: { request },
+        });
+        httpStatus = response!.status;
+        wire = await response!.clone().text();
+        return response!;
+      },
+    }),
+  );
+  const invoke = async (
+    pluginId = plugin.id,
+    method = "run",
+    rawInput: unknown = { name: "ok" },
+  ) => {
+    const error = await client
+      .invoke({ pluginId, method, input: rawInput })
+      .catch((cause: unknown) => cause);
+    if (!(error instanceof ORPCError)) throw new Error("Expected an oRPC failure.");
+    return error;
+  };
+  try {
+    const hidden = await invoke("requested-secret-id");
+    expect(hidden).toMatchObject({ code: "NOT_FOUND" });
+    expect(isDefinedError(hidden)).toBe(true);
+    expect(httpStatus).toBe(404);
+    expect(wire).not.toContain("requested-secret-id");
+    expect((await invoke(plugin.id, "requested-secret-method")).data).toEqual(hidden.data);
+    allowed = false;
+    expect((await invoke()).data).toEqual(hidden.data);
+    allowed = true;
+    expect(await invoke(plugin.id, "run", {})).toMatchObject({ code: "BAD_REQUEST" });
+    expect(httpStatus).toBe(400);
+    const envelopeFailure = await client
+      .invoke({ key: "x", actor: "forged" } as never)
+      .catch((e) => e);
+    expect(envelopeFailure).toMatchObject({ code: "BAD_REQUEST" });
+    expect(httpStatus).toBe(400);
+    for (const [kind, code, status] of [
+      ["UNAUTHORIZED", "UNAUTHORIZED", 401],
+      ["REAUTHENTICATION_REQUIRED", "UNAUTHORIZED", 401],
+      ["FORBIDDEN", "FORBIDDEN", 403],
+      ["not-found", "NOT_FOUND", 404],
+      ["conflict", "CONFLICT", 409],
+      ["deduplication-conflict", "CONFLICT", 409],
+      ["invalid-key", "BAD_REQUEST", 400],
+      ["too-large", "PAYLOAD_TOO_LARGE", 413],
+      ["provider", "BAD_GATEWAY", 502],
+      ["provider-unavailable", "SERVICE_UNAVAILABLE", 503],
+      ["SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE", 503],
+      ["closed", "SERVICE_UNAVAILABLE", 503],
+      ["unsupported", "NOT_IMPLEMENTED", 501],
+      ["aborted", "CLIENT_CLOSED_REQUEST", 499],
+      ["confirmation-required", "FORBIDDEN", 403],
+      ["approval-required", "FORBIDDEN", 403],
+    ] as const) {
+      failure = new DomainError(kind);
+      const error = await invoke();
+      expect(error).toMatchObject({ code, data: { diagnostic: { code } } });
+      expect(httpStatus).toBe(status);
+      expect(isDefinedError(error)).toBe(true);
+      expect(wire).not.toContain("secret internal");
+      expect(wire).not.toContain("classification");
+    }
+    failure = new AuthError("SERVICE_UNAVAILABLE");
+    expect(await invoke()).toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    expect(httpStatus).toBe(503);
+    for (const unknown of [
+      { code: "FORBIDDEN", message: "secret fake" },
+      new Error("secret internal"),
+      new AggregateError([new DomainError("not-found"), new Error("cleanup")]),
+      new EngineError(
+        { code: "invocation-and-cleanup-failed", phase: "invoke", message: "Safe" },
+        { cause: new DomainError("not-found") },
+      ),
+    ]) {
+      failure = unknown;
+      expect(await invoke()).toMatchObject({ code: "MANAGE_FAILED" });
+      expect(httpStatus).toBe(500);
+      expect(wire).not.toContain("secret");
+    }
+  } finally {
+    await running.stop();
   }
 });

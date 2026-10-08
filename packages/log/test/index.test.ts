@@ -150,4 +150,65 @@ describe("@lenso/log", () => {
     expect(JSON.parse(lines[1]!).failure).toEqual({ type: "Error" });
     expect(lines.join("")).not.toContain("hidden-value");
   });
+
+  test("omits unknown structured errors, causes and untrusted codes", () => {
+    const { logger, lines } = captureLogger();
+    const error = new Error("private-message", { cause: new Error("private-cause") });
+    error.stack = "private-stack";
+    const unknown = {
+      message: "private-message",
+      stack: "private-stack",
+      code: "private-code",
+      cause: error,
+    };
+    for (const value of [error, unknown, "private-primitive", null]) {
+      logger.error({ err: value });
+      logger.error({ error: value });
+      logger.child({ pluginId: "safe-plugin" }).error({ err: value });
+    }
+    expect(lines.join("")).not.toContain("private-");
+    expect(lines.map((line) => JSON.parse(line).msg)).toEqual(
+      Array.from({ length: 12 }, () => "Error details omitted"),
+    );
+  });
+
+  test("only classifier code and phase survive, and classifier failures are optional", () => {
+    const lines: string[] = [];
+    const original = new Error("private-message");
+    const logger = createLogger({
+      classifyError(error) {
+        expect(error).toBe(original);
+        return { code: "PUBLIC_FAILURE", phase: "handler", message: "private-message" };
+      },
+      stream: { write: (line) => lines.push(line) },
+    });
+    logger.child({ requestId: "safe-request" }).error({ err: original });
+    expect(JSON.parse(lines[0]!).err).toEqual({
+      type: "Error",
+      code: "PUBLIC_FAILURE",
+      phase: "handler",
+    });
+    expect(lines[0]).not.toContain("private-");
+    const failing = createLogger({
+      classifyError() {
+        throw new Error("private-classifier-failure");
+      },
+      stream: { write: (line) => lines.push(line) },
+    });
+    expect(() => failing.error(original)).not.toThrow();
+    expect(JSON.parse(lines[1]!).err).toEqual({ type: "Error" });
+    expect(lines[1]).not.toContain("private-");
+  });
+
+  test("custom serializers and external logger policies remain explicit owner choices", () => {
+    const lines: string[] = [];
+    const stream = { write: (line: string) => lines.push(line) };
+    const raw = new Error("private-owner-choice");
+    createLogger({ stream, serializers: { err: pino.stdSerializers.err } }).error(raw);
+    const external = pino({}, stream);
+    createLogger({ logger: external }).error(raw);
+    createLogger({ logger: external, traceContext: false }).error(raw);
+    expect(lines).toHaveLength(3);
+    expect(lines.every((line) => line.includes("private-owner-choice"))).toBe(true);
+  });
 });

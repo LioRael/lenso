@@ -1,8 +1,8 @@
-import { AuthError } from "@lenso/auth";
+import { AuthError, authErrorDiagnostic } from "@lenso/auth";
 import { definePlugin, type Plugin } from "@lenso/core";
-import { CliError } from "@lenso/cli";
 import { defineOperation } from "@lenso/engine/operations";
 import { defineManage } from "@lenso/manage";
+import { storageErrorDiagnostic } from "@lenso/storage";
 import type { Files } from "@lenso/storage/files";
 import type { z } from "zod";
 import type { NotesAuthentication } from "./auth";
@@ -22,20 +22,6 @@ type NotesRemovalAudit = Pick<AuditService<NotesActor<"remove"> | null>, "append
 export interface NotesOperationContext {
   evidence: string | null;
   signal?: AbortSignal;
-}
-
-async function safeAuth<T>(work: () => Promise<T>): Promise<T> {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof AuthError)
-      throw new CliError({
-        code: error.code,
-        phase: "invoke",
-        message: new AuthError(error.code).message,
-      });
-    throw error;
-  }
 }
 
 /** Credentials are trusted application configuration, never operation input. */
@@ -69,72 +55,71 @@ export function createNotesOperationsService(
     );
   }
   return {
-    create(input: z.input<typeof noteInput>, context: NotesOperationContext = fallback()) {
-      return safeAuth(async () =>
-        notes.create(
-          await authentication.for(notesAudiences.create).required(context.evidence, {
-            signal: context.signal,
-          }),
-          input,
-        ),
+    async create(input: z.input<typeof noteInput>, context: NotesOperationContext = fallback()) {
+      return notes.create(
+        await authentication.for(notesAudiences.create).required(context.evidence, {
+          signal: context.signal,
+        }),
+        input,
       );
     },
-    list(_input: z.input<typeof notesListInput>, context: NotesOperationContext = fallback()) {
-      return safeAuth(async () =>
-        notes.list(
-          await authentication.for(notesAudiences.list).required(context.evidence, {
-            signal: context.signal,
-          }),
-        ),
+    async list(
+      _input: z.input<typeof notesListInput>,
+      context: NotesOperationContext = fallback(),
+    ) {
+      return notes.list(
+        await authentication.for(notesAudiences.list).required(context.evidence, {
+          signal: context.signal,
+        }),
       );
     },
-    read(input: z.input<typeof noteLookupInput>, context: NotesOperationContext = fallback()) {
-      return safeAuth(async () =>
-        notes.read(
-          await authentication.for(notesAudiences.read).required(context.evidence, {
-            signal: context.signal,
-          }),
-          input.id,
-        ),
+    async read(
+      input: z.input<typeof noteLookupInput>,
+      context: NotesOperationContext = fallback(),
+    ) {
+      return notes.read(
+        await authentication.for(notesAudiences.read).required(context.evidence, {
+          signal: context.signal,
+        }),
+        input.id,
       );
     },
-    update(
+    async update(
       { id, ...input }: z.input<typeof noteUpdateInput>,
       context: NotesOperationContext = fallback(),
     ) {
-      return safeAuth(async () =>
-        notes.update(
-          await authentication.for(notesAudiences.update).required(context.evidence, {
-            signal: context.signal,
-          }),
-          id,
-          input,
-        ),
+      return notes.update(
+        await authentication.for(notesAudiences.update).required(context.evidence, {
+          signal: context.signal,
+        }),
+        id,
+        input,
       );
     },
-    remove(input: z.input<typeof noteLookupInput>, context: NotesOperationContext = fallback()) {
-      return safeAuth(async () => {
-        const actor = await authentication.for(notesAudiences.remove).required(context.evidence, {
-          signal: context.signal,
-        });
-        let removed: boolean;
-        try {
-          removed = await notes.remove(actor, input.id);
-        } catch (error) {
-          const denied =
-            error instanceof AuthError &&
-            (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN");
-          await recordRemoval(
-            actor,
-            input.id,
-            denied ? "denied" : "unknown",
-            error instanceof AuthError ? error.code : "operation-unconfirmed",
-          );
-          throw error;
-        }
-        await recordRemoval(actor, input.id, "success", removed ? "removed" : "missing", removed);
-        return { removed };
+    async remove(
+      input: z.input<typeof noteLookupInput>,
+      context: NotesOperationContext = fallback(),
+    ) {
+      const actor = await authentication.for(notesAudiences.remove).required(context.evidence, {
+        signal: context.signal,
       });
+      let removed: boolean;
+      try {
+        removed = await notes.remove(actor, input.id);
+      } catch (error) {
+        const denied =
+          error instanceof AuthError &&
+          (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN");
+        await recordRemoval(
+          actor,
+          input.id,
+          denied ? "denied" : "unknown",
+          error instanceof AuthError ? error.code : "operation-unconfirmed",
+        );
+        throw error;
+      }
+      await recordRemoval(actor, input.id, "success", removed ? "removed" : "missing", removed);
+      return { removed };
     },
   };
 }
@@ -164,6 +149,7 @@ export function createNotesOperations(options: {
       method: "create",
       context: true,
       input: noteInput,
+      mapError: authErrorDiagnostic,
       effect: "write",
       destructive: false,
       retry: "unsafe",
@@ -177,6 +163,7 @@ export function createNotesOperations(options: {
       method: "list",
       context: true,
       input: notesListInput,
+      mapError: authErrorDiagnostic,
       effect: "read",
       destructive: false,
       retry: "safe",
@@ -190,6 +177,7 @@ export function createNotesOperations(options: {
       method: "read",
       context: true,
       input: noteLookupInput,
+      mapError: authErrorDiagnostic,
       effect: "read",
       destructive: false,
       retry: "safe",
@@ -203,6 +191,7 @@ export function createNotesOperations(options: {
       method: "update",
       context: true,
       input: noteUpdateInput,
+      mapError: authErrorDiagnostic,
       effect: "write",
       destructive: false,
       retry: "unsafe",
@@ -216,6 +205,7 @@ export function createNotesOperations(options: {
       method: "remove",
       context: true,
       input: noteLookupInput,
+      mapError: authErrorDiagnostic,
       effect: "write",
       destructive: true,
       retry: "safe",
@@ -247,27 +237,26 @@ export function createNotesFileOperations(options: {
       const authentication = lifecycle.get(options.authentication);
       const fallback = (): NotesOperationContext => ({ evidence: options.credential?.() ?? null });
       return {
-        metadata(
+        async metadata(
           input: z.input<typeof noteFileInput>,
           context: NotesOperationContext = fallback(),
         ) {
-          return safeAuth(async () =>
-            files.metadata(
-              await authentication.for(notesAudiences.fileMetadata).required(context.evidence, {
-                signal: context.signal,
-              }),
-              input.fileId,
-            ),
+          return files.metadata(
+            await authentication.for(notesAudiences.fileMetadata).required(context.evidence, {
+              signal: context.signal,
+            }),
+            input.fileId,
           );
         },
-        delete(input: z.input<typeof noteFileInput>, context: NotesOperationContext = fallback()) {
-          return safeAuth(async () =>
-            files.delete(
-              await authentication.for(notesAudiences.fileDelete).required(context.evidence, {
-                signal: context.signal,
-              }),
-              input.fileId,
-            ),
+        async delete(
+          input: z.input<typeof noteFileInput>,
+          context: NotesOperationContext = fallback(),
+        ) {
+          return files.delete(
+            await authentication.for(notesAudiences.fileDelete).required(context.evidence, {
+              signal: context.signal,
+            }),
+            input.fileId,
           );
         },
       };
@@ -280,6 +269,7 @@ export function createNotesFileOperations(options: {
       method: "metadata",
       context: true,
       input: noteFileInput,
+      mapError: (error) => authErrorDiagnostic(error) ?? storageErrorDiagnostic(error),
       effect: "read",
       destructive: false,
       retry: "safe",
@@ -294,6 +284,7 @@ export function createNotesFileOperations(options: {
       method: "delete",
       context: true,
       input: noteFileInput,
+      mapError: (error) => authErrorDiagnostic(error) ?? storageErrorDiagnostic(error),
       effect: "write",
       destructive: true,
       retry: "safe",

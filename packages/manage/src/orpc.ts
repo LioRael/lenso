@@ -1,9 +1,9 @@
 import { os, ORPCError } from "@orpc/server";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { EvidenceInput, FetchAuthContext } from "@lenso/auth/fetch";
-import { diagnostic, environmentSecrets, redact } from "@lenso/engine/diagnostics";
+import { AuthError } from "@lenso/auth";
+import { EngineError } from "@lenso/engine/diagnostics";
 import {
-  boundedJson,
   validateOperations,
   type Operation,
   type OperationBoundOptions,
@@ -69,12 +69,115 @@ const envelope: StandardSchemaV1<unknown, InvocationEnvelope> = {
   },
 };
 
+const classifications = {
+  BAD_REQUEST: { message: "Manage input is invalid." },
+  UNAUTHORIZED: { message: "Authentication is required." },
+  FORBIDDEN: { message: "Permission denied." },
+  NOT_FOUND: { message: "Manage operation or resource not found." },
+  CONFLICT: { message: "Manage request conflicts with current state." },
+  PAYLOAD_TOO_LARGE: { message: "Manage input exceeds the allowed size." },
+  SERVICE_UNAVAILABLE: { message: "Manage service is unavailable." },
+  BAD_GATEWAY: { message: "Manage provider operation failed." },
+  NOT_IMPLEMENTED: { message: "Manage operation is not supported." },
+  CLIENT_CLOSED_REQUEST: { message: "Request cancelled; operation effects may have completed." },
+  MANAGE_FAILED: { message: "Manage request failed." },
+} as const;
+type PublicCode = keyof typeof classifications;
+type SafeErrorData = {
+  schemaVersion: 1;
+  diagnostic: { code: PublicCode; phase: "invoke"; message: string };
+};
+const safeErrorData: StandardSchemaV1<unknown, SafeErrorData> = {
+  "~standard": {
+    version: 1,
+    vendor: "lenso-manage",
+    validate(value) {
+      if (value && typeof value === "object" && Reflect.get(value, "schemaVersion") === 1) {
+        const detail = Reflect.get(value, "diagnostic");
+        const code = detail && typeof detail === "object" ? Reflect.get(detail, "code") : undefined;
+        if (typeof code === "string" && Object.hasOwn(classifications, code)) {
+          const safeCode = code as PublicCode;
+          if (detail.phase === "invoke" && detail.message === classifications[safeCode].message)
+            return { value: publicData(safeCode) };
+        }
+      }
+      return { issues: [{ message: "Invalid safe Manage error data." }] };
+    },
+  },
+};
+function publicData(code: PublicCode): SafeErrorData {
+  return {
+    schemaVersion: 1,
+    diagnostic: { code, phase: "invoke", message: classifications[code].message },
+  };
+}
+function publicCode(error: unknown): PublicCode {
+  let code: string | undefined;
+  if (error instanceof AuthError) code = error.code;
+  else if (error instanceof EngineError) {
+    code = error.diagnostic.code;
+    if (["runtime-failed", "invocation-failed"].includes(code) && error.cause instanceof AuthError)
+      code = error.cause.code;
+  }
+  switch (code) {
+    case "invalid-input":
+    case "invalid-key":
+    case "invalid-task":
+    case "invalid-options":
+      return "BAD_REQUEST";
+    case "UNAUTHORIZED":
+    case "REAUTHENTICATION_REQUIRED":
+      return "UNAUTHORIZED";
+    case "FORBIDDEN":
+    case "forbidden":
+    case "permission-denied":
+    case "confirmation-required":
+    case "approval-required":
+      return "FORBIDDEN";
+    case "unknown-plugin":
+    case "unknown-operation":
+    case "forbidden-operation":
+    case "not-found":
+    case "job-expired":
+      return "NOT_FOUND";
+    case "conflict":
+    case "deduplication-conflict":
+      return "CONFLICT";
+    case "too-large":
+      return "PAYLOAD_TOO_LARGE";
+    case "SERVICE_UNAVAILABLE":
+    case "provider-unavailable":
+    case "closed":
+      return "SERVICE_UNAVAILABLE";
+    case "provider":
+      return "BAD_GATEWAY";
+    case "unsupported":
+      return "NOT_IMPLEMENTED";
+    case "aborted":
+      return "CLIENT_CLOSED_REQUEST";
+    default:
+      return "MANAGE_FAILED";
+  }
+}
+
 export function createManageRouter<E, O extends Operation>(options: ManageRouterOptions<E, O>) {
   const { running, evidence: extractEvidence, binding, canList, maxOutputBytes } = options;
   const plugins = Object.freeze([...options.plugins]);
   const operations = Object.freeze([...options.operations]);
   validateOperations(plugins, operations);
-  const base = os.$context<FetchAuthContext>();
+  const base = os.$context<FetchAuthContext>().errors({
+    BAD_REQUEST: { ...classifications.BAD_REQUEST, data: safeErrorData },
+    UNAUTHORIZED: { ...classifications.UNAUTHORIZED, data: safeErrorData },
+    FORBIDDEN: { ...classifications.FORBIDDEN, data: safeErrorData },
+    NOT_FOUND: { ...classifications.NOT_FOUND, data: safeErrorData },
+    CONFLICT: { ...classifications.CONFLICT, data: safeErrorData },
+    PAYLOAD_TOO_LARGE: { ...classifications.PAYLOAD_TOO_LARGE, data: safeErrorData },
+    SERVICE_UNAVAILABLE: { ...classifications.SERVICE_UNAVAILABLE, data: safeErrorData },
+    BAD_GATEWAY: { ...classifications.BAD_GATEWAY, data: safeErrorData },
+    NOT_IMPLEMENTED: { ...classifications.NOT_IMPLEMENTED, data: safeErrorData },
+    CLIENT_CLOSED_REQUEST: { ...classifications.CLIENT_CLOSED_REQUEST, data: safeErrorData },
+    MANAGE_FAILED: { ...classifications.MANAGE_FAILED, data: safeErrorData },
+  });
   async function request<T>(
     context: FetchAuthContext,
     action: (adapter: ReturnType<typeof createManageAdapter>) => Promise<T>,
@@ -91,21 +194,11 @@ export function createManageRouter<E, O extends Operation>(options: ManageRouter
       });
       return await action(adapter);
     } catch (error) {
-      let detail: unknown = diagnostic(error, { instanceId: running.instanceId, phase: "invoke" });
-      try {
-        boundedJson(detail, 4096);
-        detail = redact(detail, environmentSecrets());
-        boundedJson(detail, 4096);
-      } catch {
-        detail = {
-          code: "output-too-large",
-          phase: "output",
-          message: "Manage diagnostic exceeds the bounded error limit.",
-        };
-      }
-      throw new ORPCError("MANAGE_FAILED", {
-        message: "Manage request failed.",
-        data: { schemaVersion: 1, diagnostic: detail },
+      const code = publicCode(error);
+      throw new ORPCError(code, {
+        ...classifications[code],
+        data: publicData(code),
+        cause: error,
       });
     }
   }

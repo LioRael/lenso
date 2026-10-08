@@ -19,9 +19,14 @@ import {
 } from "@opentelemetry/sdk-metrics";
 import { BatchSpanProcessor, type Sampler, type SpanExporter } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
+import { createSafeSpanExporter } from "./errors";
+
+export { createSafeSpanExporter } from "./errors";
 
 export interface TelemetryOptions {
   readonly mode?: "owned" | "external";
+  /** Raw exception export requires an explicit SDK-owner decision. */
+  readonly errorDetails?: "omit" | "raw";
   readonly serviceName?: string;
   readonly sampler?: Sampler;
   readonly contextManager?: ContextManager;
@@ -185,11 +190,14 @@ export async function bootstrapTelemetry(options: TelemetryOptions = {}): Promis
     resource,
     sampler: options.sampler,
     spanProcessors: [
-      new BatchSpanProcessor(traceExporter, {
-        maxQueueSize: 2048,
-        maxExportBatchSize: 512,
-        exportTimeoutMillis: timeoutMs,
-      }),
+      new BatchSpanProcessor(
+        options.errorDetails === "raw" ? traceExporter : createSafeSpanExporter(traceExporter),
+        {
+          maxQueueSize: 2048,
+          maxExportBatchSize: 512,
+          exportTimeoutMillis: timeoutMs,
+        },
+      ),
     ],
   });
   const meterProvider = new MeterProvider({

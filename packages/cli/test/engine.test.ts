@@ -41,6 +41,18 @@ test("shared invocation preserves an application's explicit CLI error status", a
   expect(cleanup).toBe(1);
 });
 
+test("unknown selectors are not copied into public CLI diagnostics", async () => {
+  const plugin = definePlugin({ id: "declared", setup: () => ({}) });
+  const app = { plugins: [plugin], operations: [] };
+  for (const [pluginId, method] of [
+    ["PRIVATE-plugin", "PRIVATE-method"],
+    [plugin.id, "PRIVATE-method"],
+  ]) {
+    const failure = await invoke(app, pluginId!, method!, {}).catch((error) => error);
+    expect(JSON.stringify(diagnostic(failure))).not.toContain("PRIVATE-");
+  }
+});
+
 const directories: string[] = [];
 afterEach(async () => {
   for (const directory of directories.splice(0))

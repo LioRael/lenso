@@ -221,7 +221,7 @@ test("auth, runtime, serialization and size failures are safe tool results", asy
     });
     expect(largeDiagnostic.isError).toBe(true);
     expect(JSON.stringify(largeDiagnostic)).toContain("authorization-denied");
-    expect(JSON.stringify(largeDiagnostic)).toContain("truncated");
+    expect(JSON.stringify(largeDiagnostic)).not.toContain("details");
     const content = largeDiagnostic.content as Array<{ type: string; text: string }>;
     expect(Buffer.byteLength(content[0]!.text)).toBeLessThanOrEqual(512);
     expect(content[0]!.text).not.toContain("xxxx");

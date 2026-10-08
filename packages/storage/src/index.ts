@@ -11,15 +11,37 @@ export type StorageErrorCode =
   | "aborted"
   | "provider";
 
+const storageMessages: Record<StorageErrorCode, string> = {
+  "invalid-key": "Object key is invalid.",
+  "invalid-input": "Storage input is invalid.",
+  "not-found": "Object was not found.",
+  forbidden: "Storage access denied.",
+  unsupported: "Storage operation is not supported.",
+  conflict: "Storage state conflicts with the operation.",
+  "too-large": "Object exceeds the size limit.",
+  aborted: "Storage request cancelled; effects may have completed.",
+  provider: "Storage provider operation failed.",
+};
+
 export class StorageError extends Error {
-  constructor(
-    readonly code: StorageErrorCode,
-    message: string,
-    options?: ErrorOptions,
-  ) {
+  readonly code: StorageErrorCode;
+
+  constructor(code: StorageErrorCode, message: string, options?: ErrorOptions) {
     super(message, options);
+    this.code =
+      typeof code === "string" && Object.hasOwn(storageMessages, code) ? code : "provider";
     this.name = "StorageError";
   }
+}
+
+/** Preserve provider causes internally; publish only a fixed domain classification. */
+export function storageErrorDiagnostic(error: unknown) {
+  if (!(error instanceof StorageError)) return undefined;
+  const code =
+    typeof error.code === "string" && Object.hasOwn(storageMessages, error.code)
+      ? error.code
+      : "provider";
+  return { code, phase: "invoke", message: storageMessages[code] } as const;
 }
 
 export interface StorageCapabilities {

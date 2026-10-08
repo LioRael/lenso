@@ -20,8 +20,19 @@ const messages: Record<TaskQueueErrorCode, string> = {
 };
 
 export class TaskQueueError extends Error {
-  constructor(readonly code: TaskQueueErrorCode) {
-    super(messages[code]);
+  readonly code: TaskQueueErrorCode;
+
+  constructor(code: TaskQueueErrorCode, options?: ErrorOptions) {
+    const safeCode =
+      typeof code === "string" && Object.hasOwn(messages, code) ? code : "provider-unavailable";
+    super(messages[safeCode], options);
+    this.code = safeCode;
     this.name = "TaskQueueError";
   }
+}
+
+export function taskErrorDiagnostic(error: unknown) {
+  if (!(error instanceof TaskQueueError)) return undefined;
+  const safe = new TaskQueueError(error.code);
+  return { code: safe.code, phase: "invoke", message: safe.message } as const;
 }

@@ -7,6 +7,14 @@ It is optional and independent of Engine, Web, Auth, oRPC and `@lenso/workers`
 PostgreSQL consumers install the optional peers `pg@8.23.1` and
 `pg-boss@12.37.0`; D1 consumers do not need them.
 
+`TaskQueueError` accepts an optional internal `cause` and restricts runtime codes
+to its declared set; an unsupported code becomes `provider-unavailable`.
+`taskErrorDiagnostic(error)` projects only recognized instances into fixed
+`{code, phase, message}` metadata. Queue/provider causes and combined startup,
+migration, rollback or cleanup failures remain available in-process, not in the
+public projection. Classification adds no retry guarantee: writes with a lost
+response can already have completed.
+
 ## Define, enqueue, consume
 
 ```ts

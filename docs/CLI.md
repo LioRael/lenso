@@ -56,8 +56,13 @@ guarantees: no automatic retry, abort propagation or rollback is introduced.
 In particular, cancelling a protocol request does not cancel a durable job.
 Application-owned thin methods can adapt multi-argument services and obtain
 authentication evidence from a trusted entry without accepting identity in
-business input. Map known authorization errors to safe `CliError` codes at
-that application boundary; unknown service errors remain opaque.
+business input. Declare optional trusted `Operation.mapError(error)` projectors
+for known domain Error classes using `instanceof`. Return a safe
+`{code, phase: "invoke", message}` diagnostic or `undefined`; no global registry
+or arbitrary thrown object's `code` is trusted. Service and binding failures use
+this projector, not input validation, entry gates, output or cleanup failures.
+Projector failures retain the original error. Existing `CliError`/`EngineError`
+extensions remain supported; unknown service errors remain opaque.
 
 Methods needing request evidence or an Auth-produced actor may declare
 `context: true`; its type comes from the real method's second parameter.
@@ -100,7 +105,7 @@ SDK lifetime is serial setup and synchronous cleanup registration, global LIFO s
 
 ## Diagnostics and output
 
-Assembly codes are `duplicate-id`, `missing-dependency`, `cyclic-dependency`, `invalid-id` and `invalid-source`. CLI errors include code/phase/message, with optional pluginId/operation/source/details/ordered causes. `help --json` lists the CLI codes. Unknown application error text, stack traces and raw input are omitted because they may contain secrets; validation details expose paths, not rejected values. Config import errors report the config path; build diagnostics report Bun's source positions where available. In-process engine APIs retain causes where possible; the JSON boundary emits safe diagnostic data.
+Assembly codes are `duplicate-id`, `missing-dependency`, `cyclic-dependency`, `invalid-id`, `invalid-source` and `invalid-plugin`. CLI errors include code/phase/message, with optional pluginId/operation/source/details/ordered causes. `help --json` lists the CLI codes. Unknown application error text, stack traces and raw input are omitted because they may contain secrets. Input validation details expose only declared static JSON Schema property paths, not rejected values, dynamic record keys, array indices or runtime-only/unconvertible paths. Paths are limited to 32 issues, eight segments and 128 characters per segment. Diagnostic traversal bounds depth, count and cycles; details are projected only for known codes. Internal causes remain on in-process errors, without repeating raw domain failures in public diagnostics. Config import errors report the config path; build diagnostics report Bun's source positions where available.
 
 `inspect` reports `inspection: "static"`, ordered enabled plugin instances,
 their mandatory `requires` instance bindings, existing contributions and explicit

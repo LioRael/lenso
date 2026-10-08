@@ -3,6 +3,7 @@ import {
   describeOperation,
   boundedJson,
   invokeValidatedOperation,
+  operationError,
   redactOperationDescription,
   resolveOperation,
   validateOperationInput,
@@ -95,8 +96,10 @@ export function createManageAdapter<O extends Operation>(
         }
         return JSON.parse(boundedJson(result, maxOutputBytes)) as typeof result;
       } catch (error) {
+        if (error instanceof EngineError) throw error;
         throw new EngineError(
           diagnostic(error, { instanceId: running.instanceId, phase: "discovery" }),
+          { cause: error },
         );
       }
     },
@@ -109,7 +112,6 @@ export function createManageAdapter<O extends Operation>(
           phase: "invoke",
           message: "Catalog entry is not selected for this adapter.",
           instanceId: running.instanceId,
-          operation: key,
         });
       // Dispatch uses the original declaration, never redacted presentation identifiers.
       return this.invoke(operation.plugin.id, operation.method, input);
@@ -125,7 +127,12 @@ export function createManageAdapter<O extends Operation>(
         if ((await canList(operation)) !== true)
           refuse("forbidden-operation", "Operation is not available to this caller.");
         const validated = await validateOperationInput(operation, input);
-        const invocation = await binding(operation, validated);
+        let invocation;
+        try {
+          invocation = await binding(operation, validated);
+        } catch (error) {
+          throw operationError(operation, error);
+        }
         if (!invocation || typeof invocation !== "object")
           refuse("invalid-manage-binding", "Invocation binding must return a trusted binding.");
         return await invokeValidatedOperation<Operation>(running, operation, validated, {
@@ -135,7 +142,10 @@ export function createManageAdapter<O extends Operation>(
           ...(maxOutputBytes === undefined ? {} : { maxOutputBytes }),
         });
       } catch (error) {
-        throw new EngineError(diagnostic(error, { ...location, phase: "invoke" }));
+        if (error instanceof EngineError) throw error;
+        throw new EngineError(diagnostic(error, { ...location, phase: "invoke" }), {
+          cause: error,
+        });
       }
     },
   });
