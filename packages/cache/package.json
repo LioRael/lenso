@@ -1,0 +1,49 @@
+{
+  "name": "@lenso/cache",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/cache"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./memory": {
+      "types": "./dist/memory.d.ts",
+      "default": "./dist/memory.js"
+    },
+    "./redis": {
+      "types": "./dist/redis.d.ts",
+      "default": "./dist/redis.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "default": "./dist/plugin.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/memory.ts src/redis.ts src/plugin.ts --outdir dist --target browser --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "devDependencies": {
+    "@lenso/core": "workspace:^"
+  },
+  "peerDependencies": {
+    "@lenso/core": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/core": {
+      "optional": true
+    }
+  }
+}
