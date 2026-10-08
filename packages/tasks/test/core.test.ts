@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
-import { startApp } from "lenso";
+import { lifecycleFailure, startApp } from "lenso";
 import {
   createTaskPlugin,
   createTaskQueue,
@@ -210,6 +210,26 @@ describe("task contract boundary (not persistence tests)", () => {
       code: "provider-unavailable",
     });
     expect(record.closed()).toBe(2);
+  });
+
+  test("early plugin close shares SDK cleanup attribution and failure with app stop", async () => {
+    const record = recordingProvider();
+    const failure = new Error("cleanup failed");
+    let closes = 0;
+    record.provider.close = async () => {
+      closes++;
+      throw failure;
+    };
+    const plugin = createTaskPlugin({
+      id: "early-close",
+      tasks: [],
+      connect: () => record.provider,
+    });
+    const app = await startApp({ plugins: [plugin] });
+    await expect(app.get(plugin).close()).rejects.toBe(failure);
+    expect(lifecycleFailure(failure)).toMatchObject({ phase: "cleanup", pluginId: "early-close" });
+    await expect(app.stop()).rejects.toBeInstanceOf(AggregateError);
+    expect(closes).toBe(1);
   });
 });
 
