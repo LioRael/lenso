@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#lenso/client": "./.lenso/client.ts"
+  },
   "scripts": {
     "generate": "bun ../../packages/cli/src/bin.ts generate --root .",
     "build": "bun run generate && bun build src/server.ts --outdir dist --target bun --packages external",
@@ -10,13 +13,10 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "lenso": "workspace:^",
     "@lenso/web": "workspace:^",
-    "@orpc/server": "1.15.5",
     "@orpc/client": "1.15.5",
+    "@orpc/server": "1.15.5",
+    "lenso": "workspace:^",
     "zod": "4.6.5"
-  },
-  "imports": {
-    "#lenso/client": "./.lenso/client.ts"
   }
 }

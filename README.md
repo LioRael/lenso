@@ -11,20 +11,14 @@ Validated tools: Bun **1.4.2**, TypeScript **5.9.3**, Turbo **2.11.7**, Effect *
 ```sh
 cd /Users/leosouthey/Projects/framework/lenso
 bun install --frozen-lockfile
-bun run typecheck
-bun run test
-bun run build
-
-# Business-only config; does not install/start the Web plugin.
-bun run cli call greeting greet '{"name":"Ada"}' --root examples/greeting
-
-# Development server, only on 127.0.0.1:3000. Builds first.
 bun run dev
 ```
 
 In another terminal:
 
 ```sh
+# Business-only config; does not install/start the Web plugin.
+bun run cli call greeting greet '{"name":"Ada"}' --root examples/greeting
 bun run client Ada
 # Expected message: Hello, Ada!; runtime status: greeting, web, http-listener
 bun run client x
@@ -33,20 +27,16 @@ bun run client x
 
 CLI calls start/stop an isolated app each time; HTTP calls share the server's current in-memory counter. Invalid names do not increase it. Restart resets it. This is not persistence.
 
+Routine code hygiene is intentionally small:
+
 ```sh
-# With bun run dev active: changes Hello -> Welcome, verifies a new PID and one listener,
-# restores the source, then confirms Hello again. Requires macOS lsof.
-bun scripts/feedback-check.ts
-
-# After build: packs the real three packages, installs into independent temporary consumers,
-# checks CLI without Web deps, HTTP roundtrip, client types and browser bundle isolation.
-bun run smoke
-
-# Run the actual built server (without dev watcher).
-bun examples/greeting/dist/server.js
+bun run lint
+bun run fmt
 ```
 
-`LENSO_PORT` changes the server port; `LENSO_URL` changes the sample client URL. The feedback check intentionally targets the default local port 3000. No remote Git origin, publishing or deployment is configured.
+`bun run build`, `bun run typecheck`, and `bun run test` remain available when needed. Tests stay focused on lifecycle, assembly and business behavior; there is no standing smoke suite or verification-script workflow.
+
+`LENSO_PORT` changes the loopback server port; `LENSO_URL` changes the sample client URL. No remote Git origin, publishing or deployment is configured.
 
 ## Packages and minimum API
 
@@ -85,8 +75,8 @@ Generic contribution records remain simple plugin metadata. No page registry or 
 
 Dev watches the example's `src` and config, requests graceful shutdown, waits for the old child to exit, regenerates and starts a fresh process. It may force-stop only its owned child after five seconds. There is no state migration. Framework package edits require rebuilding package outputs. Generation avoids rewriting unchanged entries.
 
-## Evidence and limits
+## Scope
 
-See [implementation plan](docs/PLAN.md) and [verification record](docs/VERIFICATION.md). Raw CLI/HTTP results, edit timing and independent consumer results are under `output/`.
+See [API plan](docs/PLAN.md). Earlier one-off acceptance records are retained as history, not ongoing development gates.
 
 This is a local prototype with trusted in-process plugins and memory state. Auth composition is verified with a standalone oRPC middleware test, not an account system or core auth policy. The example rejects foreign Host/Origin and binds loopback; it is not a public deployment. Workers, Drizzle/PG/D1, streaming/cancellation beyond registered lifecycle resources, Rust extensions and AI Relay migration have not been implemented or validated. Next work should validate a real app and request cancellation/resource ownership, then independently validate Workers and storage adapters when needed.

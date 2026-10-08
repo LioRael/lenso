@@ -1,17 +1,31 @@
 {
   "name": "@lenso/web",
   "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
   "type": "module",
-  "files": ["dist"],
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
-    "./client": { "types": "./dist/client.d.ts", "default": "./dist/client.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target bun --packages external && bun build src/client.ts --outdir dist --target browser --packages external",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },
-  "dependencies": { "lenso": "workspace:^", "@orpc/server": "1.15.5", "@orpc/client": "1.15.5" },
-  "devDependencies": { "zod": "4.6.5" }
+  "dependencies": {
+    "@orpc/client": "1.15.5",
+    "@orpc/server": "1.15.5",
+    "lenso": "workspace:^"
+  },
+  "devDependencies": {
+    "zod": "4.6.5"
+  }
 }

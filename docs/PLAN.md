@@ -4,13 +4,13 @@ Canonical local repository: `/Users/leosouthey/Projects/framework/lenso`.
 
 Current scope reflects the user's latest instruction: Console will be a separate repository. This deliverable has no Console package, React, Vite, browser UI, or Console contribution protocol. Earlier task-created Console files are preserved outside the repository at the task workspace's console-deferred directory.
 
-Integration owner owns root config, lockfile, example and integration scripts. Delegated SDK owner implemented packages/lenso; Engine owner implemented packages/cli; Web owner implemented packages/web. Ownership returned to integration owner before final scope adjustment.
+Integration owner owns root config, lockfile and example. Delegated SDK owner implemented packages/lenso; Engine owner implemented packages/cli; Web owner implemented packages/web. Ownership returned to integration owner before final scope adjustment.
 
 1. Use Bun 1.4.2, one root bun.lock, thin Turbo build/typecheck/test orchestration.
 2. Implement SDK dependency diagnostics and Effect Scope lifecycle behind a plain async public API.
 3. Implement CLI Engine discovery/generation/build and supervised fresh-process restarts; no request-path Engine.
 4. Call one ordinary async in-memory service via CLI and optional Web/oRPC typed HTTP client.
-5. Verify lifecycle cleanup, business editing feedback, actual tarball consumers and clean local Git branch without any remote.
+5. Use oxlint/oxfmt for routine hygiene and keep focused tests. Earlier packaging/feedback checks were one-off acceptance work, not a permanent workflow.
 
 ## Minimal public API
 

@@ -3,9 +3,5 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": [
-    "src",
-    ".lenso",
-    "lenso.config.ts"
-  ]
+  "include": ["src", ".lenso", "lenso.config.ts"]
 }

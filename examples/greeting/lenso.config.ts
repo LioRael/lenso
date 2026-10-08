@@ -1,3 +1,3 @@
-import { defineApp } from 'lenso';
-import { greeting } from './src/greeting';
+import { defineApp } from "lenso";
+import { greeting } from "./src/greeting";
 export default defineApp({ plugins: [greeting] });
