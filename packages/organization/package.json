@@ -1,0 +1,75 @@
+{
+  "name": "@lenso/organization",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/organization"
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./drizzle/pg": {
+      "types": "./dist/drizzle/pg.d.ts",
+      "import": "./dist/drizzle/pg.js"
+    },
+    "./drizzle/d1": {
+      "types": "./dist/drizzle/d1.d.ts",
+      "import": "./dist/drizzle/d1.js"
+    },
+    "./drizzle/schema-pg": {
+      "types": "./dist/drizzle/schema-pg.d.ts",
+      "import": "./dist/drizzle/schema-pg.js"
+    },
+    "./drizzle/schema-sqlite": {
+      "types": "./dist/drizzle/schema-sqlite.d.ts",
+      "import": "./dist/drizzle/schema-sqlite.js"
+    },
+    "./migrations/*": "./migrations/*"
+  },
+  "scripts": {
+    "build": "bun -e \"await import('node:fs/promises').then(({rm}) => rm('dist', {recursive: true, force: true}))\" && tsc -p tsconfig.build.json && bun build src/index.ts src/plugin.ts src/auth.ts src/drizzle/pg.ts src/drizzle/d1.ts src/drizzle/schema-pg.ts src/drizzle/schema-sqlite.ts --root src --outdir dist --target browser --packages external --splitting",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261008.1",
+    "@lenso/auth": "workspace:^",
+    "@lenso/core": "workspace:^",
+    "drizzle-orm": "0.45.3",
+    "miniflare": "5.20261006.0-alpha"
+  },
+  "peerDependencies": {
+    "@lenso/auth": "^0.2.0",
+    "@lenso/core": "^0.2.0",
+    "drizzle-orm": "^0.45.3"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/auth": {
+      "optional": true
+    },
+    "@lenso/core": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    }
+  }
+}
