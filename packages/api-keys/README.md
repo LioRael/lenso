@@ -223,5 +223,5 @@ bun run --cwd packages/api-keys test
 Core/authorization fixtures are unit tests, not provider verification. The
 separate Drizzle suites use disposable backend resources and explicitly report
 unavailable PostgreSQL binaries. Only test credentials are generated.
-The integration owner updates the workspace's one Bun lockfile for this new
-package; it is deliberately unchanged by this task.
+The workspace's single Bun lockfile includes this package. Use frozen installs;
+database migrations remain explicit application-owned operations.

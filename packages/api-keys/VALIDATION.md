@@ -1,6 +1,6 @@
 # API Key implementation checks
 
-## Actual results
+## Implementation results before landing integration
 
 - Bun 1.4.2; PostgreSQL 18.6 (Homebrew), private local clusters.
 - `bun run --cwd packages/api-keys build`: passed, public JS and declarations built.
@@ -38,7 +38,7 @@ disposable directory and imports the root without optional peers installed.
 Only owned test resources and test credentials were used; owned resources are
 cleaned up. No production database, provider or authorization was touched.
 
-## Unverified and integration-owner follow-ups
+## Implementation validation boundaries and follow-ups
 
 - No full-workspace regression suite or release/publish/deployment workflow run.
 - No production Cloudflare replication check, full credential core execution
@@ -51,8 +51,13 @@ cleaned up. No production database, provider or authorization was touched.
   asynchronous `enforce`. Tests cover the resulting scope/expiry mitigation.
   Public audience-aware source/finalization APIs, if wanted, belong to the
   unified Auth integration owner; no private-state workaround is implemented.
-- The integration owner must update the single workspace Bun lockfile before
-  frozen-lockfile CI includes this new package.
+
+## Authorized lockfile integration
+
+The user explicitly authorized root lockfile integration during landing.
+`bun install --lockfile-only --ignore-scripts` added only the API Key workspace
+metadata and workspace package link (34 lines), without changing existing
+dependency resolutions. `bun install --frozen-lockfile` then passed on Bun 1.4.2.
 
 ## Primary references reviewed
 
