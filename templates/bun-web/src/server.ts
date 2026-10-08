@@ -1,5 +1,6 @@
 import { definePlugin, startApp } from "@lenso/core";
 import { createWebPlugin, type WebContext } from "@lenso/web";
+import { createBunListenerPlugin } from "@lenso/web/bun";
 import { os } from "@orpc/server";
 import { z } from "zod";
 import { reportDevReady } from "@lenso/engine/dev-ready";
@@ -35,23 +36,16 @@ if (import.meta.main) {
       };
     },
   });
-  const listener = definePlugin({
+  const listener = createBunListenerPlugin({
     id: "http",
-    requires: [web],
-    setup(context) {
-      const service = context.get(web);
-      const server = Bun.serve({
-        hostname: "127.0.0.1",
-        port: Number(process.env.LENSO_PORT ?? 3000),
-        fetch: (request) => service.fetch(request),
-      });
-      context.onCleanup(() => server.stop(true));
-      return server.url;
-    },
+    web,
+    hostname: "127.0.0.1",
+    port: Number(process.env.LENSO_PORT ?? 3000),
+    ingress: () => undefined,
   });
   const app = await startApp({ plugins: [greeting, web, listener] });
-  console.log(`Ready at ${app.get(listener)}`);
-  reportDevReady({ urls: [app.get(listener)], capabilities: ["greeting.greet via Web/oRPC"] });
+  console.log(`Ready at ${app.get(listener).url}`);
+  reportDevReady({ urls: [app.get(listener).url], capabilities: ["greeting.greet via Web/oRPC"] });
   const stop = () => {
     void app.stop().catch(console.error);
   };

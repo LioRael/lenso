@@ -8,6 +8,7 @@ const packages = [
   ["@lenso/core", "packages/lenso"],
   ["@lenso/engine", "packages/engine"],
   ["@lenso/cli", "packages/cli"],
+  ["@lenso/web", "packages/web"],
   ["@lenso/workers", "packages/workers"],
   ["lenso-example-content-engine", "packages/cli/examples/content-plugin"],
   ["lenso-example-module-target", "packages/cli/examples/module-target-plugin"],
@@ -38,7 +39,7 @@ async function run(cwd: string, args: string[]) {
   }
 }
 
-// Build @lenso/core, @lenso/engine, @lenso/cli and @lenso/workers in dependency order first.
+// Build the framework packages in dependency order first.
 test("packed Engine, CLI and external plugins work in a standalone consumer", async () => {
   const temporary = await canonicalPath(await mkdtemp(joinPath(tmpdir(), "lenso-packaging-")));
   try {
@@ -142,6 +143,14 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       `
       import {build,discover,generate,createDevSupervisor,EngineError} from '@lenso/engine';
       import {defineEnginePlugin,defineEngineConfig} from '@lenso/engine/authoring';
+      import {definePlugin} from '@lenso/core';
+      import {createBunListenerPlugin} from '@lenso/web/bun';
+      const web=definePlugin({id:'typed-web',setup:()=>({fetch:async()=>new Response('ok')})});
+      export const listener=createBunListenerPlugin({
+        web,hostname:'127.0.0.1',port:0,ingress:()=>undefined,
+      });
+      // @ts-expect-error The application must choose its ingress policy.
+      createBunListenerPlugin({web,hostname:'127.0.0.1',port:0});
       export const config=defineEngineConfig({target:'custom',plugins:[
         defineEnginePlugin({name:'typed/implicit',setup:c=>c.generate('implicit',()=>[])}),
         defineEnginePlugin({name:'typed/async-implicit',setup:async c=>c.watch('source.ts')}),
@@ -538,5 +547,39 @@ async function verifyConsumer() {
     ).text(),
     "packaged workers",
   );
+  const { definePlugin, startApp } = await import("@lenso/core");
+  const { createBunListenerPlugin } = await import("@lenso/web/bun");
+  const web = definePlugin({
+    id: "packaged-web",
+    setup: () => ({ fetch: async () => new Response("packaged Bun listener") }),
+  });
+  const listener = createBunListenerPlugin({
+    web,
+    hostname: "127.0.0.1",
+    port: 0,
+    ingress: (request, url) =>
+      request.headers.get("origin") && request.headers.get("origin") !== url.origin
+        ? new Response("Invalid origin", { status: 403 })
+        : undefined,
+  });
+  const app = await startApp({ plugins: [web, listener] });
+  const address = app.get(listener);
+  try {
+    assert.ok(address.port > 0);
+    assert.equal(Number(address.url.port), address.port);
+    assert.equal(await (await fetch(address.url)).text(), "packaged Bun listener");
+    assert.equal(
+      (await fetch(address.url, { headers: { origin: "https://untrusted.test" } })).status,
+      403,
+    );
+  } finally {
+    await app.stop();
+  }
+  const replacement = Bun.serve({
+    hostname: "127.0.0.1",
+    port: address.port,
+    fetch: () => new Response("released"),
+  });
+  await replacement.stop(true);
   console.log("packaged consumer verified");
 }

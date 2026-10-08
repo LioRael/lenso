@@ -1,6 +1,7 @@
 # @lenso/web
 
-Optional Fetch/oRPC adapter for Lenso. The application owns the HTTP listener.
+Optional Fetch/oRPC adapter for Lenso. The application owns the HTTP listener,
+or can opt into the Bun-specific listener adapter at `@lenso/web/bun`.
 `createWebPlugin({ requires, router, prefix?, fetch?, timeoutMs?, maxChunkBytes?, onError? })`
 exposes `WebService.fetch(request): Promise<Response>`. The default RPC prefix is `/rpc`.
 
@@ -9,6 +10,16 @@ exposes `WebService.fetch(request): Promise<Response>`. The default RPC prefix i
 `undefined` falls through to oRPC. Raw responses keep their status, headers and
 bytes without token-by-token RPC encoding. Use oRPC's existing event iterator
 when you actually need typed RPC events.
+
+`createBunListenerPlugin({ web, hostname, port, ingress })` owns a Bun listener
+for the exact declared `web` plugin instance. `ingress` is required and is the
+application's explicit ingress policy: return a `Response` to handle a request,
+or `undefined` to pass it unchanged to `web.fetch`. `ingress(request, url)` receives
+the actual listener URL, not the request's Host-derived URL, for Origin checks.
+Its service exposes the listener's actual `url` and `port` (including when configured
+with port `0`). Cleanup is registered immediately after setup acquires the server,
+and app shutdown awaits `server.stop(true)`.
+The Bun adapter is intentionally not exported from the Fetch-only package root.
 
 ```ts
 const web = createWebPlugin({
