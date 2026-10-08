@@ -152,8 +152,8 @@ Ownership lives in `.lenso/.engine-files.json`. Output conflicts, traversal,
 symlink output paths and edited content fail before writes. Unchanged bytes keep
 their mtime; removing a generator removes only tracked, unmodified outputs.
 Generation validates the full output set first, but filesystem writes are not
-transactional. Existing generated headers and manifest `generatedBy: "lenso-cli"`
-are intentionally retained for byte and ownership compatibility.
+transactional. Unowned existing outputs are rejected; generated headers and
+manifest `generatedBy` identify `@lenso/engine`.
 
 Register cleanup immediately on acquiring a resource. Hooks are sequential;
 cleanup is sequential LIFO on success, failure and dev shutdown. Registration
@@ -193,5 +193,4 @@ trusted application config imports can still have top-level side effects.
 Retain that canonical config or a re-export when using a custom convention.
 Explicit operations/shared validation remain CLI contracts; see [CLI API](../../docs/CLI.md).
 
-Existing `lenso-cli` finite build APIs and `lenso-cli/engine` authoring imports
-remain compatibility forwards. New build tools/plugins should use this package.
+Build tools and plugins use this package's public API.

@@ -45,12 +45,16 @@ export async function readApplication(root: string, configPath: string): Promise
       source: { file: configPath },
     });
   const definition = app as AppDefinition;
+  if ("operations" in definition)
+    throw new EngineError({
+      code: "invalid-config",
+      phase: "discovery",
+      message: "Declare CLI operations as a named export, not on the default application config.",
+      source: { file: configPath },
+    });
   try {
     const ordered = validatePlugins(definition.plugins);
-    const operations = validateOperations(
-      definition.plugins,
-      loaded.operations ?? definition.operations ?? [],
-    );
+    const operations = validateOperations(definition.plugins, loaded.operations ?? []);
     return { root, configPath, app: { ...definition, operations }, ordered };
   } catch (cause) {
     throw new EngineError(diagnostic(cause, { source: { file: configPath } }), { cause });

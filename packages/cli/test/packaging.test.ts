@@ -191,21 +191,30 @@ async function verifyConsumer() {
     startEngineDevCycle,
     createDevSupervisor,
   } = await import("@lenso/engine");
-  const { defineEnginePlugin } = await import("@lenso/engine/authoring");
-  const { reportDevReady } = await import("@lenso/engine/dev-ready");
-  const { defineEnginePlugin: compatibilityPlugin } = await import("lenso-cli/engine");
-  const { reportDevReady: compatibilityReady } = await import("lenso-cli/dev");
   const { EngineError: diagnosticsError, diagnostic: subpathDiagnostic } =
     await import("@lenso/engine/diagnostics");
 
   assert.equal(typeof createEngineSession, "function");
+  assert.equal(typeof startEngineDevCycle, "function");
   assert.equal(typeof EngineError, "function");
   assert.equal(typeof diagnostic, "function");
   assert.equal(typeof createDevSupervisor, "function");
   assert.equal(EngineError, diagnosticsError);
   assert.equal(diagnostic, subpathDiagnostic);
-  assert.equal(compatibilityPlugin, defineEnginePlugin);
-  assert.equal(compatibilityReady, reportDevReady);
+  assert.equal(typeof (await import("@lenso/engine")).generate, "function");
+  assert.equal(typeof (await import("@lenso/engine/dev-ready")).reportDevReady, "function");
+  const cliPackage = await import("lenso-cli");
+  for (const name of [
+    "discover",
+    "generate",
+    "build",
+    "createEngineSession",
+    "startEngineDevCycle",
+    "reportDevReady",
+  ])
+    assert.equal(name in cliPackage, false, `lenso-cli must not export ${name}`);
+  for (const specifier of ["lenso-cli/dev", "lenso-cli/engine"])
+    assert.throws(() => Bun.resolveSync(specifier, process.cwd()));
   for (const [dependency, importer] of [
     ["lenso", "@lenso/engine"],
     ["lenso", "@lenso/workers"],
@@ -227,7 +236,6 @@ async function verifyConsumer() {
     "@lenso/engine/dev-ready",
     "@lenso/engine/diagnostics",
     "lenso-cli",
-    "lenso-cli/engine",
     "lenso-example-content-engine",
     "lenso-example-module-target",
     "@lenso/workers",

@@ -1,25 +1,27 @@
 # CLI and local agent development
 
-Use `lenso help --json` for current commands, flags, side effects and exit codes. Finite commands support one `schemaVersion: 1` envelope on stdout: `{ok:true,data}` or `{ok:false,error}`. Logs use stderr. Exit 0 means success, 2 arguments/input failure, 3 discovery/assembly failure, 1 runtime/build/output failure. `dev --json` is unsupported; its human lifecycle is managed separately. For custom entry readiness, use `reportDevReady` from `lenso-cli/dev` after successful startup; the greeting entry already wires this helper.
+Use `lenso help --json` for current commands, flags, side effects and exit codes. Finite commands support one `schemaVersion: 1` envelope on stdout: `{ok:true,data}` or `{ok:false,error}`. Logs use stderr. Exit 0 means success, 2 arguments/input failure, 3 discovery/assembly failure, 1 runtime/build/output failure. `dev --json` is unsupported; its human lifecycle is managed separately. For custom entry readiness, use `reportDevReady` from `@lenso/engine/dev-ready` after successful startup.
 
 ## Declare existing service operations
 
-The trusted `lenso.config.ts` default export remains `defineApp({plugins})`. An optional named export `operations` is the CLI allowlist. Reuse the application's existing schema and service; do not implement another business handler. For example:
+The trusted `lenso.config.ts` default export is `defineApp({plugins})`. An optional named export `operations` is the CLI allowlist; the default export must not contain `operations`. Reuse the application's existing schema and service; do not implement another business handler. For example:
 
 ```ts
-import { defineApp } from 'lenso';
-import { defineOperation } from 'lenso-cli';
-import { greeting } from './src/greeting';
-import { greetingInput } from './src/contracts'; // also used by Web input validation
+import { defineApp } from "lenso";
+import { defineOperation } from "lenso-cli";
+import { greeting } from "./src/greeting";
+import { greetingInput } from "./src/contracts"; // also used by Web input validation
 
-export const operations = [defineOperation({
-  plugin: greeting,
-  method: 'greet',
-  input: greetingInput,
-  description: 'Greet a name using the ordinary service.',
-  effect: 'write', // greeting increments an in-memory count
-  source: { file: 'src/greeting.ts', export: 'greeting' },
-})];
+export const operations = [
+  defineOperation({
+    plugin: greeting,
+    method: "greet",
+    input: greetingInput,
+    description: "Greet a name using the ordinary service.",
+    effect: "write", // greeting increments an in-memory count
+    source: { file: "src/greeting.ts", export: "greeting" },
+  }),
+];
 export default defineApp({ plugins: [greeting] });
 ```
 

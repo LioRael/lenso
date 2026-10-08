@@ -15,18 +15,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./dev": {
-      "types": "./dist/dev-ready.d.ts",
-      "import": "./dist/dev-ready.js"
-    },
-    "./engine": {
-      "types": "./dist/engine-authoring.d.ts",
-      "import": "./dist/engine-authoring.js"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/bin.ts src/index.ts src/dev-ready.ts src/engine-authoring.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && bun build src/bin.ts src/index.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },

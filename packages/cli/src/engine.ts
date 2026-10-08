@@ -1,10 +1,10 @@
 import { join, resolve } from "node:path";
 import { startApp } from "lenso";
-import { readApplication, type AppDefinition } from "@lenso/engine/application";
+import { readApplication } from "@lenso/engine/application";
 import { CliError, diagnostic, environmentSecrets, exitCode, redact } from "./diagnostics";
 import { describeOperation, redactOperationDescription, validateOperations } from "./operations";
-export { discover, generate, build, createEngineSession } from "@lenso/engine";
-export type { AppDefinition, Discovery, PluginManifest } from "@lenso/engine/application";
+import type { AppDefinition } from "@lenso/engine/application";
+export type { AppDefinition } from "@lenso/engine/application";
 
 export async function invoke(
   app: AppDefinition,

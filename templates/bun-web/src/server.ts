@@ -2,7 +2,7 @@ import { definePlugin, startApp } from "lenso";
 import { createWebPlugin, type WebContext } from "@lenso/web";
 import { os } from "@orpc/server";
 import { z } from "zod";
-import { reportDevReady } from "lenso-cli/dev";
+import { reportDevReady } from "@lenso/engine/dev-ready";
 
 export const greetingInput = z.object({ name: z.string().trim().min(2) });
 

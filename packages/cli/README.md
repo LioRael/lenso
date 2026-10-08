@@ -8,7 +8,7 @@ Readiness is explicit. In the development entry, after application startup and
 listener binding succeed, report actual runtime information with the public helper:
 
 ```ts
-import { reportDevReady } from "lenso-cli/dev";
+import { reportDevReady } from "@lenso/engine/dev-ready";
 
 reportDevReady({
   urls: [server.url.href],
@@ -34,12 +34,7 @@ Discovery, generation, targets and dev scheduling live in
 `@lenso/engine/authoring` plugin protocol. No extra configuration is needed for the
 default Bun build. Extensions still use `lenso.engine.ts` beside `lenso.config.ts`.
 
-`lenso-cli/engine` remains a thin authoring re-export; existing `discover`,
-`generate`, `build` and `startEngineDevCycle` imports from `lenso-cli` remain
-forwards. `lenso-cli/dev` remains the lightweight readiness helper. The CLI maps
-structured Engine diagnostics to its existing JSON envelopes and exit codes.
-Engine errors are now `EngineError`, not `CliError`; callers catching the old
-class for build errors should use `EngineError` or `diagnostic(error)`.
+The CLI maps structured Engine diagnostics to its existing JSON envelopes and exit codes.
 
 `inspect` and `call` continue to import only canonical `lenso.config.ts`, never
 Engine config/setup/hooks. Trusted config top-level side effects are still
