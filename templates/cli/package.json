@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "lenso": "file:./vendor/lenso.tgz",
-    "lenso-cli": "file:./vendor/lenso-cli.tgz"
+    "lenso-cli": "file:./vendor/lenso-cli.tgz",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",

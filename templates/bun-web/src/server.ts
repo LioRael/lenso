@@ -2,13 +2,17 @@ import { definePlugin, startApp } from "lenso";
 import { createWebPlugin, type WebContext } from "@lenso/web";
 import { os } from "@orpc/server";
 import { z } from "zod";
+import { reportDevReady } from "lenso-cli/dev";
+
+export const greetingInput = z.object({ name: z.string().trim().min(2) });
 
 export const greeting = definePlugin({
   id: "greeting",
   setup() {
     let count = 0;
     return {
-      async greet({ name }: { name: string }) {
+      async greet(input: z.output<typeof greetingInput>) {
+        const { name } = greetingInput.parse(input);
         return {
           message: `${process.env.GREETING_PREFIX ?? "Hello"}, ${name.trim()}!`,
           count: ++count,
@@ -26,7 +30,7 @@ if (import.meta.main) {
       return {
         greet: os
           .$context<WebContext>()
-          .input(z.object({ name: z.string().trim().min(2) }))
+          .input(greetingInput)
           .handler(({ input }) => service.greet(input)),
       };
     },
@@ -47,6 +51,7 @@ if (import.meta.main) {
   });
   const app = await startApp({ plugins: [greeting, web, listener] });
   console.log(`Ready at ${app.get(listener)}`);
+  reportDevReady({ urls: [app.get(listener)], capabilities: ["greeting.greet via Web/oRPC"] });
   const stop = () => {
     void app.stop().catch(console.error);
   };

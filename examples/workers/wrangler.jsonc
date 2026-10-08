@@ -3,7 +3,7 @@
   "name": "lenso-local-workers",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-08",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   "vars": { "GREETING_PREFIX": "Hello" },
   "observability": { "enabled": true },
 }

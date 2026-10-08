@@ -229,3 +229,52 @@ test.each(["eof", "cancel", "empty", "error"] as const)(
   },
   1000,
 );
+test("incoming abort keeps app cleanup alive through the platform waitUntil", async () => {
+  const work: Promise<unknown>[] = [];
+  const events: string[] = [];
+  const abort = new AbortController();
+  const handler = createWorkerHandler(() => {
+    const resource = definePlugin({
+      id: "resource",
+      setup(context) {
+        context.onCleanup(async () => {
+          await Promise.resolve();
+          events.push("app");
+        });
+        return {};
+      },
+    });
+    const web = createWebPlugin({
+      requires: [resource],
+      router: () => ({}),
+      fetch: () => (context) => {
+        context.onCleanup(() => {
+          events.push("request");
+        });
+        return new Response(
+          new ReadableStream({
+            cancel() {
+              events.push("source");
+            },
+          }),
+        );
+      },
+    });
+    return { plugins: [resource, web], web };
+  });
+  const response = await handler.fetch(
+    new Request("https://example.com", { signal: abort.signal }),
+    {},
+    {
+      waitUntil: (promise) => {
+        work.push(promise);
+      },
+    },
+  );
+  const body = response.text();
+  abort.abort();
+  await expect(body).rejects.toThrow();
+  await Promise.all(work);
+  expect(work).toHaveLength(1);
+  expect(events).toEqual(["source", "request", "app"]);
+});

@@ -19,4 +19,8 @@ The templates declare `file:./vendor/*.tgz` dependencies. Create `vendor` and pu
 
 The Workers greeting has per-request memory only (count resets to 1). For durable Notes storage use the D1 example, not this counter. `src/index.ts` is the Worker entry; never use the Bun CLI build/dev engine for a Worker bundle. Generated Worker types derive from `wrangler.jsonc`.
 
+Keep the Workers template's `enable_request_signal` flag: it enables client-disconnect propagation and app cleanup through the adapter. Platform termination can still interrupt finalizers.
+
+CLI operations are explicit declarations of the existing service and shared input schema. Bun Web uses that same schema for its service, Web procedure, and CLI operation. Its custom server reports readiness with the public `lenso-cli/dev` helper after listening; use framework archives that include that export.
+
 Future scaffold integration needs a template ID, target directory, application name, and an explicit dependency map for `lenso`, `lenso-cli`, `@lenso/web`, and `@lenso/workers` as applicable. Copy only the selected directory, replace its package name and dependency locations, then install with Bun. Template metadata or this README must not be emitted as application runtime code.

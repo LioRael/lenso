@@ -86,16 +86,27 @@ export function createWorkerHandler<Bindings>(
     async fetch(request, bindings, executionContext) {
       const definition = await assemble(bindings, { request, executionContext });
       const app = await startApp(definition);
+      const stop = () => {
+        request.signal.removeEventListener("abort", disconnect);
+        return app.stop();
+      };
+      // Keep async finalizers alive after a client disconnects from the Worker event.
+      const disconnect = () => executionContext.waitUntil(stop());
+      request.signal.addEventListener("abort", disconnect, { once: true });
       try {
+        if (request.signal.aborted) {
+          await stop();
+          request.signal.throwIfAborted();
+        }
         const response = await app.get(definition.web).fetch(request);
         if (!response.body) {
-          await app.stop();
+          await stop();
           return response;
         }
-        return retainUntilBodyEnds(response, () => app.stop());
+        return retainUntilBodyEnds(response, stop);
       } catch (error) {
         try {
-          await app.stop();
+          await stop();
         } catch (cleanupError) {
           throw new AggregateError([error, cleanupError], "Worker request cleanup failed");
         }

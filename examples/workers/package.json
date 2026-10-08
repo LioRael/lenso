@@ -6,7 +6,7 @@
     "dev": "wrangler dev --local --ip 127.0.0.1",
     "dev:notes": "wrangler dev --config wrangler.notes.jsonc --local --ip 127.0.0.1",
     "migrate:notes": "wrangler d1 migrations apply lenso-notes-local --config wrangler.notes.jsonc --local",
-    "types": "wrangler types --include-runtime false && wrangler types worker-notes.d.ts --config wrangler.notes.jsonc --env-interface NotesEnv --include-runtime false",
+    "types": "wrangler types worker-greeting.d.ts --include-runtime false && wrangler types worker-notes.d.ts --config wrangler.notes.jsonc --env-interface NotesEnv --include-runtime false",
     "build": "wrangler deploy --dry-run --outdir dist",
     "build:notes": "wrangler deploy --config wrangler.notes.jsonc --dry-run --outdir dist/notes",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.notes.json"
