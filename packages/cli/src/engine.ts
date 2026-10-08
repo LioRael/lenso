@@ -1,14 +1,17 @@
-import { mkdir, access } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { access } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { startApp, validatePlugins, type Contribution, type Plugin } from "lenso";
-import { CliError, diagnostic, environmentSecrets, redact, stableJson } from "./diagnostics";
+import { CliError, diagnostic } from "./diagnostics";
 import {
   describeOperation,
   redactOperationDescription,
   validateOperations,
   type Operation,
 } from "./operations";
+import { EngineSession, withEngine } from "./engine-host";
+import { defaultEnginePlugins, pluginManifest } from "./engine-defaults";
+import type { EngineMode, EngineSnapshot } from "./engine-authoring";
 
 export interface AppDefinition {
   readonly plugins: readonly Plugin<unknown>[];
@@ -25,10 +28,7 @@ export interface Discovery {
   readonly app: AppDefinition;
   readonly ordered: readonly Plugin<unknown>[];
 }
-
-export async function discover(root = process.cwd()): Promise<Discovery> {
-  const directory = resolve(root);
-  const configPath = join(directory, "lenso.config.ts");
+async function readApplication(root: string, configPath: string): Promise<Discovery> {
   let loaded;
   try {
     await access(configPath);
@@ -38,7 +38,7 @@ export async function discover(root = process.cwd()): Promise<Discovery> {
       {
         code: "config-load-failed",
         phase: "discovery",
-        message: "Cannot load trusted lenso.config.ts.",
+        message: "Cannot load trusted application config.",
         source: { file: configPath },
       },
       3,
@@ -46,144 +46,63 @@ export async function discover(root = process.cwd()): Promise<Discovery> {
     );
   }
   const app: unknown = loaded.default;
-  if (!app || typeof app !== "object" || !("plugins" in app) || !Array.isArray(app.plugins)) {
+  if (!app || typeof app !== "object" || !("plugins" in app) || !Array.isArray(app.plugins))
     throw new CliError(
       {
         code: "invalid-config",
         phase: "discovery",
-        message: "lenso.config.ts must default-export defineApp({ plugins: [...] })",
+        message: "Application config must default-export defineApp({ plugins: [...] })",
         source: { file: configPath },
       },
       3,
     );
-  }
   const definition = app as AppDefinition;
-  let ordered: readonly Plugin<unknown>[];
-  let operations: readonly Operation[];
   try {
-    ordered = validatePlugins(definition.plugins);
-    operations = validateOperations(
+    const ordered = validatePlugins(definition.plugins);
+    const operations = validateOperations(
       definition.plugins,
       loaded.operations ?? definition.operations ?? [],
     );
+    return { root, configPath, app: { ...definition, operations }, ordered };
   } catch (cause) {
     throw new CliError(diagnostic(cause, { source: { file: configPath } }), 3);
   }
+}
+export function createEngineSession(root: string, mode: EngineMode) {
+  const session = new EngineSession(resolve(root), mode);
+  let app: Promise<Discovery> | undefined;
+  const readApp = (snapshot: EngineSnapshot) =>
+    (app ??= readApplication(session.root, resolve(session.root, snapshot.convention.config)));
   return {
-    root: directory,
-    configPath,
-    app: { ...definition, operations },
-    ordered,
+    session,
+    async prepare() {
+      await session.setup(defaultEnginePlugins(readApp));
+      const snapshot = await session.discover();
+      return readApp(snapshot);
+    },
   };
 }
-
-function sourceImport(fromDirectory: string, target: string): string {
-  const path = relative(fromDirectory, target)
-    .replaceAll("\\", "/")
-    .replace(/\.(?:tsx?|jsx?)$/, "");
-  return path.startsWith(".") ? path : `./${path}`;
+/** Build-time discovery validates trusted extensions, then closes their resources. */
+export async function discover(root = process.cwd()): Promise<Discovery> {
+  const engine = createEngineSession(root, "check");
+  return withEngine(engine.session, engine.prepare);
 }
-
-async function writeGenerated(path: string, content: string): Promise<void> {
-  const existing = Bun.file(path);
-  if ((await existing.exists()) && (await existing.text()) === content) return;
-  await Bun.write(path, content);
-}
-
-/** Discovers and writes static imports only. Plugin setup never runs at build time. */
+/** Static generation starts engine plugins, never runtime application plugin setup. */
 export async function generate(root = process.cwd()): Promise<readonly PluginManifest[]> {
-  const discovery = await discover(root);
-  const directory = join(discovery.root, ".lenso");
-  const manifest: readonly PluginManifest[] = discovery.ordered.map((plugin) => ({
-    id: plugin.id,
-    requires: (plugin.requires ?? []).map((dependency) => dependency.id),
-    contributions: plugin.contributions ?? [],
-  }));
-  stableJson(manifest);
-  const manifestData = {
-    schemaVersion: 1,
-    generatedBy: "lenso-cli",
-    source: "lenso.config.ts",
-    plugins: redact(manifest, environmentSecrets()),
-    operations: (discovery.app.operations ?? []).map((operation) =>
-      redactOperationDescription(describeOperation(operation, "lenso.config.ts")),
-    ),
-  };
-  // Validate before redaction so unsupported/cyclic values cannot become successful output.
-  stableJson(manifestData);
-  const manifestJson = `${stableJson(manifestData, 2)}\n`;
-  await mkdir(directory, { recursive: true });
-  const header = "// Generated by lenso-cli; run lenso generate after changing assembly.\n";
-  await writeGenerated(join(directory, "manifest.json"), manifestJson);
-  await writeGenerated(
-    join(directory, "server.ts"),
-    `${header}export { default as app } from ${JSON.stringify(sourceImport(directory, discovery.configPath))};\n`,
-  );
-  const routerPath = join(discovery.root, "src/router.ts");
-  if (await Bun.file(routerPath).exists()) {
-    await writeGenerated(
-      join(directory, "client.ts"),
-      `${header}import { createClient as createWebClient } from '@lenso/web/client';\nimport type { AppRouter } from ${JSON.stringify(sourceImport(directory, routerPath))};\nexport type { AppRouter };\nexport const createClient = (url: string) => createWebClient<AppRouter>(url);\n`,
-    );
-  } else {
-    // A stable empty browser entry prevents a removed Web integration leaving stale imports.
-    await writeGenerated(join(directory, "client.ts"), `${header}export {};\n`);
-  }
-  return manifest;
+  const engine = createEngineSession(root, "generate");
+  return withEngine(engine.session, async () => {
+    const app = await engine.prepare();
+    await engine.session.generate();
+    return pluginManifest(app);
+  });
 }
-
 export async function build(root = process.cwd(), entry?: string): Promise<string> {
-  await generate(root);
-  const directory = resolve(root);
-  const conventionalEntry = join(directory, "src/server.ts");
-  const entryPath = entry
-    ? resolve(directory, entry)
-    : (await Bun.file(conventionalEntry).exists())
-      ? conventionalEntry
-      : join(directory, ".lenso/server.ts");
-  const outdir = join(directory, "dist");
-  let result;
-  try {
-    result = await Bun.build({
-      entrypoints: [entryPath],
-      outdir,
-      target: "bun",
-      sourcemap: "external",
-      packages: "external",
-    });
-  } catch (cause) {
-    throw new CliError(
-      {
-        code: "build-failed",
-        phase: "build",
-        message: "Application build failed.",
-        source: { file: entryPath },
-      },
-      1,
-      { cause },
-    );
-  }
-  if (!result.success)
-    throw new CliError({
-      code: "build-failed",
-      phase: "build",
-      message: "Application build failed.",
-      causes: result.logs.map((log) => ({
-        code: "build-diagnostic",
-        phase: "build",
-        message: "Bun build diagnostic; inspect the source location.",
-        ...(log.position
-          ? {
-              source: {
-                file: log.position.file,
-                line: log.position.line,
-                column: log.position.column,
-              },
-            }
-          : { source: { file: entryPath } }),
-      })),
-    });
-  return outdir;
+  const engine = createEngineSession(root, "build");
+  return withEngine(engine.session, async () => {
+    await engine.prepare();
+    await engine.session.generate();
+    return engine.session.build(entry);
+  });
 }
 
 export async function invoke(
@@ -311,7 +230,8 @@ export async function call(
   method: string,
   input: unknown,
 ): Promise<unknown> {
-  const { app } = await discover(root);
+  const directory = resolve(root);
+  const { app } = await readApplication(directory, join(directory, "lenso.config.ts"));
   try {
     return await invoke(app, pluginId, method, input);
   } catch (cause) {
@@ -324,7 +244,11 @@ export async function call(
 
 /** Imports trusted config but never runs setup or discovers methods by reflection. */
 export async function inspect(root = process.cwd(), pluginId?: string, method?: string) {
-  const { app, ordered, configPath } = await discover(root);
+  const directory = resolve(root);
+  const { app, ordered, configPath } = await readApplication(
+    directory,
+    join(directory, "lenso.config.ts"),
+  );
   if (pluginId && !ordered.some((plugin) => plugin.id === pluginId))
     throw new CliError(
       {

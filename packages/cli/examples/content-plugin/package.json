@@ -1,0 +1,17 @@
+{
+  "name": "lenso-example-content-engine",
+  "version": "0.1.0",
+  "files": [
+    "index.ts"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    }
+  },
+  "peerDependencies": {
+    "lenso-cli": "^0.1.0"
+  }
+}

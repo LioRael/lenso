@@ -6,7 +6,9 @@
     "lenso": "./dist/bin.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "examples"
   ],
   "type": "module",
   "exports": {
@@ -17,10 +19,14 @@
     "./dev": {
       "types": "./dist/dev-ready.d.ts",
       "import": "./dist/dev-ready.js"
+    },
+    "./engine": {
+      "types": "./dist/engine-authoring.d.ts",
+      "import": "./dist/engine-authoring.js"
     }
   },
   "scripts": {
-    "build": "bun build src/bin.ts src/index.ts src/dev-ready.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "build": "bun build src/bin.ts src/index.ts src/dev-ready.ts src/engine-authoring.ts src/engine-dev-worker.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },
