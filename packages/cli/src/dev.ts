@@ -1,11 +1,12 @@
-import { watch, type FSWatcher } from "node:fs";
-import { resolve, join } from "node:path";
+import { watch, realpathSync, statSync, type FSWatcher } from "node:fs";
+import { resolve, relative, extname, sep } from "node:path";
 import { createDevPresentation, type DevPresentation, type DevReady } from "./dev-presentation";
+import { startEngineDevCycle, type EngineDevCycle } from "./engine-dev";
+import { diagnostic } from "./diagnostics";
 
 interface DevOptions {
   root: string;
   entry?: string;
-  cliPath: string;
   presentation?: DevPresentation;
 }
 
@@ -28,26 +29,37 @@ function isDevReadyMessage(message: unknown): message is DevReadyMessage {
   return true;
 }
 
-/** Restarts a fresh Bun process after stopping the previous process and its listeners. */
+/** Stops the previous runtime and build resources before starting a fresh module graph. */
 export async function dev(options: DevOptions): Promise<void> {
-  const root = resolve(options.root);
+  const root = realpathSync(resolve(options.root));
   const entry = resolve(root, options.entry ?? "src/server.ts");
   if (!(await Bun.file(entry).exists())) throw new Error(`Development entry missing: ${entry}`);
   const presentation = options.presentation ?? createDevPresentation({ project: root });
-  let child: ReturnType<typeof Bun.spawn> | undefined;
-  let generator: ReturnType<typeof Bun.spawn> | undefined;
+  type Active = {
+    child: ReturnType<typeof Bun.spawn>;
+    engine: EngineDevCycle;
+    ready: boolean;
+  };
+  let active: Active | undefined;
+  let stopping = Promise.resolve();
   let closed = false;
   let queued = false;
-  let restarting = false;
+  let restarting: Promise<void> | undefined;
+  let closing: Promise<void> | undefined;
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let finish!: () => void;
   const done = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  const watchers: FSWatcher[] = [];
+  const watchers = new Map<string, FSWatcher>();
+  const ignored = new Set([".lenso", "dist", "node_modules", ".git", ".turbo", ".wrangler"]);
 
-  async function stopProcess(previous: ReturnType<typeof Bun.spawn> | undefined) {
-    if (!previous) return;
+  function report(error: unknown) {
+    console.error("[lenso]", diagnostic(error));
+    presentation.failed();
+  }
+  async function stopProcess(previous: ReturnType<typeof Bun.spawn>) {
+    if (previous.exitCode !== null) return;
     previous.kill("SIGTERM");
     const timeout = setTimeout(() => previous.kill("SIGKILL"), 5000);
     try {
@@ -56,96 +68,154 @@ export async function dev(options: DevOptions): Promise<void> {
       clearTimeout(timeout);
     }
   }
-
-  async function stopChild() {
-    const previous = child;
-    child = undefined;
-    await stopProcess(previous);
-  }
-
-  async function restart() {
-    queued = true;
-    if (restarting || closed) return;
-    restarting = true;
-    try {
-      while (queued && !closed) {
-        queued = false;
-        await stopChild();
-        if (closed) break;
-        presentation.starting();
-        // Fresh generation also invalidates imports of the config's dependencies.
-        const generated = Bun.spawn(
-          [process.execPath, options.cliPath, "generate", "--root", root],
-          // Generation's command result is redundant with the dev status; keep diagnostics.
-          { cwd: root, stdout: "ignore", stderr: "inherit" },
-        );
-        generator = generated;
-        const generationExit = await generated.exited;
-        if (generator === generated) generator = undefined;
-        if (closed) break;
-        if (generationExit !== 0) {
-          console.error("[lenso] Generation failed. Fix the source to restart.");
-          presentation.failed();
-          continue;
-        }
-        if (closed) break;
-        child = Bun.spawn([process.execPath, entry], {
-          cwd: root,
-          stdout: "inherit",
-          stderr: "inherit",
-          ipc(message, subprocess) {
-            if (!closed && child === subprocess && isDevReadyMessage(message))
-              presentation.ready(message);
-          },
-        });
-        const launched = child;
-        void launched.exited.then((code) => {
-          if (child === launched && !closed) {
-            child = undefined;
-            console.error(`[lenso] Development process exited (${code}). Edit source to restart.`);
-            presentation.failed();
+  function stopActive(): Promise<void> {
+    const previous = active;
+    active = undefined;
+    if (previous)
+      stopping = stopping
+        .then(async () => {
+          try {
+            await stopProcess(previous.child);
+          } finally {
+            await previous.engine.close();
           }
-        });
-      }
-    } finally {
-      restarting = false;
-    }
+        })
+        .catch(report);
+    return stopping;
   }
-
   function changed() {
     if (closed) return;
     if (debounce) clearTimeout(debounce);
     debounce = setTimeout(() => {
-      void restart().catch((error) => {
-        console.error("[lenso]", error);
-        presentation.failed();
-      });
+      void restart().catch(report);
     }, 100);
   }
-
-  async function close() {
+  function watchPath(path: string, sourceOnly = false) {
+    const canonical = realpathSync(path);
+    if (watchers.has(canonical)) return;
+    const directory = statSync(canonical).isDirectory();
+    const watcher = watch(canonical, { recursive: directory }, (_event, filename) => {
+      const changedPath = filename
+        ? resolve(directory ? canonical : resolve(canonical, ".."), filename.toString())
+        : canonical;
+      if (
+        relative(root, changedPath)
+          .split(sep)
+          .some((part) => ignored.has(part))
+      )
+        return;
+      if (
+        sourceOnly &&
+        ![".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"].includes(extname(changedPath))
+      )
+        return;
+      changed();
+    });
+    watcher.on("error", report);
+    watchers.set(canonical, watcher);
+  }
+  function resetWatches(paths: readonly string[] = []) {
+    for (const watcher of watchers.values()) watcher.close();
+    watchers.clear();
     if (closed) return;
-    closed = true;
-    if (debounce) clearTimeout(debounce);
-    for (const watcher of watchers) watcher.close();
-    const generating = generator;
-    generator = undefined;
-    await stopProcess(generating);
-    await stopChild();
-    finish();
+    // This fallback also observes newly added configs/imports after a failed build.
+    watchPath(root, true);
+    for (const path of paths) watchPath(path);
+  }
+  function restart(): Promise<void> {
+    queued = true;
+    if (restarting) return restarting;
+    if (closed) return Promise.resolve();
+    restarting = (async () => {
+      while (queued && !closed) {
+        queued = false;
+        await stopActive();
+        if (closed) break;
+        presentation.starting();
+        resetWatches();
+        let engine: EngineDevCycle;
+        try {
+          engine = await startEngineDevCycle(root);
+        } catch (error) {
+          report(error);
+          continue;
+        }
+        if (closed) {
+          await engine.close();
+          break;
+        }
+        try {
+          resetWatches(engine.watchFiles);
+          const child = Bun.spawn([process.execPath, entry], {
+            cwd: root,
+            stdout: "inherit",
+            stderr: "inherit",
+            ipc(message, subprocess) {
+              const current = active;
+              if (
+                closed ||
+                !current ||
+                current.child !== subprocess ||
+                current.ready ||
+                !isDevReadyMessage(message)
+              )
+                return;
+              current.ready = true;
+              void current.engine
+                .ready()
+                .then(() => {
+                  if (!closed && active === current) presentation.ready(message);
+                })
+                .catch(async (error) => {
+                  if (!closed && active === current) {
+                    report(error);
+                    await stopActive();
+                  }
+                });
+            },
+          });
+          const launched = { child, engine, ready: false };
+          active = launched;
+          void child.exited.then(async (code) => {
+            if (active !== launched || closed) return;
+            console.error(`[lenso] Development process exited (${code}). Edit source to restart.`);
+            presentation.failed();
+            await stopActive();
+          });
+        } catch (error) {
+          try {
+            await engine.close();
+          } catch (cleanup) {
+            report(cleanup);
+          }
+          report(error);
+        }
+      }
+    })().finally(() => {
+      restarting = undefined;
+    });
+    return restarting;
+  }
+  function close(): Promise<void> {
+    return (closing ??= (async () => {
+      closed = true;
+      if (debounce) clearTimeout(debounce);
+      for (const watcher of watchers.values()) watcher.close();
+      watchers.clear();
+      try {
+        await restarting;
+        await stopActive();
+      } finally {
+        finish();
+      }
+    })());
   }
   const onSignal = () => {
-    void close();
+    void close().catch(report);
   };
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
   try {
-    watchers.push(watch(join(root, "src"), { recursive: true }, changed));
-    watchers.push(
-      watch(root, (_event, filename) => {
-        if (filename?.toString() === "lenso.config.ts") changed();
-      }),
-    );
     await restart();
     await done;
   } finally {

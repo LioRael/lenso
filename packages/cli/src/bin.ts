@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { build, call, discover, generate, inspect } from "./engine";
 import { dev } from "./dev";
@@ -28,7 +27,7 @@ const help = {
     {
       name: "check",
       usage: "check [--root directory]",
-      effect: "imports trusted config; validates assembly; no setup",
+      effect: "runs trusted Engine setup/discovery; validates assembly; no application setup",
     },
     {
       name: "inspect",
@@ -83,6 +82,35 @@ const help = {
     "invocation-and-cleanup-failed",
     "build-failed",
     "serialization-failed",
+    "engine-config-load-failed",
+    "invalid-engine-config",
+    "invalid-engine-plugin",
+    "duplicate-engine-plugin",
+    "invalid-engine-order",
+    "missing-engine-order",
+    "cyclic-engine-order",
+    "engine-capability-conflict",
+    "invalid-engine-capability",
+    "late-engine-registration",
+    "invalid-engine-cleanup",
+    "invalid-engine-convention",
+    "invalid-engine-sources",
+    "invalid-engine-watch",
+    "engine-hook-failed",
+    "unknown-engine-target",
+    "invalid-generated-file",
+    "generated-file-conflict",
+    "unsafe-engine-output",
+    "invalid-generated-ownership",
+    "generated-file-modified",
+    "invalid-build-entry",
+    "invalid-build-output",
+    "build-diagnostic",
+    "engine-cleanup-failed",
+    "engine-and-cleanup-failed",
+    "engine-worker-exited",
+    "engine-worker-timeout",
+    "engine-worker-closed",
   ],
   boundaries: [
     "Trusted local config/plugins; not a sandbox.",
@@ -142,7 +170,9 @@ try {
       data = {
         plugins: manifest.map((plugin) => plugin.id),
         directory: resolve(root, ".lenso"),
-        files: ["manifest.json", "server.ts", "client.ts"],
+        files: (await Bun.file(resolve(root, ".lenso/.engine-files.json")).json()).files.map(
+          (file: { path: string }) => file.path,
+        ),
       };
       break;
     }
@@ -184,7 +214,7 @@ try {
     }
     case "dev":
       if (jsonMode) usage("dev --json is unsupported; use finite commands for structured results.");
-      await dev({ root, entry, cliPath: fileURLToPath(import.meta.url) });
+      await dev({ root, entry });
       data = { stopped: true };
       break;
     case "help":
