@@ -348,6 +348,6 @@ Development checks: build `@lenso/core`, `@lenso/db`, `@lenso/auth` and
 `@lenso/workers` before this package, then run its `build`, `typecheck` and `test`
 scripts. Set `LENSO_REQUIRE_POSTGRES=1` to require the local PG binaries rather
 than skip PG tests. Miniflare/workerd are test-only dependencies; no provider
-credentials are read. The root Bun lockfile is intentionally left to the integration owner; register this new
-workspace/dependencies there before relying on a fresh frozen install or the
-full workspace pipeline.
+credentials are read. Install the registered workspace dependencies from the
+single root Bun lockfile with `bun install --frozen-lockfile`; dependency changes
+and lockfile updates remain the integration owner's responsibility.
