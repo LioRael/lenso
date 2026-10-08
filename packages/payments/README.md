@@ -20,7 +20,7 @@ The ordinary async core (`createPayments`, contracts and safe errors) has no ext
 | `/drizzle/pg`, `/drizzle/sqlite` | PostgreSQL / Bun SQLite aggregate CAS                         | `drizzle-orm`                |
 | `/drizzle/d1`                    | Borrowed raw D1 binding, primary reads                        | Drizzle, Workers types       |
 
-The integration owner must update the single workspace lockfile for the new package and pinned optional peers. This change does not modify that lockfile.
+The package and pinned optional peers are recorded in the single workspace lockfile. Future dependency updates belong to the integration owner; do not create a package-local lockfile.
 
 ## Minimal integration
 
@@ -124,7 +124,7 @@ The adapter delegates cron validation, durable occurrences, queue identity bindi
 
 Apply Scheduler and Tasks migrations through their existing explicit workflows. Use matching PostgreSQL stores/queue, or matching D1 stores/queue. The host still must drive Scheduler: on Bun, explicitly own `startSchedulerDriver` from `@lenso/scheduler/driver`, immediately register `driver.stop()` cleanup, and observe `driver.done`; on Workers, await finite `scheduler.tick()` and `queue.runBatch()` in the platform handler, with no perpetual loop. Webhook wake remains the fast path; the cron plan is the durable safety net. Choose cron frequency and batch limit for the expected recovery backlog.
 
-This adapter consumes the Scheduler/Tasks public exports merged in `origin/main` at `7c35055`. An older checkout must use/build those merged dependencies before checking the adapter; it must not recreate their interfaces locally. No shared package or root lockfile is modified here.
+This adapter consumes the Scheduler/Tasks public exports merged in `origin/main` at `7c35055`. An older checkout must use/build those merged dependencies before checking the adapter; it must not recreate their interfaces locally. No shared package implementation is modified here.
 
 Webhook snapshots are not applied as state or ordered by timestamps. Their verified object IDs are retained so even an expired unknown operation can be recovered by provider GET. Worker queries the current provider state; terminal states cannot regress. Result IDs are persisted in the same aggregate CAS as state changes, so different events for one success do not produce another business result.
 
