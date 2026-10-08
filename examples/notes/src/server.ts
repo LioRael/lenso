@@ -1,15 +1,17 @@
-import { createWebPlugin } from "@lenso/web";
 import { definePlugin, startApp } from "lenso";
 import { createPgNotesPlugins, databaseUrl } from "./app-pg";
-import { createNotesRouter } from "./router";
+import { parseNotesPrincipals, type NotesPrincipal } from "./auth";
+import type { SessionLifetime } from "@lenso/auth/sessions";
+import { createNotesWebPlugin } from "./web";
 
-export async function createNotesServer(connection: string, port = 3001) {
-  const definition = createPgNotesPlugins(connection);
-  const web = createWebPlugin({
-    id: "notes-web",
-    requires: [definition.notes],
-    router: (context) => createNotesRouter(context.get(definition.notes)),
-  });
+export async function createNotesServer(
+  connection: string,
+  principals: readonly NotesPrincipal[],
+  port = 3001,
+  lifetime?: SessionLifetime,
+) {
+  const definition = createPgNotesPlugins(connection, principals, lifetime);
+  const web = createNotesWebPlugin(definition.notes, definition.authentication);
   const listener = definePlugin({
     id: "notes-listener",
     requires: [web],
@@ -33,11 +35,20 @@ export async function createNotesServer(connection: string, port = 3001) {
     },
   });
   const app = await startApp({ plugins: [...definition.plugins, web, listener] });
-  return { app, notes: app.get(definition.notes), url: app.get(listener).url };
+  return {
+    app,
+    notes: app.get(definition.notes),
+    authentication: app.get(definition.authentication),
+    url: app.get(listener).url,
+  };
 }
 
 if (import.meta.main) {
-  const server = await createNotesServer(databaseUrl(), Number(process.env.LENSO_PORT ?? 3001));
+  const server = await createNotesServer(
+    databaseUrl(),
+    parseNotesPrincipals(process.env.NOTES_LOGIN_KEYS),
+    Number(process.env.LENSO_PORT ?? 3001),
+  );
   console.log(`Notes RPC ready at ${server.url}rpc`);
   const stop = () => {
     void server.app.stop().catch((error: unknown) => {

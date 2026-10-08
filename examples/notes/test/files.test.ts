@@ -10,7 +10,14 @@ test("existing Notes example streams private attachments with persistent IDs and
   const root = await mkdtemp(join(await realpath(tmpdir()), "lenso-note-files-"));
   const filename = join(root, "notes.sqlite");
   const actor = { ownerId: "alice", tenantId: "team-a" };
-  const definition = createNotesFiles({ filename, root: join(root, "objects") });
+  const key = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const definition = createNotesFiles({
+    filename,
+    root: join(root, "objects"),
+    principals: [{ subjectId: actor.ownerId, key }],
+  });
   try {
     await migrateFiles(filename); // Never performed by createNotesFiles/startApp.
     const app = await startApp({ plugins: definition.plugins });
