@@ -1,0 +1,27 @@
+{
+  "name": "@lenso/auth",
+  "version": "0.1.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target bun --packages external",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@orpc/server": "1.15.5",
+    "lenso": "workspace:^"
+  },
+  "devDependencies": {
+    "@lenso/web": "workspace:^",
+    "zod": "4.6.5"
+  }
+}
