@@ -5,7 +5,7 @@ A Bun-first plugin framework with ordinary async services. Core owns instance de
 ## Run locally
 
 ```sh
-cd /Users/leosouthey/Projects/framework/lenso
+cd lenso
 bun install --frozen-lockfile
 bun dev
 ```
@@ -28,6 +28,7 @@ CLI and Web reuse the same input schema and service. Each CLI call starts a fres
 | `@lenso/core` | `definePlugin`, `defineApp`, validation, Promise lifecycle | API example below |
 | `@lenso/engine` | typed discovery, generation, extensible build targets and dev scheduling | [Engine API and plugins](packages/engine/README.md) |
 | `@lenso/cli` | command parsing, explicit service calls, terminal presentation and exit codes | [CLI contracts](docs/CLI.md), [development output](packages/cli/README.md) |
+| `@lenso/mcp` | optional local stdio exposure of declared, allowlisted operations | [MCP contracts and limits](packages/mcp/README.md) |
 | `@lenso/web` | Fetch, oRPC and streaming request ownership | [Web API](packages/web/README.md) |
 | `@lenso/auth` | provider adapters, typed middleware and shared service authorization | [Auth API](packages/auth/README.md) |
 | `@lenso/db` | native Drizzle PostgreSQL, Bun SQLite and D1 resources | [Database and Notes](docs/DATABASE.md) |
@@ -57,6 +58,59 @@ The preload is for finite commands; long-running hosts own drain and bounded
 SDK shutdown explicitly. See the telemetry package for owned/external SDK and
 Workers configuration. Logging is separate: pass `createLogger()` from
 `@lenso/log` as `startApp`'s `logger` option, or supply an existing logger.
+
+## Coding-agent skills
+
+- [lenso-develop](.agents/skills/lenso-develop/SKILL.md): change an application's
+  plugins, services, Web/Auth entries, operation exposure or Engine extensions.
+  Not generic TS/Bun help, execution-only requests, framework maintenance or delivery.
+- [lenso-diagnose](.agents/skills/lenso-diagnose/SKILL.md): investigate existing
+  assembly, configuration, build/dev, Auth or task failures and authorized recovery.
+  Not new interfaces, arbitrary SQL/migrations, secret inspection or bulk retries.
+
+These help a **coding agent** use public packages, types, shell and CLI. A
+**runtime agent** still needs an actually exposed operation, verified identity
+and service authorization; loading a skill grants none of those.
+
+The authoritative folders are `.agents/skills/lenso-develop` and
+`.agents/skills/lenso-diagnose`, including their `references/`. For an external
+application, obtain just these two complete folders from a reviewed repository
+archive/revision containing them and copy them into the application's project-local
+`.agents/skills/`. No framework checkout, global installation or tool configuration
+change is required. Load `SKILL.md` explicitly if the agent does not discover that
+directory. Keep both folders from the same revision; update from that source rather
+than maintaining separate agent-specific copies. Skills are not included in the
+current npm package file lists, and this change does not publish them.
+
+References link to public, revision-pinned documentation and examples. Match those
+documents to the application's installed packages/lockfile before using an API;
+a source merge or template is not proof of registry availability. Check actual
+installed exports and build provenance: matching version strings alone do not
+prove that newer configuration, listener or observability entries are present.
+
+### Find the supported entry
+
+<!-- prettier-ignore -->
+| Task | Public entry | Documentation / example | Platform or boundary |
+| --- | --- | --- | --- |
+| Plugin dependencies and resource ownership | `@lenso/core` | [Core API](#core-api), [greeting plugin](examples/greeting/src/greeting.ts) | Exact instance bindings; ordinary async services |
+| Validated instance configuration | `@lenso/core/config`, `/config/env`, `/config/file` | [Configuration](#instance-configuration), [Notes configuration](examples/notes/CONFIGURATION.md) | File adapter is local-host only; no config center, subscriptions or hot reload |
+| Declare CLI operations or extend build/dev | `@lenso/cli`, `@lenso/engine/authoring` | [CLI](docs/CLI.md), [Engine](packages/engine/README.md), [Notes operations](examples/notes/src/operations.ts) | Bun build host; `inspect` imports trusted code, `call` starts a fresh app |
+| Expose operations to a runtime agent | `@lenso/mcp` `serveStdio` | [MCP](packages/mcp/README.md), [Tasks entry](examples/tasks/src/mcp.ts) | Local Bun stdio, separate allowlist, convertible object input; no remote auth or general Manage SDK |
+| Web and verified service identity | `@lenso/web`, `@lenso/web/bun`, selected `@lenso/auth` entries | [Web](packages/web/README.md), [Auth](packages/auth/README.md), [shared Notes assembly](examples/notes/src/application.ts), [Notes server](examples/notes/src/server.ts) | Bun listener is separate from Fetch; Auth does not install login routes |
+| Database, files and durable tasks | Selected `@lenso/db`, `@lenso/storage`, `@lenso/tasks` entries | [Database](docs/DATABASE.md), [Files](packages/storage/README.md), [Tasks](examples/tasks/README.md) | Bun SQL/SQLite versus Workers D1/R2; shipped durable task provider is PostgreSQL |
+| Observe execution or diagnose unknown errors | `@lenso/log`, selected `@lenso/otel` entries; application's authorized status operations | [Logging](packages/log/README.md), [Telemetry](packages/otel/README.md), [Tasks query](examples/tasks/README.md#authentication-and-durable-ownership) | Stderr collector / configured telemetry backend or Workers platform; no built-in Observe query CLI |
+| Use packages outside this repository | Public `exports`, real packed packages | [Minimal consumers](templates/README.md), [Workers example](examples/workers/README.md) | Templates are files, not a scaffold/install/deploy command; no framework-internal imports |
+
+Auth migration scripts have a public `@lenso/auth/migrations/*` export.
+Storage and Tasks ship migrations but do not currently export migration subpaths;
+that is a separate package-boundary gap, not permission to guess internal paths.
+Tasks does expose `migratePostgresTaskQueue` from `@lenso/tasks/postgres` for
+explicit provisioning, as documented in [Tasks](packages/tasks/README.md#postgresql-ownership-migration-and-retention).
+Use reviewed, version-matched source scripts with the application's authorized
+migration workflow. Several packages omit their README from tarballs, so the public
+documentation links above are the consumer route. Skills do not add a migrator,
+Manage API or telemetry collector.
 
 ## Core API
 
