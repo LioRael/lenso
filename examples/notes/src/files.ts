@@ -12,9 +12,9 @@ import { createSqliteFileQueries, fileSchema } from "@lenso/storage/sqlite";
 import { sqliteSessionStore } from "@lenso/auth/drizzle/sqlite";
 import { definePlugin, startApp } from "@lenso/core";
 import { parseNotesPrincipals, type NotesPrincipal } from "./auth";
-import { createApplicationAuth } from "./application-auth";
+import { createNotesApplication } from "./application";
 import { migrateSqlite } from "./migrate-sqlite";
-import { createNotesPlugin, notesAudiences, type NotesActor } from "./notes";
+import { notesAudiences, type NotesActor } from "./notes";
 import { createSqliteNotesQueries } from "./queries-sqlite";
 import * as notesSchema from "./schema-sqlite";
 
@@ -40,17 +40,13 @@ export function createNotesFiles(options: {
     filename: options.filename,
     schema: { ...notesSchema, ...fileSchema },
   });
-  const authentication = createApplicationAuth({
+  const application = createNotesApplication({
     database,
     store: sqliteSessionStore,
+    queries: createSqliteNotesQueries,
     principals: options.principals,
   });
-  const notes = createNotesPlugin({
-    id: "notes",
-    database,
-    authentication,
-    queries: createSqliteNotesQueries,
-  });
+  const { authentication, notes } = application;
   // These names select directories, not public bucket ACLs.
   const publicAssets = createLocalStoragePlugin({
     id: "publicAssets",
@@ -101,7 +97,7 @@ export function createNotesFiles(options: {
     publicAssets,
     privateFiles,
     files,
-    plugins: [database, authentication, notes, publicAssets, privateFiles, files],
+    plugins: [...application.plugins, publicAssets, privateFiles, files],
   };
 }
 

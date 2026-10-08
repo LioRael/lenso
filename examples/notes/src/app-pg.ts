@@ -2,8 +2,7 @@ import { createBunSqlPlugin } from "@lenso/db/bun-sql";
 import { postgresSessionStore } from "@lenso/auth/drizzle/pg";
 import type { SessionLifetime } from "@lenso/auth/sessions";
 import type { NotesPrincipal } from "./auth";
-import { createApplicationAuth } from "./application-auth";
-import { createNotesPlugin } from "./notes";
+import { createNotesApplication } from "./application";
 import { createPgNotesQueries } from "./queries-pg";
 import * as schema from "./schema-pg";
 
@@ -13,25 +12,13 @@ export function createPgNotesPlugins(
   lifetime?: SessionLifetime,
 ) {
   const database = createBunSqlPlugin({ id: "notes-db", connection, schema });
-  const authentication = createApplicationAuth({
+  return createNotesApplication({
     database,
     store: postgresSessionStore,
+    queries: createPgNotesQueries,
     principals,
     lifetime,
   });
-  const notes = createNotesPlugin({
-    id: "notes",
-    database,
-    authentication,
-    queries: createPgNotesQueries,
-  });
-  return {
-    database,
-    authentication,
-    auth: authentication,
-    notes,
-    plugins: [database, authentication, notes],
-  };
 }
 
 export function databaseUrl(): string {

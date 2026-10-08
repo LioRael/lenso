@@ -5,6 +5,7 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { createBunSqlPlugin } from "@lenso/db/bun-sql";
 import { startApp } from "@lenso/core";
+import { isDevReadyMessage } from "@lenso/engine/dev-ready";
 import { sql } from "drizzle-orm";
 import { migratePostgres } from "../src/migrate-pg";
 import { createNotesServer } from "../src/server";
@@ -30,6 +31,48 @@ test.skipIf(!connection)(
       { subjectId: `notes-other-${crypto.randomUUID()}`, key: otherKey },
     ];
     const configuration = JSON.stringify(principals);
+    const messages: unknown[] = [];
+    let resolveReady!: (url: string) => void;
+    const ready = new Promise<string>((resolve) => {
+      resolveReady = resolve;
+    });
+    const entry = Bun.spawn(
+      [process.execPath, new URL("../src/server.ts", import.meta.url).pathname],
+      {
+        env: {
+          ...process.env,
+          DATABASE_URL: connection,
+          NOTES_LOGIN_KEYS: configuration,
+          LENSO_PORT: "0",
+        },
+        stdout: "ignore",
+        stderr: "pipe",
+        ipc(message) {
+          messages.push(message);
+          if (isDevReadyMessage(message) && message.urls?.[0]) resolveReady(message.urls[0]);
+        },
+      },
+    );
+    const entryErrors = new Response(entry.stderr).text();
+    const timeout = setTimeout(() => entry.kill("SIGKILL"), 5000);
+    try {
+      const url = await Promise.race([
+        ready,
+        entry.exited.then(async () => {
+          throw new Error(`Notes entry exited before readiness: ${await entryErrors}`);
+        }),
+      ]);
+      const response = await fetch(new URL("rpc", url));
+      await response.arrayBuffer();
+      expect(messages.filter(isDevReadyMessage)).toHaveLength(1);
+      entry.kill("SIGTERM");
+      expect(await entry.exited, await entryErrors).toBe(0);
+      await expect(fetch(url)).rejects.toThrow();
+    } finally {
+      clearTimeout(timeout);
+      if (entry.exitCode === null) entry.kill("SIGKILL");
+      await entry.exited;
+    }
     const login = Bun.spawn(
       [process.execPath, new URL("../src/cli.ts", import.meta.url).pathname, "login"],
       {

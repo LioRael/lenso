@@ -25,6 +25,14 @@ export const operations = [
 export default defineApp({ plugins: [greeting] });
 ```
 
+For a service with several operations, its plugin or a companion factory can return
+`{ plugin, operations }`. Use `defineOperation` inside that factory with the exact
+plugin object, install `plugin`, and explicitly export the chosen declarations as
+the config's named `operations`. Notes uses this pattern in
+[its companion factories](../examples/notes/src/operations.ts); it does not automatically expose service methods
+or add anything to the separate MCP allowlist. Keep functions and schemas in code,
+not JSON contributions or manifests.
+
 `defineOperation` checks the service method's input type. The schema uses Standard Schema v1, including Zod 4. `inspect [plugin-id [method]]` derives JSON Schema from that same object's Standard JSON Schema converter. Field names/types remain discoverable, including credential fields; payload defaults/examples are omitted. If conversion is absent or unsupported, it reports `runtime-validation-only` and `inputSchema:null`; it never starts resources to infer methods. Source locations are explicit declaration metadata, otherwise the exact config file; line/column are omitted unless supplied or reported by Bun build diagnostics.
 
 Calls validate input before setup, start one app, invoke the declared own service method with validated input and the original service as `this`, then stop. Unknown methods fail before setup. Both business and cleanup failures survive in ordered causes. No eval, automatic retry or inferred exposure occurs. Each CLI call owns a fresh app instance; HTTP normally retains an app. An effect description provides no idempotency or authorization guarantee. Keep authorization inside shared application/service rules or an already authorized public API. CLI does not invent an actor from JSON input.

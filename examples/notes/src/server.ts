@@ -1,5 +1,8 @@
-import { definePlugin, startApp } from "@lenso/core";
+import { startApp } from "@lenso/core";
+import { reportDevReady } from "@lenso/engine/dev-ready";
+import { createBunListenerPlugin } from "@lenso/web/bun";
 import { createPgNotesPlugins, databaseUrl } from "./app-pg";
+import type { createNotesApplication } from "./application";
 import { parseNotesPrincipals, type NotesPrincipal } from "./auth";
 import type { SessionLifetime } from "@lenso/auth/sessions";
 import { createNotesWebPlugin } from "./web";
@@ -11,27 +14,25 @@ export async function createNotesServer(
   lifetime?: SessionLifetime,
 ) {
   const definition = createPgNotesPlugins(connection, principals, lifetime);
+  return startNotesServer(definition, port);
+}
+
+export async function startNotesServer<T>(
+  definition: ReturnType<typeof createNotesApplication<T>>,
+  port: number,
+) {
   const web = createNotesWebPlugin(definition.notes, definition.authentication);
-  const listener = definePlugin({
+  const listener = createBunListenerPlugin({
     id: "notes-listener",
-    requires: [web],
-    setup(context) {
-      const handler = context.get(web);
-      const server = Bun.serve({
-        hostname: "127.0.0.1",
-        port,
-        fetch(request) {
-          const host = new URL(request.url).hostname;
-          if (host !== "127.0.0.1" && host !== "localhost")
-            return new Response("Invalid host", { status: 403 });
-          const origin = request.headers.get("origin");
-          if (origin && origin !== server.url.origin)
-            return new Response("Invalid origin", { status: 403 });
-          return handler.fetch(request);
-        },
-      });
-      context.onCleanup(() => server.stop(true));
-      return { url: server.url };
+    web,
+    hostname: "127.0.0.1",
+    port,
+    ingress(request, url) {
+      const host = new URL(request.url).hostname;
+      if (host !== "127.0.0.1" && host !== "localhost")
+        return new Response("Invalid host", { status: 403 });
+      const origin = request.headers.get("origin");
+      if (origin && origin !== url.origin) return new Response("Invalid origin", { status: 403 });
     },
   });
   const app = await startApp({ plugins: [...definition.plugins, web, listener] });
@@ -50,6 +51,10 @@ if (import.meta.main) {
     Number(process.env.LENSO_PORT ?? 3001),
   );
   console.log(`Notes RPC ready at ${server.url}rpc`);
+  reportDevReady({
+    urls: [server.url],
+    capabilities: server.app.status().map((plugin) => plugin.id),
+  });
   const stop = () => {
     void server.app.stop().catch((error: unknown) => {
       console.error(error);

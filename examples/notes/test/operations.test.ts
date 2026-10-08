@@ -3,7 +3,8 @@ import { mkdtemp, rm, access, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { definePlugin, startApp } from "@lenso/core";
-import { invoke } from "@lenso/cli";
+import { defineOperation, invoke } from "@lenso/cli";
+import { z } from "zod";
 import { createSqliteFileQueries } from "@lenso/storage/sqlite";
 import {
   createNotesFiles,
@@ -12,12 +13,7 @@ import {
   type NotesFileAccess,
 } from "../src/files";
 import { notesAudiences } from "../src/notes";
-import {
-  createNotesOperationsPlugin,
-  createNotesFileOperationsPlugin,
-  declareNotesOperations,
-  declareNotesFileOperations,
-} from "../src/operations";
+import { createNotesOperations, createNotesFileOperations } from "../src/operations";
 
 test("Notes registry validates before setup and authenticates all business/file calls", async () => {
   const directory = await mkdtemp(join(await realpath(tmpdir()), "notes-operations-"));
@@ -33,15 +29,29 @@ test("Notes registry validates before setup and authenticates all business/file 
       { subjectId: "bob", key: otherKey },
     ],
   });
-  const notes = createNotesOperationsPlugin({
+  const notes = createNotesOperations({
     notes: definition.notes,
     authentication: definition.authentication,
     credential: () => credential,
   });
-  const files = createNotesFileOperationsPlugin({
+  const files = createNotesFileOperations({
     files: definition.files,
     authentication: definition.authentication,
     credential: () => credential,
+  });
+  defineOperation({
+    plugin: notes.plugin,
+    // @ts-expect-error A companion factory retains the service method constraints.
+    method: "issue",
+    input: z.object({}),
+    description: "Not a Notes operation",
+  });
+  defineOperation({
+    plugin: notes.plugin,
+    // @ts-expect-error The schema output must satisfy the create method's input.
+    method: "create",
+    input: z.object({ title: z.number() }),
+    description: "Not a compatible input",
   });
   let setups = 0;
   let cleanups = 0;
@@ -56,12 +66,35 @@ test("Notes registry validates before setup and authenticates all business/file 
     },
   });
   const appDefinition = {
-    plugins: [...definition.plugins, notes, files, probe],
-    operations: [...declareNotesOperations(notes), ...declareNotesFileOperations(files)],
+    plugins: [...definition.plugins, notes.plugin, files.plugin, probe],
+    operations: [...notes.operations, ...files.operations],
   };
-  const run = (method: string, input: unknown) => invoke(appDefinition, notes.id, method, input);
+  expect(notes.operations.every((operation) => operation.plugin === notes.plugin)).toBe(true);
+  expect(files.operations.every((operation) => operation.plugin === files.plugin)).toBe(true);
+  const replacement = definePlugin({
+    id: notes.plugin.id,
+    setup: () => ({}),
+  });
+  await expect(
+    invoke(
+      { plugins: [...definition.plugins, replacement], operations: notes.operations },
+      notes.plugin.id,
+      "create",
+      { title: "not allowed" },
+    ),
+  ).rejects.toMatchObject({ diagnostic: { code: "invalid-operations" } });
+  await expect(
+    invoke(
+      { plugins: [...definition.plugins, notes.plugin], operations: [notes.operations[0]!] },
+      notes.plugin.id,
+      "list",
+      {},
+    ),
+  ).rejects.toMatchObject({ diagnostic: { code: "unknown-operation" } });
+  const run = (method: string, input: unknown) =>
+    invoke(appDefinition, notes.plugin.id, method, input);
   const runFile = (method: string, input: unknown) =>
-    invoke(appDefinition, files.id, method, input);
+    invoke(appDefinition, files.plugin.id, method, input);
   try {
     for (const input of [
       { title: " " },
@@ -197,6 +230,7 @@ test("real inspect/call CLI uses the Notes config without actor input or implici
     STORAGE_ROOT: relative(root, join(directory, "files")),
     NOTES_LOGIN_KEYS: JSON.stringify([{ subjectId: "alice", key }]),
     NOTES_SESSION: "",
+    LENSO_PORT: "not-a-port",
   };
   const spawn = async (args: string[], input = "", environment = env) => {
     const child = Bun.spawn([process.execPath, cli, ...args, "--root", root, "--json"], {
@@ -220,6 +254,9 @@ test("real inspect/call CLI uses the Notes config without actor input or implici
     });
     expect(inspection.exit).toBe(0);
     expect(inspection.output.data.operations[0].inputSchema.additionalProperties).toBe(false);
+    expect(inspection.output.data.plugins.map((plugin: { id: string }) => plugin.id)).not.toContain(
+      "notes-listener",
+    );
     await expect(access(filename)).rejects.toBeDefined();
     const invalid = await spawn(
       ["call", "notes-operations", "create", "--stdin"],
