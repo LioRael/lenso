@@ -1,8 +1,16 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
-import { build, call, discover, generate, inspect } from "./engine";
+import { build, discover, generate } from "@lenso/engine";
+import { call, inspect } from "./engine";
 import { dev } from "./dev";
-import { CliError, diagnostic, environmentSecrets, redact, stableJson } from "./diagnostics";
+import {
+  CliError,
+  diagnostic,
+  environmentSecrets,
+  exitCode,
+  redact,
+  stableJson,
+} from "./diagnostics";
 
 const args = process.argv.slice(2);
 const jsonMode = args.includes("--json");
@@ -111,6 +119,10 @@ const help = {
     "engine-worker-exited",
     "engine-worker-timeout",
     "engine-worker-closed",
+    "dev-entry-missing",
+    "dev-runtime-timeout",
+    "engine-session-closed",
+    "invalid-engine-state",
   ],
   boundaries: [
     "Trusted local config/plugins; not a sandbox.",
@@ -235,8 +247,7 @@ try {
 } catch (error) {
   // Remove absent optional diagnostic fields, preserving only JSON-safe public data.
   const detail = redact(JSON.parse(JSON.stringify(diagnostic(error))), secrets);
-  const exitCode = error instanceof CliError ? error.exitCode : 1;
   if (jsonMode) stdout(`${stableJson({ schemaVersion: 1, ok: false, error: detail })}\n`);
   else process.stderr.write(`${stableJson(detail, 2)}\n`);
-  process.exitCode = exitCode;
+  process.exitCode = exitCode(error);
 }

@@ -7,11 +7,12 @@ Build the framework first (`bun install`, `bun run build`). Create the applicati
 | Package directory  | Filename            | Templates        |
 | ------------------ | ------------------- | ---------------- |
 | `packages/lenso`   | `lenso.tgz`         | all              |
+| `packages/engine`  | `lenso-engine.tgz`  | CLI, Bun Web     |
 | `packages/cli`     | `lenso-cli.tgz`     | CLI, Bun Web     |
 | `packages/web`     | `lenso-web.tgz`     | Bun Web, Workers |
 | `packages/workers` | `lenso-workers.tgz` | Workers          |
 
-The templates declare `file:./vendor/*.tgz` dependencies. Create `vendor` and put the real archives there before `bun install`. The root `lenso` override also resolves packed packages' transitive core dependency to the local archive, avoiding a registry lookup for an unpublished core. All packages come from the same build. You may replace these explicit paths and the override with other verified package locations; do not point at framework source or copy the framework into the application. Each consumer uses its own single `bun.lock`.
+The templates declare `file:./vendor/*.tgz` dependencies. Create `vendor` and put the real archives there before `bun install`. Root overrides resolve transitive `lenso` and (for CLI/Bun Web) `@lenso/engine` dependencies to local archives, avoiding registry lookups for unpublished packages. Workers do not install Engine or CLI. All packages come from the same build. You may replace these explicit paths and overrides with other verified package locations; do not point at framework source or copy the framework into the application. Each consumer uses its own single `bun.lock`.
 
 - CLI: `bun run call -- '{"name":"Ada"}'`, `bun run generate`, `bun run build`.
 - Bun Web: optionally copy `.env.example` to `.env`, then `bun run dev`. Call `/rpc/greet` with an oRPC client, or `curl -H 'content-type: application/json' --data '{"json":{"name":"Ada"}}' http://127.0.0.1:3000/rpc/greet`. `bun run build` emits the Bun server.
@@ -23,4 +24,4 @@ Keep the Workers template's `enable_request_signal` flag: it enables client-disc
 
 CLI operations are explicit declarations of the existing service and shared input schema. Bun Web uses that same schema for its service, Web procedure, and CLI operation. Its custom server reports readiness with the public `lenso-cli/dev` helper after listening; use framework archives that include that export.
 
-Future scaffold integration needs a template ID, target directory, application name, and an explicit dependency map for `lenso`, `lenso-cli`, `@lenso/web`, and `@lenso/workers` as applicable. Copy only the selected directory, replace its package name and dependency locations, then install with Bun. Template metadata or this README must not be emitted as application runtime code.
+Future scaffold integration needs a template ID, target directory, application name, and an explicit dependency map for `lenso`, `@lenso/engine`, `lenso-cli`, `@lenso/web`, and `@lenso/workers` as applicable. Copy only the selected directory, replace its package name and dependency locations, then install with Bun. Template metadata or this README must not be emitted as application runtime code.

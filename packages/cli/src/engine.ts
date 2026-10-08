@@ -1,109 +1,10 @@
-import { access } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { startApp, validatePlugins, type Contribution, type Plugin } from "lenso";
-import { CliError, diagnostic } from "./diagnostics";
-import {
-  describeOperation,
-  redactOperationDescription,
-  validateOperations,
-  type Operation,
-} from "./operations";
-import { EngineSession, withEngine } from "./engine-host";
-import { defaultEnginePlugins, pluginManifest } from "./engine-defaults";
-import type { EngineMode, EngineSnapshot } from "./engine-authoring";
-
-export interface AppDefinition {
-  readonly plugins: readonly Plugin<unknown>[];
-  readonly operations?: readonly Operation[];
-}
-export interface PluginManifest {
-  readonly id: string;
-  readonly requires: readonly string[];
-  readonly contributions: readonly Contribution[];
-}
-export interface Discovery {
-  readonly root: string;
-  readonly configPath: string;
-  readonly app: AppDefinition;
-  readonly ordered: readonly Plugin<unknown>[];
-}
-async function readApplication(root: string, configPath: string): Promise<Discovery> {
-  let loaded;
-  try {
-    await access(configPath);
-    loaded = await import(pathToFileURL(configPath).href);
-  } catch (cause) {
-    throw new CliError(
-      {
-        code: "config-load-failed",
-        phase: "discovery",
-        message: "Cannot load trusted application config.",
-        source: { file: configPath },
-      },
-      3,
-      { cause },
-    );
-  }
-  const app: unknown = loaded.default;
-  if (!app || typeof app !== "object" || !("plugins" in app) || !Array.isArray(app.plugins))
-    throw new CliError(
-      {
-        code: "invalid-config",
-        phase: "discovery",
-        message: "Application config must default-export defineApp({ plugins: [...] })",
-        source: { file: configPath },
-      },
-      3,
-    );
-  const definition = app as AppDefinition;
-  try {
-    const ordered = validatePlugins(definition.plugins);
-    const operations = validateOperations(
-      definition.plugins,
-      loaded.operations ?? definition.operations ?? [],
-    );
-    return { root, configPath, app: { ...definition, operations }, ordered };
-  } catch (cause) {
-    throw new CliError(diagnostic(cause, { source: { file: configPath } }), 3);
-  }
-}
-export function createEngineSession(root: string, mode: EngineMode) {
-  const session = new EngineSession(resolve(root), mode);
-  let app: Promise<Discovery> | undefined;
-  const readApp = (snapshot: EngineSnapshot) =>
-    (app ??= readApplication(session.root, resolve(session.root, snapshot.convention.config)));
-  return {
-    session,
-    async prepare() {
-      await session.setup(defaultEnginePlugins(readApp));
-      const snapshot = await session.discover();
-      return readApp(snapshot);
-    },
-  };
-}
-/** Build-time discovery validates trusted extensions, then closes their resources. */
-export async function discover(root = process.cwd()): Promise<Discovery> {
-  const engine = createEngineSession(root, "check");
-  return withEngine(engine.session, engine.prepare);
-}
-/** Static generation starts engine plugins, never runtime application plugin setup. */
-export async function generate(root = process.cwd()): Promise<readonly PluginManifest[]> {
-  const engine = createEngineSession(root, "generate");
-  return withEngine(engine.session, async () => {
-    const app = await engine.prepare();
-    await engine.session.generate();
-    return pluginManifest(app);
-  });
-}
-export async function build(root = process.cwd(), entry?: string): Promise<string> {
-  const engine = createEngineSession(root, "build");
-  return withEngine(engine.session, async () => {
-    await engine.prepare();
-    await engine.session.generate();
-    return engine.session.build(entry);
-  });
-}
+import { startApp } from "lenso";
+import { readApplication, type AppDefinition } from "@lenso/engine/application";
+import { CliError, diagnostic, exitCode } from "./diagnostics";
+import { describeOperation, redactOperationDescription, validateOperations } from "./operations";
+export { discover, generate, build, createEngineSession } from "@lenso/engine";
+export type { AppDefinition, Discovery, PluginManifest } from "@lenso/engine/application";
 
 export async function invoke(
   app: AppDefinition,
@@ -237,7 +138,8 @@ export async function call(
   } catch (cause) {
     throw new CliError(
       diagnostic(cause, { source: { file: join(resolve(root), "lenso.config.ts") } }),
-      cause instanceof CliError ? cause.exitCode : 1,
+      exitCode(cause),
+      { cause },
     );
   }
 }

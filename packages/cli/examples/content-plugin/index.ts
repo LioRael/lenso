@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineEnginePlugin } from "lenso-cli/engine";
+import { defineEnginePlugin } from "@lenso/engine/authoring";
 
 /** App-installed build plugin: discover Markdown and generate a static data module. */
 export function contentPlugin(directory = "content") {

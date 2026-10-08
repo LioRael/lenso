@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
-import { CliError, diagnostic, type CliDiagnostic } from "./diagnostics";
+import { EngineError, diagnostic, type EngineDiagnostic } from "./diagnostics";
 import type {
   BuildContext,
   DevEvent,
@@ -49,11 +49,9 @@ function error(
   pluginId: string,
   source: EngineSource,
   phase = "engine-config",
+  options?: ErrorOptions,
 ) {
-  return new CliError(
-    { code, phase, message, pluginId, source },
-    phase === "engine-config" ? 3 : 1,
-  );
+  return new EngineError({ code, phase, message, pluginId, source }, options);
 }
 function safeRelative(path: string): boolean {
   return (
@@ -231,6 +229,13 @@ export class EngineSession {
   }[] = [];
   private readonly watches = new Set<string>();
   private closed?: Promise<void>;
+  private closing = false;
+  private cleanupStarted = false;
+  private setupPromise?: Promise<void>;
+  private setupDefaults?: readonly EnginePlugin[];
+  private setupComplete = false;
+  private discoveryComplete = false;
+  private runningStage?: Promise<unknown>;
   private conventionValue?: EngineConvention;
   private sourceFiles: readonly string[] = [];
   readonly configPath: string;
@@ -245,8 +250,8 @@ export class EngineSession {
     try {
       return (await Reflect.apply(capability.run, undefined, args)) as T;
     } catch (cause) {
-      if (cause instanceof CliError) throw cause;
-      throw new CliError(
+      if (cause instanceof EngineError) throw cause;
+      throw new EngineError(
         {
           code: "engine-hook-failed",
           phase,
@@ -257,25 +262,62 @@ export class EngineSession {
             diagnostic(cause, { pluginId: capability.plugin, source: capability.source, phase }),
           ],
         },
-        1,
         { cause },
       );
     }
   }
-  async setup(defaults: readonly EnginePlugin[]): Promise<void> {
+  setup(defaults: readonly EnginePlugin[]): Promise<void> {
+    if (this.closing) return Promise.reject(this.stateError("engine-setup", true));
+    if (this.setupPromise) {
+      if (
+        defaults.length !== this.setupDefaults!.length ||
+        defaults.some((plugin, index) => plugin !== this.setupDefaults![index])
+      )
+        return Promise.reject(this.stateError("engine-setup"));
+      return this.setupPromise;
+    }
+    this.setupDefaults = [...defaults];
+    return (this.setupPromise = Promise.resolve().then(async () => {
+      await this.performSetup(this.setupDefaults!);
+      this.setupComplete = true;
+    }));
+  }
+  private stateError(phase: string, closed = false): EngineError {
+    return error(
+      closed ? "engine-session-closed" : "invalid-engine-state",
+      closed
+        ? "Engine session is closing or closed."
+        : "Engine stage prerequisites are not satisfied.",
+      "engine",
+      { file: this.configPath },
+      phase,
+    );
+  }
+  // Processing stages are serial, not queued. Hooks must not await close(), which waits for them.
+  private stage<T>(phase: string, needsDiscovery: boolean, run: () => Promise<T>): Promise<T> {
+    if (this.closing) return Promise.reject(this.stateError(phase, true));
+    if (!this.setupComplete || (needsDiscovery && !this.discoveryComplete) || this.runningStage)
+      return Promise.reject(this.stateError(phase));
+    const pending = Promise.resolve().then(run);
+    const tracked = pending.finally(() => {
+      this.runningStage = undefined;
+    });
+    this.runningStage = tracked;
+    return tracked;
+  }
+  private async performSetup(defaults: readonly EnginePlugin[]): Promise<void> {
     let config: EngineConfig = {};
     if (await exists(this.configPath)) {
       try {
         config = (await import(pathToFileURL(this.configPath).href)).default;
       } catch (cause) {
-        throw new CliError(
+        throw new EngineError(
           {
             code: "engine-config-load-failed",
             phase: "engine-config",
             message: "Cannot load trusted lenso.engine.ts.",
             source: { file: this.configPath },
           },
-          3,
           { cause },
         );
       }
@@ -361,7 +403,7 @@ export class EngineSession {
         target: (name, run, options) => register("target", name, run as Run, options),
         dev: (name, run, options) => register("dev", name, run as Run, options),
         watch: (path) => {
-          if (this.closed)
+          if (this.cleanupStarted)
             throw error(
               "late-engine-registration",
               "Engine session is closing.",
@@ -373,8 +415,15 @@ export class EngineSession {
           let absolute;
           try {
             absolute = realpathSync(resolve(this.root, path));
-          } catch {
-            throw error("invalid-engine-watch", "Watch input must exist.", plugin.name, source);
+          } catch (cause) {
+            throw error(
+              "invalid-engine-watch",
+              "Watch input must exist.",
+              plugin.name,
+              source,
+              "engine-config",
+              { cause },
+            );
           }
           const root = realpathSync(this.root);
           const local = relative(root, absolute).split(sep)[0];
@@ -392,7 +441,7 @@ export class EngineSession {
           this.watches.add(absolute);
         },
         onCleanup: (run) => {
-          if (this.closed)
+          if (this.cleanupStarted)
             throw error(
               "late-engine-registration",
               "Engine session is closing.",
@@ -424,8 +473,17 @@ export class EngineSession {
         file: this.configPath,
       });
   }
-  async discover(): Promise<EngineSnapshot> {
-    const capability = this.capabilities.get("convention:app")!;
+  discover(): Promise<EngineSnapshot> {
+    return this.stage("engine-discovery", false, async () => {
+      this.discoveryComplete = false;
+      const snapshot = await this.performDiscovery();
+      this.discoveryComplete = true;
+      return snapshot;
+    });
+  }
+  private async performDiscovery(): Promise<EngineSnapshot> {
+    const capability = this.capabilities.get("convention:app");
+    if (!capability) throw this.stateError("engine-discovery");
     const convention = await this.run<EngineConvention>(capability, "engine-discovery");
     try {
       if (
@@ -438,12 +496,14 @@ export class EngineSession {
         throw new Error("Invalid convention");
       for (const path of [convention.config, convention.entry, convention.router])
         if (path) appPath(this.root, path);
-    } catch {
+    } catch (cause) {
       throw error(
         "invalid-engine-convention",
         "Convention paths must be application sources inside root.",
         capability.plugin,
         capability.source,
+        "engine-config",
+        { cause },
       );
     }
     this.conventionValue = Object.freeze({
@@ -479,13 +539,14 @@ export class EngineSession {
           try {
             absolute = appPath(this.root, path);
             await access(absolute);
-          } catch {
+          } catch (cause) {
             throw error(
               "invalid-engine-sources",
               "Discovered sources must exist inside application root.",
               hook.plugin,
               hook.source,
               "engine-discovery",
+              { cause },
             );
           }
           sources.add(absolute);
@@ -496,7 +557,7 @@ export class EngineSession {
     return this.snapshot();
   }
   snapshot(): EngineSnapshot {
-    if (!this.conventionValue) throw new Error("Discover before using the engine snapshot");
+    if (!this.conventionValue) throw this.stateError("engine-snapshot");
     const root = this.root;
     return Object.freeze({
       root,
@@ -514,7 +575,10 @@ export class EngineSession {
       },
     });
   }
-  async generate(): Promise<void> {
+  generate(): Promise<void> {
+    return this.stage("engine-generation", true, () => this.performGeneration());
+  }
+  private async performGeneration(): Promise<void> {
     const files: (OwnedFile & { content: string; source: EngineSource })[] = [];
     const paths = new Set<string>();
     for (const [key, hook] of this.capabilities)
@@ -600,13 +664,14 @@ export class EngineSession {
             )
           )
             throw new Error("Case-only output rename");
-      } catch {
+      } catch (cause) {
         throw error(
           "invalid-generated-ownership",
           "Generated ownership metadata is invalid; do not edit .lenso output.",
           "engine",
           { file: ownershipPath },
           "engine-generation",
+          { cause },
         );
       }
     }
@@ -660,17 +725,21 @@ export class EngineSession {
   private async checkedOutput(path: string, plugin: string, source: EngineSource): Promise<string> {
     try {
       return await outputPath(this.root, path);
-    } catch {
+    } catch (cause) {
       throw error(
         "unsafe-engine-output",
         "Output escapes its owned directory or contains a symbolic link.",
         plugin,
         source,
         "engine-generation",
+        { cause },
       );
     }
   }
-  async build(entry?: string): Promise<string> {
+  build(entry?: string): Promise<string> {
+    return this.stage("build", true, () => this.performBuild(entry));
+  }
+  private async performBuild(entry?: string): Promise<string> {
     const hook = this.capabilities.get(`target:${this.target}`)!;
     const chosen = entry ?? this.conventionValue!.entry ?? ".lenso/server.ts";
     const entryPath = resolve(this.root, chosen);
@@ -706,21 +775,28 @@ export class EngineSession {
           sourcemap: "external",
         });
         if (!result.success)
-          throw new CliError({
-            code: "build-failed",
-            phase: "build",
-            message: "Application build failed.",
-            pluginId: hook.plugin,
-            source: hook.source,
-            causes: result.logs.map((log) => ({
-              code: "build-diagnostic",
+          throw new EngineError(
+            {
+              code: "build-failed",
               phase: "build",
-              message: "Bun build diagnostic; inspect the source location.",
-              source: log.position
-                ? { file: log.position.file, line: log.position.line, column: log.position.column }
-                : { file: bundledEntry },
-            })),
-          });
+              message: "Application build failed.",
+              pluginId: hook.plugin,
+              source: hook.source,
+              causes: result.logs.map((log) => ({
+                code: "build-diagnostic",
+                phase: "build",
+                message: "Bun build diagnostic; inspect the source location.",
+                source: log.position
+                  ? {
+                      file: log.position.file,
+                      line: log.position.line,
+                      column: log.position.column,
+                    }
+                  : { file: bundledEntry },
+              })),
+            },
+            { cause: new AggregateError(result.logs, "Application build failed.") },
+          );
         return outdir;
       },
     });
@@ -752,17 +828,27 @@ export class EngineSession {
       );
     return outdir;
   }
-  async dev(event: DevEvent): Promise<void> {
-    for (const [key, hook] of this.capabilities)
-      if (key.startsWith("dev:")) await this.run<void>(hook, "engine-dev", event, this.snapshot());
+  dev(event: DevEvent): Promise<void> {
+    return this.stage("engine-dev", true, async () => {
+      for (const [key, hook] of this.capabilities)
+        if (key.startsWith("dev:"))
+          await this.run<void>(hook, "engine-dev", event, this.snapshot());
+    });
   }
   close(): Promise<void> {
-    return (this.closed ??= (async () => {
-      const causes: CliDiagnostic[] = [];
+    this.closing = true;
+    return (this.closed ??= Promise.resolve().then(async () => {
+      // Setup/stage failures remain on their own promises; cleanup must still run.
+      await this.setupPromise?.catch(() => {});
+      await this.runningStage?.catch(() => {});
+      this.cleanupStarted = true;
+      const causes: EngineDiagnostic[] = [];
+      const errors: unknown[] = [];
       for (const cleanup of this.cleanups.splice(0).reverse()) {
         try {
           await cleanup.run();
         } catch (cause) {
+          errors.push(cause);
           causes.push(
             diagnostic(cause, {
               code: "engine-cleanup-failed",
@@ -775,13 +861,16 @@ export class EngineSession {
         }
       }
       if (causes.length)
-        throw new CliError({
-          code: "engine-cleanup-failed",
-          phase: "engine-cleanup",
-          message: "Engine resource cleanup failed.",
-          causes,
-        });
-    })());
+        throw new EngineError(
+          {
+            code: "engine-cleanup-failed",
+            phase: "engine-cleanup",
+            message: "Engine resource cleanup failed.",
+            causes,
+          },
+          { cause: new AggregateError(errors, "Engine resource cleanup failed.") },
+        );
+    }));
   }
 }
 export async function withEngine<T>(session: EngineSession, run: () => Promise<T>): Promise<T> {
@@ -798,12 +887,15 @@ export async function withEngine<T>(session: EngineSession, run: () => Promise<T
     await session.close();
   } catch (cause) {
     if (!failed) throw cause;
-    throw new CliError({
-      code: "engine-and-cleanup-failed",
-      phase: "engine-cleanup",
-      message: "Engine execution and cleanup failed.",
-      causes: [diagnostic(failure), diagnostic(cause)],
-    });
+    throw new EngineError(
+      {
+        code: "engine-and-cleanup-failed",
+        phase: "engine-cleanup",
+        message: "Engine execution and cleanup failed.",
+        causes: [diagnostic(failure), diagnostic(cause)],
+      },
+      { cause: new AggregateError([failure, cause], "Engine execution and cleanup failed.") },
+    );
   }
   if (failed) throw failure;
   return result as T;

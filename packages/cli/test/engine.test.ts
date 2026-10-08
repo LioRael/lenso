@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { defineApp, definePlugin } from "lenso";
 import { z } from "zod";
 import { defineOperation } from "../src/operations";
 import { diagnostic } from "../src/diagnostics";
-import { discover, generate, inspect, invoke } from "../src/engine";
+import { generate, inspect, invoke } from "../src/engine";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -19,54 +19,6 @@ async function fixture(config: string): Promise<string> {
   await Bun.write(join(root, "lenso.config.ts"), config);
   return root;
 }
-
-describe("static assembly", () => {
-  test("discovers topological order without initializing plugin business code", async () => {
-    const root = await fixture(`
-      const dependency = { id: 'dependency', setup() { throw new Error('setup must never run'); } };
-      const dependent = { id: 'dependent', requires: [dependency], setup() { throw new Error('setup must never run'); } };
-      export default { plugins: [dependent, dependency] };
-    `);
-    expect((await discover(root)).ordered.map((plugin) => plugin.id)).toEqual([
-      "dependency",
-      "dependent",
-    ]);
-  });
-
-  test.each([
-    [
-      "duplicate identities",
-      `export default { plugins: [{ id: 'a', setup() {} }, { id: 'a', setup() {} }] };`,
-    ],
-    [
-      "missing dependencies",
-      `const b = { id: 'b', setup() {} }; export default { plugins: [{ id: 'a', requires: [b], setup() {} }] };`,
-    ],
-    [
-      "cycles",
-      `const a = { id: 'a', requires: [], setup() {} }; const b = { id: 'b', requires: [a], setup() {} }; a.requires.push(b); export default { plugins: [a,b] };`,
-    ],
-  ])("rejects %s at discovery time", async (_name, config) => {
-    const root = await fixture(config);
-    await expect(discover(root)).rejects.toThrow();
-    expect(await Bun.file(join(root, ".lenso/manifest.json")).exists()).toBe(false);
-  });
-
-  test("generates separate browser client and server entries", async () => {
-    const root = await fixture(
-      `export default { plugins: [{ id: 'greeting', setup() {}, contributions: [{ kind: 'example.metadata', label: 'Greeting' }] }] };`,
-    );
-    await mkdir(join(root, "src"));
-    await Bun.write(join(root, "src/router.ts"), "export type AppRouter = {};");
-    await generate(root);
-    const client = await Bun.file(join(root, ".lenso/client.ts")).text();
-    expect(client).toContain("from '@lenso/web/client'");
-    expect(client).toContain("import type { AppRouter }");
-    expect(client).not.toContain("lenso.config");
-    expect(client).not.toContain("startApp");
-    expect(await Bun.file(join(root, ".lenso/server.ts")).text()).toContain("../lenso.config");
-  });
-});
 
 describe("direct service invocation", () => {
   test("calls async business methods and always closes acquired resources", async () => {

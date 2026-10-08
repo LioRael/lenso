@@ -1,0 +1,46 @@
+{
+  "name": "@lenso/engine",
+  "version": "0.1.0",
+  "private": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./authoring": {
+      "types": "./dist/engine-authoring.d.ts",
+      "import": "./dist/engine-authoring.js"
+    },
+    "./application": {
+      "types": "./dist/application.d.ts",
+      "import": "./dist/application.js"
+    },
+    "./operations": {
+      "types": "./dist/operations.d.ts",
+      "import": "./dist/operations.js"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics.d.ts",
+      "import": "./dist/diagnostics.js"
+    },
+    "./dev-ready": {
+      "types": "./dist/dev-ready.d.ts",
+      "import": "./dist/dev-ready.js"
+    },
+    "./dev-worker": "./dist/engine-dev-worker.js"
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/engine-authoring.ts src/application.ts src/operations.ts src/diagnostics.ts src/dev-ready.ts src/engine-dev-worker.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "1.1.0",
+    "lenso": "workspace:^"
+  }
+}

@@ -12,6 +12,6 @@
     }
   },
   "peerDependencies": {
-    "lenso-cli": "^0.1.0"
+    "@lenso/engine": "^0.1.0"
   }
 }

@@ -126,3 +126,55 @@ test("schema description derives from the validator; non-JSON output fails", () 
   cycle.self = cycle;
   expect(() => stableJson(cycle)).toThrow("Output must");
 });
+
+test("Engine diagnostics retain CLI JSON codes and exit-code policy after extraction", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lenso-bin-engine-"));
+  directories.push(root);
+  await Bun.write(join(root, "lenso.config.ts"), "export default {plugins:[]};");
+  const bin = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
+  for (const [command, config, code, exit] of [
+    ["check", "{target:'missing'}", "unknown-engine-target", 3],
+    [
+      "generate",
+      "{plugins:[{name:'collision',setup(c){c.generate('client',()=>[])}}]}",
+      "engine-capability-conflict",
+      3,
+    ],
+    [
+      "generate",
+      "{plugins:[{name:'unsafe',setup(c){c.generate('extra',()=>[{path:'../escape',content:'x'}])}}]}",
+      "invalid-generated-file",
+      1,
+    ],
+    ["build", "{}", "invalid-build-entry", 1],
+  ] as const) {
+    await Bun.write(join(root, "lenso.engine.ts"), `export default ${config};`);
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        bin,
+        command,
+        "--root",
+        root,
+        "--json",
+        ...(command === "build" ? ["--entry", "missing.ts"] : []),
+      ],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [stdout, stderr, status] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(status).toBe(exit);
+    expect(stderr).toBe("");
+    expect(JSON.parse(stdout)).toMatchObject({
+      schemaVersion: 1,
+      ok: false,
+      error: { code },
+    });
+  }
+});

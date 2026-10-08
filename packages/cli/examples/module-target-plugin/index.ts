@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineEnginePlugin, type BundleOptions } from "lenso-cli/engine";
+import { defineEnginePlugin, type BundleOptions } from "@lenso/engine/authoring";
 
 /** Reuse the Engine bundler for a browser/Workers module; no CLI source changes. */
 export function moduleTarget(options: {

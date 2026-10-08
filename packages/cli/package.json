@@ -26,12 +26,12 @@
     }
   },
   "scripts": {
-    "build": "bun build src/bin.ts src/index.ts src/dev-ready.ts src/engine-authoring.ts src/engine-dev-worker.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && bun build src/bin.ts src/index.ts src/dev-ready.ts src/engine-authoring.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },
   "dependencies": {
-    "@standard-schema/spec": "1.1.0",
+    "@lenso/engine": "workspace:^",
     "lenso": "workspace:^",
     "picocolors": "1.1.1"
   },
