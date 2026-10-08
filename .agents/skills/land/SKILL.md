@@ -1,10 +1,8 @@
 ---
 name: land
 description: >-
-  Land requested Lenso TypeScript changes onto main in the user's primary checkout
-  after verification; updating a temporary clone does not count as landing.
-  Invoke only when the user explicitly requests landing or merging changes,
-  never merely for review, preparation, passing checks, or skill installation.
+  Verify and land requested Lenso changes onto the remote destination branch,
+  directly or through the repository's required pull-request workflow.
 disable-model-invocation: true
 metadata:
   delta-action: land
@@ -12,26 +10,22 @@ metadata:
 
 # Land
 
-Complete the explicit landing request by updating `main` in the user's primary
-checkout, not a same-named branch in a temporary source clone. Honor another
-explicitly requested destination only after confirming its checkout, branch and
-policy. The merge request supplies landing intent; do not ask for it again.
+Complete an explicit landing request by updating the remote destination branch
+(default `main`). A local merge or a pushed feature branch is preparation, not
+landing. Use the attached checkout for preparation and verification; leave the
+user's primary checkout untouched.
 
-Operate only in authorized checkouts. If the primary destination is outside the
-authorized workspace, stop and request access before changing its files, index,
-objects or refs. Resolving a path does not authorize modifying it. Never substitute
-a source-clone merge for an unavailable primary destination.
-
-Scope is local Git integration, including transferring verified commits between
-authorized local repositories. Preserve source branches and unrelated primary
-checkout work. Remote publication, deployment, shared-history rewrites and changes
-to Git/signing settings require separate authorization. Do not push into a
-checked-out branch through the `local` backlink.
+Invoke only for an explicit landing or merging request. Editing this skill,
+reviewing changes or passing checks does not authorize publication. An explicit
+request to land remotely authorizes the necessary branch push and remote merge
+within the confirmed scope; honor any instruction to prepare only or wait for
+approval. Deployment, package publication, force-pushes, shared-history rewrites
+and Git/signing configuration changes require separate authorization.
 
 ## 1. Establish the change and destination
 
 Read `AGENTS.md`, applicable nested instructions, and any contribution, submission,
-CI or landing policy present in the current source and destination. Repository
+CI or landing policy present in the source and fetched destination. Repository
 policy remains binding even when hosting tools do not enforce it. Apply conditional
 review, signing, authorship, changelog and submission requirements only when their
 conditions hold; obtain any required human-authored material rather than generating
@@ -43,36 +37,29 @@ Inspect the current state:
 git --no-optional-locks status --short
 git branch --show-current
 git remote -v
-git remote get-url local
-git rev-parse --absolute-git-dir
-git worktree list --porcelain
 git log -8 --oneline
 ```
 
-Resolve the requested source from the current branch and conversation. The `local`
-filesystem backlink identifies this project's primary repository. Resolve its
-actual checkout and Git directory; do not treat a network URL or bare repository
-as a checkout. If the backlink is missing or ambiguous, obtain the intended primary
-checkout rather than guessing. If already working in the explicitly identified
-primary checkout, use it directly.
-
-Record the canonical source and primary checkout paths, their Git directories, the
-destination branch (default `main`), and both commit IDs. Inspect the primary state
-read-only before requesting any missing access:
+Resolve the requested source from the current branch and conversation. Inspect
+configured fetch and push URLs to identify the intended hosting repository;
+do not assume `origin` or use the `local` filesystem backlink for publication.
+If no publishing remote exists or the repository/destination is ambiguous, ask
+for the intended remote URL and branch before configuring or publishing anything.
+Confirm a differing push URL targets the intended repository.
 
 ```sh
-git --no-optional-locks -C <primary-checkout> status --porcelain=v1
-git -C <primary-checkout> rev-parse --show-toplevel
-git -C <primary-checkout> rev-parse --absolute-git-dir
-git -C <primary-checkout> rev-parse --verify refs/heads/<destination>
-git -C <primary-checkout> worktree list --porcelain
+git remote get-url <remote>
+git remote get-url --push --all <remote>
+git ls-remote --exit-code <remote> refs/heads/<destination>
+git fetch --no-tags <remote> refs/heads/<destination>
+git rev-parse FETCH_HEAD
 ```
 
-Replace placeholders with resolved paths and names. Record staged and unstaged
-diffs and untracked file content hashes, not just status labels, so unrelated
-primary changes can be preserved and checked after landing.
-Unrelated dirty work is not permission to reset, restore, stash or commit it.
-Stop if the requested result cannot be applied without disturbing it.
+Replace placeholders with confirmed names. Record the repository URL, remote,
+destination branch and fetched base ID. A missing destination requires explicit
+authorization to create it. Inspect hosting branch protection, required checks,
+reviews and allowed merge methods using available hosting tools. If required
+policy cannot be determined, stop rather than bypassing it.
 
 Commit only requested uncommitted changes, using explicit paths and a noninteractive
 message. Use `GIT_EDITOR=true` for every commit and merge command. Preserve the
@@ -81,29 +68,20 @@ authentication, stop rather than disabling it. Do not amend or rewrite existing
 shared commits. If unrelated work cannot be safely separated, stop and explain what
 must be isolated. Do not discard or automatically stash unrelated changes.
 
-**Done:** the source is a pinned commit, the primary checkout and its destination
-branch are identified and authorized, applicable obligations are met, and unrelated
-work can be preserved. A clone-local `main` is not the destination.
+**Done:** the source is a pinned commit, the remote repository and destination are
+confirmed, publication is authorized, and the direct-push or PR route is established.
 
 ## 2. Form a candidate without advancing the destination
 
-Compare the pinned source with the actual primary destination commit. A matching
-or newer branch in the source clone proves nothing about the primary checkout.
-If the requested source is already contained in the primary destination, verify
-the primary state and report that it is already landed.
+Compare the pinned source with the fetched remote base. If the source is already
+contained in that base, confirm the live remote state and report it as already
+landed. For prior squash/rebase merges, use hosting merge records and the resulting
+diff rather than requiring the original source ID to be an ancestor.
 
-If repositories differ, fetch the authorized primary destination into the source
-repository without updating the primary branch:
-
-```sh
-git fetch --no-tags <primary-git-directory> refs/heads/<destination>
-```
-
-Confirm `FETCH_HEAD` equals the recorded primary destination commit; if the primary
-advanced, refresh the recorded base. Create a uniquely named local integration
-branch from that pinned base, leaving the actual primary branch untouched. Keep
-the recovery name and commit IDs available. If source and destination share one
-repository, create the integration branch directly from the pinned destination.
+Create a uniquely named integration branch from the fetched base in an authorized
+clean checkout, preserving the source branch and unrelated work. If the current
+checkout is dirty, use an authorized isolated workspace or stop; do not stash,
+discard or commit unrelated changes. Record the recovery branch and commit IDs.
 
 - If the destination is an ancestor of the source, fast-forward the integration
   branch to the pinned source with `GIT_EDITOR=true git merge --ff-only <source>`.
@@ -118,8 +96,8 @@ For ambiguous intent, unsafe resolution, or an unresolved permission requirement
 stop and report that landing has not completed. Do not force a result or invoke an
 interactive editor. Recheck the whole resolved diff, not just conflicted lines.
 
-**Done:** one clean candidate commit contains the requested source and primary
-destination work; the primary destination still points to its recorded base.
+**Done:** one clean candidate contains the requested source and remote base work;
+the remote destination has not been changed.
 
 ## 3. Verify the exact candidate
 
@@ -200,56 +178,58 @@ Sources: `README.md` (development boundaries), `docs/DATABASE.md`,
 `examples/notes/test/postgres.test.ts`.
 
 Run `git diff --check`, confirm a clean tracked checkout, and record the tested
-candidate commit. All applicable local checks and repository-required remote
-checks/reviews must pass for this exact change under the current policy. Pending,
-failing, missing or unverifiable requirements block landing. This repository
-currently defines no CI/PR landing requirement; recheck for newly introduced policy
-instead of assuming that remains true. Do not publish a branch to obtain checks
-without separate authorization.
+candidate commit. All applicable local checks must pass before publication.
+Repository-required remote checks/reviews must pass before the destination is
+updated. Pending, failing, missing or unverifiable requirements block that update.
+This repository
+may define additional CI/PR requirements at execution time; recheck repository
+files and hosting protection rather than assuming there are none. For a PR route,
+publish the verified candidate to a uniquely named feature branch and open or
+update the correctly targeted PR within the authorized scope. Wait for required
+checks and reviews on the current PR head before merging. A pending PR is not
+successful landing.
 
 **Done:** the candidate is unchanged from the verified commit, every applicable
 required check has passed, and no required review or submission obligation remains.
 
 ## 4. Land and confirm
 
-Recheck the actual primary checkout's destination ref, branch ownership and
-uncommitted state, not the source clone's `main`. If the destination advanced,
-rebuild the candidate against its new tip and repeat applicable verification. If
-unrelated primary work changed, reassess preservation before proceeding.
+Fetch the destination again immediately before landing. If it advanced, rebuild
+the candidate against its new tip and repeat applicable verification. For PRs,
+refresh the PR head and its checks/reviews after any update.
 
-It is normal for `main` to be checked out in the primary checkout. If another
-linked worktree owns the destination, use that owner only if it is an authorized
-destination; otherwise stop and request access instead of overriding ownership.
-
-When repositories differ, transfer the exact verified candidate into the primary
-repository without updating a branch:
+For an authorized direct-push route, push only the verified candidate with an
+explicit refspec:
 
 ```sh
-git -C <primary-checkout> fetch --no-tags <source-git-directory> <verified-candidate-id>
-git -C <primary-checkout> rev-parse FETCH_HEAD
+git push <remote> <verified-candidate-id>:refs/heads/<destination>
 ```
 
-Confirm the fetched ID equals the tested candidate. Then, in the authorized
-primary checkout, switch to the destination if needed and fast-forward it:
+Use a normal fast-forward push, never force or force-with-lease. If rejected,
+inspect the new remote state or policy and rebuild/reverify as needed; do not
+weaken protection. For a PR route, merge through the hosting service using its
+allowed method and pin the expected PR head where supported. Recheck the head
+before merging; automatic merge being scheduled is not completion.
+
+Confirm the result from the hosting service and remote Git ref:
 
 ```sh
-git -C <primary-checkout> switch <destination>
-GIT_EDITOR=true git -C <primary-checkout> merge --ff-only <verified-candidate-id>
-git -C <primary-checkout> rev-parse refs/heads/<destination>
-git -C <primary-checkout> merge-base --is-ancestor <pinned-source> refs/heads/<destination>
-git --no-optional-locks -C <primary-checkout> status --porcelain=v1
+git ls-remote --exit-code <remote> refs/heads/<destination>
+git fetch --no-tags <remote> refs/heads/<destination>
+git rev-parse FETCH_HEAD
 ```
 
-Replace placeholders with the recorded paths, names and IDs. Confirm the primary
-destination tip equals the verified candidate, contains the requested source, and
-its checked-out files reflect that commit without unexpected changes. Verify that
-pre-existing unrelated staged, unstaged and untracked work remains intact.
+For a direct push, confirm the destination equals the tested candidate or contains
+it if another legitimate update followed. For a PR merge, confirm the PR is merged
+into the intended branch and its recorded merge/squash/rebase result is contained
+in the fetched destination. For history-transforming methods, check the landed
+diff against the verified PR change and required hosting checks; report the actual
+result ID rather than claiming the candidate ID landed unchanged.
 
-Success requires this verification in the primary checkout. A source-clone merge,
-prepared branch, transferred commit, started check or incomplete merge is not
-successful landing. If access or the final merge is blocked, report that the
-primary destination has not been updated; retain recoverable state.
+If authentication, permissions, checks, reviews or remote confirmation block
+completion, report landing as incomplete and retain recoverable state. Preserve
+source and integration branches; branch deletion requires a separate request.
 
-Report the actual primary checkout path, destination branch, landed commit, source,
-checks run and validation limitations. Preserve source and integration branches.
-Perform no remote publication or deployment as part of this local landing.
+Report the remote repository URL, destination branch, landed commit, source,
+PR URL when applicable, checks run and validation limitations. Do not update the
+user's primary checkout or deploy as part of remote landing.
