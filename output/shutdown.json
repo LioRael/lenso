@@ -1,0 +1,7 @@
+{
+  "supervisorPid": 64483,
+  "serverPid": 64524,
+  "serverGone": true,
+  "supervisorGone": true,
+  "port3000Listening": false
+}

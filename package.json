@@ -1,0 +1,28 @@
+{
+  "name": "lenso-typescript-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": "1.4.2"
+  },
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck && tsc -p scripts/tsconfig.json",
+    "test": "turbo run test",
+    "generate": "bun packages/cli/src/bin.ts generate --root examples/greeting",
+    "dev": "bun run build && bun packages/cli/src/bin.ts dev --root examples/greeting",
+    "cli": "bun packages/cli/src/bin.ts",
+    "smoke": "bun scripts/package-smoke.ts",
+    "client": "bun examples/greeting/src/client.ts"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "turbo": "2.11.7",
+    "@types/bun": "1.4.2"
+  }
+}

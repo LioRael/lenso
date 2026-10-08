@@ -1,0 +1,15 @@
+{
+  "name": "lenso-cli",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "files": ["dist"],
+  "bin": { "lenso": "./dist/bin.js" },
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": {
+    "build": "bun build src/bin.ts src/index.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": { "lenso": "workspace:^" }
+}

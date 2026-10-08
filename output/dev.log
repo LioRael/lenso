@@ -1,0 +1,10 @@
+[example] ready pid=64496 http://127.0.0.1:3000/
+[example] closed pid=64496 port=3000
+[lenso] Generated 1 plugin(s) in .lenso
+[lenso] Started /Users/leosouthey/Projects/framework/lenso-ts/examples/greeting/src/server.ts
+[example] ready pid=64517 http://127.0.0.1:3000/
+[example] closed pid=64517 port=3000
+[lenso] Generated 1 plugin(s) in .lenso
+[lenso] Started /Users/leosouthey/Projects/framework/lenso-ts/examples/greeting/src/server.ts
+[example] ready pid=64524 http://127.0.0.1:3000/
+[example] closed pid=64524 port=3000

@@ -1,0 +1,1 @@
+These files record actual checks from the final SDK/CLI/Web-only scope. Console screenshots and earlier UI work are intentionally excluded from this repository. Package smoke preserves its isolated temporary consumer directory and installs actual tarballs with explicit local overrides because these versions are unpublished; it does not resolve workspace source aliases.

@@ -1,0 +1,19 @@
+$ bun examples/greeting/src/client.ts Ada
+{
+  "message": "Hello, Ada!",
+  "count": 1
+}
+[
+  {
+    "id": "greeting",
+    "state": "ready"
+  },
+  {
+    "id": "web",
+    "state": "ready"
+  },
+  {
+    "id": "http-listener",
+    "state": "ready"
+  }
+]

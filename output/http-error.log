@@ -1,0 +1,19 @@
+$ bun examples/greeting/src/client.ts x
+182 |     return false;
+183 |   }
+184 |   return "defined" in json && typeof json.defined === "boolean" && "code" in json && typeof json.code === "string" && "status" in json && typeof json.status === "number" && isORPCErrorStatus(json.status) && "message" in json && typeof json.message === "string";
+185 | }
+186 | function createORPCErrorFromJson(json, options = {}) {
+187 |   return new ORPCError(json.code, {
+               ^
+error: Name must contain at least 2 characters
+ defined: false,
+  status: 400,
+    data: undefined,
+    code: "BAD_REQUEST"
+
+      at createORPCErrorFromJson (/Users/leosouthey/Projects/framework/lenso-ts/node_modules/.bun/@orpc+client@1.15.5/node_modules/@orpc/client/dist/shared/client.hRLEpIKU.mjs:187:10)
+      at decode (/Users/leosouthey/Projects/framework/lenso-ts/node_modules/.bun/@orpc+client@1.15.5/node_modules/@orpc/client/dist/shared/client.DmANSlrL.mjs:359:15)
+
+Bun v1.4.2 (macOS arm64)
+error: script "client" exited with code 1

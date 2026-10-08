@@ -1,0 +1,178 @@
+bun install v1.4.2 (744846f84)
+
+Checked 35 installs across 38 packages (no changes) [43.00ms]
+$ turbo run build
+
+   • turbo 2.11.7
+   • Packages in scope: @lenso/example-greeting, @lenso/web, lenso, lenso-cli
+   • Running build in 4 packages
+   • Remote caching disabled
+
+lenso:build: cache miss, executing a87d946221830702
+lenso:build: $ bun build src/index.ts src/plugin.ts src/browser.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json
+lenso:build: Bundled 5 modules in 14ms
+lenso:build:
+lenso:build:   index.js    4.75 KB    (entry point)
+lenso:build:   plugin.js   158 bytes  (entry point)
+lenso:build:   browser.js  158 bytes  (entry point)
+lenso:build:
+@lenso/web:build: cache miss, executing b16dfcf46c8836f7
+lenso-cli:build: cache miss, executing 5a3fca410f0611e7
+@lenso/web:build: $ tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target bun --packages external && bun build src/client.ts --outdir dist --target browser --packages external
+lenso-cli:build: $ bun build src/bin.ts src/index.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json
+lenso-cli:build: Bundled 4 modules in 3ms
+lenso-cli:build:
+lenso-cli:build:   bin.js    8.99 KB  (entry point)
+lenso-cli:build:   index.js  7.30 KB  (entry point)
+lenso-cli:build:
+@lenso/web:build: Bundled 1 module in 2ms
+@lenso/web:build:
+@lenso/web:build:   index.js  0.80 KB  (entry point)
+@lenso/web:build:
+@lenso/web:build: Bundled 1 module in 3ms
+@lenso/web:build:
+@lenso/web:build:   client.js  324 bytes  (entry point)
+@lenso/web:build:
+@lenso/example-greeting:build: cache miss, executing 31bdd8687218842c
+@lenso/example-greeting:build: $ bun run generate && bun build src/server.ts --outdir dist --target bun --packages external
+@lenso/example-greeting:build: $ bun ../../packages/cli/src/bin.ts generate --root .
+@lenso/example-greeting:build: [lenso] Generated 1 plugin(s) in .lenso
+@lenso/example-greeting:build: Bundled 4 modules in 3ms
+@lenso/example-greeting:build:
+@lenso/example-greeting:build:   server.js  3.0 KB  (entry point)
+@lenso/example-greeting:build:
+
+ Tasks:    4 successful, 4 total
+Cached:    0 cached, 4 total
+  Time:    1.882s
+
+$ turbo run typecheck && tsc -p scripts/tsconfig.json
+
+   • turbo 2.11.7
+   • Packages in scope: @lenso/example-greeting, @lenso/web, lenso, lenso-cli
+   • Running typecheck in 4 packages
+   • Remote caching disabled
+
+lenso:typecheck: cache miss, executing 164d5a553b6a220c
+lenso:build: cache hit, replaying logs a87d946221830702
+lenso:build: $ bun build src/index.ts src/plugin.ts src/browser.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json
+lenso:build: Bundled 5 modules in 14ms
+lenso:build:
+lenso:build:   index.js    4.75 KB    (entry point)
+lenso:build:   plugin.js   158 bytes  (entry point)
+lenso:build:   browser.js  158 bytes  (entry point)
+lenso:build:
+lenso-cli:typecheck: cache miss, executing c1d074d54ad5df10
+@lenso/web:typecheck: cache miss, executing d1b8e32b7d4190b2
+@lenso/web:build: cache hit, replaying logs b16dfcf46c8836f7
+@lenso/web:build: $ tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target bun --packages external && bun build src/client.ts --outdir dist --target browser --packages external
+@lenso/web:build: Bundled 1 module in 2ms
+@lenso/web:build:
+@lenso/web:build:   index.js  0.80 KB  (entry point)
+@lenso/web:build:
+@lenso/web:build: Bundled 1 module in 3ms
+@lenso/web:build:
+@lenso/web:build:   client.js  324 bytes  (entry point)
+@lenso/web:build:
+@lenso/example-greeting:typecheck: cache miss, executing 66c2fb5fb5ee2216
+lenso-cli:typecheck: $ tsc --noEmit -p tsconfig.json
+@lenso/web:typecheck: $ tsc --noEmit -p tsconfig.json
+lenso:typecheck: $ tsc --noEmit -p tsconfig.json
+@lenso/example-greeting:typecheck: $ bun run generate && tsc --noEmit -p tsconfig.json
+@lenso/example-greeting:typecheck: $ bun ../../packages/cli/src/bin.ts generate --root .
+@lenso/example-greeting:typecheck: [lenso] Generated 1 plugin(s) in .lenso
+
+ Tasks:    6 successful, 6 total
+Cached:    2 cached, 6 total
+  Time:    1.05s
+
+$ turbo run test
+
+   • turbo 2.11.7
+   • Packages in scope: @lenso/example-greeting, @lenso/web, lenso, lenso-cli
+   • Running test in 4 packages
+   • Remote caching disabled
+
+lenso:test: cache bypass, force executing c59b88a0d5d8225c
+lenso:build: cache hit, replaying logs a87d946221830702
+lenso:build: $ bun build src/index.ts src/plugin.ts src/browser.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json
+lenso:build: Bundled 5 modules in 14ms
+lenso:build:
+lenso:build:   index.js    4.75 KB    (entry point)
+lenso:build:   plugin.js   158 bytes  (entry point)
+lenso:build:   browser.js  158 bytes  (entry point)
+lenso:build:
+@lenso/web:test: cache bypass, force executing 46489fb2c65e08a3
+lenso-cli:test: cache bypass, force executing a3ea8f8180ef6dd4
+@lenso/web:build: cache hit, replaying logs b16dfcf46c8836f7
+@lenso/web:build: $ tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target bun --packages external && bun build src/client.ts --outdir dist --target browser --packages external
+@lenso/web:build: Bundled 1 module in 2ms
+@lenso/web:build:
+@lenso/web:build:   index.js  0.80 KB  (entry point)
+@lenso/web:build:
+@lenso/web:build: Bundled 1 module in 3ms
+@lenso/web:build:
+@lenso/web:build:   client.js  324 bytes  (entry point)
+@lenso/web:build:
+@lenso/example-greeting:test: cache bypass, force executing e408a9881e85fc8d
+lenso:test: $ bun test
+@lenso/web:test: $ bun test
+lenso-cli:test: $ bun test
+@lenso/example-greeting:test: $ bun test src
+@lenso/web:test: bun test v1.4.2 (744846f84)
+lenso-cli:test: bun test v1.4.2 (744846f84)
+lenso:test: bun test v1.4.2 (744846f84)
+@lenso/example-greeting:test: bun test v1.4.2 (744846f84)
+lenso:test:
+lenso:test: test/lifecycle.test.ts:
+lenso-cli:test:
+lenso-cli:test: test/engine.test.ts:
+@lenso/web:test:
+@lenso/web:test: test/http.test.ts:
+@lenso/example-greeting:test:
+@lenso/example-greeting:test: src/greeting.test.ts:
+@lenso/example-greeting:test: (pass) plain async service rejects invalid input without increasing state [3.22ms]
+@lenso/example-greeting:test:
+@lenso/example-greeting:test:  1 pass
+@lenso/example-greeting:test:  0 fail
+@lenso/example-greeting:test:  2 expect() calls
+@lenso/example-greeting:test: Ran 1 test across 1 file. [105.00ms]
+lenso:test: (pass) static plugin diagnostics > dependency order and independently identified instances [2.60ms]
+lenso:test: (pass) static plugin diagnostics > reports duplicate IDs and exact-instance missing dependencies before setup [0.76ms]
+lenso:test: (pass) static plugin diagnostics > reports a readable dependency cycle and rejects an empty ID [0.13ms]
+lenso-cli:test: (pass) static assembly > discovers topological order without initializing plugin business code [5.14ms]
+lenso:test: (pass) plugin lifetime > async setup and cleanup run in dependency/LIFO order; concurrent stop is idempotent [1.86ms]
+lenso:test: (pass) plugin lifetime > initialization failure releases resources acquired by the failing plugin [0.44ms]
+lenso:test: (pass) plugin lifetime > all finalizers run despite failure and preserve setup plus rollback errors [0.30ms]
+lenso:test: (pass) plugin lifetime > shutdown attempts every async/sync finalizer and returns the same failure on repeated stop [0.29ms]
+lenso:test: (pass) plugin lifetime > rejects undeclared dependencies and rolls back allocated resources [0.14ms]
+lenso-cli:test: (pass) static assembly > rejects duplicate identities at discovery time [1.54ms]
+lenso:test: (pass) plugin lifetime > contributions retain plugin order and runtime lookup uses instance identity [0.23ms]
+lenso:test: (pass) plugin lifetime > late cleanup registration cannot leak an acquired resource into a closed app [0.41ms]
+lenso:test: (pass) plugin lifetime > ordinary business methods can resolve declared dependencies until shutdown [0.20ms]
+lenso-cli:test: (pass) static assembly > rejects missing dependencies at discovery time [0.82ms]
+lenso:test:
+lenso:test:  11 pass
+lenso:test:  0 fail
+lenso:test:  32 expect() calls
+lenso:test: Ran 11 tests across 1 file. [112.00ms]
+lenso-cli:test: (pass) static assembly > rejects cycles at discovery time [0.82ms]
+lenso-cli:test: (pass) static assembly > generates separate browser client and server entries [1.72ms]
+lenso-cli:test: (pass) direct service invocation > calls async business methods and always closes acquired resources [2.52ms]
+lenso-cli:test: (pass) direct service invocation > closes resources on business failure and rejects prototype methods [0.37ms]
+lenso-cli:test:
+lenso-cli:test:  7 pass
+lenso-cli:test:  0 fail
+lenso-cli:test:  17 expect() calls
+lenso-cli:test: Ran 7 tests across 1 file. [118.00ms]
+@lenso/web:test: (pass) real HTTP typed client calls an initialized async dependency [18.97ms]
+@lenso/web:test: (pass) optional oRPC auth middleware composes without core auth conventions [3.56ms]
+@lenso/web:test:
+@lenso/web:test:  2 pass
+@lenso/web:test:  0 fail
+@lenso/web:test:  4 expect() calls
+@lenso/web:test: Ran 2 tests across 1 file. [145.00ms]
+
+ Tasks:    6 successful, 6 total
+Cached:    2 cached, 6 total
+  Time:    173ms
