@@ -266,6 +266,41 @@
         "@lenso/core": "workspace:^",
       },
     },
+    "packages/notifications": {
+      "name": "@lenso/notifications",
+      "version": "0.1.0",
+      "dependencies": {
+        "@standard-schema/spec": "1.1.0",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20261008.1",
+        "@lenso/auth": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@lenso/engine": "workspace:^",
+        "@lenso/manage": "workspace:^",
+        "@lenso/tasks": "workspace:^",
+        "drizzle-orm": "0.45.3",
+        "zod": "4.6.5",
+      },
+      "peerDependencies": {
+        "@lenso/auth": "^0.2.0",
+        "@lenso/core": "^0.2.0",
+        "@lenso/engine": "^0.2.0",
+        "@lenso/manage": "^0.2.0",
+        "@lenso/tasks": "^0.2.0",
+        "drizzle-orm": "^0.45.3",
+        "zod": "^4.6.5",
+      },
+      "optionalPeers": [
+        "@lenso/auth",
+        "@lenso/core",
+        "@lenso/engine",
+        "@lenso/manage",
+        "@lenso/tasks",
+        "drizzle-orm",
+        "zod",
+      ],
+    },
     "packages/otel": {
       "name": "@lenso/otel",
       "version": "0.2.0",
@@ -607,6 +642,8 @@
     "@lenso/manage": ["@lenso/manage@workspace:packages/manage"],
 
     "@lenso/mcp": ["@lenso/mcp@workspace:packages/mcp"],
+
+    "@lenso/notifications": ["@lenso/notifications@workspace:packages/notifications"],
 
     "@lenso/otel": ["@lenso/otel@workspace:packages/otel"],
 
