@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { validatePlugins, type Contribution, type Logger, type Plugin } from "@lenso/core";
 import { EngineError, diagnostic } from "./diagnostics";
 import { validateOperations, type Operation } from "./operations";
+import type { describePluginConfig } from "./configuration";
 
 export interface AppDefinition {
   readonly instanceId?: string;
@@ -14,6 +15,7 @@ export interface PluginManifest {
   readonly id: string;
   readonly requires: readonly string[];
   readonly contributions: readonly Contribution[];
+  readonly config?: ReturnType<typeof describePluginConfig>;
 }
 export interface Discovery {
   readonly root: string;

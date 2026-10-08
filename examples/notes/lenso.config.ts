@@ -1,11 +1,19 @@
 import { defineApp, type Plugin } from "@lenso/core";
 import { resolve } from "node:path";
-import { parseNotesPrincipals } from "./src/auth";
+import { envSource } from "@lenso/core/config/env";
 import { createPgNotesPlugins } from "./src/app-pg";
 import { createNotesFiles } from "./src/files";
 import { createNotesOperations, createNotesFileOperations } from "./src/operations";
 
-const principals = () => parseNotesPrincipals(process.env.NOTES_LOGIN_KEYS);
+const principals = {
+  sources: [
+    envSource({
+      id: "notes-env",
+      read: (name) => process.env[name],
+      bindings: { principals: { name: "NOTES_LOGIN_KEYS", sensitive: true } },
+    }),
+  ],
+};
 const credential = () => process.env.NOTES_SESSION ?? null;
 const local =
   process.env.DATABASE_URL && !process.env.SQLITE_PATH

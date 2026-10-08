@@ -1,5 +1,8 @@
 import { validatePlugins } from "./diagnostics";
 import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
+import { ConfigError, preflightConfigs } from "./config";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { ConfigBinding, ConfigReadContext } from "./config-types";
 import type { Contribution, Logger, Plugin, PluginContext, PluginSource } from "./plugin";
 
 export interface RunningApp {
@@ -14,9 +17,12 @@ export interface RunningApp {
 /** Serial setup and explicit LIFO cleanup; business methods stay ordinary async. */
 export async function startApp(
   app: { plugins: readonly Plugin<unknown>[]; instanceId?: string; logger?: Logger },
-  options: { instanceId?: string; logger?: Logger } = {},
+  options: ConfigReadContext & { instanceId?: string; logger?: Logger } = {},
 ): Promise<RunningApp> {
   const plugins = validatePlugins(app.plugins);
+  const snapshots = await preflightConfigs(plugins, options);
+  if (options.signal?.aborted)
+    throw new ConfigError([{ code: "config-cancelled", pluginId: plugins[0]?.id ?? "" }]);
   const instanceId = options.instanceId ?? app.instanceId ?? crypto.randomUUID();
   let logger: Logger | undefined;
   try {
@@ -117,6 +123,14 @@ export async function startApp(
       const context: PluginContext = {
         instanceId,
         ...(pluginLogger ? { logger: pluginLogger } : {}),
+        config<S extends StandardSchemaV1>(
+          binding: ConfigBinding<S>,
+        ): StandardSchemaV1.InferOutput<S> {
+          if (!running) throw new Error("The app is stopped.");
+          if (binding !== plugin.config || !snapshots.has(plugin))
+            throw new Error("Plugin requested undeclared configuration.");
+          return snapshots.get(plugin)!.value as StandardSchemaV1.InferOutput<S>;
+        },
         get<T>(dependency: Plugin<T>): T {
           if (!running) throw new Error("The app is stopped.");
           if (!declared.has(dependency)) {

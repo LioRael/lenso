@@ -85,6 +85,40 @@ still execute. It does not dump resolved runtime configuration or override
 provenance. JSON Schema defaults/examples are omitted, but validation constraints
 such as `const`/`enum` remain discoverable; do not embed secrets in schema metadata.
 
+### Runtime plugin configuration
+
+An opted-in plugin's `config` description identifies its contract, safe field
+metadata, ordered source IDs/kinds/locations and explicitly bound env names.
+This is the same application declaration used by `startApp`, not Engine's own
+build configuration. Inspect/generate never invoke configuration `source.read`,
+resolve file paths to contents, fetch env bindings or connect remote sources.
+Existing trusted config top-level code and converters can still perform their
+own side effects; inspection is not a sandbox. The CLI's existing launch-env
+redaction is separate from configuration source evaluation.
+
+Configuration JSON Schema requires an explicit contract converter; Standard
+Schema alone promises validation, not conversion. All defaults/examples are
+omitted. A sensitive field or source binding hides its entire top-level schema
+subtree, conservatively omitting reference/combinator definitions that could
+repeat sensitive annotations. When any field is sensitive, converter output is
+shape-only: value-carrying constraints and extensions are omitted throughout.
+Runtime values, opaque revisions and resolved
+override history never enter inspect output or generated manifests.
+
+`call` validates operation input first, then `startApp` resolves **all installed
+configured instances** before any business setup, just like direct/Web/Workers
+startup. Configuration failures use phase `config`, top-level code
+`config-invalid`, and ordered safe causes with instance, field path and source
+ID/location. Source codes include `config-source-failed`, `config-invalid-data`,
+`config-env-invalid`, `config-file-missing`, `config-file-invalid` and
+`config-cancelled`. Exit status is 1; this is distinct from trusted TS config
+import/assembly failure (3) or operation input failure (2).
+
+Preflight reads can perform I/O; custom sources own their temporary resource
+cleanup. Failed sources do not silently fall back. See the
+[configuration API and source semantics](../README.md#instance-configuration).
+Configuration validity grants no Auth, filesystem or network authority.
+
 The CLI routes trusted application console methods to stderr, redacts sensitive keys, credential-bearing URLs, authorization strings and known secret environment values, and redacts results. Applications must still avoid printing sensitive values; arbitrary direct stdout writes/native logs and secrets under innocuous keys cannot be reliably isolated in this trusted in-process model. This is not a sandbox. Returned data must be acyclic plain finite JSON; unsupported values produce `serialization-failed`, including an undefined result.
 
 Command and declared operation spans use only the OpenTelemetry API. Initialize

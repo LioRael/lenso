@@ -15,13 +15,16 @@ const sqlite = createBunSqlitePlugin({
 const database = definePlugin({
   id: sqlite.id,
   async setup(context) {
+    process.send?.({ type: "database-started" });
     context.onCleanup(() => {
       return new Promise<void>((resolve) => {
         if (!process.send) return resolve();
         process.send({ type: "database-closed" }, () => resolve());
       });
     });
-    return sqlite.setup(context);
+    const resource = await sqlite.setup(context);
+    if (process.argv[3] === "setup-failure") throw new Error("Expected setup failure");
+    return resource;
   },
 });
 const application = createNotesApplication({

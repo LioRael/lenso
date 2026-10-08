@@ -3,6 +3,7 @@ import { startApp } from "@lenso/core";
 import { readApplication } from "@lenso/engine/application";
 import { EngineError } from "@lenso/engine/diagnostics";
 import { executeOperation } from "@lenso/engine/operations";
+import { describePluginConfig } from "@lenso/engine";
 import { CliError, diagnostic, environmentSecrets, exitCode, redact } from "./diagnostics";
 import { describeOperation, redactOperationDescription, validateOperations } from "./operations";
 import type { AppDefinition } from "@lenso/engine/application";
@@ -178,14 +179,16 @@ export async function inspect(root = process.cwd(), pluginId?: string, method?: 
       requires: (plugin.requires ?? []).map((dependency) => dependency.id),
       source: plugin.source ?? { file: configPath },
       contributions: redact(plugin.contributions ?? [], environmentSecrets()),
+      ...(plugin.config ? { config: describePluginConfig(plugin, configPath) } : {}),
     })),
     operations: operations.map((operation) =>
       redactOperationDescription(describeOperation(operation, configPath)),
     ),
     limitations: [
       "Imports trusted config and executes module top-level code.",
-      "Executes trusted schema converters while describing operations; inspection is not a sandbox.",
+      "Executes trusted schema converters while describing operations and configuration; inspection is not a sandbox.",
       "Never runs plugin setup; runtime-only methods and authorization outcomes cannot be discovered.",
+      "Never invokes configuration source reads or exposes configuration values, revisions or runtime provenance.",
       "Does not load Engine config or infer service methods, provider descriptors, or health from runtime state.",
       "Each call starts and stops an isolated app; no automatic retry, cancellation or request drain.",
     ],

@@ -163,8 +163,10 @@ export function describeOperation(operation: Operation, configPath: string) {
 }
 
 /** Preserve field names/types; omit payload annotations that may embed credentials. */
-function safeInputSchema(value: Record<string, unknown>): Record<string, unknown> {
-  const secrets = environmentSecrets();
+export function safeInputSchema(
+  value: Record<string, unknown>,
+  secrets: readonly string[] = environmentSecrets(),
+): Record<string, unknown> {
   function walk(item: unknown, fields = false): unknown {
     if (Array.isArray(item)) return item.map((child) => walk(child));
     if (item && typeof item === "object")
