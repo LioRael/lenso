@@ -1,6 +1,6 @@
 {
   "name": "@lenso/auth",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -73,7 +73,7 @@
     "zod": "4.6.5"
   },
   "peerDependencies": {
-    "@lenso/core": "^0.2.0",
+    "@lenso/core": "^0.2.1",
     "@orpc/server": "2.0.0-beta.42",
     "drizzle-orm": "^0.45.3"
   },

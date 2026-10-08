@@ -1,6 +1,6 @@
 {
   "name": "@lenso/authorization",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -64,8 +64,8 @@
     "miniflare": "5.20261006.0-alpha"
   },
   "peerDependencies": {
-    "@lenso/auth": "^0.2.0",
-    "@lenso/core": "^0.2.0",
+    "@lenso/auth": "^0.3.0",
+    "@lenso/core": "^0.2.1",
     "drizzle-orm": "^0.45.3"
   },
   "peerDependenciesMeta": {
