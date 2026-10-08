@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { os, call } from "@orpc/server";
-import { defineApp, definePlugin, startApp, type PluginContext } from "lenso";
+import { defineApp, definePlugin, startApp, type PluginContext } from "@lenso/core";
 import { z } from "zod";
 import { createWebPlugin, type WebContext } from "@lenso/web";
 import { createClient } from "@lenso/web/client";

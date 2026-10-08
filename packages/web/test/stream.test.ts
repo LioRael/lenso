@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { os } from "@orpc/server";
-import { defineApp, startApp } from "lenso";
+import { defineApp, startApp } from "@lenso/core";
 import { createWebPlugin, type WebContext, type FetchOptions } from "../src/index";
 import { createClient } from "../src/client";
 

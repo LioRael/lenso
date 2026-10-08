@@ -7,8 +7,8 @@ Use `lenso help --json` for current commands, flags, side effects and exit codes
 The trusted `lenso.config.ts` default export is `defineApp({plugins})`. An optional named export `operations` is the CLI allowlist; the default export must not contain `operations`. Reuse the application's existing schema and service; do not implement another business handler. For example:
 
 ```ts
-import { defineApp } from "lenso";
-import { defineOperation } from "lenso-cli";
+import { defineApp } from "@lenso/core";
+import { defineOperation } from "@lenso/cli";
 import { greeting } from "./src/greeting";
 import { greetingInput } from "./src/contracts"; // also used by Web input validation
 

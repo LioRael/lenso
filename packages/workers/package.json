@@ -24,7 +24,7 @@
     "test": "bun test"
   },
   "dependencies": {
-    "lenso": "workspace:^"
+    "@lenso/core": "workspace:^"
   },
   "devDependencies": {
     "@lenso/web": "workspace:^"

@@ -5,9 +5,9 @@ import { join as joinPath, resolve } from "node:path";
 
 const repository = resolve(import.meta.dir, "../../..");
 const packages = [
-  ["lenso", "packages/lenso"],
+  ["@lenso/core", "packages/lenso"],
   ["@lenso/engine", "packages/engine"],
-  ["lenso-cli", "packages/cli"],
+  ["@lenso/cli", "packages/cli"],
   ["@lenso/workers", "packages/workers"],
   ["lenso-example-content-engine", "packages/cli/examples/content-plugin"],
   ["lenso-example-module-target", "packages/cli/examples/module-target-plugin"],
@@ -38,7 +38,7 @@ async function run(cwd: string, args: string[]) {
   }
 }
 
-// Build lenso, @lenso/engine, lenso-cli and @lenso/workers in dependency order first.
+// Build @lenso/core, @lenso/engine, @lenso/cli and @lenso/workers in dependency order first.
 test("packed Engine, CLI and external plugins work in a standalone consumer", async () => {
   const temporary = await canonicalPath(await mkdtemp(joinPath(tmpdir(), "lenso-packaging-")));
   try {
@@ -68,8 +68,11 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       JSON.stringify({
         private: true,
         type: "module",
-        dependencies: { lenso: dependencies.lenso, "@lenso/engine": dependencies["@lenso/engine"] },
-        overrides: { lenso: dependencies.lenso },
+        dependencies: {
+          "@lenso/core": dependencies["@lenso/core"],
+          "@lenso/engine": dependencies["@lenso/engine"],
+        },
+        overrides: { "@lenso/core": dependencies["@lenso/core"] },
       }),
     );
     await run(engineOnly, ["install", "--ignore-scripts"]);
@@ -78,7 +81,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       `
       import assert from 'node:assert/strict';
       import {generate,startEngineDevCycle} from '@lenso/engine';
-      assert.throws(()=>Bun.resolveSync('lenso-cli',process.cwd()));
+      assert.throws(()=>Bun.resolveSync('@lenso/cli',process.cwd()));
       await Bun.write('lenso.config.ts','export default {plugins:[]};');
       await Bun.write('lenso.engine.ts',\`export default {plugins:[{name:'standalone',setup(c){
         c.onCleanup(()=>Bun.write(c.root+'/closed','yes'));
@@ -98,7 +101,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
         type: "module",
         dependencies,
         overrides: {
-          lenso: dependencies.lenso,
+          "@lenso/core": dependencies["@lenso/core"],
           "@lenso/engine": dependencies["@lenso/engine"],
         },
         devDependencies: {
@@ -205,7 +208,7 @@ async function verifyConsumer() {
   assert.equal(diagnostic, subpathDiagnostic);
   assert.equal(typeof (await import("@lenso/engine")).generate, "function");
   assert.equal(typeof (await import("@lenso/engine/dev-ready")).reportDevReady, "function");
-  const cliPackage = await import("lenso-cli");
+  const cliPackage = await import("@lenso/cli");
   for (const name of [
     "discover",
     "generate",
@@ -214,13 +217,13 @@ async function verifyConsumer() {
     "startEngineDevCycle",
     "reportDevReady",
   ])
-    assert.equal(name in cliPackage, false, `lenso-cli must not export ${name}`);
-  for (const specifier of ["lenso-cli/dev", "lenso-cli/engine"])
+    assert.equal(name in cliPackage, false, `@lenso/cli must not export ${name}`);
+  for (const specifier of ["@lenso/cli/dev", "@lenso/cli/engine"])
     assert.throws(() => Bun.resolveSync(specifier, process.cwd()));
   for (const [dependency, importer] of [
-    ["lenso", "@lenso/engine"],
-    ["lenso", "@lenso/workers"],
-    ["@lenso/engine", "lenso-cli"],
+    ["@lenso/core", "@lenso/engine"],
+    ["@lenso/core", "@lenso/workers"],
+    ["@lenso/engine", "@lenso/cli"],
     ["@lenso/engine/authoring", "lenso-example-content-engine"],
     ["@lenso/engine/authoring", "lenso-example-module-target"],
   ]) {
@@ -231,13 +234,13 @@ async function verifyConsumer() {
     );
   }
   for (const specifier of [
-    "lenso",
-    "lenso/plugin",
+    "@lenso/core",
+    "@lenso/core/plugin",
     "@lenso/engine",
     "@lenso/engine/authoring",
     "@lenso/engine/dev-ready",
     "@lenso/engine/diagnostics",
-    "lenso-cli",
+    "@lenso/cli",
     "lenso-example-content-engine",
     "lenso-example-module-target",
     "@lenso/workers",
@@ -256,7 +259,7 @@ async function verifyConsumer() {
   const defaults = await fixture(
     "defaults",
     String.raw`
-  import {defineApp,definePlugin} from 'lenso';
+  import {defineApp,definePlugin} from '@lenso/core';
   const dependency=definePlugin({id:'dependency',setup(){throw Error('no business setup during discovery')}});
   const dependent=definePlugin({id:'dependent',requires:[dependency],setup(){throw Error('no business setup during generation')}});
   export default defineApp({plugins:[dependent,dependency]});
@@ -374,8 +377,8 @@ async function verifyConsumer() {
   const finite = await fixture(
     "finite",
     String.raw`
-  import {defineApp,definePlugin} from 'lenso';
-  import {defineOperation} from 'lenso-cli';
+  import {defineApp,definePlugin} from '@lenso/core';
+  import {defineOperation} from '@lenso/cli';
   import {appendFile} from 'node:fs/promises';
   const p=definePlugin({id:'service',setup(c){
     c.onCleanup(()=>appendFile(import.meta.dir+'/runtime-events','cleanup\n'));
@@ -416,7 +419,7 @@ async function verifyConsumer() {
       clearTimeout(timeout);
     }
   }
-  const installedBin = join(process.cwd(), "node_modules/lenso-cli/dist/bin.js");
+  const installedBin = join(process.cwd(), "node_modules/@lenso/cli/dist/bin.js");
   const installedInspect = await cli(installedBin, ["inspect", "service", "run"]);
   assert.equal(installedInspect.data.operations[0].method, "run");
   assert.equal(await Bun.file(join(finite, "runtime-events")).exists(), false);
@@ -505,7 +508,7 @@ async function verifyConsumer() {
   await Bun.write(
     join(workers, "worker.ts"),
     String.raw`
-  import {definePlugin} from 'lenso/plugin';
+  import {definePlugin} from '@lenso/core/plugin';
   import {createWorkerHandler,createBindingsPlugin} from '@lenso/workers';
   export default createWorkerHandler(bindings=>{
     const env=createBindingsPlugin({id:'bindings',bindings});

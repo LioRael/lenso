@@ -1,5 +1,5 @@
 import { createWebPlugin } from "@lenso/web";
-import type { RunningApp } from "lenso";
+import type { RunningApp } from "@lenso/core";
 import { greeting } from "./greeting";
 import { createRouter } from "./router";
 

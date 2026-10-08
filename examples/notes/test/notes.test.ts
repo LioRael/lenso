@@ -9,7 +9,7 @@ import { audience, createAuth, defineSource, realm } from "@lenso/auth";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { eq } from "drizzle-orm";
 import { createNotesAuthPlugin, parseNotesPrincipals } from "../src/auth";
 import { createNotesOperationsService } from "../src/operations";

@@ -8,8 +8,8 @@ be available on PATH. Do not invoke a real local publish as a validation step.
 
 ## Decide before a first publication
 
-The repository does not establish a registry, ownership of the unscoped names
-`lenso` and `lenso-cli` or the `@lenso` scope, package access, license, or dist-tag.
+The repository does not establish a registry, ownership of the `@lenso`
+scope, package access, license, or dist-tag.
 Confirm those with the release owner. Do not infer a registry from a package
 name. The ten public package manifests declare MIT and the GitHub repository
 with their package directories. Local checks cannot prove name availability or
@@ -78,7 +78,7 @@ leaves formatting to the repository's `fmt` command.
 The JSON status plan can include private dependents with `type: "none"` and an
 unchanged `newVersion`; these are dependency bookkeeping, not package releases.
 
-Internal dependencies, including explicit peers such as `@lenso/auth`'s `lenso`
+Internal dependencies, including explicit peers such as `@lenso/auth`'s `@lenso/core`
 range, remain Changesets-owned (`bumpVersionsWithWorkspaceProtocolOnly: false`,
 `updateInternalDependencies: "patch"`). Review the resulting plan: independent
 versions do not mean dependent packages can never need a release. Workspace
@@ -110,7 +110,7 @@ bun run test
 The archive verifier only reads direct `packages/*/package.json` manifests.
 The private root, `examples/*`, `templates/*` and nested CLI example plugins are
 not independent release candidates. A direct package with `private: true` is
-excluded. CLI example source files remain part of `lenso-cli`'s existing allowlist.
+excluded. CLI example source files remain part of `@lenso/cli`'s existing allowlist.
 
 The verifier (formerly `release:check`):
 

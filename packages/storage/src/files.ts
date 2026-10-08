@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin } from "lenso/plugin";
+import { definePlugin, type Plugin } from "@lenso/core/plugin";
 import {
   StorageError,
   validateExpiry,

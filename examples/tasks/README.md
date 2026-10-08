@@ -41,7 +41,7 @@ not a migration system for future schema changes.
 Each method accepts one ordinary business input. Authentication evidence is
 not part of that JSON: callers cannot supply `actor`, `subjectId`, or
 credentials to impersonate an owner. `producer.ts` is a compatibility entry
-through the same `lenso-cli call` boundary, not a direct queue client.
+through the same `@lenso/cli call` boundary, not a direct queue client.
 
 The entry environment must provide `TASK_SESSION`, an existing short-lived
 session credential, and `TASK_AUTH_SOURCE_MODULE`, the absolute path to a

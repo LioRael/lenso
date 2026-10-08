@@ -1,4 +1,4 @@
-import { definePlugin, startApp, type RunningApp } from "lenso";
+import { definePlugin, startApp, type RunningApp } from "@lenso/core";
 import { reportDevReady } from "@lenso/engine/dev-ready";
 import { greeting } from "./greeting";
 import { createGreetingWeb } from "./web";

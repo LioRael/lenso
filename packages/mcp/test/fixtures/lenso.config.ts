@@ -1,5 +1,5 @@
-import { defineApp, definePlugin } from "lenso";
-import { defineOperation, CliError } from "lenso-cli";
+import { defineApp, definePlugin } from "@lenso/core";
+import { defineOperation, CliError } from "@lenso/cli";
 import { z } from "zod";
 
 const input = z.strictObject({ value: z.string(), delay: z.number().optional() });

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
-import { definePlugin } from "lenso";
+import { definePlugin } from "@lenso/core";
 import { defineOperation, describeOperation } from "../src/operations";
 import { stableJson } from "../src/diagnostics";
 
@@ -192,7 +192,7 @@ test("inspect and generated manifest share canonical operation semantics without
 test("source and built CLI preserve diagnostics from separately bundled application CliError", async () => {
   const root = await mkdtemp(join(tmpdir(), "lenso-app-diagnostic-"));
   directories.push(root);
-  const cli = pathToFileURL(Bun.resolveSync("lenso-cli", import.meta.dir)).href;
+  const cli = pathToFileURL(Bun.resolveSync("@lenso/cli", import.meta.dir)).href;
   await Bun.write(
     join(root, "lenso.config.ts"),
     `import { CliError } from ${JSON.stringify(cli)};

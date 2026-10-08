@@ -5,7 +5,7 @@ import {
   type SessionLifetime,
   type SessionStore,
 } from "@lenso/auth/sessions";
-import { definePlugin, type Plugin } from "lenso";
+import { definePlugin, type Plugin } from "@lenso/core";
 import { z } from "zod";
 
 export interface NotesPrincipal {

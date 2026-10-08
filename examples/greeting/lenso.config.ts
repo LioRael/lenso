@@ -1,5 +1,5 @@
-import { defineApp } from "lenso";
-import { defineOperation } from "lenso-cli";
+import { defineApp } from "@lenso/core";
+import { defineOperation } from "@lenso/cli";
 import { greetingInput } from "./src/contracts";
 import { greeting } from "./src/greeting";
 export default defineApp({ plugins: [greeting] });

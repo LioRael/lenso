@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin } from "lenso";
+import { definePlugin, type Plugin } from "@lenso/core";
 import type { SessionLifetime, SessionStore } from "@lenso/auth/sessions";
 import { createNotesAuthPlugin, type NotesPrincipal } from "./auth";
 

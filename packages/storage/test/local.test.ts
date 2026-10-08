@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readdir, rm, symlink, unlink, writeFile, mkdir, rename } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { createLocalStoragePlugin } from "../src/local";
 import { StorageError, type ObjectStorage, type StorageErrorCode } from "../src/index";
 

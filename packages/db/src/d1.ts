@@ -1,6 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
-import type { Plugin } from "lenso/plugin";
+import type { Plugin } from "@lenso/core/plugin";
 import { createDrizzlePlugin } from "./index";
 
 /** D1 is a platform binding, never an owned connection or pool. */

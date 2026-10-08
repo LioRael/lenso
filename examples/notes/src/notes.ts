@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin } from "lenso/plugin";
+import { definePlugin, type Plugin } from "@lenso/core/plugin";
 import { audience, type Actor } from "@lenso/auth";
 import type { NotesAuthentication } from "./auth";
 import { noteInput, noteLookupInput, type NoteInput } from "./contracts";

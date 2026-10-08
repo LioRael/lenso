@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { defineApp, definePlugin } from "lenso";
+import { defineApp, definePlugin } from "@lenso/core";
 import { z } from "zod";
 import { defineOperation } from "../src/operations";
 import { diagnostic } from "../src/diagnostics";

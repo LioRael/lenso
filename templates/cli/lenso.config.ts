@@ -1,5 +1,5 @@
-import { defineApp, definePlugin } from "lenso";
-import { defineOperation } from "lenso-cli";
+import { defineApp, definePlugin } from "@lenso/core";
+import { defineOperation } from "@lenso/cli";
 import { z } from "zod";
 
 const greetingInput = z.object({ name: z.string().trim().min(2) });

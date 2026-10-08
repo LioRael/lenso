@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin, type PluginContext } from "lenso/plugin";
+import { definePlugin, type Plugin, type PluginContext } from "@lenso/core/plugin";
 
 /** Keeps the native Drizzle database type. No common ORM or implicit migrations. */
 export function createDrizzlePlugin<T>(options: {

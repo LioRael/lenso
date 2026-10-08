@@ -13,12 +13,12 @@ Private object storage with explicit Lenso instance references. Business methods
 | `@lenso/storage/postgres` | Drizzle schema/queries for Bun SQL PostgreSQL                      |
 | `@lenso/storage/fetch`    | Optional raw Fetch helpers, no listener or implicit routes         |
 
-Install `lenso` and this package. Install the three AWS SDK peers for `/s3`, or `drizzle-orm@0.45.3` for the database subpaths. Do not import `/local` or `/s3` in a Workers entry. Inspect `storage.capabilities` before selecting signing, conditional or range operations; unsupported operations throw `StorageError` with `code: "unsupported"`.
+Install `@lenso/core` and this package. Install the three AWS SDK peers for `/s3`, or `drizzle-orm@0.45.3` for the database subpaths. Do not import `/local` or `/s3` in a Workers entry. Inspect `storage.capabilities` before selecting signing, conditional or range operations; unsupported operations throw `StorageError` with `code: "unsupported"`.
 
 ## Multiple instances and object streams
 
 ```ts
-import { defineApp, startApp } from "lenso";
+import { defineApp, startApp } from "@lenso/core";
 import { createLocalStoragePlugin } from "@lenso/storage/local";
 
 const publicAssets = createLocalStoragePlugin({ id: "publicAssets", root: "./data/assets" });

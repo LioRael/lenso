@@ -114,8 +114,8 @@ Choose affected packages and consumers from the diff and their actual manifest
 dependencies. For the Engine/CLI/greeting change family, the verified tasks are:
 
 ```sh
-./node_modules/.bin/turbo run build --filter=lenso-cli --filter=@lenso/workers --filter=@lenso/example-greeting
-./node_modules/.bin/turbo run typecheck --filter=@lenso/engine --filter=lenso-cli --filter=@lenso/example-greeting
+./node_modules/.bin/turbo run build --filter=@lenso/cli --filter=@lenso/workers --filter=@lenso/example-greeting
+./node_modules/.bin/turbo run typecheck --filter=@lenso/engine --filter=@lenso/cli --filter=@lenso/example-greeting
 bun run lint
 bun test packages/engine/test packages/cli/test examples/greeting/src/greeting.test.ts
 ```

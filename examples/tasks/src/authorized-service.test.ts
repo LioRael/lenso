@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { defineSource, type SubjectRef } from "@lenso/auth";
 import type { JobState, JobStatus } from "@lenso/tasks";
-import { defineApp } from "lenso";
-import { defineOperation, invoke } from "lenso-cli";
+import { defineApp } from "@lenso/core";
+import { defineOperation, invoke } from "@lenso/cli";
 import { createAuthorizedTaskService } from "./authorized-service";
 import { jobInput, submitInput } from "./contracts";
 import type { OwnershipStore } from "./ownership";

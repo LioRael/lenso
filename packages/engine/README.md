@@ -1,9 +1,9 @@
 # @lenso/engine
 
 Bun-hosted authoring tools for discovery, generation, build targets and supervised
-development. Engine owns processing and resource lifetimes; `lenso-cli` owns
+development. Engine owns processing and resource lifetimes; `@lenso/cli` owns
 arguments, terminal presentation, command invocation and exit codes. Engine depends
-on `lenso`, never on the CLI. Runtime and browser entries do not depend on Engine.
+on `@lenso/core`, never on the CLI. Runtime and browser entries do not depend on Engine.
 
 ## Programmatic API
 

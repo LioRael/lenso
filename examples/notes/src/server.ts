@@ -1,4 +1,4 @@
-import { definePlugin, startApp } from "lenso";
+import { definePlugin, startApp } from "@lenso/core";
 import { createPgNotesPlugins, databaseUrl } from "./app-pg";
 import { parseNotesPrincipals, type NotesPrincipal } from "./auth";
 import type { SessionLifetime } from "@lenso/auth/sessions";

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { definePlugin } from "lenso/plugin";
+import { definePlugin } from "@lenso/core/plugin";
 import { createWebPlugin } from "@lenso/web";
 import { createBindingsPlugin, createWorkerHandler } from "../src/index";
 

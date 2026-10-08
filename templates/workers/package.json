@@ -11,10 +11,10 @@
     "fmt": "oxfmt src package.json tsconfig.json wrangler.jsonc"
   },
   "dependencies": {
+    "@lenso/core": "file:./vendor/lenso-core.tgz",
     "@lenso/web": "file:./vendor/lenso-web.tgz",
     "@lenso/workers": "file:./vendor/lenso-workers.tgz",
     "@orpc/server": "1.15.5",
-    "lenso": "file:./vendor/lenso.tgz",
     "zod": "4.6.5"
   },
   "devDependencies": {
@@ -25,7 +25,7 @@
     "wrangler": "4.148.0"
   },
   "overrides": {
-    "lenso": "file:./vendor/lenso.tgz"
+    "@lenso/core": "file:./vendor/lenso-core.tgz"
   },
   "packageManager": "bun@1.4.2"
 }

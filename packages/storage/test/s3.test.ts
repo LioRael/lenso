@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { S3Client } from "@aws-sdk/client-s3";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 import { createS3StoragePlugin } from "../src/s3";
 
 const cleanups: (() => void | Promise<void>)[] = [];

@@ -9,7 +9,11 @@ import {
   type ReleasePackage,
 } from "./release-verify";
 
-const core: Manifest = { name: "lenso", version: "0.1.0", exports: { ".": "./dist/index.js" } };
+const core: Manifest = {
+  name: "@lenso/core",
+  version: "0.1.0",
+  exports: { ".": "./dist/index.js" },
+};
 const entries = ["package/package.json", "package/dist/index.js", "package/dist/index.d.ts"];
 const pkg = (manifest: Manifest): ReleasePackage => ({ directory: manifest.name, manifest });
 
@@ -28,15 +32,19 @@ test("dependency-first order uses package names, excludes private packages", () 
   expect(
     releaseOrder([
       pkg({
-        name: "lenso-cli",
+        name: "@lenso/cli",
         version: "0.1.0",
         dependencies: { "@lenso/engine": "workspace:^" },
       }),
       pkg({ name: "app", version: "0.1.0", private: true }),
-      pkg({ name: "@lenso/engine", version: "0.1.0", dependencies: { lenso: "workspace:^" } }),
+      pkg({
+        name: "@lenso/engine",
+        version: "0.1.0",
+        dependencies: { "@lenso/core": "workspace:^" },
+      }),
       pkg(core),
     ]).map((p) => p.manifest.name),
-  ).toEqual(["lenso", "@lenso/engine", "lenso-cli"]);
+  ).toEqual(["@lenso/core", "@lenso/engine", "@lenso/cli"]);
 });
 
 test("unresolved, duplicate, private runtime and cyclic dependencies fail", () => {
@@ -48,7 +56,9 @@ test("unresolved, duplicate, private runtime and cyclic dependencies fail", () =
   expect(() =>
     releaseOrder([pkg(hidden), pkg({ ...core, dependencies: { hidden: "*" } })]),
   ).toThrow("private");
-  expect(() => releaseOrder([pkg({ ...core, dependencies: { lenso: "*" } })])).toThrow("cycle");
+  expect(() => releaseOrder([pkg({ ...core, dependencies: { "@lenso/core": "*" } })])).toThrow(
+    "cycle",
+  );
 });
 
 test("valid packed metadata, wildcard exports and CLI entry points pass", () => {
@@ -77,9 +87,9 @@ test("missing artifacts, identity changes and leaked local references fail", () 
   ).toThrow("entry point");
   for (const group of ["dependencies", "optionalDependencies", "peerDependencies"]) {
     for (const range of ["workspace:^", "file:../local", "link:../local"]) {
-      expect(() => validateArchive(core, { ...core, [group]: { lenso: range } }, entries)).toThrow(
-        "still uses",
-      );
+      expect(() =>
+        validateArchive(core, { ...core, [group]: { "@lenso/core": range } }, entries),
+      ).toThrow("still uses");
     }
   }
 });
@@ -124,8 +134,8 @@ test("real Bun pack replaces workspace ranges and contains every public entry po
       files: ["dist"],
       exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } },
       bin: { fixture: "./dist/bin.js" },
-      dependencies: { lenso: "workspace:^" },
-      peerDependencies: { lenso: "workspace:~" },
+      dependencies: { "@lenso/core": "workspace:^" },
+      peerDependencies: { "@lenso/core": "workspace:~" },
     };
     await Bun.write(join(root, "packages/cli/package.json"), JSON.stringify(manifest));
     await Bun.write(join(root, "packages/cli/dist/index.js"), "export const value = 1;");
@@ -145,8 +155,8 @@ test("real Bun pack replaces workspace ranges and contains every public entry po
       archive,
     ]);
     const packed = JSON.parse(await run(root, ["tar", "-xOzf", archive, "package/package.json"]));
-    expect(packed.dependencies.lenso).toBe("^0.1.0");
-    expect(packed.peerDependencies.lenso).toBe("~0.1.0");
+    expect(packed.dependencies["@lenso/core"]).toBe("^0.1.0");
+    expect(packed.peerDependencies["@lenso/core"]).toBe("~0.1.0");
     const actualEntries = (await run(root, ["tar", "-tzf", archive])).trim().split("\n");
     validateArchive(manifest, packed, actualEntries);
     expect(actualEntries).toContain("package/dist/bin.js");

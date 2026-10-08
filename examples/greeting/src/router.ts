@@ -1,6 +1,6 @@
 import { os, ORPCError } from "@orpc/server";
 import type { WebContext } from "@lenso/web";
-import type { RunningApp } from "lenso";
+import type { RunningApp } from "@lenso/core";
 import { greetingInput, GreetingInputError } from "./contracts";
 import type { GreetingService } from "./greeting";
 

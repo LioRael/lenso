@@ -79,7 +79,7 @@ No worker starts implicitly. A producer-only plugin omits `worker`:
 
 ```ts
 import { createTaskPlugin } from "@lenso/tasks";
-import { startApp } from "lenso";
+import { startApp } from "@lenso/core";
 
 const reports = createTaskPlugin({
   id: "report-queue",

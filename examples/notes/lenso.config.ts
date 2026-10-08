@@ -1,4 +1,4 @@
-import { defineApp, type Plugin } from "lenso";
+import { defineApp, type Plugin } from "@lenso/core";
 import { resolve } from "node:path";
 import { parseNotesPrincipals } from "./src/auth";
 import { createPgNotesPlugins } from "./src/app-pg";

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { definePlugin } from "lenso";
+import { definePlugin } from "@lenso/core";
 import { defineOperation, describeOperation, validateOperations } from "../src/operations";
 
 const input = {

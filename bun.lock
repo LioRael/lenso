@@ -17,15 +17,15 @@
       "name": "@lenso/example-greeting",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
         "@lenso/web": "workspace:^",
         "@orpc/client": "1.15.5",
         "@orpc/server": "1.15.5",
-        "lenso": "workspace:^",
         "zod": "4.6.5",
       },
       "devDependencies": {
-        "lenso-cli": "workspace:^",
+        "@lenso/cli": "workspace:^",
       },
     },
     "examples/notes": {
@@ -33,14 +33,14 @@
       "version": "0.1.0",
       "dependencies": {
         "@lenso/auth": "workspace:^",
+        "@lenso/cli": "workspace:^",
+        "@lenso/core": "workspace:^",
         "@lenso/db": "workspace:^",
         "@lenso/mcp": "workspace:^",
         "@lenso/storage": "workspace:^",
         "@lenso/web": "workspace:^",
         "@orpc/server": "1.15.5",
         "drizzle-orm": "0.45.3",
-        "lenso": "workspace:^",
-        "lenso-cli": "workspace:^",
         "zod": "4.6.5",
       },
       "devDependencies": {
@@ -53,11 +53,11 @@
       "name": "@lenso/example-tasks",
       "dependencies": {
         "@lenso/auth": "workspace:^",
+        "@lenso/cli": "workspace:^",
+        "@lenso/core": "workspace:^",
         "@lenso/mcp": "workspace:^",
         "@lenso/tasks": "workspace:^",
         "drizzle-orm": "0.45.3",
-        "lenso": "workspace:^",
-        "lenso-cli": "workspace:^",
         "pg": "8.23.1",
         "zod": "4.6.5",
       },
@@ -70,13 +70,13 @@
       "name": "lenso-example-workers",
       "dependencies": {
         "@lenso/auth": "workspace:^",
+        "@lenso/core": "workspace:^",
         "@lenso/db": "workspace:^",
         "@lenso/storage": "workspace:^",
         "@lenso/web": "workspace:^",
         "@lenso/workers": "workspace:^",
         "@orpc/server": "1.15.5",
         "drizzle-orm": "0.45.3",
-        "lenso": "workspace:^",
         "zod": "4.6.5",
       },
       "devDependencies": {
@@ -91,32 +91,32 @@
       "version": "0.1.0",
       "devDependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
+        "@lenso/core": "workspace:^",
         "@lenso/web": "workspace:^",
         "@orpc/server": "1.15.5",
         "drizzle-orm": "0.45.3",
-        "lenso": "workspace:^",
         "zod": "4.6.5",
       },
       "peerDependencies": {
+        "@lenso/core": "^0.1.0",
         "@orpc/server": "^1.15.5",
         "drizzle-orm": "^0.45.3",
-        "lenso": "^0.1.0",
       },
       "optionalPeers": [
+        "@lenso/core",
         "@orpc/server",
         "drizzle-orm",
-        "lenso",
       ],
     },
     "packages/cli": {
-      "name": "lenso-cli",
-      "version": "0.1.0",
+      "name": "@lenso/cli",
+      "version": "0.18.0",
       "bin": {
         "lenso": "./dist/bin.js",
       },
       "dependencies": {
+        "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
-        "lenso": "workspace:^",
         "picocolors": "1.1.1",
       },
       "devDependencies": {
@@ -128,40 +128,40 @@
       "version": "0.1.0",
       "dependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
+        "@lenso/core": "workspace:^",
         "drizzle-orm": "0.45.3",
-        "lenso": "workspace:^",
       },
     },
     "packages/engine": {
       "name": "@lenso/engine",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/core": "workspace:^",
         "@standard-schema/spec": "1.1.0",
-        "lenso": "workspace:^",
       },
     },
     "packages/lenso": {
-      "name": "lenso",
+      "name": "@lenso/core",
       "version": "0.1.0",
     },
     "packages/mcp": {
       "name": "@lenso/mcp",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/cli": "workspace:^",
         "@lenso/engine": "workspace:^",
         "@modelcontextprotocol/sdk": "1.32.1",
-        "lenso-cli": "workspace:^",
         "zod": "4.6.5",
       },
       "devDependencies": {
-        "lenso": "workspace:^",
+        "@lenso/core": "workspace:^",
       },
     },
     "packages/storage": {
       "name": "@lenso/storage",
       "version": "0.1.0",
       "dependencies": {
-        "lenso": "workspace:^",
+        "@lenso/core": "workspace:^",
       },
       "devDependencies": {
         "@aws-sdk/client-s3": "3.1147.0",
@@ -188,9 +188,9 @@
       "name": "@lenso/tasks",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/core": "workspace:^",
         "@standard-schema/spec": "1.1.0",
         "drizzle-orm": "0.45.3",
-        "lenso": "workspace:^",
         "pg": "8.23.1",
         "pg-boss": "12.37.0",
       },
@@ -203,9 +203,9 @@
       "name": "@lenso/web",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/core": "workspace:^",
         "@orpc/client": "1.15.5",
         "@orpc/server": "1.15.5",
-        "lenso": "workspace:^",
       },
       "devDependencies": {
         "zod": "4.6.5",
@@ -215,7 +215,7 @@
       "name": "@lenso/workers",
       "version": "0.1.0",
       "dependencies": {
-        "lenso": "workspace:^",
+        "@lenso/core": "workspace:^",
       },
       "devDependencies": {
         "@lenso/web": "workspace:^",
@@ -438,6 +438,10 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
 
     "@lenso/auth": ["@lenso/auth@workspace:packages/auth"],
+
+    "@lenso/cli": ["@lenso/cli@workspace:packages/cli"],
+
+    "@lenso/core": ["@lenso/core@workspace:packages/lenso"],
 
     "@lenso/db": ["@lenso/db@workspace:packages/db"],
 
@@ -802,10 +806,6 @@
     "kleur": ["kleur@4.1.5", "", {}, "sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ=="],
 
     "launch-editor": ["launch-editor@2.14.2", "", { "dependencies": { "picocolors": "^1.1.1", "shell-quote": "^1.10.0" } }, "sha512-NHJEb30MGBCkmZXLZwz25t37QR4aY03ZzPYUJXOJaOa92uWwExI9SBQUuIznBYc1xkD7cJNGX7oc3Nl3sq2kQQ=="],
-
-    "lenso": ["lenso@workspace:packages/lenso"],
-
-    "lenso-cli": ["lenso-cli@workspace:packages/cli"],
 
     "lenso-example-workers": ["lenso-example-workers@workspace:examples/workers"],
 
