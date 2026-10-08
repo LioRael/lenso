@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lenso-app-workers",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": { "GREETING_PREFIX": "Hello" },
+  "observability": { "enabled": true },
+}

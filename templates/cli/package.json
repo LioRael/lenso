@@ -1,0 +1,25 @@
+{
+  "name": "lenso-app-cli",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "call": "lenso call greeting greet",
+    "generate": "lenso generate",
+    "build": "lenso build",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "fmt": "oxfmt ."
+  },
+  "dependencies": {
+    "lenso": "file:./vendor/lenso.tgz",
+    "lenso-cli": "file:./vendor/lenso-cli.tgz"
+  },
+  "overrides": {"lenso": "file:./vendor/lenso.tgz"},
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "typescript": "7.0.2"
+  },
+  "packageManager": "bun@1.4.2"
+}

@@ -1,0 +1,29 @@
+{
+  "name": "lenso-app-workers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --ip 127.0.0.1",
+    "types": "wrangler types --include-runtime false",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src",
+    "fmt": "oxfmt src package.json tsconfig.json wrangler.jsonc"
+  },
+  "dependencies": {
+    "@lenso/web": "file:./vendor/lenso-web.tgz",
+    "@lenso/workers": "file:./vendor/lenso-workers.tgz",
+    "@orpc/server": "1.15.5",
+    "lenso": "file:./vendor/lenso.tgz",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261008.1",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "typescript": "7.0.2",
+    "wrangler": "4.148.0"
+  },
+  "overrides": {"lenso": "file:./vendor/lenso.tgz"},
+  "packageManager": "bun@1.4.2"
+}

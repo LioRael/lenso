@@ -1,0 +1,27 @@
+{
+  "name": "lenso-app-bun-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "lenso dev",
+    "build": "lenso build",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "fmt": "oxfmt ."
+  },
+  "dependencies": {
+    "@lenso/web": "file:./vendor/lenso-web.tgz",
+    "@orpc/server": "1.15.5",
+    "lenso": "file:./vendor/lenso.tgz",
+    "lenso-cli": "file:./vendor/lenso-cli.tgz",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "oxfmt": "0.72.0",
+    "oxlint": "1.87.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {"lenso": "file:./vendor/lenso.tgz"},
+  "packageManager": "bun@1.4.2"
+}

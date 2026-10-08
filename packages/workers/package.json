@@ -1,0 +1,26 @@
+{
+  "name": "@lenso/workers",
+  "version": "0.1.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && bun build src/index.ts --outdir dist --target browser --packages external",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "lenso": "workspace:^"
+  },
+  "devDependencies": {
+    "@lenso/web": "workspace:^"
+  }
+}

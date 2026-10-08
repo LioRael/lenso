@@ -1,0 +1,2 @@
+# Optional non-secret local override. Copy to .dev.vars to use it.
+GREETING_PREFIX="Hello from local bindings"

@@ -1,0 +1,9 @@
+# Workers Fetch adapter
+
+`createWorkerHandler<Env>((env, {request, executionContext}) => ({plugins, web}))` creates a module Worker Fetch entrypoint from the public core and Web service contracts. Use Wrangler-generated `Env`, pass bindings to factories inside assembly, and declare exact plugin references in `requires`. `createBindingsPlugin({id, bindings})` injects platform-owned resources without closing them. This package does not import Bun, run a listener, or call a remote Bun service.
+
+Each request starts its own app. A response without a body stops immediately; a body retains its app until EOF, failure, or cancellation. Callers of `fetch` outside an HTTP server must consume or cancel the returned body. In-memory plugin state therefore resets on every request and is not persistence. Binding services such as D1 provide persistent data outside the app. No cross-request initialization cache is used, avoiding resources acquired under a different workerd request context.
+
+Use `executionContext.waitUntil(...)` explicitly for platform background work. Work that depends on app resources must finish before response EOF or register its own ownership; `waitUntil` does not extend this adapter's app lifetime. A Worker has no process shutdown hook, so cleanup after isolate termination is not guaranteed. This adapter supports ordinary HTTP Fetch bodies; it does not implement WebSocket upgrades, Durable Object lifecycle, scheduled events, queues, or deployment.
+
+See `examples/workers` for local Wrangler usage. Types are structural so applications use their own generated Worker types. Errors propagate to the Worker runtime; Web error mapping stays in the Web package.
