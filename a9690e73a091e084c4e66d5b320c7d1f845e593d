@@ -1,0 +1,14 @@
+packages/cli/test/packaging.test.ts
+  h_9d56aba080c170 165,170,180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9690e73a091e084c4e66d5b320c7d1f845e593d",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

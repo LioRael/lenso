@@ -1,0 +1,186 @@
+.changeset/orpc-v2-observability.md
+  h_9d56aba080c170 1-22
+README.md
+  h_9d56aba080c170 37-38,42-60
+bun.lock
+  h_9d56aba080c170 22-23,25-26,31-33,47,53,63,71,73-74,84,88-89,95,107,113,131,152,159-170,185-212,245-246,262-264,267-269,281,516-517,520-521,540,542,544,546,548,550,552,554,556,558,560-586,664-665,692-705,770-771,794-797,802,812-813,830-831,838-839,858-859,862-863,896-897,908-909,926-927,954-957,968-969,1010-1017,1028-1029,1032-1033,1036-1037,1046-1047,1050-1051,1060-1061,1064-1065,1094-1095,1108-1109,1116-1117,1180-1181,1190-1191
+docs/CLI.md
+  h_9d56aba080c170 82-93
+examples/greeting/package.json
+  h_9d56aba080c170 18-19,21-22,26-29
+examples/greeting/src/server.ts
+  h_9d56aba080c170 1,6-9,11,38
+examples/greeting/src/telemetry.test.ts
+  h_9d56aba080c170 1-137
+examples/greeting/src/telemetry.ts
+  h_9d56aba080c170 1-4
+examples/greeting/src/web.ts
+  h_9d56aba080c170 6-9,12
+examples/notes/package.json
+  h_9d56aba080c170 28,34
+examples/notes/test/notes.test.ts
+  h_9d56aba080c170 320-321,323
+examples/notes/test/postgres.test.ts
+  h_9d56aba080c170 94-95,112-113
+examples/tasks/package.json
+  h_9d56aba080c170 17,25,27-28
+examples/tasks/src/plugin.ts
+  h_9d56aba080c170 2,21-26,55-57
+examples/tasks/src/resources.ts
+  h_9d56aba080c170 5,12-15,25
+examples/tasks/src/task.ts
+  h_9d56aba080c170 10-11
+examples/tasks/src/telemetry.test.ts
+  h_9d56aba080c170 1-82
+examples/tasks/src/test-fixtures/trace-worker.ts
+  h_9d56aba080c170 1-62
+examples/tasks/src/worker.ts
+  h_9d56aba080c170 3,22
+examples/workers/package.json
+  h_9d56aba080c170 13-14,21,25-26,32
+examples/workers/src/index.ts
+  h_9d56aba080c170 6-9
+examples/workers/test/notes-workerd.test.ts
+  h_9d56aba080c170 92-93
+examples/workers/test/traces-workerd.test.ts
+  h_9d56aba080c170 1-41
+examples/workers/wrangler.jsonc
+  h_9d56aba080c170 8-12
+packages/auth/README.md
+  h_9d56aba080c170 17
+packages/auth/package.json
+  h_9d56aba080c170 71,77
+packages/auth/src/orpc.ts
+  h_9d56aba080c170 1,24-25
+packages/cli/package.json
+  h_9d56aba080c170 34
+packages/cli/src/bin.ts
+  h_9d56aba080c170 6,137-155,157-178,180-193,195-279
+packages/cli/src/engine.ts
+  h_9d56aba080c170 5,79
+packages/engine/package.json
+  h_9d56aba080c170 50
+packages/engine/src/application.ts
+  h_9d56aba080c170 3,8-9
+packages/engine/src/operations.ts
+  h_9d56aba080c170 2-3,18-78
+packages/lenso/package.json
+  h_9d56aba080c170 32-34
+packages/lenso/src/browser.ts
+  h_9d56aba080c170 3
+packages/lenso/src/index.ts
+  h_9d56aba080c170 2
+packages/lenso/src/lifecycle.ts
+  h_9d56aba080c170 2-3,6-7,15-18,20-70,113-116,118-119,141,160,187-188
+packages/lenso/src/plugin.ts
+  h_9d56aba080c170 3-10,20-21,47-49
+packages/lenso/test/observability.test.ts
+  h_9d56aba080c170 1-54
+packages/log/LICENSE
+  h_9d56aba080c170 1-21
+packages/log/README.md
+  h_9d56aba080c170 1-29
+packages/log/package.json
+  h_9d56aba080c170 1-31
+packages/log/src/index.ts
+  h_9d56aba080c170 1-178
+packages/log/test/index.test.ts
+  h_9d56aba080c170 1-153
+packages/log/tsconfig.build.json
+  h_9d56aba080c170 1-11
+packages/log/tsconfig.json
+  h_9d56aba080c170 1-5
+packages/otel/LICENSE
+  h_9d56aba080c170 1-21
+packages/otel/README.md
+  h_9d56aba080c170 1-81
+packages/otel/package.json
+  h_9d56aba080c170 1-70
+packages/otel/src/bun.ts
+  h_9d56aba080c170 1-286
+packages/otel/src/index.ts
+  h_9d56aba080c170 1-9
+packages/otel/src/orpc.ts
+  h_9d56aba080c170 1-27
+packages/otel/src/workers.ts
+  h_9d56aba080c170 1-22
+packages/otel/test/bootstrap.test.ts
+  h_9d56aba080c170 1-193
+packages/otel/test/cli.test.ts
+  h_9d56aba080c170 1-48
+packages/otel/test/fixtures/cli-preload.ts
+  h_9d56aba080c170 1-29
+packages/otel/test/integration.test.ts
+  h_9d56aba080c170 1-291
+packages/otel/test/ownership.test.ts
+  h_9d56aba080c170 1-143
+packages/otel/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/otel/tsconfig.json
+  h_9d56aba080c170 1-4
+packages/storage/test/r2.test.ts
+  h_9d56aba080c170 12,45
+packages/tasks/README.md
+  h_9d56aba080c170 114-135,150-151
+packages/tasks/migrations/0002_trace_metadata.sql
+  h_9d56aba080c170 1-2
+packages/tasks/package.json
+  h_9d56aba080c170 33-34
+packages/tasks/src/contracts.ts
+  h_9d56aba080c170 2-3,14-16,72,82
+packages/tasks/src/index.ts
+  h_9d56aba080c170 2,13-14,59-61,63-68,90-142,159-161,210-255,310-316
+packages/tasks/src/postgres.ts
+  h_9d56aba080c170 18,112-113,160-164,297,350
+packages/tasks/src/schema.ts
+  h_9d56aba080c170 3,13
+packages/tasks/src/telemetry.ts
+  h_9d56aba080c170 1-52
+packages/tasks/src/worker.ts
+  h_9d56aba080c170 5,95
+packages/tasks/test/core.test.ts
+  h_9d56aba080c170 66
+packages/tasks/test/postgres.test.ts
+  h_9d56aba080c170 41-92
+packages/web/README.md
+  h_9d56aba080c170 4,7,10,13-47,92-93
+packages/web/package.json
+  h_9d56aba080c170 31-33,36-38
+packages/web/src/client.ts
+  h_9d56aba080c170 6,15,18-19
+packages/web/src/index.ts
+  h_9d56aba080c170 2-3,6,15,20-23,31,54-68,80,82-109
+packages/web/src/lifetime.ts
+  h_9d56aba080c170 1-2,24,55,133-150,152-157,159,162-167,211
+packages/web/src/telemetry.ts
+  h_9d56aba080c170 1-99
+packages/web/test/http.test.ts
+  h_9d56aba080c170 3,69-153
+packages/web/test/stream.test.ts
+  h_9d56aba080c170 2-3,294-338
+packages/web/test/telemetry.test.ts
+  h_9d56aba080c170 1-76
+packages/workers/package.json
+  h_9d56aba080c170 30-31
+packages/workers/test/rpc.test.ts
+  h_9d56aba080c170 1-79
+scripts/ci-checks.sh
+  h_9d56aba080c170 37
+templates/bun-web/package.json
+  h_9d56aba080c170 17
+templates/workers/package.json
+  h_9d56aba080c170 17
+turbo.json
+  h_9d56aba080c170 3-8,12-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c86405921229d57cb4f7919279e7e29cab5c9369",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
