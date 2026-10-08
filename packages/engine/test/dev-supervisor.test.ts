@@ -150,8 +150,8 @@ test("ready hook failure stops runtime before cleanup; cleanup failures survive 
     `
     import {appendFile} from 'node:fs/promises';
     const timer=setInterval(()=>{},1000);
-    process.send?.({type:'lenso:dev-ready'});
-    process.on('SIGTERM',async()=>{clearInterval(timer);await appendFile(${JSON.stringify(log)},'runtime-stop\\n');process.disconnect?.()});`,
+    process.on('SIGTERM',async()=>{clearInterval(timer);await appendFile(${JSON.stringify(log)},'runtime-stop\\n');process.disconnect?.()});
+    process.send?.({type:'lenso:dev-ready'});`,
   );
   const events: DevSupervisorEvent[] = [];
   const supervisor = await createDevSupervisor({
