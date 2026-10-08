@@ -164,6 +164,33 @@ async function command(args: string[]): Promise<string> {
   return stdout;
 }
 
+export async function waitForVisibility(
+  packages: Archive[],
+  policy: Policy,
+  request = fetch,
+  clock = { now: Date.now, sleep: (milliseconds: number) => Bun.sleep(milliseconds) },
+  timeoutMs = 20 * 60 * 1000,
+) {
+  const deadline = clock.now() + timeoutMs;
+  let pending = packages;
+  while (pending.length) {
+    const remaining: Archive[] = [];
+    for (const pkg of pending) {
+      if (await existingMatches(pkg, policy, request))
+        console.log(`Published and matched: ${pkg.name}@${pkg.version}`);
+      else remaining.push(pkg);
+    }
+    pending = remaining;
+    if (!pending.length) return;
+    const remainingMs = deadline - clock.now();
+    const names = pending.map((pkg) => `${pkg.name}@${pkg.version}`).join(", ");
+    if (remainingMs <= 0)
+      throw Error(`Submitted versions are not visible: ${names}; inspect registry before retry`);
+    console.log(`Waiting for npm processing: ${names}`);
+    await clock.sleep(Math.min(30_000, remainingMs));
+  }
+}
+
 async function assertSource(root: string, sha: string) {
   if ((await command(["git", "-C", root, "rev-parse", "HEAD"])).trim() !== sha)
     throw Error("Checkout SHA does not match CI source SHA");
@@ -295,10 +322,9 @@ export async function publish(path: string, env = process.env, io = { command, r
       "--tag",
       receipt.policy.tag,
     ]);
-    if (!(await existingMatches(pkg, receipt.policy, io.request)))
-      throw Error("Published version not visible; inspect registry before retry");
-    console.log(`Published and matched: ${pkg.name}@${pkg.version}`);
+    console.log(`Submitted: ${pkg.name}@${pkg.version}; awaiting registry verification`);
   }
+  await waitForVisibility(receipt.packages, receipt.policy, io.request);
 }
 
 if (import.meta.main) {
