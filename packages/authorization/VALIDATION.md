@@ -1,6 +1,6 @@
 # Authorization validation
 
-## Checks performed
+## Initial implementation checks
 
 Validated locally with Bun **1.4.2**, TypeScript **7.0.2**, Drizzle **0.45.3**
 and PostgreSQL **18.6**. Dependencies were restored from local cache with
@@ -66,14 +66,22 @@ credential, notification, charge, deployment or publication was used.
 - Lenso exact instance dependencies, borrowed resource ownership and existing
   Config binding. Four minimal executable recipes reuse the Notes domain.
 
+## Landing integration
+
+The landing integration, explicitly authorized by the user, registers this
+workspace and its dependencies in the shared `bun.lock`. The resulting
+`bun install --frozen-lockfile` passed without further lockfile changes.
+`scripts/ci-checks.sh` creates an additional task-owned `authorization_fixture`
+database in its own temporary cluster and explicitly runs this package's
+PostgreSQL test, rather than treating its default skip as backend validation.
+Ambient Authorization test connection/ownership variables are cleared first.
+The integration also records the public package change through Changesets;
+no package versioning or registry publication is performed by this landing.
+
 ## Deliberate limits and unverified items
 
-- No whole-repository test/build/release pipeline or live Web/CLI/MCP/Manage
-  deployment was run. No transport operations were auto-registered.
-- The integration owner still needs to incorporate the new workspace package
-  and its dev dependencies into the shared root lockfile. Frozen-lockfile CI
-  for the new workspace was not validated; this task deliberately does not own
-  that shared lockfile.
+- The initial implementation did not run the whole-repository pipeline or a live
+  Web/CLI/MCP/Manage deployment. No transport operations were auto-registered.
 - Public Auth does not expose verified API-key scopes; application-owned verified
   ceiling readers are required. Anonymous Auth `enforce` is not available; an
   explicit public pure-core entry is documented instead.
