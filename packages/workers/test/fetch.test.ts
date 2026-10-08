@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { definePlugin } from "lenso/plugin";
+import { createWebPlugin } from "@lenso/web";
 import { createBindingsPlugin, createWorkerHandler } from "../src/index";
 
 const executionContext = { waitUntil: (_promise: Promise<unknown>) => {} };
@@ -96,4 +97,56 @@ test("fetch failures preserve the original error and release acquired resources"
     handler.fetch(new Request("https://example.com"), {}, executionContext),
   ).rejects.toBe(failure);
   expect(stopped).toBe(1);
+});
+
+test("a bodyless response releases its app before returning", async () => {
+  let stopped = false;
+  const handler = createWorkerHandler(() => {
+    const web = definePlugin({
+      id: "web",
+      setup(context) {
+        context.onCleanup(() => {
+          stopped = true;
+        });
+        return {
+          async fetch() {
+            return new Response(null, { status: 204 });
+          },
+        };
+      },
+    });
+    return { plugins: [web], web };
+  });
+  const response = await handler.fetch(new Request("https://example.com"), {}, executionContext);
+  expect(response.status).toBe(204);
+  expect(stopped).toBe(true);
+});
+
+test("Web request cleanup finishes before the Workers app releases its dependency", async () => {
+  const events: string[] = [];
+  const handler = createWorkerHandler(() => {
+    const resource = definePlugin({
+      id: "resource",
+      setup(context) {
+        context.onCleanup(() => {
+          events.push("app");
+        });
+        return {};
+      },
+    });
+    const web = createWebPlugin({
+      requires: [resource],
+      router: () => ({}),
+      fetch: () => (context) => {
+        context.onCleanup(() => {
+          events.push("request");
+        });
+        return new Response("stream");
+      },
+    });
+    return { plugins: [resource, web], web };
+  });
+  const response = await handler.fetch(new Request("https://example.com"), {}, executionContext);
+  expect(await response.text()).toBe("stream");
+  expect(events).toEqual(["request", "app"]);
 });

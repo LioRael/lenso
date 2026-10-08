@@ -45,9 +45,11 @@
     "examples/workers": {
       "name": "lenso-example-workers",
       "dependencies": {
+        "@lenso/db": "workspace:^",
         "@lenso/web": "workspace:^",
         "@lenso/workers": "workspace:^",
         "@orpc/server": "1.15.5",
+        "drizzle-orm": "0.45.3",
         "lenso": "workspace:^",
         "zod": "4.6.5",
       },

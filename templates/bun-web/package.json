@@ -22,6 +22,8 @@
     "oxlint": "1.87.0",
     "typescript": "7.0.2"
   },
-  "overrides": {"lenso": "file:./vendor/lenso.tgz"},
+  "overrides": {
+    "lenso": "file:./vendor/lenso.tgz"
+  },
   "packageManager": "bun@1.4.2"
 }

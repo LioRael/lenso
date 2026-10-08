@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/notes.ts", "worker-notes.d.ts"]
+}

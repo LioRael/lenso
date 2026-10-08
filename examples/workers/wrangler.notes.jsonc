@@ -1,0 +1,19 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "lenso-local-notes",
+  "main": "src/notes.ts",
+  "tsconfig": "tsconfig.notes.json",
+  "compatibility_date": "2026-10-08",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lenso-notes-local",
+      // Local-only placeholder; no Cloudflare database has been provisioned.
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "remote": false,
+      "migrations_dir": "../notes/migrations/sqlite",
+    },
+  ],
+  "observability": { "enabled": true },
+}

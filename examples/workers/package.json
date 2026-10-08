@@ -4,14 +4,19 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --local --ip 127.0.0.1",
-    "types": "wrangler types --include-runtime false",
+    "dev:notes": "wrangler dev --config wrangler.notes.jsonc --local --ip 127.0.0.1",
+    "migrate:notes": "wrangler d1 migrations apply lenso-notes-local --config wrangler.notes.jsonc --local",
+    "types": "wrangler types --include-runtime false && wrangler types worker-notes.d.ts --config wrangler.notes.jsonc --env-interface NotesEnv --include-runtime false",
     "build": "wrangler deploy --dry-run --outdir dist",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "build:notes": "wrangler deploy --config wrangler.notes.jsonc --dry-run --outdir dist/notes",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.notes.json"
   },
   "dependencies": {
+    "@lenso/db": "workspace:^",
     "@lenso/web": "workspace:^",
     "@lenso/workers": "workspace:^",
     "@orpc/server": "1.15.5",
+    "drizzle-orm": "0.45.3",
     "lenso": "workspace:^",
     "zod": "4.6.5"
   },
