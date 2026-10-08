@@ -18,6 +18,16 @@ Create a local database first. Supply `DATABASE_URL` through the environment;
 there are no default credentials. Never commit real credentials. Use the same
 database URL and queue name in every terminal.
 
+`tasksConfig` is the shared configuration contract for the CLI, worker and
+migration. Explicit environment bindings read `DATABASE_URL` and
+`TASK_QUEUE_NAME` only when configuration is resolved; inspection neither reads
+the database credential nor loads the trusted Auth module. The schema alone
+owns the `reports` queue default. Missing or empty database URLs and empty queue
+names fail before the default plugin connects Auth or database resources.
+`openResources` accepts validated config or resolves it once for standalone
+worker use. Injected test resources bypass this database configuration boundary.
+Resource objects and trusted Auth functions remain outside the contract.
+
 Install dependencies and build the framework packages from the repository root:
 
 ```sh

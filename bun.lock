@@ -160,6 +160,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@opentelemetry/api": "1.9.1",
+        "@standard-schema/spec": "1.1.0",
       },
     },
     "packages/log": {
@@ -281,6 +282,7 @@
       "devDependencies": {
         "@lenso/web": "workspace:^",
         "@orpc/server": "2.0.0-beta.42",
+        "@standard-schema/spec": "1.1.0",
       },
     },
   },

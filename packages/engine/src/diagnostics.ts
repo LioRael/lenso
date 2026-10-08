@@ -1,4 +1,4 @@
-import { DiagnosticError, lifecycleFailure } from "@lenso/core";
+import { ConfigError, DiagnosticError, lifecycleFailure } from "@lenso/core";
 
 export interface SourceLocation {
   readonly file: string;
@@ -84,6 +84,25 @@ function describeError(
       })),
     };
   }
+  if (error instanceof ConfigError) {
+    return {
+      ...base,
+      code: "config-invalid",
+      phase: "config",
+      message: "Application configuration failed before plugin setup.",
+      causes: error.diagnostics.map((item) => ({
+        code: item.code,
+        phase: "config",
+        message: "Configuration could not be resolved or validated.",
+        pluginId: item.pluginId,
+        ...(item.source ? { source: item.source } : {}),
+        details: {
+          ...(item.path ? { path: item.path } : {}),
+          ...(item.sourceId ? { sourceId: item.sourceId } : {}),
+        },
+      })),
+    };
+  }
   if (error instanceof AggregateError) {
     return {
       ...base,
@@ -106,7 +125,11 @@ export function redact(
   if (typeof value === "string") {
     let result = value
       .replace(/(\b(?:Bearer|Basic)\s+)\S+/gi, "$1[REDACTED]")
-      .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[REDACTED]@")
+      .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1[REDACTED]@")
+      .replace(
+        /((?:password|passwd|secret|token|credential|api[-_]?key|connection[-_]?string)[/\\])[^\s?#]+/gi,
+        "$1[REDACTED]",
+      )
       .replace(/((?:password|secret|token|api[-_]?key)\s*[=:]\s*)[^\s,;]+/gi, "$1[REDACTED]");
     for (const secret of secrets)
       if (secret.length >= 3) result = result.replaceAll(secret, "[REDACTED]");

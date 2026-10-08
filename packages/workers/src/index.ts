@@ -85,7 +85,7 @@ export function createWorkerHandler<Bindings>(
   return {
     async fetch(request, bindings, executionContext) {
       const definition = await assemble(bindings, { request, executionContext });
-      const app = await startApp(definition);
+      const app = await startApp(definition, { signal: request.signal });
       const stop = () => {
         request.signal.removeEventListener("abort", disconnect);
         return app.stop();

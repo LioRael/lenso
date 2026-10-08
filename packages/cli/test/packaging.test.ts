@@ -143,7 +143,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       `
       import {build,discover,generate,createDevSupervisor,EngineError} from '@lenso/engine';
       import {defineEnginePlugin,defineEngineConfig} from '@lenso/engine/authoring';
-      import {definePlugin} from '@lenso/core';
+      import {definePlugin,bindConfig,definePluginConfig,startApp} from '@lenso/core';
       import {createBunListenerPlugin} from '@lenso/web/bun';
       const web=definePlugin({id:'typed-web',setup:()=>({fetch:async()=>new Response('ok')})});
       export const listener=createBunListenerPlugin({
@@ -151,6 +151,24 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       });
       // @ts-expect-error The application must choose its ingress policy.
       createBunListenerPlugin({web,hostname:'127.0.0.1',port:0});
+      import type {StandardSchemaV1} from '@standard-schema/spec';
+      const input:StandardSchemaV1<{port?:string},{port:number}>={
+        '~standard':{version:1,vendor:'test',validate:()=>({value:{port:3001}})}
+      };
+      const contract=definePluginConfig({schema:input});
+      const instance=bindConfig(contract,{port:'3001'},{id:'typed-config',setup(_c,config){
+        config.port satisfies number;
+        // @ts-expect-error Schema output, not schema input, reaches setup.
+        config.port satisfies string;
+        return config;
+      }});
+      // @ts-expect-error Plain values must match schema input, not output.
+      bindConfig(contract,{port:3001},{id:'bad-input',setup:(_c,config)=>config});
+      export async function useConfig(){
+        const app=await startApp({plugins:[instance]});
+        app.get(instance).port satisfies number;
+        await app.stop();
+      }
       export const config=defineEngineConfig({target:'custom',plugins:[
         defineEnginePlugin({name:'typed/implicit',setup:c=>c.generate('implicit',()=>[])}),
         defineEnginePlugin({name:'typed/async-implicit',setup:async c=>c.watch('source.ts')}),
@@ -217,6 +235,12 @@ async function verifyConsumer() {
   assert.equal(diagnostic, subpathDiagnostic);
   assert.equal(typeof (await import("@lenso/engine")).generate, "function");
   assert.equal(typeof (await import("@lenso/engine/dev-ready")).reportDevReady, "function");
+  const core = await import("@lenso/core");
+  const configuration = await import("@lenso/core/config");
+  assert.equal(core.ConfigError, configuration.ConfigError);
+  assert.equal(core.ConfigSourceError, configuration.ConfigSourceError);
+  assert.equal(typeof (await import("@lenso/core/config/env")).envSource, "function");
+  assert.equal(typeof (await import("@lenso/core/config/file")).jsonFileSource, "function");
   const cliPackage = await import("@lenso/cli");
   for (const name of [
     "discover",
@@ -245,6 +269,9 @@ async function verifyConsumer() {
   for (const specifier of [
     "@lenso/core",
     "@lenso/core/plugin",
+    "@lenso/core/config",
+    "@lenso/core/config/env",
+    "@lenso/core/config/file",
     "@lenso/engine",
     "@lenso/engine/authoring",
     "@lenso/engine/dev-ready",
@@ -265,6 +292,43 @@ async function verifyConsumer() {
     await Bun.write(join(root, "lenso.config.ts"), config);
     return root;
   }
+  const configured = await fixture(
+    "configured",
+    String.raw`
+  import {bindConfig,defineApp,definePluginConfig,valuesSource} from '@lenso/core';
+  import {envSource} from '@lenso/core/config/env';
+  import {jsonFileSource} from '@lenso/core/config/file';
+  import {defineOperation} from '@lenso/cli';
+  const schema={'~standard':{version:1,vendor:'test',validate(value){
+    if(typeof value.enabled!=='boolean') return {issues:[{path:['enabled'],message:'raw-private-error'}]};
+    return {value:{enabled:value.enabled,label:value.label+':validated'}};
+  }}};
+  const instance=bindConfig(definePluginConfig({schema}),[
+    valuesSource({enabled:true,label:'values'}),
+    jsonFileSource({id:'file',root:import.meta.dir,path:'config.json'}),
+    envSource({id:'env',read:()=> 'false',bindings:{enabled:{name:'ONLY_BOUND_KEY',type:'boolean'}}})
+  ],{id:'configured',setup(_context,config){return {read:()=>config}}});
+  export const operations=[defineOperation({plugin:instance,method:'read',description:'Read test config',
+    input:{'~standard':{version:1,vendor:'test',validate:value=>({value})}}})];
+  export default defineApp({plugins:[instance]});
+`,
+  );
+  // Missing file is harmless for inspection, but fatal for startup.
+  const inspectedConfig = await cliPackage.inspect(configured);
+  assert.equal(inspectedConfig.plugins[0]?.config?.sources.length, 3);
+  await assert.rejects(cliPackage.call(configured, "configured", "read", {}), (error) => {
+    const detail = diagnostic(error);
+    assert.equal(detail.phase, "config");
+    assert.equal(detail.causes?.[0]?.code, "config-file-missing");
+    assert.equal(detail.causes?.[0]?.pluginId, "configured");
+    assert.deepEqual(detail.causes?.[0]?.details, { sourceId: "file" });
+    return true;
+  });
+  await Bun.write(join(configured, "config.json"), '{"enabled":true,"label":"file"}');
+  assert.deepEqual(await cliPackage.call(configured, "configured", "read", {}), {
+    enabled: false,
+    label: "file:validated",
+  });
   const defaults = await fixture(
     "defaults",
     String.raw`

@@ -71,8 +71,8 @@ test("shared SQLite assembly serves Notes with exact listener-origin validation"
   }
 });
 
-for (const invalid of [false, true]) {
-  test(`SQLite child ${invalid ? "startup rollback has no readiness" : "readiness precedes clean shutdown"}`, async () => {
+for (const mode of ["valid", "invalid", "setup-failure"] as const) {
+  test(`SQLite child ${mode} reports only acquired resource lifecycle events`, async () => {
     const directory = await mkdtemp(join(tmpdir(), "lenso-notes-ipc-"));
     const filename = join(directory, "notes.sqlite");
     migrateSqlite(filename);
@@ -82,12 +82,7 @@ for (const invalid of [false, true]) {
       resolveReady = resolve;
     });
     const child = Bun.spawn(
-      [
-        process.execPath,
-        join(import.meta.dir, "fixtures/server-child.ts"),
-        filename,
-        invalid ? "invalid" : "valid",
-      ],
+      [process.execPath, join(import.meta.dir, "fixtures/server-child.ts"), filename, mode],
       {
         stdout: "ignore",
         stderr: "pipe",
@@ -100,7 +95,7 @@ for (const invalid of [false, true]) {
     const stderr = new Response(child.stderr).text();
     const timeout = setTimeout(() => child.kill("SIGKILL"), 5000);
     try {
-      if (!invalid) {
+      if (mode === "valid") {
         const url = await Promise.race([
           ready,
           child.exited.then(async () => {
@@ -116,7 +111,13 @@ for (const invalid of [false, true]) {
         expect(await child.exited).not.toBe(0);
         expect(messages.some(isDevReadyMessage)).toBe(false);
       }
-      expect(messages).toContainEqual({ type: "database-closed" });
+      if (mode === "invalid") {
+        expect(messages).not.toContainEqual({ type: "database-started" });
+        expect(messages).not.toContainEqual({ type: "database-closed" });
+      } else {
+        expect(messages).toContainEqual({ type: "database-started" });
+        expect(messages).toContainEqual({ type: "database-closed" });
+      }
       await stderr;
     } finally {
       clearTimeout(timeout);
