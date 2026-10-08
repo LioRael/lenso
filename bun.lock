@@ -103,7 +103,7 @@
     },
     "packages/auth": {
       "name": "@lenso/auth",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
         "@lenso/core": "workspace:^",
@@ -125,7 +125,7 @@
     },
     "packages/cli": {
       "name": "@lenso/cli",
-      "version": "0.18.0",
+      "version": "0.19.0",
       "bin": {
         "lenso": "./dist/bin.js",
       },
@@ -145,7 +145,7 @@
     },
     "packages/db": {
       "name": "@lenso/db",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cloudflare/workers-types": "5.20261008.1",
         "@lenso/core": "workspace:^",
@@ -154,7 +154,7 @@
     },
     "packages/engine": {
       "name": "@lenso/engine",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@opentelemetry/api": "1.9.1",
@@ -163,7 +163,7 @@
     },
     "packages/lenso": {
       "name": "@lenso/core",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@opentelemetry/api": "1.9.1",
         "@standard-schema/spec": "1.1.0",
@@ -171,7 +171,7 @@
     },
     "packages/log": {
       "name": "@lenso/log",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@opentelemetry/api": "1.9.1",
         "pino": "10.4.0",
@@ -180,7 +180,7 @@
     },
     "packages/manage": {
       "name": "@lenso/manage",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
@@ -203,7 +203,7 @@
     },
     "packages/mcp": {
       "name": "@lenso/mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@lenso/cli": "workspace:^",
         "@lenso/engine": "workspace:^",
@@ -216,7 +216,7 @@
     },
     "packages/otel": {
       "name": "@lenso/otel",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@opentelemetry/api": "1.9.1",
         "@opentelemetry/context-async-hooks": "2.12.0",
@@ -244,7 +244,7 @@
     },
     "packages/storage": {
       "name": "@lenso/storage",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@lenso/core": "workspace:^",
       },
@@ -271,7 +271,7 @@
     },
     "packages/tasks": {
       "name": "@lenso/tasks",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@opentelemetry/api": "1.9.1",
@@ -288,7 +288,7 @@
     },
     "packages/web": {
       "name": "@lenso/web",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
         "@opentelemetry/api": "1.9.1",
@@ -304,7 +304,7 @@
     },
     "packages/workers": {
       "name": "@lenso/workers",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@lenso/core": "workspace:^",
       },
