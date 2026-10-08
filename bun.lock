@@ -162,6 +162,28 @@
         "drizzle-orm",
       ],
     },
+    "packages/authorization": {
+      "name": "@lenso/authorization",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20261008.1",
+        "@lenso/auth": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@standard-schema/spec": "1.1.0",
+        "drizzle-orm": "0.45.3",
+        "miniflare": "5.20261006.0-alpha",
+      },
+      "peerDependencies": {
+        "@lenso/auth": "^0.2.0",
+        "@lenso/core": "^0.2.0",
+        "drizzle-orm": "^0.45.3",
+      },
+      "optionalPeers": [
+        "@lenso/auth",
+        "@lenso/core",
+        "drizzle-orm",
+      ],
+    },
     "packages/cache": {
       "name": "@lenso/cache",
       "version": "0.1.0",
@@ -680,6 +702,8 @@
     "@lenso/audit": ["@lenso/audit@workspace:packages/audit"],
 
     "@lenso/auth": ["@lenso/auth@workspace:packages/auth"],
+
+    "@lenso/authorization": ["@lenso/authorization@workspace:packages/authorization"],
 
     "@lenso/cache": ["@lenso/cache@workspace:packages/cache"],
 
