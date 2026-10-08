@@ -38,6 +38,58 @@ async function setup() {
 }
 
 integration("real PostgreSQL durable tasks", () => {
+  test("trace metadata roundtrips separately from payload and preserves original producer on dedup", async () => {
+    const { options, queueName } = await setup();
+    const provider = await createPostgresTaskProvider(options);
+    const metadata = {
+      traceparent: "00-11111111111111111111111111111111-2222222222222222-01",
+      tracestate: "vendor=value",
+    };
+    let claimed: unknown;
+    const completed = Promise.withResolvers<void>();
+    try {
+      const jobId = await provider.enqueue({
+        task: "traced",
+        input: { business: "unchanged" },
+        maxAttempts: 2,
+        deduplicationKey: "trace-dedup",
+        traceMetadata: metadata,
+      });
+      expect(
+        await provider.enqueue({
+          task: "traced",
+          input: { business: "unchanged" },
+          maxAttempts: 2,
+          deduplicationKey: "trace-dedup",
+          traceMetadata: { traceparent: "00-33333333333333333333333333333333-4444444444444444-01" },
+        }),
+      ).toBe(jobId);
+      const pool = new Pool({ connectionString });
+      try {
+        const stored = (
+          await pool.query(
+            "SELECT input, trace_metadata FROM pgboss.lenso_task_relation WHERE queue_name=$1 AND job_id=$2",
+            [queueName, jobId],
+          )
+        ).rows[0];
+        expect(stored.input).toEqual({ business: "unchanged" });
+        expect(stored.trace_metadata).toEqual(metadata);
+      } finally {
+        await pool.end();
+      }
+      await provider.startWorker(async (job) => {
+        claimed = job.traceMetadata;
+        completed.resolve();
+        return { ok: true, result: null };
+      });
+      await completed.promise;
+      expect(claimed).toEqual(metadata);
+      expect(JSON.stringify(await provider.get(jobId))).not.toContain("traceparent");
+    } finally {
+      await provider.close();
+    }
+  }, 20_000);
+
   test("unmigrated startup does not create a schema; borrowed pool stays open", async () => {
     const pool = new Pool({ connectionString });
     const schema = `uninstalled_${crypto.randomUUID().replaceAll("-", "")}`;

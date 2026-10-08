@@ -7,8 +7,8 @@ export function createReportTask(service: ReturnType<typeof createReportService>
     input: reportInput,
     maxAttempts: 3,
     retry: { delaySeconds: 2, backoff: true, maxDelaySeconds: 10 },
-    async handler(input, { jobId, attempt, signal }) {
-      console.error(JSON.stringify({ event: "report-started", jobId, attempt }));
+    async handler(input, { attempt, signal, logger }) {
+      logger?.info({ event: "report-started" }, "Report generation started");
       return service.generate(input, { attempt, signal });
     },
     result: (returned) => ({ sum: returned.sum, count: returned.count }),

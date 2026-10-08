@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { os } from "@orpc/server";
+import { asyncIteratorObject, os } from "@orpc/server";
+import { z } from "zod";
 import { defineApp, startApp } from "@lenso/core";
 import { createWebPlugin, type WebContext, type FetchOptions } from "../src/index";
 import { createClient } from "../src/client";
@@ -290,40 +291,48 @@ test("real HTTP client disconnect reaches raw upstream Fetch signal", async () =
   }
 });
 
-test("standard oRPC event iterator retains typed events and finalizes on client abort", async () => {
-  const producerEnded = deferred();
-  const cleaned = deferred();
-  const router = {
-    events: os.$context<WebContext>().handler(async function* ({ context, signal }) {
-      context.onCleanup(() => cleaned.resolve());
-      try {
-        yield { message: "first" };
-        await new Promise<void>((resolve) => {
-          if (signal!.aborted) resolve();
-          else signal!.addEventListener("abort", () => resolve(), { once: true });
-        });
-      } finally {
-        producerEnded.resolve();
-      }
-    }),
-  };
-  const web = createWebPlugin({ requires: [], router: () => router });
-  const app = await startApp(defineApp({ plugins: [web] }));
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.get(web).fetch });
-  const abort = new AbortController();
-  try {
-    const iterator = await createClient<typeof router>(new URL("/rpc", server.url)).events(
-      undefined,
-      { signal: abort.signal },
-    );
-    const event = await iterator.next();
-    const message: string = event.value!.message;
-    expect(message).toBe("first");
-    abort.abort();
-    await producerEnded.promise;
-    await cleaned.promise;
-  } finally {
-    await server.stop(true);
-    await app.stop();
-  }
-});
+test.each(["abort", "return"] as const)(
+  "standard oRPC async iterator retains validated typed events and finalizes on client %s",
+  async (mode) => {
+    const producerEnded = deferred();
+    const cleaned = deferred();
+    const router = {
+      events: os
+        .$context<WebContext>()
+        .output(asyncIteratorObject(z.object({ message: z.string() })))
+        .handler(async function* ({ context, signal }) {
+          context.onCleanup(() => cleaned.resolve());
+          try {
+            yield { message: "first" };
+            await new Promise<void>((resolve) => {
+              if (signal!.aborted) resolve();
+              else signal!.addEventListener("abort", () => resolve(), { once: true });
+            });
+          } finally {
+            producerEnded.resolve();
+          }
+        }),
+    };
+    const web = createWebPlugin({ requires: [], router: () => router });
+    const app = await startApp(defineApp({ plugins: [web] }));
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: app.get(web).fetch });
+    const abort = new AbortController();
+    try {
+      const iterator = await createClient<typeof router>(new URL("/rpc", server.url)).events(
+        undefined,
+        { signal: abort.signal },
+      );
+      const event = await iterator.next();
+      if (event.done) throw new Error("Expected the first stream event");
+      const message: string = event.value!.message;
+      expect(message).toBe("first");
+      if (mode === "abort") abort.abort();
+      else await iterator.return(undefined);
+      await producerEnded.promise;
+      await cleaned.promise;
+    } finally {
+      await server.stop(true);
+      await app.stop();
+    }
+  },
+);

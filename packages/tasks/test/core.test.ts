@@ -63,6 +63,7 @@ describe("task contract boundary (not persistence tests)", () => {
     const queue = createTaskQueue({ tasks: [task], provider: record.provider });
     await queue.enqueue(task, { amount: 1 });
     expect(record.sent().input).toEqual({ amount: 1 });
+    expect(record.sent().traceMetadata).toBeUndefined();
     await queue.startWorker();
     expect(await record.run()).toEqual({ ok: true, result: { amount: 2 } });
     expect(await record.run(undefined, { amount: "invalid" })).toEqual({

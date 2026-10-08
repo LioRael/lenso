@@ -3,12 +3,7 @@ import { resolve } from "node:path";
 import { parseNotesPrincipals } from "./src/auth";
 import { createPgNotesPlugins } from "./src/app-pg";
 import { createNotesFiles } from "./src/files";
-import {
-  createNotesOperationsPlugin,
-  createNotesFileOperationsPlugin,
-  declareNotesOperations,
-  declareNotesFileOperations,
-} from "./src/operations";
+import { createNotesOperations, createNotesFileOperations } from "./src/operations";
 
 const principals = () => parseNotesPrincipals(process.env.NOTES_LOGIN_KEYS);
 const credential = () => process.env.NOTES_SESSION ?? null;
@@ -21,25 +16,25 @@ const local =
         principals,
       });
 export const definition = local ?? createPgNotesPlugins(process.env.DATABASE_URL!, principals);
-export const notesOperations = createNotesOperationsPlugin({
+const notesOperations = createNotesOperations({
   notes: definition.notes,
   authentication: definition.authentication,
   credential,
 });
 const fileOperations = local
-  ? createNotesFileOperationsPlugin({
+  ? createNotesFileOperations({
       files: local.files,
       authentication: local.authentication,
       credential,
     })
   : undefined;
 export const operations = [
-  ...declareNotesOperations(notesOperations),
-  ...(fileOperations ? declareNotesFileOperations(fileOperations) : []),
+  ...notesOperations.operations,
+  ...(fileOperations ? fileOperations.operations : []),
 ];
 const plugins: Plugin<unknown>[] = [
   ...definition.plugins,
-  notesOperations,
-  ...(fileOperations ? [fileOperations] : []),
+  notesOperations.plugin,
+  ...(fileOperations ? [fileOperations.plugin] : []),
 ];
 export default defineApp({ plugins });

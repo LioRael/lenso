@@ -1,7 +1,10 @@
 import { validatePlugins } from "./diagnostics";
-import type { Contribution, Plugin, PluginContext, PluginSource } from "./plugin";
+import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
+import type { Contribution, Logger, Plugin, PluginContext, PluginSource } from "./plugin";
 
 export interface RunningApp {
+  readonly instanceId: string;
+  readonly logger?: Logger;
   get<T>(plugin: Plugin<T>): T;
   status(): readonly { id: string; state: "ready" | "stopped" }[];
   contributions(kind?: string): readonly Contribution[];
@@ -9,8 +12,62 @@ export interface RunningApp {
 }
 
 /** Serial setup and explicit LIFO cleanup; business methods stay ordinary async. */
-export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Promise<RunningApp> {
+export async function startApp(
+  app: { plugins: readonly Plugin<unknown>[]; instanceId?: string; logger?: Logger },
+  options: { instanceId?: string; logger?: Logger } = {},
+): Promise<RunningApp> {
   const plugins = validatePlugins(app.plugins);
+  const instanceId = options.instanceId ?? app.instanceId ?? crypto.randomUUID();
+  let logger: Logger | undefined;
+  try {
+    logger = (options.logger ?? app.logger)?.child({ instanceId });
+  } catch {
+    // A failing diagnostic sink cannot replace application failure or cleanup.
+  }
+  async function scoped<T>(
+    pluginId: string,
+    phase: "setup" | "cleanup",
+    call: () => T | Promise<T>,
+  ): Promise<T> {
+    const started = performance.now();
+    let outcome = "success";
+    return trace.getTracer("lenso").startActiveSpan(
+      `lenso.plugin.${phase}`,
+      {
+        attributes: { "lenso.instance.id": instanceId, "lenso.plugin.id": pluginId },
+      },
+      async (span) => {
+        try {
+          const result = await call();
+          try {
+            logger?.debug(
+              { instanceId, pluginId, phase, outcome: "success" },
+              "Plugin lifecycle completed",
+            );
+          } catch {}
+          return result;
+        } catch (error) {
+          outcome = "failure";
+          span.setStatus({ code: SpanStatusCode.ERROR });
+          try {
+            logger?.error(
+              { instanceId, pluginId, phase, outcome: "failure" },
+              "Plugin lifecycle failed",
+            );
+          } catch {}
+          throw error;
+        } finally {
+          const meter = metrics.getMeter("lenso");
+          meter.createCounter("lenso.plugin.calls").add(1, { phase, outcome });
+          meter
+            .createHistogram("lenso.plugin.duration", { unit: "ms" })
+            .record(performance.now() - started, { phase, outcome });
+          if (outcome === "failure") meter.createCounter("lenso.plugin.errors").add(1, { phase });
+          span.end();
+        }
+      },
+    );
+  }
   const finalizers: Array<{
     pluginId: string;
     source?: PluginSource;
@@ -53,7 +110,13 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
     for (const plugin of plugins) {
       let setupActive = true;
       const declared = new Set(plugin.requires ?? []);
+      let pluginLogger: Logger | undefined;
+      try {
+        pluginLogger = logger?.child({ pluginId: plugin.id });
+      } catch {}
       const context: PluginContext = {
+        instanceId,
+        ...(pluginLogger ? { logger: pluginLogger } : {}),
         get<T>(dependency: Plugin<T>): T {
           if (!running) throw new Error("The app is stopped.");
           if (!declared.has(dependency)) {
@@ -75,7 +138,7 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
           const dispose = () =>
             (completion ??= Promise.resolve().then(async () => {
               try {
-                await cleanup();
+                await scoped(plugin.id, "cleanup", cleanup);
               } catch (error) {
                 recordFailure(error, {
                   phase: "cleanup",
@@ -94,7 +157,7 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
         },
       };
       try {
-        services.set(plugin, await plugin.setup(context));
+        services.set(plugin, await scoped(plugin.id, "setup", () => plugin.setup(context)));
       } catch (error) {
         recordFailure(error, {
           phase: "setup",
@@ -121,6 +184,8 @@ export async function startApp(app: { plugins: readonly Plugin<unknown>[] }): Pr
   }
 
   return {
+    instanceId,
+    ...(logger ? { logger } : {}),
     get<T>(plugin: Plugin<T>): T {
       if (!running) throw new Error("The app is stopped.");
       if (!services.has(plugin))

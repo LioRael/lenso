@@ -70,12 +70,12 @@ export function createNotesOperationsService(
   };
 }
 
-export function createNotesOperationsPlugin(options: {
+export function createNotesOperations(options: {
   notes: Plugin<NotesService>;
   authentication: Plugin<NotesAuthentication>;
   credential(): string | null;
 }) {
-  return definePlugin({
+  const plugin = definePlugin({
     id: "notes-operations",
     requires: [options.notes, options.authentication],
     setup(context) {
@@ -86,11 +86,8 @@ export function createNotesOperationsPlugin(options: {
       );
     },
   });
-}
-
-export function declareNotesOperations(plugin: ReturnType<typeof createNotesOperationsPlugin>) {
   const source = { file: "src/operations.ts", export: "createNotesOperationsService" };
-  return [
+  const operations = [
     defineOperation({
       plugin,
       method: "create",
@@ -152,14 +149,15 @@ export function declareNotesOperations(plugin: ReturnType<typeof createNotesOper
       description: "Remove an owned private note.",
     }),
   ];
+  return { plugin, operations };
 }
 
-export function createNotesFileOperationsPlugin(options: {
+export function createNotesFileOperations(options: {
   files: Plugin<Files<NotesFileAccess>>;
   authentication: Plugin<NotesAuthentication>;
   credential(): string | null;
 }) {
-  return definePlugin({
+  const plugin = definePlugin({
     id: "notes-file-operations",
     requires: [options.files, options.authentication],
     setup(context) {
@@ -185,13 +183,8 @@ export function createNotesFileOperationsPlugin(options: {
       };
     },
   });
-}
-
-export function declareNotesFileOperations(
-  plugin: ReturnType<typeof createNotesFileOperationsPlugin>,
-) {
-  const source = { file: "src/operations.ts", export: "createNotesFileOperationsPlugin" };
-  return [
+  const source = { file: "src/operations.ts", export: "createNotesFileOperations" };
+  const operations = [
     defineOperation({
       plugin,
       method: "metadata",
@@ -218,4 +211,5 @@ export function declareNotesFileOperations(
       description: "Delete an owned attachment in the local Notes tenant.",
     }),
   ];
+  return { plugin, operations };
 }

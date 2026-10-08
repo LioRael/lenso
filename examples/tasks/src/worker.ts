@@ -1,5 +1,6 @@
 import { reportFailure } from "./config";
 import { openResources } from "./resources";
+import { createLogger } from "@lenso/log";
 
 async function main() {
   let requested = false;
@@ -18,7 +19,7 @@ async function main() {
   process.on("SIGINT", onSignal);
   process.on("SIGTERM", onSignal);
   try {
-    const resources = await openResources();
+    const resources = await openResources(undefined, { logger: createLogger() });
     let worker;
     try {
       worker = await resources.queue.startWorker({ concurrency: 2 });

@@ -25,6 +25,14 @@ export const operations = [
 export default defineApp({ plugins: [greeting] });
 ```
 
+For a service with several operations, its plugin or a companion factory can return
+`{ plugin, operations }`. Use `defineOperation` inside that factory with the exact
+plugin object, install `plugin`, and explicitly export the chosen declarations as
+the config's named `operations`. Notes uses this pattern in
+[its companion factories](../examples/notes/src/operations.ts); it does not automatically expose service methods
+or add anything to the separate MCP allowlist. Keep functions and schemas in code,
+not JSON contributions or manifests.
+
 `defineOperation` checks the service method's input type. The schema uses Standard Schema v1, including Zod 4. `inspect [plugin-id [method]]` derives JSON Schema from that same object's Standard JSON Schema converter. Field names/types remain discoverable, including credential fields; payload defaults/examples are omitted. If conversion is absent or unsupported, it reports `runtime-validation-only` and `inputSchema:null`; it never starts resources to infer methods. Source locations are explicit declaration metadata, otherwise the exact config file; line/column are omitted unless supplied or reported by Bun build diagnostics.
 
 Calls validate input before setup, start one app, invoke the declared own service method with validated input and the original service as `this`, then stop. Unknown methods fail before setup. Both business and cleanup failures survive in ordered causes. No eval, automatic retry or inferred exposure occurs. Each CLI call owns a fresh app instance; HTTP normally retains an app. An effect description provides no idempotency or authorization guarantee. Keep authorization inside shared application/service rules or an already authorized public API. CLI does not invent an actor from JSON input.
@@ -78,6 +86,18 @@ provenance. JSON Schema defaults/examples are omitted, but validation constraint
 such as `const`/`enum` remain discoverable; do not embed secrets in schema metadata.
 
 The CLI routes trusted application console methods to stderr, redacts sensitive keys, credential-bearing URLs, authorization strings and known secret environment values, and redacts results. Applications must still avoid printing sensitive values; arbitrary direct stdout writes/native logs and secrets under innocuous keys cannot be reliably isolated in this trusted in-process model. This is not a sandbox. Returned data must be acyclic plain finite JSON; unsupported values produce `serialization-failed`, including an undefined result.
+
+Command and declared operation spans use only the OpenTelemetry API. Initialize
+the application's SDK **before** the CLI/config via an explicit Bun preload
+using `@lenso/otel/bun`; `flushOnCliExit: true` finishes bounded export in the CLI's
+`finally` path. Export failure reports a fixed stderr diagnostic without changing
+the business exit code. Existing SDK owners use external mode and retain their
+own flush/shutdown responsibility. No SDK, exporter, signal/exception hook or
+credentials are configured by importing CLI/core.
+An application can supply `defineApp({plugins, logger, instanceId})` using its
+existing logger; keep configuration imports free of resource acquisition.
+`@lenso/log` defaults to stderr JSON and enriches current trace/span fields;
+collect that stream once rather than also exporting it through an OTel log SDK.
 
 ## Generated ownership
 

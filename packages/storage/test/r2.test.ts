@@ -9,6 +9,7 @@ test("binding refuses unknown size and non-Workers uploads without touching the 
     },
   } as unknown as R2StorageBinding;
   const storage = await createR2StoragePlugin({ id: "r2", binding }).setup({
+    instanceId: "r2-test",
     onCleanup() {
       throw new Error("No owned resources");
     },
@@ -41,6 +42,7 @@ test("native-shaped provider failures retain causes without exposing provider me
       },
     } as unknown as R2StorageBinding;
     const storage = await createR2StoragePlugin({ id: "errors", binding }).setup({
+      instanceId: "r2-errors-test",
       onCleanup() {
         throw new Error("No owned resources");
       },

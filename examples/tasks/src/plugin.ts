@@ -1,5 +1,5 @@
 import { AuthError, type AuthSource } from "@lenso/auth";
-import { definePlugin } from "@lenso/core/plugin";
+import { definePlugin, type PluginContext } from "@lenso/core/plugin";
 import { CliError } from "@lenso/cli";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -18,8 +18,12 @@ type TaskResources = Omit<
   close: () => Promise<void>;
 };
 
-async function connectResources(): Promise<TaskResources> {
-  const resources = await openResources();
+async function connectResources(context: PluginContext): Promise<TaskResources> {
+  const resources = await openResources(undefined, {
+    instanceId: context.instanceId,
+    pluginId: "tasks",
+    logger: context.logger,
+  });
   return { ...resources, reports: resources.service };
 }
 
@@ -48,7 +52,9 @@ export function createTasksPlugin(options: {
     async setup(context) {
       const connection = await options.connectAuth();
       if (connection.close) context.onCleanup(() => connection.close!());
-      const resources = await (options.connectResources ?? connectResources)();
+      const resources = await (options.connectResources
+        ? options.connectResources()
+        : connectResources(context));
       context.onCleanup(() => resources.close());
       const service = createAuthorizedTaskService({
         ...resources,
