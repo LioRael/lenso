@@ -5,6 +5,7 @@ import { EngineError } from "@lenso/engine/diagnostics";
 import { describePluginConfig } from "@lenso/engine";
 import {
   invokeValidatedOperation,
+  operationError,
   resolveOperation,
   validateOperationInput,
   type OperationBinding,
@@ -49,13 +50,18 @@ export async function invoke<O extends Operation>(
   try {
     running = await startApp(app);
   } catch (cause) {
-    throw new CliError(diagnostic(cause, { ...context, phase: "setup" }), 1);
+    throw new CliError(diagnostic(cause, { ...context, phase: "setup" }), 1, { cause });
   }
   let result: unknown;
   let callFailed = false;
   let callError: unknown;
   try {
-    const options = binding ? await binding(operation, validatedInput, running) : undefined;
+    let options;
+    try {
+      options = binding ? await binding(operation, validatedInput, running) : undefined;
+    } catch (error) {
+      throw operationError(operation, error);
+    }
     result = await invokeValidatedOperation<Operation>(running, operation, validatedInput, options);
   } catch (cause) {
     callFailed = true;
@@ -85,17 +91,23 @@ export async function invoke<O extends Operation>(
     await running.stop();
   } catch (cleanupError) {
     if (callFailed)
-      throw new CliError({
-        code: "invocation-and-cleanup-failed",
-        phase: "invoke",
-        message: "Service invocation and cleanup failed.",
-        ...context,
-        causes: [
-          diagnostic(callError, context),
-          diagnostic(cleanupError, { ...context, phase: "cleanup" }),
-        ],
-      });
-    throw new CliError(diagnostic(cleanupError, { ...context, phase: "cleanup" }));
+      throw new CliError(
+        {
+          code: "invocation-and-cleanup-failed",
+          phase: "invoke",
+          message: "Service invocation and cleanup failed.",
+          ...context,
+          causes: [
+            diagnostic(callError, context),
+            diagnostic(cleanupError, { ...context, phase: "cleanup" }),
+          ],
+        },
+        1,
+        { cause: new AggregateError([callError, cleanupError]) },
+      );
+    throw new CliError(diagnostic(cleanupError, { ...context, phase: "cleanup" }), 1, {
+      cause: cleanupError,
+    });
   }
   if (callFailed) throw callError;
   return result;

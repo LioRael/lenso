@@ -309,7 +309,13 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
     );
     return { close };
   } catch (error) {
-    await close();
+    try {
+      await close();
+    } catch (closeError) {
+      throw new AggregateError([error, closeError], "MCP startup and close failed.", {
+        cause: closeError,
+      });
+    }
     throw error;
   }
 }

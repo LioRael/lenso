@@ -33,29 +33,122 @@ export function diagnostic(
   error: unknown,
   fallback: Partial<EngineDiagnostic> = {},
 ): EngineDiagnostic {
-  return describeError(error, fallback, new WeakSet<object>());
+  return describeError(
+    error,
+    fallback,
+    Object.assign(new WeakSet<object>(), { remaining: 256 }),
+    0,
+  );
+}
+
+const diagnosticLimit = 32;
+type DiagnosticTraversal = WeakSet<object> & { remaining: number };
+function safePaths(value: unknown): (string | number)[][] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, diagnosticLimit)
+    .filter(
+      (path) =>
+        Array.isArray(path) &&
+        path.length <= 8 &&
+        path.every(
+          (segment) =>
+            (typeof segment === "string" && segment.length <= 128) ||
+            (typeof segment === "number" && Number.isSafeInteger(segment) && segment >= 0),
+        ),
+    );
+}
+function safeDetail(
+  detail: EngineDiagnostic,
+  seen: DiagnosticTraversal,
+  depth: number,
+): EngineDiagnostic {
+  if (--seen.remaining < 0)
+    return { code: "runtime-failed", phase: "runtime", message: "Additional diagnostics omitted." };
+  const result: Record<string, unknown> = {};
+  for (const key of [
+    "code",
+    "phase",
+    "message",
+    "instanceId",
+    "pluginId",
+    "dependencyId",
+    "operation",
+  ] as const)
+    if (typeof detail[key] === "string")
+      result[key] = detail[key].slice(0, key === "message" ? 1024 : 256);
+  if (detail.source && typeof detail.source.file === "string")
+    result.source = {
+      file: detail.source.file.slice(0, 1024),
+      ...(typeof detail.source.export === "string"
+        ? { export: detail.source.export.slice(0, 256) }
+        : {}),
+      ...(Number.isSafeInteger(detail.source.line) ? { line: detail.source.line } : {}),
+      ...(Number.isSafeInteger(detail.source.column) ? { column: detail.source.column } : {}),
+    };
+  const details = detail.details;
+  if (details && typeof details === "object") {
+    if (detail.code === "invalid-input")
+      result.details = { paths: safePaths(Reflect.get(details, "paths")) };
+    else if (detail.code === "invalid-plugin")
+      result.details = { path: safePaths([Reflect.get(details, "path")])[0] ?? [] };
+    else if (detail.phase === "config" && detail.code.startsWith("config-"))
+      result.details = {
+        ...(safePaths([Reflect.get(details, "path")])[0]
+          ? { path: safePaths([Reflect.get(details, "path")])[0] }
+          : {}),
+        ...(typeof Reflect.get(details, "sourceId") === "string"
+          ? { sourceId: Reflect.get(details, "sourceId").slice(0, 256) }
+          : {}),
+      };
+    else if (detail.code === "duplicate-id") {
+      const sources = Reflect.get(details, "declaringSources");
+      if (Array.isArray(sources))
+        result.details = {
+          declaringSources: sources
+            .slice(0, diagnosticLimit)
+            .flatMap((source) =>
+              source && typeof source.file === "string"
+                ? [safeDetail({ code: "", phase: "", message: "", source }, seen, depth).source]
+                : [],
+            ),
+        };
+    }
+  }
+  if (Array.isArray(detail.causes) && depth < 8)
+    result.causes = detail.causes.slice(0, diagnosticLimit).flatMap((cause) => {
+      if (!cause || typeof cause !== "object" || seen.has(cause) || seen.remaining <= 0) return [];
+      seen.add(cause);
+      return [safeDetail(cause, seen, depth + 1)];
+    });
+  return result as unknown as EngineDiagnostic;
 }
 function describeError(
   error: unknown,
   fallback: Partial<EngineDiagnostic>,
-  seen: WeakSet<object>,
+  seen: DiagnosticTraversal,
+  depth: number,
 ): EngineDiagnostic {
   const lifetime = lifecycleFailure(error);
   const phase = lifetime?.phase ?? fallback.phase ?? "runtime";
-  const base = {
-    code:
-      phase === "setup"
-        ? "initialization-failed"
-        : phase === "cleanup"
-          ? "cleanup-failed"
-          : "runtime-failed",
-    phase,
-    message: `Operation failed during ${phase}. Application error text is omitted.`,
-    ...fallback,
-    ...lifetime,
-  };
+  const base = safeDetail(
+    {
+      code:
+        phase === "setup"
+          ? "initialization-failed"
+          : phase === "cleanup"
+            ? "cleanup-failed"
+            : "runtime-failed",
+      phase,
+      message: `Operation failed during ${phase}. Application error text is omitted.`,
+      ...fallback,
+      ...lifetime,
+    },
+    seen,
+    depth,
+  );
   if (error && typeof error === "object") {
-    if (seen.has(error)) return base;
+    if (seen.has(error) || depth >= 8 || seen.remaining <= 0) return base;
     seen.add(error);
   }
   const context = {
@@ -66,10 +159,16 @@ function describeError(
   if (error instanceof EngineError) {
     return {
       ...base,
-      ...error.diagnostic,
-      ...(error.diagnostic.causes || error.cause === undefined
+      ...safeDetail(error.diagnostic, seen, depth),
+      ...(error.diagnostic.causes ||
+      error.cause === undefined ||
+      (error.cause instanceof EngineError && error.cause.diagnostic.code === error.diagnostic.code)
         ? {}
-        : { causes: [describeError(error.cause, context, seen)] }),
+        : error.cause instanceof EngineError ||
+            error.cause instanceof AggregateError ||
+            error.diagnostic.code.startsWith("engine-")
+          ? { causes: [describeError(error.cause, context, seen, depth + 1)] }
+          : {}),
     };
   }
   if (error instanceof DiagnosticError) {
@@ -78,11 +177,17 @@ function describeError(
       code: "invalid-assembly",
       phase: "assembly",
       message: "Plugin assembly is invalid.",
-      causes: error.diagnostics.map((item) => ({
-        ...item,
-        phase: "assembly",
-        ...(item.source ? { source: item.source } : base.source ? { source: base.source } : {}),
-      })),
+      causes: error.diagnostics.slice(0, diagnosticLimit).map((item) =>
+        safeDetail(
+          {
+            ...item,
+            phase: "assembly",
+            ...(item.source ? { source: item.source } : base.source ? { source: base.source } : {}),
+          },
+          seen,
+          depth + 1,
+        ),
+      ),
     };
   }
   if (error instanceof ConfigError) {
@@ -91,27 +196,35 @@ function describeError(
       code: "config-invalid",
       phase: "config",
       message: "Application configuration failed before plugin setup.",
-      causes: error.diagnostics.map((item) => ({
-        code: item.code,
-        phase: "config",
-        message: "Configuration could not be resolved or validated.",
-        pluginId: item.pluginId,
-        ...(item.source ? { source: item.source } : {}),
-        details: {
-          ...(item.path ? { path: item.path } : {}),
-          ...(item.sourceId ? { sourceId: item.sourceId } : {}),
-        },
-      })),
+      causes: error.diagnostics.slice(0, diagnosticLimit).map((item) =>
+        safeDetail(
+          {
+            code: item.code,
+            phase: "config",
+            message: "Configuration could not be resolved or validated.",
+            pluginId: item.pluginId,
+            ...(item.source ? { source: item.source } : {}),
+            details: {
+              ...(item.path ? { path: item.path } : {}),
+              ...(item.sourceId ? { sourceId: item.sourceId } : {}),
+            },
+          },
+          seen,
+          depth + 1,
+        ),
+      ),
     };
   }
   if (error instanceof AggregateError) {
     return {
       ...base,
-      causes: error.errors.map((cause) => describeError(cause, context, seen)),
+      causes: error.errors
+        .slice(0, diagnosticLimit)
+        .map((cause) => describeError(cause, context, seen, depth + 1)),
     };
   }
   if (error instanceof Error && error.cause !== undefined)
-    return { ...base, causes: [describeError(error.cause, context, seen)] };
+    return { ...base, causes: [describeError(error.cause, context, seen, depth + 1)] };
   return base;
 }
 

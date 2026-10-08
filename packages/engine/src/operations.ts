@@ -3,10 +3,10 @@ import type { Plugin, RunningApp } from "@lenso/core";
 import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   EngineError,
-  diagnostic,
   environmentSecrets,
   redact,
   stableJson,
+  type EngineDiagnostic,
   type SourceLocation,
 } from "./diagnostics";
 
@@ -17,6 +17,7 @@ export interface Operation<C = unknown> {
   readonly method: string;
   readonly description: string;
   readonly input: StandardSchemaV1;
+  readonly mapError?: (error: unknown) => EngineDiagnostic | undefined;
   readonly context?: true;
   readonly [operationContext]?: C;
   readonly confirmation?: "required";
@@ -41,57 +42,80 @@ export async function executeOperation(
     "lenso.plugin.id": operation.plugin.id,
     "lenso.operation": operation.method,
   };
-  const meter = metrics.getMeter("@lenso/engine");
   const labels = { outcome: "success" };
   const started = performance.now();
-  return trace
-    .getTracer("@lenso/engine")
-    .startActiveSpan("lenso.operation", { attributes }, async (span) => {
+  const collect = (action: () => void) => {
+    try {
+      action();
+    } catch {
+      /* Optional telemetry cannot change business outcomes. */
+    }
+  };
+  const execute = async (span?: import("@opentelemetry/api").Span) => {
+    try {
+      const service = running.get(operation.plugin);
+      if (
+        service === null ||
+        typeof service !== "object" ||
+        !Object.hasOwn(service, operation.method) ||
+        typeof Reflect.get(service, operation.method) !== "function"
+      )
+        throw new EngineError({
+          code: "unavailable-operation",
+          phase: "invoke",
+          message: "Declared operation is not an own callable service method.",
+          pluginId: operation.plugin.id,
+          operation: `${operation.plugin.id}.${operation.method}`,
+        });
+      const method = Reflect.get(service, operation.method);
       try {
-        const service = running.get(operation.plugin);
-        if (
-          service === null ||
-          typeof service !== "object" ||
-          !Object.hasOwn(service, operation.method) ||
-          typeof Reflect.get(service, operation.method) !== "function"
-        )
-          throw new EngineError({
-            code: "unavailable-operation",
-            phase: "invoke",
-            message: "Declared operation is not an own callable service method.",
-            pluginId: operation.plugin.id,
-            operation: `${operation.plugin.id}.${operation.method}`,
-          });
-        const method = Reflect.get(service, operation.method);
         return operation.context
           ? await method.call(service, input, context)
           : await method.call(service, input);
       } catch (error) {
-        labels.outcome = "failure";
-        span.setStatus({ code: SpanStatusCode.ERROR });
-        meter.createCounter("lenso.operation.errors").add(1);
-        throw error;
-      } finally {
-        try {
-          running.logger?.debug(
-            {
-              instanceId: running.instanceId,
-              pluginId: operation.plugin.id,
-              operation: operation.method,
-              outcome: labels.outcome,
-            },
-            "Operation completed",
-          );
-        } catch {
-          // Diagnostics cannot change the service result or failure identity.
-        }
-        meter.createCounter("lenso.operation.calls").add(1, labels);
-        meter
-          .createHistogram("lenso.operation.duration", { unit: "ms" })
-          .record(performance.now() - started, labels);
-        span.end();
+        throw operationError(operation, error);
       }
-    });
+    } catch (error) {
+      labels.outcome = "failure";
+      collect(() => span?.setStatus({ code: SpanStatusCode.ERROR }));
+      collect(() =>
+        metrics.getMeter("@lenso/engine").createCounter("lenso.operation.errors").add(1),
+      );
+      throw error;
+    } finally {
+      try {
+        running.logger?.debug(
+          {
+            instanceId: running.instanceId,
+            pluginId: operation.plugin.id,
+            operation: operation.method,
+            outcome: labels.outcome,
+          },
+          "Operation completed",
+        );
+      } catch {
+        // Diagnostics cannot change the service result or failure identity.
+      }
+      collect(() =>
+        metrics.getMeter("@lenso/engine").createCounter("lenso.operation.calls").add(1, labels),
+      );
+      collect(() =>
+        metrics
+          .getMeter("@lenso/engine")
+          .createHistogram("lenso.operation.duration", { unit: "ms" })
+          .record(performance.now() - started, labels),
+      );
+      collect(() => span?.end());
+    }
+  };
+  let execution: Promise<unknown> | undefined;
+  try {
+    return trace
+      .getTracer("@lenso/engine")
+      .startActiveSpan("lenso.operation", { attributes }, (span) => (execution = execute(span)));
+  } catch {
+    return execution ?? execute();
+  }
 }
 
 /** Static adapter metadata only: invocation always uses the existing service method. */
@@ -156,6 +180,67 @@ function operationLocation(operation: Operation) {
     operation: `${operation.plugin.id}.${operation.method}`,
     ...(operation.source ? { source: operation.source } : {}),
   };
+}
+
+/** Only trusted application projectors classify actual domain failures. */
+export function operationError(operation: Operation, error: unknown): unknown {
+  if (error instanceof EngineError) return error;
+  try {
+    const mapped = operation.mapError?.(error);
+    if (
+      mapped &&
+      typeof mapped.code === "string" &&
+      typeof mapped.phase === "string" &&
+      typeof mapped.message === "string"
+    )
+      return new EngineError({ ...operationLocation(operation), ...mapped }, { cause: error });
+  } catch {
+    // A broken projector cannot replace the original failure.
+  }
+  return error;
+}
+
+function inputIssuePaths(
+  operation: Operation,
+  issues: readonly StandardSchemaV1.Issue[],
+): string[][] {
+  try {
+    const standard = operation.input["~standard"] as StandardSchemaV1.Props &
+      Partial<StandardJSONSchemaV1.Props>;
+    const schema = standard.jsonSchema?.input({ target: "draft-2020-12" });
+    if (!schema) return [];
+    const declared = new Set<string>();
+    let visits = 0;
+    function visit(node: unknown, path: string[], depth: number) {
+      if (!node || typeof node !== "object" || depth > 8 || ++visits > 256) return;
+      const properties = Reflect.get(node, "properties");
+      if (properties && typeof properties === "object")
+        for (const key of Object.keys(properties).slice(0, 256)) {
+          if (declared.size >= 256) break;
+          if (key.length > 128 || path.length >= 8) continue;
+          const child = [...path, key];
+          declared.add(JSON.stringify(child));
+          visit(Reflect.get(properties, key), child, depth + 1);
+        }
+      for (const keyword of ["anyOf", "oneOf", "allOf"]) {
+        const alternatives = Reflect.get(node, keyword);
+        if (Array.isArray(alternatives))
+          for (const child of alternatives.slice(0, 32)) visit(child, path, depth + 1);
+      }
+    }
+    visit(schema, [], 0);
+    return issues.slice(0, 32).flatMap((issue) => {
+      if ((issue.path?.length ?? 0) > 8) return [];
+      const path = (issue.path ?? []).map((segment) =>
+        typeof segment === "object" ? segment.key : segment,
+      );
+      if (path.length > 8 || !path.every((key) => typeof key === "string" && key.length <= 128))
+        return [];
+      return declared.has(JSON.stringify(path)) ? [path as string[]] : [];
+    });
+  } catch {
+    return [];
+  }
 }
 
 /** Validate finite JSON and its byte budget without altering schema field names. */
@@ -231,11 +316,7 @@ export async function validateOperationInput(
       message: "Input does not satisfy the shared service schema.",
       ...location,
       details: {
-        paths: validated.issues.map((issue) =>
-          (issue.path ?? []).map((segment) =>
-            String(typeof segment === "object" ? segment.key : segment),
-          ),
-        ),
+        paths: inputIssuePaths(operation, validated.issues),
       },
     });
   return validated.value;
@@ -292,15 +373,14 @@ export async function invokeValidatedOperation<O extends Operation>(
     boundedJson(safe, maxBytes);
     return safe;
   } catch (cause) {
+    if (cause instanceof EngineError) throw cause;
     throw new EngineError(
-      cause instanceof EngineError
-        ? diagnostic(cause, { ...location, phase: "invoke" })
-        : {
-            code: "invocation-failed",
-            phase: "invoke",
-            message: "Service invocation failed.",
-            ...location,
-          },
+      {
+        code: "invocation-failed",
+        phase: "invoke",
+        message: "Service invocation failed.",
+        ...location,
+      },
       { cause },
     );
   }
@@ -326,6 +406,7 @@ export function validateOperations(
       ["__proto__", "constructor", "prototype"].includes(item.method) ||
       typeof item.description !== "string" ||
       (item.context !== undefined && item.context !== true) ||
+      (item.mapError !== undefined && typeof item.mapError !== "function") ||
       (item.confirmation !== undefined && item.confirmation !== "required") ||
       (item.approval !== undefined && item.approval !== "required") ||
       (item.effect !== undefined && !["read", "write", "unknown"].includes(item.effect)) ||

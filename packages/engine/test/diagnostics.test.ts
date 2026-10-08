@@ -102,3 +102,31 @@ test("EngineError diagnostic causes retain their attributed shape when raw cause
   expect(failure.cause).toBeInstanceOf(AggregateError);
   expect(diagnostic(failure).causes?.[0]?.pluginId).toBe("owner");
 });
+
+test("diagnostics bound explicit trees and omit unknown detail objects", () => {
+  const detail = {
+    code: "custom",
+    phase: "invoke",
+    message: "Safe",
+    details: { private: "secret" },
+    causes: [] as any[],
+  };
+  detail.causes.push(detail);
+  expect(diagnostic(new EngineError(detail)).details).toBeUndefined();
+  expect(stableJson(diagnostic(new EngineError(detail)))).not.toContain("secret");
+  const wide = new AggregateError(Array.from({ length: 100 }, () => new Error("secret")));
+  expect(diagnostic(wide).causes).toHaveLength(32);
+  let deep: Error = new Error("secret");
+  for (let i = 0; i < 1000; i++) deep = new Error("secret", { cause: deep });
+  expect(stableJson(diagnostic(deep)).length).toBeLessThan(4096);
+});
+
+test("trusted adapter wrappers do not repeat the same projected failure", () => {
+  const domain = new EngineError(
+    { code: "custom-domain", phase: "invoke", message: "Safe" },
+    { cause: new Error("private") },
+  );
+  const wrapper = new EngineError(diagnostic(domain), { cause: domain });
+  expect(wrapper.cause).toBe(domain);
+  expect(diagnostic(wrapper)).toEqual(diagnostic(domain));
+});
