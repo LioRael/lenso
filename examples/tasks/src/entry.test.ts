@@ -98,18 +98,18 @@ test.skipIf(!process.env.TASK_TEST_DATABASE_URL)(
       ]);
       const query = tools.find((tool) => tool.title === "tasks.query")!;
       const cancel = tools.find((tool) => tool.title === "tasks.cancel")!;
-      function decode(value: unknown) {
+      function decodeToolResult(value: unknown) {
         const block = CallToolResultSchema.parse(value).content[0];
         if (block?.type !== "text") throw new Error("Expected text tool content.");
         return JSON.parse(block.text);
       }
       const owned = await owner.callTool({ name: query.name, arguments: { jobId } });
-      expect(decode(owned)).toMatchObject({ state: "pending", cancelRequested: false });
+      expect(decodeToolResult(owned)).toMatchObject({ state: "pending", cancelRequested: false });
       const denied = await other.callTool({ name: query.name, arguments: { jobId } });
       expect(denied.isError).toBe(true);
-      expect(decode(denied).code).toBe("FORBIDDEN");
+      expect(decodeToolResult(denied).code).toBe("FORBIDDEN");
       const cancelled = await owner.callTool({ name: cancel.name, arguments: { jobId } });
-      expect(decode(cancelled)).toBe("cancelled");
+      expect(decodeToolResult(cancelled)).toBe("cancelled");
       const again = await cli(["call", "tasks", "query", "--stdin"], JSON.stringify({ jobId }));
       expect(again.result.data.state).toBe("cancelled");
     } finally {

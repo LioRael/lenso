@@ -4,6 +4,8 @@ import type { SessionStore } from "../session-store";
 import { authSessions } from "./schema-pg";
 import { decodeRecord, mutationPredicate, mutationValues } from "./shared";
 
+const bigintParameter = (value: number) => sql`${value}::bigint`;
+
 export function postgresSessionStore<
   S extends string = string,
   TSchema extends Record<string, unknown> = Record<string, unknown>,
@@ -27,8 +29,7 @@ export function postgresSessionStore<
     },
     async mutate(mutation) {
       // Explicit bigint casts avoid unknown/narrow parameter inference in raw arithmetic.
-      const number = (value: number) => sql`${value}::bigint`;
-      const clock = sql`GREATEST(${number(mutation.now)}, floor(extract(epoch from clock_timestamp()) * 1000)::bigint)`;
+      const clock = sql`GREATEST(${bigintParameter(mutation.now)}, floor(extract(epoch from clock_timestamp()) * 1000)::bigint)`;
       return db.transaction(async (tx) => {
         // UPDATE can evaluate its WHERE before an unchanged-row lock wait; lock first,
         // then evaluate expiration in a fresh statement while retaining ownership.
@@ -46,7 +47,7 @@ export function postgresSessionStore<
         const rows = await tx
           .update(authSessions)
           .set(mutationValues(mutation.next))
-          .where(mutationPredicate(authSessions, mutation, clock, number))
+          .where(mutationPredicate(authSessions, mutation, clock, bigintParameter))
           .returning();
         return rows.length > 0;
       });

@@ -58,7 +58,7 @@ test("lifecycle attribution preserves the declared source and original errors", 
       throw setupFailure;
     },
   };
-  const error = await startApp({ plugins: [plugin] }).catch((error: unknown) => error);
+  const error = await startApp({ plugins: [plugin] }).catch((failure: unknown) => failure);
   expect((error as AggregateError).errors).toEqual([setupFailure, cleanupFailure]);
   expect(lifecycleFailure(error)).toEqual({ phase: "setup", pluginId: "resource", source });
   expect(lifecycleFailure(setupFailure)).toEqual({ phase: "setup", pluginId: "resource", source });

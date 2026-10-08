@@ -93,6 +93,19 @@ function recordValid<S extends string>(
   );
 }
 
+function signalFor(signal?: AbortSignal): AbortSignal {
+  return signal ?? new AbortController().signal;
+}
+
+async function digestCredential(value: string): Promise<string> {
+  try {
+    const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+    return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    throw unavailable();
+  }
+}
+
 export function createManagedSessions<E, S extends string>(options: ManagedSessionsOptions<E, S>) {
   if (!options.realmId?.trim()) throw new AuthConfigurationError("Invalid session realm");
   if (typeof options.subjectActive !== "function")
@@ -114,7 +127,6 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
     ...login.capabilities,
     assurance: Object.freeze([...(login.capabilities?.assurance ?? [])]),
   });
-  const signalFor = (signal?: AbortSignal) => signal ?? new AbortController().signal;
 
   async function active(subject: S, signal: AbortSignal): Promise<void> {
     aborted(signal);
@@ -127,15 +139,6 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
     }
     aborted(signal);
     if (result !== true) throw unauthorized();
-  }
-
-  async function digest(value: string): Promise<string> {
-    try {
-      const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-      return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
-    } catch {
-      throw unavailable();
-    }
   }
 
   function clock(): number {
@@ -156,7 +159,7 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
     let record: SessionRecord<S> | null;
     let tokenDigest: string;
     try {
-      tokenDigest = await digest(credential);
+      tokenDigest = await digestCredential(credential);
       record = await store.read(realmId, match[1]!);
     } catch {
       aborted(signal);
@@ -270,7 +273,7 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
       throw unavailable();
     }
     const credential = `${id}.${secret}`;
-    const tokenDigest = await digest(credential);
+    const tokenDigest = await digestCredential(credential);
     const session = authentication.session;
     const authAt =
       capabilities.authenticatedAt &&
@@ -335,7 +338,7 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
       } catch {
         throw unavailable();
       }
-      nextDigest = await digest(nextToken);
+      nextDigest = await digestCredential(nextToken);
     }
     const nextExpiry = Math.min(record.expiresAt, record.issuedAt + lifetime.absolute);
     const next: SessionRecord<S> = {
@@ -416,7 +419,7 @@ export function createManagedSessions<E, S extends string>(options: ManagedSessi
         let record: SessionRecord<S> | null;
         let tokenDigest: string;
         try {
-          tokenDigest = await digest(credential);
+          tokenDigest = await digestCredential(credential);
           record = await store.read(realmId, match[1]!);
         } catch {
           aborted(signal);

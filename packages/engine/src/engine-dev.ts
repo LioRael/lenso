@@ -18,8 +18,8 @@ export async function startEngineDevCycle(root: string): Promise<EngineDevCycle>
       : Bun.resolveSync("@lenso/engine/dev-worker", import.meta.dir);
   let resolvePrepared!: (paths: readonly string[]) => void;
   let rejectPrepared!: (error: unknown) => void;
-  const prepared = new Promise<readonly string[]>((resolve, reject) => {
-    resolvePrepared = resolve;
+  const prepared = new Promise<readonly string[]>((complete, reject) => {
+    resolvePrepared = complete;
     rejectPrepared = reject;
   });
   let failure: EngineError | undefined;
@@ -116,8 +116,8 @@ export async function startEngineDevCycle(root: string): Promise<EngineDevCycle>
             }),
           );
         const id = ++sequence;
-        return new Promise<void>((resolve, reject) => {
-          pending.set(id, { resolve, reject });
+        return new Promise<void>((complete, reject) => {
+          pending.set(id, { resolve: complete, reject });
           try {
             child.send({ type: "ready", id });
           } catch (cause) {

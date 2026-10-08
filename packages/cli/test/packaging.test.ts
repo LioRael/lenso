@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
+import { mkdtemp, mkdir as createDirectory, realpath as canonicalPath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join as joinPath, resolve } from "node:path";
 
 const repository = resolve(import.meta.dir, "../../..");
 const packages = [
@@ -40,17 +40,19 @@ async function run(cwd: string, args: string[]) {
 
 // Build lenso, @lenso/engine, lenso-cli and @lenso/workers in dependency order first.
 test("packed Engine, CLI and external plugins work in a standalone consumer", async () => {
-  const temporary = await realpath(await mkdtemp(join(tmpdir(), "lenso-packaging-")));
+  const temporary = await canonicalPath(await mkdtemp(joinPath(tmpdir(), "lenso-packaging-")));
   try {
-    const artifacts = join(temporary, "tarballs");
-    const consumer = join(temporary, "consumer");
-    await mkdir(artifacts);
-    await mkdir(consumer);
-    expect((await realpath(consumer)).startsWith((await realpath(repository)) + "/")).toBe(false);
+    const artifacts = joinPath(temporary, "tarballs");
+    const consumer = joinPath(temporary, "consumer");
+    await createDirectory(artifacts);
+    await createDirectory(consumer);
+    expect(
+      (await canonicalPath(consumer)).startsWith((await canonicalPath(repository)) + "/"),
+    ).toBe(false);
     const dependencies: Record<string, string> = {};
     for (const [name, directory] of packages) {
-      const tarball = join(artifacts, `${name.replaceAll("/", "-").replaceAll("@", "")}.tgz`);
-      await run(join(repository, directory), [
+      const tarball = joinPath(artifacts, `${name.replaceAll("/", "-").replaceAll("@", "")}.tgz`);
+      await run(joinPath(repository, directory), [
         "pm",
         "pack",
         "--ignore-scripts",
@@ -59,10 +61,10 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       ]);
       dependencies[name] = `file:${tarball}`;
     }
-    const engineOnly = join(temporary, "engine-only");
-    await mkdir(engineOnly);
+    const engineOnly = joinPath(temporary, "engine-only");
+    await createDirectory(engineOnly);
     await Bun.write(
-      join(engineOnly, "package.json"),
+      joinPath(engineOnly, "package.json"),
       JSON.stringify({
         private: true,
         type: "module",
@@ -89,7 +91,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
     `,
     ]);
     await Bun.write(
-      join(consumer, "package.json"),
+      joinPath(consumer, "package.json"),
       JSON.stringify({
         name: "standalone-engine-consumer",
         private: true,
@@ -106,7 +108,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       }),
     );
     await Bun.write(
-      join(consumer, "tsconfig.json"),
+      joinPath(consumer, "tsconfig.json"),
       JSON.stringify({
         compilerOptions: {
           target: "ES2022",
@@ -122,9 +124,9 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
     );
     await run(consumer, ["install", "--ignore-scripts"]);
     for (const [name] of packages) {
-      const installed = join(consumer, "node_modules", name);
-      expect(await realpath(installed)).toBe(installed);
-      const manifest = await Bun.file(join(installed, "package.json")).json();
+      const installed = joinPath(consumer, "node_modules", name);
+      expect(await canonicalPath(installed)).toBe(installed);
+      const manifest = await Bun.file(joinPath(installed, "package.json")).json();
       expect(manifest.name).toBe(name);
       for (const group of ["dependencies", "peerDependencies"]) {
         for (const version of Object.values(manifest[group] ?? {})) {
@@ -133,7 +135,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
       }
     }
     await Bun.write(
-      join(consumer, "api-types.ts"),
+      joinPath(consumer, "api-types.ts"),
       `
       import {build,discover,generate,createDevSupervisor,EngineError} from '@lenso/engine';
       import {defineEnginePlugin,defineEngineConfig} from '@lenso/engine/authoring';
@@ -169,7 +171,7 @@ test("packed Engine, CLI and external plugins work in a standalone consumer", as
     `,
     );
     await run(consumer, ["run", "tsc", "-p", "tsconfig.json"]);
-    await Bun.write(join(consumer, "verify.ts"), `await (${verifyConsumer.toString()})();`);
+    await Bun.write(joinPath(consumer, "verify.ts"), `await (${verifyConsumer.toString()})();`);
     expect(await run(consumer, ["verify.ts"])).toContain("packaged consumer verified");
   } finally {
     await rm(temporary, { recursive: true, force: true });
@@ -338,7 +340,8 @@ async function verifyConsumer() {
     join(dev, "lenso.engine.ts"),
     "import {plugin} from './plugin'; export default {plugins:[plugin]};",
   );
-  const plugin = (value: string) => String.raw`
+  for (const value of ["first", "second"]) {
+    const pluginSource = String.raw`
   import {appendFile} from 'node:fs/promises';
   import {defineEnginePlugin} from '@lenso/engine/authoring';
   export const plugin=defineEnginePlugin({name:'dev-resource',setup(c){
@@ -347,8 +350,7 @@ async function verifyConsumer() {
     c.dev('lifecycle',event=>appendFile(c.root+'/events',event+':'+${JSON.stringify(value)}+'\n'));
   }});
 `;
-  for (const value of ["first", "second"]) {
-    await Bun.write(pluginFile, plugin(value));
+    await Bun.write(pluginFile, pluginSource);
     const cycle = await startEngineDevCycle(dev);
     try {
       assert.ok(cycle.watchFiles.includes(await realpath(pluginFile)));

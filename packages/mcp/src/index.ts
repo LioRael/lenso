@@ -35,10 +35,10 @@ function failure(
 }
 
 function limit(value: number | undefined, fallback: number): number {
-  const result = value ?? fallback;
-  if (!Number.isSafeInteger(result) || result < 1)
+  const bytes = value ?? fallback;
+  if (!Number.isSafeInteger(bytes) || bytes < 1)
     throw failure("invalid-arguments", "arguments", "Limits must be positive safe integers.");
-  return result;
+  return bytes;
 }
 
 function result(data: unknown, maxBytes: number): CallToolResult {

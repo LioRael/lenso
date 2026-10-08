@@ -165,7 +165,7 @@ test("upload limits, mismatched size and source failures leave no artifacts", as
       else controller.error(cause);
     },
   });
-  const error = await storage.put({ key: "failed", body }).catch((error: unknown) => error);
+  const error = await storage.put({ key: "failed", body }).catch((failure: unknown) => failure);
   expect(error).toBeInstanceOf(StorageError);
   expect((error as StorageError).cause).toBe(cause);
   expect(await readdir(root)).toEqual([]);
@@ -175,8 +175,8 @@ test("abort interrupts a source blocked in read and removes partial upload", asy
   const { storage, root } = await fixture();
   const abort = new AbortController();
   let started!: () => void;
-  const ready = new Promise<void>((resolve) => {
-    started = resolve;
+  const ready = new Promise<void>((complete) => {
+    started = complete;
   });
   let cancelled = false;
   const body = new ReadableStream<Uint8Array>(
@@ -288,8 +288,8 @@ test("cleanup aborts unconsumed downloads without deleting stored objects", asyn
 test("cleanup interrupts an owned blocked upload and removes only its partial artifacts", async () => {
   const { storage, root } = await fixture();
   let started!: () => void;
-  const ready = new Promise<void>((resolve) => {
-    started = resolve;
+  const ready = new Promise<void>((complete) => {
+    started = complete;
   });
   const body = new ReadableStream<Uint8Array>(
     {

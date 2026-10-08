@@ -148,12 +148,12 @@ export async function migratePostgresTaskQueue(
     }
     if (!existing)
       await boss.createQueue(options.queueName, { partition: false, policy: "standard" });
-    const sql = await readFile(
+    const migrationSql = await readFile(
       new URL("../migrations/0001_task_relation.sql", import.meta.url),
       "utf8",
     );
     await transaction(pool, async (client) => {
-      await client.query(sql.replaceAll("__LENSO_SCHEMA__", `"${config.schema}"`));
+      await client.query(migrationSql.replaceAll("__LENSO_SCHEMA__", `"${config.schema}"`));
     });
   } catch (error) {
     throw error instanceof TaskQueueError ? error : new TaskQueueError("provider-unavailable");
@@ -446,9 +446,9 @@ export async function createPostgresTaskProvider(
         return retried;
       });
     },
-    async startWorker(execute, options = {}) {
+    async startWorker(execute, workerOptions = {}) {
       assertOpen();
-      const worker = createTaskWorker(backend, execute, options, config.pollIntervalMs);
+      const worker = createTaskWorker(backend, execute, workerOptions, config.pollIntervalMs);
       workers.add(worker);
       return worker;
     },

@@ -36,7 +36,8 @@ test("official SDK stdio lists only allowed operations and calls shared validati
     expect(tools[0]!.title).toBe("fixture.echo");
     expect(tools[0]!.inputSchema.properties).toHaveProperty("value");
     expect(tools[0]!.annotations?.destructiveHint).toBe(true);
-    expect(tools[0]!._meta?.["lenso/operation"]).toMatchObject({
+    const { _meta: metadata } = tools[0]!;
+    expect(metadata?.["lenso/operation"]).toMatchObject({
       pluginId: "fixture",
       method: "echo",
       source: { file: `${import.meta.dir}/fixtures/lenso.config.ts` },

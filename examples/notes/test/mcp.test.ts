@@ -62,19 +62,19 @@ test("actual Notes MCP entry shares sessions, validation and object authorizatio
     ]);
     const create = tools.find((tool) => tool.title === "notes-operations.create")!;
     const read = tools.find((tool) => tool.title === "notes-operations.read")!;
-    const decode = (result: unknown) => {
+    function decodeToolResult(result: unknown) {
       const parsed = CallToolResultSchema.parse(result);
       const content = parsed.content[0];
       if (content?.type !== "text") throw new Error("Expected text tool content.");
       return JSON.parse(content.text);
-    };
+    }
     const created = await owner.callTool({ name: create.name, arguments: { title: "MCP note" } });
     expect(created.isError).not.toBe(true);
-    const note = decode(created);
+    const note = decodeToolResult(created);
     expect(note).toMatchObject({ title: "MCP note", ownerId: "alice" });
     const invalid = await owner.callTool({ name: create.name, arguments: { title: 42 } });
     expect(invalid.isError).toBe(true);
-    expect(decode(invalid)).toMatchObject({
+    expect(decodeToolResult(invalid)).toMatchObject({
       code: "invalid-input",
       details: { paths: [["title"]] },
     });
@@ -83,12 +83,12 @@ test("actual Notes MCP entry shares sessions, validation and object authorizatio
       arguments: { title: "Forbidden fields", actor: { subjectId: "bob" }, tenantId: "other" },
     });
     expect(forged.isError).toBe(true);
-    expect(decode(forged).code).toBe("invalid-input");
+    expect(decodeToolResult(forged).code).toBe("invalid-input");
     const denied = await other.callTool({ name: read.name, arguments: { id: note.id } });
     expect(denied.isError).toBe(true);
-    expect(decode(denied)).toMatchObject({ code: "FORBIDDEN", message: "Access denied" });
+    expect(decodeToolResult(denied)).toMatchObject({ code: "FORBIDDEN", message: "Access denied" });
     const allowed = await owner.callTool({ name: read.name, arguments: { id: note.id } });
-    expect(decode(allowed).title).toBe("MCP note");
+    expect(decodeToolResult(allowed).title).toBe("MCP note");
   } finally {
     await Promise.all(clients.map((client) => client.close()));
     await rm(directory, { recursive: true, force: true });

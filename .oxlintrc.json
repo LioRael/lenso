@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "deny",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    "eslint/no-unmodified-loop-condition": "off"
+  },
+  "overrides": [
+    {
+      "files": ["packages/mcp/src/index.ts"],
+      "rules": { "unicorn/prefer-add-event-listener": "off" }
+    },
+    {
+      "files": [
+        "packages/engine/src/dev.ts",
+        "packages/engine/src/engine-dev.ts",
+        "packages/tasks/src/postgres.ts",
+        "packages/workers/src/index.ts"
+      ],
+      "rules": { "eslint/preserve-caught-error": "off" }
+    }
+  ],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.lenso/**",
+    "**/node_modules/**",
+    "**/.turbo/**",
+    "**/coverage/**"
+  ],
+  "env": {
+    "builtin": true
+  }
+}

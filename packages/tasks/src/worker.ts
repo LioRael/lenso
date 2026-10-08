@@ -135,10 +135,10 @@ export function createTaskWorker(
   void done.catch(() => {});
   return {
     done,
-    stop(options = {}) {
+    stop(stopOptions = {}) {
       stopping = true;
       wake.abort();
-      if (options.abort) {
+      if (stopOptions.abort) {
         abortOnStop = true;
         for (const controller of active) controller.abort();
       }

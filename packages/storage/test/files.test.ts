@@ -66,11 +66,11 @@ async function fixture(
       objects.set(value.key, { metadata, text });
       return metadata;
     },
-    async get(key, options) {
-      controls.getIfMatch = options?.ifMatch;
+    async get(key, readOptions) {
+      controls.getIfMatch = readOptions?.ifMatch;
       const object = objects.get(key);
       if (!object) throw new StorageError("not-found", "Missing");
-      if (options?.ifMatch && options.ifMatch !== object.metadata.etag)
+      if (readOptions?.ifMatch && readOptions.ifMatch !== object.metadata.etag)
         throw new StorageError("conflict", "Changed");
       return { metadata: object.metadata, body: body(object.text) };
     },

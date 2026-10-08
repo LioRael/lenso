@@ -72,6 +72,54 @@ export interface Files<TAccess> {
   signDownload(access: TAccess, fileId: string, expiresIn: number): Promise<SignedObjectLink>;
 }
 
+function assertFileReady(file: FileRecord) {
+  if (file.state !== "ready") throw new StorageError("conflict", "File is not ready");
+}
+
+function verifyUploadedMetadata(file: FileRecord, object: ObjectMetadata | null, direct: boolean) {
+  if (!object) throw new StorageError("not-found", "Uploaded object is missing");
+  if (
+    object.key !== file.objectKey ||
+    object.contentType !== file.contentType ||
+    !Number.isSafeInteger(object.size) ||
+    object.size < 0 ||
+    (file.expectedSize !== null && object.size !== file.expectedSize)
+  ) {
+    throw new StorageError("invalid-input", "Uploaded metadata does not match");
+  }
+  if (file.maxBytes !== null && object.size > file.maxBytes) {
+    throw new StorageError("too-large", "Uploaded object exceeds size limit");
+  }
+  if (direct && !object.etag)
+    throw new StorageError("unsupported", "Direct uploads require an object etag");
+  return object;
+}
+
+function createFileDraft(input: FileUploadInput): FileRecord {
+  validateUpload({ ...input, key: "validation", body: new ReadableStream() });
+  validateContentType(input.contentType);
+  if (!input.filename) throw new StorageError("invalid-input", "Filename is required");
+  const now = Date.now();
+  return {
+    fileId: crypto.randomUUID(),
+    objectKey: `files/${crypto.randomUUID()}`,
+    storageId: input.storageId,
+    filename: input.filename,
+    contentType: input.contentType,
+    ownerId: input.ownerId ?? null,
+    tenantId: input.tenantId ?? null,
+    state: "pending",
+    revision: 0,
+    size: null,
+    etag: null,
+    expectedSize: input.size ?? null,
+    maxBytes: input.maxBytes ?? null,
+    uploadExpiresAt: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function createFilesPlugin<TDb, TAccess>(options: {
   id: string;
   storages: readonly Plugin<ObjectStorage>[];
@@ -115,27 +163,6 @@ export function createFilesPlugin<TDb, TAccess>(options: {
         }
         return next;
       }
-      function ready(file: FileRecord) {
-        if (file.state !== "ready") throw new StorageError("conflict", "File is not ready");
-      }
-      function verify(file: FileRecord, object: ObjectMetadata | null, direct: boolean) {
-        if (!object) throw new StorageError("not-found", "Uploaded object is missing");
-        if (
-          object.key !== file.objectKey ||
-          object.contentType !== file.contentType ||
-          !Number.isSafeInteger(object.size) ||
-          object.size < 0 ||
-          (file.expectedSize !== null && object.size !== file.expectedSize)
-        ) {
-          throw new StorageError("invalid-input", "Uploaded metadata does not match");
-        }
-        if (file.maxBytes !== null && object.size > file.maxBytes) {
-          throw new StorageError("too-large", "Uploaded object exceeds size limit");
-        }
-        if (direct && !object.etag)
-          throw new StorageError("unsupported", "Direct uploads require an object etag");
-        return object;
-      }
       async function fail(file: FileRecord, error: unknown, cleanup: boolean): Promise<never> {
         const errors = [error];
         let claimed = false;
@@ -167,33 +194,9 @@ export function createFilesPlugin<TDb, TAccess>(options: {
         if (errors.length > 1) throw new AggregateError(errors, "Upload and recovery failed");
         throw error;
       }
-      function draft(input: FileUploadInput): FileRecord {
-        validateUpload({ ...input, key: "validation", body: new ReadableStream() });
-        validateContentType(input.contentType);
-        if (!input.filename) throw new StorageError("invalid-input", "Filename is required");
-        const now = Date.now();
-        return {
-          fileId: crypto.randomUUID(),
-          objectKey: `files/${crypto.randomUUID()}`,
-          storageId: input.storageId,
-          filename: input.filename,
-          contentType: input.contentType,
-          ownerId: input.ownerId ?? null,
-          tenantId: input.tenantId ?? null,
-          state: "pending",
-          revision: 0,
-          size: null,
-          etag: null,
-          expectedSize: input.size ?? null,
-          maxBytes: input.maxBytes ?? null,
-          uploadExpiresAt: null,
-          createdAt: now,
-          updatedAt: now,
-        };
-      }
       return {
         async upload(access, input) {
-          let file = draft(input);
+          let file = createFileDraft(input);
           const objects = storage(file);
           await authorize(access, "upload", file);
           await queries.insert(file);
@@ -206,7 +209,7 @@ export function createFilesPlugin<TDb, TAccess>(options: {
             // writes whose provider acknowledgement is lost.
             owned = true;
             const object = await objects.put({ ...input, key: file.objectKey, body: checked.body });
-            verify(file, object, false);
+            verifyUploadedMetadata(file, object, false);
             if (object.size !== checked.size())
               throw new StorageError("invalid-input", "Adapter did not consume the upload");
             await checked.cancel();
@@ -235,7 +238,7 @@ export function createFilesPlugin<TDb, TAccess>(options: {
           validateExpiry(input.expiresIn);
           if (input.maxBytes === undefined)
             throw new StorageError("invalid-input", "Direct upload size limit is required");
-          let file = draft(input);
+          let file = createFileDraft(input);
           const objects = storage(file);
           await authorize(access, "upload", file);
           if (!objects.capabilities.signedUpload || !objects.capabilities.conditionalRead) {
@@ -277,7 +280,11 @@ export function createFilesPlugin<TDb, TAccess>(options: {
           }
           file = await transition(file, { state: "uploading" });
           try {
-            const object = verify(file, await storage(file).head(file.objectKey), true);
+            const object = verifyUploadedMetadata(
+              file,
+              await storage(file).head(file.objectKey),
+              true,
+            );
             return await transition(file, {
               state: "ready",
               size: object.size,
@@ -292,7 +299,7 @@ export function createFilesPlugin<TDb, TAccess>(options: {
         },
         async read(access, fileId, readOptions) {
           const file = await load(access, "read", fileId);
-          ready(file);
+          assertFileReady(file);
           const objects = storage(file);
           return objects.get(file.objectKey, {
             ...readOptions,
@@ -318,7 +325,7 @@ export function createFilesPlugin<TDb, TAccess>(options: {
         async signDownload(access, fileId, expiresIn) {
           validateExpiry(expiresIn);
           const file = await load(access, "signDownload", fileId);
-          ready(file);
+          assertFileReady(file);
           const link = await storage(file).signDownload({
             key: file.objectKey,
             expiresIn,

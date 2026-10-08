@@ -18,11 +18,11 @@ export interface EngineDiagnostic {
   readonly causes?: readonly EngineDiagnostic[];
 }
 export class EngineError extends Error {
-  constructor(
-    readonly diagnostic: EngineDiagnostic,
-    options?: ErrorOptions,
-  ) {
-    super(diagnostic.message, options);
+  readonly diagnostic: EngineDiagnostic;
+
+  constructor(detail: EngineDiagnostic, options?: ErrorOptions) {
+    super(detail.message, options);
+    this.diagnostic = detail;
     this.name = "EngineError";
   }
 }

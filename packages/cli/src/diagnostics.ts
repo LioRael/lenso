@@ -19,12 +19,15 @@ export function exitCode(error: unknown): number {
 }
 
 export class CliError extends EngineError {
+  readonly exitCode: number;
+
   constructor(
     detail: ConstructorParameters<typeof EngineError>[0],
-    readonly exitCode = 1,
+    status = 1,
     options?: ErrorOptions,
   ) {
     super(detail, options);
+    this.exitCode = status;
     this.name = "CliError";
   }
 }

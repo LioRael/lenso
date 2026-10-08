@@ -26,6 +26,35 @@ export interface DevSupervisor {
   close(): Promise<void>;
 }
 
+function includesCleanup(detail: EngineDiagnostic): boolean {
+  return (
+    detail.phase === "engine-cleanup" ||
+    detail.phase === "cleanup" ||
+    (detail.causes?.some(includesCleanup) ?? false)
+  );
+}
+
+async function stopProcess(previous: ReturnType<typeof Bun.spawn>) {
+  if (previous.exitCode !== null) return;
+  let forced = false;
+  previous.kill("SIGTERM");
+  const timeout = setTimeout(() => {
+    forced = true;
+    previous.kill("SIGKILL");
+  }, 5000);
+  try {
+    await previous.exited;
+    if (forced)
+      throw new EngineError({
+        code: "dev-runtime-timeout",
+        phase: "engine-cleanup",
+        message: "Development runtime shutdown exceeded 5 seconds; the process was terminated.",
+      });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function createDevSupervisor(options: DevSupervisorOptions): Promise<DevSupervisor> {
   const root = realpathSync(resolve(options.root));
   const entry = resolve(root, options.entry ?? "src/server.ts");
@@ -49,8 +78,8 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
   let closing: Promise<void> | undefined;
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let finish!: () => void;
-  const done = new Promise<void>((resolve) => {
-    finish = resolve;
+  const done = new Promise<void>((complete) => {
+    finish = complete;
   });
   const cleanupFailures: unknown[] = [];
   const watchers = new Map<string, FSWatcher>();
@@ -69,33 +98,6 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
   function cleanupFailed(error: unknown) {
     cleanupFailures.push(error);
     report(error);
-  }
-  function includesCleanup(detail: EngineDiagnostic): boolean {
-    return (
-      detail.phase === "engine-cleanup" ||
-      detail.phase === "cleanup" ||
-      (detail.causes?.some(includesCleanup) ?? false)
-    );
-  }
-  async function stopProcess(previous: ReturnType<typeof Bun.spawn>) {
-    if (previous.exitCode !== null) return;
-    let forced = false;
-    previous.kill("SIGTERM");
-    const timeout = setTimeout(() => {
-      forced = true;
-      previous.kill("SIGKILL");
-    }, 5000);
-    try {
-      await previous.exited;
-      if (forced)
-        throw new EngineError({
-          code: "dev-runtime-timeout",
-          phase: "engine-cleanup",
-          message: "Development runtime shutdown exceeded 5 seconds; the process was terminated.",
-        });
-    } finally {
-      clearTimeout(timeout);
-    }
   }
   function stopActive(): Promise<void> {
     const previous = active;
@@ -122,8 +124,8 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
       void restart().catch(report);
     }, 100);
   }
-  function watchPath(path: string, sourceOnly = false) {
-    const canonical = realpathSync(path);
+  function watchPath(watchedPath: string, sourceOnly = false) {
+    const canonical = realpathSync(watchedPath);
     if (watchers.has(canonical)) return;
     const directory = statSync(canonical).isDirectory();
     const sourceExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"];
@@ -153,10 +155,10 @@ export async function createDevSupervisor(options: DevSupervisorOptions): Promis
           return;
         throw cause;
       }
-      for (const entry of entries) {
-        if (ignored.has(entry.name)) continue;
-        const child = resolve(path, entry.name);
-        if (entry.isDirectory()) {
+      for (const directoryEntry of entries) {
+        if (ignored.has(directoryEntry.name)) continue;
+        const child = resolve(path, directoryEntry.name);
+        if (directoryEntry.isDirectory()) {
           if (!sourceOnly) remember(child);
           baseline(child);
         } else if (!sourceOnly || sourceExtensions.includes(extname(child))) remember(child);

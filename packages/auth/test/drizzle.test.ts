@@ -329,12 +329,12 @@ test("PG native schema input and generated CAS SQL keep bigint parameters typed"
   expect(store).toBeDefined();
   expect(branded).toBeDefined();
   const attempt = mutation(record(), {}, "renew");
-  const number = (value: number) => sql`${value}::bigint`;
-  const clock = sql`GREATEST(${number(attempt.now)}, floor(extract(epoch from clock_timestamp()) * 1000)::bigint)`;
+  const bigintParameter = (value: number) => sql`${value}::bigint`;
+  const clock = sql`GREATEST(${bigintParameter(attempt.now)}, floor(extract(epoch from clock_timestamp()) * 1000)::bigint)`;
   const query = db
     .update(pgSessions)
     .set(mutationValues(attempt.next))
-    .where(mutationPredicate(pgSessions, attempt, clock, number))
+    .where(mutationPredicate(pgSessions, attempt, clock, bigintParameter))
     .returning()
     .toSQL();
   expect(query.sql).toMatch(/^update /i);

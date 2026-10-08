@@ -23,6 +23,21 @@ async function connectResources(): Promise<TaskResources> {
   return { ...resources, reports: resources.service };
 }
 
+async function cliAuthBoundary<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof AuthError) {
+      throw new CliError({
+        code: error.code,
+        phase: "invoke",
+        message: new AuthError(error.code).message,
+      });
+    }
+    throw error;
+  }
+}
+
 export function createTasksPlugin(options: {
   connectAuth: () => Promise<TaskAuthConnection>;
   evidence: () => string | null;
@@ -41,29 +56,17 @@ export function createTasksPlugin(options: {
         evidence: options.evidence,
       });
       context.onCleanup(() => service.close());
-      async function boundary<T>(work: () => Promise<T>): Promise<T> {
-        try {
-          return await work();
-        } catch (error) {
-          if (error instanceof AuthError) {
-            throw new CliError({
-              code: error.code,
-              phase: "invoke",
-              message: new AuthError(error.code).message,
-            });
-          }
-          throw error;
-        }
-      }
       return {
         submit: (input: Parameters<typeof service.submit>[0]) =>
-          boundary(() => service.submit(input)),
-        query: (input: Parameters<typeof service.query>[0]) => boundary(() => service.query(input)),
+          cliAuthBoundary(() => service.submit(input)),
+        query: (input: Parameters<typeof service.query>[0]) =>
+          cliAuthBoundary(() => service.query(input)),
         cancel: (input: Parameters<typeof service.cancel>[0]) =>
-          boundary(() => service.cancel(input)),
-        retry: (input: Parameters<typeof service.retry>[0]) => boundary(() => service.retry(input)),
+          cliAuthBoundary(() => service.cancel(input)),
+        retry: (input: Parameters<typeof service.retry>[0]) =>
+          cliAuthBoundary(() => service.retry(input)),
         report: (input: Parameters<typeof service.report>[0]) =>
-          boundary(() => service.report(input)),
+          cliAuthBoundary(() => service.report(input)),
       };
     },
   });

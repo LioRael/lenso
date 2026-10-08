@@ -38,7 +38,7 @@ function defaults(setup?: (context: EngineContext) => void | Promise<void>): Eng
   ];
 }
 async function expectCode(promise: Promise<unknown>, code: string) {
-  const cause = await promise.catch((cause: unknown) => cause);
+  const cause = await promise.catch((failure: unknown) => failure);
   expect(cause).toBeInstanceOf(EngineError);
   expect((cause as EngineError).diagnostic.code).toBe(code);
 }
@@ -206,12 +206,12 @@ test("failed setup stays cached and close preserves cleanup failures", async () 
   expect(session.setup(plugins)).toBe(setup);
   expect(calls).toBe(1);
   const close = session.close();
-  const cause = await close.catch((cause: unknown) => cause);
+  const cause = await close.catch((failure: unknown) => failure);
   expect(cause).toBeInstanceOf(EngineError);
   expect((cause as EngineError).diagnostic.code).toBe("engine-cleanup-failed");
   expect(((cause as EngineError).cause as AggregateError).errors).toEqual([cleanupFailure]);
   expect(session.close()).toBe(close);
-  expect(await session.close().catch((cause: unknown) => cause)).toBe(cause);
+  expect(await session.close().catch((failure: unknown) => failure)).toBe(cause);
 });
 
 test("registration revocation is immediate, identity-safe and never restores a replaced hook", async () => {

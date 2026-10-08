@@ -14,8 +14,10 @@
     "dev": "bun run build && bun packages/cli/src/bin.ts dev --root examples/greeting",
     "cli": "bun packages/cli/src/bin.ts",
     "client": "bun examples/greeting/src/client.ts",
-    "lint": "oxlint packages examples",
-    "fmt": "oxfmt packages examples package.json tsconfig.json turbo.json"
+    "lint": "oxlint . --deny-warnings",
+    "lint:fix": "oxlint . --fix --deny-warnings",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check ."
   },
   "devDependencies": {
     "@types/bun": "1.4.2",
