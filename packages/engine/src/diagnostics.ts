@@ -42,6 +42,15 @@ export function diagnostic(
 }
 
 const diagnosticLimit = 32;
+const configDetailCodes = new Set([
+  "config-source-failed",
+  "config-invalid-data",
+  "config-invalid",
+  "config-cancelled",
+  "config-env-invalid",
+  "config-file-missing",
+  "config-file-invalid",
+]);
 type DiagnosticTraversal = WeakSet<object> & { remaining: number };
 function safePaths(value: unknown): (string | number)[][] {
   if (!Array.isArray(value)) return [];
@@ -92,7 +101,7 @@ function safeDetail(
       result.details = { paths: safePaths(Reflect.get(details, "paths")) };
     else if (detail.code === "invalid-plugin")
       result.details = { path: safePaths([Reflect.get(details, "path")])[0] ?? [] };
-    else if (detail.phase === "config" && detail.code.startsWith("config-"))
+    else if (detail.phase === "config" && configDetailCodes.has(detail.code))
       result.details = {
         ...(safePaths([Reflect.get(details, "path")])[0]
           ? { path: safePaths([Reflect.get(details, "path")])[0] }
@@ -122,6 +131,17 @@ function safeDetail(
       return [safeDetail(cause, seen, depth + 1)];
     });
   return result as unknown as EngineDiagnostic;
+}
+function sameProjection(left: EngineDiagnostic, right: EngineDiagnostic): boolean {
+  const project = (detail: EngineDiagnostic) => {
+    const { causes: _, ...fields } = safeDetail(
+      detail,
+      Object.assign(new WeakSet<object>(), { remaining: 256 }),
+      0,
+    );
+    return stableJson(fields);
+  };
+  return project(left) === project(right);
 }
 function describeError(
   error: unknown,
@@ -162,7 +182,8 @@ function describeError(
       ...safeDetail(error.diagnostic, seen, depth),
       ...(error.diagnostic.causes ||
       error.cause === undefined ||
-      (error.cause instanceof EngineError && error.cause.diagnostic.code === error.diagnostic.code)
+      (error.cause instanceof EngineError &&
+        sameProjection(error.diagnostic, error.cause.diagnostic))
         ? {}
         : error.cause instanceof EngineError ||
             error.cause instanceof AggregateError ||

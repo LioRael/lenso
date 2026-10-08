@@ -15,7 +15,12 @@ export {
   type Policy,
   type PolicyContext,
 } from "./core";
-export { AuthError, AuthConfigurationError, type AuthErrorCode } from "./errors";
+export {
+  AuthError,
+  AuthConfigurationError,
+  authErrorDiagnostic,
+  type AuthErrorCode,
+} from "./errors";
 export {
   defineSource,
   type AuthSource,

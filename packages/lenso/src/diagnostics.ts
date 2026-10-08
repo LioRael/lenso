@@ -6,7 +6,8 @@ export interface Diagnostic {
     | "missing-dependency"
     | "cyclic-dependency"
     | "invalid-id"
-    | "invalid-source";
+    | "invalid-source"
+    | "invalid-plugin";
   readonly pluginId: string;
   readonly message: string;
   readonly source?: PluginSource;
@@ -27,6 +28,26 @@ export class DiagnosticError extends Error {
 /** Validate exact plugin instances and return a stable dependency-first order. */
 export function validatePlugins(plugins: readonly Plugin<unknown>[]): readonly Plugin<unknown>[] {
   const diagnostics: Diagnostic[] = [];
+  const validShape = (value: unknown): value is Plugin<unknown> =>
+    value !== null &&
+    typeof value === "object" &&
+    typeof Reflect.get(value, "id") === "string" &&
+    typeof Reflect.get(value, "setup") === "function";
+  for (const [index, plugin] of plugins.entries()) {
+    if (
+      !validShape(plugin) ||
+      (plugin.requires !== undefined &&
+        (!Array.isArray(plugin.requires) || !Array.from(plugin.requires).every(validShape)))
+    ) {
+      diagnostics.push({
+        code: "invalid-plugin",
+        pluginId: "[invalid]",
+        message: "Plugin declarations require a string ID, setup function and plugin dependencies.",
+        details: { path: ["plugins", index] },
+      });
+    }
+  }
+  if (diagnostics.length) throw new DiagnosticError(diagnostics);
   const instances = new Set(plugins);
   const firstById = new Map<string, Plugin<unknown>>();
   const sources = new Map<Plugin<unknown>, PluginSource>();

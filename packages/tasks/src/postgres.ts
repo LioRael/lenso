@@ -70,8 +70,8 @@ async function transaction<T>(
   pool: Pool,
   run: (client: PoolClient, db: Db) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect().catch(() => {
-    throw new TaskQueueError("provider-unavailable");
+  const client = await pool.connect().catch((cause) => {
+    throw new TaskQueueError("provider-unavailable", { cause });
   });
   try {
     await client.query("BEGIN");
@@ -79,8 +79,16 @@ async function transaction<T>(
     await client.query("COMMIT");
     return result;
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
-    throw error instanceof TaskQueueError ? error : new TaskQueueError("provider-unavailable");
+    const failure =
+      error instanceof TaskQueueError
+        ? error
+        : new TaskQueueError("provider-unavailable", { cause: error });
+    try {
+      await client.query("ROLLBACK");
+    } catch (cleanup) {
+      throw new AggregateError([failure, cleanup], "Task transaction and rollback failed");
+    }
+    throw failure;
   } finally {
     client.release();
   }
@@ -122,14 +130,14 @@ async function release(boss: PgBoss, pool: Pool, owned: boolean): Promise<void> 
   const failures: unknown[] = [];
   try {
     await boss.stop();
-  } catch {
-    failures.push(new TaskQueueError("provider-unavailable"));
+  } catch (cause) {
+    failures.push(new TaskQueueError("provider-unavailable", { cause }));
   }
   if (owned) {
     try {
       await pool.end();
-    } catch {
-      failures.push(new TaskQueueError("provider-unavailable"));
+    } catch (cause) {
+      failures.push(new TaskQueueError("provider-unavailable", { cause }));
     }
   }
   if (failures.length) throw new AggregateError(failures, "Task queue cleanup failed");
@@ -143,6 +151,7 @@ export async function migratePostgresTaskQueue(
   if (!options.pool)
     pool.on("error", () => options.onError?.(new TaskQueueError("provider-unavailable")));
   const { boss, config } = bossClient(pool, options, true);
+  let failure: unknown;
   try {
     await boss.start();
     const existing = await boss.getQueue(options.queueName);
@@ -164,10 +173,19 @@ export async function migratePostgresTaskQueue(
       await client.query(metadataSql.replaceAll("__LENSO_SCHEMA__", `"${config.schema}"`));
     });
   } catch (error) {
-    throw error instanceof TaskQueueError ? error : new TaskQueueError("provider-unavailable");
-  } finally {
-    await release(boss, pool, !options.pool);
+    failure =
+      error instanceof TaskQueueError || error instanceof AggregateError
+        ? error
+        : new TaskQueueError("provider-unavailable", { cause: error });
   }
+  try {
+    await release(boss, pool, !options.pool);
+  } catch (cleanup) {
+    if (failure !== undefined)
+      throw new AggregateError([failure, cleanup], "Task migration and cleanup failed");
+    throw cleanup;
+  }
+  if (failure !== undefined) throw failure;
 }
 
 type StoredJob = {
@@ -233,15 +251,16 @@ export async function createPostgresTaskProvider(
     // Read the declared relation shape, not only its name. No startup DDL is permitted.
     await drizzle(pool).select().from(relation).limit(0);
   } catch (error) {
+    const failure =
+      error instanceof TaskQueueError || error instanceof AggregateError
+        ? error
+        : new TaskQueueError("provider-unavailable", { cause: error });
     try {
       await release(boss, pool, !options.pool);
     } catch (cleanupError) {
-      throw new AggregateError(
-        [new TaskQueueError("provider-unavailable"), cleanupError],
-        "Task queue startup and cleanup failed",
-      );
+      throw new AggregateError([failure, cleanupError], "Task queue startup and cleanup failed");
     }
-    throw error instanceof TaskQueueError ? error : new TaskQueueError("provider-unavailable");
+    throw failure;
   }
 
   function assertOpen() {

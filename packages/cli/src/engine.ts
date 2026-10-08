@@ -26,7 +26,7 @@ export async function invoke<O extends Operation>(
   const plugin = app.plugins.find((candidate) => candidate.id === pluginId);
   if (!plugin)
     throw new CliError(
-      { code: "unknown-plugin", phase: "discovery", message: "Unknown plugin.", pluginId },
+      { code: "unknown-plugin", phase: "discovery", message: "Unknown plugin." },
       3,
     );
   let operation: O;
@@ -35,11 +35,7 @@ export async function invoke<O extends Operation>(
     operation = resolveOperation(app.plugins, app.operations ?? [], pluginId, method) as O;
     validatedInput = await validateOperationInput(operation, input);
   } catch (cause) {
-    throw new CliError(
-      diagnostic(cause, { pluginId, operation: `${pluginId}.${method}` }),
-      exitCode(cause),
-      { cause },
-    );
+    throw new CliError(diagnostic(cause), exitCode(cause), { cause });
   }
   const context = {
     pluginId,
@@ -145,7 +141,6 @@ export async function inspect(root = process.cwd(), pluginId?: string, method?: 
         code: "unknown-plugin",
         phase: "discovery",
         message: "Unknown plugin.",
-        pluginId,
         source: { file: configPath },
       },
       3,
@@ -161,7 +156,6 @@ export async function inspect(root = process.cwd(), pluginId?: string, method?: 
         phase: "discovery",
         message: "Operation is not declared.",
         ...(pluginId ? { pluginId } : {}),
-        ...(method ? { operation: `${pluginId ?? "*"}.${method}` } : {}),
         source: { file: configPath },
       },
       3,

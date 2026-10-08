@@ -112,7 +112,6 @@ export function createManageAdapter<O extends Operation>(
           phase: "invoke",
           message: "Catalog entry is not selected for this adapter.",
           instanceId: running.instanceId,
-          operation: key,
         });
       // Dispatch uses the original declaration, never redacted presentation identifiers.
       return this.invoke(operation.plugin.id, operation.method, input);

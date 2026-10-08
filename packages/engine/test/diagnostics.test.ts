@@ -130,3 +130,37 @@ test("trusted adapter wrappers do not repeat the same projected failure", () => 
   expect(wrapper.cause).toBe(domain);
   expect(diagnostic(wrapper)).toEqual(diagnostic(domain));
 });
+
+test("matching codes do not hide a distinct phase or plugin cause", () => {
+  const setup = new EngineError({
+    code: "engine-hook-failed",
+    phase: "engine-setup",
+    pluginId: "database",
+    message: "Engine setup failed.",
+  });
+  const build = new EngineError(
+    {
+      code: "engine-hook-failed",
+      phase: "engine-build",
+      pluginId: "builder",
+      message: "Build failed.",
+    },
+    { cause: setup },
+  );
+  expect(diagnostic(build).causes?.[0]).toMatchObject({
+    code: "engine-hook-failed",
+    phase: "engine-setup",
+    pluginId: "database",
+  });
+});
+
+test("a config-like custom code cannot opt into configuration details", () => {
+  const failure = new EngineError({
+    code: "config-unknown-domain",
+    phase: "config",
+    message: "Safe",
+    details: { path: ["PRIVATE-dynamic"], sourceId: "PRIVATE-dynamic" },
+  });
+  expect(diagnostic(failure).details).toBeUndefined();
+  expect(stableJson(diagnostic(failure))).not.toContain("PRIVATE-dynamic");
+});

@@ -66,7 +66,12 @@ is `BAD_REQUEST`/400; missing authentication or reauthentication is
 unknown operation and caller-hidden operation all return the same `NOT_FOUND`/404
 message/data, omitting requested identifiers. Known mapped resource-not-found,
 conflict and size failures use 404, 409 and 413 respectively. Unexpected,
-provider, aggregate and cleanup failures are opaque `MANAGE_FAILED`/500.
+unknown, aggregate and cleanup failures are opaque `MANAGE_FAILED`/500.
+Explicitly classified Auth/queue unavailability is `SERVICE_UNAVAILABLE`/503,
+Storage provider failure is `BAD_GATEWAY`/502, unsupported operations are
+`NOT_IMPLEMENTED`/501, and request cancellation is `CLIENT_CLOSED_REQUEST`/499.
+Required confirmation/approval refusal is `FORBIDDEN`/403. Cancellation does not
+prove that effects were rolled back; none of these mappings grants safe retries.
 Original causes remain internal. Applications declare `Operation.mapError`
 using package `instanceof` projectors for service/binding domain errors; only the
 optional `./orpc` entry imports Auth. Byte budgets do not impose service memory/CPU quotas.

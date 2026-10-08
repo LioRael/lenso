@@ -3,11 +3,39 @@ import {
   defaultTextMapSetter,
   ROOT_CONTEXT,
   trace,
+  type Context,
+  type Span,
+  type SpanOptions,
 } from "@opentelemetry/api";
 import { W3CTraceContextPropagator } from "@opentelemetry/core";
 
 // Durable metadata has a fixed W3C format, independent of the host's HTTP propagator.
 const propagation = new W3CTraceContextPropagator();
+
+export function observe(collect: () => void): void {
+  try {
+    collect();
+  } catch {
+    // Collection is advisory, including after a durable side effect.
+  }
+}
+
+export function taskSpan<T>(
+  name: string,
+  options: SpanOptions,
+  work: (span?: Span) => Promise<T>,
+  parent?: Context,
+): Promise<T> {
+  let execution: Promise<T> | undefined;
+  try {
+    const tracer = trace.getTracer("@lenso/tasks");
+    return parent
+      ? tracer.startActiveSpan(name, options, parent, (span) => (execution = work(span)))
+      : tracer.startActiveSpan(name, options, (span) => (execution = work(span)));
+  } catch {
+    return execution ?? work();
+  }
+}
 
 export interface TraceMetadata {
   readonly traceparent: string;
@@ -37,9 +65,10 @@ export function traceMetadata(value: unknown): TraceMetadata | undefined {
 
 export function producerMetadata(): TraceMetadata | undefined {
   const carrier: Record<string, string> = {};
-  const span = trace.getActiveSpan();
-  if (!span) return undefined;
-  propagation.inject(trace.setSpan(ROOT_CONTEXT, span), carrier, defaultTextMapSetter);
+  observe(() => {
+    const span = trace.getActiveSpan();
+    if (span) propagation.inject(trace.setSpan(ROOT_CONTEXT, span), carrier, defaultTextMapSetter);
+  });
   return traceMetadata(carrier);
 }
 

@@ -4,6 +4,7 @@ import { trace } from "@opentelemetry/api";
 import { definePlugin, type Plugin, type PluginContext } from "@lenso/core";
 import { createRequestTask, type FetchContext, type FetchOptions } from "./lifetime";
 import { requestTelemetry } from "./telemetry";
+import { validateErrorStatusMap } from "./problem-details";
 export type { FetchContext, FetchHandler, FetchOptions } from "./lifetime";
 
 /** Request context stays in the optional Web package, outside the core SDK. */
@@ -35,6 +36,7 @@ export function createWebPlugin<R extends Router<WebContext>>(
   if (!prefix.startsWith("/") || prefix.endsWith("/")) {
     throw new Error("Web RPC prefix must start with / and have no trailing /");
   }
+  validateErrorStatusMap(options.errorStatusMap);
   if (
     options.timeoutMs !== undefined &&
     (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0)
@@ -55,11 +57,11 @@ export function createWebPlugin<R extends Router<WebContext>>(
         errorStatusMap: { ...COMMON_ERROR_STATUS_MAP, ...options.errorStatusMap },
         clientInterceptors: [
           ({ next, path }) => {
-            trace.getActiveSpan()?.setAttributes({
-              "lenso.instance.id": context.instanceId,
-              "lenso.plugin.id": options.id ?? "web",
-            });
             try {
+              trace.getActiveSpan()?.setAttributes({
+                "lenso.instance.id": context.instanceId,
+                "lenso.plugin.id": options.id ?? "web",
+              });
               context.logger?.debug({ operation: path.join(".") }, "RPC procedure invoked");
             } catch {}
             return next();

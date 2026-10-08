@@ -273,7 +273,6 @@ export function resolveOperation(
       code: "unknown-plugin",
       phase: "discovery",
       message: "Unknown plugin.",
-      pluginId,
     });
   const operation = validateOperations(plugins, operations).find(
     (candidate) => candidate.plugin === plugin && candidate.method === method,
@@ -284,7 +283,6 @@ export function resolveOperation(
       phase: "discovery",
       message: "Service method is not explicitly exposed for this entry.",
       pluginId,
-      operation: `${pluginId}.${method}`,
     });
   return operation;
 }

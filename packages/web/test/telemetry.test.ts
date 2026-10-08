@@ -1,10 +1,49 @@
-import { expect, test } from "bun:test";
-import { trace } from "@opentelemetry/api";
+import { expect, spyOn, test } from "bun:test";
+import { metrics, trace } from "@opentelemetry/api";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import { AggregationTemporality, InMemoryMetricExporter } from "@opentelemetry/sdk-metrics";
 import { bootstrapTelemetry } from "@lenso/otel/bun";
 import { startApp } from "@lenso/core";
 import { createWebPlugin } from "../src/index";
+import { createRequestTask } from "../src/lifetime";
+import { requestTelemetry } from "../src/telemetry";
+
+test("request telemetry failures do not skip admitted work or resource cleanup", async () => {
+  const broken = () => {
+    throw new Error("PRIVATE-telemetry");
+  };
+  const meter = spyOn(metrics, "getMeter").mockImplementation(broken);
+  const tracer = spyOn(trace, "getTracer").mockImplementation(broken);
+  let calls = 0;
+  let cleaned = 0;
+  const request = new Request("https://example.test/owned");
+  try {
+    const task = requestTelemetry(
+      request,
+      (failed) =>
+        createRequestTask(
+          request,
+          (context) => {
+            calls++;
+            context.onCleanup(() => {
+              cleaned++;
+            });
+            failed();
+            return new Response("completed side effect");
+          },
+          {},
+        ),
+      { instanceId: "test", pluginId: "web", requestLifetime: true },
+    );
+    expect(await (await task.response).text()).toBe("completed side effect");
+    await task.completed;
+    expect(calls).toBe(1);
+    expect(cleaned).toBe(1);
+  } finally {
+    meter.mockRestore();
+    tracer.mockRestore();
+  }
+});
 
 test("Web lifetime survives headers and cancellation until body work and cleanup actually settle", async () => {
   const exporter = new InMemorySpanExporter();

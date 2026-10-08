@@ -704,7 +704,14 @@ test("standard RPC clients receive fixed typed HTTP errors without requested ide
       ["deduplication-conflict", "CONFLICT", 409],
       ["invalid-key", "BAD_REQUEST", 400],
       ["too-large", "PAYLOAD_TOO_LARGE", 413],
-      ["provider", "MANAGE_FAILED", 500],
+      ["provider", "BAD_GATEWAY", 502],
+      ["provider-unavailable", "SERVICE_UNAVAILABLE", 503],
+      ["SERVICE_UNAVAILABLE", "SERVICE_UNAVAILABLE", 503],
+      ["closed", "SERVICE_UNAVAILABLE", 503],
+      ["unsupported", "NOT_IMPLEMENTED", 501],
+      ["aborted", "CLIENT_CLOSED_REQUEST", 499],
+      ["confirmation-required", "FORBIDDEN", 403],
+      ["approval-required", "FORBIDDEN", 403],
     ] as const) {
       failure = new DomainError(kind);
       const error = await invoke();
@@ -714,6 +721,9 @@ test("standard RPC clients receive fixed typed HTTP errors without requested ide
       expect(wire).not.toContain("secret internal");
       expect(wire).not.toContain("classification");
     }
+    failure = new AuthError("SERVICE_UNAVAILABLE");
+    expect(await invoke()).toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    expect(httpStatus).toBe(503);
     for (const unknown of [
       { code: "FORBIDDEN", message: "secret fake" },
       new Error("secret internal"),

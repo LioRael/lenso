@@ -4,6 +4,14 @@
 It is optional and independent of Engine, Web, Auth, oRPC and `@lenso/workers`
 (the Cloudflare Fetch adapter). There is no global queue or default HTTP admin API.
 
+`TaskQueueError` accepts an optional internal `cause` and restricts runtime codes
+to its declared set; an unsupported code becomes `provider-unavailable`.
+`taskErrorDiagnostic(error)` projects only recognized instances into fixed
+`{code, phase, message}` metadata. Queue/provider causes and combined startup,
+migration, rollback or cleanup failures remain available in-process, not in the
+public projection. Classification adds no retry guarantee: writes with a lost
+response can already have completed.
+
 ## Define, enqueue, consume
 
 ```ts

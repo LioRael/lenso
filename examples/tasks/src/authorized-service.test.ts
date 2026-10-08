@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { defineSource, type SubjectRef } from "@lenso/auth";
+import { authErrorDiagnostic, defineSource, type SubjectRef } from "@lenso/auth";
 import type { JobState, JobStatus } from "@lenso/tasks";
 import { defineApp } from "@lenso/core";
 import { defineOperation, invoke } from "@lenso/cli";
@@ -163,24 +163,28 @@ describe("authorized tasks", () => {
           plugin,
           method: "submit",
           input: submitInput,
+          mapError: authErrorDiagnostic,
           description: "Submit fixture.",
         }),
         defineOperation({
           plugin,
           method: "query",
           input: jobInput,
+          mapError: authErrorDiagnostic,
           description: "Query fixture.",
         }),
         defineOperation({
           plugin,
           method: "cancel",
           input: jobInput,
+          mapError: authErrorDiagnostic,
           description: "Cancel fixture.",
         }),
         defineOperation({
           plugin,
           method: "retry",
           input: jobInput,
+          mapError: authErrorDiagnostic,
           description: "Retry fixture.",
         }),
       ],

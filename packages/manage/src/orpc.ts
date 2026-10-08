@@ -76,6 +76,10 @@ const classifications = {
   NOT_FOUND: { message: "Manage operation or resource not found." },
   CONFLICT: { message: "Manage request conflicts with current state." },
   PAYLOAD_TOO_LARGE: { message: "Manage input exceeds the allowed size." },
+  SERVICE_UNAVAILABLE: { message: "Manage service is unavailable." },
+  BAD_GATEWAY: { message: "Manage provider operation failed." },
+  NOT_IMPLEMENTED: { message: "Manage operation is not supported." },
+  CLIENT_CLOSED_REQUEST: { message: "Request cancelled; operation effects may have completed." },
   MANAGE_FAILED: { message: "Manage request failed." },
 } as const;
 type PublicCode = keyof typeof classifications;
@@ -127,6 +131,8 @@ function publicCode(error: unknown): PublicCode {
     case "FORBIDDEN":
     case "forbidden":
     case "permission-denied":
+    case "confirmation-required":
+    case "approval-required":
       return "FORBIDDEN";
     case "unknown-plugin":
     case "unknown-operation":
@@ -139,6 +145,16 @@ function publicCode(error: unknown): PublicCode {
       return "CONFLICT";
     case "too-large":
       return "PAYLOAD_TOO_LARGE";
+    case "SERVICE_UNAVAILABLE":
+    case "provider-unavailable":
+    case "closed":
+      return "SERVICE_UNAVAILABLE";
+    case "provider":
+      return "BAD_GATEWAY";
+    case "unsupported":
+      return "NOT_IMPLEMENTED";
+    case "aborted":
+      return "CLIENT_CLOSED_REQUEST";
     default:
       return "MANAGE_FAILED";
   }
@@ -156,6 +172,10 @@ export function createManageRouter<E, O extends Operation>(options: ManageRouter
     NOT_FOUND: { ...classifications.NOT_FOUND, data: safeErrorData },
     CONFLICT: { ...classifications.CONFLICT, data: safeErrorData },
     PAYLOAD_TOO_LARGE: { ...classifications.PAYLOAD_TOO_LARGE, data: safeErrorData },
+    SERVICE_UNAVAILABLE: { ...classifications.SERVICE_UNAVAILABLE, data: safeErrorData },
+    BAD_GATEWAY: { ...classifications.BAD_GATEWAY, data: safeErrorData },
+    NOT_IMPLEMENTED: { ...classifications.NOT_IMPLEMENTED, data: safeErrorData },
+    CLIENT_CLOSED_REQUEST: { ...classifications.CLIENT_CLOSED_REQUEST, data: safeErrorData },
     MANAGE_FAILED: { ...classifications.MANAGE_FAILED, data: safeErrorData },
   });
   async function request<T>(

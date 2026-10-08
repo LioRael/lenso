@@ -3,6 +3,7 @@ import { mkdtemp, rm, access, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { definePlugin, startApp } from "@lenso/core";
+import { AuthError } from "@lenso/auth";
 import { defineOperation, invoke } from "@lenso/cli";
 import { z } from "zod";
 import { createSqliteFileQueries } from "@lenso/storage/sqlite";
@@ -124,11 +125,19 @@ test("Notes registry validates before setup and authenticates all business/file 
     await expect(access(filename)).rejects.toBeDefined();
     await migrateFiles(filename);
 
-    const running = await startApp({ plugins: definition.plugins });
+    const running = await startApp({
+      plugins: [...definition.plugins, notes.plugin, files.plugin],
+    });
     let otherCredential: string;
     let fileId: string;
     let foreignTenantId: string;
     try {
+      await expect(running.get(notes.plugin).list({}, { evidence: null })).rejects.toBeInstanceOf(
+        AuthError,
+      );
+      await expect(
+        running.get(files.plugin).metadata({ fileId: crypto.randomUUID() }, { evidence: null }),
+      ).rejects.toBeInstanceOf(AuthError);
       const auth = running.get(definition.authentication);
       credential = (await auth.issue(key)).credential;
       otherCredential = (await auth.issue(otherKey)).credential;
