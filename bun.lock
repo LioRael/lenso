@@ -17,6 +17,7 @@
       "name": "@lenso/example-greeting",
       "version": "0.1.0",
       "dependencies": {
+        "@lenso/cache": "workspace:^",
         "@lenso/core": "workspace:^",
         "@lenso/engine": "workspace:^",
         "@lenso/log": "workspace:^",
@@ -113,7 +114,7 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/core": "^0.1.0",
+        "@lenso/core": "^0.2.0",
         "@orpc/server": "2.0.0-beta.42",
         "drizzle-orm": "^0.45.3",
       },
@@ -121,6 +122,19 @@
         "@lenso/core",
         "@orpc/server",
         "drizzle-orm",
+      ],
+    },
+    "packages/cache": {
+      "name": "@lenso/cache",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@lenso/core": "workspace:^",
+      },
+      "peerDependencies": {
+        "@lenso/core": "^0.2.0",
+      },
+      "optionalPeers": [
+        "@lenso/core",
       ],
     },
     "packages/cli": {
@@ -193,7 +207,7 @@
         "zod": "4.6.5",
       },
       "peerDependencies": {
-        "@lenso/auth": "^0.1.0",
+        "@lenso/auth": "^0.2.0",
         "@orpc/server": "2.0.0-beta.42",
       },
       "optionalPeers": [
@@ -531,6 +545,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
 
     "@lenso/auth": ["@lenso/auth@workspace:packages/auth"],
+
+    "@lenso/cache": ["@lenso/cache@workspace:packages/cache"],
 
     "@lenso/cli": ["@lenso/cli@workspace:packages/cli"],
 

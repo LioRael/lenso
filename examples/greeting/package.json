@@ -13,6 +13,7 @@
     "test": "bun test src"
   },
   "dependencies": {
+    "@lenso/cache": "workspace:^",
     "@lenso/core": "workspace:^",
     "@lenso/engine": "workspace:^",
     "@lenso/log": "workspace:^",
