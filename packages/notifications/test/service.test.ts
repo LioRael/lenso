@@ -168,24 +168,31 @@ describe("notification service with real SQLite and local HTTP", () => {
     expect(await service.list({ tenantId: input.tenantId, limit: 100 })).toHaveLength(1);
   });
 
-  it("keeps a timeout uncertain and reuses the original snapshot on retry", async () => {
+  it("keeps an interrupted HTTP request uncertain and reuses the original snapshot on retry", async () => {
     const requests: { key: string | null; body: unknown }[] = [];
-    const { service, store, channel } = await fixture(
-      async (request) => {
-        requests.push({ key: request.headers.get("idempotency-key"), body: await request.json() });
-        if (requests.length === 1) await Bun.sleep(60);
-        return Response.json({ id: "provider-uncertain" });
-      },
-      { timeoutMs: 10 },
-    );
+    const interrupted = new AbortController();
+    const { service, store, channel } = await fixture(async (request) => {
+      requests.push({ key: request.headers.get("idempotency-key"), body: await request.json() });
+      // Interrupt only after the provider received the request, before its response.
+      if (requests.length === 1) interrupted.abort();
+      await Bun.sleep(25);
+      return Response.json({ id: "provider-uncertain" });
+    });
     const created = await service.create(input);
-    expect(await service.deliver(created.id)).toMatchObject({ state: "unknown", retryable: true });
+    expect(await service.deliver(created.id, { signal: interrupted.signal })).toMatchObject({
+      state: "unknown",
+      error: "transport-unknown",
+      retryable: true,
+      attemptCount: 1,
+    });
+    expect(requests).toHaveLength(1);
     const restarted = createNotificationService({
       store,
       channels: [channel],
       templates: [{ ...template, version: "2", text: "Changed template {{name}}" }],
     });
     expect((await restarted.deliver(created.id))?.state).toBe("accepted");
+    expect(requests).toHaveLength(2);
     expect(requests[0]).toEqual(requests[1]);
     expect((await restarted.get(created.id))?.templateVersion).toBe("1");
     expect((await restarted.attempts(created.id)).map((attempt) => attempt.state)).toEqual([
