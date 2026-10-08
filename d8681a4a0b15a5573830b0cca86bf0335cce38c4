@@ -1,0 +1,40 @@
+packages/cli/README.md
+  h_9d56aba080c170 29-110
+packages/cli/examples/content-plugin/index.ts
+  h_9d56aba080c170 1-37
+packages/cli/examples/content-plugin/package.json
+  h_9d56aba080c170 1-17
+packages/cli/examples/module-target-plugin/index.ts
+  h_9d56aba080c170 1-25
+packages/cli/examples/module-target-plugin/package.json
+  h_9d56aba080c170 1-17
+packages/cli/package.json
+  h_9d56aba080c170 9-11,22-25,29
+packages/cli/src/engine-authoring.ts
+  h_9d56aba080c170 1-96
+packages/cli/src/engine-defaults.ts
+  h_9d56aba080c170 1-66
+packages/cli/src/engine-dev-worker.ts
+  h_9d56aba080c170 1-68
+packages/cli/src/engine-dev.ts
+  h_9d56aba080c170 1-126
+packages/cli/src/engine-host.ts
+  h_9d56aba080c170 1-810
+packages/cli/src/engine.ts
+  h_9d56aba080c170 1-2,5,12-14,31,41,49,54,61-62,66,70-75,77-82,85-88,90,92-97,100-105,233-234,247-251
+packages/cli/src/index.ts
+  h_9d56aba080c170 16
+packages/cli/test/engine-extensions.test.ts
+  h_9d56aba080c170 1-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d8681a4a0b15a5573830b0cca86bf0335cce38c4",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
