@@ -1,0 +1,29 @@
+{
+  "name": "@lenso/mcp",
+  "version": "0.1.0",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --outdir dist --target bun --packages external && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@lenso/engine": "workspace:^",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "lenso-cli": "workspace:^",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "lenso": "workspace:^"
+  }
+}

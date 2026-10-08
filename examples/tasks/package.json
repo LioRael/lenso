@@ -6,16 +6,22 @@
     "migrate": "bun src/migrate.ts",
     "producer": "bun src/producer.ts",
     "worker": "bun src/worker.ts",
+    "mcp": "bun src/mcp.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test src"
   },
   "dependencies": {
+    "@lenso/auth": "workspace:^",
+    "@lenso/mcp": "workspace:^",
     "@lenso/tasks": "workspace:^",
     "drizzle-orm": "0.45.3",
+    "lenso": "workspace:^",
+    "lenso-cli": "workspace:^",
     "pg": "8.23.1",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@types/pg": "8.23.1"
   }
 }

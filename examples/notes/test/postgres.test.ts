@@ -48,7 +48,7 @@ test.skipIf(!connection)(
     if ((await login.exited) !== 0) throw new Error(`Notes login failed: ${loginErrors}`);
     const session: { credential: string } = JSON.parse(loginOutput);
     const rejected = Bun.spawn(
-      [process.execPath, new URL("../src/cli.ts", import.meta.url).pathname, "list"],
+      [process.execPath, new URL("../src/cli.ts", import.meta.url).pathname, "list", "{}"],
       {
         env: {
           ...process.env,
@@ -69,8 +69,7 @@ test.skipIf(!connection)(
         process.execPath,
         new URL("../src/cli.ts", import.meta.url).pathname,
         "create",
-        title,
-        "persisted by another process",
+        JSON.stringify({ title, body: "persisted by another process" }),
       ],
       {
         env: {
@@ -115,9 +114,9 @@ test.skipIf(!connection)(
       );
       const otherNote = await otherClient.create({ title: "Other user's private note" });
       for (const args of [
-        ["read", otherNote.id],
-        ["update", otherNote.id, "Stolen through CLI"],
-        ["remove", otherNote.id],
+        ["read", JSON.stringify({ id: otherNote.id })],
+        ["update", JSON.stringify({ id: otherNote.id, title: "Stolen through CLI" })],
+        ["remove", JSON.stringify({ id: otherNote.id })],
       ]) {
         const denied = Bun.spawn(
           [process.execPath, new URL("../src/cli.ts", import.meta.url).pathname, ...args],
@@ -147,7 +146,7 @@ test.skipIf(!connection)(
       await otherClient.remove({ id: otherNote.id });
       await server.authentication.revoke(session.credential);
       const afterRevoke = Bun.spawn(
-        [process.execPath, new URL("../src/cli.ts", import.meta.url).pathname, "list"],
+        [process.execPath, new URL("../src/cli.ts", import.meta.url).pathname, "list", "{}"],
         {
           env: {
             ...process.env,

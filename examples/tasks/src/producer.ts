@@ -1,15 +1,6 @@
-import { z } from "zod";
+import { call } from "lenso-cli";
+import { resolve } from "node:path";
 import { reportFailure } from "./config";
-import { reportInput } from "./report-service";
-import { openResources } from "./resources";
-
-const enqueueInput = z
-  .object({
-    ...reportInput.shape,
-    runAt: z.iso.datetime({ offset: true }).optional(),
-    deduplicationKey: z.string().min(1).max(200).optional(),
-  })
-  .strict();
 
 async function main() {
   const [command, id, ...extra] = process.argv.slice(2);
@@ -25,51 +16,15 @@ async function main() {
     process.exitCode = 2;
     return;
   }
+  const method = command === "enqueue" ? "submit" : command === "get" ? "query" : command;
   const input =
-    command === "enqueue" ? enqueueInput.parse(JSON.parse(await Bun.stdin.text())) : undefined;
-  const resources = await openResources();
-  try {
-    switch (command) {
-      case "enqueue": {
-        const { runAt, deduplicationKey, ...payload } = input!;
-        const jobId = await resources.queue.enqueue(resources.task, payload, {
-          runAt: runAt ? new Date(runAt) : undefined,
-          deduplicationKey,
-        });
-        console.log(jobId);
-        break;
-      }
-      case "get": {
-        const status = await resources.queue.get(id!);
-        console.log(
-          JSON.stringify(
-            status
-              ? {
-                  state: status.state,
-                  attempt: status.attempt,
-                  maxAttempts: status.maxAttempts,
-                  cancelRequested: status.cancelRequested,
-                }
-              : null,
-          ),
-        );
-        break;
-      }
-      case "cancel":
-        console.log(await resources.queue.cancel(id!));
-        break;
-      case "retry":
-        console.log(await resources.queue.retry(id!));
-        break;
-      case "report":
-        console.log(JSON.stringify(await resources.service.get(id!)));
-        break;
-    }
-  } finally {
-    await resources.close();
-  }
+    command === "enqueue"
+      ? JSON.parse(await Bun.stdin.text())
+      : command === "report"
+        ? { reportId: id }
+        : { jobId: id };
+  const result = await call(resolve(import.meta.dir, ".."), "tasks", method, input);
+  console.log(command === "enqueue" ? (result as { jobId: string }).jobId : JSON.stringify(result));
 }
 
-if (import.meta.main) {
-  await main().catch(() => reportFailure("Producer"));
-}
+if (import.meta.main) await main().catch(() => reportFailure("Producer"));

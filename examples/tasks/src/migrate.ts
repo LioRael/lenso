@@ -18,7 +18,22 @@ async function main() {
         updated_at timestamptz NOT NULL
       )
     `);
-    console.log("Queue and report table migrated.");
+    await drizzle({ client: pool }).execute(sql`
+      CREATE TABLE IF NOT EXISTS task_example_report_owners (
+        report_id text PRIMARY KEY,
+        realm_id text NOT NULL,
+        subject_id text NOT NULL
+      )
+    `);
+    await drizzle({ client: pool }).execute(sql`
+      CREATE TABLE IF NOT EXISTS task_example_job_reports (
+        queue_name text NOT NULL,
+        job_id text NOT NULL,
+        report_id text NOT NULL REFERENCES task_example_report_owners(report_id),
+        PRIMARY KEY (queue_name, job_id)
+      )
+    `);
+    console.log("Queue, report and ownership tables migrated.");
   } finally {
     await pool.end();
   }

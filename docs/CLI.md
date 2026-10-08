@@ -29,6 +29,29 @@ export default defineApp({ plugins: [greeting] });
 
 Calls validate input before setup, start one app, invoke the declared own service method with validated input and the original service as `this`, then stop. Unknown methods fail before setup. Both business and cleanup failures survive in ordered causes. No eval, automatic retry or inferred exposure occurs. Each CLI call owns a fresh app instance; HTTP normally retains an app. An effect description provides no idempotency or authorization guarantee. Keep authorization inside shared application/service rules or an already authorized public API. CLI does not invent an actor from JSON input.
 
+Operations may also declare `destructive`, `outputDescription`, `retry`
+(`safe`, `unsafe`, `unknown`) and `cancellation` (`cooperative`, `request-only`,
+`none`, `unknown`). Inspect, generated manifests and optional adapters use the
+same Engine description. Omitted destructive/output metadata is `null`; retry
+and cancellation default to `unknown`. These are descriptions, not runtime
+guarantees: no automatic retry, abort propagation or rollback is introduced.
+In particular, cancelling a protocol request does not cancel a durable job.
+Application-owned thin methods can adapt multi-argument services and obtain
+authentication evidence from a trusted entry without accepting identity in
+business input. Map known authorization errors to safe `CliError` codes at
+that application boundary; unknown service errors remain opaque.
+
+The local developer controls trusted config, application root, code and launch
+environment, but a declared business call still follows the shared actor and
+object/tenant policies. Local code/DB administration is not a permission exposed
+to a tool. A stdio process uses its launch identity; it does not authenticate a
+different remote user per request. Keep credentials in the trusted environment,
+not arguments, schemas or discovery metadata. The optional
+[`@lenso/mcp`](../packages/mcp/README.md) adapter adds a fixed operation allowlist,
+not elevated authority. Remote ingress requires its own verified authentication
+and the same service policies; no remote MCP listener, scope/audience credential
+issuance or authorization shortcut is supplied.
+
 ## Short feedback path
 
 1. Build changed framework packages so exports resolve current dist; use package.json for scripts.

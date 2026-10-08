@@ -1,34 +1,46 @@
 import { Database } from "bun:sqlite";
 import { join, resolve } from "node:path";
 import { createBunSqlitePlugin } from "@lenso/db/bun-sqlite";
-import { createFilesPlugin } from "@lenso/storage/files";
+import {
+  createFilesPlugin,
+  type Files,
+  type FileAction,
+  type FileRecord,
+} from "@lenso/storage/files";
 import { createLocalStoragePlugin } from "@lenso/storage/local";
 import { createSqliteFileQueries, fileSchema } from "@lenso/storage/sqlite";
 import { sqliteSessionStore } from "@lenso/auth/drizzle/sqlite";
-import { startApp } from "lenso";
-import { createNotesAuthPlugin, parseNotesPrincipals, type NotesPrincipal } from "./auth";
+import { definePlugin, startApp } from "lenso";
+import { parseNotesPrincipals, type NotesPrincipal } from "./auth";
+import { createApplicationAuth } from "./application-auth";
 import { migrateSqlite } from "./migrate-sqlite";
-import { createNotesPlugin, notesAudiences } from "./notes";
+import { createNotesPlugin, notesAudiences, type NotesActor } from "./notes";
 import { createSqliteNotesQueries } from "./queries-sqlite";
 import * as notesSchema from "./schema-sqlite";
 
-export interface NotesFileAccess {
-  ownerId: string;
-  tenantId: string;
-}
+export type NotesFileAccess = NotesActor<"create" | "read" | "fileMetadata" | "fileDelete">;
+export const notesFileTenant = "local-notes";
+const fileAudience = {
+  upload: notesAudiences.create,
+  completeUpload: notesAudiences.create,
+  metadata: notesAudiences.fileMetadata,
+  read: notesAudiences.read,
+  delete: notesAudiences.fileDelete,
+  signDownload: notesAudiences.read,
+} satisfies Record<FileAction, (typeof notesAudiences)[keyof typeof notesAudiences]>;
 
 /** Callers authenticate first; neither fileId nor a storage instance grants access. */
 export function createNotesFiles(options: {
   filename: string;
   root: string;
-  principals: readonly NotesPrincipal[];
+  principals: readonly NotesPrincipal[] | (() => readonly NotesPrincipal[]);
 }) {
   const database = createBunSqlitePlugin({
     id: "notes-db",
     filename: options.filename,
     schema: { ...notesSchema, ...fileSchema },
   });
-  const authentication = createNotesAuthPlugin({
+  const authentication = createApplicationAuth({
     database,
     store: sqliteSessionStore,
     principals: options.principals,
@@ -48,21 +60,39 @@ export function createNotesFiles(options: {
     id: "privateFiles",
     root: join(options.root, "private"),
   });
-  const files = createFilesPlugin({
+  const files = definePlugin<Files<NotesFileAccess>>({
     id: "note-files",
-    storages: [publicAssets, privateFiles],
-    database,
-    queries: createSqliteFileQueries,
-    authorize: ({
-      access,
-      file,
-    }: {
-      access: NotesFileAccess;
-      file: {
-        ownerId: string | null;
-        tenantId: string | null;
-      };
-    }) => access.ownerId === file.ownerId && access.tenantId === file.tenantId,
+    requires: [database, authentication, publicAssets, privateFiles],
+    setup(context) {
+      const auth = context.get(authentication);
+      return createFilesPlugin({
+        id: "note-files",
+        storages: [publicAssets, privateFiles],
+        database,
+        queries: createSqliteFileQueries,
+        async authorize({
+          access,
+          action,
+          file,
+        }: {
+          access: NotesFileAccess;
+          action: FileAction;
+          file: Readonly<FileRecord>;
+        }) {
+          await auth
+            .for(fileAudience[action])
+            .enforce(
+              access,
+              file,
+              ({ principal, resource }) =>
+                principal.kind === "user" &&
+                principal.subjectId === resource.ownerId &&
+                resource.tenantId === notesFileTenant,
+            );
+          return true;
+        },
+      }).setup(context);
+    },
   });
   return {
     database,
@@ -98,20 +128,21 @@ async function demo(filename: string, root: string) {
     const key = process.env.NOTES_LOGIN_KEY;
     if (!key) throw new Error("Set NOTES_LOGIN_KEY to a configured Notes login key");
     const session = await authentication.issue(key);
-    const principal = await authentication.for(notesAudiences.read).required(session.credential);
-    const access = { ownerId: principal.subjectId, tenantId: "local-notes" };
+    const actor = (operation: "create" | "read" | "fileDelete") =>
+      authentication.for(notesAudiences[operation]).required(session.credential);
+    const access = await actor("create");
     const files = app.get(definition.files);
     const record = await files.upload(access, {
       storageId: definition.privateFiles.id,
       filename: "private-note.txt",
       contentType: "text/plain",
-      ownerId: access.ownerId,
-      tenantId: access.tenantId,
+      ownerId: access.subjectId,
+      tenantId: notesFileTenant,
       body: new Blob(["A private attachment stored with its file record.\n"]).stream(),
       maxBytes: 1024,
     });
     console.log({ fileId: record.fileId, storageId: record.storageId, size: record.size });
-    const download = await files.read(access, record.fileId);
+    const download = await files.read(await actor("read"), record.fileId);
     const reader = download.body.getReader();
     // The console is the destination here; production uses Response(body) or a streamed file sink.
     const decoder = new TextDecoder();
@@ -121,8 +152,8 @@ async function demo(filename: string, root: string) {
       process.stdout.write(decoder.decode(value, { stream: true }));
     }
     process.stdout.write(decoder.decode());
-    await files.delete(access, record.fileId);
-    await files.delete(access, record.fileId);
+    await files.delete(await actor("fileDelete"), record.fileId);
+    await files.delete(await actor("fileDelete"), record.fileId);
   } finally {
     await app.stop();
   }

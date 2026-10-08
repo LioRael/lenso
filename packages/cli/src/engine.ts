@@ -1,6 +1,7 @@
 import { join, resolve } from "node:path";
 import { startApp } from "lenso";
 import { readApplication } from "@lenso/engine/application";
+import { EngineError } from "@lenso/engine/diagnostics";
 import { CliError, diagnostic, environmentSecrets, exitCode, redact } from "./diagnostics";
 import { describeOperation, redactOperationDescription, validateOperations } from "./operations";
 import type { AppDefinition } from "@lenso/engine/application";
@@ -94,16 +95,20 @@ export async function invoke(
     callError =
       cause instanceof CliError
         ? cause
-        : new CliError(
-            {
-              code: "invocation-failed",
-              phase: "invoke",
-              message: "Service invocation failed.",
-              ...context,
-            },
-            1,
-            { cause },
-          );
+        : cause instanceof EngineError
+          ? new CliError(diagnostic(cause, { ...context, phase: "invoke" }), exitCode(cause), {
+              cause,
+            })
+          : new CliError(
+              {
+                code: "invocation-failed",
+                phase: "invoke",
+                message: "Service invocation failed.",
+                ...context,
+              },
+              1,
+              { cause },
+            );
   }
   try {
     await running.stop();
@@ -192,6 +197,7 @@ export async function inspect(root = process.cwd(), pluginId?: string, method?: 
     ),
     limitations: [
       "Imports trusted config and executes module top-level code.",
+      "Executes trusted schema converters while describing operations; inspection is not a sandbox.",
       "Never runs plugin setup; runtime-only methods and authorization outcomes cannot be discovered.",
       "Does not load Engine config or infer service methods, provider descriptors, or health from runtime state.",
       "Each call starts and stops an isolated app; no automatic retry, cancellation or request drain.",

@@ -12,7 +12,7 @@ import type { RouterClient } from "@orpc/server";
 import { startApp } from "lenso";
 import { eq } from "drizzle-orm";
 import { createNotesAuthPlugin, parseNotesPrincipals } from "../src/auth";
-import { runNotesCommand } from "../src/cli";
+import { createNotesOperationsService } from "../src/operations";
 import { migrateSqlite } from "../src/migrate-sqlite";
 import {
   createNotesPlugin,
@@ -87,18 +87,18 @@ test("SQLite private CRUD, CLI dispatch, HTTP and persistent sessions", async ()
       await expect(service.create(null, { title: "Anonymous" })).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
-      await expect(runNotesCommand(service, auth, ["list"], null)).rejects.toMatchObject({
-        code: "UNAUTHORIZED",
+      await expect(
+        createNotesOperationsService(service, auth, () => null).list({}),
+      ).rejects.toMatchObject({
+        diagnostic: { code: "UNAUTHORIZED" },
       });
       await expect(service.create(await actor("create"), { title: " " })).rejects.toBeInstanceOf(
         NoteInputError,
       );
-      await runNotesCommand(
-        service,
-        auth,
-        ["create", "  Persistent '); DROP TABLE notes; --  ", "body"],
-        credential,
-      );
+      await createNotesOperationsService(service, auth, () => credential).create({
+        title: "  Persistent '); DROP TABLE notes; --  ",
+        body: "body",
+      });
       const [row] = await service.list(await actor("list"));
       id = row!.id;
       expect(row!.ownerId).toBe("A");
@@ -125,7 +125,9 @@ test("SQLite private CRUD, CLI dispatch, HTTP and persistent sessions", async ()
         id: crypto.randomUUID(),
         createdAt: new Date(0),
       };
-      await service.update(await actor("update"), id, extraFields);
+      await expect(service.update(await actor("update"), id, extraFields)).rejects.toBeInstanceOf(
+        NoteInputError,
+      );
       expect(await service.read(await actor("read"), id)).toEqual(immutable);
 
       const native = app.get(database);
@@ -343,8 +345,10 @@ test("SQLite private CRUD, CLI dispatch, HTTP and persistent sessions", async ()
       await expect(service.read(proof, privateNote.id)).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
-      await expect(runNotesCommand(service, auth, ["list"], other)).rejects.toMatchObject({
-        code: "UNAUTHORIZED",
+      await expect(
+        createNotesOperationsService(service, auth, () => other).list({}),
+      ).rejects.toMatchObject({
+        diagnostic: { code: "UNAUTHORIZED" },
       });
     } finally {
       await app.stop();

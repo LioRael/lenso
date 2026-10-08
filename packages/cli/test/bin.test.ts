@@ -145,6 +145,93 @@ test("schema description derives from the validator; non-JSON output fails", () 
   expect(() => stableJson(cycle)).toThrow("Output must");
 });
 
+test("inspect and generated manifest share canonical operation semantics without app setup", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lenso-operation-catalog-"));
+  directories.push(root);
+  await Bun.write(
+    join(root, "lenso.config.ts"),
+    `const plugin={id:'jobs',setup(){throw Error('must not start')}};
+     export const operations=[{
+       plugin,method:'cancel',description:'Request job cancellation',
+       effect:'write',destructive:false,retry:'safe',cancellation:'request-only',
+       outputDescription:'requested is not stopped',
+       source:{file:'src/jobs.ts',export:'jobs'},
+       input:{'~standard':{version:1,vendor:'test',validate:value=>({value})}}
+     }];
+     export default {plugins:[plugin]};`,
+  );
+  const bin = fileURLToPath(new URL("../src/bin.ts", import.meta.url));
+  async function run(command: string) {
+    const child = Bun.spawn([process.execPath, bin, command, "--root", root, "--json"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [out, err, status] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(status).toBe(0);
+    expect(err).toBe("");
+    return JSON.parse(out);
+  }
+  const inspection = await run("inspect");
+  await run("generate");
+  const manifest = await Bun.file(join(root, ".lenso/manifest.json")).json();
+  expect(manifest.operations).toEqual(inspection.data.operations);
+  expect(manifest.operations[0]).toMatchObject({
+    cancellation: "request-only",
+    destructive: false,
+    retry: "safe",
+    inputSchema: null,
+    schemaAvailability: "runtime-validation-only",
+    source: { file: "src/jobs.ts", export: "jobs" },
+  });
+});
+
+test("source and built CLI preserve diagnostics from separately bundled application CliError", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lenso-app-diagnostic-"));
+  directories.push(root);
+  const cli = pathToFileURL(Bun.resolveSync("lenso-cli", import.meta.dir)).href;
+  await Bun.write(
+    join(root, "lenso.config.ts"),
+    `import { CliError } from ${JSON.stringify(cli)};
+     const plugin={id:'protected',setup(){return {
+       async read(){throw new CliError({code:'FORBIDDEN',phase:'invoke',message:'Access denied'})}
+     }}};
+     export const operations=[{plugin,method:'read',description:'Protected read',
+       input:{'~standard':{version:1,vendor:'test',validate:value=>({value})}}}];
+     export default {plugins:[plugin]};`,
+  );
+  for (const bin of ["../src/bin.ts", "../dist/bin.js"]) {
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        fileURLToPath(new URL(bin, import.meta.url)),
+        "call",
+        "protected",
+        "read",
+        "{}",
+        "--root",
+        root,
+        "--json",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const [out, err, status] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(status).toBe(1);
+    expect(err).toBe("");
+    expect(JSON.parse(out)).toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN", phase: "invoke", message: "Access denied" },
+    });
+  }
+});
+
 test("Engine diagnostics retain CLI JSON codes and exit-code policy after extraction", async () => {
   const root = await mkdtemp(join(tmpdir(), "lenso-bin-engine-"));
   directories.push(root);

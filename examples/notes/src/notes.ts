@@ -1,6 +1,9 @@
 import { definePlugin, type Plugin } from "lenso/plugin";
 import { audience, type Actor } from "@lenso/auth";
 import type { NotesAuthentication } from "./auth";
+import { noteInput, noteLookupInput, type NoteInput } from "./contracts";
+
+export type { NoteInput } from "./contracts";
 
 export const notesAudiences = {
   create: audience("notes:create"),
@@ -8,6 +11,8 @@ export const notesAudiences = {
   read: audience("notes:read"),
   update: audience("notes:update"),
   remove: audience("notes:remove"),
+  fileMetadata: audience("notes:file-metadata"),
+  fileDelete: audience("notes:file-delete"),
 } as const;
 export type NotesOperation = keyof typeof notesAudiences;
 export type NotesActor<O extends NotesOperation> = Actor<
@@ -15,11 +20,6 @@ export type NotesActor<O extends NotesOperation> = Actor<
   string,
   (typeof notesAudiences)[O]["id"]
 >;
-
-export interface NoteInput {
-  title: string;
-  body?: string;
-}
 
 export interface StoredNote {
   id: string;
@@ -57,13 +57,9 @@ export interface NotesService {
 export class NoteInputError extends Error {}
 
 function validate(input: NoteInput): { title: string; body: string } {
-  const title = input.title.trim();
-  const body = input.body ?? "";
-  if (!title || title.length > 200) {
-    throw new NoteInputError("Title must contain 1 to 200 characters");
-  }
-  if (body.length > 20_000) throw new NoteInputError("Body must contain at most 20000 characters");
-  return { title, body };
+  const parsed = noteInput.safeParse(input);
+  if (!parsed.success) throw new NoteInputError("Invalid note input");
+  return { title: parsed.data.title, body: parsed.data.body ?? "" };
 }
 
 function present(note: StoredNote): Note {
@@ -95,6 +91,7 @@ export function createNotesService(
     id: string,
   ) {
     await authorize(operation, actor);
+    if (!noteLookupInput.safeParse({ id }).success) throw new NoteInputError("Invalid note id");
     const note = await queries.read(id);
     if (note) await authorize(operation, actor, note);
     return note;

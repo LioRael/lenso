@@ -5,7 +5,8 @@ import type { Plugin } from "lenso";
 import { z } from "zod";
 import type { NotesAuthentication } from "./auth";
 import { NoteInputError, notesAudiences, type NotesService } from "./notes";
-import { createNotesRouter, noteId, noteInput } from "./router";
+import { createNotesRouter } from "./router";
+import { noteId, noteInput } from "./contracts";
 
 const loginInput = z.strictObject({ key: z.string().regex(/^[0-9a-fA-F]{64}$/) });
 async function jsonInput<S extends z.ZodType>(request: Request, schema: S): Promise<z.output<S>> {

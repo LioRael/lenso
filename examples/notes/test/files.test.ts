@@ -4,19 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileDownloadHandler } from "@lenso/storage/fetch";
 import { startApp } from "lenso";
-import { createNotesFiles, migrateFiles } from "../src/files";
+import { createNotesFiles, migrateFiles, notesFileTenant } from "../src/files";
+import { notesAudiences } from "../src/notes";
 
 test("existing Notes example streams private attachments with persistent IDs and two instances", async () => {
   const root = await mkdtemp(join(await realpath(tmpdir()), "lenso-note-files-"));
   const filename = join(root, "notes.sqlite");
-  const actor = { ownerId: "alice", tenantId: "team-a" };
+  const ownerId = "alice";
   const key = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) =>
     byte.toString(16).padStart(2, "0"),
   ).join("");
   const definition = createNotesFiles({
     filename,
     root: join(root, "objects"),
-    principals: [{ subjectId: actor.ownerId, key }],
+    principals: [
+      { subjectId: ownerId, key },
+      { subjectId: "bob", key: "ab".repeat(32) },
+    ],
   });
   try {
     await migrateFiles(filename); // Never performed by createNotesFiles/startApp.
@@ -24,13 +28,17 @@ test("existing Notes example streams private attachments with persistent IDs and
     let fileId: string;
     try {
       const files = app.get(definition.files);
+      const auth = app.get(definition.authentication);
+      const credential = (await auth.issue(key)).credential;
+      const otherCredential = (await auth.issue("ab".repeat(32))).credential;
+      const actor = await auth.for(notesAudiences.create).required(credential);
       let chunks = 0;
       const record = await files.upload(actor, {
         storageId: definition.privateFiles.id,
         filename: "../../original-name.bin",
         contentType: "application/octet-stream",
-        ownerId: actor.ownerId,
-        tenantId: actor.tenantId,
+        ownerId,
+        tenantId: notesFileTenant,
         maxBytes: 2 * 1024 * 1024,
         body: new ReadableStream(
           {
@@ -50,22 +58,20 @@ test("existing Notes example streams private attachments with persistent IDs and
 
       const raw = createFileDownloadHandler({
         files,
-        // Test authentication boundary only; production verifies a session/token.
-        authenticate: (request) => ({
-          ownerId: request.headers.get("x-test-actor")!,
-          tenantId: actor.tenantId,
-        }),
+        authenticate: (request) =>
+          auth.for(notesAudiences.read).required(request.headers.get("x-test-session")),
         fileId: () => fileId,
       });
-      const denied = await raw({
-        request: new Request(`http://example.test/files/${fileId}`, {
-          headers: { "x-test-actor": "bob" },
+      await expect(
+        raw({
+          request: new Request(`http://example.test/files/${fileId}`, {
+            headers: { "x-test-session": otherCredential },
+          }),
         }),
-      });
-      expect(denied?.status).toBe(403);
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
       const response = await raw({
         request: new Request(`http://example.test/files/${fileId}`, {
-          headers: { "x-test-actor": actor.ownerId },
+          headers: { "x-test-session": credential },
         }),
       });
       expect(response?.status).toBe(200);
@@ -87,10 +93,35 @@ test("existing Notes example streams private attachments with persistent IDs and
     const restarted = await startApp({ plugins: definition.plugins });
     try {
       const files = restarted.get(definition.files);
-      expect((await files.metadata(actor, fileId!)).state).toBe("ready");
-      expect((await files.delete(actor, fileId!)).state).toBe("deleted");
-      expect((await files.delete(actor, fileId!)).state).toBe("deleted");
-      await expect(files.read(actor, fileId!)).rejects.toMatchObject({ code: "conflict" });
+      const auth = restarted.get(definition.authentication);
+      const credential = (await auth.issue(key)).credential;
+      expect(
+        (
+          await files.metadata(
+            await auth.for(notesAudiences.fileMetadata).required(credential),
+            fileId!,
+          )
+        ).state,
+      ).toBe("ready");
+      expect(
+        (
+          await files.delete(
+            await auth.for(notesAudiences.fileDelete).required(credential),
+            fileId!,
+          )
+        ).state,
+      ).toBe("deleted");
+      expect(
+        (
+          await files.delete(
+            await auth.for(notesAudiences.fileDelete).required(credential),
+            fileId!,
+          )
+        ).state,
+      ).toBe("deleted");
+      await expect(
+        files.read(await auth.for(notesAudiences.read).required(credential), fileId!),
+      ).rejects.toMatchObject({ code: "conflict" });
       expect(await restarted.get(definition.privateFiles).list()).toEqual({ objects: [] });
     } finally {
       await restarted.stop();

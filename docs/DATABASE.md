@@ -35,11 +35,11 @@ bun run migrate:pg
 export NOTES_LOGIN_KEYS="$(bun -e 'console.log(JSON.stringify(["alice","bob"].map(subjectId => ({subjectId,key:Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>b.toString(16).padStart(2,"0")).join("")}))))')"
 export NOTES_LOGIN_KEY="$(bun -e 'console.log(JSON.parse(process.env.NOTES_LOGIN_KEYS)[0].key)')"
 export NOTES_SESSION="$(bun run cli login | bun -e 'console.log((await Bun.stdin.json()).credential)')"
-bun run cli create "First note" "Stored in PostgreSQL"
-bun run cli list
-bun run cli read <id>
-bun run cli update <id> "Updated note" "New body"
-bun run cli remove <id>
+printf '%s' '{"title":"First note","body":"Stored in PostgreSQL"}' | bun run cli create
+bun run cli list '{}'
+bun run cli read '{"id":"<note UUID>"}'
+bun run cli update '{"id":"<note UUID>","title":"Updated note","body":"New body"}'
+bun run cli remove '{"id":"<note UUID>"}'
 bun run serve
 ```
 
@@ -70,6 +70,68 @@ The service validates titles and bodies, generates UUIDs, and returns ISO
 timestamps. An authenticated caller gets null/false for missing records;
 anonymous callers are rejected even for missing IDs. Owner, ID and creation
 time cannot be assigned through transport input.
+
+### Explicit business operations
+
+`examples/notes/lenso.config.ts` exports an explicit operation allowlist.
+`notes-operations` exposes `create`, `list`, `read`, `update`, and `remove`,
+each with one JSON business input. `src/contracts.ts` owns the strict schemas
+used by Notes service validation, Web and CLI operations: trimmed titles of
+1 to 200 characters, bodies up to 20,000 characters, UUID lookups, and no extra
+fields. Direct service input with extra owner/actor fields is rejected too.
+The thin application methods obtain an audience-specific actor from trusted
+`NOTES_SESSION`, then delegate to the existing service. JSON never supplies
+an actor. `login`, `renew`, and `revoke` remain trusted session entry commands,
+not exposed business operations.
+
+From the repository root, use the standard CLI for discovery and invocation:
+
+```sh
+bun packages/cli/src/bin.ts inspect notes-operations create --root examples/notes --json
+printf '%s' '{"title":"From the operation registry"}' |
+  bun packages/cli/src/bin.ts call notes-operations create --root examples/notes --stdin --json
+printf '%s' '{}' |
+  bun packages/cli/src/bin.ts call notes-operations list --root examples/notes --stdin --json
+```
+
+Static inspection does not open databases, initialize storage, verify a session
+or require login keys. Each valid call starts and stops one app. Invalid input
+and undeclared methods fail before setup; safe Auth codes survive the CLI
+boundary without arbitrary error text.
+
+Set `DATABASE_URL` without `SQLITE_PATH` to use PostgreSQL Notes. Set
+`SQLITE_PATH` for local SQLite Notes and attachments (it takes precedence);
+without either, the config describes local defaults under `output/`.
+Config paths are resolved against the Notes application root, independently
+of the invoking process's working directory. Migration scripts retain their
+normal cwd semantics. Migrate explicitly with `files:migrate` before local
+calls; use the same absolute
+`SQLITE_PATH`, `STORAGE_ROOT`, and login configuration for login and business calls.
+Local configuration also exposes `notes-file-operations.metadata` and
+`notes-file-operations.delete`, each accepting only `{"fileId":"<file UUID>"}`:
+
+```sh
+printf '%s' '{"fileId":"<file UUID>"}' |
+  bun packages/cli/src/bin.ts call notes-file-operations metadata --root examples/notes --stdin --json
+```
+
+File authorization revalidates the actual Auth actor for the requested
+audience, requires a user, checks the record's owner, and requires the fixed
+application tenant `local-notes`. A copied/forged actor, another owner, and
+another tenant are denied. The existing Files service still owns metadata
+and deletion/state transitions. No binary upload/download operation is exposed;
+local storage does not support signed links, so metadata is the discoverable
+read operation. `files:demo` remains a trusted streaming demonstration.
+
+For an MCP host, launch `bun /absolute/path/to/examples/notes/src/mcp.ts`
+with the same trusted environment. Its fixed application root and explicit
+allowlist expose the five Notes operations, not session issuance or Files.
+No server starts unless this optional stdio entry is invoked. The host can
+select a narrower allowlist in its own trusted entry using
+[`serveStdio`](../packages/mcp/README.md); never accept that selection from
+tool arguments. Tool discovery retains the canonical operation description
+and source in `_meta["lenso/operation"]`. Files metadata/delete can be added
+explicitly only for the local configuration that declares them.
 
 `src/schema-pg.ts` uses PostgreSQL UUID and timestamp-with-time-zone columns.
 `src/schema-sqlite.ts` uses SQLite text IDs and integer millisecond timestamps.

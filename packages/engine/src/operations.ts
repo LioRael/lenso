@@ -9,6 +9,10 @@ export interface Operation {
   readonly input: StandardSchemaV1;
   readonly source?: SourceLocation;
   readonly effect?: "read" | "write" | "unknown";
+  readonly destructive?: boolean;
+  readonly outputDescription?: string;
+  readonly retry?: "safe" | "unsafe" | "unknown";
+  readonly cancellation?: "cooperative" | "request-only" | "none" | "unknown";
 }
 /** Static adapter metadata only: invocation always uses the existing service method. */
 export function defineOperation<T, S extends StandardSchemaV1>(
@@ -43,6 +47,12 @@ export function validateOperations(
       !item.method ||
       ["__proto__", "constructor", "prototype"].includes(item.method) ||
       typeof item.description !== "string" ||
+      (item.effect !== undefined && !["read", "write", "unknown"].includes(item.effect)) ||
+      (item.destructive !== undefined && typeof item.destructive !== "boolean") ||
+      (item.outputDescription !== undefined && typeof item.outputDescription !== "string") ||
+      (item.retry !== undefined && !["safe", "unsafe", "unknown"].includes(item.retry)) ||
+      (item.cancellation !== undefined &&
+        !["cooperative", "request-only", "none", "unknown"].includes(item.cancellation)) ||
       item.input?.["~standard"]?.version !== 1 ||
       typeof item.input["~standard"].validate !== "function"
     ) {
@@ -80,6 +90,10 @@ export function describeOperation(operation: Operation, configPath: string) {
     method: operation.method,
     description: operation.description,
     effect: operation.effect ?? "unknown",
+    destructive: operation.destructive ?? null,
+    outputDescription: operation.outputDescription ?? null,
+    retry: operation.retry ?? "unknown",
+    cancellation: operation.cancellation ?? "unknown",
     source: operation.source ?? { file: configPath },
     inputSchema: inputSchema ? safeInputSchema(inputSchema) : null,
     schemaAvailability: inputSchema ? "available" : "runtime-validation-only",
