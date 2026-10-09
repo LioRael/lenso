@@ -1,0 +1,5 @@
+dist/
+node_modules/
+.pg-test/
+*.tgz
+.pack-consumer/
