@@ -270,6 +270,15 @@ If authentication, permissions, checks, reviews or remote confirmation block
 completion, report landing as incomplete and retain source and integration branches
 as recoverable state.
 
+**Done:** required pre-merge checks passed, the actual merge or push completed,
+and remote/content confirmation succeeded. Main CI remains enabled, but waiting
+for a new post-merge main run is optional unless the user or repository policy
+explicitly requires it. Report pre-merge evidence separately from the observed
+main status (passed, failed, pending, missing, or not checked); pending or missing
+is never passed. Disclose any already observed main failure even when landing is
+confirmed. When a post-merge wait is required, complete that wait before reporting
+Land complete.
+
 ## 5. Clean up confirmed landed branches
 
 Treat an explicit landing request as authorization to delete this landing's remote
