@@ -25,8 +25,7 @@ export class DiagnosticError extends Error {
   }
 }
 
-/** Validate exact plugin instances and return a stable dependency-first order. */
-export function validatePlugins(plugins: readonly Plugin<unknown>[]): readonly Plugin<unknown>[] {
+function pluginDiagnostics(plugins: readonly Plugin<unknown>[], requireDependencies: boolean) {
   const diagnostics: Diagnostic[] = [];
   const validShape = (value: unknown): value is Plugin<unknown> =>
     value !== null &&
@@ -92,7 +91,7 @@ export function validatePlugins(plugins: readonly Plugin<unknown>[]): readonly P
       });
     }
     if (!firstById.has(plugin.id)) firstById.set(plugin.id, plugin);
-    for (const dependency of plugin.requires ?? []) {
+    for (const dependency of requireDependencies ? (plugin.requires ?? []) : []) {
       if (!instances.has(dependency)) {
         diagnostics.push({
           code: "missing-dependency",
@@ -104,7 +103,19 @@ export function validatePlugins(plugins: readonly Plugin<unknown>[]): readonly P
       }
     }
   }
+  return { diagnostics, sources };
+}
 
+/** Validate declaration metadata for a selection, without requiring its dependency graph. */
+export function validatePluginSelection(plugins: readonly Plugin<unknown>[]): void {
+  const { diagnostics } = pluginDiagnostics(plugins, false);
+  if (diagnostics.length) throw new DiagnosticError(diagnostics);
+}
+
+/** Validate exact plugin instances and return a stable dependency-first order. */
+export function validatePlugins(plugins: readonly Plugin<unknown>[]): readonly Plugin<unknown>[] {
+  const { diagnostics, sources } = pluginDiagnostics(plugins, true);
+  const instances = new Set(plugins);
   const order: Plugin<unknown>[] = [];
   const visited = new Set<Plugin<unknown>>();
   const stack: Plugin<unknown>[] = [];

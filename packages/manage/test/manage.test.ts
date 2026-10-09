@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import { defineApp, definePlugin, startApp } from "@lenso/core";
-import { defineOperation, type Operation } from "@lenso/engine/operations";
-import { EngineError, stableJson } from "@lenso/engine/diagnostics";
+import {
+  defineOperation,
+  executeOperation,
+  invokeValidatedOperation,
+  type Operation,
+} from "@lenso/engine/operations";
+import { diagnostic, EngineError, stableJson } from "@lenso/engine/diagnostics";
 import { AuthError, audience, createAuth, defineSource, realm } from "@lenso/auth";
 import { bearerEvidence } from "@lenso/auth/fetch";
 import { call, ORPCError, type RouterClient } from "@orpc/server";
@@ -21,6 +26,141 @@ import {
 import { createManageRouter } from "../src/orpc";
 
 const input = z.object({ tenantId: z.string() });
+
+test("management selects an installed Auth-dependent plugin without exposing its dependency graph", async () => {
+  const auth = definePlugin({
+    id: "auth",
+    setup: () =>
+      createAuth(
+        realm(
+          "people",
+          defineSource({
+            async verify(token: string) {
+              return { status: "verified" as const, subjectId: token };
+            },
+          }),
+        ),
+      ),
+  });
+  const plugin = definePlugin({
+    id: "records",
+    requires: [auth],
+    setup(context) {
+      const access = context.get(auth).for(audience("records:read"));
+      return {
+        read: async (value: z.infer<typeof input>) => ({
+          tenantId: value.tenantId,
+          subjectId: (await access.required("alice")).subjectId,
+        }),
+      };
+    },
+  });
+  const operation = defineOperation({ plugin, method: "read", input, description: "Read" });
+  const running = await startApp({ plugins: [auth, plugin] });
+  const options = {
+    running,
+    plugins: [plugin],
+    operations: [operation],
+    binding: () => ({}),
+    canList: () => true,
+  };
+  try {
+    const adapter = createManageAdapter(options);
+    expect((await adapter.catalog()).map((entry) => entry.pluginId)).toEqual(["records"]);
+    expect(await adapter.invoke("records", "read", { tenantId: "north" })).toEqual({
+      tenantId: "north",
+      subjectId: "alice",
+    });
+    expect(() => createManageAdapter({ ...options, plugins: [plugin, plugin] })).toThrow(
+      "Duplicate plugin ID",
+    );
+    expect(() =>
+      createManageAdapter({
+        ...options,
+        plugins: [{ ...plugin, id: " " }],
+        operations: [],
+      }),
+    ).toThrow("Plugin IDs must not be empty");
+    expect(() =>
+      createManageAdapter({
+        ...options,
+        plugins: [{ ...plugin }],
+        operations: [],
+      }),
+    ).toThrow("exact running plugin instance");
+  } finally {
+    await running.stop();
+  }
+});
+
+test("PluginContext borrows exact runtime instances without acquiring lifecycle ownership", async () => {
+  let setups = 0;
+  let cleanups = 0;
+  const factory = (id: string) =>
+    definePlugin({
+      id,
+      setup(context) {
+        setups++;
+        context.onCleanup(() => {
+          cleanups++;
+        });
+        return { read: (value: z.infer<typeof input>) => ({ id, tenantId: value.tenantId }) };
+      },
+    });
+  const first = factory("first");
+  const second = factory("second");
+  const operation = defineOperation({ plugin: first, method: "read", input, description: "Read" });
+  const other = defineOperation({ plugin: second, method: "read", input, description: "Read" });
+  const host = definePlugin({
+    id: "host",
+    requires: [first],
+    setup(context) {
+      expect("stop" in context).toBe(false);
+      expect("status" in context).toBe(false);
+      expect(() =>
+        createManageAdapter({
+          running: context,
+          plugins: [second],
+          operations: [other],
+          binding: () => ({}),
+          canList: () => true,
+        }),
+      ).toThrow("exact running plugin instance");
+      return {
+        adapter: createManageAdapter({
+          running: context,
+          plugins: [first],
+          operations: [operation],
+          binding: () => ({}),
+          canList: () => true,
+        }),
+        execute: () => executeOperation(context, operation, { tenantId: "north" }),
+        invoke: () => invokeValidatedOperation(context, operation, { tenantId: "north" }),
+        denied: () => executeOperation(context, other, { tenantId: "north" }),
+      };
+    },
+  });
+  const running = await startApp({ plugins: [first, second, host] });
+  try {
+    const service = running.get(host);
+    for (const result of [
+      await service.execute(),
+      await service.invoke(),
+      await service.adapter.invoke("first", "read", { tenantId: "north" }),
+    ])
+      expect(result).toEqual({ id: "first", tenantId: "north" });
+    await expect(service.denied()).rejects.toThrow("undeclared dependency");
+    expect(setups).toBe(2);
+    expect(cleanups).toBe(0);
+    expect(running.get(second).read({ tenantId: "south" })).toEqual({
+      id: "second",
+      tenantId: "south",
+    });
+  } finally {
+    await running.stop();
+  }
+  expect(cleanups).toBe(2);
+});
 
 test("explicit selections retain exact instances and snapshot declaration lists without setup", () => {
   let setups = 0;
@@ -233,6 +373,152 @@ test("finite output, redaction, opaque unknown errors and no retry share Engine 
     const empty = createManageAdapter({ ...options, operations: [] });
     expect(await empty.catalog()).toEqual([]);
     await expect(empty.invoke("output", "value", {})).rejects.toThrow();
+  } finally {
+    await running.stop();
+  }
+});
+
+test("aborted gate waits prevent dispatch, but in-flight cancellation does not roll back mutations", async () => {
+  let mutations = 0;
+  const serviceStarted = Promise.withResolvers<void>();
+  const serviceFinished = Promise.withResolvers<void>();
+  const plugin = definePlugin({
+    id: "mutations",
+    setup: () => ({
+      async write(_value: z.infer<typeof input>) {
+        expect(arguments.length).toBe(1);
+        mutations++;
+        serviceStarted.resolve();
+        await serviceFinished.promise;
+        return undefined;
+      },
+    }),
+  });
+  const operation = defineOperation({
+    plugin,
+    method: "write",
+    input,
+    description: "Write",
+    confirmation: "required",
+    approval: "required",
+    effect: "write",
+    cancellation: "request-only",
+  });
+  const running = await startApp({ plugins: [plugin] });
+  const reason = new Error("private abort reason");
+  const options = { running, plugins: [plugin], operations: [operation], canList: () => true };
+  async function cancelled(result: Promise<unknown>) {
+    const error = await result.catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(EngineError);
+    expect((error as Error).cause).toBe(reason);
+    expect(JSON.stringify(diagnostic(error))).not.toContain(reason.message);
+  }
+  try {
+    for (const gate of ["confirm", "approve"] as const) {
+      const controller = new AbortController();
+      const started = Promise.withResolvers<void>();
+      const decision = Promise.withResolvers<boolean>();
+      const pending = () => {
+        started.resolve();
+        return decision.promise;
+      };
+      const adapter = createManageAdapter({
+        ...options,
+        binding: () => ({
+          signal: controller.signal,
+          confirm: gate === "confirm" ? pending : () => true,
+          approve: gate === "approve" ? pending : () => true,
+        }),
+      });
+      const result = adapter.invoke("mutations", "write", { tenantId: "north" });
+      await started.promise;
+      controller.abort(reason);
+      decision.resolve(true);
+      await cancelled(result);
+      expect(mutations).toBe(0);
+    }
+    const preaborted = new AbortController();
+    preaborted.abort(reason);
+    let gates = 0;
+    await cancelled(
+      createManageAdapter({
+        ...options,
+        binding: () => ({
+          signal: preaborted.signal,
+          confirm: () => {
+            gates++;
+            return true;
+          },
+          approve: () => {
+            gates++;
+            return true;
+          },
+        }),
+      }).invoke("mutations", "write", { tenantId: "north" }),
+    );
+    expect(gates).toBe(0);
+    expect(mutations).toBe(0);
+    const controller = new AbortController();
+    const adapter = createManageAdapter({
+      ...options,
+      binding: () => ({ signal: controller.signal, confirm: () => true, approve: () => true }),
+    });
+    const result = adapter.invoke("mutations", "write", { tenantId: "north" });
+    await serviceStarted.promise;
+    controller.abort(reason);
+    serviceFinished.resolve();
+    await cancelled(result);
+    expect(mutations).toBe(1);
+    expect(running.status()[0]!.state).toBe("ready");
+  } finally {
+    serviceFinished.resolve();
+    await running.stop();
+  }
+});
+
+test("Manage retains Auth cause identity for trusted entries without exposing private cause text", async () => {
+  const denied = new AuthError("FORBIDDEN");
+  denied.message = "private authentication detail";
+  const plugin = definePlugin({
+    id: "denied",
+    setup: () => ({
+      read: (_value: z.infer<typeof input>) => {
+        throw denied;
+      },
+    }),
+  });
+  const operation = defineOperation({ plugin, method: "read", input, description: "Read" });
+  const running = await startApp({ plugins: [plugin] });
+  const options = {
+    running,
+    plugins: [plugin],
+    operations: [operation],
+    binding: () => ({}),
+    canList: () => true,
+  };
+  try {
+    const adapter = createManageAdapter(options);
+    const policyFailure = createManageAdapter({
+      ...options,
+      canList: () => {
+        throw denied;
+      },
+    });
+    for (const action of [
+      () => adapter.invoke("denied", "read", { tenantId: "north" }),
+      () => policyFailure.catalog(),
+      () => policyFailure.invoke("denied", "read", { tenantId: "north" }),
+    ]) {
+      try {
+        await action();
+        throw new Error("Expected authentication failure");
+      } catch (error) {
+        expect(error).toBeInstanceOf(EngineError);
+        expect((error as Error).cause).toBe(denied);
+        expect(String(error)).not.toContain(denied.message);
+        expect(JSON.stringify(diagnostic(error))).not.toContain(denied.message);
+      }
+    }
   } finally {
     await running.stop();
   }

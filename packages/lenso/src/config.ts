@@ -8,6 +8,7 @@ import type {
   ConfigReadContext,
   ConfigSnapshot,
   ConfigSource,
+  ConfigState,
 } from "./config-types";
 import type { ConfiguredPluginContext, Plugin, PluginSource } from "./plugin";
 
@@ -281,6 +282,7 @@ export async function resolveConfig<S extends StandardSchemaV1>(
   const sensitive = new Set<string>();
   let allSensitive = false;
   const revisions: { sourceId: string; revision: unknown }[] = [];
+  const sources: ConfigState["sources"][number][] = [];
   for (const field of binding.contract.fields ?? []) {
     if (field.sensitive && field.path.length === 0) allSensitive = true;
     if (field.sensitive && typeof field.path[0] === "string") sensitive.add(field.path[0]);
@@ -303,6 +305,7 @@ export async function resolveConfig<S extends StandardSchemaV1>(
       )
         throw new InvalidData([]);
       locations.set(sourceId, location);
+      sources.push(Object.freeze({ id: sourceId, kind: safeText(descriptor.kind) }));
       for (const field of descriptor.fields ?? []) {
         if (field.sensitive && field.path.length === 0) allSensitive = true;
         if (field.sensitive && typeof field.path[0] === "string") sensitive.add(field.path[0]);
@@ -390,6 +393,7 @@ export async function resolveConfig<S extends StandardSchemaV1>(
     value: output as StandardSchemaV1.InferOutput<S>,
     provenance: Object.freeze(provenance),
     revisions: Object.freeze(revisions),
+    sources: Object.freeze(sources),
   });
 }
 

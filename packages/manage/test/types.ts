@@ -1,4 +1,4 @@
-import { definePlugin, type RunningApp } from "@lenso/core";
+import { definePlugin, type PluginContext } from "@lenso/core";
 import { defineOperation, type OperationBinding } from "@lenso/engine/operations";
 import { z } from "zod";
 import {
@@ -30,7 +30,7 @@ selectManageOperations(manage, ["read"]);
 // @ts-expect-error Selection uses preserved declared method literals.
 selectManageOperations(manage, ["hidden"]);
 
-function actualBindingTypes(running: RunningApp) {
+function actualBindingTypes(running: PluginContext) {
   const options = { running, plugins: [plugin], operations: [read], canList: () => true };
   createManageAdapter({ ...options, binding: () => ({ context: { credential: "trusted" } }) });
   // @ts-expect-error The real adapter binding cannot erase the service context type.
@@ -48,7 +48,11 @@ function actualBindingTypes(running: RunningApp) {
     // @ts-expect-error The request adapter also checks the actual service context.
     binding: () => ({ context: { credential: 123 } }),
   });
-  const launch: OperationBinding<typeof read> = () => ({ context: { credential: "trusted" } });
+  const launch: OperationBinding<typeof read> = (_operation, _input, app) => {
+    void app.stop;
+    void app.status;
+    return { context: { credential: "trusted" } };
+  };
   // @ts-expect-error Typed CLI launch bindings cannot supply an unrelated context.
   const invalidLaunch: OperationBinding<typeof read> = () => ({ context: { actor: "forged" } });
   void launch;
