@@ -1,0 +1,57 @@
+{
+  "name": "@lenso/search",
+  "version": "0.1.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LioRael/lenso.git",
+    "directory": "packages/search"
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "examples",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./postgres": {
+      "types": "./dist/postgres.d.ts",
+      "import": "./dist/postgres.js"
+    },
+    "./bun-sql": {
+      "types": "./dist/bun-sql.d.ts",
+      "import": "./dist/bun-sql.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint src test examples --deny-warnings",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test test",
+    "test:pg": "bun test test/postgres.test.ts",
+    "test:pack": "sh test/pack-consume.sh",
+    "build": "rm -rf dist && bun build src/index.ts src/postgres.ts src/bun-sql.ts src/plugin.ts --outdir dist --target bun --packages external --splitting && tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "@lenso/auth": "workspace:^",
+    "@lenso/core": "workspace:^",
+    "@lenso/tasks": "workspace:^",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@lenso/core": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@lenso/core": {
+      "optional": true
+    }
+  }
+}
