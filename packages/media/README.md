@@ -178,7 +178,7 @@ Storage 与数据库不是一个原子事务。journal 在 Files 插入/对象�
 仓库内从已安装依赖开始，先构建 framework exports：
 
 ```sh
-bun install --no-save --ignore-scripts # 本次验证不修改共享锁；最终锁由集成 owner 更新
+bun install --frozen-lockfile # landing 集成已将 Media 纳入唯一共享锁
 bun run --filter @lenso/core build
 bun run --filter @lenso/storage --filter @lenso/tasks build
 bun run --filter @lenso/media build
@@ -212,13 +212,13 @@ cd packages/media && bun pm pack --destination <local-output-directory>
 - `oxlint packages/media --deny-warnings` 和 `oxfmt --check packages/media` 通过。
 - `bun pm pack --destination <scratch-directory>` 成功；解包到独立 consumer，借用本地已构建 framework/已安装 sharp，验证公共 exports、workspace 依赖改写、真实 PNG→WebP、共享错误身份和 Workers 控制面构建无 native/FS/SQLite。不是干净 registry 安装或发布批准。
 
-共享锁未改，因此 Turbo 的新增 workspace 警告是已知集成事项，不是已经解决的锁同步。
+初始包内开发阶段没有修改共享锁；landing 集成按 `AGENTS.md` 的集成 owner 政策在独立提交中同步 `bun.lock`，保留既有 workspace 和依赖解析。Media 的 sharp 0.35.5 与 Miniflare 已锁定的 sharp 0.35.4 分开解析，后续验证使用冻结安装。
 
 未验证：生产 S3/R2/D1 权限与网络委派、PostgreSQL MediaStore（仅提供宿主可实现的 `MediaStore` 契约）、Linux/Windows/x64、严格 OS 资源 containment、远程复制/跨区域 failover、整套应用级 Auth 登录与生产撤权传播。没有发布、部署、付费、创建凭据或更改公共权限。
 
 ## 集成 owner 收口清单
 
-- 共享 Bun lock 纳入 `packages/media`、sharp 0.35.5 和测试依赖；本次不改锁。根 workspace wildcard 已可发现包，Turbo 未更新锁时会报告缺少该 workspace 的 transitive closure。
+- landing 集成已将 `packages/media`、sharp 0.35.5 和测试依赖纳入单一共享 Bun lock；后续依赖变更继续由集成 owner 同步并验证冻结安装。
 - 原 Files factory 的最小补丁：queries 改为 `journal.queries`，现有 authorize 改为 `journal.authorizer({authorize: existingPolicy, authorizeDelivery})`，所有入口一致；不改 Files/Core 公共契约。
 - DB：显式应用两张 Media 表的 migration，注入 borrowed store；所有物理文件继续使用现有 Files 表与删除 owner。
 - Tasks：原队列显式注册 `createMediaTask`；producer/executor 使用相同 task name、queue identity、preset/fingerprint；executor 单独 Bun 部署，worker 启动晚于 Media 服务 ready。
