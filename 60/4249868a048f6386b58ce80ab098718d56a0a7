@@ -1,0 +1,66 @@
+.changeset/payments-provider.md
+  h_9d56aba080c170 1-7
+packages/payments/README.md
+  h_9d56aba080c170 1-154
+packages/payments/migrations/postgres.sql
+  h_9d56aba080c170 1-23
+packages/payments/migrations/sqlite.sql
+  h_9d56aba080c170 1-23
+packages/payments/package.json
+  h_9d56aba080c170 1-129
+packages/payments/src/auth.ts
+  h_9d56aba080c170 1-12
+packages/payments/src/config.ts
+  h_9d56aba080c170 1-17
+packages/payments/src/contracts.ts
+  h_9d56aba080c170 1-207
+packages/payments/src/drizzle/d1.ts
+  h_9d56aba080c170 1-18
+packages/payments/src/drizzle/pg.ts
+  h_9d56aba080c170 1-150
+packages/payments/src/drizzle/sqlite.ts
+  h_9d56aba080c170 1-158
+packages/payments/src/fetch.ts
+  h_9d56aba080c170 1-62
+packages/payments/src/index.ts
+  h_9d56aba080c170 1-597
+packages/payments/src/manage.ts
+  h_9d56aba080c170 1-40
+packages/payments/src/plugin.ts
+  h_9d56aba080c170 1-28
+packages/payments/src/scheduler.ts
+  h_9d56aba080c170 1-38
+packages/payments/src/stripe.ts
+  h_9d56aba080c170 1-448
+packages/payments/src/tasks.ts
+  h_9d56aba080c170 1-47
+packages/payments/test/core.test.ts
+  h_9d56aba080c170 1-592
+packages/payments/test/d1.test.ts
+  h_9d56aba080c170 1-78
+packages/payments/test/integration.test.ts
+  h_9d56aba080c170 1-209
+packages/payments/test/scheduler.test.ts
+  h_9d56aba080c170 1-273
+packages/payments/test/store.test.ts
+  h_9d56aba080c170 1-116
+packages/payments/test/stripe.test.ts
+  h_9d56aba080c170 1-600
+packages/payments/test/wiring.test.ts
+  h_9d56aba080c170 1-174
+packages/payments/tsconfig.build.json
+  h_9d56aba080c170 1-12
+packages/payments/tsconfig.json
+  h_9d56aba080c170 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "604249868a048f6386b58ce80ab098718d56a0a7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}

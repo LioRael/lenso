@@ -1,0 +1,44 @@
+.changeset/scoped-management-runtime.md
+  h_9d56aba080c170 1-11
+README.md
+  h_9d56aba080c170 274-284
+packages/engine/src/diagnostics.ts
+  h_9d56aba080c170 334
+packages/engine/src/operations.ts
+  h_9d56aba080c170 15-16,37,162,328,335,351-373,375
+packages/engine/test/diagnostics.test.ts
+  h_9d56aba080c170 6-23
+packages/lenso/src/config-types.ts
+  h_9d56aba080c170 73-79,84
+packages/lenso/src/config.ts
+  h_9d56aba080c170 11,285,308,396
+packages/lenso/src/diagnostics.ts
+  h_9d56aba080c170 28,94,106-107,109-118
+packages/lenso/src/index.ts
+  h_9d56aba080c170 11
+packages/lenso/src/lifecycle.ts
+  h_9d56aba080c170 5,12,25-52,175-182,252
+packages/lenso/src/plugin.ts
+  h_9d56aba080c170 2,27
+packages/lenso/test/config.test.ts
+  h_9d56aba080c170 12,40-137
+packages/manage/README.md
+  h_9d56aba080c170 30-39,45-51
+packages/manage/src/adapter.ts
+  h_9d56aba080c170 1,13,19,25,64,66,68,74,76,141
+packages/manage/test/manage.test.ts
+  h_9d56aba080c170 3-9,30-164,381-528
+packages/manage/test/types.ts
+  h_9d56aba080c170 1,33,51-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f80e643b08709638bb9fe950d7bac2ddc78bb2d7",
+  "prompts": {},
+  "humans": {
+    "h_9d56aba080c170": {
+      "author": "LioRael <leo@lenso.dev>"
+    }
+  }
+}
