@@ -70,8 +70,16 @@ export interface ConfigProvenance {
   readonly sensitive: boolean;
 }
 
+/** Metadata captured at startup, without resolved values or opaque revisions. */
+export interface ConfigState {
+  readonly state: "unconfigured" | "resolved";
+  readonly fields: readonly ConfigProvenance[];
+  readonly sources: readonly { readonly id: string; readonly kind: string }[];
+}
+
 export interface ConfigSnapshot<Output = unknown> {
   readonly value: Output;
   readonly provenance: readonly ConfigProvenance[];
   readonly revisions: readonly { readonly sourceId: string; readonly revision: unknown }[];
+  readonly sources: ConfigState["sources"];
 }

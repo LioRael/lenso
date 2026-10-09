@@ -2,13 +2,14 @@ import { validatePlugins } from "./diagnostics";
 import { metrics, SpanStatusCode, trace } from "@opentelemetry/api";
 import { ConfigError, preflightConfigs } from "./config";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ConfigBinding, ConfigReadContext } from "./config-types";
+import type { ConfigBinding, ConfigReadContext, ConfigState } from "./config-types";
 import type { Contribution, Logger, Plugin, PluginContext, PluginSource } from "./plugin";
 
 export interface RunningApp {
   readonly instanceId: string;
   readonly logger?: Logger;
   get<T>(plugin: Plugin<T>): T;
+  configuration(plugin: Plugin<unknown>): ConfigState;
   status(): readonly { id: string; state: "ready" | "stopped" }[];
   contributions(kind?: string): readonly Contribution[];
   stop(): Promise<void>;
@@ -21,6 +22,34 @@ export async function startApp(
 ): Promise<RunningApp> {
   const plugins = validatePlugins(app.plugins);
   const snapshots = await preflightConfigs(plugins, options);
+  const configurations = new Map<Plugin<unknown>, ConfigState>(
+    plugins.map((plugin) => {
+      const snapshot = snapshots.get(plugin);
+      return [
+        plugin,
+        Object.freeze({
+          state: snapshot ? "resolved" : "unconfigured",
+          fields: Object.freeze(
+            (snapshot?.provenance ?? []).map((field) =>
+              Object.freeze({
+                path: Object.freeze([...field.path]),
+                sourceIds: Object.freeze([...field.sourceIds]),
+                sensitive: field.sensitive,
+              }),
+            ),
+          ),
+          sources: Object.freeze(
+            (snapshot?.sources ?? []).map(({ id, kind }) => Object.freeze({ id, kind })),
+          ),
+        }),
+      ];
+    }),
+  );
+  function configuration(plugin: Plugin<unknown>): ConfigState {
+    const state = configurations.get(plugin);
+    if (!state) throw new Error(`Plugin instance "${plugin.id}" is not part of this app.`);
+    return state;
+  }
   if (options.signal?.aborted)
     throw new ConfigError([{ code: "config-cancelled", pluginId: plugins[0]?.id ?? "" }]);
   const instanceId = options.instanceId ?? app.instanceId ?? crypto.randomUUID();
@@ -143,6 +172,14 @@ export async function startApp(
             throw new Error("Plugin requested undeclared configuration.");
           return snapshots.get(plugin)!.value as StandardSchemaV1.InferOutput<S>;
         },
+        configuration(dependency) {
+          if (!running) throw new Error("The app is stopped.");
+          if (dependency !== plugin && !declared.has(dependency))
+            throw new Error(
+              `Plugin "${plugin.id}" requested undeclared configuration for "${dependency.id}".`,
+            );
+          return configuration(dependency);
+        },
         get<T>(dependency: Plugin<T>): T {
           if (!running) throw new Error("The app is stopped.");
           if (!declared.has(dependency)) {
@@ -212,6 +249,7 @@ export async function startApp(
   return {
     instanceId,
     ...(logger ? { logger } : {}),
+    configuration,
     get<T>(plugin: Plugin<T>): T {
       if (!running) throw new Error("The app is stopped.");
       if (!services.has(plugin))

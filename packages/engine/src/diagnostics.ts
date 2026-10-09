@@ -331,6 +331,7 @@ export function stableJson(value: unknown, space?: number): string {
 }
 
 export function environmentSecrets(): string[] {
+  if (typeof process === "undefined") return [];
   return Object.entries(process.env)
     .filter(([key, value]) => sensitiveKey.test(key) && value)
     .map(([, value]) => value!);

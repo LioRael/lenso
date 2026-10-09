@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { ConfigBinding } from "./config-types";
+import type { ConfigBinding, ConfigState } from "./config-types";
 
 export type Cleanup = () => Promise<void>;
 
@@ -24,6 +24,7 @@ export interface PluginContext {
   readonly logger?: Logger;
   get<T>(dependency: Plugin<T>): T;
   config?<S extends StandardSchemaV1>(binding: ConfigBinding<S>): StandardSchemaV1.InferOutput<S>;
+  configuration?(plugin: Plugin<unknown>): ConfigState;
   /** The returned disposer shares its completion with automatic LIFO cleanup. */
   onCleanup(cleanup: () => void | Promise<void>): Cleanup;
 }

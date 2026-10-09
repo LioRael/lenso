@@ -8,7 +8,7 @@ export type {
   PluginContext,
   PluginSource,
 } from "./plugin";
-export { DiagnosticError, validatePlugins } from "./diagnostics";
+export { DiagnosticError, validatePlugins, validatePluginSelection } from "./diagnostics";
 export type { Diagnostic } from "./diagnostics";
 export { startApp, lifecycleFailure } from "./lifecycle";
 export type { RunningApp, LifecycleFailure } from "./lifecycle";

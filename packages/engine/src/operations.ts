@@ -12,6 +12,8 @@ import {
 
 declare const operationContext: unique symbol;
 
+export type OperationRuntime = Pick<RunningApp, "instanceId" | "get" | "logger">;
+
 export interface Operation<C = unknown> {
   readonly plugin: Plugin<unknown>;
   readonly method: string;
@@ -32,7 +34,7 @@ export interface Operation<C = unknown> {
 
 /** Shared by entries/adapters after their input and authorization boundary. */
 export async function executeOperation(
-  running: RunningApp,
+  running: OperationRuntime,
   operation: Operation,
   input: unknown,
   context?: unknown,
@@ -157,6 +159,7 @@ export type OperationContext<O extends Operation> = O extends Operation<infer C>
 
 export interface OperationInvocationOptions<C = unknown> {
   readonly context?: C;
+  readonly signal?: AbortSignal;
   readonly maxOutputBytes?: number;
   /** Trusted entry callbacks verify this invocation, not booleans from business input. */
   readonly confirm?: () => boolean | Promise<boolean>;
@@ -322,13 +325,14 @@ export async function validateOperationInput(
 
 /** Entries own admission and lifecycle; this function never queues, retries or stops an app. */
 export async function invokeValidatedOperation<O extends Operation>(
-  running: RunningApp,
+  running: OperationRuntime,
   operation: O,
   validatedInput: unknown,
   options: OperationInvocationOptions<NoInfer<OperationContext<O>>> = {},
 ): Promise<unknown> {
   const location = { ...operationLocation(operation), instanceId: running.instanceId };
   try {
+    options.signal?.throwIfAborted();
     const maxBytes = options.maxOutputBytes ?? 1024 * 1024;
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
       throw new EngineError({
@@ -344,27 +348,31 @@ export async function invokeValidatedOperation<O extends Operation>(
         message: "Operation requires a trusted entry context binding.",
         ...location,
       });
-    if (
-      operation.confirmation === "required" &&
-      (!options.confirm || (await options.confirm()) !== true)
-    )
-      throw new EngineError({
-        code: "confirmation-required",
-        phase: "invoke",
-        message: "Entry cannot verify the required user confirmation.",
-        ...location,
-      });
-    if (
-      operation.approval === "required" &&
-      (!options.approve || (await options.approve()) !== true)
-    )
-      throw new EngineError({
-        code: "approval-required",
-        phase: "invoke",
-        message: "Entry cannot verify approval from the configured approval owner.",
-        ...location,
-      });
+    if (operation.confirmation === "required") {
+      const confirmed = options.confirm && (await options.confirm());
+      options.signal?.throwIfAborted();
+      if (confirmed !== true)
+        throw new EngineError({
+          code: "confirmation-required",
+          phase: "invoke",
+          message: "Entry cannot verify the required user confirmation.",
+          ...location,
+        });
+    }
+    if (operation.approval === "required") {
+      const approved = options.approve && (await options.approve());
+      options.signal?.throwIfAborted();
+      if (approved !== true)
+        throw new EngineError({
+          code: "approval-required",
+          phase: "invoke",
+          message: "Entry cannot verify approval from the configured approval owner.",
+          ...location,
+        });
+    }
+    options.signal?.throwIfAborted();
     const result = await executeOperation(running, operation, validatedInput, options.context);
+    options.signal?.throwIfAborted();
     // Check the original result before redaction, which otherwise hides cycles and non-JSON values.
     const raw = boundedJson(result, maxBytes);
     const safe = redact(JSON.parse(raw), environmentSecrets());
