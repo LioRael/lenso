@@ -13,7 +13,11 @@
   },
   "overrides": [
     {
-      "files": ["packages/mcp/src/index.ts"],
+      "files": [
+        "packages/mcp/src/index.ts",
+        "packages/mcp/src/borrowed-stdio.ts",
+        "packages/mcp/test/http.test.ts"
+      ],
       "rules": { "unicorn/prefer-add-event-listener": "off" }
     },
     {

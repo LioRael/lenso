@@ -20,6 +20,11 @@ import {
   validateOperations,
 } from "@lenso/engine/operations";
 import { environmentSecrets, redact, stableJson } from "@lenso/engine/diagnostics";
+import { acquireStdioOwnership } from "./borrowed-stdio";
+
+export { createMcpAdapter, type McpAdapterOptions, type McpRequestContext } from "./adapter";
+export { createHttpMcp, type HttpMcpOptions, type McpIdentity } from "./http";
+export { serveBorrowedStdio, type BorrowedStdioOptions } from "./borrowed-stdio";
 
 export interface StdioOptions {
   /** Trusted launch configuration, never supplied by an MCP tool. */
@@ -30,8 +35,6 @@ export interface StdioOptions {
   maxFrameBytes?: number;
   binding?: OperationBinding;
 }
-
-let serving = false;
 
 function failure(
   code: string,
@@ -96,15 +99,18 @@ function errorResult(error: unknown, maxBytes: number): CallToolResult {
  * service lifecycle is implemented here. Close drains the admitted call.
  */
 export async function serveStdio(options: StdioOptions): Promise<{ close(): Promise<void> }> {
-  if (serving)
-    throw failure("invalid-arguments", "arguments", "Only one stdio adapter may own this process.");
   const root = resolve(options.root);
   const maxInput = limit(options.maxInputBytes, 256 * 1024);
   const maxOutput = limit(options.maxOutputBytes, 1024 * 1024);
   if (maxOutput < Buffer.byteLength(oversizedDiagnostic))
     throw failure("invalid-arguments", "arguments", "Output limit must fit a bounded diagnostic.");
   const maxFrame = limit(options.maxFrameBytes, 1024 * 1024);
-  serving = true;
+  let releaseStdio: () => void;
+  try {
+    releaseStdio = acquireStdioOwnership();
+  } catch {
+    throw failure("invalid-arguments", "arguments", "Only one stdio adapter may own this process.");
+  }
   const originalConsole = globalThis.console;
   const logs = new Writable({
     write(chunk, _encoding, done) {
@@ -159,7 +165,7 @@ export async function serveStdio(options: StdioOptions): Promise<{ close(): Prom
   let closePromise: Promise<void> | undefined;
   const restore = () => {
     globalThis.console = originalConsole;
-    serving = false;
+    releaseStdio();
   };
   const close = (): Promise<void> => {
     if (closePromise) return closePromise;

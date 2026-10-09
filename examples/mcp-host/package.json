@@ -1,0 +1,21 @@
+{
+  "name": "@lenso/example-mcp-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/demo.ts src/stdio.ts --outdir dist --target bun --packages external",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "demo": "bun src/demo.ts",
+    "mcp": "bun src/stdio.ts",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "@lenso/core": "workspace:^",
+    "@lenso/engine": "workspace:^",
+    "@lenso/manage": "workspace:^",
+    "@lenso/mcp": "workspace:^",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "4.6.5"
+  }
+}
