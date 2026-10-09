@@ -607,6 +607,38 @@
         "@orpc/openapi",
       ],
     },
+    "packages/webhooks": {
+      "name": "@lenso/webhooks",
+      "version": "0.1.0",
+      "dependencies": {
+        "@lenso/tasks": "workspace:^",
+        "zod": "4.6.5",
+      },
+      "devDependencies": {
+        "@lenso/audit": "workspace:^",
+        "@lenso/core": "workspace:^",
+        "@lenso/engine": "workspace:^",
+        "@lenso/limits": "workspace:^",
+        "@lenso/manage": "workspace:^",
+        "@types/pg": "8.23.1",
+        "drizzle-orm": "0.45.3",
+        "pg": "8.23.1",
+      },
+      "peerDependencies": {
+        "@lenso/audit": "^0.2.0",
+        "@lenso/core": "^0.2.1",
+        "@lenso/engine": "^0.3.0",
+        "@lenso/limits": "^0.2.0",
+        "@lenso/manage": "^0.3.0",
+        "pg": "8.23.1",
+      },
+      "optionalPeers": [
+        "@lenso/core",
+        "@lenso/engine",
+        "@lenso/manage",
+        "pg",
+      ],
+    },
     "packages/workers": {
       "name": "@lenso/workers",
       "version": "0.2.0",
@@ -886,6 +918,8 @@
     "@lenso/tasks": ["@lenso/tasks@workspace:packages/tasks"],
 
     "@lenso/web": ["@lenso/web@workspace:packages/web"],
+
+    "@lenso/webhooks": ["@lenso/webhooks@workspace:packages/webhooks"],
 
     "@lenso/workers": ["@lenso/workers@workspace:packages/workers"],
 
